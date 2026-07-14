@@ -1489,7 +1489,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   }
 
   world.floorScenario = {
-    protagonistName: floor1Config.protagonist,
+    protagonistName: world.playerName,
     starterWeaponPool: floor1Config.starterWeapons,
     starterChoices: pickStarterChoices(world),
     selectedWeaponId: null,

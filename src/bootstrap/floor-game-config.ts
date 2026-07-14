@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BootScene, MainGameScene } from '../engine/index.js';
+import { BootScene, IntroScene, MainGameScene } from '../engine/index.js';
 import type { MainGameSceneOptions } from '../engine/scenes/MainGameScene.js';
 import { resolveBootRenderScale } from '../engine/render-scale.js';
 import { GAME } from '../shared/constants.js';
@@ -39,7 +39,11 @@ export function createFloorGameConfig(
         debug: false,
       },
     },
-    scene: [BootScene, new MainGameScene(sceneOptions)],
+    // IntroScene leads the scene list: it auto-skips in lab/headless contexts
+    // (URL contains ?lab= or pathname ends with lab.html) and advances to
+    // BootScene directly.  Labs are served from lab.html so the skip fires
+    // automatically — no per-lab call-site change required.
+    scene: [new IntroScene(), BootScene, new MainGameScene(sceneOptions)],
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
