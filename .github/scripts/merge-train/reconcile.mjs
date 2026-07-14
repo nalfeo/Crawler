@@ -8,12 +8,15 @@ import {
 } from '../ci-recovery/state.mjs';
 import {
   buildCandidate,
+  dispatchRecoveryWorkflow,
+  dispatchValidationWorkflow,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
   promoteExactBatch,
   promotionStaleReason,
+  resolveMergeTrainTokens,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 import {
@@ -40,7 +43,7 @@ import {
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
-const token = process.env.MERGE_TRAIN_TOKEN || process.env.GITHUB_TOKEN || '';
+const { promotionToken: token, workflowDispatchToken } = resolveMergeTrainTokens(process.env);
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
@@ -189,17 +192,13 @@ async function createTrainCheck(
 }
 
 async function dispatchRecovery(prNumber, trigger) {
-  await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
-    method: 'POST',
-    body: {
-      ref: 'main',
-      inputs: {
-        operation: 'reconcile',
-        pr_number: String(prNumber),
-        trigger,
-        lease_id: '',
-      },
-    },
+  await dispatchRecoveryWorkflow({
+    request,
+    token: workflowDispatchToken,
+    owner,
+    repo,
+    prNumber,
+    trigger,
   });
 }
 
@@ -307,21 +306,15 @@ async function deAdmitNoop(entry, detail) {
 async function dispatchValidation(sha, fingerprint, entries) {
   await createTrainCheck(sha, fingerprint, 'in_progress', undefined, CANDIDATE_CHECK_NAME, entries);
   try {
-    await request(
-      token,
-      `/repos/${owner}/${repo}/actions/workflows/merge-train-validate.yml/dispatches`,
-      {
-        method: 'POST',
-        body: {
-          ref: 'main',
-          inputs: {
-            candidate_sha: sha,
-            fingerprint,
-            pr_numbers: entries.map((entry) => entry.number).join(','),
-          },
-        },
-      },
-    );
+    await dispatchValidationWorkflow({
+      request,
+      token: workflowDispatchToken,
+      owner,
+      repo,
+      sha,
+      fingerprint,
+      entries,
+    });
   } catch (error) {
     // Model a dispatch/API failure (workflow_dispatch rejected, token
     // issue, transient network error) as an infrastructure problem, not a

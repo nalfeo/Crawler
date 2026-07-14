@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-14",
+  "session_slug": "merge-train-rollout-fix",
+  "task_title": "Fix merge train rollout blockers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Expanded auth separation to every workflow dispatch; added confirmed-conflict detection; adopted two-phase canary/enforcement rollout, explicit canary recovery sequencing, and named token roles. Re-review approved with no blockers."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

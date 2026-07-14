@@ -79,6 +79,69 @@ function gitCommandSucceeded(git, args) {
   }
 }
 
+const CANDIDATE_GIT_IDENTITY = {
+  GIT_AUTHOR_NAME: 'crawler-merge-train[bot]',
+  GIT_AUTHOR_EMAIL: 'crawler-merge-train[bot]@users.noreply.github.com',
+  GIT_COMMITTER_NAME: 'crawler-merge-train[bot]',
+  GIT_COMMITTER_EMAIL: 'crawler-merge-train[bot]@users.noreply.github.com',
+};
+
+export function resolveMergeTrainTokens(environment) {
+  const liveActionsRun = environment.GITHUB_ACTIONS === 'true';
+  const promotionToken =
+    environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
+  const workflowDispatchToken =
+    environment.GITHUB_TOKEN || (!liveActionsRun ? environment.MERGE_TRAIN_TOKEN || '' : '');
+  if (!promotionToken) {
+    throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
+  }
+  if (!workflowDispatchToken) {
+    throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
+  }
+  return { promotionToken, workflowDispatchToken };
+}
+
+export async function dispatchRecoveryWorkflow({ request, token, owner, repo, prNumber, trigger }) {
+  await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
+    method: 'POST',
+    body: {
+      ref: 'main',
+      inputs: {
+        operation: 'reconcile',
+        pr_number: String(prNumber),
+        trigger,
+        lease_id: '',
+      },
+    },
+  });
+}
+
+export async function dispatchValidationWorkflow({
+  request,
+  token,
+  owner,
+  repo,
+  sha,
+  fingerprint,
+  entries,
+}) {
+  await request(
+    token,
+    `/repos/${owner}/${repo}/actions/workflows/merge-train-validate.yml/dispatches`,
+    {
+      method: 'POST',
+      body: {
+        ref: 'main',
+        inputs: {
+          candidate_sha: sha,
+          fingerprint,
+          pr_numbers: entries.map((entry) => entry.number).join(','),
+        },
+      },
+    },
+  );
+}
+
 export function buildCandidate({ baseSha, entries, refName, git, live }) {
   git(['fetch', 'origin', 'main', '--prune']);
   const candidateRefs = entries.map((entry) => fetchCandidateHead(git, entry));
@@ -87,17 +150,30 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
     const entry = entries[index];
     const candidateRef = candidateRefs[index];
     try {
-      git(['merge', '--squash', '--no-commit', candidateRef]);
+      git(['merge', '--squash', '--no-commit', candidateRef], {
+        env: CANDIDATE_GIT_IDENTITY,
+      });
     } catch (error) {
+      let hasUnmergedEntries = false;
+      let operationalError = error;
       try {
-        git(['merge', '--abort']);
-      } catch (abortError) {
-        process.stderr.write(`merge abort cleanup failed: ${abortError.message}\n`);
+        hasUnmergedEntries = git(['ls-files', '--unmerged']).trim().length > 0;
+      } catch (inspectionError) {
+        operationalError = new Error(
+          `could not inspect the failed candidate merge: ${inspectionError.message}`,
+          { cause: error },
+        );
       }
       git(['reset', '--hard', baseSha]);
-      throw new MergeTrainConflictError(
-        `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
-        { cause: error },
+      if (hasUnmergedEntries) {
+        throw new MergeTrainConflictError(
+          `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
+          { cause: error },
+        );
+      }
+      throw new Error(
+        `PR #${entry.number} candidate merge failed operationally: ${operationalError.message}`,
+        { cause: operationalError },
       );
     }
     if (gitCommandSucceeded(git, ['diff', '--cached', '--quiet'])) {
@@ -121,10 +197,7 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
         env: {
           GIT_AUTHOR_DATE: timestamp,
           GIT_COMMITTER_DATE: timestamp,
-          GIT_AUTHOR_NAME: 'crawler-merge-train[bot]',
-          GIT_AUTHOR_EMAIL: 'crawler-merge-train[bot]@users.noreply.github.com',
-          GIT_COMMITTER_NAME: 'crawler-merge-train[bot]',
-          GIT_COMMITTER_EMAIL: 'crawler-merge-train[bot]@users.noreply.github.com',
+          ...CANDIDATE_GIT_IDENTITY,
         },
       },
     );
