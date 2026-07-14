@@ -250,10 +250,12 @@ if (operation.startsWith('lease-')) {
 }
 
 if (!mergeTrainEnabled) {
-  await removePrLabel(QUEUE_LABEL);
-  await removePrLabel(BLOCKED_LABEL);
-  await removePrLabel(NOOP_LABEL);
-  await removePrLabel(VALIDATION_FAILED_LABEL);
+  const existingLabels = new Set((pr.labels || []).map((label) => label.name));
+  for (const trainLabel of [QUEUE_LABEL, BLOCKED_LABEL, NOOP_LABEL, VALIDATION_FAILED_LABEL]) {
+    if (existingLabels.has(trainLabel)) {
+      await removePrLabel(trainLabel);
+    }
+  }
 }
 
 if (labelExists && state?.owner === 'shepherd' && !isLeaseExpired(state, now)) {
