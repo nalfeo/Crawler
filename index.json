@@ -11,6 +11,17 @@
     "path": "by-sha/9455f8c77008cdd7c25f14fa3f60a94f45e09997.json"
   },
   {
+    "commit": "b4be9b05c87e65fd88b677b870f9168dc4133e19",
+    "commitDate": "2026-07-13T23:10:48-07:00",
+    "commitSubject": "fix(ci-policy): stabilize CI recovery ownership and router throttling (#1137)",
+    "capturedAt": "2026-07-14T06:48:01.337Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29310958059",
+    "winRate": 0.9266666666666666,
+    "totalWins": 278,
+    "totalRuns": 300,
+    "path": "by-sha/b4be9b05c87e65fd88b677b870f9168dc4133e19.json"
+  },
+  {
     "commit": "ee39d8df0b666614087389b1ed4be993eb261643",
     "commitDate": "2026-07-13T18:06:38Z",
     "commitSubject": "fix(hud): polish core vitals layout (#1116)",
