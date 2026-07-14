@@ -38,7 +38,12 @@ permissions:
 
 jobs:
   rebase-prs:
-    if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
+    if: >-
+      (github.event_name != 'pull_request_target' ||
+       github.event.pull_request.head.repo.full_name == github.repository) &&
+      (vars.MERGE_TRAIN_ENABLED == 'true' ||
+       !contains(fromJSON('["true","1","yes","on","TRUE","YES","ON","True","Yes","On"]'),
+                 vars.MERGE_QUEUE_ENABLED))
     runs-on: ubuntu-latest
     steps:
       - name: Generate app token
@@ -95,7 +100,7 @@ jobs:
               --state open \
               --base main \
               --json number,isDraft,headRefOid,headRefName,headRepository,headRepositoryOwner,labels \
-              --jq '[.[] | select(.isDraft == false and ([.labels[].name] | index("merge-train") | not))]')
+              --jq '[.[] | select(.isDraft == false)]')
           fi
 
           pr_count=$(echo "$prs_json" | jq 'length')

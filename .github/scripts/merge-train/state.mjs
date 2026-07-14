@@ -157,7 +157,7 @@ export function commitTimestamp(entry) {
   const digest = createHash('sha256')
     .update(`${entry.number}\0${compact(entry.head?.sha)}\0${compact(entry.title)}`)
     .digest();
-  const seconds = 1767225600 + (digest.readUInt32BE(0) % 31536000);
+  const seconds = 1735689600 + (digest.readUInt32BE(0) % 31536000);
   return `@${seconds}`;
 }
 

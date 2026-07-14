@@ -14,7 +14,7 @@ ci-policy
 
 ## Apples
 
-3 apples estimated, 3 apples actual
+4 apples estimated, 4 apples actual
 
 ## What Was Done
 
@@ -46,6 +46,10 @@ ci-policy
 - Moved auto-rebase PR triggers to trusted `pull_request_target` workflow code
   with an explicit default-branch checkout so PR-authored workflow changes
   cannot access the repository App key.
+- Added flag-off label cleanup, trusted-promotion-only `main` CI suppression, a
+  red-hourly-CI promotion circuit breaker, final pre-push reattestation, and a
+  bounded post-promotion assertion that GitHub recorded every included PR as
+  merged.
 
 ## Key Decisions Made
 
@@ -65,8 +69,8 @@ ci-policy
   `UV_HANDLE_CLOSING` subprocess shutdown assertion; Linux CI executes every
   subprocess assertion.
 - `npm run verify:fast` passed.
-- The 3-apple plan and two-round code-review loop completed with all findings
-  resolved, including independent validation of the final security fix.
+- The 4-apple adversarial plan review, two-round code-review loop, and
+  two-round multi-model review completed with all valid findings resolved.
 
 ## What's Next / Blockers
 

@@ -27,15 +27,14 @@ jobs:
   changes:
     name: Detect change scope
     runs-on: ubuntu-latest
-    if: >-
-      (github.event_name != 'push' || vars.MERGE_TRAIN_ENABLED != 'true') &&
-      (github.event_name != 'schedule' || vars.MERGE_TRAIN_ENABLED == 'true')
+    if: github.event_name != 'schedule' || vars.MERGE_TRAIN_ENABLED == 'true'
     outputs:
       art_only: ${{ steps.scope.outputs.art_only }}
       docs_only: ${{ steps.scope.outputs.docs_only }}
       gameplay_safe: ${{ steps.scope.outputs.gameplay_safe }}
       sprites_only: ${{ steps.scope.outputs.sprites_only }}
       sprites_touched: ${{ steps.scope.outputs.sprites_touched }}
+      train_promoted: ${{ steps.scope.outputs.train_promoted }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,13 +51,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           art_only='${{ steps.detect.outputs.art_only }}'
           docs_only='${{ steps.detect.outputs.docs_only }}'
           gameplay_safe='${{ steps.detect.outputs.gameplay_safe }}'
           sprites_only='${{ steps.detect.outputs.sprites_only }}'
           sprites_touched='${{ steps.detect.outputs.sprites_touched }}'
+          train_promoted=false
 
           if [ "${{ github.event_name }}" = "schedule" ]; then
             art_only=false
@@ -66,10 +66,10 @@ jobs:
             gameplay_safe=false
             sprites_only=false
             sprites_touched=true
-          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+          elif [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "push" ]; then
             promotion_checks="$(
               gh api \
-                "/repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?per_page=100" |
+                "/repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" |
                 jq --arg app_id "$MERGE_TRAIN_APP_ID" \
                 '($app_id | tonumber?) as $trusted_id |
                   ([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
@@ -83,6 +83,7 @@ jobs:
             )"
             if [ "$promotion_checks" -gt 0 ]; then
               docs_only=true
+              train_promoted=true
               echo "Train-promoted head has an attested successful merge-train check."
             fi
           fi
@@ -92,6 +93,7 @@ jobs:
           echo "gameplay_safe=$gameplay_safe" >>"$GITHUB_OUTPUT"
           echo "sprites_only=$sprites_only" >>"$GITHUB_OUTPUT"
           echo "sprites_touched=$sprites_touched" >>"$GITHUB_OUTPUT"
+          echo "train_promoted=$train_promoted" >>"$GITHUB_OUTPUT"
 
   # Job 1: Type & Lint checks (can run in parallel)
   check-types-and-lint:
@@ -356,7 +358,9 @@ jobs:
               exit 1
               ;;
           esac
-          if [ "${{ github.event_name }}" = "push" ] && [ "$train_enabled" = "true" ]; then
+          if [ "${{ github.event_name }}" = "push" ] &&
+             [ "$train_enabled" = "true" ] &&
+             [ "${{ needs.changes.outputs.train_promoted }}" = "true" ]; then
             echo "✅ Main-push heavy CI deferred to the hourly health run"
             exit 0
           fi

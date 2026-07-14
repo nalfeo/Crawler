@@ -73,7 +73,7 @@ if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
   process.stdout.write(`skip pr=#${prNumber} reason=opt-out\n`);
   process.exit(0);
 }
-if ((pr.labels || []).some((label) => label.name === QUEUE_LABEL)) {
+if (mergeTrainEnabled && (pr.labels || []).some((label) => label.name === QUEUE_LABEL)) {
   process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
   process.exit(0);
 }
@@ -247,6 +247,13 @@ if (operation.startsWith('lease-')) {
   }
   process.stdout.write(`${operation} complete for PR #${prNumber}\n`);
   process.exit(0);
+}
+
+if (!mergeTrainEnabled) {
+  await removePrLabel(QUEUE_LABEL);
+  await removePrLabel(BLOCKED_LABEL);
+  await removePrLabel(NOOP_LABEL);
+  await removePrLabel(VALIDATION_FAILED_LABEL);
 }
 
 if (labelExists && state?.owner === 'shepherd' && !isLeaseExpired(state, now)) {
@@ -432,9 +439,9 @@ if (hasMergeConflict) {
     url: pr.html_url,
   });
 }
-if (validationFailed) {
+if (mergeTrainEnabled && validationFailed) {
   const trainComment = comments.find((comment) =>
-    String(comment.body || '').includes('<!-- crawler-merge-train:v1 -->'),
+    hasLeadingMarker(comment.body, '<!-- crawler-merge-train:v1 -->'),
   );
   blockers.push({
     kind: 'merge-train-validation',
@@ -443,7 +450,7 @@ if (validationFailed) {
     url: trainComment?.html_url || pr.html_url,
   });
 }
-if (trainNoop) {
+if (mergeTrainEnabled && trainNoop) {
   blockers.push({
     kind: 'merge-train-noop',
     id: pr.head.sha,

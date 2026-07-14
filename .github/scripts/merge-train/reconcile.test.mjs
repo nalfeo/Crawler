@@ -411,6 +411,39 @@ test('promoteExactCandidate marks the required check failed when the atomic push
   assert.deepEqual(checkCalls[1].slice(2, 5), ['completed', 'failure', 'merge-train']);
 });
 
+test('promoteExactCandidate publishes a separate failure when GitHub does not record the PR as merged', async () => {
+  const pr = makePr();
+  const { git } = createGitStub({});
+  const checkCalls = [];
+  await assert.rejects(
+    () =>
+      promoteExactCandidate({
+        pr,
+        candidateSha,
+        expectedBase: baseSha,
+        position: 1,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async () => makePr(),
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async (...args) => checkCalls.push(args),
+        removeLabel: async () => {},
+        updateStatus: async () => {},
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async () => false,
+      }),
+    /was not recorded as merged/,
+  );
+  assert.deepEqual(checkCalls[0].slice(2, 5), ['completed', 'success', 'merge-train']);
+  assert.deepEqual(checkCalls[1].slice(2, 5), [
+    'completed',
+    'failure',
+    'merge-train-promotion-postcondition',
+  ]);
+});
+
 test('trainCheckTitle distinguishes queued, failed, and successful completed checks', () => {
   assert.equal(trainCheckTitle('in_progress'), 'Merge-train validation queued');
   assert.equal(trainCheckTitle('completed', 'failure'), 'Merge-train validation could not start');

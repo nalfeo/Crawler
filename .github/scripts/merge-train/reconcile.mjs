@@ -188,6 +188,35 @@ async function dispatchRecovery(prNumber, trigger) {
   });
 }
 
+async function mainHealthAllowsPromotion() {
+  const response = await request(
+    token,
+    `/repos/${owner}/${repo}/actions/workflows/ci.yml/runs?event=schedule&branch=main&per_page=20`,
+  );
+  const latestCompleted = (response.data.workflow_runs || []).find(
+    (run) => run.status === 'completed',
+  );
+  if (!latestCompleted || latestCompleted.conclusion === 'success') return true;
+  process.stdout.write(
+    `paused merge train; latest completed hourly main CI concluded ${latestCompleted.conclusion}\n`,
+  );
+  return false;
+}
+
+async function waitForMergedPr(entry) {
+  const delays = [1000, 2000, 4000, 8000, 8000, 8000];
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+    if (current.merged === true || (current.state === 'closed' && current.merged_at)) {
+      return true;
+    }
+    if (attempt < delays.length) {
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+  }
+  return false;
+}
+
 async function blockEntry(entry, { detail, validationFailure = false }) {
   await setLabel(entry.number, BLOCKED_LABEL);
   if (validationFailure) {
@@ -335,12 +364,16 @@ for (let index = 0; index < train.length; index += 1) {
       position: index + 1,
       candidateSha,
       state,
-      detail: 'Candidate is immutable and bound to the listed PR revisions.',
+      detail:
+        state === 'failure'
+          ? 'Candidate validation failed; the merge train will bisect the failing prefix and return the first failing PR to recovery.'
+          : 'Candidate is immutable and bound to the listed PR revisions.',
     }),
   );
 }
 
 async function promotePrefix(prefixLength) {
+  if (!(await mainHealthAllowsPromotion())) return false;
   const provenanceEntries = train.slice(0, prefixLength);
   return promoteExactBatch({
     entries: provenanceEntries,
@@ -359,6 +392,7 @@ async function promotePrefix(prefixLength) {
     updateStatus,
     requiredCheckName: REQUIRED_CHECK_NAME,
     provenanceEntries,
+    waitForMergedPr,
   });
 }
 

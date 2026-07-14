@@ -166,6 +166,7 @@ export async function promoteExactCandidate({
   updateStatus,
   requiredCheckName,
   provenanceEntries = [pr],
+  waitForMergedPr,
 }) {
   return promoteExactBatch({
     entries: [pr],
@@ -183,6 +184,7 @@ export async function promoteExactCandidate({
     requiredCheckName,
     provenanceEntries,
     positions: [position],
+    waitForMergedPr,
   });
 }
 
@@ -202,6 +204,7 @@ export async function promoteExactBatch({
   requiredCheckName,
   provenanceEntries = entries,
   positions = entries.map((_, index) => index + 1),
+  waitForMergedPr = async () => true,
 }) {
   if (entries.length === 0 || entries.length !== candidateShas.length) {
     throw new Error('Promotion requires one candidate SHA per non-empty PR entry');
@@ -248,6 +251,30 @@ export async function promoteExactBatch({
     );
     return false;
   }
+  const finalMain = await fetchCurrentMain();
+  if (finalMain !== expectedBase) {
+    process.stdout.write('stale promotion; main moved during final reattestation\n');
+    return false;
+  }
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    const finalPr = await fetchCurrentPr(entry, index);
+    const staleReason = promotionStaleReason({
+      currentMain: finalMain,
+      currentPr: finalPr,
+      expectedBase,
+      pr: entry,
+      repository,
+    });
+    const admission = staleReason ? null : await eligible(finalPr);
+    if (staleReason || !admission.ok) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; ${staleReason || admission.reason}; final reattestation failed\n`,
+      );
+      return false;
+    }
+    currentPrs[index] = finalPr;
+  }
   const finalCandidateSha = candidateShas.at(-1);
   const promotionFingerprint = candidateFingerprint(expectedBase, currentPrs);
   await createTrainCheck(
@@ -284,6 +311,21 @@ export async function promoteExactBatch({
       provenanceEntries,
     );
     throw error;
+  }
+  for (const entry of entries) {
+    if (!(await waitForMergedPr(entry, finalCandidateSha))) {
+      await createTrainCheck(
+        finalCandidateSha,
+        promotionFingerprint,
+        'completed',
+        'failure',
+        `${requiredCheckName}-promotion-postcondition`,
+        provenanceEntries,
+      );
+      throw new Error(
+        `PR #${entry.number} was not recorded as merged after atomic promotion to ${finalCandidateSha}`,
+      );
+    }
   }
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];

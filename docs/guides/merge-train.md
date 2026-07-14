@@ -94,12 +94,17 @@ dry-run train mode.
    - a failure between PR-head update and main update retries the same tested SHA.
 4. Confirm GitHub records every disposable PR as merged and that the merge commit
    OIDs equal their successful `merge-train` check OIDs.
+   Promotion also checks this postcondition in production and fails the train
+   run if GitHub does not record every included PR as merged.
 
 To return to the legacy independent-auto-merge and blanket-rebase behavior:
 
 ```bash
 gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false
 ```
+
+The next recovery sweep removes train-owned labels before returning each PR to
+legacy automation.
 
 ## Failure handling
 
