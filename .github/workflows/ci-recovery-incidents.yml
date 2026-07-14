@@ -53,4 +53,10 @@ jobs:
         env:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
+          # Same exact rollout flag ci.yml/security-review.yml gate their
+          # fast-path shortcuts on. Without it, incident.mjs's own fast-path
+          # classifier would misclassify a genuine full-CI success as a
+          # merge-train shortcut whenever the SHA still carries a stale
+          # trusted `merge-train` check from before a flag-off rollback.
+          MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED }}
         run: node .github/scripts/ci-recovery/incident.mjs

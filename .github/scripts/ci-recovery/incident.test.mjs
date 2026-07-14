@@ -156,11 +156,59 @@ test('does not auto-close an open incident on a train-fast-path (docs_only) push
   });
   t.after(() => server.close());
 
-  const { code, stdout, stderr } = await runScript(port, pushRun());
+  const { code, stdout, stderr } = await runScript(port, pushRun(), {
+    MERGE_TRAIN_ENABLED: 'true',
+  });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /skip auto-close .*reason=train-fast-path-success/);
   assert.deepEqual(mutatingCalls, [], 'must not PATCH/close the incident issue');
+});
+
+test('does NOT misclassify a stale trusted train check as fast-path once MERGE_TRAIN_ENABLED is false (post-rollback)', async (t) => {
+  // Regression: after a flag-off rollback, a SHA can still carry an old
+  // trusted "merge-train" check-run (check-runs persist forever on the
+  // commit). A later genuine full-CI rerun on that same SHA must still be
+  // able to auto-close a real open incident -- the fast-path shortcut must
+  // require the exact rollout flag, not just the check's presence.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [OPEN_INCIDENT] }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [trustedTrainCheck()] },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/101`]: () => ({ body: { number: 101 } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/101/comments`]: () => ({ body: { id: 1 } }),
+  });
+  t.after(() => server.close());
+
+  // MERGE_TRAIN_ENABLED intentionally omitted: parseEnabledFlag defaults an
+  // unset/rolled-back flag to false.
+  const { code, stdout, stderr } = await runScript(port, pushRun());
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /closed incident issue=#101/);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) => call.method === 'PATCH' && call.url === `/repos/${OWNER}/${REPO}/issues/101`,
+    ).length,
+    1,
+    'a stale trusted train check must not block auto-close once the flag is off',
+  );
+});
+
+test('rejects a malformed MERGE_TRAIN_ENABLED value instead of silently defaulting', async (t) => {
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [OPEN_INCIDENT] }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, pushRun(), { MERGE_TRAIN_ENABLED: 'True' });
+
+  assert.notEqual(code, 0, 'a non-exact flag value must fail fast, not be coerced');
+  assert.match(stderr, /MERGE_TRAIN_ENABLED must be true or false/);
 });
 
 test('auto-closes an open incident on a genuine (non-train) push success', async (t) => {
@@ -227,10 +275,70 @@ test('routes a genuine push failure to a new/updated incident even with an unrel
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /created incident issue=#202/);
-  assert.ok(
-    mutatingCalls.some(
-      (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
-    ),
-    'expected a new incident issue to be created for the genuine failure',
+  const createCall = mutatingCalls.find(
+    (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+  );
+  assert.ok(createCall, 'expected a new incident issue to be created for the genuine failure');
+  assert.match(
+    createCall.body.body,
+    /## Merge-train promotion provenance/,
+    'a genuine completed+successful trusted check must still be surfaced as provenance',
   );
 });
+
+for (const [label, overrides] of [
+  ['in-progress (no conclusion yet)', { status: 'in_progress', conclusion: null }],
+  ['failed', { status: 'completed', conclusion: 'failure' }],
+]) {
+  test(`does not surface an untrustworthy (${label}) merge-train check as promotion provenance`, async (t) => {
+    const { server, port, mutatingCalls } = await startServer({
+      [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+      [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+        body: { check_runs: [trustedTrainCheck(overrides)] },
+      }),
+      [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+      [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
+        body: { number: 303, node_id: 'ISSUE_303' },
+      }),
+      [`POST /graphql`]: (url, parsed) => {
+        const doc = String(parsed?.query ?? '');
+        if (doc.includes('suggestedActors')) {
+          return {
+            body: {
+              data: {
+                repository: {
+                  suggestedActors: {
+                    nodes: [{ login: 'copilot-swe-agent', __typename: 'Bot', id: 'BOT_1' }],
+                  },
+                },
+              },
+            },
+          };
+        }
+        return {
+          body: {
+            data: { replaceActorsForAssignable: { assignable: { assignees: { nodes: [] } } } },
+          },
+        };
+      },
+    });
+    t.after(() => server.close());
+
+    const { code, stdout, stderr } = await runScript(
+      port,
+      pushRun({ conclusion: 'failure', status: 'completed' }),
+    );
+
+    if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+    assert.match(stdout, /created incident issue=#303/);
+    const createCall = mutatingCalls.find(
+      (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+    );
+    assert.ok(createCall, 'expected a new incident issue to be created for the genuine failure');
+    assert.doesNotMatch(
+      createCall.body.body,
+      /## Merge-train promotion provenance/,
+      `a ${label} merge-train check must not be presented as promotion provenance`,
+    );
+  });
+}

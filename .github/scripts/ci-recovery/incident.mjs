@@ -1,5 +1,10 @@
 import { graphql, paginate, request } from './github.mjs';
-import { hasTrustedTrainPromotionCheck, shouldSkipRepoIncidentWorkflowRun } from './state.mjs';
+import {
+  hasTrustedTrainPromotionCheck,
+  isTrustedTrainPromotionCheck,
+  shouldSkipRepoIncidentWorkflowRun,
+} from './state.mjs';
+import { parseEnabledFlag } from '../merge-train/state.mjs';
 
 const token = process.env.CRAWLER_CI_PAT || '';
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -13,7 +18,11 @@ const eventPath = process.env.GITHUB_EVENT_PATH;
 // spoofed run) could inject arbitrary text into an incident issue body that
 // @copilot is asked to act on.
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
-const FINGERPRINT_SHAPE = /^[0-9a-f]{64}$/;
+// Exact-match rollout flag, same semantics as ci.yml/security-review.yml's
+// `vars.MERGE_TRAIN_ENABLED == 'true'` shortcut gate. Defaults to false (via
+// parseEnabledFlag) when unset, so an unconfigured or rolled-back repository
+// never misclassifies a genuine full-CI run as a merge-train fast path.
+const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 
 if (!token || !owner || !repo || !eventPath) {
   throw new Error('Missing CRAWLER_CI_PAT, repository, or event payload');
@@ -60,7 +69,16 @@ const headCheckRuns = run.head_sha
 // incident's root cause (an earlier full-CI failure) is fixed — it must not
 // auto-close the incident. Genuine push failures still route normally
 // below regardless of any promotion attestation.
+//
+// Require the exact rollout flag too: after a flag-off rollback, a SHA can
+// still carry an old trusted `merge-train` check (check-runs persist
+// forever). A later genuine full-CI rerun on that same SHA must not be
+// misclassified as a fast-path shortcut just because that stale check is
+// still present, or a real successful full run could never auto-close the
+// incident. `mergeTrainEnabled` uses the same exact-match parsing as the
+// `ci.yml`/`security-review.yml` shortcut gates.
 const isTrainFastPathSuccess =
+  mergeTrainEnabled &&
   run.event === 'push' &&
   run.name === 'CI' &&
   hasTrustedTrainPromotionCheck(headCheckRuns, trustedAppId);
@@ -118,15 +136,14 @@ const body = [
   `- Run: ${run.html_url}`,
   `- Triggered by: @${run.actor?.login || 'unknown'}`,
   ...(() => {
+    // Require the same completed+successful trust gate as
+    // `isTrainFastPathSuccess`/`ci.yml`, not just name+App+fingerprint shape.
+    // An in-progress or failed atomic push still produces a check-run named
+    // "merge-train" from the trusted App with a valid fingerprint, but its
+    // output does not describe a real promotion and must not be surfaced as
+    // provenance for incident diagnosis.
     const promotion = (headCheckRuns || [])
-      .filter(
-        (check) =>
-          check.name === 'merge-train' &&
-          Number.isInteger(trustedAppId) &&
-          Number(check.app?.id) === trustedAppId &&
-          typeof check.external_id === 'string' &&
-          FINGERPRINT_SHAPE.test(check.external_id),
-      )
+      .filter((check) => isTrustedTrainPromotionCheck(check, trustedAppId))
       .sort((left, right) => right.id - left.id)[0];
     return promotion?.output?.summary
       ? ['', '## Merge-train promotion provenance', '', promotion.output.summary]

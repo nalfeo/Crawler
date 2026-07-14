@@ -135,6 +135,78 @@ before returning each PR fully to legacy automation. Step 1 is the only manual
 action rollback still requires; steps 2 onward are already automatic once the
 flag flips.
 
+## Emergency repair lane (main-health deadlock)
+
+`mainHealthAllowsPromotion()` (`merge-train/reconcile.mjs`) fails closed: it
+pauses **every** promotion whenever the latest non-fast-path full-CI run for
+the current `main` SHA is missing, pending, or red. This is intentional -- it
+stops the train from building on top of a broken `main` -- but it has one
+structural consequence worth naming explicitly: the incident workflow that
+diagnoses a red hourly `main` run asks Copilot to land the fix through an
+ordinary PR, and that PR is itself just another train candidate. While
+`main` stays red, the circuit breaker that is supposed to protect the train
+also blocks the one promotion that would fix it, and every subsequent hourly
+run keeps re-testing the same broken SHA. **The train cannot self-heal a red
+`main` from inside the train.**
+
+This is deliberate, not a bug: allowing the train to promote its way out of a
+red `main` autonomously would mean designing a bypass that decides, by itself,
+when it's safe to build on top of known-broken code -- exactly the kind of
+"promote arbitrary code while main is red" hole this guide's trust boundary
+exists to prevent. Recovering from this state is instead an explicit,
+documented, human-triggered fallback to the legacy path the train is meant to
+replace, using machinery this repository already has and already trusts:
+
+1. Disable the train:
+
+   ```bash
+   gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false
+   ```
+
+2. Remove `merge-train` from `main`'s required status checks (same command as
+   the Rollback section above):
+
+   ```bash
+   gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks/contexts \
+     --method DELETE -f 'contexts[]=merge-train'
+   ```
+
+   Confirm it is gone before proceeding:
+
+   ```bash
+   gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks --jq '.contexts'
+   ```
+
+3. Confirm legacy freshness ownership resumed. No manual action is needed:
+   the next `ci-recovery/reconcile.mjs` sweep sees `MERGE_TRAIN_ENABLED=false`,
+   strips the train-owned labels from any in-flight PR (including the repair
+   PR once it exists), and CI recovery/auto-rebase resume owning freshness and
+   readiness exactly as before this feature existed.
+4. If the repair PR is not already open, let `ci-recovery-incidents.yml` /
+   `incident.mjs` open it and assign Copilot as usual (this already happens
+   automatically off the red hourly run), or open it directly. Either way,
+   once step 1-2 land, the repair PR merges through the **ordinary** legacy
+   auto-merge path -- gated by its own required PR checks like every other PR
+   before this feature existed. Nothing bypasses the repair PR's own CI.
+5. After the repair PR merges, confirm the next **push-triggered** full `CI`
+   run on the new `main` SHA is green. This is the same authoritative evidence
+   `mainHealthAllowsPromotion()` looks for; do not re-enable the train on the
+   strength of the repair PR's own head-check evidence alone, since that
+   predates the merge.
+6. Only once that push-triggered run is green: re-add `merge-train` to `main`'s
+   required status checks and re-enable the train:
+
+   ```bash
+   gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body true
+   ```
+
+This lane does not weaken `mainHealthAllowsPromotion()` or add a code path that
+lets the train promote onto red evidence -- it takes the repair PR out of the
+train entirely and merges it through the same legacy, per-PR-gated path that
+already exists as the flag-off fallback for everything else. The train
+resumes only once real, current, push-triggered green evidence exists for the
+repaired `main`.
+
 ## Failure handling
 
 - **Waiting:** admission checks or review threads are incomplete. CI recovery
@@ -148,3 +220,8 @@ flag flips.
   new immutable generation is built.
 - **Promotion denied:** verify App bypass and contents-write permissions. Never
   merge the PR through the ordinary squash path to work around this failure.
+- **Main-health deadlock:** every hourly full-CI run for the current `main` SHA
+  is red (or missing/pending), so `mainHealthAllowsPromotion()` pauses all
+  promotion, including the repair PR's own. This is the one case where the
+  ordinary legacy merge path is the correct, documented recovery -- see
+  [Emergency repair lane](#emergency-repair-lane-main-health-deadlock) above.
