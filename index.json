@@ -1,5 +1,16 @@
 [
   {
+    "commit": "88828e6625e70bdc54fe7a7334791c1dd3961d9f",
+    "commitDate": "2026-07-14T15:49:36-07:00",
+    "commitSubject": "fix(ci): unblock merge train rollout (#1144)",
+    "capturedAt": "2026-07-14T23:53:25.644Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29374644107",
+    "winRate": 0.945,
+    "totalWins": 567,
+    "totalRuns": 600,
+    "path": "by-sha/88828e6625e70bdc54fe7a7334791c1dd3961d9f.json"
+  },
+  {
     "commit": "c634323ea2deb1e1ac514e7b9af4deb193f80b30",
     "commitDate": "2026-07-14T08:56:51Z",
     "commitSubject": "feat: stabilize sprite-catalog JSON formatting via shared catalog-io helper (#1124)",
