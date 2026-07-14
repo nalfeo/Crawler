@@ -134,6 +134,16 @@ of 12 unresolved Copilot review threads:
 - Automation harness after reconciliation: 110 tests total, 92 passed, 0
   failed, 18 skipped (same known Windows-only libuv teardown flake pattern).
   `npm run verify:fast` passed again after reconciliation.
+- **Post-push typecheck fix**: the non-blocking `Advisory checks` CI job
+  (`continue-on-error: true`, not in `merge-gate`'s required `needs`) surfaced
+  a real `tsc --noEmit` failure that `verify:fast`'s lighter typecheck path
+  did not catch: `tests/unit/merge-train-promotion-gate.test.ts` indexed a
+  `Record<string, string>` with `match[1]`/`match[2]` from a regex match,
+  which `noUncheckedIndexedAccess` types as `string | undefined` (TS2538).
+  Fixed by destructuring into optional locals and guarding both are defined
+  before assignment; no behavior change. Re-verified full `npm run typecheck`
+  is clean, the test file's 5/5 tests still pass, and the ci-recovery/
+  merge-train mjs suite is unchanged at 110/92 pass/0 fail/18 skipped.
 
 ## What's Next / Blockers
 
