@@ -21,7 +21,10 @@ const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
 // Labels owned by merge-train automation that must be drained during
-// flag-off cleanup before legacy routing resumes normal operation.
+// flag-off cleanup before legacy routing resumes normal operation. A PR that
+// still carries one of these after MERGE_TRAIN_ENABLED=false needs the
+// flag-off cleanup sweep in ci-recovery/reconcile.mjs to remove it before the
+// PR can return to legacy automation. See collectPrNumbers() below.
 const TRAIN_OWNED_LABELS = new Set([
   QUEUE_LABEL,
   BLOCKED_LABEL,
@@ -165,28 +168,18 @@ export function collectPrNumbers({
       )
       .map((pullRequest) => pullRequest.number);
   }
-  const numbers = new Set();
-
-  for (const number of eventPrNumbers(payload)) {
-    numbers.add(number);
-  }
+  const directNumbers = eventPrNumbers(payload);
+  const numbers = new Set(directNumbers);
+  // PRs still carrying a train-owned label after flag-off. These must not be
+  // starved by the dispatch cap below: the flag-off cleanup in
+  // ci-recovery/reconcile.mjs only runs for PRs it actually receives, so an
+  // unbounded backlog of newly-updated PRs could otherwise keep pushing an
+  // older, still-labeled PR past the cap on every sweep (never cleaned up).
+  const trainLabeledNumbers = new Set();
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
-    let orderedPulls = scheduledPulls;
-    if (trainEnabled === false) {
-      const withTrainLabels = [];
-      const withoutTrainLabels = [];
-      for (const pullRequest of scheduledPulls) {
-        if ((pullRequest.labels || []).some((label) => TRAIN_OWNED_LABELS.has(label.name))) {
-          withTrainLabels.push(pullRequest);
-        } else {
-          withoutTrainLabels.push(pullRequest);
-        }
-      }
-      orderedPulls = withTrainLabels.concat(withoutTrainLabels);
-    }
     const normalizedRepo = repository.toLowerCase();
-    for (const pullRequest of orderedPulls) {
+    for (const pullRequest of scheduledPulls) {
       if (
         !pullRequest.draft &&
         pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
@@ -194,6 +187,9 @@ export function collectPrNumbers({
         const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
         if (Number.isInteger(number) && number > 0) {
           numbers.add(number);
+          if (hasTrainOwnedLabel(pullRequest)) {
+            trainLabeledNumbers.add(number);
+          }
         }
       }
     }
@@ -204,9 +200,22 @@ export function collectPrNumbers({
     (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
     eligible.length > maxDispatchPerRun
   ) {
-    return eligible.slice(0, maxDispatchPerRun);
+    // Prioritize PRs the event directly named plus any still carrying a
+    // train-owned label so the flag-off cleanup sweep completes for them
+    // before the cap is spent on unrelated recently-updated PRs.
+    const prioritized = eligible.filter(
+      (number) => directNumbers.has(number) || trainLabeledNumbers.has(number),
+    );
+    const remaining = eligible.filter(
+      (number) => !directNumbers.has(number) && !trainLabeledNumbers.has(number),
+    );
+    return [...prioritized, ...remaining].slice(0, maxDispatchPerRun);
   }
   return eligible;
+}
+
+function hasTrainOwnedLabel(pullRequest) {
+  return (pullRequest.labels || []).some((label) => TRAIN_OWNED_LABELS.has(label.name));
 }
 
 export function eventPrNumbers(payload) {

@@ -67,24 +67,31 @@ jobs:
             sprites_only=false
             sprites_touched=true
           elif [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "push" ]; then
-            promotion_checks="$(
-              gh api \
-                "/repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" |
-                jq --arg app_id "$MERGE_TRAIN_APP_ID" \
-                '($app_id | tonumber?) as $trusted_id |
-                  ([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
-                  if ($check != null and
-                      $check.status == "completed" and
-                      $check.conclusion == "success" and
-                      $trusted_id != null and
-                      $check.app.id == $trusted_id and
-                      ($check.external_id | type == "string" and test("^[0-9a-f]{64}$")))
-                  then 1 else 0 end'
-            )"
-            if [ "$promotion_checks" -gt 0 ]; then
-              docs_only=true
-              train_promoted=true
-              echo "Train-promoted head has an attested successful merge-train check."
+            # Only trust promotion provenance while the merge train is
+            # actually enabled. If MERGE_TRAIN_ENABLED is rolled back to
+            # false, a leftover (or forged) "merge-train" check-run on the
+            # head must not keep shortcutting full CI — rollback must
+            # restore full CI unconditionally.
+            if [ "${{ vars.MERGE_TRAIN_ENABLED }}" = "true" ]; then
+              promotion_checks="$(
+                gh api \
+                  "/repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" |
+                  jq --arg app_id "$MERGE_TRAIN_APP_ID" \
+                  '($app_id | tonumber?) as $trusted_id |
+                    ([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
+                    if ($check != null and
+                        $check.status == "completed" and
+                        $check.conclusion == "success" and
+                        $trusted_id != null and
+                        $check.app.id == $trusted_id and
+                        ($check.external_id | type == "string" and test("^[0-9a-f]{64}$")))
+                    then 1 else 0 end'
+              )"
+              if [ "$promotion_checks" -gt 0 ]; then
+                docs_only=true
+                train_promoted=true
+                echo "Train-promoted head has an attested successful merge-train check."
+              fi
             fi
           fi
 

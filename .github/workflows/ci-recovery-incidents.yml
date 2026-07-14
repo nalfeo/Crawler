@@ -25,8 +25,12 @@ jobs:
     # per-PR feedback). Every other workflow always routes. For the `CI`
     # workflow specifically: push-triggered runs always route, whether they
     # are a direct/administrative push or a train-promoted push, because a
-    # failure either way is real (train-promoted pushes are attested green
-    # via the `merge-train` check and so won't spuriously fire on success).
+    # failure either way is real. A train-promoted push can, however, succeed
+    # trivially (the docs_only fast path skips the heavy suite), so its own
+    # green conclusion is NOT evidence that an already-open incident's root
+    # cause is fixed — incident.mjs itself must not auto-close on that kind
+    # of success (it re-checks the head's attested merge-train provenance
+    # before closing), so routing it here is safe either way.
     # Scheduled `CI` runs only route while the train is enabled, matching
     # `ci.yml`'s own gating of the schedule trigger (`changes` job) — when the
     # train is disabled, a scheduled run is a no-op success that must not be

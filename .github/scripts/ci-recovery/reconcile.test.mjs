@@ -942,6 +942,49 @@ test('train mode waits during bounded backoff for auto-rebase-failure retries', 
   assert.deepEqual(mutatingCalls, []);
 });
 
+test('train mode escalates an explicit auto-rebase-failure once bounded retries are exhausted', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: false, mergeable_state: 'dirty' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      // Already retried REBASE_FAILURE_MAX_ATTEMPTS (3) times, still fresh (not timed out).
+      body: [rebaseDispatchedStateComment(903, new Date().toISOString(), 3)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'auto-rebase-failure',
+    CI_RECOVERY_MODE: 'dry-run',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /merge-conflict/, 'expected the conflict blocker to still surface');
+  assert.match(stdout, /dry-run would-assign copilot/, 'expected fallthrough to escalation');
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    0,
+    'must not redispatch once bounded retries are exhausted',
+  );
+});
+
 test('reconcile ignores same-repository action-required runs without approval or dispatch', async (t) => {
   const runId = 29220010234;
   const { server, port, mutatingCalls } = await startServer({

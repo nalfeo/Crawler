@@ -80,6 +80,71 @@ test('collectPrNumbers keeps event-scoped PR dispatch uncapped for non-schedule 
   assert.deepEqual(numbers, [42]);
 });
 
+test('collectPrNumbers prioritizes flag-off PRs still carrying a train-owned label over the cap', () => {
+  // 10 PRs, most-recently-updated first (as returned by sort=updated&direction=desc).
+  // #9 and #2 are old (near the back) but still carry stale train labels from
+  // before MERGE_TRAIN_ENABLED=false; they must not be starved by newer,
+  // unrelated PRs #10..#3 filling the whole 5-PR cap.
+  const scheduledPulls = [
+    { number: 10, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    {
+      number: 9,
+      draft: false,
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [{ name: 'merge-train-blocked' }],
+    },
+    { number: 8, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    { number: 7, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    { number: 6, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    { number: 5, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    { number: 4, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    { number: 3, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+    {
+      number: 2,
+      draft: false,
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [{ name: 'merge-train' }],
+    },
+    { number: 1, draft: false, head: { repo: { full_name: 'nalfeo/Crawler' } }, labels: [] },
+  ];
+
+  const numbers = collectPrNumbers({
+    payload: {},
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    maxDispatchPerRun: 5,
+  });
+
+  assert.deepEqual(
+    new Set(numbers),
+    new Set([9, 2, 10, 8, 7]),
+    'train-labeled PRs #9 and #2 must be dispatched even though they sort behind the cap on updated-desc order',
+  );
+  assert.equal(numbers.length, 5);
+});
+
+test('collectPrNumbers keeps directly-triggered PRs ahead of the cap alongside train-labeled PRs', () => {
+  const scheduledPulls = Array.from({ length: 9 }, (_, index) => ({
+    number: index + 1,
+    draft: false,
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: index + 1 === 1 ? [{ name: 'merge-train-noop' }] : [],
+  }));
+
+  const numbers = collectPrNumbers({
+    payload: { issue: { number: 9, pull_request: {} } },
+    eventName: 'workflow_dispatch',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    maxDispatchPerRun: 3,
+  });
+
+  assert.equal(numbers.length, 3);
+  assert.ok(numbers.includes(9), 'the directly-triggered PR must survive the cap');
+  assert.ok(numbers.includes(1), 'the train-labeled PR must survive the cap');
+});
+
 test('train mode schedules only the oldest six non-ready repair candidates', () => {
   const pulls = Array.from({ length: 9 }, (_, index) => ({
     number: index + 1,

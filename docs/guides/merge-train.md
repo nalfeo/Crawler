@@ -99,12 +99,41 @@ dry-run train mode.
 
 To return to the legacy independent-auto-merge and blanket-rebase behavior:
 
-```bash
-gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false
-```
+1. Remove `merge-train` from `main`'s required status checks first (or in the
+   same change as step 2). Flipping the flag alone does not touch branch
+   protection: if `merge-train` is still required, no legacy PR can ever merge
+   after rollback, because nothing publishes that check once the train stops
+   running.
 
-The next recovery sweep removes train-owned labels before returning each PR to
-legacy automation.
+   ```bash
+   gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks/contexts \
+     --method DELETE -f 'contexts[]=merge-train'
+   # If main is protected by a ruleset instead of classic branch protection,
+   # edit the ruleset's required-status-checks list to drop merge-train
+   # instead (`gh api repos/nalfeo/Crawler/rulesets` to find it).
+   ```
+
+   Confirm it is gone before proceeding:
+
+   ```bash
+   gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks --jq '.contexts'
+   ```
+
+2. Disable the train:
+
+   ```bash
+   gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false
+   ```
+
+With `MERGE_TRAIN_ENABLED=false`, CI recovery's `merge-train`-owned skip
+(`ci-recovery/reconcile.mjs`) stops applying, so CI recovery and broad
+auto-rebase automatically resume owning freshness and promotion for every PR
+still carrying a `merge-train*` label -- no separate step restores that part.
+The next recovery sweep removes the train-owned labels (`merge-train`,
+`merge-train-blocked`, `merge-train-noop`, `merge-train-validation-failed`)
+before returning each PR fully to legacy automation. Step 1 is the only manual
+action rollback still requires; steps 2 onward are already automatic once the
+flag flips.
 
 ## Failure handling
 

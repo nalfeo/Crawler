@@ -1,13 +1,18 @@
 import { execFileSync } from 'node:child_process';
 
 import { listReviewThreads, paginate, request } from '../ci-recovery/github.mjs';
-import { parseStateComment, STATE_MARKER as RECOVERY_STATE_MARKER } from '../ci-recovery/state.mjs';
+import {
+  isTrainFastPathPushRun,
+  parseStateComment,
+  STATE_MARKER as RECOVERY_STATE_MARKER,
+} from '../ci-recovery/state.mjs';
 import {
   buildCandidate,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
-  latestAuthoritativeMainHealthRun,
+  mainHealthReason,
   promoteExactBatch,
+  promotionStaleReason,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 import {
@@ -190,38 +195,47 @@ async function dispatchRecovery(prNumber, trigger) {
   });
 }
 
+// Bound on how many recent push-triggered CI runs we inspect (and fetch
+// check-runs for) when looking for evidence on the current main SHA. Main
+// only advances via merge-train promotions or rare direct pushes, so the
+// exact-SHA match will normally be found within the first entry; this cap
+// keeps the check-run fan-out small and predictable either way.
+const MAIN_HEALTH_PUSH_RUN_LOOKBACK = 5;
+
 async function mainHealthAllowsPromotion() {
-  const attestedTrainPushBySha = new Map();
-  const isAttestedTrainPushSha = async (sha) => {
-    if (attestedTrainPushBySha.has(sha)) {
-      return attestedTrainPushBySha.get(sha);
-    }
-    const checks = await checkRuns(sha);
-    const attested = checks.some(
-      (check) =>
-        check.name === REQUIRED_CHECK_NAME &&
-        check.status === 'completed' &&
-        check.conclusion === 'success' &&
-        Number(check.app?.id) === trustedAppId &&
-        typeof check.external_id === 'string' &&
-        FINGERPRINT_SHAPE.test(check.external_id),
-    );
-    attestedTrainPushBySha.set(sha, attested);
-    return attested;
-  };
-  const response = await request(
-    token,
-    `/repos/${owner}/${repo}/actions/workflows/ci.yml/runs?branch=main&per_page=20`,
+  const currentMainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
+    .object.sha;
+  const [scheduleResponse, pushResponse] = await Promise.all([
+    request(
+      token,
+      `/repos/${owner}/${repo}/actions/workflows/ci.yml/runs?event=schedule&branch=main&per_page=20`,
+    ),
+    request(
+      token,
+      `/repos/${owner}/${repo}/actions/workflows/ci.yml/runs?event=push&branch=main&per_page=${MAIN_HEALTH_PUSH_RUN_LOOKBACK}`,
+    ),
+  ]);
+  const scheduleRuns = (scheduleResponse.data.workflow_runs || []).map((run) => ({
+    ...run,
+    isTrainFastPath: false,
+  }));
+  const candidatePushRuns = (pushResponse.data.workflow_runs || []).filter(
+    (run) => run.head_sha === currentMainSha,
   );
-  const latestCompleted = await latestAuthoritativeMainHealthRun(
-    response.data.workflow_runs || [],
-    isAttestedTrainPushSha,
-  );
-  if (!latestCompleted || latestCompleted.conclusion === 'success') return true;
-  process.stdout.write(
-    `paused merge train; latest completed authoritative main CI run event=${latestCompleted.event} concluded ${latestCompleted.conclusion}\n`,
-  );
-  return false;
+  const pushRuns = [];
+  for (const run of candidatePushRuns) {
+    const runs = await checkRuns(run.head_sha);
+    pushRuns.push({ ...run, isTrainFastPath: isTrainFastPathPushRun(run, trustedAppId, runs) });
+  }
+  const reason = mainHealthReason({
+    mainSha: currentMainSha,
+    runs: [...scheduleRuns, ...pushRuns],
+  });
+  if (reason) {
+    process.stdout.write(`paused merge train; ${reason}\n`);
+    return false;
+  }
+  return true;
 }
 
 async function waitForMergedPr(entry) {
@@ -457,6 +471,33 @@ if (step.type === 'validate') {
 }
 
 const failingEntry = train[step.failingPrefixLength - 1];
+
+// The candidates/train above were built from `mainSha` captured earlier in
+// this run; by the time bisection isolates a failing PR, main may have
+// moved or the PR's queued state may have changed (rebased, retargeted,
+// unlabeled, etc.). Reattest both immediately before mutating anything so a
+// stale bisection result can't block/label a PR for a problem that no
+// longer applies. This check runs unconditionally -- including when
+// step.greenPrefixLength === 0, the case where nothing else in this script
+// (mainHealthAllowsPromotion/promoteExactBatch) re-validates before mutation.
+const [liveMainSha, liveFailingPr] = await Promise.all([
+  request(token, `/repos/${owner}/${repo}/git/ref/heads/main`).then((r) => r.data.object.sha),
+  request(token, `/repos/${owner}/${repo}/pulls/${failingEntry.number}`).then((r) => r.data),
+]);
+const staleReason = promotionStaleReason({
+  currentMain: liveMainSha,
+  currentPr: liveFailingPr,
+  expectedBase: mainSha,
+  pr: failingEntry,
+  repository,
+});
+if (staleReason) {
+  process.stdout.write(
+    `bisect stale pr=#${failingEntry.number} reason=${staleReason}; skipping mutation, will rebuild next run\n`,
+  );
+  process.exit(0);
+}
+
 await blockEntry(failingEntry, {
   validationFailure: true,
   detail: `PR #${failingEntry.number} is the first failing addition in the validated prefix.`,

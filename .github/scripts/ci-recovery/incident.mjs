@@ -1,5 +1,5 @@
 import { graphql, paginate, request } from './github.mjs';
-import { shouldSkipRepoIncidentWorkflowRun } from './state.mjs';
+import { hasTrustedTrainPromotionCheck, shouldSkipRepoIncidentWorkflowRun } from './state.mjs';
 
 const token = process.env.CRAWLER_CI_PAT || '';
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -41,7 +41,37 @@ const existing = openIssues.find(
   (issue) => !issue.pull_request && String(issue.title).toLowerCase() === title.toLowerCase(),
 );
 
+// Fetched once and reused below both to decide whether a "success" push run
+// is real full-CI evidence and to surface merge-train promotion provenance
+// in the incident body on failure.
+const headCheckRuns = run.head_sha
+  ? (
+      await request(
+        token,
+        `/repos/${owner}/${repo}/commits/${encodeURIComponent(run.head_sha)}/check-runs?per_page=100`,
+        { headers: { Accept: 'application/vnd.github+json' } },
+      )
+    ).data.check_runs || []
+  : [];
+
+// A push-triggered CI run whose head carries an attested successful
+// merge-train check took the docs_only fast path (heavy suite skipped). Its
+// own green conclusion is therefore not evidence that a real, already-open
+// incident's root cause (an earlier full-CI failure) is fixed — it must not
+// auto-close the incident. Genuine push failures still route normally
+// below regardless of any promotion attestation.
+const isTrainFastPathSuccess =
+  run.event === 'push' &&
+  run.name === 'CI' &&
+  hasTrustedTrainPromotionCheck(headCheckRuns, trustedAppId);
+
 if (run.conclusion === 'success') {
+  if (isTrainFastPathSuccess) {
+    process.stdout.write(
+      `skip auto-close workflow=${run.name} reason=train-fast-path-success (docs_only shortcut is not full-CI evidence)\n`,
+    );
+    process.exit(0);
+  }
   if (existing) {
     await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
       method: 'PATCH',
@@ -87,16 +117,8 @@ const body = [
   `- Head SHA: \`${run.head_sha || 'unknown'}\``,
   `- Run: ${run.html_url}`,
   `- Triggered by: @${run.actor?.login || 'unknown'}`,
-  ...(await (async () => {
-    if (!run.head_sha) return [];
-    const checks = (
-      await request(
-        token,
-        `/repos/${owner}/${repo}/commits/${encodeURIComponent(run.head_sha)}/check-runs?per_page=100`,
-        { headers: { Accept: 'application/vnd.github+json' } },
-      )
-    ).data.check_runs;
-    const promotion = (checks || [])
+  ...(() => {
+    const promotion = (headCheckRuns || [])
       .filter(
         (check) =>
           check.name === 'merge-train' &&
@@ -109,7 +131,7 @@ const body = [
     return promotion?.output?.summary
       ? ['', '## Merge-train promotion provenance', '', promotion.output.summary]
       : [];
-  })()),
+  })(),
   '',
   '@copilot Diagnose this repository-level failure, implement the smallest correct fix on a branch from `main`, run the required verification, open a non-draft PR, and arm squash auto-merge. Do not weaken a gate or explicit requirement.',
 ].join('\n');

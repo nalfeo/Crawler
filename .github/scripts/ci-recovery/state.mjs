@@ -6,6 +6,48 @@ export const OWNER_LABEL_PREFIX = 'ci-owner-pr-';
 export const DEFAULT_LEASE_TTL_MINUTES = 30;
 export const DEFAULT_LEASE_GRACE_MINUTES = 5;
 
+// A check-run named "merge-train" is only real promotion provenance when it
+// was published by the trusted repository App and its external_id is a
+// fingerprint-shaped SHA-256 hex digest (see ci.yml, security-review.yml, and
+// merge-train/reconcile.mjs, which all gate a shortcut on this same evidence).
+// Anyone able to post an untrusted check-run named "merge-train" must not be
+// able to fake promotion evidence.
+const TRAIN_PROMOTION_FINGERPRINT_SHAPE = /^[0-9a-f]{64}$/;
+
+export function isTrustedTrainPromotionCheck(check, trustedAppId) {
+  return Boolean(
+    check &&
+    check.name === 'merge-train' &&
+    check.status === 'completed' &&
+    check.conclusion === 'success' &&
+    Number.isInteger(trustedAppId) &&
+    Number(check.app?.id) === trustedAppId &&
+    typeof check.external_id === 'string' &&
+    TRAIN_PROMOTION_FINGERPRINT_SHAPE.test(check.external_id),
+  );
+}
+
+export function hasTrustedTrainPromotionCheck(checkRuns, trustedAppId) {
+  return (checkRuns || []).some((check) => isTrustedTrainPromotionCheck(check, trustedAppId));
+}
+
+/**
+ * A push-triggered `CI` run whose head carries an attested successful
+ * merge-train check took the fast path (`docs_only=true`; heavy jobs
+ * skipped). Its own trivially-green conclusion is not evidence that the
+ * broad suite passed, so it must not be treated as authoritative main-health
+ * evidence (merge-train/reconcile.mjs circuit breaker) and must not be
+ * allowed to auto-close a real CI incident opened by an earlier full-CI
+ * failure (incident.mjs).
+ */
+export function isTrainFastPathPushRun(run, trustedAppId, checkRuns) {
+  return (
+    run?.event === 'push' &&
+    run?.name === 'CI' &&
+    hasTrustedTrainPromotionCheck(checkRuns, trustedAppId)
+  );
+}
+
 const validOwners = new Set(['automation', 'shepherd', 'none']);
 const validStatuses = new Set(['active', 'dispatched', 'escalated', 'idle']);
 

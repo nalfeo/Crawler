@@ -5,7 +5,7 @@ import {
   buildCandidate,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
-  latestAuthoritativeMainHealthRun,
+  mainHealthReason,
   promoteExactBatch,
   promotionStaleReason,
   promoteExactCandidate,
@@ -88,45 +88,6 @@ test('buildCandidate fetches the API-observed head SHA instead of refs/pull/<n>/
   );
   assert.ok(fetchCall);
   assert.match(fetchCall.args[2], new RegExp(`^${prSha}:refs/remotes/merge-train/pr-42$`));
-});
-
-test('latestAuthoritativeMainHealthRun ignores attested merge-train push fast-paths', async () => {
-  const run = await latestAuthoritativeMainHealthRun(
-    [
-      {
-        id: 3,
-        status: 'completed',
-        event: 'push',
-        conclusion: 'success',
-        head_sha: 'a'.repeat(40),
-      },
-      {
-        id: 2,
-        status: 'completed',
-        event: 'schedule',
-        conclusion: 'failure',
-        head_sha: 'b'.repeat(40),
-      },
-    ],
-    async (sha) => sha === 'a'.repeat(40),
-  );
-  assert.equal(run?.id, 2);
-});
-
-test('latestAuthoritativeMainHealthRun accepts non-train push runs as authoritative', async () => {
-  const run = await latestAuthoritativeMainHealthRun(
-    [
-      {
-        id: 7,
-        status: 'completed',
-        event: 'push',
-        conclusion: 'failure',
-        head_sha: 'c'.repeat(40),
-      },
-    ],
-    async () => false,
-  );
-  assert.equal(run?.id, 7);
 });
 
 test('buildCandidate treats exact-SHA mismatches as retryable operational failures', () => {
@@ -276,6 +237,100 @@ test('promotion stale-state guard mirrors queue admission boundaries', () => {
       repository: 'nalfeo/Crawler',
     }),
     /marked merge-train-blocked/,
+  );
+});
+
+function makeCiRun(overrides = {}) {
+  return {
+    name: 'CI',
+    event: 'schedule',
+    head_sha: baseSha,
+    status: 'completed',
+    conclusion: 'success',
+    created_at: '2024-01-01T00:00:00Z',
+    isTrainFastPath: false,
+    ...overrides,
+  };
+}
+
+test('mainHealthReason fails closed when no full-CI evidence exists for current main', () => {
+  assert.match(
+    mainHealthReason({ mainSha: baseSha, runs: [] }),
+    /no full-CI evidence yet for current main/,
+  );
+  // Evidence exists, but for a different (stale) main SHA -- still fails closed.
+  assert.match(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [makeCiRun({ head_sha: candidateSha })],
+    }),
+    /no full-CI evidence yet for current main/,
+  );
+});
+
+test('mainHealthReason fails closed while the current main SHA is still pending', () => {
+  assert.match(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [makeCiRun({ status: 'in_progress', conclusion: null })],
+    }),
+    /still in_progress/,
+  );
+});
+
+test('mainHealthReason reports a genuine completed failure on the current main SHA', () => {
+  assert.match(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [makeCiRun({ conclusion: 'failure' })],
+    }),
+    /concluded failure/,
+  );
+});
+
+test('mainHealthReason ignores a train fast-path push run and still fails closed', () => {
+  // Only evidence for the current SHA is a fast-path push run (docs_only
+  // shortcut); that is not authoritative full-CI evidence, so an
+  // otherwise-empty run list must still fail closed rather than pass open.
+  assert.match(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [makeCiRun({ event: 'push', isTrainFastPath: true })],
+    }),
+    /no full-CI evidence yet for current main/,
+  );
+});
+
+test('mainHealthReason allows promotion when non-train-fast-path evidence for current main is green', () => {
+  assert.equal(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [makeCiRun({ event: 'push', isTrainFastPath: true }), makeCiRun({ event: 'schedule' })],
+    }),
+    null,
+  );
+});
+
+test('mainHealthReason considers a genuine push-triggered failure on the current main SHA (not just scheduled runs)', () => {
+  assert.match(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [makeCiRun({ event: 'push', conclusion: 'failure', isTrainFastPath: false })],
+    }),
+    /concluded failure/,
+  );
+});
+
+test('mainHealthReason picks the most recently created authoritative run for the current SHA', () => {
+  assert.equal(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [
+        makeCiRun({ created_at: '2024-01-01T00:00:00Z', conclusion: 'failure' }),
+        makeCiRun({ created_at: '2024-01-01T01:00:00Z', conclusion: 'success' }),
+      ],
+    }),
+    null,
   );
 });
 

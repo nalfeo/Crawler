@@ -35,28 +35,6 @@ export function trainCheckTitle(status, conclusion) {
     : 'Merge-train validation could not start';
 }
 
-/**
- * Returns the newest completed main-health run that should gate promotion.
- * "Authoritative" means:
- * - scheduled main CI runs (full-health signal), or
- * - direct/non-train push runs on main.
- * Train-promoted push runs are intentionally skipped via isAttestedTrainPushSha()
- * because those fast-path pushes can skip broad CI by design.
- */
-export async function latestAuthoritativeMainHealthRun(workflowRuns, isAttestedTrainPushSha) {
-  for (const run of workflowRuns || []) {
-    if (run?.status !== 'completed') continue;
-    if (run?.event === 'schedule') return run;
-    if (run?.event !== 'push') continue;
-    const headSha = String(run?.head_sha || '');
-    if (headSha && (await isAttestedTrainPushSha(headSha))) {
-      continue;
-    }
-    return run;
-  }
-  return null;
-}
-
 function hasLabel(pr, name) {
   return (pr.labels || []).some((label) => label.name === name);
 }
@@ -156,6 +134,30 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
     git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);
   }
   return sha;
+}
+
+/**
+ * Decide whether main currently has authoritative full-CI ("ci.yml", the
+ * `CI` workflow) evidence for the exact SHA it is on right now, considering
+ * both hourly `schedule` runs and `push` runs but excluding push runs that
+ * merely attest a merge-train fast-path shortcut (`isTrainFastPath: true`;
+ * their own green conclusion is not full-CI evidence). Fails closed: no
+ * evidence, or evidence that is still pending, is treated as NOT healthy,
+ * so the circuit breaker cannot be bypassed by an empty/incomplete run list.
+ */
+export function mainHealthReason({ mainSha, runs }) {
+  const authoritative = (runs || [])
+    .filter((run) => run.head_sha === mainSha && run.name === 'CI' && !run.isTrainFastPath)
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const latest = authoritative[0];
+  if (!latest) return `no full-CI evidence yet for current main ${mainSha}`;
+  if (latest.status !== 'completed') {
+    return `full-CI run for current main ${mainSha} is still ${latest.status}`;
+  }
+  if (latest.conclusion !== 'success') {
+    return `latest full-CI run for current main ${mainSha} concluded ${latest.conclusion}`;
+  }
+  return null;
 }
 
 export function promotionStaleReason({ currentMain, currentPr, expectedBase, pr, repository }) {

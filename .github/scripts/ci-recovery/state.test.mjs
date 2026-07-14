@@ -6,8 +6,11 @@ import {
   blockerFingerprint,
   collapseCheckRunsByName,
   extractAddressedMarkerSha,
+  hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
   isLeaseExpired,
+  isTrainFastPathPushRun,
+  isTrustedTrainPromotionCheck,
   makeState,
   reviewThreadBlockerId,
   reviewThreadCommentDigest,
@@ -176,9 +179,7 @@ test('lease operations persist while automated recovery is in dry-run mode', () 
 });
 
 test('rejects duplicate dispatches for the same blocker fingerprint regardless of headSha', () => {
-  const first = blockerFingerprint([
-    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
-  ]);
+  const first = blockerFingerprint([{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }]);
   const state = makeState({
     prNumber: 42,
     headSha: 'abc',
@@ -383,4 +384,103 @@ test('skips repository incidents for PR-linked workflow runs', () => {
     }),
     false,
   );
+});
+
+const trustedAppId = 987654;
+const validExternalId = 'a'.repeat(64);
+
+function makeTrainCheck(overrides = {}) {
+  return {
+    name: 'merge-train',
+    status: 'completed',
+    conclusion: 'success',
+    app: { id: trustedAppId },
+    external_id: validExternalId,
+    ...overrides,
+  };
+}
+
+test('isTrustedTrainPromotionCheck requires name, completion, success, app id, and fingerprint shape', () => {
+  assert.equal(isTrustedTrainPromotionCheck(makeTrainCheck(), trustedAppId), true);
+  assert.equal(
+    isTrustedTrainPromotionCheck(makeTrainCheck({ name: 'CI' }), trustedAppId),
+    false,
+    'wrong check name',
+  );
+  assert.equal(
+    isTrustedTrainPromotionCheck(makeTrainCheck({ status: 'in_progress' }), trustedAppId),
+    false,
+    'not completed',
+  );
+  assert.equal(
+    isTrustedTrainPromotionCheck(makeTrainCheck({ conclusion: 'failure' }), trustedAppId),
+    false,
+    'not success',
+  );
+  assert.equal(
+    isTrustedTrainPromotionCheck(makeTrainCheck({ app: { id: 1 } }), trustedAppId),
+    false,
+    'untrusted app id',
+  );
+  assert.equal(
+    isTrustedTrainPromotionCheck(
+      makeTrainCheck({ external_id: 'not-a-fingerprint' }),
+      trustedAppId,
+    ),
+    false,
+    'malformed external_id',
+  );
+  assert.equal(isTrustedTrainPromotionCheck(null, trustedAppId), false, 'null check');
+  assert.equal(
+    isTrustedTrainPromotionCheck(makeTrainCheck(), Number.NaN),
+    false,
+    'invalid trustedAppId',
+  );
+});
+
+test('hasTrustedTrainPromotionCheck scans a check-run list for one trusted entry', () => {
+  assert.equal(
+    hasTrustedTrainPromotionCheck(
+      [{ name: 'CI', status: 'completed', conclusion: 'success' }, makeTrainCheck()],
+      trustedAppId,
+    ),
+    true,
+  );
+  assert.equal(
+    hasTrustedTrainPromotionCheck(
+      [{ name: 'CI', status: 'completed', conclusion: 'success' }],
+      trustedAppId,
+    ),
+    false,
+  );
+  assert.equal(hasTrustedTrainPromotionCheck([], trustedAppId), false);
+  assert.equal(hasTrustedTrainPromotionCheck(undefined, trustedAppId), false);
+});
+
+test('isTrainFastPathPushRun requires a push-triggered CI run carrying a trusted train check', () => {
+  const trustedCheckRuns = [makeTrainCheck()];
+  assert.equal(
+    isTrainFastPathPushRun({ event: 'push', name: 'CI' }, trustedAppId, trustedCheckRuns),
+    true,
+  );
+  assert.equal(
+    isTrainFastPathPushRun({ event: 'schedule', name: 'CI' }, trustedAppId, trustedCheckRuns),
+    false,
+    'not a push event',
+  );
+  assert.equal(
+    isTrainFastPathPushRun(
+      { event: 'push', name: 'Security checks' },
+      trustedAppId,
+      trustedCheckRuns,
+    ),
+    false,
+    'not the CI workflow',
+  );
+  assert.equal(
+    isTrainFastPathPushRun({ event: 'push', name: 'CI' }, trustedAppId, []),
+    false,
+    'no trusted check present',
+  );
+  assert.equal(isTrainFastPathPushRun(null, trustedAppId, trustedCheckRuns), false, 'missing run');
 });
