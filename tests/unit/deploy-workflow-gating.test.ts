@@ -47,6 +47,12 @@ function loadDeployWorkflow(): WorkflowDoc {
   return parse(raw) as WorkflowDoc;
 }
 
+function getJob(doc: WorkflowDoc, name: string): WorkflowJob {
+  const job = doc.jobs[name];
+  if (!job) throw new Error(`job "${name}" not found in deploy.yml`);
+  return job;
+}
+
 describe('deploy.yml job gating (scheduled CI must not run a live deploy or sweep)', () => {
   it('parses deploy.yml and finds both jobs', () => {
     const doc = loadDeployWorkflow();
@@ -56,15 +62,15 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
 
   it('gates both `deploy` and `baseline-sweep` on the identical push-only condition', () => {
     const doc = loadDeployWorkflow();
-    const deployIf = String(doc.jobs.deploy.if).trim();
-    const sweepIf = String(doc.jobs['baseline-sweep'].if).trim();
+    const deployIf = String(getJob(doc, 'deploy').if).trim();
+    const sweepIf = String(getJob(doc, 'baseline-sweep').if).trim();
     expect(sweepIf).toBe(deployIf);
   });
 
   it('requires both a successful conclusion AND a push event (not just a manual dispatch escape hatch)', () => {
     const doc = loadDeployWorkflow();
     for (const jobName of ['deploy', 'baseline-sweep']) {
-      const condition = String(doc.jobs[jobName].if);
+      const condition = String(getJob(doc, jobName).if);
       expect(condition, jobName).toContain("github.event_name == 'workflow_dispatch'");
       expect(condition, jobName).toContain("github.event.workflow_run.conclusion == 'success'");
       expect(condition, jobName).toContain("github.event.workflow_run.event == 'push'");
@@ -73,6 +79,6 @@ describe('deploy.yml job gating (scheduled CI must not run a live deploy or swee
 
   it('keeps baseline-sweep depending on deploy (needs:), even though needs: alone is not a sufficient gate', () => {
     const doc = loadDeployWorkflow();
-    expect(doc.jobs['baseline-sweep'].needs).toBe('deploy');
+    expect(getJob(doc, 'baseline-sweep').needs).toBe('deploy');
   });
 });
