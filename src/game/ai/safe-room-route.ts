@@ -441,6 +441,13 @@ function attemptExitKeyFor(originRoomId: number, exitTile: TilePoint): string {
   return `${originRoomId}:${exitTile.x},${exitTile.y}`;
 }
 
+/** Recovers the room id encoded in an `attemptExitKey` (see
+ * `attemptExitKeyFor`), so callers can check whether the player is still
+ * physically within the room a live attempt is tracking. */
+function attemptRoomIdFromKey(exitKey: string): number {
+  return Number(exitKey.split(':')[0]);
+}
+
 /** Measures this poll's progress against the current egress attempt's fixed
  * exit tile (not the per-activation buffered path endpoint, which can shift
  * slightly between reactivations even for "the same door"). Shared by the
@@ -663,10 +670,32 @@ function candidateRoomId(input: SafeRoomRouteInput, deps: SafeRoomRouteDeps): nu
  * movement execution.
  */
 export function updateSafeRoomRouteState(
-  prev: SafeRoomRouteState,
+  prevInput: SafeRoomRouteState,
   input: SafeRoomRouteInput,
   deps: SafeRoomRouteDeps,
 ): SafeRoomRouteUpdateResult {
+  // A live egress attempt tracks stall memory for a SPECIFIC room (encoded
+  // in `attemptExitKey`'s prefix). If the player has physically left that
+  // room since the attempt was last touched — e.g. a same-room-bypass
+  // interlude preserved the attempt while the player was still standing
+  // right at the door, then they genuinely exited and wandered elsewhere —
+  // any LATER candidate that happens to resolve back to that room's door is
+  // coincidental, not a continuous in-progress interruption. Retire the
+  // stale attempt up front rather than letting a fresh (re)activation
+  // silently "continue" with a baseline computed from a completely
+  // different physical situation (e.g. a near-zero `bestEndpointDistanceFt`
+  // from the moment the player was last AT the door, which can never again
+  // register as "improved" and causes spurious immediate no-progress
+  // releases). Found via multi-model review, 2026-07-13.
+  let prev = prevInput;
+  if (prev.attemptExitKey !== null) {
+    const attemptRoomId = attemptRoomIdFromKey(prev.attemptExitKey);
+    const playerTile = deps.worldToTile(input.playerX, input.playerY);
+    if (deps.getRoomAt(playerTile.x, playerTile.y) !== attemptRoomId) {
+      prev = retireAttempt(prev);
+    }
+  }
+
   const commitmentKey = deriveCommitmentKey(input.candidate);
 
   if (prev.phase === 'idle') {

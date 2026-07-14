@@ -827,6 +827,47 @@ describe('safe-room-route: exit-frontier-scoped egress attempt (churn stability)
     expect(toSafeRoomRouteDebugSnapshot(result.state).attemptActive).toBe(false);
     expect(result.state.bestEndpointDistanceFt).toBe(Number.POSITIVE_INFINITY);
   });
+
+  it('retires a stale attempt when the player has physically left its tracked room before a same-room candidate reappears', () => {
+    // Regression coverage for a multi-model review finding (2026-07-13): if
+    // the player has ALREADY genuinely left the room an attempt was
+    // tracking, and a LATER candidate happens to resolve back inside that
+    // same room (a stray Retreat/Collect target), the attempt must NOT be
+    // preserved as if this were a normal in-room interlude — otherwise it
+    // could carry an artificially tiny `bestEndpointDistanceFt` from the
+    // moment the player was last at the door (which can never again
+    // register as "improved"), causing spurious immediate no-progress
+    // releases on a later, unrelated attempt through the same door.
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(result.state.phase).toBe('active');
+    expect(toSafeRoomRouteDebugSnapshot(result.state).attemptActive).toBe(true);
+
+    const strayInsideCandidate = candidate({
+      state: AIState.RETREAT,
+      targetEid: null,
+      targetX: 1 * REALISTIC_TILE_FT,
+      targetY: 0,
+    });
+    const farOutsideX = 20 * REALISTIC_TILE_FT; // well past the door, definitely exterior
+    result = updateSafeRoomRouteState(
+      result.state,
+      input({ playerX: farOutsideX, candidate: strayInsideCandidate }),
+      deps,
+    );
+    expect(toSafeRoomRouteDebugSnapshot(result.state).attemptActive).toBe(false);
+    expect(result.state.bestEndpointDistanceFt).toBe(Number.POSITIVE_INFINITY);
+    expect(result.state.noProgressFrames).toBe(0);
+
+    // A subsequent genuine re-entry + external target through the SAME door
+    // must get a completely FRESH, unpenalized attempt — not one poisoned
+    // by the stale reading above.
+    result = updateSafeRoomRouteState(result.state, input(), deps);
+    expect(result.state.phase).toBe('active');
+    expect(result.state.noProgressFrames).toBe(0);
+    expect(result.state.bestEndpointDistanceFt).toBeGreaterThan(0);
+  });
 });
 
 describe('safe-room-route: completion (path-prefix/door-edge, not playerInSafeRoom flicker)', () => {
