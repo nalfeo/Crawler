@@ -45,6 +45,7 @@ import {
 import type { GameWorld } from '../core/world.js';
 import { SHAPE_BOX, SHAPE_CIRCLE } from '../core/physics-defs.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
+import { FLOOR1_LOADOUT_CHOICE_IDS } from './scenarios/floorLoadoutScenario.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import {
   clearEntityStores,
@@ -3185,7 +3186,7 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
 export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockItem[] {
   const seen = new Set<string>();
   const starterPool: string[] = [];
-  for (const weaponId of floor1Config.starterWeapons) {
+  for (const weaponId of FLOOR1_LOADOUT_CHOICE_IDS) {
     if (
       seen.has(weaponId) ||
       getWeaponDef(weaponId) === undefined ||
@@ -3196,8 +3197,13 @@ export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockIt
     seen.add(weaponId);
     starterPool.push(weaponId);
   }
-  const selectedAtStart = new Set(world.floorScenario?.starterChoices ?? []);
-  const remainingWeaponIds = starterPool.filter((weaponId) => !selectedAtStart.has(weaponId));
+  const selectedChoiceIndex = world.floorScenario?.selectedChoiceIndex;
+  const selectedWeaponId =
+    world.floorScenario?.selectedWeaponId ??
+    (selectedChoiceIndex === null || selectedChoiceIndex === undefined
+      ? undefined
+      : world.floorScenario?.starterChoices[selectedChoiceIndex]);
+  const remainingWeaponIds = starterPool.filter((weaponId) => weaponId !== selectedWeaponId);
   const stockRng = new SeededRandom(
     hashStringToSeed(`${world.seed}:floor1-shopkeeper-post-quest-stock`),
   );
