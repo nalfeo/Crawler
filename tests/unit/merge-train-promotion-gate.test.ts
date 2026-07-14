@@ -125,7 +125,9 @@ describe.skipIf(!hasBash || !hasJq)('merge-train promotion check gating (ci.yml)
     const values: Record<string, string> = {};
     for (const line of output.split('\n')) {
       const match = line.match(/^([a-z_]+)=(.*)$/);
-      if (match) values[match[1]] = match[2];
+      const key = match?.[1];
+      const value = match?.[2];
+      if (key !== undefined && value !== undefined) values[key] = value;
     }
     return values;
   }
@@ -203,7 +205,9 @@ describe.skipIf(!hasBash || !hasJq)(
       const values: Record<string, string> = {};
       for (const line of output.split('\n')) {
         const match = line.match(/^([a-z_]+)=(.*)$/);
-        if (match) values[match[1]] = match[2];
+        const key = match?.[1];
+        const value = match?.[2];
+        if (key !== undefined && value !== undefined) values[key] = value;
       }
       return values;
     }
