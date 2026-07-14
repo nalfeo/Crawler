@@ -140,14 +140,14 @@ export function collectPrNumbers({
     }
   }
 
-  const sorted = [...numbers].sort((left, right) => left - right);
+  const eligible = [...numbers];
   if (
     (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
-    sorted.length > maxDispatchPerRun
+    eligible.length > maxDispatchPerRun
   ) {
-    return sorted.slice(0, maxDispatchPerRun);
+    return eligible.slice(0, maxDispatchPerRun);
   }
-  return sorted;
+  return eligible;
 }
 
 export async function runFromEnv(env = process.env) {
