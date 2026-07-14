@@ -3,7 +3,7 @@
  * Floor 1 win-RATE sweep.
  *
  * Drives the same pure-ECS `runHeadless` + `BehaviorTreeAI` pipeline the gate
- * uses, across a large seed range × all three Floor-1 starter weapons, and
+ * uses, across a large seed range × all six Floor-1 starter weapons, and
  * reports the aggregate WIN RATE plus a per-failure diagnostic (outcome,
  * game-time, level, kills, stall reason, dominant wasted-time state). This is
  * the deterministic instrument behind the "90%+ of Floor 1 seeds win" rule:
@@ -22,7 +22,7 @@
  *
  * Usage
  * -----
- *   npm run ai:winrate-sweep                       # seeds 1-40 × {sword,bow,bat}
+ *   npm run ai:winrate-sweep                       # seeds 1-40 × {sword,bow,baseball-bat,pistol,throwing-knife,fireball}
  *   npm run ai:winrate-sweep -- --seeds 1-60       # range
  *   npm run ai:winrate-sweep -- --weapons sword    # one weapon
  *   npm run ai:winrate-sweep -- --max-frames 23760 --out files/sweep.json

@@ -48,13 +48,13 @@ describe('parseSweepArgs — --workers validation (regression: NaN hang)', () =>
 
 describe('parseSweepArgs — default worker count', () => {
   it('defaults to min(parallelism, seeds*weapons) when --workers is omitted', () => {
-    // 2 seeds x 3 default weapons = 6 tasks; parallelism 8 -> capped at 6.
+    // 2 seeds x 6 default weapons = 12 tasks; parallelism 8 -> capped at 8.
     const args = parseSweepArgs(argv('--seeds', '1-2'), 8);
-    expect(args.workers).toBe(6);
+    expect(args.workers).toBe(8);
   });
 
   it('caps the default at the injected parallelism when tasks exceed cores', () => {
-    // 40 default seeds x 3 weapons = 120 tasks; parallelism 4 -> 4.
+    // 40 default seeds x 6 weapons = 240 tasks; parallelism 4 -> 4.
     expect(parseSweepArgs(argv(), 4).workers).toBe(4);
   });
 

@@ -8,7 +8,14 @@
 import { availableParallelism } from 'node:os';
 import { GAME } from '../../../src/shared/constants.js';
 
-export const FLOOR1_WEAPONS = ['sword', 'bow', 'baseball-bat'];
+export const FLOOR1_WEAPONS = [
+  'sword',
+  'bow',
+  'baseball-bat',
+  'pistol',
+  'throwing-knife',
+  'fireball',
+];
 /** Floor 1 design WIN budget: 6 minutes of game time. */
 const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
 /** Floor 1 design WIN budget in frames at 60 fps (`FLOOR1_TIME_BUDGET_MS / GAME.DELTA_MS`). */
