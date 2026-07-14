@@ -13,8 +13,19 @@ export class MergeTrainConflictError extends Error {
   }
 }
 
+export class MergeTrainNoopError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'MergeTrainNoopError';
+  }
+}
+
 export function isMergeTrainConflictError(error) {
   return error instanceof MergeTrainConflictError;
+}
+
+export function isMergeTrainNoopError(error) {
+  return error instanceof MergeTrainNoopError;
 }
 
 export function trainCheckTitle(status, conclusion) {
@@ -90,7 +101,7 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
       );
     }
     if (gitCommandSucceeded(git, ['diff', '--cached', '--quiet'])) {
-      throw new MergeTrainConflictError(
+      throw new MergeTrainNoopError(
         `PR #${entry.number} no longer changes main; its squash diff is already present in the candidate base`,
       );
     }

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildCandidate,
   isMergeTrainConflictError,
+  isMergeTrainNoopError,
   promoteExactBatch,
   promotionStaleReason,
   promoteExactCandidate,
@@ -173,7 +174,7 @@ test('buildCandidate classifies squash conflicts separately from retryable failu
   );
 });
 
-test('buildCandidate blocks already-applied squash diffs instead of retry-looping forever', () => {
+test('buildCandidate classifies already-applied squash diffs as no-op candidates', () => {
   const entry = makePr();
   const { git } = createGitStub({ noSquashChanges: true });
   assert.throws(
@@ -186,7 +187,8 @@ test('buildCandidate blocks already-applied squash diffs instead of retry-loopin
         live: false,
       }),
     (error) => {
-      assert.equal(isMergeTrainConflictError(error), true);
+      assert.equal(isMergeTrainConflictError(error), false);
+      assert.equal(isMergeTrainNoopError(error), true);
       assert.match(error.message, /no longer changes main/);
       return true;
     },

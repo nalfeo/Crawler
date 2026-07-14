@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
+export const NOOP_LABEL = 'merge-train-noop';
 export const CANDIDATE_CHECK_NAME = 'merge-train-candidate';
 export const REQUIRED_CHECK_NAME = 'merge-train';
 export const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
@@ -184,8 +185,15 @@ export function successfulChecks(checkRuns, requiredNames = DEFAULT_ADMISSION_CH
   return unsatisfiedChecks(checkRuns, requiredNames).length === 0;
 }
 
-export function trainCheckState(checkRuns) {
-  const check = latestChecksByName(checkRuns).get(CANDIDATE_CHECK_NAME);
+export function trainCheckState(checkRuns, fingerprint, trustedAppId) {
+  const check = latestChecksByName(
+    checkRuns.filter(
+      (candidate) =>
+        compact(candidate.name).toLowerCase() === CANDIDATE_CHECK_NAME &&
+        candidate.external_id === fingerprint &&
+        Number(candidate.app?.id) === Number(trustedAppId),
+    ),
+  ).get(CANDIDATE_CHECK_NAME);
   if (!check) return 'missing';
   if (check.status !== 'completed') return 'pending';
   return check.conclusion === 'success' ? 'success' : 'failure';

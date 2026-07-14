@@ -5,6 +5,7 @@ import { parseStateComment, STATE_MARKER as RECOVERY_STATE_MARKER } from '../ci-
 import {
   buildCandidate,
   isMergeTrainConflictError,
+  isMergeTrainNoopError,
   promoteExactBatch,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
@@ -17,6 +18,7 @@ import {
   hasLeadingMarker,
   MAX_TRAIN_SIZE,
   nextBisectStep,
+  NOOP_LABEL,
   parseEnabledFlag,
   QUEUE_LABEL,
   queueEntries,
@@ -34,9 +36,10 @@ const [owner, repo] = repository.split('/');
 const token = process.env.MERGE_TRAIN_TOKEN || process.env.GITHUB_TOKEN || '';
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
+const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
 
-if (!owner || !repo || !token) {
-  throw new Error('Merge train requires GITHUB_REPOSITORY and a GitHub token');
+if (!owner || !repo || !token || !Number.isInteger(trustedAppId)) {
+  throw new Error('Merge train requires GITHUB_REPOSITORY, a GitHub token, and MERGE_TRAIN_APP_ID');
 }
 if (!enabled) {
   process.stdout.write('Merge train is disabled\n');
@@ -202,6 +205,22 @@ async function blockEntry(entry, { detail, validationFailure = false }) {
   );
 }
 
+async function deAdmitNoop(entry, detail) {
+  await setLabel(entry.number, BLOCKED_LABEL);
+  await setLabel(entry.number, NOOP_LABEL);
+  await removeLabel(entry.number, QUEUE_LABEL);
+  await updateStatus(
+    entry.number,
+    renderStatus({
+      position: 0,
+      candidateSha: '',
+      state: 'blocked',
+      detail,
+    }),
+  );
+  await dispatchRecovery(entry.number, 'merge-train-noop');
+}
+
 async function dispatchValidation(sha, fingerprint, entries) {
   await createTrainCheck(sha, fingerprint, 'in_progress', undefined, CANDIDATE_CHECK_NAME, entries);
   try {
@@ -228,6 +247,7 @@ async function dispatchValidation(sha, fingerprint, entries) {
 
 await ensureLabel(QUEUE_LABEL, '1f6feb', 'Ready for the repository-managed merge train');
 await ensureLabel(BLOCKED_LABEL, 'd1242f', 'Merge-train candidate needs intervention');
+await ensureLabel(NOOP_LABEL, 'bf8700', 'PR squash diff is already present in the train base');
 await ensureLabel(
   VALIDATION_FAILED_LABEL,
   'd1242f',
@@ -247,6 +267,7 @@ for (const pr of queued) {
   if (admission.ok) {
     admitted.push(pr);
   } else {
+    await removeLabel(pr.number, QUEUE_LABEL);
     await updateStatus(
       pr.number,
       renderStatus({
@@ -256,6 +277,7 @@ for (const pr of queued) {
         detail: admission.reason,
       }),
     );
+    await dispatchRecovery(pr.number, 'merge-train-admission-stale');
   }
 }
 
@@ -280,7 +302,14 @@ for (let index = 0; index < train.length; index += 1) {
   } catch (error) {
     if (isMergeTrainConflictError(error)) {
       await blockEntry(train[index], { detail: error.message });
+      const predecessor = train[index - 1]?.number || 0;
+      await dispatchRecovery(train[index].number, `merge-train-cumulative-conflict:${predecessor}`);
       process.stdout.write(`returned conflict pr=#${train[index].number} to reconciliation\n`);
+      process.exit(0);
+    }
+    if (isMergeTrainNoopError(error)) {
+      await deAdmitNoop(train[index], error.message);
+      process.stdout.write(`returned no-op pr=#${train[index].number} to reconciliation\n`);
       process.exit(0);
     }
     await updateStatus(
@@ -298,7 +327,7 @@ for (let index = 0; index < train.length; index += 1) {
     process.exit(0);
   }
   git(['fetch', 'origin', `${refName}:refs/remotes/origin/${refName}`, '--force']);
-  const state = trainCheckState(await checkRuns(candidateSha));
+  const state = trainCheckState(await checkRuns(candidateSha), fingerprint, trustedAppId);
   candidates.push({ candidateSha, entries, fingerprint, refName, state });
   await updateStatus(
     train[index].number,

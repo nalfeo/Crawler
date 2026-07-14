@@ -153,22 +153,75 @@ test('unsatisfied checks keep completed non-successful admissions waiting', () =
 });
 
 test('train check state distinguishes missing, pending, failed, and successful checks', () => {
-  assert.equal(trainCheckState([]), 'missing');
+  const fingerprint = 'f'.repeat(64);
+  const app = { id: 123 };
+  assert.equal(trainCheckState([], fingerprint, app.id), 'missing');
   assert.equal(
-    trainCheckState([{ id: 1, name: 'merge-train-candidate', status: 'in_progress' }]),
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'in_progress',
+          external_id: fingerprint,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
     'pending',
   );
   assert.equal(
-    trainCheckState([
-      { id: 1, name: 'merge-train-candidate', status: 'completed', conclusion: 'failure' },
-    ]),
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'completed',
+          conclusion: 'failure',
+          external_id: fingerprint,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
     'failure',
   );
   assert.equal(
-    trainCheckState([
-      { id: 1, name: 'merge-train-candidate', status: 'completed', conclusion: 'success' },
-    ]),
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'completed',
+          conclusion: 'success',
+          external_id: fingerprint,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
     'success',
+  );
+  assert.equal(
+    trainCheckState(
+      [
+        {
+          id: 2,
+          name: 'merge-train-candidate',
+          status: 'completed',
+          conclusion: 'success',
+          external_id: fingerprint,
+          app: { id: 999 },
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
+    'missing',
   );
 });
 

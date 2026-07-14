@@ -20,6 +20,8 @@ import { graphql, listReviewThreads, paginate, request } from './github.mjs';
 import {
   admissionFingerprint,
   BLOCKED_LABEL,
+  hasLeadingMarker,
+  NOOP_LABEL,
   parseEnabledFlag,
   QUEUE_LABEL,
   resolveAdmissionChecks,
@@ -41,6 +43,7 @@ const shouldMutate = shouldMutateRecoveryState(mode, operation);
 const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const now = new Date();
+const REBASE_PENDING_TIMEOUT_MS = 15 * 60 * 1000;
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
   throw new Error('Missing repository, PR number, or GitHub token');
@@ -76,9 +79,7 @@ if ((pr.labels || []).some((label) => label.name === QUEUE_LABEL)) {
 }
 
 const comments = await paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
-const stateComments = comments.filter((comment) =>
-  String(comment.body || '').includes(STATE_MARKER),
-);
+const stateComments = comments.filter((comment) => hasLeadingMarker(comment.body, STATE_MARKER));
 if (stateComments.length > 1) {
   throw new Error(`PR #${prNumber} has ${stateComments.length} CI recovery state comments`);
 }
@@ -323,27 +324,66 @@ const blockers = [];
 const hasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
 const labels = new Set((pr.labels || []).map((label) => label.name));
 const trainBlocked = labels.has(BLOCKED_LABEL);
+const trainNoop = labels.has(NOOP_LABEL);
 const validationFailed = labels.has(VALIDATION_FAILED_LABEL);
+const incomingConflictPredecessor = trigger.match(/^merge-train-cumulative-conflict:(\d+)$/);
+const storedConflictPredecessor = state?.trigger?.match(/^merge-train-cumulative-conflict:(\d+)$/);
+const conflictPredecessor = Number.parseInt(
+  incomingConflictPredecessor?.[1] || storedConflictPredecessor?.[1] || '',
+  10,
+);
 if (
   mergeTrainEnabled &&
   trainBlocked &&
+  !trainNoop &&
   !validationFailed &&
   !hasMergeConflict &&
-  !trigger.endsWith(':synchronize')
+  !trigger.endsWith(':synchronize') &&
+  Number.isInteger(conflictPredecessor) &&
+  conflictPredecessor > 0
 ) {
-  process.stdout.write(`wait pr=#${prNumber} reason=train-conflict-not-on-main\n`);
-  process.exit(0);
+  if (incomingConflictPredecessor) {
+    await updateState(
+      makeState({
+        prNumber,
+        headSha: pr.head.sha,
+        fingerprint: state?.fingerprint || blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger,
+        blockers: state?.blockers || [],
+        attempt: state?.attempt || 0,
+        updatedAt: now.toISOString(),
+      }),
+    );
+  }
+  const predecessor = (
+    await request(readToken, `/repos/${owner}/${repo}/pulls/${conflictPredecessor}`)
+  ).data;
+  const predecessorQueued =
+    predecessor.state === 'open' &&
+    (predecessor.labels || []).some((label) => label.name === QUEUE_LABEL);
+  if (predecessorQueued) {
+    process.stdout.write(
+      `wait pr=#${prNumber} reason=train-conflict-predecessor-pending predecessor=#${conflictPredecessor}\n`,
+    );
+    process.exit(0);
+  }
+  await removePrLabel(BLOCKED_LABEL);
 }
 if (mergeTrainEnabled && trainBlocked && trigger.endsWith(':synchronize')) {
   await removePrLabel(BLOCKED_LABEL);
+  await removePrLabel(NOOP_LABEL);
   await removePrLabel(VALIDATION_FAILED_LABEL);
 }
 if (
   mergeTrainEnabled &&
   hasMergeConflict &&
   trigger !== 'auto-rebase-conflict' &&
+  trigger !== 'auto-rebase-failure' &&
   state?.headSha === pr.head.sha &&
-  state?.trigger === 'rebase-dispatched'
+  state?.trigger === 'rebase-dispatched' &&
+  now.getTime() - Date.parse(state.updatedAt) < REBASE_PENDING_TIMEOUT_MS
 ) {
   process.stdout.write(`wait pr=#${prNumber} reason=conflict-rebase-pending\n`);
   process.exit(0);
@@ -378,6 +418,7 @@ if (
   }
   await dispatchWorkflow('auto-rebase-prs.yml', {
     pr_number: String(prNumber),
+    expected_head_sha: pr.head.sha,
     trigger: 'ci-recovery-conflict',
   });
   process.stdout.write(`dispatched conflict-only rebase pr=#${prNumber}\n`);
@@ -400,6 +441,15 @@ if (validationFailed) {
     id: pr.head.sha,
     summary: 'This PR was the first failing addition in a bisected merge-train candidate.',
     url: trainComment?.html_url || pr.html_url,
+  });
+}
+if (trainNoop) {
+  blockers.push({
+    kind: 'merge-train-noop',
+    id: pr.head.sha,
+    summary:
+      'The PR squash diff is already present in the train base; close the redundant PR or update it with a remaining change.',
+    url: pr.html_url,
   });
 }
 
@@ -530,7 +580,7 @@ if (normalized.length === 0) {
   });
   if (labelExists) {
     await release('converged', convergedState);
-  } else if (state) {
+  } else {
     await updateState(convergedState);
   }
   if (waitingRequiredChecks.length > 0) {
@@ -541,6 +591,7 @@ if (normalized.length === 0) {
   }
   if (live && mergeTrainEnabled) {
     await removePrLabel(BLOCKED_LABEL);
+    await removePrLabel(NOOP_LABEL);
     await removePrLabel(VALIDATION_FAILED_LABEL);
     try {
       await request(pat, `/repos/${owner}/${repo}/labels`, {

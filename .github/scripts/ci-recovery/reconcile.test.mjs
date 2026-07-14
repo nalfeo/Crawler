@@ -99,7 +99,7 @@ function startServer(routes) {
         const pathOnly = req.url.split('?')[0];
         // Track REST mutations (non-graphql POSTs/PATCHes/PUTs/DELETEs).
         if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method) && pathOnly !== '/graphql') {
-          mutatingCalls.push({ method, url: req.url });
+          mutatingCalls.push({ method, url: req.url, body: parsed });
         }
         // Track GraphQL mutations separately — POST /graphql is also used for
         // read-only queries, so check whether the document starts with `mutation`.
@@ -168,11 +168,13 @@ function isWindowsAsyncCloseCrash(code, stderr) {
   return process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr);
 }
 
-function assertSuccessfulExit(code, stderr, context = '') {
-  assert.ok(
-    code === 0 || isWindowsAsyncCloseCrash(code, stderr),
-    `${context ? `${context} ` : ''}expected exit 0; stderr: ${stderr}`,
-  );
+function assertSuccessfulExit(t, code, stderr, context = '') {
+  if (isWindowsAsyncCloseCrash(code, stderr)) {
+    t.skip('Node subprocess hit the known Windows UV_HANDLE_CLOSING shutdown assertion');
+    return false;
+  }
+  assert.equal(code, 0, `${context ? `${context} ` : ''}expected exit 0; stderr: ${stderr}`);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +203,7 @@ test('lease-acquire in dry-run writes the owner label and state comment', async 
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
 
   const labelCreate = mutatingCalls.find(
     (c) => c.method === 'POST' && c.url === `/repos/${OWNER}/${REPO}/labels`,
@@ -243,7 +245,7 @@ test('lease-heartbeat in dry-run updates the state comment', async (t) => {
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
 
   const commentUpdate = mutatingCalls.find(
     (c) =>
@@ -284,7 +286,7 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
 
   const labelDetach = mutatingCalls.find(
     (c) =>
@@ -342,7 +344,7 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
   assert.deepEqual(mutatingCalls, [], 'reconcile in dry-run must not issue any mutating API calls');
 });
 
@@ -370,7 +372,7 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
   assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 required-checks=)/);
   assert.doesNotMatch(stdout, /dry-run would-assign copilot/);
   assert.doesNotMatch(stdout, /merge-conflict/);
@@ -405,7 +407,7 @@ test('reconcile still emits merge-conflict blocker for dirty or mergeable=false 
       CI_RECOVERY_MODE: 'dry-run',
     });
 
-    assertSuccessfulExit(code, stderr, `fixture=${fixture.name}`);
+    if (!assertSuccessfulExit(t, code, stderr, `fixture=${fixture.name}`)) return;
     assert.match(
       stdout,
       /dry-run would-assign copilot/,
@@ -452,11 +454,7 @@ test('train mode dispatches exactly one conflict-only rebase', async (t) => {
     MERGE_TRAIN_ENABLED: 'true',
   });
 
-  if (isWindowsAsyncCloseCrash(code, stderr)) {
-    t.skip('Node subprocess hit the known Windows UV_HANDLE_CLOSING shutdown assertion');
-    return;
-  }
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
   assert.equal(
     mutatingCalls.filter(
       (call) =>
@@ -472,6 +470,12 @@ test('train mode dispatches exactly one conflict-only rebase', async (t) => {
     ).length,
     1,
   );
+  const dispatch = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+  );
+  assert.equal(dispatch.body.inputs.expected_head_sha, HEAD_SHA);
 });
 
 test('reconcile ignores same-repository action-required runs without approval or dispatch', async (t) => {
@@ -513,7 +517,7 @@ test('reconcile ignores same-repository action-required runs without approval or
     MERGE_TRAIN_ADMISSION_CHECKS: 'required-check',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
   assert.match(stdout, new RegExp(`skip action_required run=${runId} .* reason=same-repository`));
   assert.match(stdout, /wait pr=#42 required-checks=required-check/);
   assert.doesNotMatch(stdout, /workflow-approval|approved workflow|would-approve/);
@@ -578,7 +582,7 @@ test('reconcile escalates required-check action-required runs as ci-retrigger bl
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
   assert.match(
     stdout,
     new RegExp(`escalate action_required run=${ciRunId} .* reason=required-check-parked`),
@@ -653,7 +657,7 @@ test('reconcile ignores stale action-required run when a newer run of the same w
     MERGE_TRAIN_ADMISSION_CHECKS: 'required-check',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
   assert.doesNotMatch(
     stdout,
     new RegExp(`escalate action_required run=${staleRunId}`),
@@ -745,7 +749,7 @@ test('reconcile proceeds when copilot is assigned but no lease/state exists', as
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
   assert.doesNotMatch(
     stdout,
     /reason=existing-copilot-assignment/,
@@ -816,7 +820,7 @@ test('reconcile resolves only ancestor lineage markers from compare status', asy
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
   assert.match(stdout, new RegExp(`would-resolve thread=${threadToResolve}`));
   assert.doesNotMatch(stdout, new RegExp(`would-resolve thread=${threadToKeep}`));
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
@@ -863,7 +867,7 @@ test('reconcile does not escalate router action-required run when it is the only
     CI_RECOVERY_MODE: 'dry-run',
   });
 
-  assertSuccessfulExit(code, stderr);
+  if (!assertSuccessfulExit(t, code, stderr)) return;
   assert.match(
     stdout,
     new RegExp(`skip action_required run=${routerRunId} .* reason=same-repository`),

@@ -51,6 +51,7 @@ jobs:
         id: scope
         env:
           GH_TOKEN: ${{ github.token }}
+          MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           art_only='${{ steps.detect.outputs.art_only }}'
@@ -68,12 +69,16 @@ jobs:
           elif [ "${{ github.event_name }}" = "pull_request" ]; then
             promotion_checks="$(
               gh api \
-                "/repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?per_page=100" \
-                --jq '([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
+                "/repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?per_page=100" |
+                jq --arg app_id "$MERGE_TRAIN_APP_ID" \
+                '($app_id | tonumber?) as $trusted_id |
+                  ([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
                   if ($check != null and
                       $check.status == "completed" and
                       $check.conclusion == "success" and
-                      ($check.external_id | type == "string" and length > 0))
+                      $trusted_id != null and
+                      $check.app.id == $trusted_id and
+                      ($check.external_id | type == "string" and test("^[0-9a-f]{64}$")))
                   then 1 else 0 end'
             )"
             if [ "$promotion_checks" -gt 0 ]; then

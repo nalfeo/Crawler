@@ -33,6 +33,19 @@ ci-policy
   PR-head validation and preventing scheduled CI from deploying.
 - Preserved all legacy auto-merge and blanket-rebase behavior while
   `MERGE_TRAIN_ENABLED=false`.
+- Leased conflict-only rebases to the exact expected PR head and added bounded
+  retry/recovery when a rebase job fails without changing that head.
+- Made cumulative-conflict blocks self-healing when their predecessor leaves
+  the train, and routed already-applied/no-op PRs through an explicit recovery
+  path instead of stranding them.
+- Bound promotion suppression to both a SHA-256 train fingerprint and the
+  repository App identity that produced the check run.
+- Bound candidate-validation results to the exact candidate fingerprint and
+  repository App identity, with App-authenticated publication isolated from
+  the job that executes candidate code.
+- Moved auto-rebase PR triggers to trusted `pull_request_target` workflow code
+  with an explicit default-branch checkout so PR-authored workflow changes
+  cannot access the repository App key.
 
 ## Key Decisions Made
 
@@ -48,9 +61,9 @@ ci-policy
 
 ## Validation
 
-- Automation harness: 77 passed, 1 skipped only for the known Windows
-  `UV_HANDLE_CLOSING` subprocess shutdown assertion; the skipped branch remains
-  executable on Linux CI.
+- Automation harness: 73 passed and 8 explicitly skipped for the known Windows
+  `UV_HANDLE_CLOSING` subprocess shutdown assertion; Linux CI executes every
+  subprocess assertion.
 - `npm run verify:fast` passed.
 - The 3-apple plan and two-round code-review loop completed with all findings
   resolved, including independent validation of the final security fix.
