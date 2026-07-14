@@ -45,6 +45,13 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 5,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ]
     },
