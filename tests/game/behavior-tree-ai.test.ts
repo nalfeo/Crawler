@@ -1131,6 +1131,110 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toBe('Heading to the Floor 2 exit stairs');
   });
 
+  it('clears EXPLORE target and stops movement when A* finds no path (Floor 2 staircase behind wall)', () => {
+    // Regression: seed 42 Floor 2 — AI wiggled against unreachable territory door
+    // because the EXPLORE no-path handler fell through to moveWithLocalNavigation
+    // instead of clearing the target. Fix 1 adds an early return that zeroes movement
+    // and clears the target so the DwellTracker can accumulate and suppress the goal.
+    //
+    // The goal tile must be more than PATH_GOAL_SEARCH_RADIUS_TILES (6) tiles from
+    // the wall column so the ring search inside resolveReachableGoalTile never finds
+    // a left-side reachable fallback tile — only then does A* receive the unreachable
+    // raw goal and return an empty path. Wall at x=14, door at tile (22, 8): gap of 8.
+    // World coords: tileToWorld(22, 8) = (22 × 4 + 2, 8 × 4 + 2) = (90, 34).
+    const world = createTestWorld({ seed: 63, floor: 2 });
+    spawnPlayer(world, 14, 14); // tile (3, 3) — left half of the sealed room
+    world.floorMap = makeSealedRoom(50, 18, 14); // 50-wide map; wall column at x=14
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: true,
+        staircaseSpawned: true,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        // tile (22, 8) i.e. world (90, 34) — 8 tiles past the wall, outside radius 6
+        staircasePos: { x: 90, y: 34 },
+      },
+    };
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+
+    const ai = new BehaviorTreeAI({ seed: 63 });
+    const input = createInputState();
+    ai.poll(input, world);
+
+    // BT assigns the staircase as an EXPLORE target; A* cannot reach tile (22,8)
+    // and resolveReachableGoalTile finds no reachable ring tile within radius 6.
+    // Fix 1 must clear the target and stop movement immediately.
+    const decision = ai.getDecision();
+    expect(decision.targetX).toBeNull();
+    expect(decision.targetY).toBeNull();
+    expect(input.moveX).toBe(0);
+    expect(input.moveY).toBe(0);
+  });
+
+  it('does not re-target Floor 2 territory when progressGoalSuppressedUntilFrame is in the future', () => {
+    // Regression: seed 42 Floor 2 — after Fix 1 clears the stuck target the
+    // DwellTracker fires and sets progressGoalSuppressedUntilFrame, but the Floor 2
+    // objective path bypassed the suppression check and immediately re-assigned the
+    // same unreachable territory target every frame. Fix 2 passes the suppression
+    // flag into findFloor2QuestProgressTarget and gates the territory fallback on it.
+    const world = createTestWorld({ seed: 60, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    if (world.floorExtendedState?.familyState) {
+      world.floorExtendedState.familyState.reputationSystemActive = true;
+    }
+
+    const ai = new BehaviorTreeAI({ seed: 60 });
+    // Simulate the DwellTracker having just fired: suppress all fixed-position
+    // progress goals far into the future.
+    (
+      ai as unknown as { progressGoalSuppressedUntilFrame: number }
+    ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+
+    ai.poll(createInputState(), world);
+
+    // With suppression active the territory fallback must be skipped — the AI
+    // should pick any target OTHER than a territory sweep.
+    expect(ai.getDecision().reason).not.toMatch(/territory/i);
+  });
+
+  it('does not re-target Floor 2 staircase progress when progressGoalSuppressedUntilFrame is in the future', () => {
+    const world = createTestWorld({ seed: 59, floor: 2 });
+    spawnPlayer(world, 14, 14);
+    world.floorMap = makeSealedRoom(50, 18, 14);
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: true,
+        staircaseSpawned: true,
+        staircaseUnlocked: true,
+        staircaseDiscovered: false,
+        staircasePos: { x: 90, y: 34 },
+      },
+    };
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+
+    const ai = new BehaviorTreeAI({ seed: 59 });
+    (
+      ai as unknown as { progressGoalSuppressedUntilFrame: number }
+    ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+
+    for (let frame = 0; frame < 8; frame++) {
+      world.frameCount = frame;
+      ai.poll(createInputState(), world);
+      expect(ai.getDecision().reason).not.toBe('Heading to the Floor 2 exit stairs');
+    }
+  });
+
   it('engages nearby enemies before long NPC approach paths', () => {
     const { world } = setupNpcApproachThreat('sword');
     const ai = new BehaviorTreeAI({ seed: 12 });
