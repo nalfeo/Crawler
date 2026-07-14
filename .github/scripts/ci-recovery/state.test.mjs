@@ -29,8 +29,8 @@ test('normalizes blocker order before fingerprinting', () => {
   const right = [...left].reverse();
 
   assert.deepEqual(normalizeBlockers(left), normalizeBlockers(right));
-  assert.equal(blockerFingerprint('abc', left), blockerFingerprint('abc', right));
-  assert.notEqual(blockerFingerprint('def', left), blockerFingerprint('abc', right));
+  // Blocker order is normalised before hashing — same items regardless of insertion order.
+  assert.equal(blockerFingerprint(left), blockerFingerprint(right));
 });
 
 test('review-thread blocker identity changes when comments change', () => {
@@ -103,16 +103,16 @@ test('review-thread blocker identity changes when comments change', () => {
   assert.notEqual(reviewThreadCommentDigest(baseThread), reviewThreadCommentDigest(laterThread));
   assert.notEqual(reviewThreadCommentDigest(baseThread), reviewThreadCommentDigest(editedThread));
   assert.equal(
-    blockerFingerprint('abc', [blocker]),
-    blockerFingerprint('abc', [{ ...blocker, id: reviewThreadBlockerId(identicalThread) }]),
+    blockerFingerprint([blocker]),
+    blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(identicalThread) }]),
   );
   assert.notEqual(
-    blockerFingerprint('abc', [blocker]),
-    blockerFingerprint('abc', [{ ...blocker, id: reviewThreadBlockerId(laterThread) }]),
+    blockerFingerprint([blocker]),
+    blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(laterThread) }]),
   );
   assert.notEqual(
-    blockerFingerprint('abc', [blocker]),
-    blockerFingerprint('abc', [{ ...blocker, id: reviewThreadBlockerId(editedThread) }]),
+    blockerFingerprint([blocker]),
+    blockerFingerprint([{ ...blocker, id: reviewThreadBlockerId(editedThread) }]),
   );
 });
 
@@ -120,7 +120,7 @@ test('round trips sticky state comments', () => {
   const state = makeState({
     prNumber: 42,
     headSha: 'abc',
-    fingerprint: blockerFingerprint('abc', []),
+    fingerprint: blockerFingerprint([]),
     owner: 'automation',
     status: 'active',
     blockers: [],
@@ -134,7 +134,7 @@ test('enforces ownership label and state consistency', () => {
   const active = makeState({
     prNumber: 42,
     headSha: 'abc',
-    fingerprint: blockerFingerprint('abc', []),
+    fingerprint: blockerFingerprint([]),
     owner: 'shepherd',
     status: 'active',
     leaseId: 'lease-1',
@@ -153,7 +153,7 @@ test('expires shepherd leases after TTL plus queue grace', () => {
   const state = makeState({
     prNumber: 42,
     headSha: 'abc',
-    fingerprint: blockerFingerprint('abc', []),
+    fingerprint: blockerFingerprint([]),
     owner: 'shepherd',
     status: 'active',
     leaseId: 'lease-1',
@@ -175,8 +175,8 @@ test('lease operations persist while automated recovery is in dry-run mode', () 
   assert.equal(shouldMutateRecoveryState('off', 'lease-acquire'), false);
 });
 
-test('rejects duplicate dispatches for the same head and blocker fingerprint', () => {
-  const first = blockerFingerprint('abc', [
+test('rejects duplicate dispatches for the same blocker fingerprint regardless of headSha', () => {
+  const first = blockerFingerprint([
     { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
   ]);
   const state = makeState({
@@ -190,10 +190,19 @@ test('rejects duplicate dispatches for the same head and blocker fingerprint', (
   });
 
   assert.equal(isDuplicateDispatch(state, first), true);
+  // A mechanical rebase changes headSha but not the blockers — same fingerprint, duplicate.
   assert.equal(
     isDuplicateDispatch(
       state,
-      blockerFingerprint('def', [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }]),
+      blockerFingerprint([{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }]),
+    ),
+    true,
+  );
+  // A new blocker appearing (e.g. CI failure name changed) produces a different fingerprint.
+  assert.equal(
+    isDuplicateDispatch(
+      state,
+      blockerFingerprint([{ kind: 'ci-failure', id: 'ci:2', summary: 'CI failed' }]),
     ),
     false,
   );

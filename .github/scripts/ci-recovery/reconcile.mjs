@@ -135,7 +135,7 @@ async function acquire(nextOwner, nextLeaseId = null) {
     makeState({
       prNumber,
       headSha: pr.head.sha,
-      fingerprint: blockerFingerprint(pr.head.sha, []),
+      fingerprint: blockerFingerprint([]),
       owner: nextOwner,
       status: 'active',
       leaseId: nextLeaseId,
@@ -169,7 +169,7 @@ async function release(reason, nextState = null) {
     makeState({
       prNumber,
       headSha: pr.head.sha,
-      fingerprint: state?.fingerprint || blockerFingerprint(pr.head.sha, []),
+      fingerprint: state?.fingerprint || blockerFingerprint([]),
       owner: 'none',
       status: 'idle',
       trigger: reason,
@@ -401,7 +401,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
 }
 
 const normalized = normalizeBlockers(blockers);
-const fingerprint = blockerFingerprint(pr.head.sha, normalized);
+const fingerprint = blockerFingerprint(normalized);
 
 if (normalized.length === 0) {
   const convergedState = makeState({

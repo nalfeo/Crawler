@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    paths:
+      - '**'
 
 jobs:
   # Job 0: Detect the change scope.
