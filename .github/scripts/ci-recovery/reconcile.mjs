@@ -43,7 +43,6 @@ const shouldMutate = shouldMutateRecoveryState(mode, operation);
 const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const now = new Date();
-const REBASE_PENDING_TIMEOUT_MS = 15 * 60 * 1000;
 const REBASE_FAILURE_MAX_ATTEMPTS = 3;
 const REBASE_FAILURE_BASE_BACKOFF_MS = 60 * 1000;
 const REBASE_FAILURE_MAX_BACKOFF_MS = 10 * 60 * 1000;
@@ -419,14 +418,19 @@ const rebaseDispatchPendingForHead =
   state?.headSha === pr.head.sha && state?.trigger === 'rebase-dispatched';
 const rebaseDispatchAttemptsForHead =
   rebaseDispatchPendingForHead && Number.isInteger(state?.attempt) ? state.attempt : 0;
-const rebaseDispatchTimedOut =
-  rebaseDispatchPendingForHead &&
-  now.getTime() - Date.parse(state.updatedAt) >= REBASE_PENDING_TIMEOUT_MS;
+const rebaseRetryAttemptsExhausted = rebaseDispatchAttemptsForHead >= REBASE_FAILURE_MAX_ATTEMPTS;
 const autoRebaseFailed = trigger === 'auto-rebase-failure';
+// Exponential backoff (60s/120s/240s, bounded at REBASE_FAILURE_MAX_ATTEMPTS attempts) gates
+// *every* trigger that observes a pending rebase-dispatched retry -- not only the explicit
+// `auto-rebase-failure` webhook. Previously only that exact trigger honored the backoff; any
+// other trigger (in particular the 10-minute `schedule` sweep) skipped straight past the
+// intended 60/120/240s cadence and only re-evaluated after a flat 15-minute pending timeout,
+// which (once elapsed) also redispatched past REBASE_FAILURE_MAX_ATTEMPTS with no bound at
+// all. Keying the backoff off the persisted attempt count/timestamp (not the invoking
+// trigger) makes the cadence real for scheduled sweeps while keeping retries strictly bounded.
 const rebaseFailureBackoffActive =
-  autoRebaseFailed &&
   rebaseDispatchPendingForHead &&
-  rebaseDispatchAttemptsForHead < REBASE_FAILURE_MAX_ATTEMPTS &&
+  !rebaseRetryAttemptsExhausted &&
   now.getTime() - Date.parse(state.updatedAt) <
     calculateRebaseFailureBackoffMs(rebaseDispatchAttemptsForHead);
 if (
@@ -434,10 +438,11 @@ if (
   hasMergeConflict &&
   trigger !== 'auto-rebase-conflict' &&
   trigger !== 'auto-rebase-failure' &&
-  rebaseDispatchPendingForHead &&
-  !rebaseDispatchTimedOut
+  rebaseFailureBackoffActive
 ) {
-  process.stdout.write(`wait pr=#${prNumber} reason=conflict-rebase-pending\n`);
+  process.stdout.write(
+    `wait pr=#${prNumber} reason=conflict-rebase-pending attempt=${rebaseDispatchAttemptsForHead}\n`,
+  );
   process.exit(0);
 }
 if (mergeTrainEnabled && hasMergeConflict && autoRebaseFailed && rebaseFailureBackoffActive) {
@@ -450,9 +455,8 @@ if (
   mergeTrainEnabled &&
   hasMergeConflict &&
   trigger !== 'auto-rebase-conflict' &&
-  (autoRebaseFailed
-    ? rebaseDispatchAttemptsForHead < REBASE_FAILURE_MAX_ATTEMPTS
-    : !rebaseDispatchPendingForHead || rebaseDispatchTimedOut)
+  !rebaseRetryAttemptsExhausted &&
+  (!rebaseDispatchPendingForHead || !rebaseFailureBackoffActive)
 ) {
   const conflictBlocker = {
     kind: 'merge-conflict',

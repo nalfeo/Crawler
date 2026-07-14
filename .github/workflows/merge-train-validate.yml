@@ -59,21 +59,38 @@ jobs:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           FINGERPRINT: ${{ inputs.fingerprint }}
           PR_NUMBERS: ${{ inputs.pr_numbers }}
-          PASSED: ${{ needs.verify.result == 'success' }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const passed = process.env.PASSED === 'true';
+            // `needs.verify.result` is one of: success, failure, cancelled, skipped
+            // (a timed-out job also surfaces here as `cancelled`, per GitHub Actions).
+            // Only an executed `failure` reflects a real candidate defect. Everything
+            // else -- the job being cancelled, skipped (e.g. a superseding push
+            // cancelled this run's concurrency group), or timing out -- is an
+            // infrastructure/scheduling outcome, not proof the candidate's code is
+            // broken. Publish those as `cancelled` (mirroring the dispatch-failure
+            // path in reconcile.mjs) so trainCheckState() treats them as retryable
+            // ("missing") instead of bisecting the train as if the code failed CI.
+            const verifyResult = process.env.VERIFY_RESULT;
+            const conclusion = verifyResult === 'success' ? 'success'
+              : verifyResult === 'failure' ? 'failure'
+              : 'cancelled';
+            const title = conclusion === 'success'
+              ? 'Merge-train candidate passed'
+              : conclusion === 'failure'
+                ? 'Merge-train candidate failed'
+                : `Merge-train candidate validation was not completed (verify result: ${verifyResult})`;
             await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               name: 'merge-train-candidate',
               head_sha: process.env.CANDIDATE_SHA,
               status: 'completed',
-              conclusion: passed ? 'success' : 'failure',
+              conclusion,
               external_id: process.env.FINGERPRINT,
               output: {
-                title: passed ? 'Merge-train candidate passed' : 'Merge-train candidate failed',
+                title,
                 summary: `PR order: ${process.env.PR_NUMBERS}\nFingerprint: ${process.env.FINGERPRINT}`,
               },
             });

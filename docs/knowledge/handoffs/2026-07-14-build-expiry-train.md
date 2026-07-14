@@ -66,15 +66,15 @@ ci-policy
 ## Validation
 
 - Automation harness (`.github/scripts/ci-recovery/*.test.mjs` +
-  `.github/scripts/merge-train/*.test.mjs`): as of the fourth-wave pass below,
-  114 tests total; 95 passed and up to 19 explicitly skipped for the known
+  `.github/scripts/merge-train/*.test.mjs`): as of the fifth-wave pass below,
+  120 tests total; 99 passed and up to 21 explicitly skipped for the known
   Windows `UV_HANDLE_CLOSING` subprocess shutdown assertion (skip count
   varies per run since the underlying libuv race is non-deterministic); 0
   failed. Linux CI executes every subprocess assertion strictly, since the
   skip is gated on `process.platform === 'win32'`. This is the authoritative,
   most-recent count; see the wave-by-wave notes below for how it evolved
-  (91/77/14 -> 110/92/18 -> 114/95/19) as each review pass added regression
-  coverage — do not cite an earlier figure as current.
+  (91/77/14 -> 110/92/18 -> 114/95/19 -> 120/99/21) as each review pass added
+  regression coverage — do not cite an earlier figure as current.
 - `npm run verify:fast` passed.
 - The 4-apple adversarial plan review, two-round code-review loop, and
   two-round multi-model review completed with all valid findings resolved.
@@ -265,6 +265,102 @@ Copilot review threads:
   malformed-flag, and provenance-exclusion scenarios above). Full
   `npm run typecheck` is clean (new `tests/unit/deploy-workflow-gating.test.ts`
   included). `npm run verify:fast` passed.
+
+## Fifth-wave Copilot review pass (independent-model validation)
+
+A fifth independent (non-primary-model) validation pass addressed the fifth
+wave of 5 unresolved Copilot review threads:
+
+- **Dead code (merge-train/reconcile.mjs:46)**: `FINGERPRINT_SHAPE` was
+  declared and never referenced anywhere in the file (which has no exports).
+  Removed outright; no behavior change, no test needed for a deletion of
+  unreachable code.
+- **Main-health TOCTOU at final promotion (merge-train/reconcile.mjs:421)**:
+  `mainHealthAllowsPromotion()` was only checked once, at the top of
+  `promotePrefix()`, before the sequential per-PR reads/eligibility checks
+  that follow it. A scheduled or push-triggered CI run for `main` can start
+  and go pending/red while those reads are in flight, so the initial guard
+  alone could not prove `main` was still healthy at the moment the required
+  check was published and the atomic push happened. Fixed by adding an
+  optional `reattestHealth` callback to `promoteExactCandidate`/
+  `promoteExactBatch` (`reconcile-lib.mjs`), invoked immediately after the
+  final per-PR reattestation loop and immediately before publishing the
+  required check / pushing — the same trusted, token-authenticated
+  `mainHealthAllowsPromotion` function already used for the initial guard is
+  wired in at the one real call site (`reconcile.mjs`'s `promotePrefix()`),
+  so there is no new or unauthenticated shortcut. Three new
+  `reconcile.test.mjs` unit tests cover: a health transition between the
+  final PR read and the push blocking that push/check-publish (asserting
+  call order: last `fetchCurrentPr` -> `reattestHealth` -> no push/check),
+  a healthy re-attestation still proceeding, and the default (omitted
+  callback) still behaving as healthy for existing call sites.
+- **Auto-rebase backoff not honored by scheduled sweeps
+  (ci-recovery/reconcile.mjs:447)**: the 60/120/240s exponential backoff
+  (bounded at `REBASE_FAILURE_MAX_ATTEMPTS`) was only evaluated when
+  `trigger === 'auto-rebase-failure'`. Any other trigger — in particular the
+  10-minute `schedule` sweep — fell into a separate branch gated by a flat
+  15-minute `REBASE_PENDING_TIMEOUT_MS`, so a scheduled sweep observing a
+  pending retry ignored the intended short cadence, and (worse) once that
+  15-minute window elapsed the dispatch branch for non-`auto-rebase-failure`
+  triggers had no bound against `REBASE_FAILURE_MAX_ATTEMPTS` at all — an
+  unbounded retry fan-out risk. Fixed by keying `rebaseFailureBackoffActive`
+  purely off the persisted `state.attempt`/`state.updatedAt` (trigger-
+  agnostic) and adding an explicit `rebaseRetryAttemptsExhausted` bound that
+  gates the dispatch branch for every trigger, not just
+  `auto-rebase-failure`. The now-dead `REBASE_PENDING_TIMEOUT_MS` constant
+  and `rebaseDispatchTimedOut` variable were removed. Two new
+  `reconcile.test.mjs` subprocess tests prove the 60s cadence is real for a
+  `schedule` trigger (redispatches once elapsed instead of waiting for the
+  old 15-minute mark; waits while still inside the window), and a third
+  proves bounded attempts hold for `schedule` too (no redispatch — and no
+  infinite fan-out — once `REBASE_FAILURE_MAX_ATTEMPTS` is reached, even
+  though the persisted state is still well inside the old flat timeout).
+- **Verify-result collapse in candidate publish
+  (merge-train-validate.yml:62)**: the "Publish immutable candidate result"
+  step computed `PASSED: needs.verify.result == 'success'` and mapped
+  `passed ? 'success' : 'failure'`, collapsing `cancelled`/`skipped` (and a
+  timed-out job, which GitHub Actions also reports as `cancelled`) into
+  `'failure'`. `trainCheckState()` treats a `cancelled` conclusion as
+  `'missing'`/retryable but any other non-success conclusion as a genuine
+  candidate defect that triggers bisection — so an infrastructure
+  cancellation or a superseded/skipped run would have wrongly kicked off
+  bisection instead of a simple retry. Fixed by passing the raw
+  `needs.verify.result` string and mapping it explicitly:
+  `success` -> `success`, `failure` -> `failure`, anything else -> `cancelled`.
+  The App-authenticated (`actions/create-github-app-token@v1`) publish step
+  is unchanged. New `tests/unit/merge-train-validate-publish.test.ts` parses
+  the real workflow YAML, extracts the actual `with.script` text (no
+  reimplementation), and executes it with a stubbed
+  `github.rest.checks.create`, asserting the mapping for `success`,
+  `failure`, `cancelled`, `skipped`, and an unrecognized value (fail-safe to
+  `cancelled`), plus that the `github-token` wiring stays App-authenticated.
+- **Unsafe rollback ordering (docs/guides/merge-train.md:106)**: the
+  Rollback section instructed removing `merge-train` from `main`'s required
+  status checks _before_ disabling `MERGE_TRAIN_ENABLED` — a fail-open
+  ordering: between the two steps the train is still enabled but no longer
+  gated by branch protection, so a PR could merge before anything actually
+  validated it. The Emergency repair lane section (added in the fourth wave)
+  already had the correct order. Fixed by swapping the Rollback section's
+  step order to match: disable the flag first (documented as fail-closed —
+  nothing publishes the still-required `merge-train` check once the train
+  stops, so every PR is safely blocked), then remove the required check to
+  resume the legacy path. New
+  `tests/unit/merge-train-doc-rollback-ordering.test.ts` parses the real doc
+  text and asserts both the Rollback and Emergency repair lane sections
+  disable the flag strictly before removing the required check, so a future
+  edit that reintroduces the unsafe ordering in either section is caught.
+- Automation harness (ci-recovery + merge-train mjs suite) after this wave:
+  120 tests total, 99 passed, 0 failed, 21 skipped (net +6 tests: 3 new
+  `reconcile.test.mjs` (merge-train) tests for `reattestHealth`, 3 new
+  `reconcile.test.mjs` (ci-recovery) tests for schedule-sweep backoff/bound;
+  2 of the 3 new ci-recovery tests are skipped on this Windows host under
+  the same known `UV_HANDLE_CLOSING` subprocess-shutdown exemption already
+  used by pre-existing `live`-mode subprocess tests in that file — Linux CI
+  runs them strictly). New `tests/unit/merge-train-validate-publish.test.ts`
+  (6 tests) and `tests/unit/merge-train-doc-rollback-ordering.test.ts`
+  (3 tests) both pass under `vitest`. Full `npm run typecheck` and
+  `npm run lint` (`src/ tests/ scripts/`) are clean. `npm run verify:fast`
+  passed.
 
 ## What's Next / Blockers
 

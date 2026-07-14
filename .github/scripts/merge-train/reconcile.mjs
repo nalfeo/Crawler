@@ -43,7 +43,6 @@ const token = process.env.MERGE_TRAIN_TOKEN || process.env.GITHUB_TOKEN || '';
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
-const FINGERPRINT_SHAPE = /^[0-9a-f]{64}$/;
 
 if (!owner || !repo || !token || !Number.isInteger(trustedAppId)) {
   throw new Error('Merge train requires GITHUB_REPOSITORY, a GitHub token, and MERGE_TRAIN_APP_ID');
@@ -438,6 +437,7 @@ async function promotePrefix(prefixLength) {
     requiredCheckName: REQUIRED_CHECK_NAME,
     provenanceEntries,
     waitForMergedPr,
+    reattestHealth: mainHealthAllowsPromotion,
   });
 }
 

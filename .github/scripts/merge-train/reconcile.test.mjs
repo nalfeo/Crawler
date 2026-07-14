@@ -539,6 +539,121 @@ test('promoteExactCandidate publishes a separate failure when GitHub does not re
   ]);
 });
 
+// Regression coverage for a TOCTOU review finding: `mainHealthAllowsPromotion()`
+// was only checked once, before the sequential per-PR reads
+// (`fetchCurrentPr`/`eligible`) that follow it. A scheduled or push-triggered
+// CI run for `main` can start and go pending/red while those reads are in
+// flight, so the initial guard alone cannot prove `main` is still healthy at
+// the moment the required check is published and the atomic push happens.
+// `promoteExactBatch` now accepts a `reattestHealth` callback and re-runs it
+// as part of the final pre-push reattestation -- after the last PR read, and
+// immediately before publishing the required check / updating refs -- so a
+// health transition in that window blocks promotion instead of racing past it.
+test('promoteExactBatch re-checks main health immediately before publishing the required check', async () => {
+  const pr = makePr();
+  const { git, calls } = createGitStub({});
+  const checkCalls = [];
+  const callOrder = [];
+  let fetchCurrentPrCalls = 0;
+  const promoted = await promoteExactCandidate({
+    pr,
+    candidateSha,
+    expectedBase: baseSha,
+    position: 1,
+    repository: 'nalfeo/Crawler',
+    live: true,
+    fetchCurrentPr: async () => {
+      fetchCurrentPrCalls += 1;
+      callOrder.push(`fetchCurrentPr:${fetchCurrentPrCalls}`);
+      return makePr();
+    },
+    fetchCurrentMain: async () => baseSha,
+    eligible: async () => ({ ok: true }),
+    git,
+    createTrainCheck: async (...args) => {
+      callOrder.push('createTrainCheck');
+      checkCalls.push(args);
+    },
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    requiredCheckName: 'merge-train',
+    // Model main flipping unhealthy between candidate validation and the
+    // final pre-push reattestation.
+    reattestHealth: async () => {
+      callOrder.push('reattestHealth');
+      return false;
+    },
+  });
+  assert.equal(promoted, false);
+  assert.equal(checkCalls.length, 0, 'must not publish the required check when health regressed');
+  assert.equal(
+    calls.some((call) => call.args[0] === 'push'),
+    false,
+    'must not push when health regressed',
+  );
+  // reattestHealth must run after the final per-PR read (2nd fetchCurrentPr
+  // call, from the final reattestation loop) and before any check
+  // publish/push -- not merely once, up front, before those reads.
+  assert.equal(fetchCurrentPrCalls, 2);
+  assert.deepEqual(callOrder, ['fetchCurrentPr:1', 'fetchCurrentPr:2', 'reattestHealth']);
+});
+
+test('promoteExactBatch proceeds to publish and push when reattestHealth stays healthy', async () => {
+  const pr = makePr();
+  const { git, calls } = createGitStub({});
+  const checkCalls = [];
+  let reattestCalls = 0;
+  const promoted = await promoteExactCandidate({
+    pr,
+    candidateSha,
+    expectedBase: baseSha,
+    position: 1,
+    repository: 'nalfeo/Crawler',
+    live: true,
+    fetchCurrentPr: async () => makePr(),
+    fetchCurrentMain: async () => baseSha,
+    eligible: async () => ({ ok: true }),
+    git,
+    createTrainCheck: async (...args) => checkCalls.push(args),
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    requiredCheckName: 'merge-train',
+    reattestHealth: async () => {
+      reattestCalls += 1;
+      return true;
+    },
+  });
+  assert.equal(promoted, true);
+  assert.equal(reattestCalls, 1);
+  assert.equal(checkCalls.length, 1);
+  const pushCall = calls.find((call) => call.args[0] === 'push');
+  assert.ok(pushCall);
+});
+
+test('promoteExactBatch defaults reattestHealth to healthy when the caller omits it', async () => {
+  const pr = makePr();
+  const { git } = createGitStub({});
+  const checkCalls = [];
+  const promoted = await promoteExactCandidate({
+    pr,
+    candidateSha,
+    expectedBase: baseSha,
+    position: 1,
+    repository: 'nalfeo/Crawler',
+    live: true,
+    fetchCurrentPr: async () => makePr(),
+    fetchCurrentMain: async () => baseSha,
+    eligible: async () => ({ ok: true }),
+    git,
+    createTrainCheck: async (...args) => checkCalls.push(args),
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    requiredCheckName: 'merge-train',
+  });
+  assert.equal(promoted, true);
+  assert.equal(checkCalls.length, 1);
+});
+
 test('trainCheckTitle distinguishes queued, failed, and successful completed checks', () => {
   assert.equal(trainCheckTitle('in_progress'), 'Merge-train validation queued');
   assert.equal(trainCheckTitle('completed', 'failure'), 'Merge-train validation could not start');

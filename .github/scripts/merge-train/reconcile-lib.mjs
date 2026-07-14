@@ -191,6 +191,7 @@ export async function promoteExactCandidate({
   requiredCheckName,
   provenanceEntries = [pr],
   waitForMergedPr,
+  reattestHealth,
 }) {
   return promoteExactBatch({
     entries: [pr],
@@ -209,6 +210,7 @@ export async function promoteExactCandidate({
     provenanceEntries,
     positions: [position],
     waitForMergedPr,
+    reattestHealth,
   });
 }
 
@@ -229,6 +231,7 @@ export async function promoteExactBatch({
   provenanceEntries = entries,
   positions = entries.map((_, index) => index + 1),
   waitForMergedPr = async () => true,
+  reattestHealth = async () => true,
 }) {
   if (entries.length === 0 || entries.length !== candidateShas.length) {
     throw new Error('Promotion requires one candidate SHA per non-empty PR entry');
@@ -298,6 +301,19 @@ export async function promoteExactBatch({
       return false;
     }
     currentPrs[index] = finalPr;
+  }
+  // Re-run the main-health guard here, immediately before publishing the
+  // required check and updating refs. The initial guard (mainHealthAllowsPromotion)
+  // runs once per reconcile before the sequential PR/admission reads above;
+  // a scheduled or push-triggered CI run for main can start and go
+  // pending/red while those reads are in flight, which would otherwise let a
+  // now-unhealthy main get promoted past. Reusing the same trusted, token
+  // authenticated health check here (rather than trusting the earlier
+  // result) closes that window without any unauthenticated or stale
+  // shortcut.
+  if (!(await reattestHealth())) {
+    process.stdout.write('paused merge train; main health changed during final reattestation\n');
+    return false;
   }
   const finalCandidateSha = candidateShas.at(-1);
   const promotionFingerprint = candidateFingerprint(expectedBase, currentPrs);

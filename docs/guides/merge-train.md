@@ -99,11 +99,22 @@ dry-run train mode.
 
 To return to the legacy independent-auto-merge and blanket-rebase behavior:
 
-1. Remove `merge-train` from `main`'s required status checks first (or in the
-   same change as step 2). Flipping the flag alone does not touch branch
-   protection: if `merge-train` is still required, no legacy PR can ever merge
-   after rollback, because nothing publishes that check once the train stops
-   running.
+1. Disable the train first:
+
+   ```bash
+   gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false
+   ```
+
+   This fails closed: while `merge-train` is still a required status check,
+   nothing publishes it once the train stops running, so every PR is safely
+   _blocked_ from merging rather than merging without validation. Do not
+   reverse this order: removing the required check before disabling the flag
+   opens a window where the train is still enabled but no longer gated by
+   branch protection, so a PR could merge before the train (or anything else)
+   has actually validated it.
+
+2. Once the train is confirmed disabled, remove `merge-train` from `main`'s
+   required status checks to resume the legacy path:
 
    ```bash
    gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks/contexts \
@@ -119,21 +130,16 @@ To return to the legacy independent-auto-merge and blanket-rebase behavior:
    gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks --jq '.contexts'
    ```
 
-2. Disable the train:
-
-   ```bash
-   gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false
-   ```
-
 With `MERGE_TRAIN_ENABLED=false`, CI recovery's `merge-train`-owned skip
 (`ci-recovery/reconcile.mjs`) stops applying, so CI recovery and broad
 auto-rebase automatically resume owning freshness and promotion for every PR
 still carrying a `merge-train*` label -- no separate step restores that part.
 The next recovery sweep removes the train-owned labels (`merge-train`,
 `merge-train-blocked`, `merge-train-noop`, `merge-train-validation-failed`)
-before returning each PR fully to legacy automation. Step 1 is the only manual
-action rollback still requires; steps 2 onward are already automatic once the
-flag flips.
+before returning each PR fully to legacy automation. Step 2 (removing the
+required check, once the train is confirmed disabled) is the only manual
+action rollback still requires; freshness/promotion ownership resumes
+automatically.
 
 ## Emergency repair lane (main-health deadlock)
 

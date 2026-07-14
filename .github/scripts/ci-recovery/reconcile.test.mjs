@@ -985,6 +985,137 @@ test('train mode escalates an explicit auto-rebase-failure once bounded retries 
   );
 });
 
+// Regression coverage for a review finding: the exponential backoff
+// (60s/120s/240s, bounded at REBASE_FAILURE_MAX_ATTEMPTS) previously only
+// applied when the invoking trigger was literally `auto-rebase-failure`. Any
+// other trigger -- in particular the 10-minute `schedule` sweep dispatched by
+// ci-recovery-router.yml -- fell straight through to the flat 15-minute
+// pending-timeout wait, so a schedule sweep firing 70s after a failed attempt
+// (well past the 60s backoff for attempt 1) would keep waiting instead of
+// retrying, silently swallowing the intended cadence.
+test('train mode honors the same bounded backoff for schedule sweeps, not just auto-rebase-failure', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: false, mergeable_state: 'dirty' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      // attempt 1, dispatched 70s ago -- past the 60s backoff for attempt 1,
+      // but nowhere near the 15-minute flat pending timeout.
+      body: [rebaseDispatchedStateComment(904, new Date(Date.now() - 70 * 1000).toISOString(), 1)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/904`]: () => ({ body: { id: 904, body: '' } }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    1,
+    'expected the schedule sweep to retry once the backoff for attempt 1 elapsed, not wait for the 15m timeout',
+  );
+});
+
+test('train mode still waits (does not retry) during bounded backoff for schedule sweeps', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: false, mergeable_state: 'dirty' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      // attempt 1, dispatched moments ago -- still inside the 60s backoff.
+      body: [rebaseDispatchedStateComment(905, new Date().toISOString(), 1)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /wait pr=#42 reason=conflict-rebase-pending attempt=1/);
+  assert.deepEqual(mutatingCalls, []);
+});
+
+// Regression coverage for the other half of the same finding: bounded
+// retries must stay bounded regardless of which trigger observes them. A
+// `schedule` sweep arriving after REBASE_FAILURE_MAX_ATTEMPTS attempts (but
+// before the flat 15-minute pending timeout) must not redispatch a 4th
+// attempt -- it must fall through to the same conflict-blocker escalation an
+// exhausted `auto-rebase-failure` trigger gets, instead of fanning out
+// indefinitely every 10 minutes.
+test('train mode does not fan out past bounded retries for a schedule sweep once attempts are exhausted', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), mergeable: false, mergeable_state: 'dirty' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      // Already retried REBASE_FAILURE_MAX_ATTEMPTS (3) times, still fresh
+      // (well inside the 15-minute flat pending timeout).
+      body: [rebaseDispatchedStateComment(906, new Date().toISOString(), 3)],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'dry-run',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /merge-conflict/, 'expected the conflict blocker to still surface');
+  assert.match(stdout, /dry-run would-assign copilot/, 'expected fallthrough to escalation');
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    0,
+    'must not redispatch (or wait indefinitely) once bounded retries are exhausted, regardless of trigger',
+  );
+});
+
 test('reconcile ignores same-repository action-required runs without approval or dispatch', async (t) => {
   const runId = 29220010234;
   const { server, port, mutatingCalls } = await startServer({
