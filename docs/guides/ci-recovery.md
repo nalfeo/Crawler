@@ -75,8 +75,6 @@ set. The same fingerprint is never assigned twice.
    ```powershell
    gh workflow disable copilot-review-ping.yml --repo nalfeo/Crawler
    gh workflow disable copilot-session-guard.yml --repo nalfeo/Crawler
-   gh workflow disable codex-repair.yml --repo nalfeo/Crawler
-   gh workflow disable codex-repair-runner.yml --repo nalfeo/Crawler
    gh workflow disable coverage-gap-copilot.yml --repo nalfeo/Crawler
    gh workflow disable auto-resolve-review-threads.yml --repo nalfeo/Crawler
    ```

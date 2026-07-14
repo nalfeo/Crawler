@@ -120,7 +120,7 @@ const HEURISTICS: ReadonlyArray<readonly [RegExp, ReadonlyArray<string>]> = [
   ],
   // agent-personas
   [
-    /persona|producer|shepherd|reviewer|codex-cli|codex-repair|refactor-cleanup|refactor-campaign|fun-score|fun-rater/,
+    /persona|producer|shepherd|reviewer|refactor-cleanup|refactor-campaign|fun-score|fun-rater/,
     ['agent-personas'],
   ],
   // mcp-tooling
