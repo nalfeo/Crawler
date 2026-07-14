@@ -5,7 +5,9 @@ export const BLOCKED_LABEL = 'merge-train-blocked';
 export const CANDIDATE_CHECK_NAME = 'merge-train-candidate';
 export const REQUIRED_CHECK_NAME = 'merge-train';
 export const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
+export const VALIDATION_FAILED_LABEL = 'merge-train-validation-failed';
 export const DEFAULT_ADMISSION_CHECKS = ['ci', 'commit-lint', 'Security checks'];
+export const MAX_TRAIN_SIZE = 6;
 
 function compact(value) {
   return String(value ?? '')
@@ -13,12 +15,12 @@ function compact(value) {
     .trim();
 }
 
-export function normalizeMode(value) {
-  const mode = compact(value || 'off').toLowerCase();
-  if (!['off', 'dry-run', 'live'].includes(mode)) {
-    throw new Error(`Unsupported MERGE_TRAIN_MODE: ${mode}`);
+export function parseEnabledFlag(value) {
+  const normalized = compact(value || 'false').toLowerCase();
+  if (!['true', 'false'].includes(normalized)) {
+    throw new Error(`MERGE_TRAIN_ENABLED must be true or false, received: ${normalized}`);
   }
-  return mode;
+  return normalized === 'true';
 }
 
 export function resolveAdmissionChecks(value, defaults = DEFAULT_ADMISSION_CHECKS) {
@@ -65,13 +67,84 @@ export function candidateFingerprint(baseSha, entries) {
 }
 
 export function candidateRef(slot, fingerprint) {
-  if (!Number.isInteger(slot) || slot < 1 || slot > 2) {
+  if (!Number.isInteger(slot) || slot < 1 || slot > MAX_TRAIN_SIZE) {
     throw new Error(`Invalid merge-train slot: ${slot}`);
   }
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
     throw new Error('Candidate fingerprint must be a SHA-256 hex digest');
   }
   return `merge-train/candidate-${slot}-${fingerprint.slice(0, 16)}`;
+}
+
+export function admissionFingerprint({
+  headSha,
+  title,
+  baseRef,
+  checkRuns,
+  requiredNames = DEFAULT_ADMISSION_CHECKS,
+  reviewThreads,
+}) {
+  const checks = latestChecksByName(checkRuns);
+  const requiredChecks = requiredNames
+    .map((name) => {
+      const check = checks.get(name.toLowerCase());
+      return {
+        name: name.toLowerCase(),
+        id: Number(check?.id || 0),
+        status: compact(check?.status),
+        conclusion: compact(check?.conclusion),
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const threads = (reviewThreads || [])
+    .map((thread) => ({
+      id: compact(thread.id),
+      resolved: Boolean(thread.isResolved),
+      comments: (thread.comments?.nodes || []).map((comment) => ({
+        id: compact(comment.id),
+        body: String(comment.body || ''),
+        author: compact(comment.author?.login),
+      })),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        headSha: compact(headSha),
+        title: compact(title),
+        baseRef: compact(baseRef),
+        requiredChecks,
+        threads,
+      }),
+    )
+    .digest('hex');
+}
+
+export function nextBisectStep(prefixStates) {
+  if (!Array.isArray(prefixStates) || prefixStates.length === 0) {
+    throw new Error('At least one prefix state is required');
+  }
+  const total = prefixStates.length;
+  if (prefixStates[total - 1] !== 'failure') {
+    return { type: 'validate', prefixLength: total };
+  }
+  let red = total;
+  for (let index = 0; index < total - 1; index += 1) {
+    const prefixLength = index + 1;
+    if (prefixStates[index] === 'failure') {
+      red = Math.min(red, prefixLength);
+    }
+  }
+  let green = 0;
+  for (let index = 0; index < red - 1; index += 1) {
+    if (prefixStates[index] === 'success') {
+      green = index + 1;
+    }
+  }
+  if (red - green === 1) {
+    return { type: 'isolate', greenPrefixLength: green, failingPrefixLength: red };
+  }
+  return { type: 'validate', prefixLength: Math.floor((green + red) / 2) };
 }
 
 export function commitTimestamp(entry) {

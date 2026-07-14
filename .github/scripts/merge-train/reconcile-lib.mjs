@@ -150,6 +150,7 @@ export async function promoteExactCandidate({
   removeLabel,
   updateStatus,
   requiredCheckName,
+  provenanceEntries = [pr],
 }) {
   const currentPr = await fetchCurrentPr();
   const currentMain = await fetchCurrentMain();
@@ -190,6 +191,7 @@ export async function promoteExactCandidate({
     'completed',
     'success',
     requiredCheckName,
+    provenanceEntries,
   );
   try {
     git([
@@ -208,6 +210,7 @@ export async function promoteExactCandidate({
       'completed',
       'failure',
       requiredCheckName,
+      provenanceEntries,
     );
     throw error;
   }

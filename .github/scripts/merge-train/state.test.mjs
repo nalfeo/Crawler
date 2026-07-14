@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  admissionFingerprint,
   candidateFingerprint,
   candidateRef,
   commitTimestamp,
-  normalizeMode,
+  nextBisectStep,
+  parseEnabledFlag,
   queueEntries,
   renderStatus,
   resolveAdmissionChecks,
@@ -26,10 +28,10 @@ const pr = (number, overrides = {}) => ({
   ...overrides,
 });
 
-test('normalizes supported modes and rejects unknown values', () => {
-  assert.equal(normalizeMode('LIVE'), 'live');
-  assert.equal(normalizeMode(''), 'off');
-  assert.throws(() => normalizeMode('unsafe'), /Unsupported/);
+test('parses the single merge-train flag and rejects ambiguous values', () => {
+  assert.equal(parseEnabledFlag('TRUE'), true);
+  assert.equal(parseEnabledFlag(''), false);
+  assert.throws(() => parseEnabledFlag('dry-run'), /must be true or false/);
 });
 
 test('parses admission checks and falls back to defaults when empty', () => {
@@ -59,8 +61,65 @@ test('candidate fingerprints bind base, head, title, and order', () => {
 
 test('candidate refs are bounded and immutable by fingerprint', () => {
   const fingerprint = 'a'.repeat(64);
-  assert.equal(candidateRef(2, fingerprint), 'merge-train/candidate-2-aaaaaaaaaaaaaaaa');
-  assert.throws(() => candidateRef(3, fingerprint), /slot/);
+  assert.equal(candidateRef(6, fingerprint), 'merge-train/candidate-6-aaaaaaaaaaaaaaaa');
+  assert.throws(() => candidateRef(7, fingerprint), /slot/);
+});
+
+test('admission fingerprints bind immutable head evidence without binding main', () => {
+  const evidence = {
+    headSha: 'head-1',
+    title: 'fix: one',
+    baseRef: 'main',
+    checkRuns: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+    requiredNames: ['ci'],
+    reviewThreads: [{ id: 'thread-1', isResolved: true, comments: { nodes: [] } }],
+  };
+  assert.equal(admissionFingerprint(evidence), admissionFingerprint(evidence));
+  assert.notEqual(
+    admissionFingerprint(evidence),
+    admissionFingerprint({
+      ...evidence,
+      reviewThreads: [{ id: 'thread-1', isResolved: false, comments: { nodes: [] } }],
+    }),
+  );
+});
+
+test('bisection validates the midpoint then isolates the first failing addition', () => {
+  assert.deepEqual(
+    nextBisectStep(['missing', 'missing', 'missing', 'missing', 'missing', 'failure']),
+    {
+      type: 'validate',
+      prefixLength: 3,
+    },
+  );
+  assert.deepEqual(
+    nextBisectStep(['success', 'success', 'success', 'missing', 'missing', 'failure']),
+    {
+      type: 'validate',
+      prefixLength: 4,
+    },
+  );
+  assert.deepEqual(
+    nextBisectStep(['success', 'success', 'success', 'failure', 'missing', 'failure']),
+    {
+      type: 'isolate',
+      greenPrefixLength: 3,
+      failingPrefixLength: 4,
+    },
+  );
+});
+
+test('bisection isolates the earliest failure when longer prefixes are non-monotonic', () => {
+  assert.deepEqual(nextBisectStep(['failure', 'success', 'missing', 'failure']), {
+    type: 'isolate',
+    greenPrefixLength: 0,
+    failingPrefixLength: 1,
+  });
+  assert.deepEqual(nextBisectStep(['success', 'failure', 'success', 'failure']), {
+    type: 'isolate',
+    greenPrefixLength: 1,
+    failingPrefixLength: 2,
+  });
 });
 
 test('commit timestamps are deterministic per PR revision', () => {

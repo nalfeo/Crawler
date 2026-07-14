@@ -1,7 +1,8 @@
 # Repository-Managed Merge Train
 
-Crawler uses a two-candidate speculative merge train when GitHub's native merge
-queue is unavailable. The train optimizes merge latency while enforcing one
+Crawler uses a repository-managed build-expiry merge train because GitHub's
+native merge queue is unavailable to this repository. The train optimizes
+throughput while enforcing one
 invariant:
 
 > `main` advances only to the exact candidate SHA that passed merge-train
@@ -13,26 +14,29 @@ for the architectural rationale.
 
 ## How it works
 
-1. CI recovery adds `merge-train` after the PR's admission checks pass and all
-   review threads resolve.
+1. CI recovery works the six oldest non-ready PRs and adds `merge-train` after
+   the PR head's admission checks pass and all review threads resolve.
    Once labeled, CI recovery and broad auto-rebase both leave the PR unchanged;
    the train exclusively owns freshness and promotion.
 2. `.github/workflows/merge-train.yml` serializes reconciliation with
-   `queue: max`, selects the two oldest admitted PRs, and creates immutable
-   cumulative branches:
-   - slot 1: `main+A`
-   - slot 2: `main+A+B`
-3. `.github/workflows/merge-train-validate.yml` validates each immutable SHA.
+   `queue: max`, selects up to six oldest admitted PRs, and creates one combined
+   immutable candidate.
+3. `.github/workflows/merge-train-validate.yml` runs `verify:fast` plus the
+   targeted security suite on that SHA.
    Candidate-executing jobs have read-only permissions. The final publisher job
    does not check out candidate code and writes the
    `merge-train-candidate` result.
-4. A green slot 1 is revalidated for current head, title, checks, review threads,
-   and `main` parent. Only then does the trusted App publish the required
-   `merge-train` check and:
+4. A green batch is revalidated for current heads, titles, admission
+   fingerprints, and `main` parent. Only then does the trusted App publish the
+   required `merge-train` checks and:
    - updates the PR head to the tested candidate using an exact force lease;
    - fast-forwards `main` to the same SHA.
-5. Slot 2's SHA remains valid after slot 1 lands because it is already a direct
-   child of slot 1. It can become the next head without another validation run.
+5. If the combined fast gate fails, the train binary-searches ordered prefixes,
+   promotes the largest green prefix, and returns the first failing addition to
+   recovery. Later ready PRs remain queued.
+6. A textual conflict removes only that PR from readiness. Recovery performs a
+   conflict-only rebase onto the resulting `main`; the new head reruns heavy PR
+   validation.
 
 The sticky `<!-- crawler-merge-train:v1 -->` PR comment shows queue position,
 candidate SHA, and state.
@@ -70,38 +74,30 @@ Without the App bypass, promotion fails closed after candidate validation.
 
 ## Rollout
 
-The train defaults to `off`.
+One strict boolean controls the complete behavior. There is no partial or
+dry-run train mode.
 
-1. Merge the implementation while `MERGE_TRAIN_MODE` is unset.
-2. Set shadow mode:
-
-   ```bash
-   gh variable set MERGE_TRAIN_MODE --repo nalfeo/Crawler --body dry-run
-   ```
-
-3. Manually label two disposable, same-repository PRs `merge-train`. Confirm the
-   oldest-first plan and candidate fingerprints in workflow output. Dry-run
-   performs no GitHub mutation.
-4. Return to `off`, configure the required check and App bypass, then set:
+1. Merge the implementation while `MERGE_TRAIN_ENABLED=false`.
+2. Configure the required check and App bypass, then set:
 
    ```bash
-   gh variable set MERGE_TRAIN_MODE --repo nalfeo/Crawler --body live
+   gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body true
    ```
 
-5. Run a disposable-PR matrix:
-   - two clean PRs validate cumulatively and merge in order;
+3. Run a disposable-PR matrix:
+   - six clean PRs validate together and merge in order;
    - editing a title or pushing a head invalidates the old candidate;
-   - a cumulative conflict marks the second PR `merge-train-blocked`;
-   - a failed candidate remains queued and never advances `main`;
+   - a cumulative conflict returns only that PR to recovery;
+   - a failed candidate is bisected and the maximal green prefix advances;
    - a `main` race rejects promotion and rebuilds;
    - a failure between PR-head update and main update retries the same tested SHA.
-6. Confirm GitHub records both disposable PRs as merged and that the merge commit
+4. Confirm GitHub records every disposable PR as merged and that the merge commit
    OIDs equal their successful `merge-train` check OIDs.
 
-To stop all mutation:
+To return to the legacy independent-auto-merge and blanket-rebase behavior:
 
 ```bash
-gh variable set MERGE_TRAIN_MODE --repo nalfeo/Crawler --body off
+gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false
 ```
 
 ## Failure handling
@@ -109,10 +105,10 @@ gh variable set MERGE_TRAIN_MODE --repo nalfeo/Crawler --body off
 - **Waiting:** admission checks or review threads are incomplete. CI recovery
   remains responsible for repair.
 - **Blocked:** cumulative squash conflicts. The PR leaves the active queue and
-  receives `merge-train-blocked`, allowing later PRs to proceed. Repair its
-  source branch, rerun normal CI, then remove `merge-train-blocked`; CI recovery
-  will readmit it.
-- **Failed:** inspect the candidate's `Merge Train Validation` run. No ref moves.
+  receives `merge-train-blocked`; recovery rebases it only after the conflict is
+  present on `main`.
+- **Failed:** the train bisects prefixes, promotes the largest green prefix, and
+  returns the first failing addition with `merge-train-validation-failed`.
 - **Stale:** a PR head/title or `main` changed. The candidate is abandoned and a
   new immutable generation is built.
 - **Promotion denied:** verify App bypass and contents-write permissions. Never

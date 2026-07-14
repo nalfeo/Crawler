@@ -78,6 +78,22 @@ const body = [
   `- Head SHA: \`${run.head_sha || 'unknown'}\``,
   `- Run: ${run.html_url}`,
   `- Triggered by: @${run.actor?.login || 'unknown'}`,
+  ...(await (async () => {
+    if (!run.head_sha) return [];
+    const checks = (
+      await request(
+        token,
+        `/repos/${owner}/${repo}/commits/${encodeURIComponent(run.head_sha)}/check-runs?per_page=100`,
+        { headers: { Accept: 'application/vnd.github+json' } },
+      )
+    ).data.check_runs;
+    const promotion = (checks || [])
+      .filter((check) => check.name === 'merge-train')
+      .sort((left, right) => right.id - left.id)[0];
+    return promotion?.output?.summary
+      ? ['', '## Merge-train promotion provenance', '', promotion.output.summary]
+      : [];
+  })()),
   '',
   '@copilot Diagnose this repository-level failure, implement the smallest correct fix on a branch from `main`, run the required verification, open a non-draft PR, and arm squash auto-merge. Do not weaken a gate or explicit requirement.',
 ].join('\n');

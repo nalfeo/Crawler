@@ -17,7 +17,15 @@ import {
 } from './state.mjs';
 import { workflowApprovalRejection, REQUIRED_CHECK_WORKFLOW_PATHS } from './approval.mjs';
 import { graphql, listReviewThreads, paginate, request } from './github.mjs';
-import { resolveAdmissionChecks, unsatisfiedChecks } from '../merge-train/state.mjs';
+import {
+  admissionFingerprint,
+  BLOCKED_LABEL,
+  parseEnabledFlag,
+  QUEUE_LABEL,
+  resolveAdmissionChecks,
+  unsatisfiedChecks,
+  VALIDATION_FAILED_LABEL,
+} from '../merge-train/state.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -30,7 +38,7 @@ const pat = process.env.CRAWLER_CI_PAT || '';
 const readToken = pat || process.env.GITHUB_TOKEN || '';
 const live = mode === 'live';
 const shouldMutate = shouldMutateRecoveryState(mode, operation);
-const mergeTrainMode = (process.env.MERGE_TRAIN_MODE || 'off').toLowerCase();
+const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const now = new Date();
 
@@ -62,11 +70,7 @@ if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
   process.stdout.write(`skip pr=#${prNumber} reason=opt-out\n`);
   process.exit(0);
 }
-if ((pr.labels || []).some((label) => label.name === 'merge-train-blocked')) {
-  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-blocked\n`);
-  process.exit(0);
-}
-if ((pr.labels || []).some((label) => label.name === 'merge-train')) {
+if ((pr.labels || []).some((label) => label.name === QUEUE_LABEL)) {
   process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
   process.exit(0);
 }
@@ -146,10 +150,35 @@ async function acquire(nextOwner, nextLeaseId = null) {
   );
 }
 
+async function removePrLabel(name) {
+  if (!shouldMutate) return;
+  try {
+    await request(
+      pat,
+      `/repos/${owner}/${repo}/issues/${prNumber}/labels/${encodeURIComponent(name)}`,
+      { method: 'DELETE' },
+    );
+  } catch (error) {
+    if (error.status !== 404) throw error;
+  }
+}
+
+async function dispatchWorkflow(workflow, inputs) {
+  if (!live) {
+    process.stdout.write(`dry-run would-dispatch workflow=${workflow} pr=#${prNumber}\n`);
+    return;
+  }
+  await request(readToken, `/repos/${owner}/${repo}/actions/workflows/${workflow}/dispatches`, {
+    method: 'POST',
+    body: { ref: 'main', inputs },
+  });
+}
+
 async function release(reason, nextState = null) {
   if (!labelExists) {
     return;
   }
+
   if (shouldMutate) {
     await request(
       pat,
@@ -291,12 +320,86 @@ for (const thread of unresolvedThreads.filter((candidate) =>
 }
 
 const blockers = [];
-if (pr.mergeable === false || pr.mergeable_state === 'dirty') {
+const hasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
+const labels = new Set((pr.labels || []).map((label) => label.name));
+const trainBlocked = labels.has(BLOCKED_LABEL);
+const validationFailed = labels.has(VALIDATION_FAILED_LABEL);
+if (
+  mergeTrainEnabled &&
+  trainBlocked &&
+  !validationFailed &&
+  !hasMergeConflict &&
+  !trigger.endsWith(':synchronize')
+) {
+  process.stdout.write(`wait pr=#${prNumber} reason=train-conflict-not-on-main\n`);
+  process.exit(0);
+}
+if (mergeTrainEnabled && trainBlocked && trigger.endsWith(':synchronize')) {
+  await removePrLabel(BLOCKED_LABEL);
+  await removePrLabel(VALIDATION_FAILED_LABEL);
+}
+if (
+  mergeTrainEnabled &&
+  hasMergeConflict &&
+  trigger !== 'auto-rebase-conflict' &&
+  state?.headSha === pr.head.sha &&
+  state?.trigger === 'rebase-dispatched'
+) {
+  process.stdout.write(`wait pr=#${prNumber} reason=conflict-rebase-pending\n`);
+  process.exit(0);
+}
+if (
+  mergeTrainEnabled &&
+  hasMergeConflict &&
+  trigger !== 'auto-rebase-conflict' &&
+  !(state?.headSha === pr.head.sha && state?.trigger === 'rebase-dispatched')
+) {
+  const conflictBlocker = {
+    kind: 'merge-conflict',
+    id: pr.head.sha,
+    summary: 'The PR conflicts with main and requires a conflict-only rebase.',
+    url: pr.html_url,
+  };
+  const rebaseState = makeState({
+    prNumber,
+    headSha: pr.head.sha,
+    fingerprint: blockerFingerprint([conflictBlocker]),
+    owner: 'none',
+    status: 'idle',
+    trigger: 'rebase-dispatched',
+    blockers: [conflictBlocker],
+    attempt: state?.attempt || 0,
+    updatedAt: now.toISOString(),
+  });
+  if (labelExists) {
+    await release('rebase-dispatched', rebaseState);
+  } else {
+    await updateState(rebaseState);
+  }
+  await dispatchWorkflow('auto-rebase-prs.yml', {
+    pr_number: String(prNumber),
+    trigger: 'ci-recovery-conflict',
+  });
+  process.stdout.write(`dispatched conflict-only rebase pr=#${prNumber}\n`);
+  process.exit(0);
+}
+if (hasMergeConflict) {
   blockers.push({
     kind: 'merge-conflict',
     id: pr.head.sha,
     summary: 'The PR conflicts with main and must be merged/rebased cleanly onto main.',
     url: pr.html_url,
+  });
+}
+if (validationFailed) {
+  const trainComment = comments.find((comment) =>
+    String(comment.body || '').includes('<!-- crawler-merge-train:v1 -->'),
+  );
+  blockers.push({
+    kind: 'merge-train-validation',
+    id: pr.head.sha,
+    summary: 'This PR was the first failing addition in a bisected merge-train candidate.',
+    url: trainComment?.html_url || pr.html_url,
   });
 }
 
@@ -401,7 +504,17 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
 }
 
 const normalized = normalizeBlockers(blockers);
-const fingerprint = blockerFingerprint(normalized);
+const fingerprint =
+  normalized.length === 0
+    ? admissionFingerprint({
+        headSha: pr.head.sha,
+        title: pr.title,
+        baseRef: pr.base?.ref,
+        checkRuns,
+        requiredNames: mergeTrainAdmissionChecks,
+        reviewThreads: review.threads,
+      })
+    : blockerFingerprint(normalized);
 
 if (normalized.length === 0) {
   const convergedState = makeState({
@@ -426,12 +539,14 @@ if (normalized.length === 0) {
     );
     process.exit(0);
   }
-  if (live && mergeTrainMode === 'live') {
+  if (live && mergeTrainEnabled) {
+    await removePrLabel(BLOCKED_LABEL);
+    await removePrLabel(VALIDATION_FAILED_LABEL);
     try {
       await request(pat, `/repos/${owner}/${repo}/labels`, {
         method: 'POST',
         body: {
-          name: 'merge-train',
+          name: QUEUE_LABEL,
           color: '1f6feb',
           description: 'Ready for the repository-managed merge train',
         },
@@ -441,9 +556,10 @@ if (normalized.length === 0) {
     }
     await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
       method: 'POST',
-      body: { labels: ['merge-train'] },
+      body: { labels: [QUEUE_LABEL] },
     });
     process.stdout.write(`queued merge-train pr=#${prNumber}\n`);
+    await dispatchWorkflow('ci-recovery-router.yml', {});
     process.exit(0);
   }
   if (live) {

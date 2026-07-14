@@ -4,8 +4,11 @@ import test from 'node:test';
 import {
   collectPrNumbers,
   computeBackoffDelayMs,
+  eventPrNumbers,
   isRetryableError,
   requestWithBackoff,
+  recoveryTriggerForPr,
+  isManagedCommentEvent,
 } from './router.mjs';
 
 function makeError(status, message, headerMap = {}) {
@@ -48,6 +51,84 @@ test('collectPrNumbers keeps event-scoped PR dispatch uncapped for non-schedule 
   });
 
   assert.deepEqual(numbers, [42]);
+});
+
+test('train mode schedules only the oldest six non-ready repair candidates', () => {
+  const pulls = Array.from({ length: 9 }, (_, index) => ({
+    number: index + 1,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [],
+  }));
+  pulls[0].labels = [{ name: 'merge-train' }];
+  pulls[2].labels = [{ name: 'ci-owner-pr-3' }];
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'pull_request_target',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [2, 4, 5, 6, 7],
+  );
+});
+
+test('eventPrNumbers identifies only PRs represented by the triggering event', () => {
+  assert.deepEqual([...eventPrNumbers({ pull_request: { number: 42 } })], [42]);
+  assert.deepEqual(
+    [
+      ...eventPrNumbers({
+        workflow_run: { pull_requests: [{ number: 3 }, { number: 5 }] },
+      }),
+    ],
+    [3, 5],
+  );
+  assert.deepEqual([...eventPrNumbers({})], []);
+});
+
+test('train sweeps preserve synchronize only for the directly triggered PR', () => {
+  const directlyTriggeredPrs = new Set([42]);
+  assert.equal(
+    recoveryTriggerForPr({
+      trainEnabled: true,
+      directlyTriggeredPrs,
+      prNumber: 42,
+      eventName: 'pull_request_target',
+      dispatchTrigger: 'pull_request_target:synchronize',
+    }),
+    'pull_request_target:synchronize',
+  );
+  assert.equal(
+    recoveryTriggerForPr({
+      trainEnabled: true,
+      directlyTriggeredPrs,
+      prNumber: 41,
+      eventName: 'pull_request_target',
+      dispatchTrigger: 'pull_request_target:synchronize',
+    }),
+    'pull_request_target:sweep',
+  );
+});
+
+test('managed state, task, and train comments do not feed the recovery router', () => {
+  for (const body of [
+    '<!-- crawler-ci-state:v1 -->\nstate',
+    '<!-- crawler-ci-task:v1 fingerprint=x -->\ntask',
+    '<!-- crawler-merge-train:v1 -->\nstatus',
+  ]) {
+    assert.equal(isManagedCommentEvent({ comment: { body } }, 'issue_comment'), true);
+  }
+  assert.equal(
+    isManagedCommentEvent(
+      { comment: { body: '> <!-- crawler-ci-state:v1 -->\n✅ Addressed in abcdef0' } },
+      'issue_comment',
+    ),
+    false,
+  );
 });
 
 test('isRetryableError only retries relevant HTTP errors', () => {

@@ -261,7 +261,11 @@ test('promoteExactCandidate publishes the required check only after state and re
   });
   assert.equal(promoted, true);
   assert.equal(checkCalls.length, 1);
-  assert.deepEqual(checkCalls[0].slice(2), ['completed', 'success', 'merge-train']);
+  assert.deepEqual(checkCalls[0].slice(2, 5), ['completed', 'success', 'merge-train']);
+  assert.deepEqual(
+    checkCalls[0][5].map((entry) => entry.number),
+    [pr.number],
+  );
   const pushCall = calls.find((call) => call.args[0] === 'push');
   assert.ok(pushCall);
   assert.ok(pushCall.args.includes('--atomic'));
@@ -350,8 +354,8 @@ test('promoteExactCandidate marks the required check failed when the atomic push
     /lease rejected/,
   );
   assert.equal(checkCalls.length, 2);
-  assert.deepEqual(checkCalls[0].slice(2), ['completed', 'success', 'merge-train']);
-  assert.deepEqual(checkCalls[1].slice(2), ['completed', 'failure', 'merge-train']);
+  assert.deepEqual(checkCalls[0].slice(2, 5), ['completed', 'success', 'merge-train']);
+  assert.deepEqual(checkCalls[1].slice(2, 5), ['completed', 'failure', 'merge-train']);
 });
 
 test('trainCheckTitle distinguishes queued, failed, and successful completed checks', () => {

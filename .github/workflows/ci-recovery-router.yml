@@ -26,14 +26,19 @@ jobs:
     if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
     concurrency:
       group: >-
-        ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        ${{ vars.MERGE_TRAIN_ENABLED == 'true'
+          && 'crawler-ci-recovery-router-train'
+          || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
           && 'crawler-ci-recovery-router-sweep'
           || format('crawler-ci-recovery-router-pr-{0}',
                github.event.pull_request.number
                || github.event.issue.number
                || github.event.workflow_run.id
                || github.run_id) }}
-      cancel-in-progress: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+      cancel-in-progress: >-
+        ${{ vars.MERGE_TRAIN_ENABLED != 'true' &&
+            (github.event_name == 'schedule' ||
+             github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -47,5 +52,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RECOVERY_TRIGGER: ${{ github.event_name }}
+          MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
           CI_RECOVERY_MAX_DISPATCH_PER_RUN: ${{ vars.CI_RECOVERY_MAX_DISPATCH_PER_RUN || '8' }}
         run: node .github/scripts/ci-recovery/router.mjs

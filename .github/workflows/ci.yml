@@ -3,10 +3,16 @@ name: CI
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '0 * * * *'
   pull_request:
     branches: [main]
     paths:
       - '**'
+
+permissions:
+  checks: read
+  contents: read
 
 jobs:
   # Job 0: Detect the change scope.
@@ -21,12 +27,15 @@ jobs:
   changes:
     name: Detect change scope
     runs-on: ubuntu-latest
+    if: >-
+      (github.event_name != 'push' || vars.MERGE_TRAIN_ENABLED != 'true') &&
+      (github.event_name != 'schedule' || vars.MERGE_TRAIN_ENABLED == 'true')
     outputs:
-      art_only: ${{ steps.detect.outputs.art_only }}
-      docs_only: ${{ steps.detect.outputs.docs_only }}
-      gameplay_safe: ${{ steps.detect.outputs.gameplay_safe }}
-      sprites_only: ${{ steps.detect.outputs.sprites_only }}
-      sprites_touched: ${{ steps.detect.outputs.sprites_touched }}
+      art_only: ${{ steps.scope.outputs.art_only }}
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+      gameplay_safe: ${{ steps.scope.outputs.gameplay_safe }}
+      sprites_only: ${{ steps.scope.outputs.sprites_only }}
+      sprites_touched: ${{ steps.scope.outputs.sprites_touched }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +46,47 @@ jobs:
         env:
           EVENT_BEFORE: ${{ github.event.before }}
         run: bash scripts/agent/ci/detect-art-only.sh
+
+      - name: Preserve train-promoted head evidence
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          art_only='${{ steps.detect.outputs.art_only }}'
+          docs_only='${{ steps.detect.outputs.docs_only }}'
+          gameplay_safe='${{ steps.detect.outputs.gameplay_safe }}'
+          sprites_only='${{ steps.detect.outputs.sprites_only }}'
+          sprites_touched='${{ steps.detect.outputs.sprites_touched }}'
+
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            art_only=false
+            docs_only=false
+            gameplay_safe=false
+            sprites_only=false
+            sprites_touched=true
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            promotion_checks="$(
+              gh api \
+                "/repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?per_page=100" \
+                --jq '[.check_runs[] | select(
+                  .name == "merge-train" and
+                  .status == "completed" and
+                  .conclusion == "success" and
+                  (.external_id | type == "string" and length > 0)
+                )] | length'
+            )"
+            if [ "$promotion_checks" -gt 0 ]; then
+              docs_only=true
+              echo "Train-promoted head has an attested successful merge-train check."
+            fi
+          fi
+
+          echo "art_only=$art_only" >>"$GITHUB_OUTPUT"
+          echo "docs_only=$docs_only" >>"$GITHUB_OUTPUT"
+          echo "gameplay_safe=$gameplay_safe" >>"$GITHUB_OUTPUT"
+          echo "sprites_only=$sprites_only" >>"$GITHUB_OUTPUT"
+          echo "sprites_touched=$sprites_touched" >>"$GITHUB_OUTPUT"
 
   # Job 1: Type & Lint checks (can run in parallel)
   check-types-and-lint:
@@ -237,7 +287,11 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [changes, test-unit]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true'
+    if: >-
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
+      needs.changes.outputs.art_only != 'true' &&
+      needs.changes.outputs.docs_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -289,6 +343,23 @@ jobs:
     steps:
       - name: Check required jobs
         run: |
+          train_enabled='${{ vars.MERGE_TRAIN_ENABLED || 'false' }}'
+          case "$train_enabled" in
+            true|false) ;;
+            *)
+              echo "❌ MERGE_TRAIN_ENABLED must be exactly true or false"
+              exit 1
+              ;;
+          esac
+          if [ "${{ github.event_name }}" = "push" ] && [ "$train_enabled" = "true" ]; then
+            echo "✅ Main-push heavy CI deferred to the hourly health run"
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$train_enabled" = "false" ]; then
+            echo "✅ Hourly health run disabled with the merge train"
+            exit 0
+          fi
+
           docs_only="${{ needs.changes.outputs.docs_only }}"
 
           check() {

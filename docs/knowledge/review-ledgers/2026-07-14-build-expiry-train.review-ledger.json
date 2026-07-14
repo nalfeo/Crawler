@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-14",
+  "session_slug": "build-expiry-train",
+  "task_title": "Emulate build expiry with bounded reconciliation and merge train",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Adopted CAS-protected head+admission readiness, stable oldest-first six-slot scheduling with active ownership and release resweeps, explicit de-admission on candidate failure, strict single-flag migration, suppression of recovery/train managed comments, and promotion provenance for hourly incidents."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

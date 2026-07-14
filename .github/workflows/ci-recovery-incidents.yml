@@ -3,6 +3,7 @@ name: CI Recovery Incidents
 on:
   workflow_run:
     workflows:
+      - CI
       - Deploy to GitHub Pages
       - Promote to Production
       - Nightly Mutation Testing
@@ -20,6 +21,9 @@ permissions:
 
 jobs:
   route-incident:
+    if: >-
+      github.event.workflow_run.event != 'pull_request' &&
+      (github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'schedule')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

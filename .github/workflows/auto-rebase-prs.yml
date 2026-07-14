@@ -10,10 +10,21 @@ on:
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number for conflict-only rebase when the train is enabled
+        required: false
+        default: ''
+        type: string
+      trigger:
+        description: Rebase dispatch source
+        required: false
+        default: workflow_dispatch
+        type: string
 
 concurrency:
-  group: auto-rebase-prs
-  cancel-in-progress: true
+  group: auto-rebase-prs-${{ vars.MERGE_TRAIN_ENABLED == 'true' && inputs.pr_number || 'legacy' }}
+  cancel-in-progress: ${{ vars.MERGE_TRAIN_ENABLED != 'true' }}
 
 permissions:
   actions: write
@@ -22,7 +33,6 @@ permissions:
 
 jobs:
   rebase-prs:
-    if: ${{ !contains(fromJSON('["true","1","yes","on","TRUE","YES","ON","True","Yes","On"]'), vars.MERGE_QUEUE_ENABLED) }}
     runs-on: ubuntu-latest
     steps:
       - name: Generate app token
@@ -44,13 +54,34 @@ jobs:
         run: |
           set -euo pipefail
 
+          train_enabled='${{ vars.MERGE_TRAIN_ENABLED || 'false' }}'
+          case "$train_enabled" in
+            true|false) ;;
+            *)
+              echo "::error::MERGE_TRAIN_ENABLED must be exactly true or false."
+              exit 1
+              ;;
+          esac
+
           echo "🔄 Fetching active PRs targeting main..."
-          prs_json=$(gh pr list \
-            --repo "$GITHUB_REPOSITORY" \
-            --state open \
-            --base main \
-            --json number,isDraft,headRefName,headRepository,headRepositoryOwner,labels \
-            --jq '[.[] | select(.isDraft == false and ([.labels[].name] | index("merge-train") | not))]')
+          if [ "$train_enabled" = "true" ]; then
+            target_pr='${{ inputs.pr_number }}'
+            if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ -z "$target_pr" ]; then
+              echo "Merge train enabled; blanket rebase sweep disabled."
+              exit 0
+            fi
+            prs_json=$(gh pr view "$target_pr" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json number,isDraft,headRefName,headRepository,headRepositoryOwner,labels \
+              --jq '[.]')
+          else
+            prs_json=$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --base main \
+              --json number,isDraft,headRefName,headRepository,headRepositoryOwner,labels \
+              --jq '[.[] | select(.isDraft == false and ([.labels[].name] | index("merge-train") | not))]')
+          fi
 
           pr_count=$(echo "$prs_json" | jq 'length')
           if [ "$pr_count" -eq 0 ]; then

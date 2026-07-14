@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 
 import { listReviewThreads, paginate, request } from '../ci-recovery/github.mjs';
+import { parseStateComment, STATE_MARKER as RECOVERY_STATE_MARKER } from '../ci-recovery/state.mjs';
 import {
   buildCandidate,
   isMergeTrainConflictError,
@@ -10,9 +11,12 @@ import {
 import {
   BLOCKED_LABEL,
   CANDIDATE_CHECK_NAME,
+  admissionFingerprint,
   candidateFingerprint,
   candidateRef,
-  normalizeMode,
+  MAX_TRAIN_SIZE,
+  nextBisectStep,
+  parseEnabledFlag,
   QUEUE_LABEL,
   queueEntries,
   REQUIRED_CHECK_NAME,
@@ -21,19 +25,19 @@ import {
   STATUS_MARKER,
   successfulChecks,
   trainCheckState,
+  VALIDATION_FAILED_LABEL,
 } from './state.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
 const token = process.env.MERGE_TRAIN_TOKEN || process.env.GITHUB_TOKEN || '';
-const mode = normalizeMode(process.env.MERGE_TRAIN_MODE);
-const live = mode === 'live';
+const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 
 if (!owner || !repo || !token) {
   throw new Error('Merge train requires GITHUB_REPOSITORY and a GitHub token');
 }
-if (mode === 'off') {
+if (!enabled) {
   process.stdout.write('Merge train is disabled\n');
   process.exit(0);
 }
@@ -56,7 +60,6 @@ async function checkRuns(sha) {
 }
 
 async function ensureLabel(name, color, description) {
-  if (!live) return;
   try {
     await request(token, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
@@ -68,7 +71,6 @@ async function ensureLabel(name, color, description) {
 }
 
 async function setLabel(prNumber, name) {
-  if (!live) return;
   await request(token, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
     method: 'POST',
     body: { labels: [name] },
@@ -76,7 +78,6 @@ async function setLabel(prNumber, name) {
 }
 
 async function removeLabel(prNumber, name) {
-  if (!live) return;
   try {
     await request(
       token,
@@ -89,10 +90,6 @@ async function removeLabel(prNumber, name) {
 }
 
 async function updateStatus(prNumber, status) {
-  if (!live) {
-    process.stdout.write(`dry-run pr=#${prNumber} ${status.replace(/\n/g, ' ')}\n`);
-    return;
-  }
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
   const stateComments = comments.filter((comment) =>
     String(comment.body || '').includes(STATUS_MARKER),
@@ -122,7 +119,29 @@ async function eligible(pr) {
   if (review.threads.some((thread) => !thread.isResolved)) {
     return { ok: false, reason: 'unresolved review threads' };
   }
-  return { ok: true };
+  const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
+  const stateComments = comments.filter((comment) =>
+    String(comment.body || '').includes(RECOVERY_STATE_MARKER),
+  );
+  if (stateComments.length !== 1) {
+    return {
+      ok: false,
+      reason: `expected one CI recovery state comment, found ${stateComments.length}`,
+    };
+  }
+  const state = parseStateComment(stateComments[0].body);
+  const fingerprint = admissionFingerprint({
+    headSha: pr.head.sha,
+    title: pr.title,
+    baseRef: pr.base?.ref,
+    checkRuns: runs,
+    requiredNames: requiredAdmissionChecks,
+    reviewThreads: review.threads,
+  });
+  if (state.headSha !== pr.head.sha || state.fingerprint !== fingerprint) {
+    return { ok: false, reason: 'CI recovery admission evidence is stale' };
+  }
+  return { ok: true, fingerprint };
 }
 
 async function createTrainCheck(
@@ -131,8 +150,8 @@ async function createTrainCheck(
   status,
   conclusion = undefined,
   name = CANDIDATE_CHECK_NAME,
+  entries = [],
 ) {
-  if (!live) return;
   await request(token, `/repos/${owner}/${repo}/check-runs`, {
     method: 'POST',
     body: {
@@ -143,15 +162,49 @@ async function createTrainCheck(
       ...(conclusion ? { conclusion } : {}),
       output: {
         title: trainCheckTitle(status, conclusion),
-        summary: `Fingerprint: ${fingerprint}`,
+        summary: [
+          `Fingerprint: ${fingerprint}`,
+          `PR order: ${entries.map((entry) => `#${entry.number}`).join(', ') || 'none'}`,
+        ].join('\n'),
       },
     },
   });
 }
 
+async function dispatchRecovery(prNumber, trigger) {
+  await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
+    method: 'POST',
+    body: {
+      ref: 'main',
+      inputs: {
+        operation: 'reconcile',
+        pr_number: String(prNumber),
+        trigger,
+        lease_id: '',
+      },
+    },
+  });
+}
+
+async function blockEntry(entry, { detail, validationFailure = false }) {
+  await setLabel(entry.number, BLOCKED_LABEL);
+  if (validationFailure) {
+    await setLabel(entry.number, VALIDATION_FAILED_LABEL);
+  }
+  await removeLabel(entry.number, QUEUE_LABEL);
+  await updateStatus(
+    entry.number,
+    renderStatus({
+      position: 0,
+      candidateSha: '',
+      state: 'blocked',
+      detail,
+    }),
+  );
+}
+
 async function dispatchValidation(sha, fingerprint, entries) {
-  if (!live) return;
-  await createTrainCheck(sha, fingerprint, 'in_progress');
+  await createTrainCheck(sha, fingerprint, 'in_progress', undefined, CANDIDATE_CHECK_NAME, entries);
   try {
     await request(
       token,
@@ -176,6 +229,11 @@ async function dispatchValidation(sha, fingerprint, entries) {
 
 await ensureLabel(QUEUE_LABEL, '1f6feb', 'Ready for the repository-managed merge train');
 await ensureLabel(BLOCKED_LABEL, 'd1242f', 'Merge-train candidate needs intervention');
+await ensureLabel(
+  VALIDATION_FAILED_LABEL,
+  'd1242f',
+  'First failing addition isolated by merge-train validation',
+);
 
 const pulls = await paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`);
 const queued = queueEntries(pulls, repository);
@@ -202,7 +260,7 @@ for (const pr of queued) {
   }
 }
 
-const train = admitted.slice(0, 2);
+const train = admitted.slice(0, MAX_TRAIN_SIZE);
 if (train.length === 0) {
   process.stdout.write('No admitted PR is ready for candidate construction\n');
   process.exit(0);
@@ -210,28 +268,21 @@ if (train.length === 0) {
 
 const mainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object
   .sha;
+const candidates = [];
 for (let index = 0; index < train.length; index += 1) {
   const entries = train.slice(0, index + 1);
   const fingerprint = candidateFingerprint(mainSha, entries);
   const refName = candidateRef(index + 1, fingerprint);
   let candidateSha;
   try {
-    candidateSha = buildCandidate({ baseSha: mainSha, entries, refName, git, live });
+    candidateSha = buildCandidate({ baseSha: mainSha, entries, refName, git, live: true });
     await removeLabel(train[index].number, BLOCKED_LABEL);
+    await removeLabel(train[index].number, VALIDATION_FAILED_LABEL);
   } catch (error) {
     if (isMergeTrainConflictError(error)) {
-      await setLabel(train[index].number, BLOCKED_LABEL);
-      await removeLabel(train[index].number, QUEUE_LABEL);
-      await updateStatus(
-        train[index].number,
-        renderStatus({
-          position: index + 1,
-          candidateSha: '',
-          state: 'blocked',
-          detail: error.message,
-        }),
-      );
-      break;
+      await blockEntry(train[index], { detail: error.message });
+      process.stdout.write(`returned conflict pr=#${train[index].number} to reconciliation\n`);
+      process.exit(0);
     }
     await updateStatus(
       train[index].number,
@@ -245,49 +296,34 @@ for (let index = 0; index < train.length; index += 1) {
     process.stdout.write(
       `retryable candidate build failure pr=#${train[index].number} error=${error.message}\n`,
     );
-    break;
+    process.exit(0);
   }
-
-  if (!live) {
-    await updateStatus(
-      train[index].number,
-      renderStatus({
-        position: index + 1,
-        candidateSha,
-        state: 'dry-run',
-        detail: `Would create ${refName} and dispatch validation.`,
-      }),
-    );
-    continue;
-  }
-
   git(['fetch', 'origin', `${refName}:refs/remotes/origin/${refName}`, '--force']);
   const state = trainCheckState(await checkRuns(candidateSha));
-  if (state === 'missing') {
-    await dispatchValidation(candidateSha, fingerprint, entries);
-  }
+  candidates.push({ candidateSha, entries, fingerprint, refName, state });
   await updateStatus(
     train[index].number,
     renderStatus({
       position: index + 1,
       candidateSha,
-      state: state === 'missing' ? 'testing' : state,
-      detail:
-        state === 'failure'
-          ? 'Candidate validation failed; inspect its Merge Train Validation run.'
-          : 'Candidate is immutable and bound to the listed PR revisions.',
+      state,
+      detail: 'Candidate is immutable and bound to the listed PR revisions.',
     }),
   );
-  if (index === 0 && state === 'success') {
-    await promoteExactCandidate({
-      pr: train[0],
-      candidateSha,
-      expectedBase: mainSha,
-      position: 1,
+}
+
+async function promotePrefix(prefixLength) {
+  const provenanceEntries = train.slice(0, prefixLength);
+  for (let index = 0; index < prefixLength; index += 1) {
+    const promoted = await promoteExactCandidate({
+      pr: train[index],
+      candidateSha: candidates[index].candidateSha,
+      expectedBase: index === 0 ? mainSha : candidates[index - 1].candidateSha,
+      position: index + 1,
       repository,
-      live,
+      live: true,
       fetchCurrentPr: async () =>
-        (await request(token, `/repos/${owner}/${repo}/pulls/${train[0].number}`)).data,
+        (await request(token, `/repos/${owner}/${repo}/pulls/${train[index].number}`)).data,
       fetchCurrentMain: async () =>
         (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha,
       eligible,
@@ -296,7 +332,51 @@ for (let index = 0; index < train.length; index += 1) {
       removeLabel,
       updateStatus,
       requiredCheckName: REQUIRED_CHECK_NAME,
+      provenanceEntries,
     });
-    break;
+    if (!promoted) return false;
   }
+  return true;
 }
+
+const fullCandidate = candidates[candidates.length - 1];
+if (fullCandidate.state === 'missing') {
+  await dispatchValidation(
+    fullCandidate.candidateSha,
+    fullCandidate.fingerprint,
+    fullCandidate.entries,
+  );
+  process.stdout.write(`validating combined candidate size=${train.length}\n`);
+  process.exit(0);
+}
+if (fullCandidate.state === 'pending') {
+  process.stdout.write(`waiting combined candidate size=${train.length}\n`);
+  process.exit(0);
+}
+if (fullCandidate.state === 'success') {
+  await promotePrefix(train.length);
+  process.exit(0);
+}
+
+const step = nextBisectStep(candidates.map((candidate) => candidate.state));
+if (step.type === 'validate') {
+  const candidate = candidates[step.prefixLength - 1];
+  if (candidate.state === 'missing') {
+    await dispatchValidation(candidate.candidateSha, candidate.fingerprint, candidate.entries);
+  }
+  process.stdout.write(`bisect validating prefix=${step.prefixLength} total=${train.length}\n`);
+  process.exit(0);
+}
+
+const failingEntry = train[step.failingPrefixLength - 1];
+await blockEntry(failingEntry, {
+  validationFailure: true,
+  detail: `PR #${failingEntry.number} is the first failing addition in the validated prefix.`,
+});
+if (step.greenPrefixLength > 0) {
+  await promotePrefix(step.greenPrefixLength);
+}
+await dispatchRecovery(failingEntry.number, 'merge-train-validation-failure');
+process.stdout.write(
+  `bisect isolated pr=#${failingEntry.number} green_prefix=${step.greenPrefixLength}\n`,
+);

@@ -55,12 +55,13 @@ enforcement toward them rather than lowering the target.
 Protect `main` with the following rules:
 
 - Require all blocking CI checks to pass before merge
-- Require the branch to be up to date with `main` before merging
+- Require current PR-head evidence; base-only movement does not expire a green
+  head when the repository-managed train is enabled
 - **No human review requirement** — merges are approved by passing CI only
 - Block force-pushes and branch deletion on `main`
 - Prefer squash merge or other linear-history-friendly merge settings
 
-When `MERGE_TRAIN_MODE=live`, the repository-managed train supersedes ordinary
+When `MERGE_TRAIN_ENABLED=true`, the repository-managed train supersedes ordinary
 squash auto-merge:
 
 - Require the `merge-train` check so no ordinary/manual path can bypass the
@@ -69,7 +70,11 @@ squash auto-merge:
   auto-merge.
 - Only the repository App may bypass protection, and only to fast-forward
   `main` to the exact validated candidate SHA.
-- Candidate validation runs full verify, headless, e2e, and security gates.
+- Candidate validation runs `verify:fast` plus the targeted security suite; the
+  full functional suite runs hourly on `main`.
+- The reconciler repairs only the six oldest non-ready PRs. A train-detected
+  conflict returns the affected PR for a conflict-only rebase and fresh head
+  validation.
 - See
   [`docs/guides/merge-train.md`](../../guides/merge-train.md) and ADR
   [`0060-repository-managed-speculative-merge-train`](../../knowledge/adr/0060-repository-managed-speculative-merge-train.md).

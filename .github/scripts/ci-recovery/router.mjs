@@ -2,8 +2,15 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
+import { parseEnabledFlag, QUEUE_LABEL } from '../merge-train/state.mjs';
 
 const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
+const REPAIR_WINDOW_SIZE = 6;
+const MANAGED_COMMENT_MARKERS = [
+  '<!-- crawler-ci-state:v1 -->',
+  '<!-- crawler-ci-task:v1',
+  '<!-- crawler-merge-train:v1 -->',
+];
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
@@ -112,20 +119,38 @@ export function collectPrNumbers({
   repository,
   scheduledPulls = [],
   maxDispatchPerRun = DEFAULT_MAX_DISPATCH_PER_RUN,
+  trainEnabled = false,
 }) {
+  if (trainEnabled) {
+    return scheduledPulls
+      .filter(
+        (pullRequest) =>
+          pullRequest.state === 'open' &&
+          !pullRequest.draft &&
+          pullRequest.base?.ref === 'main' &&
+          pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+          !(pullRequest.labels || []).some(
+            (label) => label.name === QUEUE_LABEL || label.name === 'ci-recovery-opt-out',
+          ),
+      )
+      .sort(
+        (left, right) =>
+          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+          left.number - right.number,
+      )
+      .slice(0, REPAIR_WINDOW_SIZE)
+      .filter(
+        (pullRequest) =>
+          !(pullRequest.labels || []).some((label) =>
+            String(label.name || '').startsWith('ci-owner-pr-'),
+          ),
+      )
+      .map((pullRequest) => pullRequest.number);
+  }
   const numbers = new Set();
 
-  function add(value) {
-    const number = Number.parseInt(String(value ?? ''), 10);
-    if (Number.isInteger(number) && number > 0) {
-      numbers.add(number);
-    }
-  }
-
-  add(payload.pull_request?.number);
-  add(payload.issue?.pull_request ? payload.issue.number : null);
-  for (const pullRequest of payload.workflow_run?.pull_requests || []) {
-    add(pullRequest.number);
+  for (const number of eventPrNumbers(payload)) {
+    numbers.add(number);
   }
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
@@ -135,7 +160,10 @@ export function collectPrNumbers({
         !pullRequest.draft &&
         pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
       ) {
-        add(pullRequest.number);
+        const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
+        if (Number.isInteger(number) && number > 0) {
+          numbers.add(number);
+        }
       }
     }
   }
@@ -150,6 +178,41 @@ export function collectPrNumbers({
   return eligible;
 }
 
+export function eventPrNumbers(payload) {
+  const numbers = new Set();
+  function add(value) {
+    const number = Number.parseInt(String(value ?? ''), 10);
+    if (Number.isInteger(number) && number > 0) {
+      numbers.add(number);
+    }
+  }
+
+  add(payload.pull_request?.number);
+  add(payload.issue?.pull_request ? payload.issue.number : null);
+  for (const pullRequest of payload.workflow_run?.pull_requests || []) {
+    add(pullRequest.number);
+  }
+  return numbers;
+}
+
+export function recoveryTriggerForPr({
+  trainEnabled,
+  directlyTriggeredPrs,
+  prNumber,
+  eventName,
+  dispatchTrigger,
+}) {
+  return trainEnabled && !directlyTriggeredPrs.has(prNumber)
+    ? `${eventName}:sweep`
+    : dispatchTrigger;
+}
+
+export function isManagedCommentEvent(payload, eventName) {
+  if (eventName !== 'issue_comment') return false;
+  const body = String(payload.comment?.body || '').trimStart();
+  return MANAGED_COMMENT_MARKERS.some((marker) => body.startsWith(marker));
+}
+
 export async function runFromEnv(env = process.env) {
   const token = env.GITHUB_TOKEN;
   const repository = env.GITHUB_REPOSITORY || '';
@@ -157,6 +220,7 @@ export async function runFromEnv(env = process.env) {
   const eventName = env.GITHUB_EVENT_NAME || '';
   const eventPath = env.GITHUB_EVENT_PATH;
   const trigger = env.RECOVERY_TRIGGER || eventName;
+  const trainEnabled = parseEnabledFlag(env.MERGE_TRAIN_ENABLED);
   const maxDispatchPerRun = parsePositiveInt(
     env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
     DEFAULT_MAX_DISPATCH_PER_RUN,
@@ -167,9 +231,15 @@ export async function runFromEnv(env = process.env) {
   }
 
   const payload = JSON.parse(await readFile(eventPath, 'utf8'));
+  if (isManagedCommentEvent(payload, eventName)) {
+    process.stdout.write('ignored managed automation comment\n');
+    return;
+  }
+  const dispatchTrigger =
+    payload.action && !trigger.includes(':') ? `${trigger}:${payload.action}` : trigger;
 
   let scheduledPulls = [];
-  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+  if (trainEnabled || eventName === 'schedule' || eventName === 'workflow_dispatch') {
     scheduledPulls = await requestWithBackoff(
       () =>
         paginate(
@@ -186,9 +256,18 @@ export async function runFromEnv(env = process.env) {
     repository,
     scheduledPulls,
     maxDispatchPerRun,
+    trainEnabled,
   });
+  const directlyTriggeredPrs = eventPrNumbers(payload);
 
   for (const prNumber of prNumbers) {
+    const prTrigger = recoveryTriggerForPr({
+      trainEnabled,
+      directlyTriggeredPrs,
+      prNumber,
+      eventName,
+      dispatchTrigger,
+    });
     await requestWithBackoff(
       () =>
         request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
@@ -198,14 +277,14 @@ export async function runFromEnv(env = process.env) {
             inputs: {
               operation: 'reconcile',
               pr_number: String(prNumber),
-              trigger,
+              trigger: prTrigger,
               lease_id: '',
             },
           },
         }),
       { label: `dispatch-pr-${prNumber}` },
     );
-    process.stdout.write(`dispatched pr=#${prNumber} trigger=${trigger}\n`);
+    process.stdout.write(`dispatched pr=#${prNumber} trigger=${prTrigger}\n`);
   }
 
   if (prNumbers.length === 0) {
