@@ -137,6 +137,28 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
 }
 
 /**
+ * Determine whether a schedule-triggered CI run executed the full gate or was
+ * a disabled-train no-op. When `MERGE_TRAIN_ENABLED=false`, `ci.yml` gates
+ * the `changes` (Detect change scope) job on the flag, so a scheduled run
+ * with the flag off completes as `success` without running any real CI jobs.
+ * A no-op schedule run is NOT authoritative main-health evidence: after the
+ * flag is re-enabled, it could outrank a genuine failed push and let promotion
+ * proceed from a red `main`.
+ *
+ * `jobs` is the list of workflow-run jobs from the GitHub Actions API
+ * (`GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs`).
+ *
+ * Returns `true` when the run is NOT full-CI evidence (disabled-train no-op
+ * or jobs data is unavailable). Fails closed: if no jobs are returned or the
+ * `changes` job is absent, the run cannot be confirmed as full CI.
+ */
+export function isDisabledTrainScheduleRun(jobs) {
+  if (!jobs || jobs.length === 0) return true;
+  const changesJob = jobs.find((job) => job.name === 'Detect change scope');
+  return !changesJob || changesJob.conclusion === 'skipped';
+}
+
+/**
  * Decide whether main currently has authoritative full-CI ("ci.yml", the
  * `CI` workflow) evidence for the exact SHA it is on right now, considering
  * both hourly `schedule` runs and `push` runs but excluding push runs that

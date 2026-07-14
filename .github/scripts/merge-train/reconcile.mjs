@@ -8,6 +8,7 @@ import {
 } from '../ci-recovery/state.mjs';
 import {
   buildCandidate,
+  isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
@@ -67,6 +68,14 @@ async function checkRuns(sha) {
     { headers: { Accept: 'application/vnd.github+json' } },
   );
   return response.data.check_runs || [];
+}
+
+async function workflowRunJobs(runId) {
+  const response = await request(
+    token,
+    `/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=100`,
+  );
+  return response.data.jobs || [];
 }
 
 async function ensureLabel(name, color, description) {
@@ -214,10 +223,21 @@ async function mainHealthAllowsPromotion() {
       `/repos/${owner}/${repo}/actions/workflows/ci.yml/runs?event=push&branch=main&per_page=${MAIN_HEALTH_PUSH_RUN_LOOKBACK}`,
     ),
   ]);
-  const scheduleRuns = (scheduleResponse.data.workflow_runs || []).map((run) => ({
-    ...run,
-    isTrainFastPath: false,
-  }));
+  const scheduleRuns = [];
+  for (const run of scheduleResponse.data.workflow_runs || []) {
+    if (run.head_sha !== currentMainSha) {
+      // Runs for other SHAs are filtered by mainHealthReason; no need to
+      // fetch jobs for them.
+      scheduleRuns.push({ ...run, isTrainFastPath: false });
+      continue;
+    }
+    // For schedule runs on the current main SHA, verify they ran the full CI
+    // gate. When MERGE_TRAIN_ENABLED=false, ci.yml skips the `changes` job on
+    // schedule events, so the run completes as success without real CI work.
+    // Such a no-op run must not be treated as authoritative health evidence.
+    const jobs = await workflowRunJobs(run.id);
+    scheduleRuns.push({ ...run, isTrainFastPath: isDisabledTrainScheduleRun(jobs) });
+  }
   const candidatePushRuns = (pushResponse.data.workflow_runs || []).filter(
     (run) => run.head_sha === currentMainSha,
   );

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   buildCandidate,
+  isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
@@ -658,4 +659,60 @@ test('trainCheckTitle distinguishes queued, failed, and successful completed che
   assert.equal(trainCheckTitle('in_progress'), 'Merge-train validation queued');
   assert.equal(trainCheckTitle('completed', 'failure'), 'Merge-train validation could not start');
   assert.equal(trainCheckTitle('completed', 'success'), 'Candidate promoted to main');
+});
+
+test('isDisabledTrainScheduleRun returns false when Detect change scope ran successfully', () => {
+  const jobs = [
+    { name: 'Detect change scope', conclusion: 'success' },
+    { name: 'build', conclusion: 'success' },
+  ];
+  assert.equal(isDisabledTrainScheduleRun(jobs), false);
+});
+
+test('isDisabledTrainScheduleRun returns true when Detect change scope was skipped (disabled-train run)', () => {
+  const jobs = [
+    { name: 'Detect change scope', conclusion: 'skipped' },
+    { name: 'build', conclusion: 'skipped' },
+  ];
+  assert.equal(isDisabledTrainScheduleRun(jobs), true);
+});
+
+test('isDisabledTrainScheduleRun fails closed when jobs list is empty', () => {
+  assert.equal(isDisabledTrainScheduleRun([]), true);
+  assert.equal(isDisabledTrainScheduleRun(null), true);
+  assert.equal(isDisabledTrainScheduleRun(undefined), true);
+});
+
+test('isDisabledTrainScheduleRun fails closed when Detect change scope job is absent', () => {
+  // Jobs were returned but the expected changes-scope job is missing;
+  // cannot confirm full CI ran, so treat as not authoritative.
+  const jobs = [{ name: 'build', conclusion: 'success' }];
+  assert.equal(isDisabledTrainScheduleRun(jobs), true);
+});
+
+test('mainHealthReason fails closed when latest schedule run is a disabled-train no-op', () => {
+  // A schedule run with isTrainFastPath:true (disabled-train no-op) must not
+  // count as authoritative evidence; the circuit breaker must still fail closed.
+  assert.match(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [makeCiRun({ event: 'schedule', isTrainFastPath: true })],
+    }),
+    /no full-CI evidence yet for current main/,
+  );
+});
+
+test('mainHealthReason allows promotion when a non-no-op schedule run is green', () => {
+  // A disabled-train no-op schedule run (isTrainFastPath:true) alongside a real
+  // enabled-train schedule run (isTrainFastPath:false, green) → allows promotion.
+  assert.equal(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [
+        makeCiRun({ event: 'schedule', isTrainFastPath: true }),
+        makeCiRun({ event: 'schedule', isTrainFastPath: false }),
+      ],
+    }),
+    null,
+  );
 });
