@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
@@ -9,6 +9,7 @@ import {
   type SpriteCatalogEntry,
   type SpriteCatalogRecord,
 } from '../../src/shared/sprite-catalog.js';
+import { writeCatalogJson } from './catalog-io.js';
 
 export const DEFAULT_CATALOG_PATH = 'src/shared/data/sprite-catalog.json';
 export const DEFAULT_MIN_SCORE = 70;
@@ -518,10 +519,6 @@ export async function resolveProvider(mode: MetadataProviderMode): Promise<Metad
   return createHeuristicProvider();
 }
 
-function toStableJson(catalog: SpriteCatalog): string {
-  return `${JSON.stringify(catalog, null, 2)}\n`;
-}
-
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const provider = await resolveProvider(args.provider);
@@ -550,7 +547,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  writeFileSync(absoluteCatalogPath, toStableJson(result.updated), 'utf-8');
+  await writeCatalogJson(absoluteCatalogPath, result.updated);
 }
 
 const entry = process.argv[1];

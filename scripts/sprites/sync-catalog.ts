@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -15,6 +15,7 @@ import {
   type SpriteCatalogRecord,
   type SpriteSheetCatalogEntry,
 } from '../../src/shared/sprite-catalog.js';
+import { formatCatalogJsonToString, writeCatalogJson } from './catalog-io.js';
 
 const DEFAULT_CATALOG_PATH = 'src/shared/data/sprite-catalog.json';
 
@@ -110,10 +111,6 @@ function normalizeCatalog(raw: unknown): SpriteCatalog {
   return parseSpriteCatalog(raw);
 }
 
-function toStableJson(records: SpriteCatalog): string {
-  return `${JSON.stringify(records, null, 2)}\n`;
-}
-
 export function syncCatalog(
   existingRaw: unknown,
   sheets: readonly SpriteSheetDef[],
@@ -163,14 +160,16 @@ export function syncCatalog(
   return parseSpriteCatalog(next);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const outputPath = resolve(args.outPath);
   const exists = existsSync(outputPath);
   const rawExisting = exists ? JSON.parse(readFileSync(outputPath, 'utf-8')) : [];
   const next = syncCatalog(rawExisting, SHEETS, SPRITES, { prune: args.prune });
 
-  const nextJson = toStableJson(next);
+  // Compare against the Prettier-formatted representation so the check and
+  // write paths both use the same canonical output format.
+  const nextJson = await formatCatalogJsonToString(outputPath, next);
   const currentJson = exists ? readFileSync(outputPath, 'utf-8') : '';
   const changed = nextJson !== currentJson;
 
@@ -187,11 +186,11 @@ function main(): void {
     return;
   }
 
-  writeFileSync(outputPath, nextJson, 'utf-8');
+  await writeCatalogJson(outputPath, next);
   process.stdout.write(`Updated sprite catalog: ${args.outPath}\n`);
 }
 
 const entry = process.argv[1];
 if (entry && import.meta.url === pathToFileURL(entry).href) {
-  main();
+  void main();
 }
