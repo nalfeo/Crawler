@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   buildCandidate,
+  buildDispatchBindings,
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
   isDisabledTrainScheduleRun,
@@ -240,6 +241,14 @@ test('live Actions runs require separate promotion and workflow-dispatch tokens'
       }),
     /requires GITHUB_TOKEN for workflow dispatch/,
   );
+  assert.throws(
+    () =>
+      resolveMergeTrainTokens({
+        GITHUB_ACTIONS: 'true',
+        GITHUB_TOKEN: 'actions-token',
+      }),
+    /requires MERGE_TRAIN_TOKEN for promotion/,
+  );
 });
 
 test('workflow dispatch helpers use the Actions token for recovery and validation', async () => {
@@ -266,6 +275,33 @@ test('workflow dispatch helpers use the Actions token for recovery and validatio
   });
   assert.equal(calls.length, 2);
   assert.ok(calls.every((call) => call.token === 'actions-token'));
+  assert.match(calls[0].path, /ci-recovery\.yml\/dispatches$/);
+  assert.match(calls[1].path, /merge-train-validate\.yml\/dispatches$/);
+});
+
+test('buildDispatchBindings routes both dispatch calls to workflowDispatchToken not promotionToken', async () => {
+  // This wiring test ensures that when reconcile.mjs creates dispatch
+  // functions via buildDispatchBindings, both calls use workflowDispatchToken
+  // (GITHUB_TOKEN) rather than the App promotion token (MERGE_TRAIN_TOKEN).
+  // If the binding were accidentally changed to forward the promotion token,
+  // this test would fail while the helpers-only test above would remain green.
+  const calls = [];
+  const request = async (token, path, options) => {
+    calls.push({ token, path, options });
+  };
+  const { dispatchRecovery, dispatchValidation } = buildDispatchBindings({
+    request,
+    workflowDispatchToken: 'actions-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+  });
+  await dispatchRecovery(42, 'merge-train-validation-failure');
+  await dispatchValidation(candidateSha, 'fingerprint', [makePr()]);
+  assert.equal(calls.length, 2);
+  assert.ok(
+    calls.every((call) => call.token === 'actions-token'),
+    'both dispatch calls must forward workflowDispatchToken',
+  );
   assert.match(calls[0].path, /ci-recovery\.yml\/dispatches$/);
   assert.match(calls[1].path, /merge-train-validate\.yml\/dispatches$/);
 });

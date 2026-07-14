@@ -481,3 +481,37 @@ export async function promoteExactBatch({
   );
   return true;
 }
+
+/**
+ * Create dispatch functions bound to `workflowDispatchToken` (GITHUB_TOKEN).
+ * Both recovery and validation workflow dispatches must use the built-in
+ * Actions token rather than the repository App promotion token; using the
+ * App token causes 403 responses on workflow_dispatch endpoints. Binding the
+ * token through this factory makes the routing unit-testable: a test can
+ * verify that the returned functions always forward `workflowDispatchToken`
+ * to the underlying helpers regardless of what other tokens are in scope.
+ */
+export function buildDispatchBindings({ request, workflowDispatchToken, owner, repo }) {
+  async function dispatchRecovery(prNumber, trigger) {
+    await dispatchRecoveryWorkflow({
+      request,
+      token: workflowDispatchToken,
+      owner,
+      repo,
+      prNumber,
+      trigger,
+    });
+  }
+  async function dispatchValidation(sha, fingerprint, entries) {
+    await dispatchValidationWorkflow({
+      request,
+      token: workflowDispatchToken,
+      owner,
+      repo,
+      sha,
+      fingerprint,
+      entries,
+    });
+  }
+  return { dispatchRecovery, dispatchValidation };
+}
