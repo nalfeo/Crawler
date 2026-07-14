@@ -65,7 +65,7 @@ ci-policy
 
 ## Validation
 
-- Automation harness: 88 tests total; 76 passed and up to 12 explicitly
+- Automation harness: 91 tests total; 77 passed and up to 14 explicitly
   skipped for the known Windows `UV_HANDLE_CLOSING` subprocess shutdown
   assertion (skip count varies per run since the underlying libuv race is
   non-deterministic); 0 failed. Linux CI executes every subprocess assertion

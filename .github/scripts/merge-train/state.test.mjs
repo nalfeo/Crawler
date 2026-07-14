@@ -37,6 +37,17 @@ test('parses the single merge-train flag and rejects ambiguous values', () => {
   assert.throws(() => parseEnabledFlag('dry-run'), /must be true or false/);
 });
 
+test('rejects whitespace-padded flag values instead of silently trimming them', () => {
+  // A value like " true " must not enable the JS reconcilers while YAML
+  // (`vars.MERGE_TRAIN_ENABLED == 'true'`) and shell (`[ "$X" = "true" ]`)
+  // guards reject it — every layer must agree on the same exact string.
+  assert.throws(() => parseEnabledFlag(' true'), /must be true or false/);
+  assert.throws(() => parseEnabledFlag('true '), /must be true or false/);
+  assert.throws(() => parseEnabledFlag(' true '), /must be true or false/);
+  assert.throws(() => parseEnabledFlag('\ttrue\n'), /must be true or false/);
+  assert.throws(() => parseEnabledFlag(' false '), /must be true or false/);
+});
+
 test('managed state markers must lead the comment instead of appearing in a quote', () => {
   assert.equal(hasLeadingMarker('  <!-- state -->\nbody', '<!-- state -->'), true);
   assert.equal(hasLeadingMarker('> <!-- state -->\nreply', '<!-- state -->'), false);

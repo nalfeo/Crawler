@@ -455,6 +455,169 @@ test('scheduled sweep clears stale train labels when persisted state head differ
   );
 });
 
+test('train mode persists a converged state comment before queuing a clean PR with no prior comment', async (t) => {
+  // A PR that never needed a recovery owner (all required checks pass on the
+  // very first reconcile) has no pre-existing state comment. merge-train's
+  // eligible() requires exactly one CI-recovery state comment before it will
+  // admit a PR, so reconcile must create that comment before attaching the
+  // queue label below, or the very next train reconciliation would de-admit
+  // this PR as stale and redispatch it forever.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /queued merge-train pr=#42/);
+  const commentPost = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+  );
+  assert.ok(
+    commentPost,
+    'reconcile must persist a converged state comment for a label-free, comment-free PR once its required checks pass',
+  );
+  const commentPostIndex = mutatingCalls.indexOf(commentPost);
+  const queueLabelIndex = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+  );
+  assert.ok(queueLabelIndex >= 0, 'expected the PR to be labeled for the merge train');
+  assert.ok(
+    commentPostIndex < queueLabelIndex,
+    'the state comment must be persisted before the queue label is attached',
+  );
+});
+
+test('synchronize sweep does not immediately recreate a stale merge-train-noop blocker it just cleared', async (t) => {
+  // The PR previously carried merge-train-blocked + merge-train-noop (the
+  // train decided its squash diff was already in the base). A new
+  // synchronize event means the head moved past that judgment. The cleanup
+  // branch removes all three train labels via the API, but `trainNoop` /
+  // `validationFailed` were captured from the labels the PR had when this
+  // run started -- if reconcile doesn't also reset those in-memory flags, the
+  // very next lines would re-push the same merge-train-noop blocker for the
+  // newly synchronized head instead of letting it revalidate cleanly.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        mergeable: true,
+        mergeable_state: 'clean',
+        labels: [{ name: 'merge-train-blocked' }, { name: 'merge-train-noop' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'pull_request_target:synchronize',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  for (const label of [
+    'merge-train-blocked',
+    'merge-train-noop',
+    'merge-train-validation-failed',
+  ]) {
+    assert.equal(
+      mutatingCalls.some(
+        (call) =>
+          call.method === 'DELETE' &&
+          call.url ===
+            `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(label)}`,
+      ),
+      true,
+      `expected the stale ${label} label to be cleared on synchronize`,
+    );
+  }
+  assert.match(
+    stdout,
+    /queued merge-train pr=#42/,
+    'clearing the stale noop label must let the newly synchronized head revalidate and queue cleanly, not immediately recreate the same blocker',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/labels` &&
+        call.body?.name === LABEL,
+    ),
+    false,
+    'a stale in-memory noop/validation-failed flag must not cause reconcile to acquire a recovery-owner label for the new head',
+  );
+});
+
 test('legacy mode removes train labels without recursive cleanup', async (t) => {
   const trainLabels = [
     'merge-train',
