@@ -73,6 +73,24 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Docs loop (local)       | `npm run docs:check`               |
 | Security loop           | `npm run security:check`           |
 | Health loop             | `npm run health:check`             |
+| Build + typecheck src   | `npm run build:typed`              |
+| Typecheck src only      | `npm run typecheck:src`            |
+| Lint with cache         | `npm run lint:cache`               |
+| Lint core layer         | `npm run lint:core`                |
+| Lint game layer         | `npm run lint:game`                |
+| Lint engine layer       | `npm run lint:engine`              |
+| Lint labs layer         | `npm run lint:labs`                |
+| Changed unit tests      | `npm run test:changed`             |
+| Headless tests          | `npm run test:headless`            |
+| AI headless runner      | `npm run ai:headless`              |
+| Sprite enqueue          | `npm run sprites:enqueue`          |
+| Flash verify            | `npm run verify:flash`             |
+| Verify core layer       | `npm run verify:core`              |
+| Verify game layer       | `npm run verify:game`              |
+| Verify engine layer     | `npm run verify:engine`            |
+| Verify labs layer       | `npm run verify:labs`              |
+| Perf baseline           | `npm run perf:baseline`            |
+| Benchmarks              | `npm run bench`                    |
 
 For sprite workflow details and when to use sprite commands, see
 `scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.
