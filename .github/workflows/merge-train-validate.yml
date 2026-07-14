@@ -33,83 +33,64 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts
-      - name: Validate final commit subject
-        run: git log -1 --pretty=%s | npx commitlint --config commitlint.title.config.cjs --verbose
-      - name: Full repository verification
-        run: npm run verify
-
-  headless:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.candidate_sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm ci --ignore-scripts
-      - run: npm run test:headless
-
-  e2e:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.candidate_sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm ci --ignore-scripts
-      - run: npx playwright install chromium
-      - run: npm run test:e2e
-
-  security:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.candidate_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: npm ci --ignore-scripts
-      - run: npm run security:check
+      - name: Fast integration verification
+        run: npm run verify:fast
+      - name: Combined-candidate security verification
+        run: npm run security:check
 
   publish:
     if: always()
-    needs: [verify, headless, e2e, security]
+    needs: [verify]
     runs-on: ubuntu-latest
     permissions:
       checks: write
       contents: read
     steps:
+      - name: Generate repository app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Publish immutable candidate result
         uses: actions/github-script@v7
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           FINGERPRINT: ${{ inputs.fingerprint }}
           PR_NUMBERS: ${{ inputs.pr_numbers }}
-          PASSED: ${{ needs.verify.result == 'success' && needs.headless.result == 'success' && needs.e2e.result == 'success' && needs.security.result == 'success' }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const passed = process.env.PASSED === 'true';
+            // `needs.verify.result` is one of: success, failure, cancelled, skipped
+            // (a timed-out job also surfaces here as `cancelled`, per GitHub Actions).
+            // Only an executed `failure` reflects a real candidate defect. Everything
+            // else -- the job being cancelled, skipped (e.g. a superseding push
+            // cancelled this run's concurrency group), or timing out -- is an
+            // infrastructure/scheduling outcome, not proof the candidate's code is
+            // broken. Publish those as `cancelled` (mirroring the dispatch-failure
+            // path in reconcile.mjs) so trainCheckState() treats them as retryable
+            // ("missing") instead of bisecting the train as if the code failed CI.
+            const verifyResult = process.env.VERIFY_RESULT;
+            const conclusion = verifyResult === 'success' ? 'success'
+              : verifyResult === 'failure' ? 'failure'
+              : 'cancelled';
+            const title = conclusion === 'success'
+              ? 'Merge-train candidate passed'
+              : conclusion === 'failure'
+                ? 'Merge-train candidate failed'
+                : `Merge-train candidate validation was not completed (verify result: ${verifyResult})`;
             await github.rest.checks.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               name: 'merge-train-candidate',
               head_sha: process.env.CANDIDATE_SHA,
               status: 'completed',
-              conclusion: passed ? 'success' : 'failure',
+              conclusion,
               external_id: process.env.FINGERPRINT,
               output: {
-                title: passed ? 'Merge-train candidate passed' : 'Merge-train candidate failed',
+                title,
                 summary: `PR order: ${process.env.PR_NUMBERS}\nFingerprint: ${process.env.FINGERPRINT}`,
               },
             });

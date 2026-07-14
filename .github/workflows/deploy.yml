@@ -34,7 +34,8 @@ jobs:
       cancel-in-progress: true
     if: >
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     environment:
       name: github-pages
       url: ${{ steps.deploy-url.outputs.page_url }}
@@ -263,12 +264,22 @@ jobs:
     name: Baseline win-rate sweep (100 seeds)
     runs-on: ubuntu-latest
     needs: deploy
-    # Only baseline what we actually released to Pages. On manual dispatches
-    # this always runs post-deploy; on the CI workflow_run trigger, deploy only
-    # runs when CI succeeded, so `needs: deploy` is sufficient.
+    # Only baseline what we actually released to Pages. `needs: deploy` alone
+    # is NOT sufficient here: GitHub Actions does not cascade-skip a job with
+    # its own explicit `if:` just because a job it `needs` was skipped -- that
+    # only happens automatically for the default (`success()`) condition, or
+    # if this expression itself checked `needs.deploy.result`. Since the
+    # `deploy` job above is skipped (not failed) on scheduled/non-push CI
+    # completions, this job's old condition (checking only
+    # `workflow_run.conclusion == 'success'`) would still evaluate true and
+    # run a real 100-seed sweep every time hourly main-health CI succeeds,
+    # even though nothing was deployed. Require the exact same push-only gate
+    # as `deploy` so both jobs are skipped identically on non-push
+    # invocations.
     if: >
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
     timeout-minutes: 120
     # A job-level permissions block replaces the workflow default entirely, so
     # these are NOT inherited and must be listed explicitly. `gh pr comment` on

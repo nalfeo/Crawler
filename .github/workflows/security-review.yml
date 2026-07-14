@@ -11,6 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  checks: read
   contents: read
   issues: write
 
@@ -20,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
+      train_promoted: ${{ steps.scope.outputs.train_promoted }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,12 +35,44 @@ jobs:
 
       - name: Normalize docs-only scope
         id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           docs_only='${{ steps.detect.outputs.docs_only }}'
+          train_promoted='false'
           if [ '${{ github.event_name }}' != 'pull_request' ]; then
             docs_only='false'
+          else
+            # Only trust promotion provenance while the merge train is
+            # actually enabled, so rollback (MERGE_TRAIN_ENABLED=false)
+            # restores full security checks even if a leftover "merge-train"
+            # check-run is still present on the head.
+            if [ "${{ vars.MERGE_TRAIN_ENABLED }}" = "true" ]; then
+              promotion_checks="$(
+                gh api \
+                  "/repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?per_page=100" |
+                  jq --arg app_id "$MERGE_TRAIN_APP_ID" \
+                  '($app_id | tonumber?) as $trusted_id |
+                    ([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
+                    if ($check != null and
+                        $check.status == "completed" and
+                        $check.conclusion == "success" and
+                        $trusted_id != null and
+                        $check.app.id == $trusted_id and
+                        ($check.external_id | type == "string" and test("^[0-9a-f]{64}$")))
+                    then 1 else 0 end'
+              )"
+              if [ "$promotion_checks" -gt 0 ]; then
+                docs_only='true'
+                train_promoted='true'
+                echo "Train-promoted head has an attested successful merge-train check."
+              fi
+            fi
           fi
           echo "docs_only=${docs_only}" >>"$GITHUB_OUTPUT"
+          echo "train_promoted=${train_promoted}" >>"$GITHUB_OUTPUT"
 
   # All six security checks consolidated into one job to reduce runner-slot
   # consumption (previously each check spun up its own runner and paid full
@@ -55,10 +89,12 @@ jobs:
         run: echo "Docs-only PR change; skipping src-scoped security checks."
 
       - uses: actions/checkout@v4
+        if: needs.changes.outputs.train_promoted != 'true'
         with:
           fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
+        if: needs.changes.outputs.train_promoted != 'true'
 
       - name: npm audit
         if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
@@ -66,7 +102,7 @@ jobs:
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: Scan for committed secrets
-        if: ${{ !cancelled() }}
+        if: ${{ needs.changes.outputs.train_promoted != 'true' && !cancelled() }}
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-scan-secrets -- bash scripts/agent/security/scan-secrets.sh
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 

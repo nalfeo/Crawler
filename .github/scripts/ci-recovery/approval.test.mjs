@@ -32,9 +32,10 @@ test('skips same-repository CI workflows only after validating pull-request even
     rejection({ path: '.github/workflows/ci.yml', event: 'pull_request' }),
     'same-repository',
   );
+  // commit-lint was removed in PR #1109; its workflow path is no longer in the allowlist.
   assert.equal(
     rejection({ path: '.github/workflows/commit-lint.yml', event: 'pull_request_target' }),
-    'same-repository',
+    'not-in-allowlist',
   );
 });
 
@@ -135,14 +136,15 @@ test('applies the same policy to rerun attempts', () => {
 test('REQUIRED_CHECK_WORKFLOW_PATHS contains exactly the admission-required CI check paths', () => {
   // This export is the source of truth used by reconcile.mjs to distinguish
   // required-check escalation blockers from non-required infrastructure runs.
+  // commit-lint was removed in PR #1109; only ci.yml remains admission-required.
   assert.ok(
     REQUIRED_CHECK_WORKFLOW_PATHS instanceof Set,
     'REQUIRED_CHECK_WORKFLOW_PATHS must be a Set',
   );
   assert.ok(REQUIRED_CHECK_WORKFLOW_PATHS.has('.github/workflows/ci.yml'), 'must include ci.yml');
   assert.ok(
-    REQUIRED_CHECK_WORKFLOW_PATHS.has('.github/workflows/commit-lint.yml'),
-    'must include commit-lint.yml',
+    !REQUIRED_CHECK_WORKFLOW_PATHS.has('.github/workflows/commit-lint.yml'),
+    'must NOT include commit-lint.yml (removed in PR #1109)',
   );
   // The CI Recovery Router is a non-required infrastructure workflow and must
   // NOT be in this set (its action_required status is logged and skipped).
@@ -152,7 +154,7 @@ test('REQUIRED_CHECK_WORKFLOW_PATHS contains exactly the admission-required CI c
   );
   assert.equal(
     REQUIRED_CHECK_WORKFLOW_PATHS.size,
-    2,
-    'must contain exactly two entries (ci.yml and commit-lint.yml)',
+    1,
+    'must contain exactly one entry (ci.yml)',
   );
 });

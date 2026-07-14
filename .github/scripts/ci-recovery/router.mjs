@@ -2,11 +2,35 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
+import {
+  BLOCKED_LABEL,
+  NOOP_LABEL,
+  parseEnabledFlag,
+  QUEUE_LABEL,
+  VALIDATION_FAILED_LABEL,
+} from '../merge-train/state.mjs';
 
 const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
+const REPAIR_WINDOW_SIZE = 6;
+const MANAGED_COMMENT_MARKERS = [
+  '<!-- crawler-ci-state:v1 -->',
+  '<!-- crawler-ci-task:v1',
+  '<!-- crawler-merge-train:v1 -->',
+];
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
+// Labels owned by merge-train automation that must be drained during
+// flag-off cleanup before legacy routing resumes normal operation. A PR that
+// still carries one of these after MERGE_TRAIN_ENABLED=false needs the
+// flag-off cleanup sweep in ci-recovery/reconcile.mjs to remove it before the
+// PR can return to legacy automation. See collectPrNumbers() below.
+const TRAIN_OWNED_LABELS = new Set([
+  QUEUE_LABEL,
+  BLOCKED_LABEL,
+  NOOP_LABEL,
+  VALIDATION_FAILED_LABEL,
+]);
 
 function parsePositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw ?? ''), 10);
@@ -112,9 +136,90 @@ export function collectPrNumbers({
   repository,
   scheduledPulls = [],
   maxDispatchPerRun = DEFAULT_MAX_DISPATCH_PER_RUN,
+  trainEnabled = false,
 }) {
-  const numbers = new Set();
+  if (trainEnabled) {
+    const directlyTriggeredPrs = eventPrNumbers(payload);
+    return scheduledPulls
+      .filter(
+        (pullRequest) =>
+          pullRequest.state === 'open' &&
+          !pullRequest.draft &&
+          pullRequest.base?.ref === 'main' &&
+          pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
+          !(pullRequest.labels || []).some(
+            (label) => label.name === QUEUE_LABEL || label.name === 'ci-recovery-opt-out',
+          ),
+      )
+      .sort(
+        (left, right) =>
+          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+          left.number - right.number,
+      )
+      .slice(0, REPAIR_WINDOW_SIZE)
+      .filter(
+        (pullRequest) =>
+          directlyTriggeredPrs.has(pullRequest.number) ||
+          eventName === 'schedule' ||
+          eventName === 'workflow_dispatch' ||
+          !(pullRequest.labels || []).some((label) =>
+            String(label.name || '').startsWith('ci-owner-pr-'),
+          ),
+      )
+      .map((pullRequest) => pullRequest.number);
+  }
+  const directNumbers = eventPrNumbers(payload);
+  const numbers = new Set(directNumbers);
+  // PRs still carrying a train-owned label after flag-off. These must not be
+  // starved by the dispatch cap below: the flag-off cleanup in
+  // ci-recovery/reconcile.mjs only runs for PRs it actually receives, so an
+  // unbounded backlog of newly-updated PRs could otherwise keep pushing an
+  // older, still-labeled PR past the cap on every sweep (never cleaned up).
+  const trainLabeledNumbers = new Set();
 
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+    const normalizedRepo = repository.toLowerCase();
+    for (const pullRequest of scheduledPulls) {
+      if (
+        !pullRequest.draft &&
+        pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
+      ) {
+        const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
+        if (Number.isInteger(number) && number > 0) {
+          numbers.add(number);
+          if (hasTrainOwnedLabel(pullRequest)) {
+            trainLabeledNumbers.add(number);
+          }
+        }
+      }
+    }
+  }
+
+  const eligible = [...numbers];
+  if (
+    (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
+    eligible.length > maxDispatchPerRun
+  ) {
+    // Prioritize PRs the event directly named plus any still carrying a
+    // train-owned label so the flag-off cleanup sweep completes for them
+    // before the cap is spent on unrelated recently-updated PRs.
+    const prioritized = eligible.filter(
+      (number) => directNumbers.has(number) || trainLabeledNumbers.has(number),
+    );
+    const remaining = eligible.filter(
+      (number) => !directNumbers.has(number) && !trainLabeledNumbers.has(number),
+    );
+    return [...prioritized, ...remaining].slice(0, maxDispatchPerRun);
+  }
+  return eligible;
+}
+
+function hasTrainOwnedLabel(pullRequest) {
+  return (pullRequest.labels || []).some((label) => TRAIN_OWNED_LABELS.has(label.name));
+}
+
+export function eventPrNumbers(payload) {
+  const numbers = new Set();
   function add(value) {
     const number = Number.parseInt(String(value ?? ''), 10);
     if (Number.isInteger(number) && number > 0) {
@@ -127,27 +232,25 @@ export function collectPrNumbers({
   for (const pullRequest of payload.workflow_run?.pull_requests || []) {
     add(pullRequest.number);
   }
+  return numbers;
+}
 
-  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
-    const normalizedRepo = repository.toLowerCase();
-    for (const pullRequest of scheduledPulls) {
-      if (
-        !pullRequest.draft &&
-        pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
-      ) {
-        add(pullRequest.number);
-      }
-    }
-  }
+export function recoveryTriggerForPr({
+  trainEnabled,
+  directlyTriggeredPrs,
+  prNumber,
+  eventName,
+  dispatchTrigger,
+}) {
+  return trainEnabled && !directlyTriggeredPrs.has(prNumber)
+    ? `${eventName}:sweep`
+    : dispatchTrigger;
+}
 
-  const eligible = [...numbers];
-  if (
-    (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
-    eligible.length > maxDispatchPerRun
-  ) {
-    return eligible.slice(0, maxDispatchPerRun);
-  }
-  return eligible;
+export function isManagedCommentEvent(payload, eventName) {
+  if (eventName !== 'issue_comment') return false;
+  const body = String(payload.comment?.body || '').trimStart();
+  return MANAGED_COMMENT_MARKERS.some((marker) => body.startsWith(marker));
 }
 
 export async function runFromEnv(env = process.env) {
@@ -157,6 +260,7 @@ export async function runFromEnv(env = process.env) {
   const eventName = env.GITHUB_EVENT_NAME || '';
   const eventPath = env.GITHUB_EVENT_PATH;
   const trigger = env.RECOVERY_TRIGGER || eventName;
+  const trainEnabled = parseEnabledFlag(env.MERGE_TRAIN_ENABLED);
   const maxDispatchPerRun = parsePositiveInt(
     env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
     DEFAULT_MAX_DISPATCH_PER_RUN,
@@ -167,9 +271,15 @@ export async function runFromEnv(env = process.env) {
   }
 
   const payload = JSON.parse(await readFile(eventPath, 'utf8'));
+  if (isManagedCommentEvent(payload, eventName)) {
+    process.stdout.write('ignored managed automation comment\n');
+    return;
+  }
+  const dispatchTrigger =
+    payload.action && !trigger.includes(':') ? `${trigger}:${payload.action}` : trigger;
 
   let scheduledPulls = [];
-  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+  if (trainEnabled || eventName === 'schedule' || eventName === 'workflow_dispatch') {
     scheduledPulls = await requestWithBackoff(
       () =>
         paginate(
@@ -186,9 +296,18 @@ export async function runFromEnv(env = process.env) {
     repository,
     scheduledPulls,
     maxDispatchPerRun,
+    trainEnabled,
   });
+  const directlyTriggeredPrs = eventPrNumbers(payload);
 
   for (const prNumber of prNumbers) {
+    const prTrigger = recoveryTriggerForPr({
+      trainEnabled,
+      directlyTriggeredPrs,
+      prNumber,
+      eventName,
+      dispatchTrigger,
+    });
     await requestWithBackoff(
       () =>
         request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
@@ -198,14 +317,14 @@ export async function runFromEnv(env = process.env) {
             inputs: {
               operation: 'reconcile',
               pr_number: String(prNumber),
-              trigger,
+              trigger: prTrigger,
               lease_id: '',
             },
           },
         }),
       { label: `dispatch-pr-${prNumber}` },
     );
-    process.stdout.write(`dispatched pr=#${prNumber} trigger=${trigger}\n`);
+    process.stdout.write(`dispatched pr=#${prNumber} trigger=${prTrigger}\n`);
   }
 
   if (prNumbers.length === 0) {

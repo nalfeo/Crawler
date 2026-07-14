@@ -3,17 +3,33 @@ name: Auto-rebase open PRs
 on:
   push:
     branches: [main]
-  pull_request:
+  pull_request_target:
     types: [opened, reopened]
     paths:
       - '**'
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number for conflict-only rebase when the train is enabled
+        required: false
+        default: ''
+        type: string
+      expected_head_sha:
+        description: Expected PR head SHA for conflict-only rebase
+        required: false
+        default: ''
+        type: string
+      trigger:
+        description: Rebase dispatch source
+        required: false
+        default: workflow_dispatch
+        type: string
 
 concurrency:
-  group: auto-rebase-prs
-  cancel-in-progress: true
+  group: auto-rebase-prs-${{ vars.MERGE_TRAIN_ENABLED == 'true' && inputs.pr_number || 'legacy' }}
+  cancel-in-progress: ${{ vars.MERGE_TRAIN_ENABLED != 'true' }}
 
 permissions:
   actions: write
@@ -22,7 +38,12 @@ permissions:
 
 jobs:
   rebase-prs:
-    if: ${{ !contains(fromJSON('["true","1","yes","on","TRUE","YES","ON","True","Yes","On"]'), vars.MERGE_QUEUE_ENABLED) }}
+    if: >-
+      (github.event_name != 'pull_request_target' ||
+       github.event.pull_request.head.repo.full_name == github.repository) &&
+      (vars.MERGE_TRAIN_ENABLED == 'true' ||
+       !contains(fromJSON('["true","1","yes","on","TRUE","YES","ON","True","Yes","On"]'),
+                 vars.MERGE_QUEUE_ENABLED))
     runs-on: ubuntu-latest
     steps:
       - name: Generate app token
@@ -35,6 +56,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
@@ -44,13 +66,42 @@ jobs:
         run: |
           set -euo pipefail
 
+          train_enabled='${{ vars.MERGE_TRAIN_ENABLED || 'false' }}'
+          case "$train_enabled" in
+            true|false) ;;
+            *)
+              echo "::error::MERGE_TRAIN_ENABLED must be exactly true or false."
+              exit 1
+              ;;
+          esac
+
           echo "🔄 Fetching active PRs targeting main..."
-          prs_json=$(gh pr list \
-            --repo "$GITHUB_REPOSITORY" \
-            --state open \
-            --base main \
-            --json number,isDraft,headRefName,headRepository,headRepositoryOwner,labels \
-            --jq '[.[] | select(.isDraft == false and ([.labels[].name] | index("merge-train") | not))]')
+          if [ "$train_enabled" = "true" ]; then
+            target_pr='${{ inputs.pr_number }}'
+            expected_head='${{ inputs.expected_head_sha }}'
+            if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ -z "$target_pr" ]; then
+              echo "Merge train enabled; blanket rebase sweep disabled."
+              exit 0
+            fi
+            prs_json=$(
+              gh pr view "$target_pr" \
+                --repo "$GITHUB_REPOSITORY" \
+                --json number,state,isDraft,baseRefName,headRefOid,headRefName,headRepository,headRepositoryOwner,labels |
+                jq --arg expected "$expected_head" \
+                  '[select(.state == "OPEN" and .isDraft == false and .baseRefName == "main" and .headRefOid == $expected)]'
+            )
+            if [ "$(echo "$prs_json" | jq 'length')" -eq 0 ]; then
+              echo "Target PR is no longer open, non-draft, main-targeting, or at the expected head; skipping stale dispatch."
+              exit 0
+            fi
+          else
+            prs_json=$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --base main \
+              --json number,isDraft,headRefOid,headRefName,headRepository,headRepositoryOwner,labels \
+              --jq '[.[] | select(.isDraft == false)]')
+          fi
 
           pr_count=$(echo "$prs_json" | jq 'length')
           if [ "$pr_count" -eq 0 ]; then
@@ -74,6 +125,7 @@ jobs:
             head_ref=$(echo "$pr" | jq -r '.headRefName')
             head_owner=$(echo "$pr" | jq -r '.headRepositoryOwner.login // empty')
             head_repo=$(echo "$pr" | jq -r '.headRepository.name // empty')
+            expected_head=$(echo "$pr" | jq -r '.headRefOid // empty')
 
             echo "Processing PR #$number ($head_owner/$head_repo:$head_ref)..."
 
@@ -96,7 +148,7 @@ jobs:
             fi
 
             if git rebase origin/main; then
-              if git push --force-with-lease origin "HEAD:$head_ref"; then
+              if git push --force-with-lease="refs/heads/$head_ref:$expected_head" origin "HEAD:$head_ref"; then
                 echo "  ✅ Rebasing complete for PR #$number."
                 rebased=$((rebased + 1))
               else
@@ -118,3 +170,13 @@ jobs:
           done < <(echo "$prs_json" | jq -c '.[]')
 
           echo "Done. Rebasing summary: rebased=$rebased conflicts=$conflicts skipped=$skipped failed=$failed"
+          if [ "$train_enabled" = "true" ] && [ "$failed" -gt 0 ]; then
+            gh workflow run ci-recovery.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref main \
+              -f operation=reconcile \
+              -f pr_number="$target_pr" \
+              -f trigger=auto-rebase-failure \
+              -f lease_id=
+            exit 1
+          fi

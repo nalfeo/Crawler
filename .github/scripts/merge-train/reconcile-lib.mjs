@@ -7,14 +7,25 @@ import {
 } from './state.mjs';
 
 export class MergeTrainConflictError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = 'MergeTrainConflictError';
+  }
+}
+
+export class MergeTrainNoopError extends Error {
   constructor(message) {
     super(message);
-    this.name = 'MergeTrainConflictError';
+    this.name = 'MergeTrainNoopError';
   }
 }
 
 export function isMergeTrainConflictError(error) {
   return error instanceof MergeTrainConflictError;
+}
+
+export function isMergeTrainNoopError(error) {
+  return error instanceof MergeTrainNoopError;
 }
 
 export function trainCheckTitle(status, conclusion) {
@@ -45,6 +56,7 @@ function fetchCandidateHead(git, entry) {
     if (!headRef) {
       throw new Error(
         `PR #${entry.number} head ${expectedSha} is not fetchable and has no branch ref fallback: ${shaError.message}`,
+        { cause: shaError },
       );
     }
     git(['fetch', 'origin', `refs/heads/${headRef}:${refName}`, '--force']);
@@ -79,14 +91,17 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
     } catch (error) {
       try {
         git(['merge', '--abort']);
-      } catch {}
+      } catch (abortError) {
+        process.stderr.write(`merge abort cleanup failed: ${abortError.message}\n`);
+      }
       git(['reset', '--hard', baseSha]);
       throw new MergeTrainConflictError(
         `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
+        { cause: error },
       );
     }
     if (gitCommandSucceeded(git, ['diff', '--cached', '--quiet'])) {
-      throw new MergeTrainConflictError(
+      throw new MergeTrainNoopError(
         `PR #${entry.number} no longer changes main; its squash diff is already present in the candidate base`,
       );
     }
@@ -121,6 +136,52 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
   return sha;
 }
 
+/**
+ * Determine whether a schedule-triggered CI run executed the full gate or was
+ * a disabled-train no-op. When `MERGE_TRAIN_ENABLED=false`, `ci.yml` gates
+ * the `changes` (Detect change scope) job on the flag, so a scheduled run
+ * with the flag off completes as `success` without running any real CI jobs.
+ * A no-op schedule run is NOT authoritative main-health evidence: after the
+ * flag is re-enabled, it could outrank a genuine failed push and let promotion
+ * proceed from a red `main`.
+ *
+ * `jobs` is the list of workflow-run jobs from the GitHub Actions API
+ * (`GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs`).
+ *
+ * Returns `true` when the run is NOT full-CI evidence (disabled-train no-op
+ * or jobs data is unavailable). Fails closed: if no jobs are returned or the
+ * `changes` job is absent, the run cannot be confirmed as full CI.
+ */
+export function isDisabledTrainScheduleRun(jobs) {
+  if (!jobs || jobs.length === 0) return true;
+  const changesJob = jobs.find((job) => job.name === 'Detect change scope');
+  return !changesJob || changesJob.conclusion === 'skipped';
+}
+
+/**
+ * Decide whether main currently has authoritative full-CI ("ci.yml", the
+ * `CI` workflow) evidence for the exact SHA it is on right now, considering
+ * both hourly `schedule` runs and `push` runs but excluding push runs that
+ * merely attest a merge-train fast-path shortcut (`isTrainFastPath: true`;
+ * their own green conclusion is not full-CI evidence). Fails closed: no
+ * evidence, or evidence that is still pending, is treated as NOT healthy,
+ * so the circuit breaker cannot be bypassed by an empty/incomplete run list.
+ */
+export function mainHealthReason({ mainSha, runs }) {
+  const authoritative = (runs || [])
+    .filter((run) => run.head_sha === mainSha && run.name === 'CI' && !run.isTrainFastPath)
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const latest = authoritative[0];
+  if (!latest) return `no full-CI evidence yet for current main ${mainSha}`;
+  if (latest.status !== 'completed') {
+    return `full-CI run for current main ${mainSha} is still ${latest.status}`;
+  }
+  if (latest.conclusion !== 'success') {
+    return `latest full-CI run for current main ${mainSha} concluded ${latest.conclusion}`;
+  }
+  return null;
+}
+
 export function promotionStaleReason({ currentMain, currentPr, expectedBase, pr, repository }) {
   if (currentMain !== expectedBase) return 'main moved since validation';
   if (currentPr.head?.sha !== pr.head?.sha) return 'PR head changed since validation';
@@ -150,78 +211,200 @@ export async function promoteExactCandidate({
   removeLabel,
   updateStatus,
   requiredCheckName,
+  provenanceEntries = [pr],
+  waitForMergedPr,
+  reattestHealth,
 }) {
-  const currentPr = await fetchCurrentPr();
-  const currentMain = await fetchCurrentMain();
-  const staleReason = promotionStaleReason({
-    currentMain,
-    currentPr,
+  return promoteExactBatch({
+    entries: [pr],
+    candidateShas: [candidateSha],
     expectedBase,
-    pr,
     repository,
+    live,
+    fetchCurrentPr: async () => fetchCurrentPr(),
+    fetchCurrentMain,
+    eligible,
+    git,
+    createTrainCheck,
+    removeLabel,
+    updateStatus,
+    requiredCheckName,
+    provenanceEntries,
+    positions: [position],
+    waitForMergedPr,
+    reattestHealth,
   });
-  if (staleReason) {
+}
+
+export async function promoteExactBatch({
+  entries,
+  candidateShas,
+  expectedBase,
+  repository,
+  live,
+  fetchCurrentPr,
+  fetchCurrentMain,
+  eligible,
+  git,
+  createTrainCheck,
+  removeLabel,
+  updateStatus,
+  requiredCheckName,
+  provenanceEntries = entries,
+  positions = entries.map((_, index) => index + 1),
+  waitForMergedPr = async () => true,
+  reattestHealth = async () => true,
+}) {
+  if (entries.length === 0 || entries.length !== candidateShas.length) {
+    throw new Error('Promotion requires one candidate SHA per non-empty PR entry');
+  }
+  const currentMain = await fetchCurrentMain();
+  const currentPrs = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    const currentPr = await fetchCurrentPr(entry, index);
+    const staleReason = promotionStaleReason({
+      currentMain,
+      currentPr,
+      expectedBase,
+      pr: entry,
+      repository,
+    });
+    if (staleReason) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; ${staleReason}; rebuilding on next reconcile\n`,
+      );
+      return false;
+    }
+    const admission = await eligible(currentPr);
+    if (!admission.ok) {
+      process.stdout.write(`blocked promotion pr=#${entry.number} reason=${admission.reason}\n`);
+      return false;
+    }
+    const expectedParent = index === 0 ? expectedBase : candidateShas[index - 1];
+    const parent = git(['rev-parse', `${candidateShas[index]}^`]);
+    if (parent !== expectedParent) {
+      throw new Error(
+        `Candidate ${candidateShas[index]} is not a direct child of ${expectedParent}`,
+      );
+    }
+    const headRef = currentPr.head.ref;
+    if (!/^[A-Za-z0-9._/-]+$/.test(headRef)) {
+      throw new Error(`Unsafe PR head ref: ${headRef}`);
+    }
+    currentPrs.push(currentPr);
+  }
+  if (!live) {
     process.stdout.write(
-      `stale promotion pr=#${pr.number}; ${staleReason}; rebuilding on next reconcile\n`,
+      `dry-run would-promote prs=${entries.map((entry) => `#${entry.number}`).join(',')} sha=${candidateShas.at(-1)}\n`,
     );
     return false;
   }
-  const admission = await eligible(currentPr);
-  if (!admission.ok) {
-    process.stdout.write(`blocked promotion pr=#${pr.number} reason=${admission.reason}\n`);
+  const finalMain = await fetchCurrentMain();
+  if (finalMain !== expectedBase) {
+    process.stdout.write('stale promotion; main moved during final reattestation\n');
     return false;
   }
-  const parent = git(['rev-parse', `${candidateSha}^`]);
-  if (parent !== expectedBase) {
-    throw new Error(`Candidate ${candidateSha} is not a direct child of current main`);
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    const finalPr = await fetchCurrentPr(entry, index);
+    const staleReason = promotionStaleReason({
+      currentMain: finalMain,
+      currentPr: finalPr,
+      expectedBase,
+      pr: entry,
+      repository,
+    });
+    const admission = staleReason ? null : await eligible(finalPr);
+    if (staleReason || !admission.ok) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; ${staleReason || admission.reason}; final reattestation failed\n`,
+      );
+      return false;
+    }
+    currentPrs[index] = finalPr;
   }
-  const headRef = currentPr.head.ref;
-  if (!/^[A-Za-z0-9._/-]+$/.test(headRef)) {
-    throw new Error(`Unsafe PR head ref: ${headRef}`);
-  }
-  if (!live) {
-    process.stdout.write(`dry-run would-promote pr=#${pr.number} sha=${candidateSha}\n`);
+  // Re-run the main-health guard here, immediately before publishing the
+  // required check and updating refs. The initial guard (mainHealthAllowsPromotion)
+  // runs once per reconcile before the sequential PR/admission reads above;
+  // a scheduled or push-triggered CI run for main can start and go
+  // pending/red while those reads are in flight, which would otherwise let a
+  // now-unhealthy main get promoted past. Reusing the same trusted, token
+  // authenticated health check here (rather than trusting the earlier
+  // result) closes that window without any unauthenticated or stale
+  // shortcut.
+  if (!(await reattestHealth())) {
+    process.stdout.write('paused merge train; main health changed during final reattestation\n');
     return false;
   }
-  const promotionFingerprint = candidateFingerprint(expectedBase, [currentPr]);
+  const finalCandidateSha = candidateShas.at(-1);
+  const promotionFingerprint = candidateFingerprint(expectedBase, currentPrs);
   await createTrainCheck(
-    candidateSha,
+    finalCandidateSha,
     promotionFingerprint,
     'completed',
     'success',
     requiredCheckName,
+    provenanceEntries,
   );
   try {
+    const refUpdates = currentPrs.map(
+      (currentPr) => `${finalCandidateSha}:refs/heads/${currentPr.head.ref}`,
+    );
+    const leases = currentPrs.map(
+      (currentPr) => `--force-with-lease=refs/heads/${currentPr.head.ref}:${currentPr.head.sha}`,
+    );
     git([
       'push',
       '--atomic',
       'origin',
-      `${candidateSha}:refs/heads/${headRef}`,
-      `${candidateSha}:refs/heads/main`,
-      `--force-with-lease=refs/heads/${headRef}:${currentPr.head.sha}`,
+      ...refUpdates,
+      `${finalCandidateSha}:refs/heads/main`,
+      ...leases,
       `--force-with-lease=refs/heads/main:${expectedBase}`,
     ]);
   } catch (error) {
     await createTrainCheck(
-      candidateSha,
+      finalCandidateSha,
       promotionFingerprint,
       'completed',
       'failure',
       requiredCheckName,
+      provenanceEntries,
     );
     throw error;
   }
-  await removeLabel(pr.number, QUEUE_LABEL);
-  await removeLabel(pr.number, BLOCKED_LABEL);
-  await updateStatus(
-    pr.number,
-    renderStatus({
-      position,
-      candidateSha,
-      state: 'merged',
-      detail: 'The exact validated candidate fast-forwarded main.',
-    }),
+  for (const entry of entries) {
+    if (!(await waitForMergedPr(entry, finalCandidateSha))) {
+      await createTrainCheck(
+        finalCandidateSha,
+        promotionFingerprint,
+        'completed',
+        'failure',
+        `${requiredCheckName}-promotion-postcondition`,
+        provenanceEntries,
+      );
+      throw new Error(
+        `PR #${entry.number} was not recorded as merged after atomic promotion to ${finalCandidateSha}`,
+      );
+    }
+  }
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    await removeLabel(entry.number, QUEUE_LABEL);
+    await removeLabel(entry.number, BLOCKED_LABEL);
+    await updateStatus(
+      entry.number,
+      renderStatus({
+        position: positions[index],
+        candidateSha: finalCandidateSha,
+        state: 'merged',
+        detail: 'The exact validated combined candidate fast-forwarded main atomically.',
+      }),
+    );
+  }
+  process.stdout.write(
+    `promoted prs=${entries.map((entry) => `#${entry.number}`).join(',')} sha=${finalCandidateSha}\n`,
   );
-  process.stdout.write(`promoted pr=#${pr.number} sha=${candidateSha}\n`);
   return true;
 }

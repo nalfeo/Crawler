@@ -48,6 +48,20 @@ disagreement, fails closed.
 The task fingerprint hashes the latest head SHA and normalized complete blocker
 set. The same fingerprint is never assigned twice.
 
+When `MERGE_TRAIN_ENABLED=true`, the router orders non-ready PRs by creation time
+and keeps at most six in the repair window. Active recovery/shepherd ownership
+counts toward the window; a ready `merge-train` PR leaves it and immediately
+opens the next slot. Recovery and train sticky comments are ignored as router
+triggers so state persistence cannot dispatch more recovery work. Owned slots
+are rechecked only for their own direct PR events and the bounded scheduled
+sweep, which lets completed or expired ownership advance without recreating the
+event fan-out.
+
+Green evidence is bound to the PR head SHA plus its latest required-check and
+review-thread fingerprint. Advancing `main` alone does not expire it. A textual
+conflict does: recovery dispatches a targeted rebase, and the changed head must
+pass the normal heavy PR gates before re-entering the train.
+
 ## Rollout
 
 1. Leave `CI_RECOVERY_MODE` unset. The reconciler defaults to `dry-run`.

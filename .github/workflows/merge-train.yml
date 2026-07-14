@@ -43,10 +43,11 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Reconcile two-candidate train
+      - name: Reconcile six-PR build-expiry train
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_TRAIN_TOKEN: ${{ steps.app-token.outputs.token }}
-          MERGE_TRAIN_MODE: ${{ vars.MERGE_TRAIN_MODE || 'off' }}
-          MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,commit-lint,Security checks' }}
+          MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
+          MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
+          MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,Security checks' }}
         run: node .github/scripts/merge-train/reconcile.mjs

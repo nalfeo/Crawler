@@ -33,6 +33,7 @@ concurrency:
   queue: max
 
 permissions:
+  actions: write
   contents: read
 
 jobs:
@@ -52,8 +53,8 @@ jobs:
           CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_RECOVERY_MODE: ${{ vars.CI_RECOVERY_MODE || 'dry-run' }}
-          MERGE_TRAIN_MODE: ${{ vars.MERGE_TRAIN_MODE || 'off' }}
-          MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,commit-lint,Security checks' }}
+          MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
+          MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,Security checks' }}
           PR_NUMBER: ${{ inputs.pr_number }}
           RECOVERY_OPERATION: ${{ inputs.operation }}
           RECOVERY_TRIGGER: ${{ inputs.trigger }}

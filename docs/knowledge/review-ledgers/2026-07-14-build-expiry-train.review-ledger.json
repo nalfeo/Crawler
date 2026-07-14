@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-14",
+  "session_slug": "build-expiry-train",
+  "task_title": "Emulate build expiry with bounded reconciliation and merge train",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Adversarial alternatives: serial exact-SHA queue rejected because it sacrifices the bounded six-PR throughput goal; mirror PR branches rejected because original PR heads would not become ancestors of main and merged-state semantics would remain unresolved; a staging branch rejected because it adds state without removing the need for exact original-PR promotion. Review added flag-off cleanup, trusted-promotion-only main CI suppression, red-main circuit breaking, final reattestation, bounded merged-state postconditions, and past-only deterministic timestamps. Chosen architecture remained intact; divergence=minor."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 7,
+          "resolved_count": 7,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 4,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

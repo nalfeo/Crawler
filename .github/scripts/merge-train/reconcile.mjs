@@ -2,17 +2,31 @@ import { execFileSync } from 'node:child_process';
 
 import { listReviewThreads, paginate, request } from '../ci-recovery/github.mjs';
 import {
+  isTrainFastPathPushRun,
+  parseStateComment,
+  STATE_MARKER as RECOVERY_STATE_MARKER,
+} from '../ci-recovery/state.mjs';
+import {
   buildCandidate,
+  isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
-  promoteExactCandidate,
+  isMergeTrainNoopError,
+  mainHealthReason,
+  promoteExactBatch,
+  promotionStaleReason,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 import {
   BLOCKED_LABEL,
   CANDIDATE_CHECK_NAME,
+  admissionFingerprint,
   candidateFingerprint,
   candidateRef,
-  normalizeMode,
+  hasLeadingMarker,
+  MAX_TRAIN_SIZE,
+  nextBisectStep,
+  NOOP_LABEL,
+  parseEnabledFlag,
   QUEUE_LABEL,
   queueEntries,
   REQUIRED_CHECK_NAME,
@@ -21,19 +35,20 @@ import {
   STATUS_MARKER,
   successfulChecks,
   trainCheckState,
+  VALIDATION_FAILED_LABEL,
 } from './state.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
 const token = process.env.MERGE_TRAIN_TOKEN || process.env.GITHUB_TOKEN || '';
-const mode = normalizeMode(process.env.MERGE_TRAIN_MODE);
-const live = mode === 'live';
+const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
+const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
 
-if (!owner || !repo || !token) {
-  throw new Error('Merge train requires GITHUB_REPOSITORY and a GitHub token');
+if (!owner || !repo || !token || !Number.isInteger(trustedAppId)) {
+  throw new Error('Merge train requires GITHUB_REPOSITORY, a GitHub token, and MERGE_TRAIN_APP_ID');
 }
-if (mode === 'off') {
+if (!enabled) {
   process.stdout.write('Merge train is disabled\n');
   process.exit(0);
 }
@@ -55,8 +70,15 @@ async function checkRuns(sha) {
   return response.data.check_runs || [];
 }
 
+async function workflowRunJobs(runId) {
+  const response = await request(
+    token,
+    `/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=100`,
+  );
+  return response.data.jobs || [];
+}
+
 async function ensureLabel(name, color, description) {
-  if (!live) return;
   try {
     await request(token, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
@@ -68,7 +90,6 @@ async function ensureLabel(name, color, description) {
 }
 
 async function setLabel(prNumber, name) {
-  if (!live) return;
   await request(token, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
     method: 'POST',
     body: { labels: [name] },
@@ -76,7 +97,6 @@ async function setLabel(prNumber, name) {
 }
 
 async function removeLabel(prNumber, name) {
-  if (!live) return;
   try {
     await request(
       token,
@@ -89,14 +109,8 @@ async function removeLabel(prNumber, name) {
 }
 
 async function updateStatus(prNumber, status) {
-  if (!live) {
-    process.stdout.write(`dry-run pr=#${prNumber} ${status.replace(/\n/g, ' ')}\n`);
-    return;
-  }
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
-  const stateComments = comments.filter((comment) =>
-    String(comment.body || '').includes(STATUS_MARKER),
-  );
+  const stateComments = comments.filter((comment) => hasLeadingMarker(comment.body, STATUS_MARKER));
   if (stateComments.length > 1) {
     throw new Error(`PR #${prNumber} has duplicate merge-train state comments`);
   }
@@ -122,7 +136,29 @@ async function eligible(pr) {
   if (review.threads.some((thread) => !thread.isResolved)) {
     return { ok: false, reason: 'unresolved review threads' };
   }
-  return { ok: true };
+  const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
+  const stateComments = comments.filter((comment) =>
+    hasLeadingMarker(comment.body, RECOVERY_STATE_MARKER),
+  );
+  if (stateComments.length !== 1) {
+    return {
+      ok: false,
+      reason: `expected one CI recovery state comment, found ${stateComments.length}`,
+    };
+  }
+  const state = parseStateComment(stateComments[0].body);
+  const fingerprint = admissionFingerprint({
+    headSha: pr.head.sha,
+    title: pr.title,
+    baseRef: pr.base?.ref,
+    checkRuns: runs,
+    requiredNames: requiredAdmissionChecks,
+    reviewThreads: review.threads,
+  });
+  if (state.headSha !== pr.head.sha || state.fingerprint !== fingerprint) {
+    return { ok: false, reason: 'CI recovery admission evidence is stale' };
+  }
+  return { ok: true, fingerprint };
 }
 
 async function createTrainCheck(
@@ -131,8 +167,8 @@ async function createTrainCheck(
   status,
   conclusion = undefined,
   name = CANDIDATE_CHECK_NAME,
+  entries = [],
 ) {
-  if (!live) return;
   await request(token, `/repos/${owner}/${repo}/check-runs`, {
     method: 'POST',
     body: {
@@ -143,15 +179,133 @@ async function createTrainCheck(
       ...(conclusion ? { conclusion } : {}),
       output: {
         title: trainCheckTitle(status, conclusion),
-        summary: `Fingerprint: ${fingerprint}`,
+        summary: [
+          `Fingerprint: ${fingerprint}`,
+          `PR order: ${entries.map((entry) => `#${entry.number}`).join(', ') || 'none'}`,
+        ].join('\n'),
       },
     },
   });
 }
 
+async function dispatchRecovery(prNumber, trigger) {
+  await request(token, `/repos/${owner}/${repo}/actions/workflows/ci-recovery.yml/dispatches`, {
+    method: 'POST',
+    body: {
+      ref: 'main',
+      inputs: {
+        operation: 'reconcile',
+        pr_number: String(prNumber),
+        trigger,
+        lease_id: '',
+      },
+    },
+  });
+}
+
+// Bound on how many recent push-triggered CI runs we inspect (and fetch
+// check-runs for) when looking for evidence on the current main SHA. Main
+// only advances via merge-train promotions or rare direct pushes, so the
+// exact-SHA match will normally be found within the first entry; this cap
+// keeps the check-run fan-out small and predictable either way.
+const MAIN_HEALTH_PUSH_RUN_LOOKBACK = 5;
+
+async function mainHealthAllowsPromotion() {
+  const currentMainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
+    .object.sha;
+  const [scheduleResponse, pushResponse] = await Promise.all([
+    request(
+      token,
+      `/repos/${owner}/${repo}/actions/workflows/ci.yml/runs?event=schedule&branch=main&per_page=20`,
+    ),
+    request(
+      token,
+      `/repos/${owner}/${repo}/actions/workflows/ci.yml/runs?event=push&branch=main&per_page=${MAIN_HEALTH_PUSH_RUN_LOOKBACK}`,
+    ),
+  ]);
+  const scheduleRuns = [];
+  for (const run of scheduleResponse.data.workflow_runs || []) {
+    if (run.head_sha !== currentMainSha) {
+      // Runs for other SHAs are filtered by mainHealthReason; no need to
+      // fetch jobs for them.
+      scheduleRuns.push({ ...run, isTrainFastPath: false });
+      continue;
+    }
+    // For schedule runs on the current main SHA, verify they ran the full CI
+    // gate. When MERGE_TRAIN_ENABLED=false, ci.yml skips the `changes` job on
+    // schedule events, so the run completes as success without real CI work.
+    // Such a no-op run must not be treated as authoritative health evidence.
+    const jobs = await workflowRunJobs(run.id);
+    scheduleRuns.push({ ...run, isTrainFastPath: isDisabledTrainScheduleRun(jobs) });
+  }
+  const candidatePushRuns = (pushResponse.data.workflow_runs || []).filter(
+    (run) => run.head_sha === currentMainSha,
+  );
+  const pushRuns = [];
+  for (const run of candidatePushRuns) {
+    const runs = await checkRuns(run.head_sha);
+    pushRuns.push({ ...run, isTrainFastPath: isTrainFastPathPushRun(run, trustedAppId, runs) });
+  }
+  const reason = mainHealthReason({
+    mainSha: currentMainSha,
+    runs: [...scheduleRuns, ...pushRuns],
+  });
+  if (reason) {
+    process.stdout.write(`paused merge train; ${reason}\n`);
+    return false;
+  }
+  return true;
+}
+
+async function waitForMergedPr(entry) {
+  const delays = [1000, 2000, 4000, 8000, 8000, 8000];
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+    if (current.merged === true || (current.state === 'closed' && current.merged_at)) {
+      return true;
+    }
+    if (attempt < delays.length) {
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+  }
+  return false;
+}
+
+async function blockEntry(entry, { detail, validationFailure = false }) {
+  await setLabel(entry.number, BLOCKED_LABEL);
+  if (validationFailure) {
+    await setLabel(entry.number, VALIDATION_FAILED_LABEL);
+  }
+  await removeLabel(entry.number, QUEUE_LABEL);
+  await updateStatus(
+    entry.number,
+    renderStatus({
+      position: 0,
+      candidateSha: '',
+      state: 'blocked',
+      detail,
+    }),
+  );
+}
+
+async function deAdmitNoop(entry, detail) {
+  await setLabel(entry.number, BLOCKED_LABEL);
+  await setLabel(entry.number, NOOP_LABEL);
+  await removeLabel(entry.number, QUEUE_LABEL);
+  await updateStatus(
+    entry.number,
+    renderStatus({
+      position: 0,
+      candidateSha: '',
+      state: 'blocked',
+      detail,
+    }),
+  );
+  await dispatchRecovery(entry.number, 'merge-train-noop');
+}
+
 async function dispatchValidation(sha, fingerprint, entries) {
-  if (!live) return;
-  await createTrainCheck(sha, fingerprint, 'in_progress');
+  await createTrainCheck(sha, fingerprint, 'in_progress', undefined, CANDIDATE_CHECK_NAME, entries);
   try {
     await request(
       token,
@@ -169,13 +323,24 @@ async function dispatchValidation(sha, fingerprint, entries) {
       },
     );
   } catch (error) {
-    await createTrainCheck(sha, fingerprint, 'completed', 'failure');
+    // Model a dispatch/API failure (workflow_dispatch rejected, token
+    // issue, transient network error) as an infrastructure problem, not a
+    // candidate code failure: use `cancelled` so trainCheckState() treats
+    // it as retryable ("missing") on the next reconciliation instead of
+    // being bisected as if the candidate's code actually failed CI.
+    await createTrainCheck(sha, fingerprint, 'completed', 'cancelled');
     throw error;
   }
 }
 
 await ensureLabel(QUEUE_LABEL, '1f6feb', 'Ready for the repository-managed merge train');
 await ensureLabel(BLOCKED_LABEL, 'd1242f', 'Merge-train candidate needs intervention');
+await ensureLabel(NOOP_LABEL, 'bf8700', 'PR squash diff is already present in the train base');
+await ensureLabel(
+  VALIDATION_FAILED_LABEL,
+  'd1242f',
+  'First failing addition isolated by merge-train validation',
+);
 
 const pulls = await paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`);
 const queued = queueEntries(pulls, repository);
@@ -190,6 +355,7 @@ for (const pr of queued) {
   if (admission.ok) {
     admitted.push(pr);
   } else {
+    await removeLabel(pr.number, QUEUE_LABEL);
     await updateStatus(
       pr.number,
       renderStatus({
@@ -199,10 +365,11 @@ for (const pr of queued) {
         detail: admission.reason,
       }),
     );
+    await dispatchRecovery(pr.number, 'merge-train-admission-stale');
   }
 }
 
-const train = admitted.slice(0, 2);
+const train = admitted.slice(0, MAX_TRAIN_SIZE);
 if (train.length === 0) {
   process.stdout.write('No admitted PR is ready for candidate construction\n');
   process.exit(0);
@@ -210,28 +377,28 @@ if (train.length === 0) {
 
 const mainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object
   .sha;
+const candidates = [];
 for (let index = 0; index < train.length; index += 1) {
   const entries = train.slice(0, index + 1);
   const fingerprint = candidateFingerprint(mainSha, entries);
   const refName = candidateRef(index + 1, fingerprint);
   let candidateSha;
   try {
-    candidateSha = buildCandidate({ baseSha: mainSha, entries, refName, git, live });
+    candidateSha = buildCandidate({ baseSha: mainSha, entries, refName, git, live: true });
     await removeLabel(train[index].number, BLOCKED_LABEL);
+    await removeLabel(train[index].number, VALIDATION_FAILED_LABEL);
   } catch (error) {
     if (isMergeTrainConflictError(error)) {
-      await setLabel(train[index].number, BLOCKED_LABEL);
-      await removeLabel(train[index].number, QUEUE_LABEL);
-      await updateStatus(
-        train[index].number,
-        renderStatus({
-          position: index + 1,
-          candidateSha: '',
-          state: 'blocked',
-          detail: error.message,
-        }),
-      );
-      break;
+      await blockEntry(train[index], { detail: error.message });
+      const predecessor = train[index - 1]?.number || 0;
+      await dispatchRecovery(train[index].number, `merge-train-cumulative-conflict:${predecessor}`);
+      process.stdout.write(`returned conflict pr=#${train[index].number} to reconciliation\n`);
+      process.exit(0);
+    }
+    if (isMergeTrainNoopError(error)) {
+      await deAdmitNoop(train[index], error.message);
+      process.stdout.write(`returned no-op pr=#${train[index].number} to reconciliation\n`);
+      process.exit(0);
     }
     await updateStatus(
       train[index].number,
@@ -245,58 +412,120 @@ for (let index = 0; index < train.length; index += 1) {
     process.stdout.write(
       `retryable candidate build failure pr=#${train[index].number} error=${error.message}\n`,
     );
-    break;
+    process.exit(0);
   }
-
-  if (!live) {
-    await updateStatus(
-      train[index].number,
-      renderStatus({
-        position: index + 1,
-        candidateSha,
-        state: 'dry-run',
-        detail: `Would create ${refName} and dispatch validation.`,
-      }),
-    );
-    continue;
-  }
-
   git(['fetch', 'origin', `${refName}:refs/remotes/origin/${refName}`, '--force']);
-  const state = trainCheckState(await checkRuns(candidateSha));
-  if (state === 'missing') {
-    await dispatchValidation(candidateSha, fingerprint, entries);
-  }
+  const state = trainCheckState(
+    await checkRuns(candidateSha),
+    fingerprint,
+    trustedAppId,
+    new Date(),
+  );
+  candidates.push({ candidateSha, entries, fingerprint, refName, state });
   await updateStatus(
     train[index].number,
     renderStatus({
       position: index + 1,
       candidateSha,
-      state: state === 'missing' ? 'testing' : state,
+      state,
       detail:
         state === 'failure'
-          ? 'Candidate validation failed; inspect its Merge Train Validation run.'
+          ? 'Candidate validation failed; the merge train will bisect the failing prefix and return the first failing PR to recovery.'
           : 'Candidate is immutable and bound to the listed PR revisions.',
     }),
   );
-  if (index === 0 && state === 'success') {
-    await promoteExactCandidate({
-      pr: train[0],
-      candidateSha,
-      expectedBase: mainSha,
-      position: 1,
-      repository,
-      live,
-      fetchCurrentPr: async () =>
-        (await request(token, `/repos/${owner}/${repo}/pulls/${train[0].number}`)).data,
-      fetchCurrentMain: async () =>
-        (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha,
-      eligible,
-      git,
-      createTrainCheck,
-      removeLabel,
-      updateStatus,
-      requiredCheckName: REQUIRED_CHECK_NAME,
-    });
-    break;
-  }
 }
+
+async function promotePrefix(prefixLength) {
+  if (!(await mainHealthAllowsPromotion())) return false;
+  const provenanceEntries = train.slice(0, prefixLength);
+  return promoteExactBatch({
+    entries: provenanceEntries,
+    candidateShas: candidates.slice(0, prefixLength).map((candidate) => candidate.candidateSha),
+    expectedBase: mainSha,
+    repository,
+    live: true,
+    fetchCurrentPr: async (entry) =>
+      (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data,
+    fetchCurrentMain: async () =>
+      (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha,
+    eligible,
+    git,
+    createTrainCheck,
+    removeLabel,
+    updateStatus,
+    requiredCheckName: REQUIRED_CHECK_NAME,
+    provenanceEntries,
+    waitForMergedPr,
+    reattestHealth: mainHealthAllowsPromotion,
+  });
+}
+
+const fullCandidate = candidates[candidates.length - 1];
+if (fullCandidate.state === 'missing') {
+  await dispatchValidation(
+    fullCandidate.candidateSha,
+    fullCandidate.fingerprint,
+    fullCandidate.entries,
+  );
+  process.stdout.write(`validating combined candidate size=${train.length}\n`);
+  process.exit(0);
+}
+if (fullCandidate.state === 'pending') {
+  process.stdout.write(`waiting combined candidate size=${train.length}\n`);
+  process.exit(0);
+}
+if (fullCandidate.state === 'success') {
+  await promotePrefix(train.length);
+  process.exit(0);
+}
+
+const step = nextBisectStep(candidates.map((candidate) => candidate.state));
+if (step.type === 'validate') {
+  const candidate = candidates[step.prefixLength - 1];
+  if (candidate.state === 'missing') {
+    await dispatchValidation(candidate.candidateSha, candidate.fingerprint, candidate.entries);
+  }
+  process.stdout.write(`bisect validating prefix=${step.prefixLength} total=${train.length}\n`);
+  process.exit(0);
+}
+
+const failingEntry = train[step.failingPrefixLength - 1];
+
+// The candidates/train above were built from `mainSha` captured earlier in
+// this run; by the time bisection isolates a failing PR, main may have
+// moved or the PR's queued state may have changed (rebased, retargeted,
+// unlabeled, etc.). Reattest both immediately before mutating anything so a
+// stale bisection result can't block/label a PR for a problem that no
+// longer applies. This check runs unconditionally -- including when
+// step.greenPrefixLength === 0, the case where nothing else in this script
+// (mainHealthAllowsPromotion/promoteExactBatch) re-validates before mutation.
+const [liveMainSha, liveFailingPr] = await Promise.all([
+  request(token, `/repos/${owner}/${repo}/git/ref/heads/main`).then((r) => r.data.object.sha),
+  request(token, `/repos/${owner}/${repo}/pulls/${failingEntry.number}`).then((r) => r.data),
+]);
+const staleReason = promotionStaleReason({
+  currentMain: liveMainSha,
+  currentPr: liveFailingPr,
+  expectedBase: mainSha,
+  pr: failingEntry,
+  repository,
+});
+if (staleReason) {
+  process.stdout.write(
+    `bisect stale pr=#${failingEntry.number} reason=${staleReason}; skipping mutation, will rebuild next run\n`,
+  );
+  process.exit(0);
+}
+
+await blockEntry(failingEntry, {
+  validationFailure: true,
+  detail: `PR #${failingEntry.number} is the first failing addition in the validated prefix.`,
+});
+if (step.greenPrefixLength > 0) {
+  await promotePrefix(step.greenPrefixLength);
+}
+await dispatchRecovery(failingEntry.number, 'merge-train-validation-failure');
+process.stdout.write(
+  `bisect isolated pr=#${failingEntry.number} green_prefix=${step.greenPrefixLength}\n`,
+);

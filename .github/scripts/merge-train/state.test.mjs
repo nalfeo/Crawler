@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  admissionFingerprint,
   candidateFingerprint,
   candidateRef,
   commitTimestamp,
-  normalizeMode,
+  hasLeadingMarker,
+  nextBisectStep,
+  parseEnabledFlag,
   queueEntries,
   renderStatus,
   resolveAdmissionChecks,
@@ -26,15 +29,33 @@ const pr = (number, overrides = {}) => ({
   ...overrides,
 });
 
-test('normalizes supported modes and rejects unknown values', () => {
-  assert.equal(normalizeMode('LIVE'), 'live');
-  assert.equal(normalizeMode(''), 'off');
-  assert.throws(() => normalizeMode('unsafe'), /Unsupported/);
+test('parses the single merge-train flag and rejects ambiguous values', () => {
+  assert.equal(parseEnabledFlag('true'), true);
+  assert.equal(parseEnabledFlag('false'), false);
+  assert.equal(parseEnabledFlag(''), false);
+  assert.throws(() => parseEnabledFlag('TRUE'), /must be true or false/);
+  assert.throws(() => parseEnabledFlag('dry-run'), /must be true or false/);
+});
+
+test('rejects whitespace-padded flag values instead of silently trimming them', () => {
+  // A value like " true " must not enable the JS reconcilers while YAML
+  // (`vars.MERGE_TRAIN_ENABLED == 'true'`) and shell (`[ "$X" = "true" ]`)
+  // guards reject it — every layer must agree on the same exact string.
+  assert.throws(() => parseEnabledFlag(' true'), /must be true or false/);
+  assert.throws(() => parseEnabledFlag('true '), /must be true or false/);
+  assert.throws(() => parseEnabledFlag(' true '), /must be true or false/);
+  assert.throws(() => parseEnabledFlag('\ttrue\n'), /must be true or false/);
+  assert.throws(() => parseEnabledFlag(' false '), /must be true or false/);
+});
+
+test('managed state markers must lead the comment instead of appearing in a quote', () => {
+  assert.equal(hasLeadingMarker('  <!-- state -->\nbody', '<!-- state -->'), true);
+  assert.equal(hasLeadingMarker('> <!-- state -->\nreply', '<!-- state -->'), false);
 });
 
 test('parses admission checks and falls back to defaults when empty', () => {
-  assert.deepEqual(resolveAdmissionChecks(' ci, commit-lint '), ['ci', 'commit-lint']);
-  assert.deepEqual(resolveAdmissionChecks(''), ['ci', 'commit-lint', 'Security checks']);
+  assert.deepEqual(resolveAdmissionChecks(' ci, extra-check '), ['ci', 'extra-check']);
+  assert.deepEqual(resolveAdmissionChecks(''), ['ci', 'Security checks']);
 });
 
 test('orders eligible same-repository PRs by creation time', () => {
@@ -59,8 +80,64 @@ test('candidate fingerprints bind base, head, title, and order', () => {
 
 test('candidate refs are bounded and immutable by fingerprint', () => {
   const fingerprint = 'a'.repeat(64);
-  assert.equal(candidateRef(2, fingerprint), 'merge-train/candidate-2-aaaaaaaaaaaaaaaa');
-  assert.throws(() => candidateRef(3, fingerprint), /slot/);
+  assert.equal(candidateRef(6, fingerprint), 'merge-train/candidate-6-aaaaaaaaaaaaaaaa');
+  assert.throws(() => candidateRef(7, fingerprint), /slot/);
+});
+
+test('admission fingerprints bind immutable head evidence without binding main', () => {
+  const evidence = {
+    headSha: 'head-1',
+    title: 'fix: one',
+    baseRef: 'main',
+    checkRuns: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+    requiredNames: ['ci'],
+    reviewThreads: [{ id: 'thread-1', isResolved: true, comments: { nodes: [] } }],
+  };
+  assert.equal(admissionFingerprint(evidence), admissionFingerprint(evidence));
+  assert.notEqual(
+    admissionFingerprint(evidence),
+    admissionFingerprint({
+      ...evidence,
+      reviewThreads: [{ id: 'thread-1', isResolved: false, comments: { nodes: [] } }],
+    }),
+  );
+});
+
+test('bisection validates the midpoint then isolates the first failing addition', () => {
+  assert.deepEqual(
+    nextBisectStep(['missing', 'missing', 'missing', 'missing', 'missing', 'failure']),
+    {
+      type: 'validate',
+      prefixLength: 3,
+    },
+  );
+  assert.deepEqual(
+    nextBisectStep(['success', 'success', 'success', 'missing', 'missing', 'failure']),
+    {
+      type: 'validate',
+      prefixLength: 4,
+    },
+  );
+  assert.deepEqual(
+    nextBisectStep(['success', 'success', 'success', 'failure', 'missing', 'failure']),
+    {
+      type: 'isolate',
+      greenPrefixLength: 3,
+      failingPrefixLength: 4,
+    },
+  );
+});
+
+test('bisection advances from the longest successful prefix when results are non-monotonic', () => {
+  assert.deepEqual(nextBisectStep(['failure', 'success', 'missing', 'failure']), {
+    type: 'validate',
+    prefixLength: 3,
+  });
+  assert.deepEqual(nextBisectStep(['success', 'failure', 'success', 'failure']), {
+    type: 'isolate',
+    greenPrefixLength: 3,
+    failingPrefixLength: 4,
+  });
 });
 
 test('commit timestamps are deterministic per PR revision', () => {
@@ -87,22 +164,144 @@ test('unsatisfied checks keep completed non-successful admissions waiting', () =
 });
 
 test('train check state distinguishes missing, pending, failed, and successful checks', () => {
-  assert.equal(trainCheckState([]), 'missing');
+  const fingerprint = 'f'.repeat(64);
+  const app = { id: 123 };
+  assert.equal(trainCheckState([], fingerprint, app.id), 'missing');
   assert.equal(
-    trainCheckState([{ id: 1, name: 'merge-train-candidate', status: 'in_progress' }]),
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'in_progress',
+          external_id: fingerprint,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
     'pending',
   );
   assert.equal(
-    trainCheckState([
-      { id: 1, name: 'merge-train-candidate', status: 'completed', conclusion: 'failure' },
-    ]),
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'completed',
+          conclusion: 'failure',
+          external_id: fingerprint,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
     'failure',
   );
   assert.equal(
-    trainCheckState([
-      { id: 1, name: 'merge-train-candidate', status: 'completed', conclusion: 'success' },
-    ]),
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'completed',
+          conclusion: 'success',
+          external_id: fingerprint,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
     'success',
+  );
+  assert.equal(
+    trainCheckState(
+      [
+        {
+          id: 2,
+          name: 'merge-train-candidate',
+          status: 'completed',
+          conclusion: 'success',
+          external_id: fingerprint,
+          app: { id: 999 },
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
+    'missing',
+  );
+});
+
+test('train check state treats a stale in_progress candidate check as missing so it is redispatched', () => {
+  const fingerprint = 'f'.repeat(64);
+  const app = { id: 123 };
+  const now = new Date('2024-01-01T01:00:00.000Z');
+  const recentlyStarted = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+  const longStalled = new Date(now.getTime() - 41 * 60 * 1000).toISOString();
+  assert.equal(
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'in_progress',
+          external_id: fingerprint,
+          started_at: recentlyStarted,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+      now,
+    ),
+    'pending',
+    'a recently-dispatched in_progress check must still be waited on',
+  );
+  assert.equal(
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'in_progress',
+          external_id: fingerprint,
+          started_at: longStalled,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+      now,
+    ),
+    'missing',
+    'an in_progress check stuck past the validation timeout (e.g. the publish job never posted a completed check) must be treated as missing and redispatched',
+  );
+});
+
+test('train check state treats a cancelled conclusion as missing/retryable instead of a candidate failure', () => {
+  const fingerprint = 'f'.repeat(64);
+  const app = { id: 123 };
+  assert.equal(
+    trainCheckState(
+      [
+        {
+          id: 1,
+          name: 'merge-train-candidate',
+          status: 'completed',
+          conclusion: 'cancelled',
+          external_id: fingerprint,
+          app,
+        },
+      ],
+      fingerprint,
+      app.id,
+    ),
+    'missing',
+    'a cancelled conclusion records a dispatch/publish infrastructure failure, not a real candidate validation failure, and must be retried rather than bisected',
   );
 });
 
