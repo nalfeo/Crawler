@@ -25,6 +25,7 @@ export async function request(token, path, options = {}) {
     );
     error.status = response.status;
     error.data = data;
+    error.headers = response.headers;
     throw error;
   }
   return { data, headers: response.headers, status: response.status };
