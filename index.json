@@ -33,6 +33,17 @@
     "path": "by-sha/3ad4ac7aac78fb31f56e14198b2a69148400080b.json"
   },
   {
+    "commit": "be0eb129a844fe8cda3c7a791096958b087e0884",
+    "commitDate": "2026-07-14T00:19:26-07:00",
+    "commitSubject": "Expand Floor 1 spell broker to deterministic 3-of-10 spell offers (#1097)",
+    "capturedAt": "2026-07-14T08:08:56.321Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29315308373",
+    "winRate": 0.93,
+    "totalWins": 279,
+    "totalRuns": 300,
+    "path": "by-sha/be0eb129a844fe8cda3c7a791096958b087e0884.json"
+  },
+  {
     "commit": "9455f8c77008cdd7c25f14fa3f60a94f45e09997",
     "commitDate": "2026-07-13T23:33:35Z",
     "commitSubject": "chore: archive handoffs, rebuild system index, promote mistakes (#1119)",
