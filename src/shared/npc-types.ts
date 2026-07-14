@@ -119,7 +119,7 @@ const SPELL_QUEST_GIVER_DEF: NpcDef = {
       text: 'I handle post-boss rewards. Beat the Slime Rat, then come back to me to claim your spellbook.',
     },
     {
-      text: 'When the Learn a Spell modal opens, pick Fireball, Heal, or Pulse Shield. Press [B] to configure your abilities bar.',
+      text: 'When the Learn a Spell modal opens, pick one of the three offered spellbooks. Press [B] to configure your abilities bar.',
     },
     {
       text: 'Your abilities bar supports up to ten spells. In this slice, unlocked spells auto-trigger from their cooldown + combat conditions.',

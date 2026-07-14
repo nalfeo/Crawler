@@ -33,6 +33,7 @@ import { AIState, type AIInputProvider } from './types.js';
 import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
+  getOfferedBossRewardSpellIds,
   meetTutorialGoon,
   purchaseShopkeeperEquipment,
   returnShopkeeperPrize,
@@ -165,16 +166,12 @@ export function autoFloor1ProgressionSystem(
   }
 
   if (world.goalFlags.get('floor1-boss-battle-complete') === true && !world.featureUnlocks.spells) {
-    // Pick the heal spell as the boss reward, not fireball. The spell is claimed
-    // only AFTER the boss battle is already won, so it has zero combat value for
-    // the fight itself; its entire value is post-boss survival. There is no
-    // passive HP/regen on Floor 1 (see autoAllocateStatPoints note), so a player
-    // who finishes the boss at low HP and still has to cross the swarm to the
-    // staircase would otherwise be stuck retreating forever. Heal auto-casts on a
-    // 30 HP health deficit (registry trigger) for 10 mp out of a 100 mp pool —
-    // ~10 casts, far more than the descent needs — and lifts the AI back above
-    // the 15% retreat threshold so it can actually reach the stairs.
-    selectSpellFromBossBattle(world, playerEid, 'heal');
+    const offeredSpellIds = getOfferedBossRewardSpellIds(world);
+    const offeredSpellId =
+      offeredSpellIds.find((spellId) => spellId === 'heal') ?? offeredSpellIds[0];
+    if (offeredSpellId !== undefined) {
+      selectSpellFromBossBattle(world, playerEid, offeredSpellId);
+    }
   }
 
   for (const [npcEid, instance] of world.npcs.entries()) {

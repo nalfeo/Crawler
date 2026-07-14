@@ -5,6 +5,7 @@ import {
   autoFloor1ProgressionSystem,
   autoNpcInteractionSystem,
 } from '../../src/game/ai/auto-progression.js';
+import { getOfferedBossRewardSpellIds } from '../../src/game/floorScenario.js';
 import {
   AINpcInteractionAction,
   AIState,
@@ -398,7 +399,7 @@ describe('autoFloor1ProgressionSystem', () => {
     expect(() => autoFloor1ProgressionSystem(world, player)).not.toThrow();
   });
 
-  it('selects the heal spell when boss battle is complete and spells not unlocked', () => {
+  it('selects one of the offered boss-reward spells when boss battle is complete and spells not unlocked', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     world.floorScenario = makeFloor1();
@@ -408,6 +409,22 @@ describe('autoFloor1ProgressionSystem', () => {
     expect(() => autoFloor1ProgressionSystem(world, player)).not.toThrow();
     // Spell unlocks should be set after the call
     expect(world.featureUnlocks.spells).toBe(true);
+    const learnedSpellId = world.abilityStatesByEntity.get(player)?.learnedSpellIds[0];
+    expect(learnedSpellId).toBeDefined();
+    expect(getOfferedBossRewardSpellIds(world)).toContain(learnedSpellId);
+  });
+
+  it('prefers heal from the offered trio when auto-claiming the boss reward', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floorScenario = makeFloor1();
+    world.floorScenario.offeredRewardSpellIds = ['curse', 'heal', 'haste'];
+    world.goalFlags.set('floor1-boss-battle-complete', true);
+    world.featureUnlocks.spells = false;
+
+    autoFloor1ProgressionSystem(world, player);
+
+    expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toEqual(['heal']);
   });
 
   it('does not attempt staircase descend when staircase is not unlocked', () => {

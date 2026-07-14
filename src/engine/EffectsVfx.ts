@@ -51,6 +51,11 @@ const COLOR_FIREBALL_RING = 0xff5522;
 const COLOR_PULSE_SHIELD_INNER = 0xe0f7ff;
 const COLOR_PULSE_SHIELD_RING = 0x38bdf8;
 const COLOR_HEAL_GLOW = 0x86efac;
+const COLOR_ARCANE_BOLT = 0xc084fc;
+const COLOR_FROST_NOVA = 0x93c5fd;
+const COLOR_BUFF_AURA = 0xfef3c7;
+const COLOR_CURSE_BURST = 0xa855f7;
+const COLOR_LIFE_DRAIN = 0xf472b6;
 
 /** Duration a spell blast/wave ring animates for (feels weightier than a hit spark). */
 const SPELL_CAST_LIFETIME_MS = 520;
@@ -375,6 +380,53 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     }
   }
 
+  function arcaneBoltImpact(x: number, y: number, color: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    spawnRing(x, y, 0xffffff, 5, 1.5, depth, SPARK_LIFETIME_MS, 0.7);
+    spawnRing(x, y, color, 7, 2.4, depth, SPELL_CAST_LIFETIME_MS * 0.7, 0.5);
+    for (let i = 0; i < 5; i += 1) {
+      spawnSpark(x, y, color, depth, 80);
+    }
+  }
+
+  function frostNovaBurst(x: number, y: number, radiusFt: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const radiusPx = Math.max(24, ftToPx(Math.max(1, radiusFt)));
+    const scale = Math.max(1.8, radiusPx / PULSE_SHIELD_INNER_PX);
+    spawnRing(x, y, 0xffffff, 8, scale * 0.55, depth, SPARK_LIFETIME_MS, 0.7);
+    spawnRing(x, y, COLOR_FROST_NOVA, 12, scale, depth, SPELL_CAST_LIFETIME_MS, 0.45);
+    for (let i = 0; i < 8; i += 1) {
+      spawnRisingMote(x, y, COLOR_FROST_NOVA, depth);
+    }
+  }
+
+  function buffAura(x: number, y: number, color: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    spawnRing(x, y, 0xffffff, 7, 1.4, depth, SPARK_LIFETIME_MS, 0.65);
+    spawnRing(x, y, color, 10, 2.1, depth, SPELL_CAST_LIFETIME_MS, 0.4);
+    for (let i = 0; i < 5; i += 1) {
+      spawnRisingMote(x, y, color, depth);
+    }
+  }
+
+  function curseBurst(x: number, y: number, radiusFt: number, color: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    const radiusPx = Math.max(24, ftToPx(Math.max(1, radiusFt)));
+    const scale = Math.max(1.6, radiusPx / PULSE_SHIELD_INNER_PX);
+    spawnRing(x, y, color, 10, scale, depth, SPELL_CAST_LIFETIME_MS, 0.38);
+    for (let i = 0; i < 6; i += 1) {
+      spawnSpark(x, y, color, depth, 70);
+    }
+  }
+
+  function lifeDrainBurst(x: number, y: number, color: number): void {
+    const depth = WORLD_VFX_DEPTH.spellCast;
+    spawnRing(x, y, color, 8, 2.0, depth, SPELL_CAST_LIFETIME_MS, 0.5);
+    for (let i = 0; i < 6; i += 1) {
+      spawnRisingMote(x, y, color, depth);
+    }
+  }
+
   function playerHurt(renderElapsedMs: number): void {
     if (renderElapsedMs - lastPlayerHurtMs < PLAYER_HURT_THROTTLE_MS) return;
     lastPlayerHurtMs = renderElapsedMs;
@@ -440,6 +492,21 @@ export function createEffectsVfx(scene: Phaser.Scene): {
         break;
       case 'healGlow':
         healGlow(x, y);
+        break;
+      case 'arcaneBoltImpact':
+        arcaneBoltImpact(x, y, event.color ?? COLOR_ARCANE_BOLT);
+        break;
+      case 'frostNovaBurst':
+        frostNovaBurst(x, y, event.radiusFt ?? 12);
+        break;
+      case 'buffAura':
+        buffAura(x, y, event.color ?? COLOR_BUFF_AURA);
+        break;
+      case 'curseBurst':
+        curseBurst(x, y, event.radiusFt ?? 16, event.color ?? COLOR_CURSE_BURST);
+        break;
+      case 'lifeDrainBurst':
+        lifeDrainBurst(x, y, event.color ?? COLOR_LIFE_DRAIN);
         break;
       case 'playerHurt':
         // Queue-sourced player-hurt shares the combat throttle; stamp it with the

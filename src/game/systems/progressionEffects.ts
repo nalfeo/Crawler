@@ -1,7 +1,8 @@
-import type { CatalogEffect } from '../../shared/progression-effects.js';
+import type { CatalogEffect, TimedBuffModifier } from '../../shared/progression-effects.js';
 import type { StatModifier } from '../../shared/skills.js';
 import type { GameWorld } from '../../core/world.js';
 import { applyDamage } from '../../core/apply-damage.js';
+import { applyStatusEffect } from '../../core/status-effects.js';
 import { addStatModifier } from './statsSystem.js';
 import { addComponent, hasComponent, query } from 'bitecs';
 import { Enemy, Health, Knockback, Position } from '../../core/components.js';
@@ -20,6 +21,37 @@ const DEFAULT_TILE_SIZE_FT = 4;
 function tilesToFeet(world: GameWorld, radiusTiles: number): number {
   const tileSizeFt = world.floorMap?.config.tileSizeFt ?? DEFAULT_TILE_SIZE_FT;
   return radiusTiles * tileSizeFt;
+}
+
+function findNearestLivingEnemy(
+  world: GameWorld,
+  casterEid: number,
+  rangeFt: number,
+): { eid: number; x: number; y: number } | null {
+  const casterX = world.stores.position.x[casterEid] ?? 0;
+  const casterY = world.stores.position.y[casterEid] ?? 0;
+  const rangeSq = rangeFt * rangeFt;
+  let best: {
+    eid: number;
+    x: number;
+    y: number;
+    distSq: number;
+  } | null = null;
+
+  for (const enemyEid of query(world.ecs, [Enemy, Position, Health])) {
+    if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
+    const ex = world.stores.position.x[enemyEid] ?? 0;
+    const ey = world.stores.position.y[enemyEid] ?? 0;
+    const dx = ex - casterX;
+    const dy = ey - casterY;
+    const distSq = dx * dx + dy * dy;
+    if (distSq > rangeSq) continue;
+    if (!best || distSq < best.distSq) {
+      best = { eid: enemyEid, x: ex, y: ey, distSq };
+    }
+  }
+
+  return best ? { eid: best.eid, x: best.x, y: best.y } : null;
 }
 
 function castFireball(
@@ -172,6 +204,179 @@ function castPulseShield(
   }
 }
 
+function castMagicMissile(
+  world: GameWorld,
+  casterEid: number,
+  damagePercent: number,
+  rangeTiles: number,
+): void {
+  const casterX = world.stores.position.x[casterEid] ?? 0;
+  const casterY = world.stores.position.y[casterEid] ?? 0;
+  const target = findNearestLivingEnemy(world, casterEid, tilesToFeet(world, rangeTiles));
+  if (!target) return;
+  const damage = Math.round((world.stores.stats.damage[casterEid] ?? 10) * damagePercent);
+  pushVfxEvent(world.vfxEvents, {
+    kind: 'arcaneBoltImpact',
+    x: target.x,
+    y: target.y,
+    color: 0xc084fc,
+  });
+  applyDamage(
+    world,
+    target.eid,
+    damage,
+    target.x,
+    target.y,
+    undefined,
+    casterX,
+    casterY,
+    casterEid,
+  );
+}
+
+function applyTimedBuff(
+  world: GameWorld,
+  sourceType: StatModifier['sourceType'],
+  sourceId: string,
+  durationFrames: number,
+  modifiers: TimedBuffModifier[],
+  holderEid: number,
+  vfxColor?: number,
+): void {
+  const nextExpiresFrame = world.frameCount + durationFrames;
+  for (const modifier of modifiers) {
+    addStatModifier(world, {
+      sourceType,
+      sourceId,
+      stat: modifier.stat,
+      op: modifier.op,
+      value: modifier.value,
+      expiresFrame: nextExpiresFrame,
+    });
+  }
+  pushVfxEvent(world.vfxEvents, {
+    kind: 'buffAura',
+    x: world.stores.position.x[holderEid] ?? 0,
+    y: world.stores.position.y[holderEid] ?? 0,
+    color: vfxColor,
+  });
+}
+
+function applyEnemySlowBurst(
+  world: GameWorld,
+  holderEid: number,
+  sourceId: string,
+  radiusTiles: number,
+  slowMultiplier: number,
+  slowDurationMs: number,
+  vfxColor?: number,
+): void {
+  const centerX = world.stores.position.x[holderEid] ?? 0;
+  const centerY = world.stores.position.y[holderEid] ?? 0;
+  const radiusFt = tilesToFeet(world, radiusTiles);
+  const radiusSq = radiusFt * radiusFt;
+  pushVfxEvent(world.vfxEvents, {
+    kind: 'curseBurst',
+    x: centerX,
+    y: centerY,
+    radiusFt,
+    color: vfxColor,
+  });
+  for (const enemyEid of query(world.ecs, [Enemy, Position, Health])) {
+    if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
+    const ex = world.stores.position.x[enemyEid] ?? 0;
+    const ey = world.stores.position.y[enemyEid] ?? 0;
+    const dx = ex - centerX;
+    const dy = ey - centerY;
+    if (dx * dx + dy * dy > radiusSq) continue;
+    applyStatusEffect(world, enemyEid, {
+      stat: 'speed',
+      op: 'multiply',
+      value: slowMultiplier,
+      durationMs: slowDurationMs,
+      sourceType: 'ability',
+      sourceId,
+      stackRule: { mode: 'replace' },
+    });
+  }
+}
+
+function castFrostNova(
+  world: GameWorld,
+  casterEid: number,
+  damagePercent: number,
+  radiusTiles: number,
+  slowMultiplier: number,
+  slowDurationMs: number,
+  sourceId: string,
+): void {
+  const centerX = world.stores.position.x[casterEid] ?? 0;
+  const centerY = world.stores.position.y[casterEid] ?? 0;
+  const radiusFt = tilesToFeet(world, radiusTiles);
+  const radiusSq = radiusFt * radiusFt;
+  const damage = Math.round((world.stores.stats.damage[casterEid] ?? 10) * damagePercent);
+  pushVfxEvent(world.vfxEvents, {
+    kind: 'frostNovaBurst',
+    x: centerX,
+    y: centerY,
+    radiusFt,
+  });
+  for (const enemyEid of query(world.ecs, [Enemy, Position, Health])) {
+    if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
+    const ex = world.stores.position.x[enemyEid] ?? 0;
+    const ey = world.stores.position.y[enemyEid] ?? 0;
+    const dx = ex - centerX;
+    const dy = ey - centerY;
+    if (dx * dx + dy * dy > radiusSq) continue;
+    applyDamage(world, enemyEid, damage, ex, ey, undefined, centerX, centerY, casterEid);
+    applyStatusEffect(world, enemyEid, {
+      stat: 'speed',
+      op: 'multiply',
+      value: slowMultiplier,
+      durationMs: slowDurationMs,
+      sourceType: 'ability',
+      sourceId,
+      stackRule: { mode: 'replace' },
+    });
+  }
+}
+
+function castLifeDrain(
+  world: GameWorld,
+  casterEid: number,
+  damagePercent: number,
+  rangeTiles: number,
+  healPercent: number,
+): void {
+  const casterX = world.stores.position.x[casterEid] ?? 0;
+  const casterY = world.stores.position.y[casterEid] ?? 0;
+  const target = findNearestLivingEnemy(world, casterEid, tilesToFeet(world, rangeTiles));
+  if (!target) return;
+  const damage = Math.round((world.stores.stats.damage[casterEid] ?? 10) * damagePercent);
+  const dealt = applyDamage(
+    world,
+    target.eid,
+    damage,
+    target.x,
+    target.y,
+    undefined,
+    casterX,
+    casterY,
+    casterEid,
+  );
+  if (dealt <= 0) return;
+  const max = world.stores.health.max[casterEid] ?? 100;
+  const current = world.stores.health.current[casterEid] ?? 0;
+  const healAmount = Math.max(1, Math.round(dealt * healPercent));
+  world.stores.health.current[casterEid] = Math.min(max, current + healAmount);
+  pushVfxEvent(world.vfxEvents, {
+    kind: 'lifeDrainBurst',
+    x: target.x,
+    y: target.y,
+    color: 0xf472b6,
+  });
+}
+
 export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffectOptions): void {
   const { sourceType, sourceId, effect, expiresFrame, holderEid } = options;
 
@@ -237,6 +442,66 @@ export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffect
     case 'spell_pulse_shield':
       if (holderEid !== undefined) {
         castPulseShield(world, holderEid, effect.knockbackForce, effect.radiusTiles);
+      }
+      break;
+
+    case 'spell_magic_missile':
+      if (holderEid !== undefined) {
+        castMagicMissile(world, holderEid, effect.damagePercent, effect.rangeTiles);
+      }
+      break;
+
+    case 'spell_frost_nova':
+      if (holderEid !== undefined) {
+        castFrostNova(
+          world,
+          holderEid,
+          effect.damagePercent,
+          effect.radiusTiles,
+          effect.slowMultiplier,
+          effect.slowDurationMs,
+          sourceId,
+        );
+      }
+      break;
+
+    case 'spell_timed_buff':
+      if (holderEid !== undefined) {
+        applyTimedBuff(
+          world,
+          sourceType,
+          sourceId,
+          effect.durationFrames,
+          effect.modifiers,
+          holderEid,
+          effect.vfxColor,
+        );
+      }
+      break;
+
+    case 'spell_enemy_slow_burst':
+      if (holderEid !== undefined) {
+        applyEnemySlowBurst(
+          world,
+          holderEid,
+          sourceId,
+          effect.radiusTiles,
+          effect.slowMultiplier,
+          effect.slowDurationMs,
+          effect.vfxColor,
+        );
+      }
+      break;
+
+    case 'spell_life_drain':
+      if (holderEid !== undefined) {
+        castLifeDrain(
+          world,
+          holderEid,
+          effect.damagePercent,
+          effect.rangeTiles,
+          effect.healPercent,
+        );
       }
       break;
   }

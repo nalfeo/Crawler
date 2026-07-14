@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "floor1-spell-broker-expansion",
+  "task_title": "Design 7 more spell abilities for the spell broker on floor 1",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Resolved 3 concerns before coding: made the sampled 3-spell offer authoritative for selection, aligned AI/fallback callers to the offered set (with heal preference when present), and wired every new spell_* mechanic through the shared CatalogEffect union, Zod effect schema, and progressionEffects switch."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

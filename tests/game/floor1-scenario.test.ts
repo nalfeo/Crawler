@@ -16,6 +16,8 @@ import {
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
   getNpcQuestIndicatorState,
+  getBossRewardSpellOptions,
+  getOfferedBossRewardSpellIds,
   getShopkeeperPostQuestStock,
   getShopkeeperStage,
   buildInitiallyLockedDoorTileSet,
@@ -55,7 +57,11 @@ import {
   SHOPKEEPER_FETCH_ITEM_ID,
 } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID } from '../../src/shared/abilities.js';
+import {
+  FLOOR1_BOSS_REWARD_SPELL_IDS,
+  FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT,
+  DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
+} from '../../src/shared/abilities.js';
 import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
@@ -876,7 +882,7 @@ describe('floor1Scenario', () => {
     }
   });
 
-  it('only allows the three boss-reward spells and unlocks abilities after a valid pick', () => {
+  it('samples a stable 3-spell boss-reward offer from the 10-spell pool and only allows offered picks', () => {
     const makeWorld = () => {
       const world = createTestWorld({ seed: 123 });
       const player = spawnPlayer(world, 0, 0);
@@ -886,8 +892,19 @@ describe('floor1Scenario', () => {
       return { world, player };
     };
 
-    const validSpells = ['fireball', 'heal', 'pulse-shield'] as const;
-    for (const spellId of validSpells) {
+    const { world: seededWorld } = makeWorld();
+    const offered = [...getOfferedBossRewardSpellIds(seededWorld)];
+    expect(offered).toHaveLength(FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT);
+    expect(new Set(offered).size).toBe(FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT);
+    for (const spellId of offered) {
+      expect(FLOOR1_BOSS_REWARD_SPELL_IDS).toContain(spellId);
+    }
+    expect(getBossRewardSpellOptions(seededWorld).map((option) => option.id)).toEqual(offered);
+
+    const { world: duplicateSeedWorld } = makeWorld();
+    expect(getOfferedBossRewardSpellIds(duplicateSeedWorld)).toEqual(offered);
+
+    for (const spellId of offered) {
       const { world, player } = makeWorld();
       const learned = selectSpellFromBossBattle(world, player, spellId);
       expect(learned).toBe(true);
@@ -895,8 +912,13 @@ describe('floor1Scenario', () => {
       expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain(spellId);
     }
 
+    const unofferedSpellId = FLOOR1_BOSS_REWARD_SPELL_IDS.find(
+      (spellId) => !offered.includes(spellId),
+    );
+    expect(unofferedSpellId).toBeDefined();
+
     const { world: invalidWorld, player: invalidPlayer } = makeWorld();
-    const rejected = selectSpellFromBossBattle(invalidWorld, invalidPlayer, 'arcane-bolt');
+    const rejected = selectSpellFromBossBattle(invalidWorld, invalidPlayer, unofferedSpellId!);
     expect(rejected).toBe(false);
     expect(invalidWorld.featureUnlocks.spells).toBe(false);
     expect(invalidWorld.abilityStatesByEntity.get(invalidPlayer)).toBeUndefined();
@@ -942,10 +964,13 @@ describe('floor1Scenario', () => {
     expect(world.goalFlags.get('floor1-boss-battle-complete')).toBe(true);
 
     // The win now offers a concrete spell whose pick unlocks the ability system.
+    const offeredSpellId = getOfferedBossRewardSpellIds(world)[0]!;
     expect(shouldShowSpellSelector(world)).toBe(true);
-    expect(selectSpellFromBossBattle(world, player, 'heal')).toBe(true);
+    expect(selectSpellFromBossBattle(world, player, offeredSpellId)).toBe(true);
     expect(world.featureUnlocks.spells).toBe(true);
-    expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain('heal');
+    expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain(
+      offeredSpellId,
+    );
   });
 
   describe('boss-battle spell reward hardening (ensureBossBattleSpellReward)', () => {
@@ -998,19 +1023,20 @@ describe('floor1Scenario', () => {
     it('preserves an explicit modal/AI pick and never double-grants (idempotent)', () => {
       const { world, player } = makeReadyWorld();
       world.goalFlags.set('floor1-boss-battle-complete', true);
+      const offeredSpellId = getOfferedBossRewardSpellIds(world)[0]!;
 
-      // Player explicitly picks fireball via the modal selection path.
-      expect(selectSpellFromBossBattle(world, player, 'fireball')).toBe(true);
+      // Player explicitly picks one offered spell via the modal selection path.
+      expect(selectSpellFromBossBattle(world, player, offeredSpellId)).toBe(true);
 
       // The safety net must not override the choice nor learn a second spell.
       const granted = ensureBossBattleSpellReward(world, player);
       expect(granted).toBe(false);
-      expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toEqual(['fireball']);
+      expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toEqual([offeredSpellId]);
       expect(world.featureUnlocks.spells).toBe(true);
 
       // Calling again stays a no-op.
       expect(ensureBossBattleSpellReward(world, player)).toBe(false);
-      expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toEqual(['fireball']);
+      expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toEqual([offeredSpellId]);
     });
 
     it('completing the Slime Rat quest then the safety net yields a learned spell + unlock', () => {
@@ -1046,6 +1072,8 @@ describe('floor1Scenario', () => {
       expect(world.goalFlags.get('floor1-boss-battle-complete')).toBe(true);
 
       // No modal, no AI: the hardening fallback alone guarantees the invariant.
+      // The safety net always grants DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID ('heal')
+      // regardless of which spells were offered, to keep the headless RNG trajectory stable.
       expect(world.featureUnlocks.spells).toBe(false);
       const granted = ensureBossBattleSpellReward(world, player);
       expect(granted).toBe(true);

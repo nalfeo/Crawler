@@ -49,6 +49,8 @@ export {
 export {
   getShopkeeperStage,
   getShopkeeperPostQuestStock,
+  getBossRewardSpellOptions,
+  getOfferedBossRewardSpellIds,
   meetShopkeeper,
   returnShopkeeperPrize,
   purchaseShopkeeperEquipment,

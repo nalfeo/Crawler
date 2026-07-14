@@ -90,10 +90,12 @@ import {
   type NpcQuestIndicatorState,
 } from '../shared/quest-types.js';
 import {
+  FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT,
   FLOOR1_BOSS_REWARD_SPELL_IDS,
   DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
   type Floor1BossRewardSpellId,
 } from '../shared/abilities.js';
+import { getAbilityDefinition } from './abilities/registry.js';
 import {
   acceptQuest,
   notifyQuestTalk,
@@ -316,6 +318,48 @@ function pickStarterChoices(world: GameWorld): string[] {
     }
   }
   return [];
+}
+
+function pickOfferedRewardSpellIds(world: GameWorld): Floor1BossRewardSpellId[] {
+  const offerRng = new SeededRandom(hashStringToSeed(`${world.seed}:floor1-spell-reward-offer`));
+  const pool = [...FLOOR1_BOSS_REWARD_SPELL_IDS];
+  const selected: Floor1BossRewardSpellId[] = [];
+  while (pool.length > 0 && selected.length < FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT) {
+    const idx = offerRng.nextInt(0, pool.length - 1);
+    const id = pool.splice(idx, 1)[0];
+    if (id !== undefined) {
+      selected.push(id);
+    }
+  }
+  return selected;
+}
+
+export function getOfferedBossRewardSpellIds(world: GameWorld): readonly Floor1BossRewardSpellId[] {
+  if (!world.floorScenario) {
+    return FLOOR1_BOSS_REWARD_SPELL_IDS.slice(0, FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT);
+  }
+  if (
+    !world.floorScenario.offeredRewardSpellIds ||
+    world.floorScenario.offeredRewardSpellIds.length === 0
+  ) {
+    world.floorScenario.offeredRewardSpellIds = pickOfferedRewardSpellIds(world);
+  }
+  return world.floorScenario.offeredRewardSpellIds;
+}
+
+export function getBossRewardSpellOptions(world: GameWorld): Array<{
+  id: Floor1BossRewardSpellId;
+  label: string;
+  description: string;
+}> {
+  return [...getOfferedBossRewardSpellIds(world)].map((spellId) => {
+    const def = getAbilityDefinition(spellId);
+    return {
+      id: spellId,
+      label: def?.name ?? spellId,
+      description: def?.description ?? 'Learn a new spell.',
+    };
+  });
 }
 
 function centerOfRoom(room: { bounds: { x: number; y: number; width: number; height: number } }): {
@@ -1492,6 +1536,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     protagonistName: world.playerName,
     starterWeaponPool: floor1Config.starterWeapons,
     starterChoices: pickStarterChoices(world),
+    offeredRewardSpellIds: pickOfferedRewardSpellIds(world),
     selectedWeaponId: null,
     selectedChoiceIndex: null,
     baseStatBonuses: {
@@ -3431,8 +3476,10 @@ export function selectSpellFromBossBattle(
   playerEid: number,
   spellId: string,
 ): boolean {
-  // Verify the spell is one of the allowed options
-  if (!FLOOR1_BOSS_REWARD_SPELL_IDS.includes(spellId as Floor1BossRewardSpellId)) {
+  const offeredSpellIds = getOfferedBossRewardSpellIds(world);
+
+  // Verify the spell is one of the currently offered options
+  if (!offeredSpellIds.includes(spellId as Floor1BossRewardSpellId)) {
     return false;
   }
 
@@ -3497,7 +3544,8 @@ export function ensureBossBattleSpellReward(world: GameWorld, playerEid: number)
   }
 
   // No spell learned yet: grant the deterministic default reward + unlock.
-  memorizeSpell(world, playerEid, DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID);
+  const fallbackSpellId = DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID;
+  memorizeSpell(world, playerEid, fallbackSpellId);
   world.featureUnlocks.spells = true;
   return true;
 }

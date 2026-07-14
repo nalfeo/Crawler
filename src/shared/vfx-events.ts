@@ -32,7 +32,12 @@ export type VfxEffectKind =
   | 'playerHurt'
   | 'fireballBlast'
   | 'pulseShieldWave'
-  | 'healGlow';
+  | 'healGlow'
+  | 'arcaneBoltImpact'
+  | 'frostNovaBurst'
+  | 'buffAura'
+  | 'curseBurst'
+  | 'lifeDrainBurst';
 
 export interface VfxEvent {
   /** Which preset the renderer should spawn. */

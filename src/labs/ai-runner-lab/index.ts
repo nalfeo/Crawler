@@ -1169,7 +1169,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         world.goalFlags.get('floor1-boss-battle-complete') === true &&
         world.featureUnlocks.spells !== true
       ) {
-        sceneOptions.selectSpellFromBossBattle?.(world, playerEid, 'fireball');
+        const offeredSpellId = sceneOptions.getSpellRewardOptions?.(world)?.[0]?.id;
+        if (offeredSpellId) {
+          sceneOptions.selectSpellFromBossBattle?.(world, playerEid, offeredSpellId);
+        }
         modalPicker.close();
         return;
       }

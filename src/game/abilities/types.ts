@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { AbilityTriggerCondition as SharedAbilityTriggerCondition } from '../../shared/abilities.js';
-import type { CatalogEffect } from '../../shared/progression-effects.js';
+import type { CatalogEffect, TimedBuffModifier } from '../../shared/progression-effects.js';
 import { STAT_KEYS } from '../../shared/stats.js';
 
 export { ACTIVE_ABILITY_SLOT_LIMIT } from '../../shared/abilities.js';
@@ -41,7 +41,12 @@ const triggerConditionSchema = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('skill_usage'),
-      metric: z.enum(['hits_landed', 'damage_dealt', 'distance_dodged_near_threat']),
+      metric: z.enum([
+        'hits_landed',
+        'damage_dealt',
+        'distance_dodged_near_threat',
+        'weapon_fired',
+      ]),
       skillId: z.string().trim().min(1).optional(),
       minAmount: z.number().nonnegative().optional(),
     })
@@ -76,6 +81,13 @@ const triggerConditionSchema = z.discriminatedUnion('kind', [
 ]);
 
 const statKeySchema = z.enum(STAT_KEYS);
+const timedBuffModifierSchema: z.ZodType<TimedBuffModifier> = z
+  .object({
+    stat: statKeySchema,
+    op: z.enum(['add', 'multiply']),
+    value: z.number(),
+  })
+  .strict();
 
 const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
   z
@@ -123,6 +135,47 @@ const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
       type: z.literal('spell_pulse_shield'),
       knockbackForce: z.number().positive(),
       radiusTiles: z.number().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('spell_magic_missile'),
+      damagePercent: z.number().positive(),
+      rangeTiles: z.number().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('spell_frost_nova'),
+      damagePercent: z.number().positive(),
+      radiusTiles: z.number().positive(),
+      slowMultiplier: z.number().positive().max(1),
+      slowDurationMs: z.number().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('spell_timed_buff'),
+      durationFrames: z.number().int().positive(),
+      modifiers: z.array(timedBuffModifierSchema).min(1),
+      vfxColor: z.number().int().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('spell_enemy_slow_burst'),
+      radiusTiles: z.number().positive(),
+      slowMultiplier: z.number().positive().max(1),
+      slowDurationMs: z.number().positive(),
+      vfxColor: z.number().int().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('spell_life_drain'),
+      damagePercent: z.number().positive(),
+      rangeTiles: z.number().positive(),
+      healPercent: z.number().positive(),
     })
     .strict(),
 ]);

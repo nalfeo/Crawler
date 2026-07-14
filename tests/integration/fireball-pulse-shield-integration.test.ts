@@ -92,6 +92,10 @@ describe('Fireball auto-triggers in the shipped visual pipeline', () => {
     const options = createFloor1MainSceneOptions();
 
     // Simulate boss defeat + the player's pick from the spell-selection modal.
+    // Force fireball into the offered set — seed 7 may not generate it by default,
+    // but this test's concern is the visual-pipeline auto-trigger behaviour, not
+    // the offer sampling.
+    world.floorScenario!.offeredRewardSpellIds = ['fireball', 'heal', 'pulse-shield'];
     world.goalFlags.set('floor1-boss-battle-complete', true);
     const learned = selectSpellFromBossBattle(world, playerEid, 'fireball');
     expect(learned).toBe(true);
@@ -130,6 +134,9 @@ describe('Pulse Shield auto-triggers in the shipped visual pipeline', () => {
     const { world, playerEid } = createPlayingFloor1World(11);
     const options = createFloor1MainSceneOptions();
 
+    // Force pulse-shield into the offered set — seed 11 may not generate it by
+    // default, but this test's concern is the visual-pipeline auto-trigger behaviour.
+    world.floorScenario!.offeredRewardSpellIds = ['pulse-shield', 'heal', 'fireball'];
     world.goalFlags.set('floor1-boss-battle-complete', true);
     const learned = selectSpellFromBossBattle(world, playerEid, 'pulse-shield');
     expect(learned).toBe(true);
@@ -169,6 +176,8 @@ describe('Fireball kill attribution', () => {
     const { world, playerEid } = createPlayingFloor1World(7);
     const options = createFloor1MainSceneOptions();
 
+    // Force fireball into the offered set — seed 7 may not generate it by default.
+    world.floorScenario!.offeredRewardSpellIds = ['fireball', 'heal', 'pulse-shield'];
     world.goalFlags.set('floor1-boss-battle-complete', true);
     const learned = selectSpellFromBossBattle(world, playerEid, 'fireball');
     expect(learned).toBe(true);

@@ -1,3 +1,5 @@
+import type { Floor1BossRewardSpellId } from './abilities.js';
+
 /**
  * Enemy archetype identifier from the current floor's enemy pack.
  * Previously hardcoded as 'rat' | 'slime', now generalized to support any enemy ID.
@@ -81,6 +83,7 @@ export interface FloorScenarioState {
   protagonistName: string;
   starterWeaponPool: readonly string[];
   starterChoices: string[];
+  offeredRewardSpellIds?: Floor1BossRewardSpellId[];
   selectedWeaponId: string | null;
   selectedChoiceIndex: number | null;
   baseStatBonuses: {
