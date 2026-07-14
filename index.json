@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c33695e7204c0ef39d5ac5522f64a56e992c4b53",
+    "commitDate": "2026-07-14T06:49:20Z",
+    "commitSubject": "feat: intro screen with Director welcome, name & gender selection (#1101)",
+    "capturedAt": "2026-07-14T07:36:20.376Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29313294643",
+    "winRate": 0.9266666666666666,
+    "totalWins": 278,
+    "totalRuns": 300,
+    "path": "by-sha/c33695e7204c0ef39d5ac5522f64a56e992c4b53.json"
+  },
+  {
     "commit": "3ad4ac7aac78fb31f56e14198b2a69148400080b",
     "commitDate": "2026-07-14T06:30:44Z",
     "commitSubject": "docs: document 18 undocumented npm scripts in AGENTS.md (test-health 2026-07-06) (#1061)",
