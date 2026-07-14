@@ -4,6 +4,7 @@ import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
 import { Knockback, Size } from '../../src/core/components.js';
 import { spawnEnemy } from '../../src/core/helpers.js';
 import { makeWalledMap } from '../helpers/map-fixtures.js';
+import { SHAPE_BOX } from '../../src/core/physics-defs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('knockbackSystem', () => {
@@ -71,7 +72,11 @@ describe('knockbackSystem', () => {
     world.stores.sprite.height[eid] = 30;
     // Match the "large enemy" Size to the sprite dims so the physics-body
     // helper reports the intended 30 ft footprint (Slice 1 bit-parity).
-    addComponent(world.ecs, eid, set(Size, { radius: 0, halfWidth: 15, halfHeight: 15, shape: 1 }));
+    addComponent(
+      world.ecs,
+      eid,
+      set(Size, { radius: 0, halfWidth: 15, halfHeight: 15, shape: SHAPE_BOX }),
+    );
     addComponent(world.ecs, eid, set(Knockback, { dirX: 1, dirY: 0, remaining: 2, speed: 2 }));
 
     knockbackSystem(world);

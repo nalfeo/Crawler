@@ -157,9 +157,17 @@ export default tseslint.config(
     rules: {
       'no-restricted-syntax': [
         'error',
+        // Dot notation: something.sprite.width / .height
         {
           selector:
             "MemberExpression[object.type='MemberExpression'][object.property.name='sprite'][property.name=/^(width|height)$/]",
+          message:
+            'Do not read sprite.width/height for physics. Use getBodyHalfWidth/Height/Radius from src/core/physics-body.ts (ADR 0044). Renderer code lives in src/engine/**.',
+        },
+        // Computed notation: something.sprite['width'] / ['height']
+        {
+          selector:
+            "MemberExpression[computed=true][object.type='MemberExpression'][object.property.name='sprite'][property.value=/^(width|height)$/]",
           message:
             'Do not read sprite.width/height for physics. Use getBodyHalfWidth/Height/Radius from src/core/physics-body.ts (ADR 0044). Renderer code lives in src/engine/**.',
         },
