@@ -24,6 +24,9 @@ permissions:
 jobs:
   route:
     if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
+    concurrency:
+      group: crawler-ci-recovery-router
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -37,4 +40,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RECOVERY_TRIGGER: ${{ github.event_name }}
+          CI_RECOVERY_MAX_DISPATCH_PER_RUN: ${{ vars.CI_RECOVERY_MAX_DISPATCH_PER_RUN || '8' }}
         run: node .github/scripts/ci-recovery/router.mjs
