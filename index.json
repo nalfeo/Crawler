@@ -1,5 +1,16 @@
 [
   {
+    "commit": "bb51be6ba659f9b1a82f4049e0daf671a3784367",
+    "commitDate": "2026-07-14T07:39:49Z",
+    "commitSubject": "fix: expand baseline sweep to all 6 Floor 1 starter weapons (100×6=600 runs) (#1075)",
+    "capturedAt": "2026-07-14T08:50:12.883Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29316121278",
+    "winRate": 0.945,
+    "totalWins": 567,
+    "totalRuns": 600,
+    "path": "by-sha/bb51be6ba659f9b1a82f4049e0daf671a3784367.json"
+  },
+  {
     "commit": "032446aeaa548f7666ca04416197b04fe061c3da",
     "commitDate": "2026-07-14T07:01:25Z",
     "commitSubject": "chore: stop auto-opening the labs landing page (#1107)",
