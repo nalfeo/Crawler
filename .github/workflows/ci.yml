@@ -69,9 +69,7 @@ jobs:
             promotion_checks="$(
               gh api \
                 "/repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?per_page=100" \
-                --jq '([.check_runs[] | select(
-                  .name == "merge-train" or .name == "merge-train-included"
-                )] | sort_by(.id) | last) as $check |
+                --jq '([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
                   if ($check != null and
                       $check.status == "completed" and
                       $check.conclusion == "success" and

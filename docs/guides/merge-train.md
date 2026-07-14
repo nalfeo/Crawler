@@ -28,9 +28,9 @@ for the architectural rationale.
    `merge-train-candidate` result.
 4. A green batch is revalidated for current heads, titles, admission
    fingerprints, and `main` parent. Only then does the trusted App publish the
-   required `merge-train` check plus inclusion attestations and atomically:
-   - updates every PR head to its commit in the validated combined candidate
-     using exact force leases;
+   required `merge-train` check and atomically:
+   - updates every PR head to the final validated combined-candidate SHA using
+     exact force leases;
    - fast-forwards `main` directly to the validated combined-candidate SHA.
 5. If the combined fast gate fails, the train binary-searches ordered prefixes,
    promotes the longest validated green prefix in one atomic update, and returns

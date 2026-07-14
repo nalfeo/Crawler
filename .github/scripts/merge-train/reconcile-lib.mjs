@@ -1,6 +1,5 @@
 import {
   BLOCKED_LABEL,
-  INCLUDED_CHECK_NAME,
   QUEUE_LABEL,
   candidateFingerprint,
   commitTimestamp,
@@ -240,16 +239,6 @@ export async function promoteExactBatch({
   }
   const finalCandidateSha = candidateShas.at(-1);
   const promotionFingerprint = candidateFingerprint(expectedBase, currentPrs);
-  for (let index = 0; index < candidateShas.length - 1; index += 1) {
-    await createTrainCheck(
-      candidateShas[index],
-      promotionFingerprint,
-      'completed',
-      'success',
-      INCLUDED_CHECK_NAME,
-      provenanceEntries,
-    );
-  }
   await createTrainCheck(
     finalCandidateSha,
     promotionFingerprint,
@@ -260,7 +249,7 @@ export async function promoteExactBatch({
   );
   try {
     const refUpdates = currentPrs.map(
-      (currentPr, index) => `${candidateShas[index]}:refs/heads/${currentPr.head.ref}`,
+      (currentPr) => `${finalCandidateSha}:refs/heads/${currentPr.head.ref}`,
     );
     const leases = currentPrs.map(
       (currentPr) => `--force-with-lease=refs/heads/${currentPr.head.ref}:${currentPr.head.sha}`,
@@ -275,16 +264,6 @@ export async function promoteExactBatch({
       `--force-with-lease=refs/heads/main:${expectedBase}`,
     ]);
   } catch (error) {
-    for (let index = 0; index < candidateShas.length - 1; index += 1) {
-      await createTrainCheck(
-        candidateShas[index],
-        promotionFingerprint,
-        'completed',
-        'failure',
-        INCLUDED_CHECK_NAME,
-        provenanceEntries,
-      );
-    }
     await createTrainCheck(
       finalCandidateSha,
       promotionFingerprint,

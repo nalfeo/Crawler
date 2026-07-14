@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
 export const CANDIDATE_CHECK_NAME = 'merge-train-candidate';
-export const INCLUDED_CHECK_NAME = 'merge-train-included';
 export const REQUIRED_CHECK_NAME = 'merge-train';
 export const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
 export const VALIDATION_FAILED_LABEL = 'merge-train-validation-failed';

@@ -42,10 +42,10 @@ Accepted
   still equals its recorded parent and every included PR head, title, check, and
   review state remains current.
 - **DEC-006**: Promotion atomically force-updates every same-repository PR branch
-  to its corresponding commit in the validated candidate and fast-forwards
-  `main` directly to the final tested SHA, all under exact leases. No unvalidated
-  intermediate SHA becomes `main`; each PR head remains reachable so GitHub
-  retains individual merged-PR semantics.
+  and `main` directly to the final tested SHA, all under exact leases. No
+  unvalidated intermediate SHA becomes a PR head or `main`; the validated
+  candidate still contains one commit per PR and GitHub retains individual
+  merged-PR semantics.
 - **DEC-007**: `MERGE_TRAIN_ENABLED` is the sole rollout switch. When true, CI
   recovery works at most six oldest non-ready PRs, enqueues converged immutable
   heads instead of arming auto-merge, and rebases only PRs returned with textual

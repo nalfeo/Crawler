@@ -317,17 +317,11 @@ test('promoteExactBatch advances all PR heads and main in one atomic push', asyn
   });
 
   assert.equal(promoted, true);
-  assert.equal(checkCalls.length, 2);
-  assert.deepEqual(
-    checkCalls.map((call) => [call[0], call[4]]),
-    [
-      [firstCandidate, 'merge-train-included'],
-      [finalCandidate, 'merge-train'],
-    ],
-  );
+  assert.equal(checkCalls.length, 1);
+  assert.deepEqual([checkCalls[0][0], checkCalls[0][4]], [finalCandidate, 'merge-train']);
   const push = calls.find((args) => args[0] === 'push');
   assert.ok(push.includes('--atomic'));
-  assert.ok(push.includes(`${firstCandidate}:refs/heads/${first.head.ref}`));
+  assert.ok(push.includes(`${finalCandidate}:refs/heads/${first.head.ref}`));
   assert.ok(push.includes(`${finalCandidate}:refs/heads/${second.head.ref}`));
   assert.ok(push.includes(`${finalCandidate}:refs/heads/main`));
   assert.ok(push.includes(`--force-with-lease=refs/heads/${first.head.ref}:${first.head.sha}`));
