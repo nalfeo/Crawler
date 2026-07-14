@@ -1,5 +1,16 @@
 [
   {
+    "commit": "87a8a87e84fee12a4ccddc5654a521c0262ae7f9",
+    "commitDate": "2026-07-14T08:41:48Z",
+    "commitSubject": "fix: Floor 2 AI territory wiggle — clear EXPLORE target on A* failure, respect suppression in territory targeting (#1085)",
+    "capturedAt": "2026-07-14T09:45:52.842Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29319566879",
+    "winRate": 0.945,
+    "totalWins": 567,
+    "totalRuns": 600,
+    "path": "by-sha/87a8a87e84fee12a4ccddc5654a521c0262ae7f9.json"
+  },
+  {
     "commit": "eba8c695815061f97abca6cbce7493a573fd80f3",
     "commitDate": "2026-07-14T08:32:35Z",
     "commitSubject": "chore(size): post-merge review follow-ups from Size Slice 1 (#785) (#1059)",
