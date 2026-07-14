@@ -3,6 +3,9 @@ import test from 'node:test';
 
 import {
   buildCandidate,
+  buildDispatchBindings,
+  dispatchRecoveryWorkflow,
+  dispatchValidationWorkflow,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
@@ -10,6 +13,7 @@ import {
   promoteExactBatch,
   promotionStaleReason,
   promoteExactCandidate,
+  resolveMergeTrainTokens,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 
@@ -39,6 +43,7 @@ function createGitStub({
   parentSha = baseSha,
   failPush = false,
   failMerge = false,
+  mergeConflict = false,
   failDirectShaFetch = false,
   noSquashChanges = false,
 }) {
@@ -59,7 +64,10 @@ function createGitStub({
         );
       return '';
     }
-    if (args[0] === 'merge' && failMerge) throw new Error('CONFLICT');
+    if (args[0] === 'merge' && failMerge) throw new Error('merge failed');
+    if (args[0] === 'ls-files' && args[1] === '--unmerged') {
+      return mergeConflict ? '100644 abcdef 1\tconflicted.ts' : '';
+    }
     if (args[0] === 'push' && failPush) throw new Error('lease rejected');
     if (args[0] === 'diff' && args[1] === '--cached' && args[2] === '--quiet') {
       if (noSquashChanges) return '';
@@ -158,7 +166,7 @@ test('buildCandidate rejects a fallback ref that no longer matches the API head 
 
 test('buildCandidate classifies squash conflicts separately from retryable failures', () => {
   const entry = makePr();
-  const { git } = createGitStub({ failMerge: true });
+  const { git } = createGitStub({ failMerge: true, mergeConflict: true });
   assert.throws(
     () =>
       buildCandidate({
@@ -174,6 +182,128 @@ test('buildCandidate classifies squash conflicts separately from retryable failu
       return true;
     },
   );
+});
+
+test('buildCandidate supplies deterministic Git identity to squash merge', () => {
+  const { git, calls } = createGitStub({});
+  buildCandidate({
+    baseSha,
+    entries: [makePr()],
+    refName: 'merge-train/candidate-1',
+    git,
+    live: false,
+  });
+  const mergeCall = calls.find((call) => call.args[0] === 'merge');
+  assert.deepEqual(mergeCall.options.env, {
+    GIT_AUTHOR_NAME: 'crawler-merge-train[bot]',
+    GIT_AUTHOR_EMAIL: 'crawler-merge-train[bot]@users.noreply.github.com',
+    GIT_COMMITTER_NAME: 'crawler-merge-train[bot]',
+    GIT_COMMITTER_EMAIL: 'crawler-merge-train[bot]@users.noreply.github.com',
+  });
+});
+
+test('buildCandidate leaves non-conflict merge failures retryable', () => {
+  const { git } = createGitStub({ failMerge: true });
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [makePr()],
+        refName: 'merge-train/candidate-1',
+        git,
+        live: false,
+      }),
+    (error) => {
+      assert.equal(isMergeTrainConflictError(error), false);
+      assert.match(error.message, /candidate merge failed operationally/);
+      return true;
+    },
+  );
+});
+
+test('live Actions runs require separate promotion and workflow-dispatch tokens', () => {
+  assert.deepEqual(
+    resolveMergeTrainTokens({
+      GITHUB_ACTIONS: 'true',
+      MERGE_TRAIN_TOKEN: 'app-token',
+      GITHUB_TOKEN: 'actions-token',
+    }),
+    {
+      promotionToken: 'app-token',
+      workflowDispatchToken: 'actions-token',
+    },
+  );
+  assert.throws(
+    () =>
+      resolveMergeTrainTokens({
+        GITHUB_ACTIONS: 'true',
+        MERGE_TRAIN_TOKEN: 'app-token',
+      }),
+    /requires GITHUB_TOKEN for workflow dispatch/,
+  );
+  assert.throws(
+    () =>
+      resolveMergeTrainTokens({
+        GITHUB_ACTIONS: 'true',
+        GITHUB_TOKEN: 'actions-token',
+      }),
+    /requires MERGE_TRAIN_TOKEN for promotion/,
+  );
+});
+
+test('workflow dispatch helpers use the Actions token for recovery and validation', async () => {
+  const calls = [];
+  const request = async (token, path, options) => {
+    calls.push({ token, path, options });
+  };
+  await dispatchRecoveryWorkflow({
+    request,
+    token: 'actions-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    prNumber: 42,
+    trigger: 'merge-train-validation-failure',
+  });
+  await dispatchValidationWorkflow({
+    request,
+    token: 'actions-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    sha: candidateSha,
+    fingerprint: 'fingerprint',
+    entries: [makePr()],
+  });
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.token === 'actions-token'));
+  assert.match(calls[0].path, /ci-recovery\.yml\/dispatches$/);
+  assert.match(calls[1].path, /merge-train-validate\.yml\/dispatches$/);
+});
+
+test('buildDispatchBindings routes both dispatch calls to workflowDispatchToken not promotionToken', async () => {
+  // This wiring test ensures that when reconcile.mjs creates dispatch
+  // functions via buildDispatchBindings, both calls use workflowDispatchToken
+  // (GITHUB_TOKEN) rather than the App promotion token (MERGE_TRAIN_TOKEN).
+  // If the binding were accidentally changed to forward the promotion token,
+  // this test would fail while the helpers-only test above would remain green.
+  const calls = [];
+  const request = async (token, path, options) => {
+    calls.push({ token, path, options });
+  };
+  const { dispatchRecovery, dispatchValidation } = buildDispatchBindings({
+    request,
+    workflowDispatchToken: 'actions-token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+  });
+  await dispatchRecovery(42, 'merge-train-validation-failure');
+  await dispatchValidation(candidateSha, 'fingerprint', [makePr()]);
+  assert.equal(calls.length, 2);
+  assert.ok(
+    calls.every((call) => call.token === 'actions-token'),
+    'both dispatch calls must forward workflowDispatchToken',
+  );
+  assert.match(calls[0].path, /ci-recovery\.yml\/dispatches$/);
+  assert.match(calls[1].path, /merge-train-validate\.yml\/dispatches$/);
 });
 
 test('buildCandidate classifies already-applied squash diffs as no-op candidates', () => {
