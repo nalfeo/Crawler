@@ -642,6 +642,7 @@ test('train mode waits on a still-pending conflict-only rebase for the same head
       status: 404,
       body: { message: 'Not Found' },
     }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
   });
 
   t.after(() => server.close());
