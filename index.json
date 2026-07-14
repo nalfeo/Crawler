@@ -11,6 +11,17 @@
     "path": "by-sha/2139297d72686a7ac9f21c0d80d0c1f1dbfb9172.json"
   },
   {
+    "commit": "0abd8dec26a0f26001c2f6666e17b17140fdf04e",
+    "commitDate": "2026-07-14T07:55:40Z",
+    "commitSubject": "Restrict Floor 1 merchant stock to canonical loadout weapons (#1070)",
+    "capturedAt": "2026-07-14T09:14:11.363Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29317077554",
+    "winRate": 0.945,
+    "totalWins": 567,
+    "totalRuns": 600,
+    "path": "by-sha/0abd8dec26a0f26001c2f6666e17b17140fdf04e.json"
+  },
+  {
     "commit": "bb51be6ba659f9b1a82f4049e0daf671a3784367",
     "commitDate": "2026-07-14T07:39:49Z",
     "commitSubject": "fix: expand baseline sweep to all 6 Floor 1 starter weapons (100×6=600 runs) (#1075)",
