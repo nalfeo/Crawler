@@ -3,6 +3,7 @@
   "sprites": {
     "ability-icon-fireball-v1-var-0": {
       "favorite": true,
+      "disliked": false,
       "comment": ""
     },
     "baby-slime-v1-var-1": {
@@ -19,6 +20,7 @@
     },
     "welcome-room-rug-var-0": {
       "favorite": false,
+      "disliked": false,
       "comment": ""
     },
     "purple-potion-bottle-v1-var-4": {
@@ -238,6 +240,96 @@
       "comment": ""
     },
     "npc-sweaty-merchant-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "welcome-sign-left-v2-var-2": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-sign-left-v1-var-0": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-sign-left-v1-var-3": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-sign-left-v1-var-5": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-sign-left-v1-var-13": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-velvet-rope-var-2": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-desk-var-0": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "welcome-room-bookcase-var-0": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "toadkin-elite-swamp-consigliere-v1-var-3": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "toadkin-tongue-var-10": {
+      "favorite": false,
+      "disliked": false,
+      "comment": ""
+    },
+    "toadkin-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "snailfolk-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "tile-boss-staircase-floor-v2-var-10": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "slime-rat-boss-var-1": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "panda-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "geese-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "beetlefolk-boss-var-0": {
+      "favorite": false,
+      "disliked": true,
+      "comment": ""
+    },
+    "batfolk-boss-var-3": {
       "favorite": false,
       "disliked": true,
       "comment": ""
