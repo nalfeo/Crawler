@@ -41,8 +41,8 @@ ci-policy
   that window and enter the train.
 - Candidate validation runs `verify:fast` and `security:check`, not headless,
   E2E, coverage, or the full verification gauntlet.
-- Non-monotonic prefix results isolate the earliest failing prefix, preserving
-  sequential promotion safety.
+- Non-monotonic prefix results advance from the longest validated prefix, and
+  promotion moves every included PR head plus `main` in one atomic push.
 - Only the PR represented by a synchronize event receives that trigger; other
   PRs admitted by the same sweep receive a neutral sweep trigger.
 

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
 export const CANDIDATE_CHECK_NAME = 'merge-train-candidate';
+export const INCLUDED_CHECK_NAME = 'merge-train-included';
 export const REQUIRED_CHECK_NAME = 'merge-train';
 export const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
 export const VALIDATION_FAILED_LABEL = 'merge-train-validation-failed';
@@ -16,11 +17,17 @@ function compact(value) {
 }
 
 export function parseEnabledFlag(value) {
-  const normalized = compact(value || 'false').toLowerCase();
+  const normalized = compact(value || 'false');
   if (!['true', 'false'].includes(normalized)) {
     throw new Error(`MERGE_TRAIN_ENABLED must be true or false, received: ${normalized}`);
   }
   return normalized === 'true';
+}
+
+export function hasLeadingMarker(body, marker) {
+  return String(body || '')
+    .trimStart()
+    .startsWith(marker);
 }
 
 export function resolveAdmissionChecks(value, defaults = DEFAULT_ADMISSION_CHECKS) {
@@ -129,16 +136,15 @@ export function nextBisectStep(prefixStates) {
     return { type: 'validate', prefixLength: total };
   }
   let red = total;
+  let green = 0;
   for (let index = 0; index < total - 1; index += 1) {
-    const prefixLength = index + 1;
-    if (prefixStates[index] === 'failure') {
-      red = Math.min(red, prefixLength);
+    if (prefixStates[index] === 'success') {
+      green = Math.max(green, index + 1);
     }
   }
-  let green = 0;
-  for (let index = 0; index < red - 1; index += 1) {
-    if (prefixStates[index] === 'success') {
-      green = index + 1;
+  for (let index = green; index < total - 1; index += 1) {
+    if (prefixStates[index] === 'failure') {
+      red = Math.min(red, index + 1);
     }
   }
   if (red - green === 1) {

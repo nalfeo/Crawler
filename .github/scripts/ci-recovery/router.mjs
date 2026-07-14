@@ -122,6 +122,7 @@ export function collectPrNumbers({
   trainEnabled = false,
 }) {
   if (trainEnabled) {
+    const directlyTriggeredPrs = eventPrNumbers(payload);
     return scheduledPulls
       .filter(
         (pullRequest) =>
@@ -141,6 +142,9 @@ export function collectPrNumbers({
       .slice(0, REPAIR_WINDOW_SIZE)
       .filter(
         (pullRequest) =>
+          directlyTriggeredPrs.has(pullRequest.number) ||
+          eventName === 'schedule' ||
+          eventName === 'workflow_dispatch' ||
           !(pullRequest.labels || []).some((label) =>
             String(label.name || '').startsWith('ci-owner-pr-'),
           ),

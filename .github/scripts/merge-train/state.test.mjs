@@ -6,6 +6,7 @@ import {
   candidateFingerprint,
   candidateRef,
   commitTimestamp,
+  hasLeadingMarker,
   nextBisectStep,
   parseEnabledFlag,
   queueEntries,
@@ -29,9 +30,16 @@ const pr = (number, overrides = {}) => ({
 });
 
 test('parses the single merge-train flag and rejects ambiguous values', () => {
-  assert.equal(parseEnabledFlag('TRUE'), true);
+  assert.equal(parseEnabledFlag('true'), true);
+  assert.equal(parseEnabledFlag('false'), false);
   assert.equal(parseEnabledFlag(''), false);
+  assert.throws(() => parseEnabledFlag('TRUE'), /must be true or false/);
   assert.throws(() => parseEnabledFlag('dry-run'), /must be true or false/);
+});
+
+test('managed state markers must lead the comment instead of appearing in a quote', () => {
+  assert.equal(hasLeadingMarker('  <!-- state -->\nbody', '<!-- state -->'), true);
+  assert.equal(hasLeadingMarker('> <!-- state -->\nreply', '<!-- state -->'), false);
 });
 
 test('parses admission checks and falls back to defaults when empty', () => {
@@ -109,16 +117,15 @@ test('bisection validates the midpoint then isolates the first failing addition'
   );
 });
 
-test('bisection isolates the earliest failure when longer prefixes are non-monotonic', () => {
+test('bisection advances from the longest successful prefix when results are non-monotonic', () => {
   assert.deepEqual(nextBisectStep(['failure', 'success', 'missing', 'failure']), {
-    type: 'isolate',
-    greenPrefixLength: 0,
-    failingPrefixLength: 1,
+    type: 'validate',
+    prefixLength: 3,
   });
   assert.deepEqual(nextBisectStep(['success', 'failure', 'success', 'failure']), {
     type: 'isolate',
-    greenPrefixLength: 1,
-    failingPrefixLength: 2,
+    greenPrefixLength: 3,
+    failingPrefixLength: 4,
   });
 });
 

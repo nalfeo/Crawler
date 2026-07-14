@@ -5,7 +5,7 @@ import { parseStateComment, STATE_MARKER as RECOVERY_STATE_MARKER } from '../ci-
 import {
   buildCandidate,
   isMergeTrainConflictError,
-  promoteExactCandidate,
+  promoteExactBatch,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 import {
@@ -14,6 +14,7 @@ import {
   admissionFingerprint,
   candidateFingerprint,
   candidateRef,
+  hasLeadingMarker,
   MAX_TRAIN_SIZE,
   nextBisectStep,
   parseEnabledFlag,
@@ -91,9 +92,7 @@ async function removeLabel(prNumber, name) {
 
 async function updateStatus(prNumber, status) {
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
-  const stateComments = comments.filter((comment) =>
-    String(comment.body || '').includes(STATUS_MARKER),
-  );
+  const stateComments = comments.filter((comment) => hasLeadingMarker(comment.body, STATUS_MARKER));
   if (stateComments.length > 1) {
     throw new Error(`PR #${prNumber} has duplicate merge-train state comments`);
   }
@@ -121,7 +120,7 @@ async function eligible(pr) {
   }
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
   const stateComments = comments.filter((comment) =>
-    String(comment.body || '').includes(RECOVERY_STATE_MARKER),
+    hasLeadingMarker(comment.body, RECOVERY_STATE_MARKER),
   );
   if (stateComments.length !== 1) {
     return {
@@ -314,29 +313,24 @@ for (let index = 0; index < train.length; index += 1) {
 
 async function promotePrefix(prefixLength) {
   const provenanceEntries = train.slice(0, prefixLength);
-  for (let index = 0; index < prefixLength; index += 1) {
-    const promoted = await promoteExactCandidate({
-      pr: train[index],
-      candidateSha: candidates[index].candidateSha,
-      expectedBase: index === 0 ? mainSha : candidates[index - 1].candidateSha,
-      position: index + 1,
-      repository,
-      live: true,
-      fetchCurrentPr: async () =>
-        (await request(token, `/repos/${owner}/${repo}/pulls/${train[index].number}`)).data,
-      fetchCurrentMain: async () =>
-        (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha,
-      eligible,
-      git,
-      createTrainCheck,
-      removeLabel,
-      updateStatus,
-      requiredCheckName: REQUIRED_CHECK_NAME,
-      provenanceEntries,
-    });
-    if (!promoted) return false;
-  }
-  return true;
+  return promoteExactBatch({
+    entries: provenanceEntries,
+    candidateShas: candidates.slice(0, prefixLength).map((candidate) => candidate.candidateSha),
+    expectedBase: mainSha,
+    repository,
+    live: true,
+    fetchCurrentPr: async (entry) =>
+      (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data,
+    fetchCurrentMain: async () =>
+      (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha,
+    eligible,
+    git,
+    createTrainCheck,
+    removeLabel,
+    updateStatus,
+    requiredCheckName: REQUIRED_CHECK_NAME,
+    provenanceEntries,
+  });
 }
 
 const fullCandidate = candidates[candidates.length - 1];

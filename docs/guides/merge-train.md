@@ -28,12 +28,13 @@ for the architectural rationale.
    `merge-train-candidate` result.
 4. A green batch is revalidated for current heads, titles, admission
    fingerprints, and `main` parent. Only then does the trusted App publish the
-   required `merge-train` checks and:
-   - updates the PR head to the tested candidate using an exact force lease;
-   - fast-forwards `main` to the same SHA.
+   required `merge-train` check plus inclusion attestations and atomically:
+   - updates every PR head to its commit in the validated combined candidate
+     using exact force leases;
+   - fast-forwards `main` directly to the validated combined-candidate SHA.
 5. If the combined fast gate fails, the train binary-searches ordered prefixes,
-   promotes the largest green prefix, and returns the first failing addition to
-   recovery. Later ready PRs remain queued.
+   promotes the longest validated green prefix in one atomic update, and returns
+   the first failing addition after it to recovery. Later ready PRs remain queued.
 6. A textual conflict removes only that PR from readiness. Recovery performs a
    conflict-only rebase onto the resulting `main`; the new head reruns heavy PR
    validation.

@@ -67,13 +67,35 @@ test('train mode schedules only the oldest six non-ready repair candidates', () 
   pulls[2].labels = [{ name: 'ci-owner-pr-3' }];
   assert.deepEqual(
     collectPrNumbers({
-      payload: {},
+      payload: { pull_request: { number: 3 } },
       eventName: 'pull_request_target',
       repository: 'nalfeo/Crawler',
       scheduledPulls: pulls,
       trainEnabled: true,
     }),
-    [2, 4, 5, 6, 7],
+    [2, 3, 4, 5, 6, 7],
+  );
+});
+
+test('train schedule rechecks owned slots for expiry without widening the window', () => {
+  const pulls = Array.from({ length: 7 }, (_, index) => ({
+    number: index + 1,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [{ name: `ci-owner-pr-${index + 1}` }],
+  }));
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [1, 2, 3, 4, 5, 6],
   );
 });
 

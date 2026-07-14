@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildCandidate,
   isMergeTrainConflictError,
+  promoteExactBatch,
   promotionStaleReason,
   promoteExactCandidate,
   trainCheckTitle,
@@ -276,6 +277,62 @@ test('promoteExactCandidate publishes the required check only after state and re
     [pr.number, 'merge-train-blocked'],
   ]);
   assert.equal(statusCalls.length, 1);
+});
+
+test('promoteExactBatch advances all PR heads and main in one atomic push', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const calls = [];
+  const git = (args) => {
+    calls.push(args);
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+  const checkCalls = [];
+  const promoted = await promoteExactBatch({
+    entries: [first, second],
+    candidateShas: [firstCandidate, finalCandidate],
+    expectedBase: baseSha,
+    repository: 'nalfeo/Crawler',
+    live: true,
+    fetchCurrentPr: async (entry) => entry,
+    fetchCurrentMain: async () => baseSha,
+    eligible: async () => ({ ok: true }),
+    git,
+    createTrainCheck: async (...args) => checkCalls.push(args),
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    requiredCheckName: 'merge-train',
+  });
+
+  assert.equal(promoted, true);
+  assert.equal(checkCalls.length, 2);
+  assert.deepEqual(
+    checkCalls.map((call) => [call[0], call[4]]),
+    [
+      [firstCandidate, 'merge-train-included'],
+      [finalCandidate, 'merge-train'],
+    ],
+  );
+  const push = calls.find((args) => args[0] === 'push');
+  assert.ok(push.includes('--atomic'));
+  assert.ok(push.includes(`${firstCandidate}:refs/heads/${first.head.ref}`));
+  assert.ok(push.includes(`${finalCandidate}:refs/heads/${second.head.ref}`));
+  assert.ok(push.includes(`${finalCandidate}:refs/heads/main`));
+  assert.ok(push.includes(`--force-with-lease=refs/heads/${first.head.ref}:${first.head.sha}`));
+  assert.ok(push.includes(`--force-with-lease=refs/heads/${second.head.ref}:${second.head.sha}`));
+  assert.ok(push.includes(`--force-with-lease=refs/heads/main:${baseSha}`));
 });
 
 test('promoteExactCandidate refuses stale queue state before publishing the required check', async () => {

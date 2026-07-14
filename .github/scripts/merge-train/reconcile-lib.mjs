@@ -1,5 +1,6 @@
 import {
   BLOCKED_LABEL,
+  INCLUDED_CHECK_NAME,
   QUEUE_LABEL,
   candidateFingerprint,
   commitTimestamp,
@@ -7,8 +8,8 @@ import {
 } from './state.mjs';
 
 export class MergeTrainConflictError extends Error {
-  constructor(message) {
-    super(message);
+  constructor(message, options) {
+    super(message, options);
     this.name = 'MergeTrainConflictError';
   }
 }
@@ -45,6 +46,7 @@ function fetchCandidateHead(git, entry) {
     if (!headRef) {
       throw new Error(
         `PR #${entry.number} head ${expectedSha} is not fetchable and has no branch ref fallback: ${shaError.message}`,
+        { cause: shaError },
       );
     }
     git(['fetch', 'origin', `refs/heads/${headRef}:${refName}`, '--force']);
@@ -79,10 +81,13 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
     } catch (error) {
       try {
         git(['merge', '--abort']);
-      } catch {}
+      } catch (abortError) {
+        process.stderr.write(`merge abort cleanup failed: ${abortError.message}\n`);
+      }
       git(['reset', '--hard', baseSha]);
       throw new MergeTrainConflictError(
         `PR #${entry.number} conflicts in the cumulative candidate: ${error.message}`,
+        { cause: error },
       );
     }
     if (gitCommandSucceeded(git, ['diff', '--cached', '--quiet'])) {
@@ -152,41 +157,101 @@ export async function promoteExactCandidate({
   requiredCheckName,
   provenanceEntries = [pr],
 }) {
-  const currentPr = await fetchCurrentPr();
-  const currentMain = await fetchCurrentMain();
-  const staleReason = promotionStaleReason({
-    currentMain,
-    currentPr,
+  return promoteExactBatch({
+    entries: [pr],
+    candidateShas: [candidateSha],
     expectedBase,
-    pr,
     repository,
+    live,
+    fetchCurrentPr: async () => fetchCurrentPr(),
+    fetchCurrentMain,
+    eligible,
+    git,
+    createTrainCheck,
+    removeLabel,
+    updateStatus,
+    requiredCheckName,
+    provenanceEntries,
+    positions: [position],
   });
-  if (staleReason) {
+}
+
+export async function promoteExactBatch({
+  entries,
+  candidateShas,
+  expectedBase,
+  repository,
+  live,
+  fetchCurrentPr,
+  fetchCurrentMain,
+  eligible,
+  git,
+  createTrainCheck,
+  removeLabel,
+  updateStatus,
+  requiredCheckName,
+  provenanceEntries = entries,
+  positions = entries.map((_, index) => index + 1),
+}) {
+  if (entries.length === 0 || entries.length !== candidateShas.length) {
+    throw new Error('Promotion requires one candidate SHA per non-empty PR entry');
+  }
+  const currentMain = await fetchCurrentMain();
+  const currentPrs = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    const currentPr = await fetchCurrentPr(entry, index);
+    const staleReason = promotionStaleReason({
+      currentMain,
+      currentPr,
+      expectedBase,
+      pr: entry,
+      repository,
+    });
+    if (staleReason) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; ${staleReason}; rebuilding on next reconcile\n`,
+      );
+      return false;
+    }
+    const admission = await eligible(currentPr);
+    if (!admission.ok) {
+      process.stdout.write(`blocked promotion pr=#${entry.number} reason=${admission.reason}\n`);
+      return false;
+    }
+    const expectedParent = index === 0 ? expectedBase : candidateShas[index - 1];
+    const parent = git(['rev-parse', `${candidateShas[index]}^`]);
+    if (parent !== expectedParent) {
+      throw new Error(
+        `Candidate ${candidateShas[index]} is not a direct child of ${expectedParent}`,
+      );
+    }
+    const headRef = currentPr.head.ref;
+    if (!/^[A-Za-z0-9._/-]+$/.test(headRef)) {
+      throw new Error(`Unsafe PR head ref: ${headRef}`);
+    }
+    currentPrs.push(currentPr);
+  }
+  if (!live) {
     process.stdout.write(
-      `stale promotion pr=#${pr.number}; ${staleReason}; rebuilding on next reconcile\n`,
+      `dry-run would-promote prs=${entries.map((entry) => `#${entry.number}`).join(',')} sha=${candidateShas.at(-1)}\n`,
     );
     return false;
   }
-  const admission = await eligible(currentPr);
-  if (!admission.ok) {
-    process.stdout.write(`blocked promotion pr=#${pr.number} reason=${admission.reason}\n`);
-    return false;
+  const finalCandidateSha = candidateShas.at(-1);
+  const promotionFingerprint = candidateFingerprint(expectedBase, currentPrs);
+  for (let index = 0; index < candidateShas.length - 1; index += 1) {
+    await createTrainCheck(
+      candidateShas[index],
+      promotionFingerprint,
+      'completed',
+      'success',
+      INCLUDED_CHECK_NAME,
+      provenanceEntries,
+    );
   }
-  const parent = git(['rev-parse', `${candidateSha}^`]);
-  if (parent !== expectedBase) {
-    throw new Error(`Candidate ${candidateSha} is not a direct child of current main`);
-  }
-  const headRef = currentPr.head.ref;
-  if (!/^[A-Za-z0-9._/-]+$/.test(headRef)) {
-    throw new Error(`Unsafe PR head ref: ${headRef}`);
-  }
-  if (!live) {
-    process.stdout.write(`dry-run would-promote pr=#${pr.number} sha=${candidateSha}\n`);
-    return false;
-  }
-  const promotionFingerprint = candidateFingerprint(expectedBase, [currentPr]);
   await createTrainCheck(
-    candidateSha,
+    finalCandidateSha,
     promotionFingerprint,
     'completed',
     'success',
@@ -194,18 +259,34 @@ export async function promoteExactCandidate({
     provenanceEntries,
   );
   try {
+    const refUpdates = currentPrs.map(
+      (currentPr, index) => `${candidateShas[index]}:refs/heads/${currentPr.head.ref}`,
+    );
+    const leases = currentPrs.map(
+      (currentPr) => `--force-with-lease=refs/heads/${currentPr.head.ref}:${currentPr.head.sha}`,
+    );
     git([
       'push',
       '--atomic',
       'origin',
-      `${candidateSha}:refs/heads/${headRef}`,
-      `${candidateSha}:refs/heads/main`,
-      `--force-with-lease=refs/heads/${headRef}:${currentPr.head.sha}`,
+      ...refUpdates,
+      `${finalCandidateSha}:refs/heads/main`,
+      ...leases,
       `--force-with-lease=refs/heads/main:${expectedBase}`,
     ]);
   } catch (error) {
+    for (let index = 0; index < candidateShas.length - 1; index += 1) {
+      await createTrainCheck(
+        candidateShas[index],
+        promotionFingerprint,
+        'completed',
+        'failure',
+        INCLUDED_CHECK_NAME,
+        provenanceEntries,
+      );
+    }
     await createTrainCheck(
-      candidateSha,
+      finalCandidateSha,
       promotionFingerprint,
       'completed',
       'failure',
@@ -214,17 +295,22 @@ export async function promoteExactCandidate({
     );
     throw error;
   }
-  await removeLabel(pr.number, QUEUE_LABEL);
-  await removeLabel(pr.number, BLOCKED_LABEL);
-  await updateStatus(
-    pr.number,
-    renderStatus({
-      position,
-      candidateSha,
-      state: 'merged',
-      detail: 'The exact validated candidate fast-forwarded main.',
-    }),
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    await removeLabel(entry.number, QUEUE_LABEL);
+    await removeLabel(entry.number, BLOCKED_LABEL);
+    await updateStatus(
+      entry.number,
+      renderStatus({
+        position: positions[index],
+        candidateSha: finalCandidateSha,
+        state: 'merged',
+        detail: 'The exact validated combined candidate fast-forwarded main atomically.',
+      }),
+    );
+  }
+  process.stdout.write(
+    `promoted prs=${entries.map((entry) => `#${entry.number}`).join(',')} sha=${finalCandidateSha}\n`,
   );
-  process.stdout.write(`promoted pr=#${pr.number} sha=${candidateSha}\n`);
   return true;
 }

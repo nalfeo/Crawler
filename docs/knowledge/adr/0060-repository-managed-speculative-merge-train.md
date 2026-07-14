@@ -38,13 +38,14 @@ Accepted
   `workflow_dispatch` code. Candidate-executing jobs receive read-only repository
   permission. A separate job that never checks out candidate code publishes the
   `merge-train-candidate` result on the immutable candidate SHA.
-- **DEC-005**: Promote only the train head, only when `main` still equals the
-  candidate's recorded parent and the PR head, title, checks, and review state
-  remain current.
-- **DEC-006**: Promotion first force-updates the same-repository PR branch with an
-  exact-head lease, then fast-forwards `main` to that same tested SHA. Because the
-  PR head becomes reachable from `main`, GitHub retains merged-PR semantics while
-  the shipped SHA remains exactly the tested candidate.
+- **DEC-005**: Promote only a validated combined candidate, only when `main`
+  still equals its recorded parent and every included PR head, title, check, and
+  review state remains current.
+- **DEC-006**: Promotion atomically force-updates every same-repository PR branch
+  to its corresponding commit in the validated candidate and fast-forwards
+  `main` directly to the final tested SHA, all under exact leases. No unvalidated
+  intermediate SHA becomes `main`; each PR head remains reachable so GitHub
+  retains individual merged-PR semantics.
 - **DEC-007**: `MERGE_TRAIN_ENABLED` is the sole rollout switch. When true, CI
   recovery works at most six oldest non-ready PRs, enqueues converged immutable
   heads instead of arming auto-merge, and rebases only PRs returned with textual

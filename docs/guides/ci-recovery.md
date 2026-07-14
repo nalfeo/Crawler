@@ -52,7 +52,10 @@ When `MERGE_TRAIN_ENABLED=true`, the router orders non-ready PRs by creation tim
 and keeps at most six in the repair window. Active recovery/shepherd ownership
 counts toward the window; a ready `merge-train` PR leaves it and immediately
 opens the next slot. Recovery and train sticky comments are ignored as router
-triggers so state persistence cannot dispatch more recovery work.
+triggers so state persistence cannot dispatch more recovery work. Owned slots
+are rechecked only for their own direct PR events and the bounded scheduled
+sweep, which lets completed or expired ownership advance without recreating the
+event fan-out.
 
 Green evidence is bound to the PR head SHA plus its latest required-check and
 review-thread fingerprint. Advancing `main` alone does not expire it. A textual

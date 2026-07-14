@@ -69,12 +69,14 @@ jobs:
             promotion_checks="$(
               gh api \
                 "/repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD_SHA}/check-runs?per_page=100" \
-                --jq '[.check_runs[] | select(
-                  .name == "merge-train" and
-                  .status == "completed" and
-                  .conclusion == "success" and
-                  (.external_id | type == "string" and length > 0)
-                )] | length'
+                --jq '([.check_runs[] | select(
+                  .name == "merge-train" or .name == "merge-train-included"
+                )] | sort_by(.id) | last) as $check |
+                  if ($check != null and
+                      $check.status == "completed" and
+                      $check.conclusion == "success" and
+                      ($check.external_id | type == "string" and length > 0))
+                  then 1 else 0 end'
             )"
             if [ "$promotion_checks" -gt 0 ]; then
               docs_only=true
