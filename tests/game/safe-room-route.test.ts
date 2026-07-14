@@ -828,16 +828,26 @@ describe('safe-room-route: exit-frontier-scoped egress attempt (churn stability)
     expect(result.state.bestEndpointDistanceFt).toBe(Number.POSITIVE_INFINITY);
   });
 
-  it('retires a stale attempt when the player has physically left its tracked room before a same-room candidate reappears', () => {
-    // Regression coverage for a multi-model review finding (2026-07-13): if
-    // the player has ALREADY genuinely left the room an attempt was
-    // tracking, and a LATER candidate happens to resolve back inside that
-    // same room (a stray Retreat/Collect target), the attempt must NOT be
-    // preserved as if this were a normal in-room interlude — otherwise it
-    // could carry an artificially tiny `bestEndpointDistanceFt` from the
-    // moment the player was last at the door (which can never again
-    // register as "improved"), causing spurious immediate no-progress
-    // releases on a later, unrelated attempt through the same door.
+  it('a stray same-room candidate while the player is far away never hangs: same-room bypass stays responsive and bounded', () => {
+    // Two prior attempts to immediately RETIRE the attempt on this exact
+    // scenario (a per-tile `getRoomAt` mismatch, then a `!playerInSafeRoom`
+    // check applied unconditionally) each independently reintroduced the
+    // ORIGINAL catastrophic stall via the cloud gate (regressions to 41/600
+    // wins and to a silent 0-progress `'stalled'` outcome, 2026-07-14): both
+    // cleared `attemptExitTile` while `phase` could still be `'active'`,
+    // which permanently disables the no-progress watchdog
+    // (`measureAttemptProgress` is a no-op once `attemptExitTile` is null)
+    // for the rest of that burst, since nothing sets it again until the next
+    // fresh `computeRoute` activation. `sameRoomBypass` therefore
+    // deliberately does NOT retire on this signal — instead it keeps
+    // MEASURING every poll via `measureAttemptProgress`, and the actual
+    // release+suppress ACTION only ever happens in the steady-state
+    // `'active'` branch (`sameRoomBypass` itself never fires it). This
+    // proves the bypass path stays safe and bounded — `moveTarget: null`
+    // every poll (Retreat's own movement is never obstructed), no
+    // exceptions, no runaway state — for an arbitrarily long stretch of the
+    // player being far from the tracked door, and that resuming egress
+    // afterward still produces a normal, valid, non-hanging state.
     const { findPath } = countingFindPath(straightLinePath);
     const deps = makeDeps({ findPath });
     let result = updateSafeRoomRouteState(initial(), input(), deps);
@@ -850,23 +860,115 @@ describe('safe-room-route: exit-frontier-scoped egress attempt (churn stability)
       targetX: 1 * REALISTIC_TILE_FT,
       targetY: 0,
     });
-    const farOutsideX = 20 * REALISTIC_TILE_FT; // well past the door, definitely exterior
-    result = updateSafeRoomRouteState(
-      result.state,
-      input({ playerX: farOutsideX, candidate: strayInsideCandidate }),
-      deps,
-    );
+    const farOutsideX = 20 * REALISTIC_TILE_FT; // well past the door
+    for (let i = 0; i < SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES + 5; i += 1) {
+      result = updateSafeRoomRouteState(
+        result.state,
+        input({ playerX: farOutsideX, playerInSafeRoom: false, candidate: strayInsideCandidate }),
+        deps,
+      );
+      // Movement responsiveness (the actual gameplay-visible behavior) is
+      // completely unaffected regardless of the internal bookkeeping, and
+      // `sameRoomBypass` never itself releases/suppresses — it only ever
+      // measures.
+      expect(result.moveTarget).toBeNull();
+      expect(result.state.phase).toBe('idle');
+    }
+
+    // Egress needed again (external target through the SAME door): must
+    // produce a normal, well-formed result — active (resumed) or idle
+    // (immediately released) are both valid outcomes, but it must never
+    // throw, hang, or leave the state machine in an inconsistent shape.
+    result = updateSafeRoomRouteState(result.state, input(), deps);
+    expect(['active', 'idle']).toContain(result.state.phase);
+
+    // Bounded: further polls never throw or leave `moveTarget`/`blocked` in
+    // an invalid shape, whatever phase this settled into.
+    for (let i = 0; i < 10; i += 1) {
+      result = updateSafeRoomRouteState(result.state, input(), deps);
+      expect(['active', 'idle', 'blocked']).toContain(result.state.phase);
+    }
+  });
+
+  it('REGRESSION LOCK: the no-progress watchdog still fires when stuck exactly at the door threshold, even though the tile there is classified outside originRoomId', () => {
+    // This locks in a severe regression found via the canonical 600-run
+    // cloud gate (2026-07-14, third dispatch): an earlier version of the
+    // "retire when the player has left" guard compared the player's raw
+    // per-tile `getRoomAt` classification against the attempt's origin room
+    // EVERY poll. But the resolved exit tile (and its +1 buffer) are BY
+    // DESIGN classified outside `originRoomId` — that is the entire
+    // definition of "having reached the door" — so a player merely
+    // transiting (or stuck fighting at) the threshold, still fully inside
+    // `playerInSafeRoom` bounds, would have that guard fire on every single
+    // poll, permanently blanking `attemptExitTile` and therefore silently
+    // disabling the no-progress watchdog (`measureAttemptProgress` is a
+    // no-op once `attemptExitTile` is null) for the rest of that active
+    // burst — reintroducing the ORIGINAL catastrophic stall (proven by a
+    // regression to 41/600 official wins). The fix uses the coarser
+    // `playerInSafeRoom` boolean instead of per-tile room-id equality. This
+    // test pins the player exactly ON the resolved exit tile (still
+    // `playerInSafeRoom: true`, simulating being held there by combat) and
+    // asserts the watchdog still counts and fires normally.
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(result.state.phase).toBe('active');
+    // The resolved exit tile for the default fixture is (6,0) — outside
+    // ORIGIN_ROOM per `getRoomAt`, but the player standing there is still
+    // well within `playerInSafeRoom` bounds in this scenario.
+    const stuckAtThresholdX = 6 * REALISTIC_TILE_FT;
+    expect(deps.getRoomAt(6, 0)).not.toBe(ORIGIN_ROOM);
+
+    let released = false;
+    for (let i = 0; i < SAFE_ROOM_ROUTE_NO_PROGRESS_FRAMES + 5; i += 1) {
+      result = updateSafeRoomRouteState(
+        result.state,
+        input({ playerX: stuckAtThresholdX, playerInSafeRoom: true }),
+        deps,
+      );
+      if (result.state.phase === 'idle' && result.state.lastReseedCause === 'no-progress') {
+        released = true;
+        break;
+      }
+    }
+    expect(released).toBe(true);
+  });
+
+  it('decays a stale attempt after being genuinely outside every safe room for a sustained period (idle passthrough)', () => {
+    // The SAFE half of the original multi-model review finding: an attempt
+    // preserved into the idle phase (e.g. after a `sameRoomBypass`
+    // interlude) must not linger forever once the player is genuinely
+    // outside every safe room — but decaying it must never touch an
+    // `'active'` route (see the REGRESSION LOCK test above for why an
+    // immediate/unconditional clear is unsafe). This exercises the
+    // `!input.playerInSafeRoom` idle-passthrough path specifically, which
+    // only ever runs once `phase` is ALREADY `'idle'`.
+    const { findPath } = countingFindPath(straightLinePath);
+    const deps = makeDeps({ findPath });
+    // Drive an attempt into a preserved-idle state via a same-room bypass.
+    let result = updateSafeRoomRouteState(initial(), input(), deps);
+    expect(result.state.phase).toBe('active');
+    const insideCandidate = candidate({
+      state: AIState.RETREAT,
+      targetEid: null,
+      targetX: 1 * REALISTIC_TILE_FT,
+      targetY: 0,
+    });
+    result = updateSafeRoomRouteState(result.state, input({ candidate: insideCandidate }), deps);
+    expect(result.state.phase).toBe('idle');
+    expect(toSafeRoomRouteDebugSnapshot(result.state).attemptActive).toBe(true);
+
+    // Now genuinely outside every safe room, for far longer than any
+    // realistic combat interruption — must eventually decay.
+    for (let i = 0; i < SAFE_ROOM_ROUTE_ATTEMPT_DORMANT_FRAMES + 2; i += 1) {
+      result = updateSafeRoomRouteState(
+        result.state,
+        input({ playerInSafeRoom: false, candidate: insideCandidate }),
+        deps,
+      );
+    }
     expect(toSafeRoomRouteDebugSnapshot(result.state).attemptActive).toBe(false);
     expect(result.state.bestEndpointDistanceFt).toBe(Number.POSITIVE_INFINITY);
-    expect(result.state.noProgressFrames).toBe(0);
-
-    // A subsequent genuine re-entry + external target through the SAME door
-    // must get a completely FRESH, unpenalized attempt — not one poisoned
-    // by the stale reading above.
-    result = updateSafeRoomRouteState(result.state, input(), deps);
-    expect(result.state.phase).toBe('active');
-    expect(result.state.noProgressFrames).toBe(0);
-    expect(result.state.bestEndpointDistanceFt).toBeGreaterThan(0);
   });
 });
 

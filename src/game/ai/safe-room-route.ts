@@ -441,13 +441,6 @@ function attemptExitKeyFor(originRoomId: number, exitTile: TilePoint): string {
   return `${originRoomId}:${exitTile.x},${exitTile.y}`;
 }
 
-/** Recovers the room id encoded in an `attemptExitKey` (see
- * `attemptExitKeyFor`), so callers can check whether the player is still
- * physically within the room a live attempt is tracking. */
-function attemptRoomIdFromKey(exitKey: string): number {
-  return Number(exitKey.split(':')[0]);
-}
-
 /** Measures this poll's progress against the current egress attempt's fixed
  * exit tile (not the per-activation buffered path endpoint, which can shift
  * slightly between reactivations even for "the same door"). Shared by the
@@ -670,37 +663,51 @@ function candidateRoomId(input: SafeRoomRouteInput, deps: SafeRoomRouteDeps): nu
  * movement execution.
  */
 export function updateSafeRoomRouteState(
-  prevInput: SafeRoomRouteState,
+  prev: SafeRoomRouteState,
   input: SafeRoomRouteInput,
   deps: SafeRoomRouteDeps,
 ): SafeRoomRouteUpdateResult {
-  // A live egress attempt tracks stall memory for a SPECIFIC room (encoded
-  // in `attemptExitKey`'s prefix). If the player has physically left that
-  // room since the attempt was last touched — e.g. a same-room-bypass
-  // interlude preserved the attempt while the player was still standing
-  // right at the door, then they genuinely exited and wandered elsewhere —
-  // any LATER candidate that happens to resolve back to that room's door is
-  // coincidental, not a continuous in-progress interruption. Retire the
-  // stale attempt up front rather than letting a fresh (re)activation
-  // silently "continue" with a baseline computed from a completely
-  // different physical situation (e.g. a near-zero `bestEndpointDistanceFt`
-  // from the moment the player was last AT the door, which can never again
-  // register as "improved" and causes spurious immediate no-progress
-  // releases). Found via multi-model review, 2026-07-13.
-  let prev = prevInput;
-  if (prev.attemptExitKey !== null) {
-    const attemptRoomId = attemptRoomIdFromKey(prev.attemptExitKey);
-    const playerTile = deps.worldToTile(input.playerX, input.playerY);
-    if (deps.getRoomAt(playerTile.x, playerTile.y) !== attemptRoomId) {
-      prev = retireAttempt(prev);
-    }
-  }
-
   const commitmentKey = deriveCommitmentKey(input.candidate);
 
   if (prev.phase === 'idle') {
     if (!input.playerInSafeRoom) {
-      return passThrough(prev);
+      // Not currently in any safe room. A live attempt's stall bookkeeping
+      // is only ever consulted again from a FRESH activation once the
+      // player re-enters a safe room (see `computeRoute`'s
+      // `continuingAttempt` check), so it is safe to let it persist through
+      // a brief "outside" stretch (e.g. combat pushed the player briefly
+      // past the threshold and back). It must not, however, survive
+      // indefinitely: apply the SAME dormant-decay safety valve
+      // `sameRoomBypass` already relies on, so a genuinely long-abandoned
+      // attempt (the player wandered off for real) cannot poison a
+      // much-later, unrelated re-attempt through the same door.
+      //
+      // Deliberately NOT retired immediately/unconditionally on this
+      // signal. An earlier version of this fix did exactly that — clearing
+      // the attempt the instant a raw per-poll signal (either a per-tile
+      // `getRoomAt` mismatch, or this same `!playerInSafeRoom` boolean)
+      // read false, with NO regard for the CURRENT `phase`. Both variants
+      // reintroduced the original catastrophic stall (proven via cloud-gate
+      // regressions to 41/600 and a silent 0-progress `'stalled'` outcome,
+      // 2026-07-14): the resolved exit tile is BY DESIGN classified outside
+      // the origin room, and `playerInSafeRoom` itself is the exact
+      // flickering boundary signal this module's own design principles
+      // warn against reading every poll — so either check can go true for
+      // a single transient poll while a route is legitimately `'active'`.
+      // Clearing `attemptExitTile` in that instant permanently disables the
+      // no-progress watchdog (`measureAttemptProgress` is a no-op once it
+      // is null) for the REST of that active burst, since nothing sets it
+      // again until the next fresh `computeRoute` activation. This decay
+      // only ever runs here, already inside the `'idle'` phase — never
+      // while `phase === 'active'`.
+      if (prev.attemptExitTile === null) {
+        return passThrough(prev);
+      }
+      const dormantFrames = prev.attemptDormantFrames + 1;
+      if (dormantFrames > SAFE_ROOM_ROUTE_ATTEMPT_DORMANT_FRAMES) {
+        return passThrough(retireAttempt(prev));
+      }
+      return passThrough({ ...prev, attemptDormantFrames: dormantFrames });
     }
     if (
       prev.suppressFramesRemaining > 0 &&
