@@ -568,10 +568,20 @@ test('reconcile ignores same-repository action-required runs without approval or
   assert.match(stdout, new RegExp(`skip action_required run=${runId} .* reason=same-repository`));
   assert.match(stdout, /wait pr=#42 required-checks=required-check/);
   assert.doesNotMatch(stdout, /workflow-approval|approved workflow|would-approve/);
-  assert.deepEqual(
-    mutatingCalls,
-    [],
+  assert.equal(
+    mutatingCalls.filter(
+      (call) => call.url.includes('/actions/runs/') || call.url.includes('/actions/workflows/'),
+    ).length,
+    0,
     'same-repository action-required runs must not trigger approval or recovery dispatch',
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ).length,
+    1,
+    'converged admission state should still be persisted',
   );
 });
 
