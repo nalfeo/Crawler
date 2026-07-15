@@ -346,6 +346,8 @@ export async function promoteExactBatch({
   positions = entries.map((_, index) => index + 1),
   recordMapping = () => {},
   reattestHealth = async () => true,
+  proofPollDelaysMs,
+  proofSleep,
 }) {
   if (entries.length === 0 || entries.length !== candidateShas.length) {
     throw new Error('Promotion requires one candidate SHA per non-empty PR entry');
@@ -537,6 +539,8 @@ export async function promoteExactBatch({
       landedSha,
       expectedParent,
       expectedTree,
+      ...(proofPollDelaysMs ? { pollDelaysMs: proofPollDelaysMs } : {}),
+      ...(proofSleep ? { sleep: proofSleep } : {}),
     });
     if (proofError) {
       await publishPostcondition(landedSha);
@@ -602,6 +606,13 @@ export async function promoteExactBatch({
  * foreign commit reached `main` -- the caller publishes the postcondition
  * failure check on the ACTUAL landed commit and throws.
  *
+ * `main` ref and PR merged-state are EVENTUALLY CONSISTENT after `PUT /merge`
+ * (GitHub REST read replicas lag the write, historically ~20s). We therefore
+ * POLL those reads (bounded) before failing, so transient replica lag never
+ * falsely fails a valid land (which would publish a red postcondition check on a
+ * good main commit). The commit object is immutable/content-addressed, so its
+ * tree/parents are authoritative once readable; only ref/merged-state lag.
+ *
  * `fetchCommit(sha)` returns the REST commit object
  * (`GET /repos/{o}/{r}/commits/{sha}`): `{ sha, commit: { tree: { sha } },
  * parents: [{ sha }] }`. Tree SHAs are content-addressed, so comparing the
@@ -617,36 +628,59 @@ export async function landedCommitProofError({
   landedSha,
   expectedParent,
   expectedTree,
+  pollDelaysMs = [1000, 2000, 3000, 5000, 8000],
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
   if (!/^[0-9a-f]{40}$/i.test(String(landedSha || ''))) {
     return `merge response returned an invalid landed sha: ${landedSha}`;
   }
-  const mainAfter = await fetchCurrentMain();
-  if (mainAfter !== landedSha) {
-    return `main is ${mainAfter}, not the landed commit ${landedSha}`;
+  // Poll the eventually-consistent reads (main ref, PR merged-state, and the
+  // commit object) until they reflect the just-completed merge, or the budget
+  // is exhausted. Break as soon as they are consistent so the happy path does
+  // not sleep at all.
+  let commit = null;
+  let mainAfter;
+  let prAfter;
+  for (let attempt = 0; attempt <= pollDelaysMs.length; attempt += 1) {
+    [mainAfter, prAfter] = await Promise.all([fetchCurrentMain(), fetchCurrentPr(entry, index)]);
+    if (!commit) {
+      try {
+        commit = await fetchCommit(landedSha);
+      } catch {
+        commit = null;
+      }
+    }
+    if (commit && mainAfter === landedSha && prAfter?.merged === true && prAfter.merged_at) {
+      break;
+    }
+    if (attempt < pollDelaysMs.length) await sleep(pollDelaysMs[attempt]);
   }
-  const commit = await fetchCommit(landedSha);
-  const parents = (commit?.parents || []).map((parent) => parent.sha);
+  if (mainAfter !== landedSha) {
+    return `main is ${mainAfter}, not the landed commit ${landedSha} (after polling for consistency)`;
+  }
+  if (!commit) {
+    return `landed commit ${landedSha} was not readable after polling`;
+  }
+  const parents = (commit.parents || []).map((parent) => parent.sha);
   if (parents.length !== 1) {
     return `landed commit ${landedSha} has ${parents.length} parents (expected 1 for a squash merge; main must stay linear)`;
   }
   if (parents[0] !== expectedParent) {
     return `landed commit ${landedSha} parent is ${parents[0]} (expected ${expectedParent})`;
   }
-  const landedTree = commit?.commit?.tree?.sha;
+  const landedTree = commit.commit?.tree?.sha;
   if (landedTree !== expectedTree) {
     return `landed commit ${landedSha} tree ${landedTree} != validated candidate prefix tree ${expectedTree}`;
   }
-  const prAfter = await fetchCurrentPr(entry, index);
   // The hard gate: GitHub itself must record the PR merged with a real
   // timestamp. `state === 'closed'` alone is explicitly INSUFFICIENT (that was
   // the forbidden force-push outcome); `merge_commit_sha` alone is also
   // insufficient (for a closed-unmerged PR it is an ephemeral test-merge SHA).
   if (prAfter?.merged !== true) {
-    return `GitHub did not record PR #${entry.number} as merged (merged=${prAfter?.merged}, state=${prAfter?.state})`;
+    return `GitHub did not record PR #${entry.number} as merged (merged=${prAfter?.merged}, state=${prAfter?.state}) after polling`;
   }
   if (!prAfter.merged_at) {
-    return `GitHub recorded PR #${entry.number} merged but with no merged_at timestamp`;
+    return `GitHub recorded PR #${entry.number} merged but with no merged_at timestamp after polling`;
   }
   return null;
 }
@@ -679,7 +713,20 @@ export function createMergePullRequest({
 }) {
   return async function mergePullRequest(entry, { expectedHeadSha, commitTitle, commitMessage }) {
     for (let attempt = 0; attempt <= mergeablePollDelaysMs.length; attempt += 1) {
-      const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+      let pr;
+      try {
+        pr = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+      } catch (error) {
+        // A transient GET failure during mergeability polling happens BEFORE any
+        // merge, so nothing landed. Treat as retryable (rebuild next reconcile)
+        // rather than throwing -- throwing here would bubble past the caller's
+        // fail-closed handling. (Contract: this function never throws.)
+        return {
+          ok: false,
+          retryable: true,
+          reason: `mergeability poll failed (${error?.status ?? 'network'}): ${error.message}`,
+        };
+      }
       if (pr.head?.sha !== expectedHeadSha) {
         return {
           ok: false,
@@ -717,8 +764,9 @@ export function createMergePullRequest({
     } catch (error) {
       const status = error?.status;
       // 405 Method Not Allowed = PR not currently mergeable; 409 Conflict =
-      // head SHA no longer matches the pinned `sha` (moved). Both mean the
-      // candidate is stale, so rebuild next reconcile rather than failing hard.
+      // head SHA no longer matches the pinned `sha` (moved). Both definitively
+      // mean nothing merged and the candidate is stale, so rebuild next
+      // reconcile rather than failing hard.
       if (status === 405 || status === 409) {
         return {
           ok: false,
@@ -726,12 +774,24 @@ export function createMergePullRequest({
           reason: `merge API rejected the merge (${status}): ${error.message}`,
         };
       }
-      // 403/422/5xx/network are policy/configuration or ambiguous failures. We
-      // return a NON-retryable result (not throw) so the caller publishes the
-      // promotion-postcondition failure check and then fails loudly -- throwing
-      // here instead would bubble past that fail-closed publish. Nothing landed
-      // for this entry, so it is safe to surface hard and re-evaluate from real
-      // state next reconcile.
+      // 5xx/network failures are AMBIGUOUS: GitHub may have merged the PR before
+      // the response was lost. Disambiguate by re-reading the PR -- if it is now
+      // merged with a real merge commit, return that SHA as success so the
+      // caller runs the full post-merge proof on it (rather than skipping the
+      // proof and letting recovery later trust it unverified). Only if it truly
+      // did not merge do we return a non-retryable failure (so the caller
+      // publishes the postcondition check and fails loudly).
+      try {
+        const after = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+        if (
+          after?.merged === true &&
+          /^[0-9a-f]{40}$/i.test(String(after.merge_commit_sha || ''))
+        ) {
+          return { ok: true, sha: String(after.merge_commit_sha) };
+        }
+      } catch {
+        // fall through to the non-retryable failure below
+      }
       return {
         ok: false,
         retryable: false,

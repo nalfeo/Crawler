@@ -1,5 +1,10 @@
 import { request } from '../ci-recovery/github.mjs';
-import { hasLeadingMarker, LANDED_LABEL, LANDED_MARKER } from './state.mjs';
+import {
+  hasLeadingMarker,
+  LANDED_LABEL,
+  LANDED_MARKER,
+  parseMergeTrainPrNumber,
+} from './state.mjs';
 
 // Backfill the durable landed signal onto historical PRs that the merge train
 // promoted via the RETIRED atomic force-push. That mechanism bypassed GitHub's
@@ -86,6 +91,31 @@ async function backfill({ number, sha }) {
     );
   }
 
+  // Provenance: the supplied landed commit must actually exist AND carry this
+  // PR's Merge-Train-PR trailer (every force-push-era train commit does). This
+  // rejects an arbitrary, empty, mistyped, or non-train SHA before mutating.
+  if (!/^[0-9a-f]{7,40}$/i.test(String(sha || ''))) {
+    throw new Error(
+      `#${number}: supplied landed sha ${sha || '<empty>'} is not a valid commit hash`,
+    );
+  }
+  let landedCommit;
+  try {
+    landedCommit = (
+      await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)
+    ).data;
+  } catch (error) {
+    throw new Error(
+      `#${number}: landed commit ${sha} is not readable (${error?.status ?? 'network'}); refusing to backfill`,
+    );
+  }
+  if (parseMergeTrainPrNumber(landedCommit?.commit?.message || '') !== number) {
+    throw new Error(
+      `#${number}: commit ${sha} does not carry a matching Merge-Train-PR trailer; refusing to attribute it to this PR`,
+    );
+  }
+  const resolvedSha = landedCommit.sha || sha;
+
   // Ensure the durable label (idempotent: POST is a no-op if already present).
   if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
     await request(token, `/repos/${owner}/${repo}/issues/${number}/labels`, {
@@ -98,7 +128,7 @@ async function backfill({ number, sha }) {
   if (!(await hasLandedComment(number))) {
     await request(token, `/repos/${owner}/${repo}/issues/${number}/comments`, {
       method: 'POST',
-      body: { body: historicalComment(sha) },
+      body: { body: historicalComment(resolvedSha) },
     });
   }
 
@@ -106,7 +136,7 @@ async function backfill({ number, sha }) {
   const after = (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
   const preserved = after.state === 'closed' && after.merged === false;
   process.stdout.write(
-    `#${number}: labeled+commented; historical state state=${after.state} merged=${after.merged} merged_at=${after.merged_at} (${
+    `#${number}: labeled+commented landed=${resolvedSha}; historical state state=${after.state} merged=${after.merged} merged_at=${after.merged_at} (${
       preserved ? 'preserved, not falsified' : 'UNEXPECTED — state changed!'
     })\n`,
   );

@@ -360,6 +360,10 @@ async function reconcileLandedSignals() {
       continue;
     }
     if (parseMergeTrainPrNumber(landedCommit?.commit?.message || '') !== pr.number) continue;
+    // Defense-in-depth: the landed commit must be linear (a squash merge has
+    // exactly one parent). Refuse to backfill a non-linear commit even if the
+    // trailer matches.
+    if ((landedCommit?.parents || []).length !== 1) continue;
     if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
       await setLabel(pr.number, LANDED_LABEL);
     }

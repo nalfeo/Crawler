@@ -130,6 +130,7 @@ function runPromotion(overrides = {}) {
     },
     recordMapping: (number, sha) => records.mapping.push({ number, sha }),
     reattestHealth: overrides.reattestHealth || (async () => true),
+    proofSleep: async () => {},
   });
 
   return { promise, records, gitCalls, getMain: () => main };
@@ -505,6 +506,69 @@ test('createMergePullRequest returns a non-retryable result when the merge is no
   assert.match(result.reason, /did not record PR #1 as merged/);
 });
 
+test('createMergePullRequest treats a mergeability-poll GET failure as retryable (never throws)', async () => {
+  const { request } = mergeRequestStub(() => {
+    const error = new Error('service unavailable');
+    error.status = 503;
+    return error;
+  });
+  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const result = await mergePullRequest(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.retryable, true);
+  assert.match(result.reason, /mergeability poll failed \(503\)/);
+});
+
+test('createMergePullRequest disambiguates an ambiguous PUT failure that actually merged', async () => {
+  // The PUT 5xx-fails after GitHub merged the PR; a re-read shows it merged with
+  // a real commit, so we return that SHA (ok:true) for the caller to prove.
+  let putAttempted = false;
+  const { request } = mergeRequestStub((path, options) => {
+    if (options.method === 'PUT') {
+      putAttempted = true;
+      const error = new Error('gateway timeout');
+      error.status = 504;
+      return error;
+    }
+    // The mergeability GET before PUT; the disambiguation GET after PUT.
+    return putAttempted
+      ? { head: { sha: HEAD1 }, merged: true, merge_commit_sha: LAND1 }
+      : mergeableOpen;
+  });
+  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const result = await mergePullRequest(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.deepEqual(result, { ok: true, sha: LAND1 });
+});
+
+test('createMergePullRequest returns non-retryable when an ambiguous PUT failure did not merge', async () => {
+  let putAttempted = false;
+  const { request } = mergeRequestStub((path, options) => {
+    if (options.method === 'PUT') {
+      putAttempted = true;
+      const error = new Error('gateway timeout');
+      error.status = 504;
+      return error;
+    }
+    return putAttempted
+      ? { head: { sha: HEAD1 }, merged: false, merge_commit_sha: null }
+      : mergeableOpen;
+  });
+  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const result = await mergePullRequest(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.retryable, false);
+  assert.match(result.reason, /merge API failed \(504\)/);
+});
+
 // ---- landedCommitProofError ----
 
 const proofDefaults = {
@@ -516,10 +580,33 @@ const proofDefaults = {
   fetchCurrentMain: async () => LAND1,
   fetchCurrentPr: async () => ({ merged: true, merged_at: '2026-07-15T00:00:00Z' }),
   fetchCommit: async () => ({ parents: [{ sha: BASE }], commit: { tree: { sha: TREE1 } } }),
+  sleep: async () => {},
 };
 
 test('landedCommitProofError returns null when every invariant holds', async () => {
   assert.equal(await landedCommitProofError({ ...proofDefaults }), null);
+});
+
+test('landedCommitProofError polls through read-replica lag before succeeding', async () => {
+  // main ref and PR merged-state are stale for the first two reads (replica
+  // lag), then catch up. The proof must NOT fail closed on the transient lag.
+  let mainReads = 0;
+  let prReads = 0;
+  const error = await landedCommitProofError({
+    ...proofDefaults,
+    fetchCurrentMain: async () => {
+      mainReads += 1;
+      return mainReads >= 3 ? LAND1 : BASE;
+    },
+    fetchCurrentPr: async () => {
+      prReads += 1;
+      return prReads >= 3
+        ? { merged: true, merged_at: '2026-07-15T00:00:00Z' }
+        : { merged: false, merged_at: null };
+    },
+  });
+  assert.equal(error, null);
+  assert.ok(mainReads >= 3 && prReads >= 3);
 });
 
 test('landedCommitProofError rejects an invalid landed SHA', async () => {
