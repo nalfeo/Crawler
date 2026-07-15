@@ -190,19 +190,20 @@ and the completion-signal contract that four prior gap-fix sessions built on.
   perform the merge, one PR at a time) and is the same risk the repository
   already carries for any PR merged to `main`. It is mitigated by the unchanged
   admission gate — a train PR admits only after its required `ci` and
-  `Security checks` pass and all review threads resolve — and every promoted
-  prefix additionally passes `verify:fast` and `security:check` (DEC-011), the
-  same gate the final candidate passes. It is NOT a regression relative to
-  normally merging PRs to `main`; it only gives up the atomic model's exceptional
-  "intermediates never exposed" property, which cannot coexist with real merged
-  semantics. Reducing to one-PR-per-cycle (ALT-001) does not remove this exposure
-  — each PR still lands on `main` and runs its workflows. Privileged workflow
-  changes remain governed by the repository's normal CODEOWNERS / required-review
-  / required-CI protections; the train does **not** weaken, bypass, or shortcut
-  any of those
-  admission checks (it only replaces how a fully-admitted PR is landed), and it
-  deliberately does not add a workflow-file-change admission ban (an accepted
-  scoping decision — the existing protections are the control).
+  `Security checks` status checks pass and all review threads resolve (enforced
+  by `eligible()`) — and every promoted prefix additionally passes `verify:fast`
+  and `security:check` (DEC-011), the same gate the final candidate passes. It is
+  NOT a regression relative to normally merging PRs to `main`; it only gives up
+  the atomic model's exceptional "intermediates never exposed" property, which
+  cannot coexist with real merged semantics. Reducing to one-PR-per-cycle
+  (ALT-001) does not remove this exposure — each PR still lands on `main` and
+  runs its workflows. Note: because the trusted App bypasses the branch-protection
+  ruleset for each merge, CODEOWNERS and required-review are NOT enforced at the
+  point of the App merge itself; the effective controls are the `ci` /
+  `Security checks` status checks and unresolved-thread gate enforced at admission
+  plus the per-prefix DEC-011 validation gate. This is an accepted risk of the
+  real-merged-semantics design; a workflow-file-change admission ban would close
+  the gap at the cost of blocking legitimate workflow improvements from the train.
 
 ## Alternatives Considered
 

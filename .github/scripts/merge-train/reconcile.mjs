@@ -377,6 +377,7 @@ async function reconcileLandedSignals() {
         // will skip when they don't establish a proven landing.
       }
     }
+    const hasLandedLabel = (pr.labels || []).some((label) => label.name === LANDED_LABEL);
     const decision = planLandedRecovery({
       merged: pr.merged,
       baseRef: pr.base?.ref,
@@ -385,6 +386,7 @@ async function reconcileLandedSignals() {
       prNumber: pr.number,
       parentCount,
       hasPostconditionFailure,
+      hasLandedLabel,
     });
     if (decision.action !== 'finish') {
       process.stdout.write(
@@ -392,9 +394,8 @@ async function reconcileLandedSignals() {
       );
       continue;
     }
-    if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
-      await setLabel(pr.number, LANDED_LABEL);
-    }
+    // LANDED_LABEL is already present (required by planLandedRecovery); post the
+    // truthful RECOVERED comment and remove the transient labels.
     await postLandedComment(pr.number, landedSha, '', true);
     await removeLabel(pr.number, BLOCKED_LABEL);
     await removeLabel(pr.number, QUEUE_LABEL);

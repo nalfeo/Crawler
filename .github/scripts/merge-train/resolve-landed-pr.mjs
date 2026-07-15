@@ -62,7 +62,10 @@ async function resolve() {
       return { number: String((exact || pulls[0]).number), apiFailed: false };
     }
     // The inference request succeeded and found no PR: a genuine clean no-match.
-    return { number: '', apiFailed: false };
+    // Preserve any apiFailed flag from the trailer-lookup step above so a step-1
+    // API failure (trailer found but PR corroboration failed) is not silently
+    // converted to a clean no-match.
+    return { number: '', apiFailed };
   } catch {
     apiFailed = true;
   }

@@ -558,7 +558,7 @@ export async function promoteExactBatch({
         );
         return false;
       }
-      await publishPostcondition(landed.at(-1)?.sha || finalCandidateSha);
+      await publishPostcondition(candidateShas[index] || finalCandidateSha);
       throw new MergeTrainPromotionError(
         `promotion aborted at pr=#${entry.number}: ${merge.reason}`,
       );
@@ -774,6 +774,7 @@ export function planLandedRecovery({
   prNumber,
   parentCount,
   hasPostconditionFailure,
+  hasLandedLabel,
 }) {
   if (merged !== true) return { action: 'skip', reason: 'PR is not recorded merged' };
   if (baseRef !== 'main') return { action: 'skip', reason: 'PR was not merged into main' };
@@ -794,6 +795,13 @@ export function planLandedRecovery({
       action: 'skip',
       reason:
         'a promotion-postcondition failure is recorded on the landed commit (possible divergence)',
+    };
+  }
+  if (!hasLandedLabel) {
+    return {
+      action: 'skip',
+      reason:
+        'LANDED_LABEL proof-complete marker is absent; crash may have occurred before tree proof ran — leaving for human review',
     };
   }
   return { action: 'finish', reason: 'proven interrupted landing' };

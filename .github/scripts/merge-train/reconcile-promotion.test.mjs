@@ -828,6 +828,7 @@ const recoveryDefaults = {
   prNumber: 42,
   parentCount: 1,
   hasPostconditionFailure: false,
+  hasLandedLabel: true,
 };
 
 test('planLandedRecovery finishes a fully-proven interrupted landing', () => {
@@ -869,4 +870,10 @@ test('planLandedRecovery skips a landing with a promotion-postcondition failure 
   const decision = planLandedRecovery({ ...recoveryDefaults, hasPostconditionFailure: true });
   assert.equal(decision.action, 'skip');
   assert.match(decision.reason, /postcondition failure/);
+});
+
+test('planLandedRecovery skips when LANDED_LABEL proof-complete marker is absent (crash-before-proof window)', () => {
+  const decision = planLandedRecovery({ ...recoveryDefaults, hasLandedLabel: false });
+  assert.equal(decision.action, 'skip');
+  assert.match(decision.reason, /proof-complete marker is absent/);
 });

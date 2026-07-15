@@ -102,11 +102,13 @@ canary pre-enable step).
 
 ## Verification
 
-- `node --test .github/scripts/merge-train/*.test.mjs` → 130/130 pass (new
+- `node --test .github/scripts/merge-train/*.test.mjs` → 157/157 pass (new
   `reconcile-promotion.test.mjs` covers the merge loop, proof, createMergePullRequest,
   and every task-listed deterministic case; `state.test.mjs` covers the trailer
-  helpers; `reconcile.test.mjs` trimmed of the retired force-push tests).
-- `npm run test:guards` (the CI gate) → 836 pass / 21 skip / 0 fail.
+  helpers; `reconcile.test.mjs` trimmed of the retired force-push tests;
+  additional coverage for proof-polling, disambiguation, and recovery decisions
+  added in subsequent review-fix passes).
+- `npm run test:guards` (the CI gate) → 848 pass.
 - `npm run verify:fast` → passed. `npm run scope` → `gameplay_safe=true` (no
   headless/sweep needed; `.mjs` scripts are outside the TS lint/typecheck globs,
   covered by the node test suite instead).
