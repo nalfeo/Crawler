@@ -43,6 +43,7 @@ import { applyCooldownReduction } from '../shared/stats.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
 import { normalize } from '../shared/vec.js';
+import { isEnemyCombatEligible } from './floor2BossEligibility.js';
 
 interface WeaponState {
   lastFireMs: number;
@@ -74,7 +75,17 @@ const ATTACK_TARGET_GATE_MULTIPLIER = 1.5;
 const COMBAT_RADIUS_FT = 150;
 
 const weaponStates = new WeakMap<GameWorld, WeaponState>();
+const preferredTargets = new WeakMap<GameWorld, number>();
 const logger = createLogger('game:weapon-system');
+
+/** Set or clear the deterministic AI-preferred auto-aim target for this frame. */
+export function setPreferredWeaponTarget(world: GameWorld, targetEid: number | null): void {
+  if (targetEid === null) {
+    preferredTargets.delete(world);
+    return;
+  }
+  preferredTargets.set(world, targetEid);
+}
 
 function getWeaponState(world: GameWorld): WeaponState {
   let state = weaponStates.get(world);
@@ -226,6 +237,9 @@ function getNearestEnemyTarget(
   let nearestDistanceSq = Number.POSITIVE_INFINITY;
 
   for (const enemy of enemies) {
+    if (!isEnemyCombatEligible(world, enemy)) {
+      continue;
+    }
     // Skip corpses. Dead enemies keep their Enemy + Position components during
     // the death-linger window (deathTimerSystem removes them once the corpse
     // animation finishes); auto-aim must not waste swings or projectiles on
@@ -276,6 +290,50 @@ function getNearestEnemyTarget(
   return nearestTarget;
 }
 
+function getPreferredEnemyTarget(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+): EnemyTarget | undefined {
+  const enemy = preferredTargets.get(world);
+  if (
+    enemy === undefined ||
+    !isEnemyCombatEligible(world, enemy) ||
+    !hasComponent(world.ecs, enemy, Enemy) ||
+    !hasComponent(world.ecs, enemy, Position) ||
+    hasComponent(world.ecs, enemy, DeathTimer) ||
+    (hasComponent(world.ecs, enemy, Health) && (world.stores.health.current[enemy] ?? 0) <= 0)
+  ) {
+    return undefined;
+  }
+  const ex = world.stores.position.x[enemy]!;
+  const ey = world.stores.position.y[enemy]!;
+  if (world.floorMap) {
+    const tile = world.floorMap.worldToTile(ex, ey);
+    if (
+      !world.floorMap.isVisible(tile.x, tile.y) &&
+      !world.floorMap.hasLineOfSight(playerX, playerY, ex, ey)
+    ) {
+      return undefined;
+    }
+  }
+  const deltaX = ex - playerX;
+  const deltaY = ey - playerY;
+  const distanceSq = deltaX * deltaX + deltaY * deltaY;
+  if (distanceSq <= 0.0001) {
+    return undefined;
+  }
+  return {
+    direction: normalizeVector(deltaX, deltaY),
+    distanceSq,
+    radiusFt: getBodyRadius(world, enemy, 'weaponSystem'),
+    deltaX,
+    deltaY,
+    velocityX: world.stores.velocity.x[enemy] ?? 0,
+    velocityY: world.stores.velocity.y[enemy] ?? 0,
+  };
+}
+
 /**
  * Boss-priority targeting: returns a target aimed at a permanently-aggroed boss
  * (the elite marker, set only on Floor 1 bosses) when one is within `gateRangeFt`
@@ -302,6 +360,9 @@ function findBossTargetInRange(
   let bestDistanceSq = Number.POSITIVE_INFINITY;
 
   for (const enemy of enemies) {
+    if (!isEnemyCombatEligible(world, enemy)) {
+      continue;
+    }
     if ((behavior.aggroedPermanently[enemy] ?? 0) !== 1) {
       continue;
     }
@@ -881,7 +942,12 @@ export function weaponSystem(world: GameWorld): void {
       // transient add. Falls back to the nearest enemy when no boss is in range,
       // preserving normal add-clearing.
       const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangeFt);
-      const fireTarget = bossTarget ?? target;
+      const preferredTarget = getPreferredEnemyTarget(world, playerX, playerY);
+      const preferredInRange =
+        preferredTarget && preferredTarget.distanceSq <= gateRangeFt * gateRangeFt
+          ? preferredTarget
+          : undefined;
+      const fireTarget = bossTarget ?? preferredInRange ?? target;
 
       dispatchAttack(world, player, def, fireTarget.direction);
       state.aimX = fireTarget.direction.x;
@@ -911,7 +977,12 @@ export function weaponSystem(world: GameWorld): void {
     // land on it instead of a transient add (mirrors the melee path). A slow
     // arrow chasing the nearest respawning add never closes the boss fight.
     const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangeFt);
-    const fireTarget = bossTarget ?? target;
+    const preferredTarget = getPreferredEnemyTarget(world, playerX, playerY);
+    const preferredInRange =
+      preferredTarget && preferredTarget.distanceSq <= gateRangeFt * gateRangeFt
+        ? preferredTarget
+        : undefined;
+    const fireTarget = bossTarget ?? preferredInRange ?? target;
 
     // Lead moving targets for forward-fired projectiles so slow arrows/bolts
     // intercept a strafing enemy instead of trailing its current position.

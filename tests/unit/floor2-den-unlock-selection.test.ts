@@ -64,6 +64,16 @@ describe('selectDenUnlockObjectives', () => {
 describe('buildDenUnlockQuestPack', () => {
   beforeAllReset();
 
+  it('uses the approved production family kill target', () => {
+    const killArchetype = loadDenUnlockArchetypes().find(
+      (archetype) => archetype.kind === 'killTargets',
+    );
+    expect(killArchetype?.kind).toBe('killTargets');
+    if (killArchetype?.kind === 'killTargets') {
+      expect(killArchetype.killTarget).toBe(50);
+    }
+  });
+
   it('emits one quest per family with family-scoped goal flag', () => {
     const families = loadFamilies();
     const resources = loadResources();

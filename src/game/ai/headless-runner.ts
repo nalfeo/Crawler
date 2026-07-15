@@ -15,18 +15,25 @@ import {
   spawnPlayer,
   Enemy,
   Spawner,
+  type FamilyId,
   type GameWorld,
 } from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
 import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
+import { floor2EnemyPack } from '../../shared/enemy-packs.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR2_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import { createWeaponTelemetry, summarizeWeaponTelemetry } from '../../core/weapon-telemetry.js';
-import { FLOOR2_STAIRS_DISCOVERED_GOAL_ID, FLOOR2_TIMEOUT_GOAL_ID } from '../floor2Scenario.js';
+import {
+  FLOOR2_STAIRS_DISCOVERED_GOAL_ID,
+  FLOOR2_TIMEOUT_GOAL_ID,
+  denUnlockGoalId,
+} from '../floor2Scenario.js';
 import {
   AIDecisionDebugState,
   AIPathingMode,
+  AIState,
   type AIInputProvider,
   type AIPathingModeValue,
   type RunStats,
@@ -35,6 +42,7 @@ import {
 import { AI_STATE_NAME, getDecisionEventState, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { getScenarioDefinition } from '../scenarioDefinitions.js';
+import { equipStarterOrFallback } from '../scenarios/starterWeaponEquip.js';
 import { createFloorMainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import {
   autoAllocateStatPoints,
@@ -47,6 +55,7 @@ import { computeFloorProgressScore } from './bt-ai-provider.js';
 import { initNavmesh } from './navmesh/index.js';
 import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
 import { configureMerchantWeaponPurchase } from './merchant-weapon-intent.js';
+import { countEngagingEnemies } from '../floorScenario.js';
 
 const logger = createLogger('game:headless-runner');
 
@@ -244,6 +253,39 @@ function collectFamilyTrashKills(world: GameWorld): Record<string, number> {
   return Object.fromEntries(world.floorExtendedState?.familyState?.trashKillsByFamily ?? []);
 }
 
+function collectFloor2Progression(
+  world: GameWorld,
+  trashKillsAtDenUnlock: ReadonlyMap<string, number>,
+  encounterStartedMs: ReadonlyMap<string, number>,
+  encounterDefeatedMs: ReadonlyMap<string, number>,
+  hunt: NonNullable<RunStats['floor2Progression']>['hunt'],
+): NonNullable<RunStats['floor2Progression']> | undefined {
+  const floor2State = world.floorExtendedState?.familyState;
+  if (world.floorId !== 'floor2' || !floor2State) {
+    return undefined;
+  }
+  const families: NonNullable<RunStats['floor2Progression']>['families'] = {};
+  for (const familyId of floor2State.presentFamilies) {
+    const encounter = floor2State.bossEncounters?.get(familyId);
+    const encounterStarted = encounter?.started === true;
+    families[familyId] = {
+      trashKills: floor2State.trashKillsByFamily?.get(familyId) ?? 0,
+      trashKillsAtDenUnlock: trashKillsAtDenUnlock.get(familyId) ?? null,
+      denUnlocked: world.goalFlags.get(denUnlockGoalId(familyId)) === true,
+      denEntered: encounterStarted,
+      encounterStarted,
+      encounterStartedMs: encounterStartedMs.get(familyId) ?? null,
+      encounterDefeated: encounter?.defeated === true,
+      encounterDefeatedMs: encounterDefeatedMs.get(familyId) ?? null,
+    };
+  }
+  return {
+    families,
+    hunt,
+    exitCompleted: hasFloor2ExitCompleted(world),
+  };
+}
+
 /**
  * Run a complete game simulation headlessly with an AI player.
  *
@@ -296,6 +338,12 @@ export async function runHeadless(
       }
     }
     scenario.selectLoadoutOption(world, starterWeaponIndex);
+  } else if (forceWeaponId !== undefined) {
+    const weaponDef = getWeaponDef(forceWeaponId);
+    if (!weaponDef) {
+      throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+    }
+    equipStarterOrFallback(world, forceWeaponId, weaponDef);
   }
 
   const startingWeapon: string =
@@ -327,6 +375,8 @@ export async function runHeadless(
   let previousLevel = 0;
   const killsByType: Record<string, number> = {};
   let totalKills = 0;
+  let combatEventCursor = world.combatEvents.length;
+  let lastProcessedCombatEvent = world.combatEvents[combatEventCursor - 1];
   let minHealthPercent = 1.0;
   let closeCallCount = 0;
   let lowHealthCount = 0;
@@ -343,12 +393,14 @@ export async function runHeadless(
   const questsFailed: string[] = [];
   let mainQuestAcceptedMs: number | null = null;
   let mainQuestCompletedMs: number | null = null;
-  let previousEnemyCount = query(world.ecs, [Enemy]).length;
   // General quest-log telemetry (floor-agnostic): tracks `world.questLog`, the
   // canonical quest system, independent of any floor-specific objective struct.
   // This is the source of truth for which quests were accepted/completed.
   const questLogAcceptedMs = new Map<string, number>();
   const questLogCompletedMs = new Map<string, number>();
+  const floor2TrashKillsAtDenUnlock = new Map<string, number>();
+  const floor2EncounterStartedMs = new Map<string, number>();
+  const floor2EncounterDefeatedMs = new Map<string, number>();
 
   // NPC interaction tracking
   let lastNpcInteractionFrame = -1000;
@@ -369,6 +421,7 @@ export async function runHeadless(
     };
     getDecisionMode?: () => string;
     getPathingMode?: () => AIPathingModeValue;
+    getFloor2HuntFamilyId?: () => FamilyId | null;
     disposeNavmesh?: () => void;
   };
   let lastFrameX = world.stores.position.x[playerEid] ?? 0;
@@ -379,6 +432,15 @@ export async function runHeadless(
   let lastLoggedState: string | null = null;
   const decisionStateCounts: Record<string, number> = {};
   const decisionStateMs: Record<string, number> = {};
+  let floor2HuntTimeMs = 0;
+  let floor2HuntEngageTimeMs = 0;
+  let floor2HuntActiveCombatTimeMs = 0;
+  let floor2HuntFamilyTrashKills = 0;
+  let floor2HuntNeutralTrashKills = 0;
+  let floor2HuntNearbyEnemySamples = 0;
+  let floor2HuntNearbyEnemyTotal = 0;
+  let floor2HuntNearbyEnemyPeak = 0;
+  let activeFloor2HuntFamilyId: string | null = null;
 
   const recordDecisionState = (state: string): void => {
     decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;
@@ -394,6 +456,21 @@ export async function runHeadless(
       suppressedProgressNavMs: decisionStateMs[suppressedState] ?? 0,
     };
   };
+
+  const buildFloor2HuntMetrics = (): NonNullable<RunStats['floor2Progression']>['hunt'] => ({
+    huntTimeMs: floor2HuntTimeMs,
+    engageTimeMs: floor2HuntEngageTimeMs,
+    engageRatio: floor2HuntTimeMs > 0 ? floor2HuntEngageTimeMs / floor2HuntTimeMs : 0,
+    activeCombatTimeMs: floor2HuntActiveCombatTimeMs,
+    activeCombatRatio: floor2HuntTimeMs > 0 ? floor2HuntActiveCombatTimeMs / floor2HuntTimeMs : 0,
+    familyTrashKills: floor2HuntFamilyTrashKills,
+    neutralTrashKills: floor2HuntNeutralTrashKills,
+    averageNearbyEnemies:
+      floor2HuntNearbyEnemySamples > 0
+        ? floor2HuntNearbyEnemyTotal / floor2HuntNearbyEnemySamples
+        : 0,
+    peakNearbyEnemies: floor2HuntNearbyEnemyPeak,
+  });
 
   const buildEvent = (
     type: SimEvent['type'],
@@ -419,6 +496,17 @@ export async function runHeadless(
     if (decision.targetX !== null && decision.targetY !== null) {
       targetDist = Math.hypot(decision.targetX - px, decision.targetY - py);
     }
+    const targetHealth =
+      decision.targetEid !== null && hasComponent(world.ecs, decision.targetEid, Health)
+        ? {
+            current: Math.round(world.stores.health.current[decision.targetEid] ?? 0),
+            max: Math.round(world.stores.health.max[decision.targetEid] ?? 0),
+          }
+        : null;
+    const targetArchetype =
+      decision.targetEid === null
+        ? null
+        : (world.floorExtendedState?.ambientEnemyArchetypes?.get(decision.targetEid) ?? null);
     const nav = navProvider.getNavigationDebug?.();
     const netDisp = Math.hypot(px - lastSampleX, py - lastSampleY);
     // A/B telemetry (axis 2): emit run-plan slack/urgency and the decision mode
@@ -447,6 +535,8 @@ export async function runHeadless(
       reason: decision.reason,
       targetEid: decision.targetEid,
       targetDist: targetDist === null ? null : Math.round(targetDist),
+      targetHealth,
+      targetArchetype,
       enemyCount: enemyEids.length,
       nearestEnemyDist: nearestEnemyDist === null ? null : Math.round(nearestEnemyDist),
       level: world.playerLevel?.level ?? 0,
@@ -511,7 +601,25 @@ export async function runHeadless(
 
       // AI decides input for this frame.
       aiProvider.poll(inputState, world);
-      recordDecisionState(getDecisionEventState(aiProvider.getDecision()));
+      const decision = aiProvider.getDecision();
+      recordDecisionState(getDecisionEventState(decision));
+      const committedHuntFamilyId = navProvider.getFloor2HuntFamilyId?.() ?? null;
+      activeFloor2HuntFamilyId =
+        world.floorId === 'floor2' &&
+        committedHuntFamilyId !== null &&
+        world.goalFlags.get(denUnlockGoalId(committedHuntFamilyId)) !== true &&
+        world.questLog.get(`floor2-den-${committedHuntFamilyId}-unlock`)?.status === 'active'
+          ? committedHuntFamilyId
+          : null;
+      if (activeFloor2HuntFamilyId !== null) {
+        floor2HuntTimeMs += GAME.DELTA_MS;
+        if (decision.state === AIState.ENGAGE) {
+          floor2HuntEngageTimeMs += GAME.DELTA_MS;
+        }
+        if (decision.state === AIState.ENGAGE || decision.state === AIState.RETREAT) {
+          floor2HuntActiveCombatTimeMs += GAME.DELTA_MS;
+        }
+      }
 
       // Auto-interact with nearby NPCs (simulates pressing E)
       lastNpcInteractionFrame = autoNpcInteractionSystem(
@@ -577,6 +685,15 @@ export async function runHeadless(
       // Per-frame enemy snapshot (reused for combat, damage, and telemetry).
       const enemyEids = query(world.ecs, [Enemy]);
       const currentEnemyCount = enemyEids.length;
+      if (activeFloor2HuntFamilyId !== null) {
+        const playerX = world.stores.position.x[playerEid] ?? 0;
+        const playerY = world.stores.position.y[playerEid] ?? 0;
+        const engageRadiusSq = floor2EnemyPack.engageRadiusFt ** 2;
+        const nearbyEnemies = countEngagingEnemies(world, playerX, playerY, engageRadiusSq);
+        floor2HuntNearbyEnemySamples += 1;
+        floor2HuntNearbyEnemyTotal += nearbyEnemies;
+        floor2HuntNearbyEnemyPeak = Math.max(floor2HuntNearbyEnemyPeak, nearbyEnemies);
+      }
 
       // Real damage-dealt measurement via enemy HP deltas.
       const seenEnemies = new Set<number>();
@@ -650,19 +767,44 @@ export async function runHeadless(
         combatTimeMs += combatDurationFrames * GAME.DELTA_MS;
       }
 
-      // Track kills (enemy count decreased)
-      if (currentEnemyCount < previousEnemyCount) {
-        const enemiesKilled = previousEnemyCount - currentEnemyCount;
-        totalKills += enemiesKilled;
-        if (recordEvent) {
-          for (let k = 0; k < enemiesKilled; k += 1) {
-            recordEvent(
-              buildEvent('kill', enemyEids, `kill ${totalKills - enemiesKilled + k + 1}`),
-            );
+      // Track real enemy deaths rather than enemy-count deltas. The ambient
+      // director legitimately prunes and recycles distant mobs; treating those
+      // removals as kills inflates RunStats and obscures Floor 2 attribution.
+      const combatEvents = world.combatEvents;
+      if (
+        combatEventCursor > combatEvents.length ||
+        (combatEventCursor > 0 && combatEvents[combatEventCursor - 1] !== lastProcessedCombatEvent)
+      ) {
+        combatEventCursor = 0;
+      }
+      for (let eventIndex = combatEventCursor; eventIndex < combatEvents.length; eventIndex += 1) {
+        const event = combatEvents[eventIndex]!;
+        if (event.type !== 'death' || event.targetType !== 'enemy') {
+          continue;
+        }
+        totalKills += 1;
+        if (world.floor === 2) {
+          const classification =
+            event.isBoss === 1
+              ? 'floor2-boss'
+              : (event.familyIndex ?? -1) >= 0
+                ? event.sourceEid !== undefined && hasComponent(world.ecs, event.sourceEid, Player)
+                  ? 'floor2-family-trash-player'
+                  : 'floor2-family-trash-other'
+                : 'floor2-neutral-trash';
+          killsByType[classification] = (killsByType[classification] ?? 0) + 1;
+          if (activeFloor2HuntFamilyId !== null) {
+            if (classification === 'floor2-family-trash-player') {
+              floor2HuntFamilyTrashKills += 1;
+            } else if (classification === 'floor2-neutral-trash') {
+              floor2HuntNeutralTrashKills += 1;
+            }
           }
         }
+        recordEvent?.(buildEvent('kill', enemyEids, `kill ${totalKills}`));
       }
-      previousEnemyCount = currentEnemyCount;
+      combatEventCursor = combatEvents.length;
+      lastProcessedCombatEvent = combatEvents[combatEventCursor - 1];
 
       // 4. Quest tracking (basic - would need event system for full tracking)
       if (world.floorScenario) {
@@ -691,6 +833,27 @@ export async function runHeadless(
         if (questState.status === 'complete' && !questLogCompletedMs.has(questId)) {
           questLogCompletedMs.set(questId, world.elapsedMs);
           recordEvent?.(buildEvent('quest', enemyEids, `questlog completed: ${questId}`));
+        }
+      }
+      const floor2State = world.floorExtendedState?.familyState;
+      if (world.floorId === 'floor2' && floor2State) {
+        for (const familyId of floor2State.presentFamilies) {
+          if (
+            !floor2TrashKillsAtDenUnlock.has(familyId) &&
+            world.goalFlags.get(denUnlockGoalId(familyId)) === true
+          ) {
+            floor2TrashKillsAtDenUnlock.set(
+              familyId,
+              floor2State.trashKillsByFamily?.get(familyId) ?? 0,
+            );
+          }
+          const encounter = floor2State.bossEncounters?.get(familyId);
+          if (encounter?.started === true && !floor2EncounterStartedMs.has(familyId)) {
+            floor2EncounterStartedMs.set(familyId, world.elapsedMs);
+          }
+          if (encounter?.defeated === true && !floor2EncounterDefeatedMs.has(familyId)) {
+            floor2EncounterDefeatedMs.set(familyId, world.elapsedMs);
+          }
         }
       }
 
@@ -827,6 +990,13 @@ export async function runHeadless(
       totalXp: world.playerLevel?.xp ?? 0,
       totalGold: world.playerGold,
       familyTrashKills: collectFamilyTrashKills(world),
+      floor2Progression: collectFloor2Progression(
+        world,
+        floor2TrashKillsAtDenUnlock,
+        floor2EncounterStartedMs,
+        floor2EncounterDefeatedMs,
+        buildFloor2HuntMetrics(),
+      ),
       startingWeapon,
       aiTelemetry: buildAiTelemetry(),
       spawnerArenas: computeSpawnerArenaMetrics(world),
@@ -901,6 +1071,13 @@ export async function runHeadless(
     totalXp: world.playerLevel?.xp ?? 0,
     totalGold: world.playerGold,
     familyTrashKills: collectFamilyTrashKills(world),
+    floor2Progression: collectFloor2Progression(
+      world,
+      floor2TrashKillsAtDenUnlock,
+      floor2EncounterStartedMs,
+      floor2EncounterDefeatedMs,
+      buildFloor2HuntMetrics(),
+    ),
     startingWeapon,
     aiTelemetry: buildAiTelemetry(),
     spawnerArenas: computeSpawnerArenaMetrics(world),

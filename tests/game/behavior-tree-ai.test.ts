@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { addComponent } from 'bitecs';
 import {
   spawnBehaviorEnemy,
   spawnEnemy,
@@ -8,6 +9,7 @@ import {
   spawnPlayer,
   spawnXpGem,
 } from '../../src/core/helpers.js';
+import { spawnEnemyProjectile } from '../../src/core/spawners/projectiles.js';
 import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
@@ -22,6 +24,7 @@ import {
   FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
   FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
   initializeFloor2Scenario,
+  denUnlockGoalId,
 } from '../../src/game/floor2Scenario.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import type { GameWorld } from '../../src/core/world.js';
@@ -41,10 +44,15 @@ import {
 } from '../../src/game/ai/types.js';
 import {
   ENGAGE_GIVEUP_FRAMES,
+  FLOOR2_HUNT_ENGAGE_FRAMES,
+  FLOOR2_HUNT_NO_PROGRESS_FRAMES,
+  FLOOR2_HUNT_RECOVERY_FRAMES,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
+import { FamilyMembership } from '../../src/core/components.js';
+import { asFamilyId, type FamilyId } from '../../src/core/faction-relations.js';
 
 /**
  * Build an all-open room (walls only on the border) so A* has a clear straight
@@ -400,12 +408,13 @@ describe('BehaviorTreeAI', () => {
     expect(harness.retreating).toBe(false);
     expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
 
-    // Poll 3: even if the threat closes back in, the active ignore suppresses it,
-    // so the still-wounded AI keeps clearing the floor instead of latching RETREAT.
+    // Ignore suppresses re-engagement, not physical threat sensing. If that same
+    // enemy closes again while the player is still wounded, retreat must resume.
     world.stores.position.x[enemy] = 10;
     world.frameCount += 1;
     ai.poll(createInputState(), world);
-    expect(ai.getDecision().state).not.toBe(AIState.RETREAT);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+    expect(harness.retreatThreatEid).toBe(enemy);
   });
 
   it('micro-spaces with weapon cadence: pokes in when ready, eases out on cooldown', () => {
@@ -1015,6 +1024,200 @@ describe('BehaviorTreeAI', () => {
     const unlockedDecision = unlockedAi.getDecision();
     expect(unlockedDecision.state).not.toBe(AIState.INTERACT);
     expect(unlockedDecision.targetEid).not.toBe(brokerEid);
+  });
+
+  it('never engages a Floor 2 boss before both den unlock and encounter activation', () => {
+    const world = createTestWorld({ seed: 57, floor: 2 });
+    spawnPlayer(world, 10, 10);
+    world.floorMap = makeOpenRoom(40, 20);
+    const familyId = asFamilyId('imps');
+    const bossEid = spawnEnemy(world, 18, 10, 100);
+    addComponent(world.ecs, bossEid, FamilyMembership);
+    world.stores.familyMembership.familyId[bossEid] = 0;
+    world.stores.familyMembership.isBoss[bossEid] = 1;
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [familyId],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: true,
+        trashKillsByFamily: new Map([[familyId, 0]]),
+        bossEncounters: new Map([
+          [
+            familyId,
+            {
+              familyId,
+              roomId: -1,
+              doorEids: [],
+              activeGoalId: 'floor2-den-imps-boss-active',
+              started: false,
+              bossEid,
+              defeated: false,
+              displayName: 'Imp Boss',
+              lootTableId: 'boss',
+            },
+          ],
+        ]),
+      },
+    };
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+
+    const lockedAi = new BehaviorTreeAI({ seed: 57 });
+    lockedAi.poll(createInputState(), world);
+    expect(lockedAi.getDecision().targetEid).not.toBe(bossEid);
+
+    world.goalFlags.set(denUnlockGoalId(familyId), true);
+    const unlockedButInactiveAi = new BehaviorTreeAI({ seed: 57 });
+    unlockedButInactiveAi.poll(createInputState(), world);
+    expect(unlockedButInactiveAi.getDecision()).toMatchObject({
+      state: AIState.EXPLORE,
+      targetEid: -1,
+      reason: 'Entering the imps den to confront its boss',
+    });
+
+    world.floorExtendedState.familyState!.bossEncounters!.get(familyId)!.started = true;
+    const activeAi = new BehaviorTreeAI({ seed: 57 });
+    activeAi.poll(createInputState(), world);
+    expect(activeAi.getDecision()).toMatchObject({
+      state: AIState.ENGAGE,
+      targetEid: bossEid,
+    });
+  });
+
+  it('selects reachable live trash from the committed Floor 2 family', () => {
+    const world = createTestWorld({ seed: 58, floor: 2 });
+    spawnPlayer(world, 14, 14);
+    world.floorMap = makeSealedRoom(50, 18, 14);
+    const familyId = asFamilyId('imps');
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [familyId],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+      },
+    };
+    const tagFamilyTrash = (eid: number): void => {
+      addComponent(world.ecs, eid, FamilyMembership);
+      world.stores.familyMembership.familyId[eid] = 0;
+      world.stores.familyMembership.isBoss[eid] = 0;
+    };
+    const deadTrash = spawnEnemy(world, 18, 14, 20);
+    tagFamilyTrash(deadTrash);
+    world.stores.health.current[deadTrash] = 0;
+    const unreachableTrash = spawnEnemy(world, 70, 14, 20);
+    tagFamilyTrash(unreachableTrash);
+    const reachableTrash = spawnEnemy(world, 30, 14, 20);
+    tagFamilyTrash(reachableTrash);
+
+    const target = (
+      new BehaviorTreeAI({ seed: 58 }) as unknown as {
+        findNearestFloor2HuntEnemy(
+          world: GameWorld,
+          familyId: FamilyId,
+          playerX: number,
+          playerY: number,
+          maxRadius: number,
+          requirePerception: boolean,
+        ): { eid: number } | null;
+      }
+    ).findNearestFloor2HuntEnemy(world, familyId, 14, 14, 100, false);
+
+    expect(target?.eid).toBe(reachableTrash);
+  });
+
+  it('selects the nearest unresolved Floor 2 territory before kill-count tiebreaks', () => {
+    const farFamily = asFamilyId('imps');
+    const nearFamily = asFamilyId('myconids');
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    const player = spawnPlayer(world, 18, 18);
+    world.floorMap = makeOpenRoom(60, 30);
+    (
+      world.floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [
+      { familyIndex: 0, centerX: 50, centerY: 15, radius: 10 },
+      { familyIndex: 1, centerX: 6, centerY: 6, radius: 10 },
+    ];
+    world.stores.position.x[player] = 18;
+    world.stores.position.y[player] = 18;
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [farFamily, nearFamily],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        trashKillsByFamily: new Map([
+          [farFamily, 90],
+          [nearFamily, 0],
+        ]),
+      },
+    };
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const harness = ai as unknown as {
+      selectFloor2HuntFamily(world: GameWorld): FamilyId | null;
+    };
+
+    expect(harness.selectFloor2HuntFamily(world)).toBe(nearFamily);
+  });
+
+  it('advances the Floor 2 patrol anchor after a full no-progress window', () => {
+    const familyId = asFamilyId('imps');
+    const world = createTestWorld({ seed: 59, floor: 2 });
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [familyId],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        trashKillsByFamily: new Map([[familyId, 0]]),
+      },
+    };
+    world.frameCount = FLOOR2_HUNT_NO_PROGRESS_FRAMES + 1;
+    const ai = new BehaviorTreeAI({ seed: 59 });
+    const harness = ai as unknown as {
+      floor2HuntLastKillCount: number;
+      floor2HuntLastProgressFrame: number;
+      floor2HuntPatrolIndex: number;
+      floor2HuntPatrolTarget: TilePoint | null;
+      updateFloor2HuntProgress(world: GameWorld, familyId: FamilyId): boolean;
+    };
+    harness.floor2HuntLastKillCount = 0;
+    harness.floor2HuntLastProgressFrame = 0;
+    harness.floor2HuntPatrolIndex = 2;
+    harness.floor2HuntPatrolTarget = { x: 5, y: 5 };
+
+    expect(harness.updateFloor2HuntProgress(world, familyId)).toBe(true);
+    expect(harness.floor2HuntPatrolIndex).toBe(3);
+    expect(harness.floor2HuntPatrolTarget).toBeNull();
+  });
+
+  it('paces Floor 2 hunts at three ENGAGE frames per recovery frame', () => {
+    const world = createTestWorld({ seed: 60, floor: 2 });
+    const ai = new BehaviorTreeAI({ seed: 60 });
+    const harness = ai as unknown as {
+      floor2HuntCadenceStartFrame: number;
+      isFloor2HuntRecoveryWindow(world: GameWorld): boolean;
+    };
+    harness.floor2HuntCadenceStartFrame = 100;
+
+    world.frameCount = 100 + FLOOR2_HUNT_ENGAGE_FRAMES - 1;
+    expect(harness.isFloor2HuntRecoveryWindow(world)).toBe(false);
+    world.frameCount = 100 + FLOOR2_HUNT_ENGAGE_FRAMES;
+    expect(harness.isFloor2HuntRecoveryWindow(world)).toBe(true);
+    world.floorId = 'floor2';
+    world.elapsedMs = 900_000;
+    expect(harness.isFloor2HuntRecoveryWindow(world)).toBe(false);
+    world.elapsedMs = 0;
+    world.frameCount = 100 + FLOOR2_HUNT_ENGAGE_FRAMES + FLOOR2_HUNT_RECOVERY_FRAMES - 1;
+    expect(harness.isFloor2HuntRecoveryWindow(world)).toBe(true);
+    world.frameCount = 100 + FLOOR2_HUNT_ENGAGE_FRAMES + FLOOR2_HUNT_RECOVERY_FRAMES;
+    expect(harness.isFloor2HuntRecoveryWindow(world)).toBe(false);
   });
 
   it('routes direct Floor 2 starts to the settlement before den, enemy, or loot goals', () => {
@@ -1660,11 +1863,10 @@ describe('BehaviorTreeAI', () => {
 
   it('expands to defensive orbit when player HP drops below 40%', () => {
     // bat reach = 5.5ft. innerOrbit=4.5, outerOrbit=6.25 (4.5+1.75),
-    // strikeGate=8.25 (5.5*1.5). Enemy attackRange=5 → safeOrbit=6.75 (5+1.75).
+    // fireGate=8.25 (5.5*1.5). Enemy attackRange=5 → safeOrbit=6.75 (5+1.75).
     // safeOrbit(6.75) > outerOrbit(6.25), so the healthy branch leaves desiredOrbit
-    // unchanged (can't reach safety at full HP cap). In the wounded branch,
-    // safeOrbitCap expands to strikeGate(8.25), so safeOrbit(6.75) fits and the orbit
-    // is pushed out to 6.75ft — the defensive expansion.
+    // unchanged. In the wounded branch, safeOrbitCap expands to real blade reach
+    // (5.5), producing a defensive expansion without leaving guaranteed hit geometry.
     const bat = getWeaponDef('baseball-bat')!;
 
     // HEALTHY player — full HP, orbit stays in the normal strike band.
@@ -1678,8 +1880,7 @@ describe('BehaviorTreeAI', () => {
     const healthyDecision = healthyAi.getDecision();
     const healthyDist = Math.hypot(healthyDecision.targetX! - 7.5, healthyDecision.targetY!);
 
-    // WOUNDED player — 29% HP crosses MELEE_DEFENSIVE_HP_FRACTION (0.4), expanding
-    // safeOrbitCap to the full strikeGate so the orbit is pushed out to safeOrbit.
+    // WOUNDED player — 29% HP crosses MELEE_DEFENSIVE_HP_FRACTION (0.4).
     const woundedWorld = createTestWorld({ seed: 7 });
     const woundedPlayer = spawnPlayer(woundedWorld, 0, 0);
     // Set HP to 29% of max (100) to cross the 40% MELEE_DEFENSIVE_HP_FRACTION.
@@ -1695,8 +1896,71 @@ describe('BehaviorTreeAI', () => {
     expect(healthyDecision.reason).toContain('Kiting');
     expect(woundedDecision.reason).toContain('Kiting');
     // Wounded AI targets farther from the enemy: defensive orbit expansion holds it
-    // outside the enemy's own attackRange rather than trading blows in the strike band.
-    expect(woundedDist).toBeGreaterThan(healthyDist + 0.5);
+    // at real blade reach rather than trading blows in the inner strike band.
+    expect(woundedDist).toBeGreaterThan(healthyDist + 0.1);
+    expect(woundedDist).toBeLessThanOrEqual(bat.aoeRadius);
+  });
+
+  it('does not orbit a ranged enemy outside guaranteed melee hit reach when wounded', () => {
+    const sword = getWeaponDef('sword')!;
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.current[player] = 29;
+    spawnBehaviorEnemy(world, 7.4, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    world.elapsedMs = 5000;
+    setActiveWeapon(world, sword);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+    const decision = ai.getDecision();
+    const plannedDistance = Math.hypot(decision.targetX! - 7.4, decision.targetY!);
+
+    expect(decision.reason).toContain('Kiting');
+    // The 1.5x auto-fire gate (7.5ft) may begin a swing while closing, but the
+    // planner must commit inside the sword's real 5ft blade reach so it can connect.
+    expect(plannedDistance).toBeLessThanOrEqual(sword.aoeRadius);
+  });
+
+  it('keeps direct melee pressure against an outranging enemy', () => {
+    const sword = getWeaponDef('sword')!;
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 10;
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    world.elapsedMs = 5000;
+    setActiveWeapon(world, sword);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+    const decision = ai.getDecision();
+
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.reason).toContain('Closing to melee range');
+    expect(decision.targetX).toBeGreaterThan(0);
+    expect(decision.targetY).toBeCloseTo(0);
+  });
+
+  it('sidesteps collision-course projectiles without abandoning an engagement target', () => {
+    const sword = getWeaponDef('sword')!;
+    const world = createTestWorld({ seed: 42 });
+    spawnPlayer(world, 0, 0);
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    spawnEnemyProjectile(world, 15, 0, -0.5, 0, 8);
+    world.elapsedMs = 5000;
+    setActiveWeapon(world, sword);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const input = createInputState();
+    ai.poll(input, world);
+    const decision = ai.getDecision();
+    const dodge = ai.getOpportunisticDebug();
+
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetX).toBeGreaterThan(0);
+    expect(input.moveX).toBeGreaterThan(0);
+    expect(Math.abs(input.moveY)).toBeGreaterThan(0.25);
+    expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
   });
 
   it('orbits away from enemies that are closer than ranged standoff distance', () => {

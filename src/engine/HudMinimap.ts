@@ -13,7 +13,12 @@ import {
   type MinimapViewState,
   type MinimapZoomLimits,
 } from './minimap-view-state.js';
-import { familyTintForRoom, familyColorForEnemy } from './minimap-family-tint.js';
+import {
+  TERRITORY_OVERLAY_ALPHA,
+  familyTintForRoom,
+  familyColorForEnemy,
+  territoryTintsForTile,
+} from './minimap-family-tint.js';
 import { PIXEL_UI } from './pixel-ui.js';
 import { applyCrispText, getUiScale, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
@@ -36,6 +41,7 @@ const HUD_RADAR_RADIUS = HUD_RADAR_DIAMETER / 2;
 const RADAR_CLIP_RADIUS = HUD_RADAR_RADIUS - 4;
 // Player-centred radar zoom: pixels rendered per dungeon tile.
 const RADAR_PX_PER_TILE = 6;
+const TERRITORY_TEXTURE_PX_PER_TILE = 4;
 const ZOOM_STEP_IN = 1.15;
 const ZOOM_STEP_OUT = 0.87;
 const OVERLAY_CLOSE_BUTTON_SIZE = 52;
@@ -307,6 +313,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setInteractive({ useHandCursor: true });
 
   let terrainRt: Phaser.GameObjects.RenderTexture | undefined;
+  let territoryRt: Phaser.GameObjects.RenderTexture | undefined;
   // dotGraphics must sit above terrainRt (HUD_DEPTH+4 > HUD_DEPTH+3) so blips
   // render on top of the baked terrain tiles.
   const dotGraphics = scene.add
@@ -341,6 +348,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let lastPointerY = 0;
   let dragging = false;
   let lastPinchDist = 0;
+  let lastTerritoryPaletteSignature = '';
 
   function getGameSize(): { width: number; height: number } {
     // HUD geometry is laid out in design space (1280×720). After the HiDPI
@@ -472,6 +480,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       // Full-screen overlay: show the whole map via the large terrain texture.
       radarRt.setVisible(false);
       terrainRt?.setVisible(Boolean(lastFloorMap));
+      territoryRt?.setVisible(Boolean(lastFloorMap));
       dotGraphics.setVisible(Boolean(lastFloorMap));
       applyViewTransform();
     } else {
@@ -480,6 +489,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       dotGraphics.setVisible(false);
       radarRt.setVisible(Boolean(lastFloorMap));
       applyHudTransform();
+      territoryRt?.setVisible(false);
     }
   }
 
@@ -506,6 +516,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
         obj.setVisible(false);
       }
       terrainRt?.setVisible(false);
+      territoryRt?.setVisible(false);
       dotGraphics.setVisible(false);
     } else {
       // Restore the correct docked/overlay state; the next sync() redraws.
@@ -521,6 +532,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
     const originX = viewport.centerX - viewState.centerX * snappedZoom;
     const originY = viewport.centerY - viewState.centerY * snappedZoom;
     terrainRt.setPosition(Math.round(originX), Math.round(originY)).setScale(snappedZoom);
+    territoryRt
+      ?.setPosition(Math.round(originX), Math.round(originY))
+      .setScale(snappedZoom / TERRITORY_TEXTURE_PX_PER_TILE);
     dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(snappedZoom);
   }
 
@@ -539,6 +553,18 @@ export function createHudMinimap(scene: Phaser.Scene): {
   }
 
   const familyDefs: readonly FamilyDef[] = loadFamilies();
+
+  function territoryPaletteSignature(world: GameWorld, floorMap: FloorMap): string {
+    return floorMap.territoryZones
+      .map(
+        (zone) =>
+          `${zone.familyIndex}:${familyTintForRoom(world, familyDefs, {
+            role: RoomRole.TERRITORY,
+            familyIndex: zone.familyIndex,
+          })}`,
+      )
+      .join('|');
+  }
 
   /**
    * Pick the minimap dot color for a room's role. Floor-2 territories/settlements
@@ -710,6 +736,33 @@ export function createHudMinimap(scene: Phaser.Scene): {
     const localX = (tileX: number): number => cx + (tileX - ptx) * scale;
     const localY = (tileY: number): number => cy + (tileY - pty) * scale;
     const inDial = (x: number, y: number): boolean => Math.hypot(x - cx, y - cy) <= reach;
+    const fillClippedRect = (
+      color: number,
+      alpha: number,
+      left: number,
+      top: number,
+      right: number,
+      bottom: number,
+    ): void => {
+      const ndx = left > cx ? left - cx : right < cx ? cx - right : 0;
+      const ndy = top > cy ? top - cy : bottom < cy ? cy - bottom : 0;
+      if (ndx * ndx + ndy * ndy >= clipR2) return;
+      const fdx = Math.max(Math.abs(left - cx), Math.abs(right - cx));
+      const fdy = Math.max(Math.abs(top - cy), Math.abs(bottom - cy));
+      if (fdx * fdx + fdy * fdy <= clipR2) {
+        radarRt.fill(color, alpha, left, top, right - left, bottom - top);
+        return;
+      }
+      for (let yy = top; yy < bottom; yy += 1) {
+        const dy = yy + 0.5 - cy;
+        const inside = clipR2 - dy * dy;
+        if (inside <= 0) continue;
+        const dxh = Math.sqrt(inside);
+        const xL = Math.max(left, Math.round(cx - dxh));
+        const xR = Math.min(right, Math.round(cx + dxh));
+        if (xR > xL) radarRt.fill(color, alpha, xL, yy, xR - xL, 1);
+      }
+    };
 
     radarRt.clear();
 
@@ -733,26 +786,27 @@ export function createHudMinimap(scene: Phaser.Scene): {
         const top = Math.round(localY(ty));
         const right = left + scale;
         const bottom = top + scale;
-        // Nearest point of the rect to the dial centre — reject fully-outside tiles.
-        const ndx = left > cx ? left - cx : right < cx ? cx - right : 0;
-        const ndy = top > cy ? top - cy : bottom < cy ? cy - bottom : 0;
-        if (ndx * ndx + ndy * ndy >= clipR2) continue;
-        // Farthest corner — accept fully-inside tiles with a single fill.
-        const fdx = Math.max(Math.abs(left - cx), Math.abs(right - cx));
-        const fdy = Math.max(Math.abs(top - cy), Math.abs(bottom - cy));
-        if (fdx * fdx + fdy * fdy <= clipR2) {
-          radarRt.fill(color, 1, left, top, scale, scale);
-          continue;
-        }
-        // Edge tile: fill per 1px scanline clipped to the circle for a smooth arc.
-        for (let yy = top; yy < bottom; yy += 1) {
-          const dy = yy + 0.5 - cy;
-          const inside = clipR2 - dy * dy;
-          if (inside <= 0) continue;
-          const dxh = Math.sqrt(inside);
-          const xL = Math.max(left, Math.round(cx - dxh));
-          const xR = Math.min(right, Math.round(cx + dxh));
-          if (xR > xL) radarRt.fill(color, 1, xL, yy, xR - xL, 1);
+        fillClippedRect(color, 1, left, top, right, bottom);
+        const territoryTints = territoryTintsForTile(
+          world,
+          familyDefs,
+          floorMap.territoryZones,
+          tx,
+          ty,
+        ).slice(0, TERRITORY_TEXTURE_PX_PER_TILE);
+        for (let band = 0; band < territoryTints.length; band += 1) {
+          const bandLeft = left + Math.floor((band * scale) / territoryTints.length);
+          const bandRight = left + Math.floor(((band + 1) * scale) / territoryTints.length);
+          if (bandRight > bandLeft) {
+            fillClippedRect(
+              territoryTints[band]!,
+              TERRITORY_OVERLAY_ALPHA,
+              bandLeft,
+              top,
+              bandRight,
+              bottom,
+            );
+          }
         }
       }
     }
@@ -885,6 +939,25 @@ export function createHudMinimap(scene: Phaser.Scene): {
     applyViewTransform();
   }
 
+  function ensureTerritoryTexture(floorMap: FloorMap): void {
+    if (territoryRt || floorMap.territoryZones.length === 0) {
+      return;
+    }
+    territoryRt = scene.add
+      .renderTexture(
+        viewport.x,
+        viewport.y,
+        floorMap.width * TERRITORY_TEXTURE_PX_PER_TILE,
+        floorMap.height * TERRITORY_TEXTURE_PX_PER_TILE,
+      )
+      .setOrigin(0, 0)
+      .setDepth(HUD_DEPTH + 3.5)
+      .setScrollFactor(0)
+      .setVisible(false);
+    territoryRt.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    applyViewTransform();
+  }
+
   function bakeNewTiles(floorMap: FloorMap, newIndices: number[]): void {
     ensureTerrainTexture(floorMap);
     if (!terrainRt || newIndices.length === 0) {
@@ -898,6 +971,45 @@ export function createHudMinimap(scene: Phaser.Scene): {
       terrainRt.fill(color, 1, tx, ty, 1, 1);
     }
     terrainRt.render();
+  }
+
+  function bakeTerritoryTiles(
+    world: GameWorld,
+    floorMap: FloorMap,
+    indices: readonly number[],
+    reset: boolean,
+  ): void {
+    ensureTerritoryTexture(floorMap);
+    if (!territoryRt) {
+      return;
+    }
+    if (reset) {
+      territoryRt.clear();
+    }
+    const px = TERRITORY_TEXTURE_PX_PER_TILE;
+    for (const idx of indices) {
+      const tx = idx % floorMap.width;
+      const ty = Math.floor(idx / floorMap.width);
+      const tints = territoryTintsForTile(world, familyDefs, floorMap.territoryZones, tx, ty).slice(
+        0,
+        px,
+      );
+      for (let band = 0; band < tints.length; band += 1) {
+        const bandLeft = Math.floor((band * px) / tints.length);
+        const bandRight = Math.floor(((band + 1) * px) / tints.length);
+        if (bandRight > bandLeft) {
+          territoryRt.fill(
+            tints[band]!,
+            TERRITORY_OVERLAY_ALPHA,
+            tx * px + bandLeft,
+            ty * px,
+            bandRight - bandLeft,
+            px,
+          );
+        }
+      }
+    }
+    territoryRt.render();
   }
 
   function openOverlay(): void {
@@ -1030,6 +1142,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
       visitedTiles = new Uint8Array(floorMap.width * floorMap.height);
       terrainRt?.destroy();
       terrainRt = undefined;
+      territoryRt?.destroy();
+      territoryRt = undefined;
+      lastTerritoryPaletteSignature = '';
       viewState = null;
     }
 
@@ -1050,18 +1165,33 @@ export function createHudMinimap(scene: Phaser.Scene): {
         applyHudTransform();
       }
     }
+    const territorySignature = territoryPaletteSignature(world, floorMap);
+    const territoryPaletteChanged = territorySignature !== lastTerritoryPaletteSignature;
+    lastTerritoryPaletteSignature = territorySignature;
+    if (
+      floorMap.territoryZones.length > 0 &&
+      (newIndices.length > 0 || !territoryRt || territoryPaletteChanged)
+    ) {
+      const territoryIndices =
+        territoryPaletteChanged || !territoryRt
+          ? Array.from(visited.keys()).filter((idx) => visited[idx] === 1)
+          : newIndices;
+      bakeTerritoryTiles(world, floorMap, territoryIndices, territoryPaletteChanged);
+    }
 
     if (terrainRt) {
       if (overlayOpen) {
         drawDots(world, playerEid, floorMap, visited);
         applyViewTransform();
         terrainRt.setVisible(true);
+        territoryRt?.setVisible(true);
         dotGraphics.setVisible(true);
         radarRt.setVisible(false);
       } else {
         drawRadar(world, playerEid, floorMap, visited);
         applyHudTransform();
         terrainRt.setVisible(false);
+        territoryRt?.setVisible(false);
         dotGraphics.setVisible(false);
         radarRt.setVisible(true);
       }
@@ -1078,6 +1208,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     scene.input.off('pointerupoutside', handlePointerUp);
 
     terrainRt?.destroy();
+    territoryRt?.destroy();
     dotGraphics.destroy();
     hudMapBg.destroy();
     hudRingOuter.destroy();

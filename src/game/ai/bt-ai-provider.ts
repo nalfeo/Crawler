@@ -11,6 +11,8 @@ import {
   Position,
   Health,
   Enemy,
+  EnemyProjectile,
+  AoeOnImpact,
   FamilyMembership,
   Velocity,
   Stats,
@@ -20,6 +22,7 @@ import {
   Harvestable,
   Npc,
   HARVEST_RANGE_FT,
+  type FamilyId,
   type GameWorld,
 } from '../../core/index.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
@@ -33,7 +36,7 @@ import {
 import { buildDoorAwarePassable, getNavigationBlockedDoors } from '../../core/door-navigation.js';
 import { isPointInSafeSpace } from '../../core/safe-space.js';
 import { resolveFloor2SettlementAnchor } from '../../core/floor2-settlement-anchor.js';
-import { RoomRole } from '../../shared/map-types.js';
+import { RoomRole, type TerritoryZone } from '../../shared/map-types.js';
 import {
   type AILockedDoorMemory,
   type FrontierGrid,
@@ -51,6 +54,7 @@ import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
 import { GAME, WeaponType, PLAYER_SPEED, type WeaponTypeValue } from '../../shared/constants.js';
 import { floor1Config } from '../../shared/floor-config.js';
+import { getFloorManifest } from '../../shared/floor-registry.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
@@ -58,11 +62,7 @@ import {
   type QuestState,
 } from '../../shared/quest-types.js';
 import { getItemById, getItemByIndex } from '../../shared/items.js';
-import {
-  getActiveQuests,
-  getQuestObjectiveViews,
-  getTrackedQuest,
-} from '../../core/systems/questSystem.js';
+import { getQuestObjectiveViews } from '../../core/systems/questSystem.js';
 import {
   AIState,
   AIDecisionMode,
@@ -100,8 +100,14 @@ import {
 import {
   FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID,
   FLOOR2_SETTLEMENT_FOUND_GOAL_ID,
+  denUnlockGoalId,
 } from '../floor2Scenario.js';
-import { getActiveWeapon, getActiveWeaponReadiness } from '../weaponSystem.js';
+import { isEnemyCombatEligible } from '../floor2BossEligibility.js';
+import {
+  getActiveWeapon,
+  getActiveWeaponReadiness,
+  setPreferredWeaponTarget,
+} from '../weaponSystem.js';
 // AI tuning constants (pure values; identical runtime behavior) live in
 // ./bt-ai-tuning.ts. Imported here so every reference in this file is unchanged.
 import {
@@ -146,6 +152,13 @@ import {
   EXPLORE_DWELL_ESCAPE_FT,
   EXPLORE_DWELL_FRAMES,
   PROGRESS_SUPPRESS_FRAMES,
+  FLOOR2_HUNT_PATROL_ARRIVE_FT,
+  FLOOR2_HUNT_PATROL_RADIUS_FRACTION,
+  FLOOR2_HUNT_CHASE_RADIUS_FT,
+  FLOOR2_HUNT_NO_PROGRESS_FRAMES,
+  FLOOR2_HUNT_ENGAGE_FRAMES,
+  FLOOR2_HUNT_RECOVERY_FRAMES,
+  FLOOR2_HUNT_URGENCY_REMAINING_MS,
   EXPLORE_REACHABLE_SAMPLE_ATTEMPTS,
   EXPLORE_REACHABLE_SAMPLE_TARGET,
   EXPLORE_FAR_CANDIDATE_POOL,
@@ -173,6 +186,10 @@ import {
   DODGE_CLOSING_SPEED_FT_PER_FRAME,
   DODGE_BLOCK_RADIUS_FT,
   DODGE_BLOCK_AHEAD_DOT,
+  PROJECTILE_DODGE_HORIZON_FRAMES,
+  PROJECTILE_DODGE_CLEARANCE_FT,
+  PROJECTILE_DODGE_AOE_BUFFER_FT,
+  PROJECTILE_DODGE_VECTOR_SCALE,
   PATH_CORRIDOR_HALF_WIDTH_FT,
   DETOUR_MIN_HEADING_MAGNITUDE,
   FARM_FORWARD_SCAN_RADIUS_FT,
@@ -536,6 +553,7 @@ interface LootTarget extends WorldTarget {
 interface ProgressTarget extends WorldTarget {
   reason: string;
   npcInteraction: AINpcInteractionIntent | null;
+  engagementStyle: 'standard' | 'focused';
 }
 
 /**
@@ -1092,6 +1110,15 @@ export class BehaviorTreeAI implements AIInputProvider {
   private safeRoomEgressNoProgressFrames: number = 0;
   private safeRoomEgressActiveFrames: number = 0;
   private safeRoomEgressSuppressFrames: number = 0;
+  private floor2HuntMap: FloorMap | null = null;
+  private floor2HuntFamilyId: FamilyId | null = null;
+  private floor2HuntPatrolIndex: number = 0;
+  private floor2HuntPatrolTarget: TilePoint | null = null;
+  private floor2HuntLastKillCount: number = 0;
+  private floor2HuntLastProgressFrame: number = 0;
+  private floor2HuntCadenceStartFrame: number = 0;
+  private floor2HuntHandledSuppressionUntilFrame: number = 0;
+  private readonly floor2HuntPatrolTiles = new Map<string, TilePoint[]>();
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -1210,7 +1237,28 @@ export class BehaviorTreeAI implements AIInputProvider {
           return false;
         }
 
-        const threat = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+        // An enemy ignored for target selection is still physically dangerous.
+        // Retreat must sense it if it closes again, otherwise a low-health player
+        // resumes progression while the temporarily ignored attacker lands free hits.
+        const threat = this.findNearestEnemy(
+          ctx.world,
+          ctx.playerX,
+          ctx.playerY,
+          this.config.scanRadius,
+          true,
+        );
+        if (threat) {
+          const attackRange = ctx.world.stores.enemyBehavior.attackRange[threat.eid] ?? 0;
+          const retreatEscapeRadius = this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT;
+          if (attackRange > retreatEscapeRadius) {
+            // Backing to the retreat hysteresis edge cannot disengage a shooter
+            // whose real attack range extends beyond it. Radial retreat then
+            // alternates with radial re-approach on the same projectile line.
+            // Let engagement own the response so melee can strafe-close instead.
+            this.endRetreat(ctx.world);
+            return false;
+          }
+        }
         // Hysteresis: an enemy must close to within retreatDangerRadius to START
         // a retreat, but the AI keeps retreating until the gap exceeds
         // retreatDangerRadius * RETREAT_HYSTERESIS_MULT. This stops the per-frame
@@ -1598,7 +1646,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         // non-enemy entities (gold piles, NPCs) keep the direct-approach path.
         const enemyTarget = this.progressTargetAsEnemy(ctx.world, target, ctx.playerX, ctx.playerY);
         if (enemyTarget) {
-          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget);
+          const plan =
+            target.engagementStyle === 'focused'
+              ? this.planFocusedMeleeEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget)
+              : this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget);
           this.decision.state = AIState.ENGAGE;
           this.decision.targetEid = enemyTarget.eid;
           this.decision.targetX = plan.targetX;
@@ -2166,8 +2217,8 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * OpportunisticDodge: inject a perpendicular strafe impulse when an enemy
-   * is closing fast toward the player — OR is parked directly in its path.
+   * OpportunisticDodge: sidestep collision-course projectiles in every movement
+   * state, then fall back to the travel-only enemy dodge.
    *
    * For each enemy within `DODGE_THREAT_RADIUS_FT`, we compute the dot product
    * of its velocity with the toward-player unit vector. If the closing speed
@@ -2184,16 +2235,75 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private buildOpportunisticDodge(): BTNode {
     return action('Opportunistic Dodge', (ctx) => {
-      // Dodge is suspended during retreat (retreat kiting owns the direction),
-      // during active engagement (planEngagement's kite-strike orbit is
-      // precision-tuned; a 0.4-weight perpendicular injection would displace
-      // the player outside weapon range and stall the fight indefinitely),
-      // and during NPC interaction (mustn't deflect approach to the NPC target).
-      if (
-        this.decision.state === AIState.RETREAT ||
-        this.decision.state === AIState.ENGAGE ||
-        this.decision.state === AIState.INTERACT
-      ) {
+      // NPC interaction must not be deflected from its exact approach target.
+      if (this.decision.state === AIState.INTERACT) {
+        return BTStatus.FAILURE;
+      }
+
+      const projectiles = query(ctx.world.ecs, [EnemyProjectile, Position, Velocity]);
+      const playerVx = ctx.world.stores.velocity.x[ctx.playerEid] ?? 0;
+      const playerVy = ctx.world.stores.velocity.y[ctx.playerEid] ?? 0;
+      let earliestImpactFrames = Number.POSITIVE_INFINITY;
+      let projectileDodgeX = 0;
+      let projectileDodgeY = 0;
+
+      for (const eid of projectiles) {
+        if (eid === undefined) continue;
+        const projectileX = ctx.world.stores.position.x[eid] ?? 0;
+        const projectileY = ctx.world.stores.position.y[eid] ?? 0;
+        const relativeX = projectileX - ctx.playerX;
+        const relativeY = projectileY - ctx.playerY;
+        const projectileVx = ctx.world.stores.velocity.x[eid] ?? 0;
+        const projectileVy = ctx.world.stores.velocity.y[eid] ?? 0;
+        const relativeVx = projectileVx - playerVx;
+        const relativeVy = projectileVy - playerVy;
+        const speedSq = relativeVx * relativeVx + relativeVy * relativeVy;
+        if (speedSq <= Number.EPSILON) continue;
+
+        const impactFrames = -(relativeX * relativeVx + relativeY * relativeVy) / speedSq;
+        if (
+          impactFrames < 0 ||
+          impactFrames > PROJECTILE_DODGE_HORIZON_FRAMES ||
+          impactFrames >= earliestImpactFrames
+        ) {
+          continue;
+        }
+
+        const closestX = relativeX + relativeVx * impactFrames;
+        const closestY = relativeY + relativeVy * impactFrames;
+        const closestDistance = Math.hypot(closestX, closestY);
+        const aoeRadius = hasComponent(ctx.world.ecs, eid, AoeOnImpact)
+          ? (ctx.world.stores.aoeOnImpact.radius[eid] ?? 0)
+          : 0;
+        const requiredClearance =
+          aoeRadius > 0
+            ? aoeRadius + PROJECTILE_DODGE_AOE_BUFFER_FT
+            : PROJECTILE_DODGE_CLEARANCE_FT;
+        if (closestDistance > requiredClearance) continue;
+
+        if (closestDistance > Number.EPSILON) {
+          // Move away from the projectile's nearest point on its future path.
+          projectileDodgeX = -closestX / closestDistance;
+          projectileDodgeY = -closestY / closestDistance;
+        } else {
+          // Dead-center trajectory: choose a deterministic perpendicular.
+          const speed = Math.sqrt(speedSq);
+          projectileDodgeX = (-relativeVy / speed) * this.kiteOrbitSign;
+          projectileDodgeY = (relativeVx / speed) * this.kiteOrbitSign;
+        }
+        earliestImpactFrames = impactFrames;
+      }
+
+      if (earliestImpactFrames < Number.POSITIVE_INFINITY) {
+        this.dodgeVecX = projectileDodgeX * PROJECTILE_DODGE_VECTOR_SCALE;
+        this.dodgeVecY = projectileDodgeY * PROJECTILE_DODGE_VECTOR_SCALE;
+        return BTStatus.SUCCESS;
+      }
+
+      // Enemy-body dodging remains suspended during retreat and engagement:
+      // their movement planners own spacing. Projectile dodging above is safe in
+      // those states because it reacts to transient trajectories, not the target.
+      if (this.decision.state === AIState.RETREAT || this.decision.state === AIState.ENGAGE) {
         return BTStatus.FAILURE;
       }
 
@@ -2909,6 +3019,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.progressGoalSuppressedUntilFrame = 0;
     this.progressGoalSuppressionSource = null;
     this.pendingSuppressedProgressNavDebug = null;
+    this.floor2HuntMap = null;
+    this.floor2HuntFamilyId = null;
+    this.floor2HuntPatrolIndex = 0;
+    this.floor2HuntPatrolTarget = null;
+    this.floor2HuntLastKillCount = 0;
+    this.floor2HuntLastProgressFrame = world.frameCount;
+    this.floor2HuntCadenceStartFrame = world.frameCount;
+    this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.floor2HuntPatrolTiles.clear();
     this.globalDwellActive = false;
     this.globalDwellFrames = 0;
     this.questProgressActive = false;
@@ -2936,6 +3055,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   poll(state: InputState, world: GameWorld): void {
+    setPreferredWeaponTarget(world, null);
     if (world.hostileEncounterRevision !== this.observedHostileEncounterRevision) {
       this.invalidateTransientDecisionForHostileEncounter(world);
     }
@@ -3312,6 +3432,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.pointerX = playerX;
       state.pointerY = playerY;
     }
+    setPreferredWeaponTarget(
+      world,
+      this.decision.state === AIState.ENGAGE ? this.decision.targetEid : null,
+    );
   }
 
   private refreshQuestAcceptanceNavigation(world: GameWorld): void {
@@ -5124,17 +5248,22 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     maxRadius: number = this.config.scanRadius,
+    includeIgnored: boolean = false,
   ): WorldTarget | null {
     const enemies = query(world.ecs, [Enemy, Position, Health]);
     const candidates: WorldTarget[] = [];
 
     for (const eid of enemies) {
       if (eid === undefined) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
 
       const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
       if (ignoredUntil !== undefined) {
-        if (ignoredUntil > world.frameCount) continue;
-        this.ignoredEnemyUntilFrame.delete(eid);
+        if (ignoredUntil > world.frameCount) {
+          if (!includeIgnored) continue;
+        } else {
+          this.ignoredEnemyUntilFrame.delete(eid);
+        }
       }
 
       const x = world.stores.position.x[eid] ?? 0;
@@ -5231,41 +5360,366 @@ export class BehaviorTreeAI implements AIInputProvider {
     return match ? (match[1] ?? null) : null;
   }
 
-  private findNearestFloor2FamilyEnemy(
+  private resetFloor2HuntStateForMap(world: GameWorld): void {
+    if (this.floor2HuntMap === world.floorMap) {
+      return;
+    }
+    this.floor2HuntMap = world.floorMap;
+    this.floor2HuntFamilyId = null;
+    this.floor2HuntPatrolIndex = 0;
+    this.floor2HuntPatrolTarget = null;
+    this.floor2HuntLastKillCount = 0;
+    this.floor2HuntLastProgressFrame = world.frameCount;
+    this.floor2HuntCadenceStartFrame = world.frameCount;
+    this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.floor2HuntPatrolTiles.clear();
+  }
+
+  private getFloor2TerritoryZone(world: GameWorld, familyId: FamilyId): TerritoryZone | null {
+    const familyState = world.floorExtendedState?.familyState;
+    const familyIndex = familyState?.presentFamilies.findIndex((id) => id === familyId) ?? -1;
+    if (familyIndex < 0) {
+      return null;
+    }
+    return world.floorMap?.territoryZones.find((zone) => zone.familyIndex === familyIndex) ?? null;
+  }
+
+  private isWorldPositionInFloor2TerritoryZone(
     world: GameWorld,
-    familyId: string,
+    zone: TerritoryZone,
+    x: number,
+    y: number,
+  ): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return false;
+    }
+    const tile = floorMap.worldToTile(x, y);
+    const dx = tile.x - zone.centerX;
+    const dy = tile.y - zone.centerY;
+    return dx * dx + dy * dy <= zone.radius * zone.radius;
+  }
+
+  private getFloor2HuntPatrolTiles(
+    world: GameWorld,
+    familyId: FamilyId,
+    zone: TerritoryZone,
+  ): readonly TilePoint[] {
+    const cached = this.floor2HuntPatrolTiles.get(familyId);
+    if (cached) {
+      return cached;
+    }
+    const floorMap = world.floorMap;
+    const familyState = world.floorExtendedState?.familyState;
+    const familyIndex = familyState?.presentFamilies.findIndex((id) => id === familyId) ?? -1;
+    if (!floorMap || familyIndex < 0) {
+      return [];
+    }
+    const cells: TilePoint[] = [];
+    for (let y = zone.centerY - zone.radius; y <= zone.centerY + zone.radius; y += 1) {
+      for (let x = zone.centerX - zone.radius; x <= zone.centerX + zone.radius; x += 1) {
+        const dx = x - zone.centerX;
+        const dy = y - zone.centerY;
+        if (
+          dx * dx + dy * dy > zone.radius * zone.radius ||
+          !floorMap.tileMap.inBounds(x, y) ||
+          !floorMap.tileMap.isPassable(x, y)
+        ) {
+          continue;
+        }
+        const roomId = floorMap.roomGraph.getRoomAt(x, y);
+        if (roomId >= 0 && floorMap.roomGraph.get(roomId)?.role === RoomRole.BOSS_DEN) {
+          continue;
+        }
+        cells.push({ x, y });
+      }
+    }
+    if (cells.length === 0) {
+      this.floor2HuntPatrolTiles.set(familyId, []);
+      return [];
+    }
+
+    const radius = zone.radius * FLOOR2_HUNT_PATROL_RADIUS_FRACTION;
+    const directions = [
+      { x: 1, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: 1, y: 1 },
+      { x: -1, y: -1 },
+      { x: -1, y: 1 },
+      { x: 1, y: -1 },
+    ] as const;
+    const patrolTiles: TilePoint[] = [];
+    const used = new Set<string>();
+    const unresolvedZones = floorMap.territoryZones.filter((candidateZone) => {
+      const candidateFamilyId = familyState?.presentFamilies[candidateZone.familyIndex];
+      return (
+        candidateFamilyId !== undefined &&
+        familyState?.bossEncounters?.get(candidateFamilyId)?.defeated !== true &&
+        familyState?.decapitatedFamilies?.has(candidateFamilyId) !== true
+      );
+    });
+    const scoredCells = cells.map((cell) => ({
+      cell,
+      overlap: unresolvedZones.reduce((count, candidateZone) => {
+        const dx = cell.x - candidateZone.centerX;
+        const dy = cell.y - candidateZone.centerY;
+        return count + (dx * dx + dy * dy <= candidateZone.radius * candidateZone.radius ? 1 : 0);
+      }, 0),
+    }));
+    const appendDirectionalTiles = (requireOverlap: boolean): void => {
+      for (const direction of directions) {
+        const magnitude = Math.hypot(direction.x, direction.y);
+        const desiredX = zone.centerX + (direction.x / magnitude) * radius;
+        const desiredY = zone.centerY + (direction.y / magnitude) * radius;
+        const nearest = scoredCells
+          .filter(
+            ({ cell, overlap }) =>
+              !used.has(`${cell.x},${cell.y}`) && (!requireOverlap || overlap > 1),
+          )
+          .map(({ cell, overlap }) => ({
+            cell,
+            overlap,
+            distanceSq: (cell.x - desiredX) ** 2 + (cell.y - desiredY) ** 2,
+          }))
+          .sort(
+            (a, b) =>
+              (requireOverlap ? b.overlap - a.overlap : 0) ||
+              a.distanceSq - b.distanceSq ||
+              a.cell.y - b.cell.y ||
+              a.cell.x - b.cell.x,
+          )[0]?.cell;
+        if (nearest) {
+          patrolTiles.push({ x: nearest.x, y: nearest.y });
+          used.add(`${nearest.x},${nearest.y}`);
+        }
+      }
+    };
+    appendDirectionalTiles(true);
+    appendDirectionalTiles(false);
+    this.floor2HuntPatrolTiles.set(familyId, patrolTiles);
+    return patrolTiles;
+  }
+
+  private advanceFloor2HuntPatrol(): void {
+    this.floor2HuntPatrolIndex += 1;
+    this.floor2HuntPatrolTarget = null;
+  }
+
+  private resolveFloor2HuntPatrolTarget(
+    world: GameWorld,
+    familyId: FamilyId,
+    zone: TerritoryZone,
+    playerX: number,
+    playerY: number,
+  ): ProgressTarget | null {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return null;
+    }
+    const patrolTiles = this.getFloor2HuntPatrolTiles(world, familyId, zone);
+    if (patrolTiles.length === 0) {
+      return null;
+    }
+    if (this.floor2HuntPatrolTarget) {
+      const currentWorld = floorMap.tileToWorld(
+        this.floor2HuntPatrolTarget.x,
+        this.floor2HuntPatrolTarget.y,
+      );
+      if (
+        Math.hypot(currentWorld.x - playerX, currentWorld.y - playerY) <=
+        FLOOR2_HUNT_PATROL_ARRIVE_FT
+      ) {
+        this.advanceFloor2HuntPatrol();
+      }
+    }
+    if (!this.floor2HuntPatrolTarget) {
+      const startTile = floorMap.worldToTile(playerX, playerY);
+      for (let offset = 0; offset < patrolTiles.length; offset += 1) {
+        const index = (this.floor2HuntPatrolIndex + offset) % patrolTiles.length;
+        const candidate = patrolTiles[index]!;
+        if (candidate.x === startTile.x && candidate.y === startTile.y) {
+          continue;
+        }
+        const path = findTilePath(floorMap, startTile, candidate, this.groundPathOptions());
+        if (path.length <= 1) {
+          continue;
+        }
+        this.floor2HuntPatrolIndex = index;
+        this.floor2HuntPatrolTarget = candidate;
+        break;
+      }
+    }
+    if (!this.floor2HuntPatrolTarget) {
+      return null;
+    }
+    const targetWorld = floorMap.tileToWorld(
+      this.floor2HuntPatrolTarget.x,
+      this.floor2HuntPatrolTarget.y,
+    );
+    return this.createProgressTarget(
+      targetWorld.x,
+      targetWorld.y,
+      playerX,
+      playerY,
+      `Hunting ${familyId} inside its territory`,
+    );
+  }
+
+  private commitFloor2HuntFamily(world: GameWorld, familyId: FamilyId): void {
+    this.floor2HuntFamilyId = familyId;
+    this.floor2HuntPatrolIndex = 0;
+    this.floor2HuntPatrolTarget = null;
+    this.floor2HuntLastKillCount =
+      world.floorExtendedState?.familyState?.trashKillsByFamily?.get(familyId) ?? 0;
+    this.floor2HuntLastProgressFrame = world.frameCount;
+    this.floor2HuntCadenceStartFrame = world.frameCount;
+    this.floor2HuntHandledSuppressionUntilFrame = 0;
+  }
+
+  private isFloor2HuntRecoveryWindow(world: GameWorld): boolean {
+    const durationMs = getFloorManifest('floor2')?.timer?.durationMs;
+    if (
+      world.floorId === 'floor2' &&
+      durationMs !== undefined &&
+      durationMs - world.elapsedMs <= FLOOR2_HUNT_URGENCY_REMAINING_MS
+    ) {
+      return false;
+    }
+    const cycleFrames = FLOOR2_HUNT_ENGAGE_FRAMES + FLOOR2_HUNT_RECOVERY_FRAMES;
+    const elapsedFrames = Math.max(0, world.frameCount - this.floor2HuntCadenceStartFrame);
+    return elapsedFrames % cycleFrames >= FLOOR2_HUNT_ENGAGE_FRAMES;
+  }
+
+  private selectFloor2HuntFamily(world: GameWorld): FamilyId | null {
+    this.resetFloor2HuntStateForMap(world);
+    const floor2State = world.floorExtendedState?.familyState;
+    if (!floor2State || floor2State.presentFamilies.length === 0) {
+      return null;
+    }
+    const isResolved = (familyId: FamilyId): boolean =>
+      floor2State.bossEncounters?.get(familyId)?.defeated === true ||
+      floor2State.decapitatedFamilies?.has(familyId) === true;
+    if (this.floor2HuntFamilyId && !isResolved(this.floor2HuntFamilyId)) {
+      return this.floor2HuntFamilyId;
+    }
+
+    const playerEid = query(world.ecs, [Player, Position])[0];
+    const playerX = playerEid === undefined ? 0 : (world.stores.position.x[playerEid] ?? 0);
+    const playerY = playerEid === undefined ? 0 : (world.stores.position.y[playerEid] ?? 0);
+    const nextFamily = floor2State.presentFamilies
+      .map((familyId, index) => ({
+        familyId,
+        index,
+        unlocked: world.goalFlags.get(denUnlockGoalId(familyId)) === true,
+        kills: floor2State.trashKillsByFamily?.get(familyId) ?? 0,
+        distance: (() => {
+          const zone = this.getFloor2TerritoryZone(world, familyId);
+          if (!zone || !world.floorMap) {
+            return Number.POSITIVE_INFINITY;
+          }
+          const center = world.floorMap.tileToWorld(zone.centerX, zone.centerY);
+          return Math.hypot(center.x - playerX, center.y - playerY);
+        })(),
+      }))
+      .filter(({ familyId }) => !isResolved(familyId))
+      .sort(
+        (a, b) =>
+          Number(b.unlocked) - Number(a.unlocked) ||
+          a.distance - b.distance ||
+          b.kills - a.kills ||
+          a.index - b.index,
+      )[0]?.familyId;
+    if (!nextFamily) {
+      this.floor2HuntFamilyId = null;
+      return null;
+    }
+    this.commitFloor2HuntFamily(world, nextFamily);
+    return nextFamily;
+  }
+
+  private updateFloor2HuntProgress(world: GameWorld, familyId: FamilyId): boolean {
+    const killCount = world.floorExtendedState?.familyState?.trashKillsByFamily?.get(familyId) ?? 0;
+    if (killCount > this.floor2HuntLastKillCount) {
+      this.floor2HuntLastKillCount = killCount;
+      this.floor2HuntLastProgressFrame = world.frameCount;
+    }
+    if (
+      world.frameCount < this.progressGoalSuppressedUntilFrame &&
+      this.floor2HuntHandledSuppressionUntilFrame !== this.progressGoalSuppressedUntilFrame
+    ) {
+      this.floor2HuntHandledSuppressionUntilFrame = this.progressGoalSuppressedUntilFrame;
+      this.advanceFloor2HuntPatrol();
+    }
+    if (world.frameCount - this.floor2HuntLastProgressFrame < FLOOR2_HUNT_NO_PROGRESS_FRAMES) {
+      return true;
+    }
+
+    this.floor2HuntLastProgressFrame = world.frameCount;
+    this.advanceFloor2HuntPatrol();
+    return true;
+  }
+
+  private findNearestFloor2HuntEnemy(
+    world: GameWorld,
+    familyId: FamilyId | null,
     playerX: number,
     playerY: number,
     maxRadius: number = Number.POSITIVE_INFINITY,
     requirePerception: boolean = true,
+    territoryZone?: TerritoryZone,
   ): WorldTarget | null {
     const floor2State = world.floorExtendedState?.familyState;
     const familyIndex =
-      floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1;
-    if (familyIndex < 0) {
+      familyId === null
+        ? -1
+        : (floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1);
+    if (familyId !== null && familyIndex < 0) {
       return null;
     }
 
-    const candidates: WorldTarget[] = [];
     const familyField = world.stores.familyMembership.familyId;
     const bossField = world.stores.familyMembership.isBoss;
-    for (const eid of query(world.ecs, [Enemy, Position, Health, FamilyMembership])) {
-      if (eid === undefined) continue;
-      if ((familyField[eid] ?? -1) !== familyIndex) continue;
-      if ((bossField[eid] ?? 0) !== 0) continue;
-      const health = world.stores.health.current[eid] ?? 0;
-      if (health <= 0) continue;
+    const readCandidate = (eid: number): WorldTarget | null => {
+      if (
+        !entityExists(world.ecs, eid) ||
+        !hasComponent(world.ecs, eid, Enemy) ||
+        !hasComponent(world.ecs, eid, Position) ||
+        !hasComponent(world.ecs, eid, Health)
+      ) {
+        return null;
+      }
+      if (
+        familyId !== null &&
+        (!hasComponent(world.ecs, eid, FamilyMembership) ||
+          (familyField[eid] ?? -1) !== familyIndex)
+      ) {
+        return null;
+      }
+      if ((bossField[eid] ?? 0) !== 0 || (world.stores.health.current[eid] ?? 0) <= 0) {
+        return null;
+      }
       const x = world.stores.position.x[eid] ?? 0;
       const y = world.stores.position.y[eid] ?? 0;
-      if (requirePerception && !this.canPerceiveWorldPosition(world, x, y)) continue;
-      const dist = Math.hypot(x - playerX, y - playerY);
-      if (dist <= maxRadius) {
-        candidates.push({ eid, x, y, distance: dist });
+      if (territoryZone && !this.isWorldPositionInFloor2TerritoryZone(world, territoryZone, x, y)) {
+        return null;
       }
+      if (requirePerception && !this.canPerceiveWorldPosition(world, x, y)) {
+        return null;
+      }
+      const distance = Math.hypot(x - playerX, y - playerY);
+      return distance <= maxRadius ? { eid, x, y, distance } : null;
+    };
+
+    const candidates: WorldTarget[] = [];
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      const candidate = readCandidate(eid);
+      if (candidate) candidates.push(candidate);
     }
 
     candidates.sort((a, b) => a.distance - b.distance);
-    const nearest = candidates[0] ?? null;
     for (const candidate of candidates) {
       if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
         return candidate;
@@ -5274,7 +5728,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         return candidate;
       }
     }
-    return nearest;
+    return null;
   }
 
   private findNearestFloor2Boss(
@@ -5300,6 +5754,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       const bossFamilyIndex = familyField[eid] ?? -1;
       if (familyId !== undefined && bossFamilyIndex !== familyIndex) continue;
       const bossFamilyId = floor2State?.presentFamilies[bossFamilyIndex];
+      if (
+        bossFamilyId === undefined ||
+        world.goalFlags.get(denUnlockGoalId(bossFamilyId)) !== true
+      ) {
+        continue;
+      }
       if (bossFamilyId !== undefined && decapitated?.has(bossFamilyId)) continue;
       const health = world.stores.health.current[eid] ?? 0;
       if (health <= 0) continue;
@@ -5323,57 +5783,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
     return nearest;
-  }
-
-  private findFloor2TerritoryTarget(
-    world: GameWorld,
-    familyId: string,
-    playerX: number,
-    playerY: number,
-    reason: string,
-  ): ProgressTarget | null {
-    const floorMap = world.floorMap;
-    const floor2State = world.floorExtendedState?.familyState;
-    const familyIndex =
-      floor2State?.presentFamilies.findIndex((id: string) => id === familyId) ?? -1;
-    if (!floorMap || familyIndex < 0) {
-      return null;
-    }
-    const room = floorMap.roomGraph
-      .getAll()
-      .find(
-        (candidate) =>
-          candidate.role === RoomRole.TERRITORY && candidate.familyIndex === familyIndex,
-      );
-    const normalRooms = floorMap.roomGraph
-      .getAll()
-      .filter((candidate) => candidate.role === RoomRole.NORMAL);
-    const fallbackRoom =
-      room ?? (normalRooms.length > 0 ? normalRooms[familyIndex % normalRooms.length] : undefined);
-    if (!fallbackRoom) {
-      return null;
-    }
-
-    const doorTile =
-      fallbackRoom.doors.length > 0
-        ? fallbackRoom.doors
-            .map((door) => {
-              const worldPos = floorMap.tileToWorld(door.x, door.y);
-              return {
-                x: door.x,
-                y: door.y,
-                distance: Math.hypot(worldPos.x - playerX, worldPos.y - playerY),
-              };
-            })
-            .sort((a, b) => a.distance - b.distance)[0]
-        : null;
-    const tile = doorTile ??
-      fallbackRoom.interiorCells?.[Math.floor(fallbackRoom.interiorCells.length / 2)] ?? {
-        x: fallbackRoom.bounds.x + Math.floor(fallbackRoom.bounds.width / 2),
-        y: fallbackRoom.bounds.y + Math.floor(fallbackRoom.bounds.height / 2),
-      };
-    const worldPos = floorMap.tileToWorld(tile.x, tile.y);
-    return this.createProgressTarget(worldPos.x, worldPos.y, playerX, playerY, reason);
   }
 
   private findNearestQuestItem(
@@ -5483,63 +5892,43 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
 
-    const trackedQuestId = getTrackedQuest(world)?.questId ?? null;
-    const candidates: Array<{ questId: string; target: ProgressTarget }> = [];
-    for (const quest of getActiveQuests(world)) {
-      if (!quest.questId.startsWith('floor2-den-')) {
-        continue;
-      }
-      const target = this.findFloor2QuestProgressTarget(
-        world,
-        playerEid,
-        playerX,
-        playerY,
-        quest,
-        progressSuppressed,
-      );
-      if (target) {
-        candidates.push({ questId: quest.questId, target });
-      }
+    if (progressSuppressed) {
+      return null;
     }
 
-    if (candidates.length === 0) {
-      const unlockedBoss =
-        this.findNearestFloor2Boss(world, playerX, playerY) ??
+    const huntFamilyId = this.selectFloor2HuntFamily(world);
+    if (!huntFamilyId) {
+      return null;
+    }
+    const denUnlocked = world.goalFlags.get(denUnlockGoalId(huntFamilyId)) === true;
+    if (denUnlocked) {
+      const boss =
+        this.findNearestFloor2Boss(world, playerX, playerY, huntFamilyId) ??
         this.findNearestFloor2Boss(
           world,
           playerX,
           playerY,
-          undefined,
+          huntFamilyId,
           Number.POSITIVE_INFINITY,
           false,
         );
-      if (unlockedBoss) {
-        return this.createProgressTarget(
-          unlockedBoss.x,
-          unlockedBoss.y,
-          playerX,
-          playerY,
-          'Hunting the Floor 2 boss',
-          unlockedBoss.eid,
-        );
-      }
-      return null;
+      return boss
+        ? this.createFloor2BossProgressTarget(
+            world,
+            huntFamilyId,
+            boss,
+            playerX,
+            playerY,
+            `Entering the ${huntFamilyId} den to confront its boss`,
+          )
+        : null;
     }
 
-    candidates.sort((a, b) => {
-      const distanceDelta = a.target.distance - b.target.distance;
-      if (Math.abs(distanceDelta) > 0.001) {
-        return distanceDelta;
-      }
-      if (a.questId === trackedQuestId) {
-        return -1;
-      }
-      if (b.questId === trackedQuestId) {
-        return 1;
-      }
-      return a.questId.localeCompare(b.questId);
-    });
-    return candidates[0]?.target ?? null;
+    const quest = world.questLog.get(`floor2-den-${huntFamilyId}-unlock`);
+    if (!quest || quest.status !== 'active') {
+      return null;
+    }
+    return this.findFloor2QuestProgressTarget(world, playerEid, playerX, playerY, quest);
   }
 
   private findFloor2QuestProgressTarget(
@@ -5548,9 +5937,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     activeQuest: QuestState,
-    progressSuppressed: boolean,
   ): ProgressTarget | null {
-    const familyId = this.parseFloor2FamilyId(activeQuest.questId);
+    const parsedFamilyId = this.parseFloor2FamilyId(activeQuest.questId);
+    const familyId = world.floorExtendedState?.familyState?.presentFamilies.find(
+      (candidate) => candidate === parsedFamilyId,
+    );
     if (!familyId) {
       return null;
     }
@@ -5562,30 +5953,49 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (!activeView) {
       const unlockedBoss = this.findNearestFloor2Boss(world, playerX, playerY, familyId);
       if (unlockedBoss) {
-        return this.createProgressTarget(
-          unlockedBoss.x,
-          unlockedBoss.y,
+        return this.createFloor2BossProgressTarget(
+          world,
+          familyId,
+          unlockedBoss,
           playerX,
           playerY,
           `Hunting the ${familyId} boss`,
-          unlockedBoss.eid,
         );
       }
       return null;
     }
 
     const objective = activeView.def;
-    const chaseDistanceLimitFt = 128;
+    if (!this.updateFloor2HuntProgress(world, familyId)) {
+      return null;
+    }
+    const territoryZone = this.getFloor2TerritoryZone(world, familyId);
+    const playerInTerritory =
+      territoryZone !== null &&
+      this.isWorldPositionInFloor2TerritoryZone(world, territoryZone, playerX, playerY);
     const familyEnemy =
-      this.findNearestFloor2FamilyEnemy(world, familyId, playerX, playerY) ??
-      this.findNearestFloor2FamilyEnemy(
-        world,
-        familyId,
-        playerX,
-        playerY,
-        chaseDistanceLimitFt,
-        false,
-      );
+      playerInTerritory && territoryZone
+        ? this.findNearestFloor2HuntEnemy(
+            world,
+            familyId,
+            playerX,
+            playerY,
+            FLOOR2_HUNT_CHASE_RADIUS_FT,
+            false,
+          )
+        : null;
+    const territoryEnemy =
+      playerInTerritory && territoryZone
+        ? this.findNearestFloor2HuntEnemy(
+            world,
+            null,
+            playerX,
+            playerY,
+            FLOOR2_HUNT_CHASE_RADIUS_FT,
+            false,
+            territoryZone,
+          )
+        : null;
     const bossTarget =
       this.findNearestFloor2Boss(world, playerX, playerY, familyId) ??
       this.findNearestFloor2Boss(
@@ -5596,14 +6006,26 @@ export class BehaviorTreeAI implements AIInputProvider {
         Number.POSITIVE_INFINITY,
         false,
       );
-    const denUnlocked = world.goalFlags.get(`floor2-den-${familyId}-unlocked`) === true;
-    const territoryTarget = this.findFloor2TerritoryTarget(
-      world,
-      familyId,
-      playerX,
-      playerY,
-      `Sweeping the ${familyId} territory for den progress`,
-    );
+    const territoryTarget = territoryZone
+      ? this.resolveFloor2HuntPatrolTarget(world, familyId, territoryZone, playerX, playerY)
+      : null;
+    if (territoryTarget && this.isFloor2HuntRecoveryWindow(world)) {
+      return {
+        ...territoryTarget,
+        reason: `Patrolling the ${familyId} territory between engagements`,
+      };
+    }
+    const territoryClearTarget = territoryEnemy
+      ? this.createProgressTarget(
+          territoryEnemy.x,
+          territoryEnemy.y,
+          playerX,
+          playerY,
+          `Clearing the ${familyId} territory while hunting den progress`,
+          territoryEnemy.eid,
+          'focused',
+        )
+      : null;
 
     switch (objective.kind) {
       case 'counter':
@@ -5615,28 +6037,10 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerY,
             `Advancing ${familyId} den unlock (${activeView.current}/${activeView.target})`,
             familyEnemy.eid,
+            'focused',
           );
         }
-        // When progress goals are suppressed (the AI recently failed to reach a
-        // fixed-position target), skip the territory fallback so the AI explores
-        // elsewhere rather than immediately re-targeting the same unreachable room.
-        // Entity-based targets (familyEnemy above, bossTarget below) are never
-        // suppressed — only the position-based territory sweep is gated.
-        if (!denUnlocked) {
-          return progressSuppressed ? null : territoryTarget;
-        }
-        return bossTarget
-          ? this.createProgressTarget(
-              bossTarget.x,
-              bossTarget.y,
-              playerX,
-              playerY,
-              `Pressuring the ${familyId} den`,
-              bossTarget.eid,
-            )
-          : progressSuppressed
-            ? null
-            : territoryTarget;
+        return territoryClearTarget ?? territoryTarget;
       case 'collect':
         if (objective.itemId) {
           const itemTarget = this.findNearestQuestItem(world, objective.itemId, playerX, playerY);
@@ -5651,28 +6055,30 @@ export class BehaviorTreeAI implements AIInputProvider {
             );
           }
         }
-        return familyEnemy
-          ? this.createProgressTarget(
-              familyEnemy.x,
-              familyEnemy.y,
-              playerX,
-              playerY,
-              `Searching the ${familyId} territory for the unlock drop`,
-              familyEnemy.eid,
-            )
-          : null;
+        if (familyEnemy) {
+          return this.createProgressTarget(
+            familyEnemy.x,
+            familyEnemy.y,
+            playerX,
+            playerY,
+            `Searching the ${familyId} territory for the unlock drop`,
+            familyEnemy.eid,
+            'focused',
+          );
+        }
+        return territoryClearTarget ?? territoryTarget;
       case 'goal':
       case 'talk':
       case 'haveEquippable':
       case 'equip':
         if (bossTarget) {
-          return this.createProgressTarget(
-            bossTarget.x,
-            bossTarget.y,
+          return this.createFloor2BossProgressTarget(
+            world,
+            familyId,
+            bossTarget,
             playerX,
             playerY,
             `Closing on the ${familyId} boss den`,
-            bossTarget.eid,
           );
         }
         if (familyEnemy) {
@@ -5683,9 +6089,10 @@ export class BehaviorTreeAI implements AIInputProvider {
             playerY,
             `Working the ${familyId} den unlock`,
             familyEnemy.eid,
+            'focused',
           );
         }
-        return null;
+        return territoryClearTarget ?? territoryTarget;
       default:
         return null;
     }
@@ -6170,6 +6577,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     reason: string,
     eid: number = -1,
+    engagementStyle: ProgressTarget['engagementStyle'] = 'standard',
   ): ProgressTarget {
     return {
       eid,
@@ -6178,7 +6586,28 @@ export class BehaviorTreeAI implements AIInputProvider {
       distance: Math.hypot(x - playerX, y - playerY),
       reason,
       npcInteraction: null,
+      engagementStyle,
     };
+  }
+
+  private createFloor2BossProgressTarget(
+    world: GameWorld,
+    familyId: FamilyId,
+    boss: WorldTarget,
+    playerX: number,
+    playerY: number,
+    reason: string,
+  ): ProgressTarget {
+    const encounterStarted =
+      world.floorExtendedState?.familyState?.bossEncounters?.get(familyId)?.started === true;
+    return this.createProgressTarget(
+      boss.x,
+      boss.y,
+      playerX,
+      playerY,
+      reason,
+      encounterStarted ? boss.eid : -1,
+    );
   }
 
   private createNpcProgressTarget(
@@ -6210,6 +6639,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       y: approach.y,
       distance: Math.hypot(approach.x - playerX, approach.y - playerY),
       reason,
+      engagementStyle: 'standard',
       npcInteraction: {
         npcEid,
         action: interactionAction,
@@ -6730,9 +7160,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         reason: `Engaging enemy at distance ${target.distance.toFixed(1)}ft`,
       };
     }
-    // Actual gate at which a melee swing connects (weaponSystem fires when an enemy
-    // is within reach*1.5 and the cooldown has elapsed — independent of whether the
-    // player is moving). Once inside it we KITE instead of parking.
+    // weaponSystem may start a melee swing while an enemy is within reach*1.5 so a
+    // closing target can enter the blade during the animation. That permissive fire
+    // gate is not the blade's guaranteed hit radius; once inside it we KITE toward
+    // the real weapon reach instead of parking at the outer gate.
     const strikeGateFt = reachFt * ATTACK_GATE_MULTIPLIER;
     if (target.distance <= strikeGateFt) {
       return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachFt);
@@ -6748,6 +7179,23 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX: playerX + deltaX * scale,
       targetY: playerY + deltaY * scale,
       reason: `Closing to melee range (${reachFt.toFixed(1)}ft) from ${target.distance.toFixed(1)}ft`,
+    };
+  }
+
+  private planFocusedMeleeEngagement(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    target: WorldTarget,
+  ): { targetX: number; targetY: number; reason: string } {
+    const weapon = getActiveWeapon(world);
+    if (!weapon || weapon.weaponType !== WeaponType.MELEE) {
+      return this.planEngagement(world, playerX, playerY, target);
+    }
+    return {
+      targetX: target.x,
+      targetY: target.y,
+      reason: `Pressing the hunt target at ${target.distance.toFixed(1)}ft`,
     };
   }
 
@@ -7005,20 +7453,21 @@ export class BehaviorTreeAI implements AIInputProvider {
     let desiredOrbit = innerOrbit + (outerOrbit - innerOrbit) * cooldownFrac;
 
     const enemyAttackFt = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;
-    // When wounded, prioritise not being hit: allow the orbit to expand all the way
-    // out to the strike gate (a swing still connects out to reach*1.5) so the player
-    // can sit just beyond the enemy's own attackRange and poke from safety. At healthy
-    // HP we keep the tighter recover band for maximum DPS / AoE cleave.
+    // When wounded, prioritise not being hit, but never expand beyond the blade's
+    // guaranteed center-line reach. weaponSystem's larger fire gate only starts the
+    // swing early; parking at that gate can leave a stationary target outside the
+    // blade for the entire animation. At healthy HP we keep the tighter recover band
+    // for maximum DPS / AoE cleave.
     const defensive = this.getPlayerHealthFraction(world) < MELEE_DEFENSIVE_HP_FRACTION;
-    const safeOrbitCap = defensive ? reachFt * ATTACK_GATE_MULTIPLIER : outerOrbit;
+    const safeOrbitCap = defensive ? swingRadius : outerOrbit;
     if (enemyAttackFt > 0) {
       const safeOrbit = enemyAttackFt + KITE_DODGE_BUFFER_FT;
       if (safeOrbit <= safeOrbitCap) {
         // We can stand outside the enemy's strike range and still land hits.
         desiredOrbit = Math.min(safeOrbitCap, Math.max(desiredOrbit, safeOrbit));
       } else if (defensive) {
-        // Enemy outranges our gate (e.g. a ranged boss): get as far out as the gate
-        // allows rather than parking in the strike band.
+        // Enemy outranges the weapon (e.g. a ranged boss): hold at real blade reach
+        // rather than retreating into a no-damage orbit.
         desiredOrbit = Math.max(desiredOrbit, safeOrbitCap);
       }
     }
@@ -7377,6 +7826,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     };
   }
 
+  /** Current committed Floor 2 hunt family, exposed for production telemetry. */
+  getFloor2HuntFamilyId(): FamilyId | null {
+    return this.floor2HuntFamilyId;
+  }
+
   /**
    * Current Track B opportunistic vector values, exposed for visualization
    * and debugging. Updated each poll; (0,0) means the corresponding layer
@@ -7544,6 +7998,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.progressGoalSuppressedUntilFrame = 0;
     this.progressGoalSuppressionSource = null;
     this.pendingSuppressedProgressNavDebug = null;
+    this.floor2HuntMap = null;
+    this.floor2HuntFamilyId = null;
+    this.floor2HuntPatrolIndex = 0;
+    this.floor2HuntPatrolTarget = null;
+    this.floor2HuntLastKillCount = 0;
+    this.floor2HuntLastProgressFrame = 0;
+    this.floor2HuntCadenceStartFrame = 0;
+    this.floor2HuntHandledSuppressionUntilFrame = 0;
+    this.floor2HuntPatrolTiles.clear();
     this.globalDwellActive = false;
     this.globalDwellAnchorX = 0;
     this.globalDwellAnchorY = 0;
