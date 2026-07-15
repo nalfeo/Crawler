@@ -485,7 +485,6 @@ export async function promoteExactBatch({
   };
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
-    const currentPr = currentPrs[index];
     // Invariant: never merge a PR onto main until its cumulative prefix T_i has
     // successful trusted validation evidence bound to that exact prefix's
     // candidate SHA + fingerprint (ADR 0063). Re-read it live immediately before
@@ -512,10 +511,45 @@ export async function promoteExactBatch({
       );
       return false;
     }
+    // Per-merge admission recheck: earlier merges + proofs in this loop take
+    // seconds, during which THIS not-yet-merged PR could gain an unresolved
+    // review thread, lose its queue label, change title/base, or re-arm
+    // auto-merge. The batch-wide reattestation ran only once before the loop,
+    // and the merge helper pins just the head SHA -- so re-verify this exact
+    // PR's admission immediately before its PUT. (promotionStaleReason is reused
+    // with expectedBase = the current prefix base so its main-moved check is a
+    // no-op here; the base itself was already asserted just above.)
+    const freshPr = await fetchCurrentPr(entry, index);
+    const freshStale = promotionStaleReason({
+      currentMain: mainBeforeMerge,
+      currentPr: freshPr,
+      expectedBase: mainBeforeMerge,
+      pr: entry,
+      repository,
+    });
+    if (freshStale) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; ${freshStale}; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    const freshAdmission = await eligible(freshPr);
+    if (!freshAdmission.ok) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number} reason=${freshAdmission.reason}; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    if (freshPr.auto_merge) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number}; auto_merge re-armed before merge; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
     const merge = await mergePullRequest(entry, {
-      expectedHeadSha: currentPr.head.sha,
-      commitTitle: squashCommitTitle(currentPr),
-      commitMessage: squashCommitMessage(currentPr),
+      expectedHeadSha: freshPr.head.sha,
+      commitTitle: squashCommitTitle(freshPr),
+      commitMessage: squashCommitMessage(freshPr),
     });
     if (!merge.ok) {
       if (merge.retryable) {
@@ -573,8 +607,8 @@ export async function promoteExactBatch({
           detail: `Landed on main as ${landedSha}; GitHub recorded this PR as merged.`,
         }),
       );
-      await removeLabel(entry.number, QUEUE_LABEL);
       await removeLabel(entry.number, BLOCKED_LABEL);
+      await removeLabel(entry.number, QUEUE_LABEL);
     } catch (error) {
       process.stdout.write(
         `landed pr=#${entry.number} sha=${landedSha} but landed-signal update failed: ${
@@ -635,18 +669,25 @@ export async function landedCommitProofError({
   landedSha,
   expectedParent,
   expectedTree,
-  pollDelaysMs = [1000, 2000, 3000, 5000, 8000],
+  pollDelaysMs = [1000, 2000, 3000, 5000, 8000, 8000, 8000],
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
   if (!/^[0-9a-f]{40}$/i.test(String(landedSha || ''))) {
     return `merge response returned an invalid landed sha: ${landedSha}`;
   }
-  // Poll the eventually-consistent reads (main ref, PR merged-state, and the
-  // commit object) until they reflect the just-completed merge, or the budget
-  // is exhausted. Break as soon as they are consistent so the happy path does
-  // not sleep at all. Each read is wrapped: a transient 5xx/network failure on
-  // any of them must retry within the budget, NOT reject the proof immediately
-  // (which would bypass the caller's postcondition publish on a valid land).
+  // Poll the eventually-consistent reads (main ref, PR merged-state + recorded
+  // merge commit, and the commit object) until they reflect the just-completed
+  // merge, or the budget is exhausted. The budget (~41s) intentionally exceeds
+  // the ~20s read-replica lag this promotion path has historically observed, so
+  // a normal lag never fails a valid land. Break as soon as they are consistent
+  // so the happy path does not sleep at all. Each read is wrapped: a transient
+  // 5xx/network failure on any of them must retry within the budget, NOT reject
+  // the proof immediately (which would bypass the caller's postcondition publish
+  // on a valid land).
+  const landedMergeCommitMatches = (pr) =>
+    pr?.merged === true &&
+    Boolean(pr.merged_at) &&
+    String(pr.merge_commit_sha || '').toLowerCase() === String(landedSha).toLowerCase();
   let commit = null;
   let mainAfter;
   let prAfter;
@@ -664,7 +705,7 @@ export async function landedCommitProofError({
         commit = null;
       }
     }
-    if (commit && mainAfter === landedSha && prAfter?.merged === true && prAfter.merged_at) {
+    if (commit && mainAfter === landedSha && landedMergeCommitMatches(prAfter)) {
       break;
     }
     if (attempt < pollDelaysMs.length) await sleep(pollDelaysMs[attempt]);
@@ -687,16 +728,75 @@ export async function landedCommitProofError({
     return `landed commit ${landedSha} tree ${landedTree} != validated candidate prefix tree ${expectedTree}`;
   }
   // The hard gate: GitHub itself must record the PR merged with a real
-  // timestamp. `state === 'closed'` alone is explicitly INSUFFICIENT (that was
-  // the forbidden force-push outcome); `merge_commit_sha` alone is also
-  // insufficient (for a closed-unmerged PR it is an ephemeral test-merge SHA).
+  // timestamp AND with its recorded merge commit equal to the landed SHA.
+  // `state === 'closed'` alone is INSUFFICIENT (the forbidden force-push
+  // outcome); `merge_commit_sha` non-null alone is also insufficient (for a
+  // closed-unmerged PR it is an ephemeral test-merge SHA), which is why it is
+  // only trusted here together with `merged === true` and an exact match to the
+  // commit we proved on `main`.
   if (prAfter?.merged !== true) {
     return `GitHub did not record PR #${entry.number} as merged (merged=${prAfter?.merged}, state=${prAfter?.state}) after polling`;
   }
   if (!prAfter.merged_at) {
     return `GitHub recorded PR #${entry.number} merged but with no merged_at timestamp after polling`;
   }
+  if (String(prAfter.merge_commit_sha || '').toLowerCase() !== String(landedSha).toLowerCase()) {
+    return `GitHub's recorded merge commit for PR #${entry.number} is ${prAfter.merge_commit_sha} (expected the landed ${landedSha})`;
+  }
   return null;
+}
+
+/**
+ * Pure decision for crash-recovery of a merged-but-still-queued PR (an
+ * interrupted landing). Because the candidate is not reconstructable after main
+ * advances, recovery cannot re-run the per-commit tree proof; instead it
+ * re-establishes the strongest post-hoc evidence and refuses anything weaker:
+ *
+ *   - the PR is genuinely GitHub-merged INTO `main` (real merged-state), and
+ *   - its recorded merge commit is a valid SHA, and
+ *   - that commit carries THIS PR's `Merge-Train-PR` trailer (train provenance;
+ *     the trailer is only ever written by a promotion merge, which is
+ *     structurally preceded by the base-CAS that fixes the landing tree), and
+ *   - the commit is linear (exactly one parent), and
+ *   - there is NO `merge-train-promotion-postcondition` failure recorded on it
+ *     (that check is published precisely for the rare base-race that would have
+ *     produced a divergent tree).
+ *
+ * Only when ALL hold does recovery finish the interrupted cleanup; otherwise it
+ * skips (never asserting an unproven or known-divergent landing). Returns
+ * `{ action: 'finish' | 'skip', reason }`.
+ */
+export function planLandedRecovery({
+  merged,
+  baseRef,
+  landedSha,
+  trailerPrNumber,
+  prNumber,
+  parentCount,
+  hasPostconditionFailure,
+}) {
+  if (merged !== true) return { action: 'skip', reason: 'PR is not recorded merged' };
+  if (baseRef !== 'main') return { action: 'skip', reason: 'PR was not merged into main' };
+  if (!/^[0-9a-f]{40}$/i.test(String(landedSha || ''))) {
+    return { action: 'skip', reason: 'PR has no valid recorded merge commit sha' };
+  }
+  if (trailerPrNumber !== prNumber) {
+    return {
+      action: 'skip',
+      reason: "merge commit lacks this PR's Merge-Train-PR provenance trailer",
+    };
+  }
+  if (parentCount !== 1) {
+    return { action: 'skip', reason: 'landed commit is not linear (expected exactly one parent)' };
+  }
+  if (hasPostconditionFailure) {
+    return {
+      action: 'skip',
+      reason:
+        'a promotion-postcondition failure is recorded on the landed commit (possible divergence)',
+    };
+  }
+  return { action: 'finish', reason: 'proven interrupted landing' };
 }
 
 /**

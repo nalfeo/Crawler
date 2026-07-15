@@ -249,9 +249,16 @@ jobs:
           # Trailer-first resolution (shared resolver): a train-landed commit
           # maps back to its original PR via the durable Merge-Train-PR trailer,
           # then falls back to GitHub's commit-to-PR inference. No state filter,
-          # so a real-merged PR is not missed.
-          PR_FROM_SHA=$(node .github/scripts/merge-train/resolve-landed-pr.mjs "${{ steps.preview-target.outputs.sha }}" 2>/dev/null || true)
-          echo "number=$PR_FROM_SHA" >> "$GITHUB_OUTPUT"
+          # so a real-merged PR is not missed. The resolver exits non-zero (3) on
+          # a GitHub API failure vs empty-exit-0 on a genuine no-match; preserve
+          # that distinction by warning on a real failure instead of silently
+          # treating an outage as "no PR", then continue best-effort.
+          if PR_FROM_SHA=$(node .github/scripts/merge-train/resolve-landed-pr.mjs "${{ steps.preview-target.outputs.sha }}"); then
+            echo "number=$PR_FROM_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Could not resolve the preview PR (resolver API failure); skipping the preview comment."
+            echo "number=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Comment preview URL on PR
         if: steps.preview-pr.outputs.number != ''

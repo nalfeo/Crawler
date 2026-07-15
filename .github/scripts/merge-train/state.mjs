@@ -335,12 +335,37 @@ export function parseMergeTrainPrNumber(commitMessage) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
-// The durable landed-completion comment. Records the REAL GitHub merge commit
-// and the validated candidate SHA it reproduced, under LANDED_MARKER so it is
-// a permanent standalone record (never overwritten by renderStatus). Only
-// posted after GitHub has recorded the PR as merged and every post-merge proof
-// has passed.
-export function renderLandedComment({ landedSha, candidateSha }) {
+// The durable landed-completion comment, under LANDED_MARKER so it is a
+// permanent standalone record (never overwritten by renderStatus).
+//
+// Two truthful modes:
+//   - Normal (recovered=false): posted by promotion only after the full
+//     post-merge proof passed, so it records the REAL merge commit AND the
+//     validated candidate whose tree was proven identical.
+//   - Recovered (recovered=true): posted by crash recovery, which finishes an
+//     interrupted landing by re-establishing provenance (GitHub merged-state +
+//     Merge-Train-PR trailer + linear parent + no divergence signal) but does
+//     NOT re-run the candidate tree proof (the candidate is not reconstructable
+//     after main advances). It therefore does NOT cite a validated candidate or
+//     claim a tree proof -- stating only the facts it verified.
+export function renderLandedComment({ landedSha, candidateSha, recovered = false }) {
+  if (recovered) {
+    return [
+      LANDED_MARKER,
+      '## Landed on `main` via the merge train ✅ (recovered)',
+      '',
+      `- Landed commit: \`${compact(landedSha)}\``,
+      '',
+      'GitHub recorded this PR as **merged** with the landed commit above. This',
+      "record was completed by the train's crash recovery after an interrupted",
+      'landing: recovery re-verified the merge is recorded on `main` with this',
+      "PR's `Merge-Train-PR` provenance trailer, a single parent (linear), and no",
+      'promotion-postcondition failure. The original per-commit tree proof ran at',
+      'merge time; recovery does not re-run it.',
+      '',
+      '_Managed by the trusted repository merge-train workflow._',
+    ].join('\n');
+  }
   return [
     LANDED_MARKER,
     '## Landed on `main` via the merge train ✅',

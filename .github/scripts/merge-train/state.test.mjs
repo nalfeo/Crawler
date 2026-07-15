@@ -357,6 +357,20 @@ test('renderLandedComment records the real landed commit and validated candidate
   assert.match(body, /recorded this PR as \*\*merged\*\*/);
 });
 
+test('renderLandedComment recovered variant omits the candidate/tree-proof claim', () => {
+  const body = renderLandedComment({
+    landedSha: 'c'.repeat(40),
+    candidateSha: '',
+    recovered: true,
+  });
+  assert.ok(hasLeadingMarker(body, LANDED_MARKER));
+  assert.match(body, new RegExp(`Landed commit: \`${'c'.repeat(40)}\``));
+  assert.match(body, /recovered/i);
+  // Must NOT claim a validated candidate or a tree proof it did not re-run.
+  assert.doesNotMatch(body, /Validated candidate/);
+  assert.doesNotMatch(body, /tree was proven/);
+});
+
 test('planPrefixPromotion dispatches every missing prefix in the target range in parallel', () => {
   assert.deepEqual(planPrefixPromotion(['missing', 'missing', 'missing']), {
     action: 'validate',

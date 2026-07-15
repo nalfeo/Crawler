@@ -14,6 +14,7 @@ import {
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
+  planLandedRecovery,
   promoteExactBatch,
   promotionStaleReason,
   resolveMergeTrainTokens,
@@ -31,6 +32,7 @@ import {
   MAX_TRAIN_SIZE,
   NOOP_LABEL,
   parseEnabledFlag,
+  parseMergeTrainPrNumber,
   planPrefixPromotion,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
@@ -285,16 +287,16 @@ async function publishPostconditionCheck(sha, fingerprint, entries) {
 }
 
 // Post the durable landed-completion comment, idempotently (never duplicates
-// across reconciles or recovery). Only called after GitHub has recorded the
-// PR merged and the post-merge proof passed.
-async function postLandedComment(prNumber, landedSha, candidateSha) {
+// across reconciles or recovery). `recovered` selects the truthful recovery
+// variant (no candidate-tree claim) for interrupted-landing cleanup.
+async function postLandedComment(prNumber, landedSha, candidateSha, recovered = false) {
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
   if (comments.some((comment) => hasLeadingMarker(comment.body, LANDED_MARKER))) {
     return;
   }
   await request(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
     method: 'POST',
-    body: { body: renderLandedComment({ landedSha, candidateSha }) },
+    body: { body: renderLandedComment({ landedSha, candidateSha, recovered }) },
   });
 }
 
@@ -326,17 +328,32 @@ async function disableAutoMerge(pr) {
   }
 }
 
-// Crash-recovery for an INTERRUPTED landing. Promotion writes signals in a
-// crash-safe order (reconcile-lib promoteExactBatch): LANDED_LABEL first (the
-// durable proof-complete marker, set ONLY after landedCommitProofError passed),
-// then the comment/status, then QUEUE_LABEL removed LAST. So a PR still carrying
-// QUEUE_LABEL after being merged is an interrupted landing. We finish its
-// cleanup idempotently ONLY when it carries the LANDED_LABEL proof marker --
-// which guarantees the full parent/tree/merged proof already ran for it. A
-// merged+queued PR that LACKS the marker crashed before the proof completed (or
-// is a non-train/manual/elsewhere merge); we must NOT assert it landed, so we
-// leave QUEUE_LABEL in place and log it for human review rather than claim an
-// unproven landing.
+// Whether a promotion-postcondition FAILURE check is recorded on a landed
+// commit. That check is published precisely for the rare base-race that would
+// have produced a divergent tree, so its presence means recovery must NOT treat
+// the landing as clean.
+async function landedCommitHasPostconditionFailure(landedSha) {
+  const runs = await checkRuns(landedSha);
+  return runs.some(
+    (run) =>
+      run.name === PROMOTION_POSTCONDITION_CHECK_NAME &&
+      run.status === 'completed' &&
+      run.conclusion === 'failure',
+  );
+}
+
+// Crash-recovery for an INTERRUPTED landing. A PR still carrying QUEUE_LABEL
+// after being merged is an interrupted landing (promotion removes QUEUE last).
+// Because the validated candidate is not reconstructable after main advances,
+// recovery cannot re-run the per-commit tree proof; instead planLandedRecovery
+// (in reconcile-lib) re-establishes the strongest post-hoc evidence -- genuinely
+// merged INTO main, this PR's Merge-Train-PR provenance trailer on the merge
+// commit, a single (linear) parent, and NO promotion-postcondition failure on
+// it -- and refuses anything weaker. This does NOT depend on the LANDED marker
+// (whose own write could have failed), so it recovers marker-less merges too,
+// and never asserts an unproven or known-divergent landing. Finishing posts the
+// truthful RECOVERED comment (no candidate-tree claim) and removes the transient
+// labels (BLOCKED first, QUEUE last).
 async function reconcileLandedSignals() {
   const staleClosed = await paginate(
     token,
@@ -345,25 +362,43 @@ async function reconcileLandedSignals() {
   for (const item of staleClosed) {
     if (!item.pull_request) continue;
     const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${item.number}`)).data;
-    // Must be genuinely merged INTO main (not closed-unmerged, not merged into
-    // another branch after a retarget).
-    if (pr.merged !== true || pr.base?.ref !== 'main') continue;
-    const hasProofMarker = (pr.labels || []).some((label) => label.name === LANDED_LABEL);
-    if (!hasProofMarker) {
-      // Merged but the proof-complete marker is absent: the promotion crashed
-      // before landedCommitProofError finished, OR this is not a train landing.
-      // Do NOT assert it landed (that would claim an unproven/false landing).
+    const landedSha = String(pr.merge_commit_sha || '');
+    let trailerPrNumber = null;
+    let parentCount = 0;
+    let hasPostconditionFailure = false;
+    if (/^[0-9a-f]{40}$/i.test(landedSha)) {
+      try {
+        const commit = await fetchCommit(landedSha);
+        trailerPrNumber = parseMergeTrainPrNumber(commit?.commit?.message || '');
+        parentCount = (commit?.parents || []).length;
+        hasPostconditionFailure = await landedCommitHasPostconditionFailure(landedSha);
+      } catch {
+        // Leave the reconstructed facts at their safe defaults; planLandedRecovery
+        // will skip when they don't establish a proven landing.
+      }
+    }
+    const decision = planLandedRecovery({
+      merged: pr.merged,
+      baseRef: pr.base?.ref,
+      landedSha,
+      trailerPrNumber,
+      prNumber: pr.number,
+      parentCount,
+      hasPostconditionFailure,
+    });
+    if (decision.action !== 'finish') {
       process.stdout.write(
-        `WARN: pr=#${pr.number} is merged into main but lacks the ${LANDED_LABEL} proof marker; leaving ${QUEUE_LABEL} for human review rather than asserting an unproven landing\n`,
+        `WARN: pr=#${pr.number} still queued after close but not a provable train landing (${decision.reason}); leaving ${QUEUE_LABEL} for review\n`,
       );
       continue;
     }
-    // Proof marker present => the full proof already ran for this exact landing.
-    // Finish the interrupted cleanup idempotently.
-    await postLandedComment(pr.number, pr.merge_commit_sha, '');
-    await removeLabel(pr.number, QUEUE_LABEL);
+    if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
+      await setLabel(pr.number, LANDED_LABEL);
+    }
+    await postLandedComment(pr.number, landedSha, '', true);
     await removeLabel(pr.number, BLOCKED_LABEL);
-    process.stdout.write(`finished interrupted landing cleanup for pr=#${pr.number}\n`);
+    await removeLabel(pr.number, QUEUE_LABEL);
+    process.stdout.write(`recovered interrupted landing for pr=#${pr.number} sha=${landedSha}\n`);
   }
 }
 
@@ -423,7 +458,7 @@ await ensureLabel(
   'd1242f',
   'First failing addition isolated by merge-train validation',
 );
-await ensureLabel(LANDED_LABEL, '0e8a16', 'Landed on main via the merge train (GitHub-merged)');
+await ensureLabel(LANDED_LABEL, '0e8a16', "This PR's change landed on main via the merge train");
 
 // Crash-after-merge recovery runs first, every reconcile: it backfills the
 // durable landed signal for any PR that was really merged but whose

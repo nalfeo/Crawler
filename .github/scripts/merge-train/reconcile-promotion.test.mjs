@@ -5,6 +5,7 @@ import {
   createMergePullRequest,
   isMergeTrainPromotionError,
   landedCommitProofError,
+  planLandedRecovery,
   promoteExactBatch,
 } from './reconcile-lib.mjs';
 import { LANDED_LABEL, QUEUE_LABEL, BLOCKED_LABEL } from './state.mjs';
@@ -37,6 +38,9 @@ function makePromoPr(number, { merged = false, autoMerge = null, overrides = {} 
     auto_merge: autoMerge,
     merged,
     merged_at: merged ? '2026-07-15T00:00:00Z' : null,
+    // When merged, GitHub records the real merge commit; the proof requires it
+    // to equal the landed SHA (LAND1/LAND2 for PR 1/2).
+    merge_commit_sha: merged ? (number === 1 ? LAND1 : LAND2) : null,
     node_id: `PR_${number}`,
     ...overrides,
   };
@@ -632,13 +636,31 @@ const proofDefaults = {
   expectedParent: BASE,
   expectedTree: TREE1,
   fetchCurrentMain: async () => LAND1,
-  fetchCurrentPr: async () => ({ merged: true, merged_at: '2026-07-15T00:00:00Z' }),
+  fetchCurrentPr: async () => ({
+    merged: true,
+    merged_at: '2026-07-15T00:00:00Z',
+    merge_commit_sha: LAND1,
+  }),
   fetchCommit: async () => ({ parents: [{ sha: BASE }], commit: { tree: { sha: TREE1 } } }),
   sleep: async () => {},
 };
 
 test('landedCommitProofError returns null when every invariant holds', async () => {
   assert.equal(await landedCommitProofError({ ...proofDefaults }), null);
+});
+
+test('landedCommitProofError rejects a merged PR whose recorded merge commit is not the landed sha', async () => {
+  assert.match(
+    await landedCommitProofError({
+      ...proofDefaults,
+      fetchCurrentPr: async () => ({
+        merged: true,
+        merged_at: '2026-07-15T00:00:00Z',
+        merge_commit_sha: HEAD2,
+      }),
+    }),
+    /recorded merge commit for PR #1 is .* \(expected the landed/,
+  );
 });
 
 test('landedCommitProofError polls through read-replica lag before succeeding', async () => {
@@ -655,7 +677,7 @@ test('landedCommitProofError polls through read-replica lag before succeeding', 
     fetchCurrentPr: async () => {
       prReads += 1;
       return prReads >= 3
-        ? { merged: true, merged_at: '2026-07-15T00:00:00Z' }
+        ? { merged: true, merged_at: '2026-07-15T00:00:00Z', merge_commit_sha: LAND1 }
         : { merged: false, merged_at: null };
     },
   });
@@ -744,4 +766,57 @@ test('landedCommitProofError rejects a merged PR with no merged_at timestamp', a
     }),
     /no merged_at timestamp/,
   );
+});
+
+// ---- planLandedRecovery (crash-recovery decision for an interrupted landing) ----
+
+const recoveryDefaults = {
+  merged: true,
+  baseRef: 'main',
+  landedSha: LAND1,
+  trailerPrNumber: 42,
+  prNumber: 42,
+  parentCount: 1,
+  hasPostconditionFailure: false,
+};
+
+test('planLandedRecovery finishes a fully-proven interrupted landing', () => {
+  assert.deepEqual(planLandedRecovery({ ...recoveryDefaults }), {
+    action: 'finish',
+    reason: 'proven interrupted landing',
+  });
+});
+
+test('planLandedRecovery skips a closed-but-unmerged PR', () => {
+  assert.equal(planLandedRecovery({ ...recoveryDefaults, merged: false }).action, 'skip');
+});
+
+test('planLandedRecovery skips a PR merged into another branch', () => {
+  assert.equal(planLandedRecovery({ ...recoveryDefaults, baseRef: 'release' }).action, 'skip');
+});
+
+test('planLandedRecovery skips when the merge commit sha is invalid', () => {
+  assert.equal(planLandedRecovery({ ...recoveryDefaults, landedSha: '' }).action, 'skip');
+});
+
+test('planLandedRecovery skips a merge lacking this PR provenance trailer', () => {
+  const decision = planLandedRecovery({ ...recoveryDefaults, trailerPrNumber: null });
+  assert.equal(decision.action, 'skip');
+  assert.match(decision.reason, /provenance trailer/);
+});
+
+test('planLandedRecovery skips a merge attributed to a different PR', () => {
+  assert.equal(planLandedRecovery({ ...recoveryDefaults, trailerPrNumber: 99 }).action, 'skip');
+});
+
+test('planLandedRecovery skips a non-linear landed commit', () => {
+  const decision = planLandedRecovery({ ...recoveryDefaults, parentCount: 2 });
+  assert.equal(decision.action, 'skip');
+  assert.match(decision.reason, /linear/);
+});
+
+test('planLandedRecovery skips a landing with a promotion-postcondition failure (possible divergence)', () => {
+  const decision = planLandedRecovery({ ...recoveryDefaults, hasPostconditionFailure: true });
+  assert.equal(decision.action, 'skip');
+  assert.match(decision.reason, /postcondition failure/);
 });
