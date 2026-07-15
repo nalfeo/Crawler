@@ -1912,5 +1912,16 @@
     "totalWins": 578,
     "totalRuns": 600,
     "path": "by-sha/0a319820952c0170857de8707741a6299c6fcfc6.json"
+  },
+  {
+    "commit": "bf7aeaf14c79e1b55527aba49544eaf7a70a9b9f",
+    "commitDate": "2025-03-11T09:10:09Z",
+    "commitSubject": "docs(merge-train): capstone handoff for live enable cutover verification (#1160)",
+    "capturedAt": "2026-07-15T22:07:09.918Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29451075487",
+    "winRate": 0.9633333333333334,
+    "totalWins": 578,
+    "totalRuns": 600,
+    "path": "by-sha/bf7aeaf14c79e1b55527aba49544eaf7a70a9b9f.json"
   }
 ]
