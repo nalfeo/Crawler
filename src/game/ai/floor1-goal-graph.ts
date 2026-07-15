@@ -606,7 +606,6 @@ export function makeStraightLineTravelOracle(
       const a = locations.get(to);
       const b = locations.get(from);
       if (!a || !b) return Infinity;
-      if (from === to) return 0;
       const distanceFt = Math.hypot(a.x - b.x, a.y - b.y);
       return Math.round(distanceFt / speed);
     },
