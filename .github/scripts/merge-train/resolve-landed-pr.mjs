@@ -16,15 +16,12 @@ import { parseMergeTrainPrNumber } from './state.mjs';
 //   1. The `Merge-Train-PR: <n>` trailer written into the squash commit by the
 //      merge train, corroborated against GitHub's own merge record.
 //   2. GitHub's commit-to-PR association, preferring the PR whose merge commit
-//      is exactly this SHA.
-const [sha] = process.argv.slice(2);
-const repository = process.env.GITHUB_REPOSITORY || '';
-const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
-const [owner, repo] = repository.split('/');
+//      is exactly this SHA, then an open PR whose head is exactly this SHA.
 
 const EXIT_API_FAILURE = 3;
 
-async function resolve() {
+export async function resolveLandedPr({ sha, repository, token, requestFn = request }) {
+  const [owner, repo] = repository.split('/');
   if (!sha || !owner || !repo || !token) {
     // Missing inputs is a configuration error, not a clean no-match.
     return { number: '', apiFailed: true };
@@ -35,11 +32,11 @@ async function resolve() {
   // 1. Durable trailer, corroborated against GitHub's merge record.
   try {
     const commit = (
-      await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)
+      await requestFn(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)
     ).data;
     const fromTrailer = parseMergeTrainPrNumber(commit?.commit?.message || '');
     if (fromTrailer) {
-      const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${fromTrailer}`)).data;
+      const pr = (await requestFn(token, `/repos/${owner}/${repo}/pulls/${fromTrailer}`)).data;
       if (pr?.merged === true && pr.merge_commit_sha === sha) {
         return { number: String(fromTrailer), apiFailed: false };
       }
@@ -53,15 +50,28 @@ async function resolve() {
   // 2. GitHub commit-to-PR inference.
   try {
     const pulls = (
-      await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/pulls`, {
+      await requestFn(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/pulls`, {
         headers: { Accept: 'application/vnd.github+json' },
       })
     ).data;
     if (Array.isArray(pulls) && pulls.length > 0) {
-      const exact = pulls.find((pr) => pr.merge_commit_sha === sha);
-      return { number: String((exact || pulls[0]).number), apiFailed: false };
+      const exact = pulls
+        .filter((pr) => pr?.merge_commit_sha === sha && Number.isInteger(pr?.number))
+        .sort((left, right) => left.number - right.number)[0];
+      if (exact) return { number: String(exact.number), apiFailed: false };
+
+      // GitHub may associate a reusable commit SHA with old closed/merged PRs
+      // as well as an active preview PR. Only an open head is safe attribution
+      // when no durable landed mapping exists.
+      const openHead = pulls
+        .filter(
+          (pr) => pr?.state === 'open' && pr?.head?.sha === sha && Number.isInteger(pr?.number),
+        )
+        .sort((left, right) => left.number - right.number)[0];
+      if (openHead) return { number: String(openHead.number), apiFailed: false };
     }
-    // The inference request succeeded and found no PR: a genuine clean no-match.
+    // The inference request succeeded and found no safely attributable PR: a
+    // genuine clean no-match.
     // Preserve any apiFailed flag from the trailer-lookup step above so a step-1
     // API failure (trailer found but PR corroboration failed) is not silently
     // converted to a clean no-match.
@@ -73,14 +83,20 @@ async function resolve() {
   return { number: '', apiFailed };
 }
 
-resolve()
-  .then(({ number, apiFailed }) => {
-    if (number) {
-      process.stdout.write(number);
-      return;
-    }
-    if (apiFailed) process.exitCode = EXIT_API_FAILURE;
-  })
-  .catch(() => {
-    process.exitCode = EXIT_API_FAILURE;
-  });
+if (process.argv[1]?.endsWith('resolve-landed-pr.mjs')) {
+  const [sha] = process.argv.slice(2);
+  const repository = process.env.GITHUB_REPOSITORY || '';
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+
+  resolveLandedPr({ sha, repository, token })
+    .then(({ number, apiFailed }) => {
+      if (number) {
+        process.stdout.write(number);
+        return;
+      }
+      if (apiFailed) process.exitCode = EXIT_API_FAILURE;
+    })
+    .catch(() => {
+      process.exitCode = EXIT_API_FAILURE;
+    });
+}

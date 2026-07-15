@@ -98,14 +98,16 @@ and the completion-signal contract that four prior gap-fix sessions built on.
   candidate commit trailer). Downstream resolution is **trailer-first**, falling
   back to GitHub commit-to-PR inference only when the trailer is absent
   (`resolve-landed-pr.mjs`, consumed by `deploy.yml` and `manual-preview.yml`).
-- **DEC-008**: **Idempotent recovery.** Because promotion now produces real
+- **DEC-008**: **Marker-gated recovery.** Because promotion now produces real
   merged-state, GitHub's own merged-state is the durable transaction journal.
   A partial promotion (some entries landed, one failed) is legitimate: landed
   PRs are genuinely merged and drop out of the next open-queue scan; the rest
-  rebuild from the new `main`. A startup reconciliation
-  (`reconcileLandedSignals`) backfills the landed label/comment for any PR that
-  was really merged but whose signal update did not complete (crash-after-merge).
-  A closed-but-**unmerged** PR is never relabeled landed.
+  rebuild from the new `main`. Startup reconciliation
+  (`reconcileLandedSignals`) resumes a landed label/comment only when the PR is
+  really merged **and** already carries the durable `merge-train-landed`
+  proof-complete marker. A crash after tree proof but before that marker remains
+  queued for human review rather than being auto-recovered. A closed-but-
+  **unmerged** PR is never relabeled landed.
 - **DEC-009**: Do **not** post a `merge-train` (required-context) check on a
   landed `main` commit. Under real squash merges the landed commit earns
   ordinary push-CI, which `mainHealthReason` treats as authoritative; a

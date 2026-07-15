@@ -51,8 +51,11 @@ Core (`.github/scripts/merge-train/`):
   `publishPostconditionCheck` (posts the distinct
   `merge-train-promotion-postcondition`, never `merge-train`), idempotent
   `postLandedComment`, `disableAutoMerge` (GraphQL), and `reconcileLandedSignals`
-  (crash-after-merge recovery: real merged-state is the durable journal). Removed
-  the pre-push `merge-train` success check. Auto-merge disabled on admission.
+  (marker-gated recovery: merged-state is the durable journal, but automatic
+  recovery requires the durable `merge-train-landed` proof-complete marker).
+  A crash after proof but before the marker remains queued for human review.
+  Removed the pre-push `merge-train` success check. Auto-merge disabled on
+  admission.
 - **state.mjs** — `LANDED_LABEL`, `LANDED_MARKER`,
   `PROMOTION_POSTCONDITION_CHECK_NAME`, shared `squashCommitTitle/Message`
   (buildCandidate now uses them), `parseMergeTrainPrNumber`, `renderLandedComment`.
@@ -83,7 +86,9 @@ canary pre-enable step).
   admission/throughput while every tree that reaches `main` (including
   intermediates) has deterministic validation evidence.
 - **Real merged-state is the durable transaction journal** — no separate store
-  needed; `reconcileLandedSignals` backfills crashed landings idempotently.
+  needed; `reconcileLandedSignals` resumes crashed landed signaling idempotently
+  only after the durable proof-complete marker exists. A pre-marker crash is
+  intentionally left queued for human review.
 - **Retired the binary-search bisect**: with every prefix validated, the earliest
   failing prefix's last-added PR is the culprit directly.
 - **Do not post a `merge-train` check on landed commits** (would trigger the
