@@ -23,7 +23,7 @@
 
 import { execFileSync } from 'node:child_process';
 
-import { request } from '../ci-recovery/github.mjs';
+import { paginate, request } from '../ci-recovery/github.mjs';
 import {
   assertKnownClassicStatusChecksShape,
   buildClassicProtectionPayload,
@@ -100,7 +100,13 @@ export function buildGithubApi(token, owner, repo) {
       // teach findRulesetByName to distinguish repo-owned vs. inherited
       // rulesets before mutating) if this repository is ever transferred
       // into an organization.
-      return (await request(token, `/repos/${owner}/${repo}/rulesets?includes_parents=false`)).data;
+      //
+      // Paginated (100/page) via the shared paginate() helper -- a single
+      // un-paginated page would let findRulesetByName() miss an
+      // already-existing "Merge Train Required Checks" ruleset once the repo
+      // accumulates more than one page of rulesets, causing enable() to
+      // create a duplicate instead of updating the existing one.
+      return paginate(token, `/repos/${owner}/${repo}/rulesets?includes_parents=false`);
     },
     async getRuleset(id) {
       return (await request(token, `/repos/${owner}/${repo}/rulesets/${id}`)).data;
@@ -231,6 +237,12 @@ export async function rollback({ api, appId, force, log = () => {} }) {
   // ruleset enforces `ci` on main.
   const protection = await api.getClassicProtection();
   if (!classicStatusChecksRestored(protection)) {
+    // Same fail-closed guard enable() applies before *disabling* classic
+    // required_status_checks: if an operator manually strengthened classic
+    // protection (e.g. added a second required context) while the ruleset
+    // was live, rollback must not silently discard that drift by blindly
+    // overwriting it with the legacy ci-only shape.
+    assertKnownClassicStatusChecksShape(protection);
     const payload = buildClassicProtectionPayload(protection, {
       requiredStatusChecks: legacyRequiredStatusChecks(),
     });

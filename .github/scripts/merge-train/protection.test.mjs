@@ -291,6 +291,41 @@ test('rollback throws when the ruleset does not exist to disable but classic res
   assert.equal(report.ruleset.exists, false);
 });
 
+test('rollback fails closed instead of silently discarding a drifted classic required_status_checks shape', async () => {
+  // Mirrors the enable() shape-drift test above: an operator manually
+  // strengthened classic protection (e.g. added a "lint" context) while the
+  // ruleset was live. rollback must never silently overwrite that drift with
+  // the legacy ci-only shape -- it must fail closed until a human reconciles
+  // the live shape, exactly like enable() already does before disabling.
+  const { api, calls } = makeFakeApi({
+    classicProtection: {
+      ...legacyClassicProtection(),
+      required_status_checks: {
+        strict: true,
+        checks: [
+          { context: 'ci', app_id: GITHUB_ACTIONS_APP_ID },
+          { context: 'lint', app_id: GITHUB_ACTIONS_APP_ID },
+        ],
+      },
+    },
+    rulesets: [liveRuleset()],
+    mergeTrainEnabled: false,
+  });
+
+  await assert.rejects(
+    () => rollback({ api, appId: TRAIN_APP_ID, force: false }),
+    /unexpected shape/,
+  );
+  assert.ok(
+    !calls.includes('putClassicProtection'),
+    'a drifted classic shape must never be silently overwritten/discarded by rollback either',
+  );
+  assert.ok(
+    !calls.includes('updateRuleset'),
+    'rollback must abort before touching the ruleset too, since classic restore never completed',
+  );
+});
+
 test('printStatus reports both classic and ruleset state without mutating anything', async () => {
   const { api, calls } = makeFakeApi({
     classicProtection: { ...legacyClassicProtection(), required_status_checks: null },
