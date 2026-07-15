@@ -602,7 +602,7 @@ export function isPostPushConfirmationSatisfied(prData) {
 }
 
 /**
- * Create a `waitForMergedPr(entry)` confirmation poller bound to `request`
+ * Create a `waitForMergedPr(entry, _finalCandidateSha)` confirmation poller bound to `request`
  * and `token`. Extracted here (rather than left inline in the untestable,
  * top-level `reconcile.mjs` CLI script) so the actual polling predicate --
  * previously only exercised in production via an injected fake in tests,
@@ -616,7 +616,7 @@ export function createWaitForMergedPr({
   pollDelaysMs = [2000, 4000, 8000, 8000, 15000, 15000, 25000],
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
-  return async function waitForMergedPr(entry) {
+  return async function waitForMergedPr(entry, _finalCandidateSha) {
     for (let attempt = 0; attempt <= pollDelaysMs.length; attempt += 1) {
       const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
       if (isPostPushConfirmationSatisfied(current)) {

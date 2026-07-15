@@ -146,8 +146,7 @@ dry-run train mode.
 
    > **GitHub's "merged" confirmation is a secondary corroboration, not the
    > ground truth — and `merged`/`merged_at` never fire for this promotion
-   > mechanism at all.** The atomic `git push --atomic ...
---force-with-lease` is the actual, authoritative proof that a batch
+   > mechanism at all.** The atomic `git push --atomic ... --force-with-lease` is the actual, authoritative proof that a batch
    > promoted correctly. GitHub's `merged`/`merged_at` PR fields are populated
    > only when a PR is closed through GitHub's own merge machinery (its Merge
    > API or the web "Merge" button) — this promotion strategy intentionally
@@ -159,8 +158,7 @@ dry-run train mode.
    > hadn't landed within the old retry budget) but was proven live in
    > production on 2026-07-15 to be _permanent_: seven real promoted PRs
    > across two separate batches — one over nine hours old — still showed
-   > `merged: false, merged_at: null`, even though `git log main --grep
-Merge-Train-PR` proved every one of their commits had correctly landed.
+   > `merged: false, merged_at: null`, even though `git log main --grep Merge-Train-PR` proved every one of their commits had correctly landed.
    > What GitHub _does_ reliably do (observed within ~20s of the push in all
    > seven cases) is auto-close the PR once its head ref shows no remaining
    > diff against `main`. `promoteExactBatch`'s confirmation poller
