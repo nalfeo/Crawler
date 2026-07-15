@@ -632,7 +632,10 @@ export async function promoteExactBatch({
   for (let attempt = 0; attempt <= finalDelays.length; attempt += 1) {
     try {
       mainAfter = await fetchCurrentMain();
-    } catch {
+    } catch (error) {
+      process.stdout.write(
+        `final main guard: transient fetchCurrentMain error on attempt ${attempt + 1}/${finalDelays.length + 1}: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
       mainAfter = undefined;
     }
     if (mainAfter === finalExpectedSha) break;

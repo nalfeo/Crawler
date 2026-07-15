@@ -177,10 +177,15 @@ jobs:
         # below runs from this trusted copy, so a preview branch that modifies
         # the resolver (or github.mjs) cannot execute under GH_TOKEN.
         run: |
+          set -e
           mkdir -p /tmp/trusted-resolver/merge-train /tmp/trusted-resolver/ci-recovery
           cp .github/scripts/merge-train/resolve-landed-pr.mjs /tmp/trusted-resolver/merge-train/
           cp .github/scripts/merge-train/state.mjs /tmp/trusted-resolver/merge-train/
           cp .github/scripts/ci-recovery/github.mjs /tmp/trusted-resolver/ci-recovery/
+          # Verify all three files are present before proceeding.
+          test -f /tmp/trusted-resolver/merge-train/resolve-landed-pr.mjs
+          test -f /tmp/trusted-resolver/merge-train/state.mjs
+          test -f /tmp/trusted-resolver/ci-recovery/github.mjs
 
       - name: Checkout preview ref for preview build
         run: git checkout ${{ steps.preview-target.outputs.sha }} -- .
