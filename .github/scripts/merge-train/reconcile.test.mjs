@@ -557,6 +557,275 @@ test('promoteExactBatch advances all PR heads and main in one atomic push', asyn
   assert.ok(push.includes(`--force-with-lease=refs/heads/main:${baseSha}`));
 });
 
+test('promoteExactBatch cleans up confirmed entries even when a sibling entry is not recorded as merged', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const checkCalls = [];
+  const removedLabels = [];
+  const statusCalls = [];
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async (...args) => checkCalls.push(args),
+        removeLabel: async (...args) => removedLabels.push(args),
+        updateStatus: async (...args) => statusCalls.push(args),
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async (entry) => entry.number === second.number,
+      }),
+    /PR #42 was not recorded as merged/,
+  );
+
+  assert.deepEqual(checkCalls[1].slice(2, 5), [
+    'completed',
+    'failure',
+    'merge-train-promotion-postcondition',
+  ]);
+  assert.deepEqual(removedLabels, [
+    [second.number, 'merge-train'],
+    [second.number, 'merge-train-blocked'],
+  ]);
+  assert.equal(statusCalls.length, 1);
+  assert.equal(statusCalls[0][0], second.number);
+});
+
+test('promoteExactBatch withholds cleanup for every entry when none are recorded as merged', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const removedLabels = [];
+  const statusCalls = [];
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async () => {},
+        removeLabel: async (...args) => removedLabels.push(args),
+        updateStatus: async (...args) => statusCalls.push(args),
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async () => false,
+      }),
+    /not recorded as merged/,
+  );
+
+  assert.deepEqual(removedLabels, []);
+  assert.deepEqual(statusCalls, []);
+});
+
+test('promoteExactBatch treats a waitForMergedPr rejection like an unconfirmed entry, not a hard abort', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const removedLabels = [];
+  const statusCalls = [];
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async () => {},
+        removeLabel: async (...args) => removedLabels.push(args),
+        updateStatus: async (...args) => statusCalls.push(args),
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async (entry) => {
+          if (entry.number === first.number) {
+            throw new Error('api timeout');
+          }
+          return true;
+        },
+      }),
+    /PR #42 was not recorded as merged/,
+  );
+
+  assert.deepEqual(removedLabels, [
+    [second.number, 'merge-train'],
+    [second.number, 'merge-train-blocked'],
+  ]);
+  assert.equal(statusCalls.length, 1);
+  assert.equal(statusCalls[0][0], second.number);
+});
+
+test('promoteExactBatch still cleans up other confirmed entries when one entry cleanup step throws', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const removedLabels = [];
+  const statusCalls = [];
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async () => {},
+        removeLabel: async (number, label) => {
+          removedLabels.push([number, label]);
+          if (number === first.number) {
+            throw new Error('label removal failed');
+          }
+        },
+        updateStatus: async (...args) => statusCalls.push(args),
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async () => true,
+      }),
+    /Failed post-promotion cleanup for PR #42/,
+  );
+
+  assert.deepEqual(removedLabels, [
+    [first.number, 'merge-train'],
+    [second.number, 'merge-train'],
+    [second.number, 'merge-train-blocked'],
+  ]);
+  assert.equal(statusCalls.length, 1);
+  assert.equal(statusCalls[0][0], second.number);
+});
+
+test('promoteExactBatch surfaces a postcondition-check publish failure without blocking cleanup', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const removedLabels = [];
+  const statusCalls = [];
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+  let checkCalls = 0;
+
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async () => {
+          checkCalls += 1;
+          if (checkCalls === 2) {
+            throw new Error('check API unavailable');
+          }
+        },
+        removeLabel: async (...args) => removedLabels.push(args),
+        updateStatus: async (...args) => statusCalls.push(args),
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async (entry) => entry.number === second.number,
+      }),
+    /Failed to publish merge-train-promotion-postcondition/,
+  );
+
+  assert.deepEqual(removedLabels, [
+    [second.number, 'merge-train'],
+    [second.number, 'merge-train-blocked'],
+  ]);
+  assert.equal(statusCalls.length, 1);
+  assert.equal(statusCalls[0][0], second.number);
+});
+
 test('promoteExactCandidate refuses stale queue state before publishing the required check', async () => {
   const pr = makePr();
   const { git } = createGitStub({});

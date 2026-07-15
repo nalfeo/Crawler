@@ -447,8 +447,36 @@ export async function promoteExactBatch({
     );
     throw error;
   }
-  for (const entry of entries) {
-    if (!(await waitForMergedPr(entry, finalCandidateSha))) {
+  const postPromotionFailures = [];
+  const confirmationResults = await Promise.all(
+    entries.map(async (entry) => {
+      try {
+        const confirmed = await waitForMergedPr(entry, finalCandidateSha);
+        return { entry, confirmed, error: null };
+      } catch (error) {
+        return { entry, confirmed: false, error };
+      }
+    }),
+  );
+  const unconfirmedEntries = new Set();
+  const toErrorMessage = (error) => {
+    if (error && typeof error === 'object' && 'message' in error && error.message) {
+      return String(error.message);
+    }
+    return String(error);
+  };
+  for (const result of confirmationResults) {
+    if (result.confirmed) {
+      continue;
+    }
+    unconfirmedEntries.add(result.entry.number);
+    const suffix = result.error ? ` (${toErrorMessage(result.error)})` : '';
+    postPromotionFailures.push(
+      `PR #${result.entry.number} was not recorded as merged after atomic promotion to ${finalCandidateSha}${suffix}`,
+    );
+  }
+  if (unconfirmedEntries.size > 0) {
+    try {
       await createTrainCheck(
         finalCandidateSha,
         promotionFingerprint,
@@ -457,24 +485,37 @@ export async function promoteExactBatch({
         `${requiredCheckName}-promotion-postcondition`,
         provenanceEntries,
       );
-      throw new Error(
-        `PR #${entry.number} was not recorded as merged after atomic promotion to ${finalCandidateSha}`,
+    } catch (error) {
+      postPromotionFailures.push(
+        `Failed to publish ${requiredCheckName}-promotion-postcondition for ${finalCandidateSha}: ${toErrorMessage(error)}`,
       );
     }
   }
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
-    await removeLabel(entry.number, QUEUE_LABEL);
-    await removeLabel(entry.number, BLOCKED_LABEL);
-    await updateStatus(
-      entry.number,
-      renderStatus({
-        position: positions[index],
-        candidateSha: finalCandidateSha,
-        state: 'merged',
-        detail: 'The exact validated combined candidate fast-forwarded main atomically.',
-      }),
-    );
+    if (unconfirmedEntries.has(entry.number)) {
+      continue;
+    }
+    try {
+      await removeLabel(entry.number, QUEUE_LABEL);
+      await removeLabel(entry.number, BLOCKED_LABEL);
+      await updateStatus(
+        entry.number,
+        renderStatus({
+          position: positions[index],
+          candidateSha: finalCandidateSha,
+          state: 'merged',
+          detail: 'The exact validated combined candidate fast-forwarded main atomically.',
+        }),
+      );
+    } catch (error) {
+      postPromotionFailures.push(
+        `Failed post-promotion cleanup for PR #${entry.number}: ${toErrorMessage(error)}`,
+      );
+    }
+  }
+  if (postPromotionFailures.length > 0) {
+    throw new Error(postPromotionFailures.join('\n'));
   }
   process.stdout.write(
     `promoted prs=${entries.map((entry) => `#${entry.number}`).join(',')} sha=${finalCandidateSha}\n`,

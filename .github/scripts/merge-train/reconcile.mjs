@@ -190,10 +190,12 @@ async function createTrainCheck(
   });
 }
 
-const {
-  dispatchRecovery,
-  dispatchValidation: baseDispatchValidation,
-} = buildDispatchBindings({ request, workflowDispatchToken, owner, repo });
+const { dispatchRecovery, dispatchValidation: baseDispatchValidation } = buildDispatchBindings({
+  request,
+  workflowDispatchToken,
+  owner,
+  repo,
+});
 
 // Bound on how many recent push-triggered CI runs we inspect (and fetch
 // check-runs for) when looking for evidence on the current main SHA. Main
@@ -250,7 +252,7 @@ async function mainHealthAllowsPromotion() {
 }
 
 async function waitForMergedPr(entry) {
-  const delays = [1000, 2000, 4000, 8000, 8000, 8000];
+  const delays = [1000, 2000, 4000, 8000, 16000, 16000, 16000, 14000];
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
     const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
     if (current.merged === true || (current.state === 'closed' && current.merged_at)) {
