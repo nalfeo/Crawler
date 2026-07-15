@@ -440,7 +440,7 @@ export async function runHeadless(
   let floor2HuntNearbyEnemySamples = 0;
   let floor2HuntNearbyEnemyTotal = 0;
   let floor2HuntNearbyEnemyPeak = 0;
-  let activeFloor2HuntFamilyId: string | null = null;
+  let activeFloor2HuntFamilyId: string | null;
 
   const recordDecisionState = (state: string): void => {
     decisionStateCounts[state] = (decisionStateCounts[state] ?? 0) + 1;

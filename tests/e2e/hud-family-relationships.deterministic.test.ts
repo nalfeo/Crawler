@@ -361,7 +361,6 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     ).toBeGreaterThan(20);
   });
 
-<<<<<<< HEAD
   it('shows both family bands where territories overlap in the docked radar', async () => {
     await page.evaluate(() => {
       const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
@@ -396,7 +395,6 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     }
     await page.keyboard.press('m');
   });
-=======
   it('contains every label and avoids the minimap and adjacent HUD at target viewports', async () => {
     for (const viewport of [
       { width: 1280, height: 720 },
@@ -500,5 +498,4 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
       }
     }
   });
->>>>>>> origin/main
 });
