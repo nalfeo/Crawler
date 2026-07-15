@@ -7,7 +7,11 @@
  */
 
 export type RunPlannerShopStage =
-  'not-met' | 'awaiting-prize' | 'ready-to-buy' | 'awaiting-equip' | 'complete';
+  | 'not-met'
+  | 'awaiting-prize'
+  | 'ready-to-buy'
+  | 'awaiting-equip'
+  | 'complete';
 
 export interface RunPlannerPoint {
   readonly x: number;
@@ -84,7 +88,13 @@ export interface RunPlannerParams {
  * phase; the current planner never emits it.
  */
 export type RunPlanSegmentPhase =
-  'detour' | 'pre-chain' | 'shop' | 'spell-broker' | 'staircase' | 'post-stairs' | 'other';
+  | 'detour'
+  | 'pre-chain'
+  | 'shop'
+  | 'spell-broker'
+  | 'staircase'
+  | 'post-stairs'
+  | 'other';
 
 export interface RunPlanSegment {
   readonly id: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addComponent } from 'bitecs';
+import { addComponent, set } from 'bitecs';
 import {
   spawnBehaviorEnemy,
   spawnEnemy,
@@ -48,10 +48,12 @@ import {
   FLOOR2_HUNT_NO_PROGRESS_FRAMES,
   FLOOR2_HUNT_RECOVERY_FRAMES,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
+  PROJECTILE_DODGE_AOE_BUFFER_FT,
+  PROJECTILE_DODGE_CLEARANCE_FT,
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
-import { FamilyMembership } from '../../src/core/components.js';
+import { FamilyMembership, AoeOnImpact } from '../../src/core/components.js';
 import { asFamilyId, type FamilyId } from '../../src/core/faction-relations.js';
 
 /**
@@ -1961,6 +1963,53 @@ describe('BehaviorTreeAI', () => {
     expect(input.moveX).toBeGreaterThan(0);
     expect(Math.abs(input.moveY)).toBeGreaterThan(0.25);
     expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
+  });
+
+  it('triggers dodge for an AoE fireball that misses the direct-hit clearance but lands within splash radius+buffer, and ignores one just outside', () => {
+    // PROJECTILE_DODGE_CLEARANCE_FT = 2.5 ft (direct projectile threshold)
+    // PROJECTILE_DODGE_AOE_BUFFER_FT = 1.5 ft
+    // Fireball aoeRadius = 3.0 ft → requiredClearance = 3.0 + 1.5 = 4.5 ft
+    //
+    // Geometry: player at origin, fireball at (20, offsetY) travelling -X at
+    // 0.5 ft/frame.  impactFrames = 40; closest point = (0, offsetY).
+    // offsetY 3.5 ft: misses direct threshold (3.5 > 2.5) but within AoE (3.5 < 4.5) → dodge
+    // offsetY 4.6 ft: outside AoE clearance (4.6 > 4.5) → no dodge
+    const AOE_RADIUS = 3.0;
+
+    function makeAoeWorld(offsetY: number): ReturnType<typeof createTestWorld> {
+      const world = createTestWorld({ seed: 42 });
+      spawnPlayer(world, 0, 0);
+      spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+      world.elapsedMs = 5000;
+      setActiveWeapon(world, getWeaponDef('sword')!);
+      const eid = spawnEnemyProjectile(world, 20, offsetY, -0.5, 0, 8);
+      addComponent(world.ecs, eid, set(AoeOnImpact, { radius: AOE_RADIUS, damage: 5 }));
+      return world;
+    }
+
+    // Case A — within AoE splash: closest distance 3.5 ft > 2.5 (direct miss) but < 4.5 (AoE hit).
+    const worldA = makeAoeWorld(3.5);
+    const aiA = new BehaviorTreeAI({ seed: 42 });
+    aiA.poll(createInputState(), worldA);
+    const dodgeA = aiA.getOpportunisticDebug();
+    expect(
+      Math.abs(dodgeA.dodgeX) + Math.abs(dodgeA.dodgeY),
+      `AoE fireball at ${3.5} ft offset (inside ${AOE_RADIUS + PROJECTILE_DODGE_AOE_BUFFER_FT} ft clearance) must trigger a dodge`,
+    ).toBeGreaterThan(0);
+
+    // Case B — just outside AoE splash: closest distance 4.6 ft > 4.5 → no dodge.
+    const worldB = makeAoeWorld(4.6);
+    const aiB = new BehaviorTreeAI({ seed: 42 });
+    aiB.poll(createInputState(), worldB);
+    const dodgeB = aiB.getOpportunisticDebug();
+    expect(
+      Math.abs(dodgeB.dodgeX) + Math.abs(dodgeB.dodgeY),
+      `AoE fireball at ${4.6} ft offset (outside ${AOE_RADIUS + PROJECTILE_DODGE_AOE_BUFFER_FT} ft clearance) must NOT trigger a dodge`,
+    ).toBe(0);
+
+    // Confirm the tested clearance is strictly above the direct-projectile
+    // threshold so the two paths are actually distinct.
+    expect(AOE_RADIUS + PROJECTILE_DODGE_AOE_BUFFER_FT).toBeGreaterThan(PROJECTILE_DODGE_CLEARANCE_FT);
   });
 
   it('orbits away from enemies that are closer than ranged standoff distance', () => {

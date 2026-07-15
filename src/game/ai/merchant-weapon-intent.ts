@@ -9,7 +9,12 @@ import {
 import { canFarmOptionalMerchantPurchase, type Floor1RunPlan } from './run-planner.js';
 
 export type MerchantWeaponIntentStatus =
-  'pending' | 'declined' | 'farming' | 'returning' | 'purchased' | 'abandoned';
+  | 'pending'
+  | 'declined'
+  | 'farming'
+  | 'returning'
+  | 'purchased'
+  | 'abandoned';
 
 export interface MerchantWeaponIntent {
   readonly enabled: boolean;

@@ -51,7 +51,12 @@ import tuning from '../../shared/data/tuning.json';
  * (b) exercise the perf-critical rival paths in tests.
  */
 export type FamilyTargetKind =
-  'player' | 'rival-fallback' | 'rival-primary' | 'attacker' | 'follow' | 'idle';
+  | 'player'
+  | 'rival-fallback'
+  | 'rival-primary'
+  | 'attacker'
+  | 'follow'
+  | 'idle';
 
 /** Per-frame family-AI decision for one mob. */
 export interface FamilyAIDecision {
