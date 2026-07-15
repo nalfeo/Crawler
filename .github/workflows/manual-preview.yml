@@ -246,8 +246,11 @@ jobs:
             exit 0
           fi
 
-          PR_FROM_SHA=$(gh api "repos/${{ github.repository }}/commits/${{ steps.preview-target.outputs.sha }}/pulls" \
-            --jq 'map(select(.state == "open")) | first | .number // empty' || true)
+          # Trailer-first resolution (shared resolver): a train-landed commit
+          # maps back to its original PR via the durable Merge-Train-PR trailer,
+          # then falls back to GitHub's commit-to-PR inference. No state filter,
+          # so a real-merged PR is not missed.
+          PR_FROM_SHA=$(node .github/scripts/merge-train/resolve-landed-pr.mjs "${{ steps.preview-target.outputs.sha }}" 2>/dev/null || true)
           echo "number=$PR_FROM_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Comment preview URL on PR

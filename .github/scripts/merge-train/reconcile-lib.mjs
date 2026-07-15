@@ -1,9 +1,13 @@
 import {
   BLOCKED_LABEL,
+  LANDED_LABEL,
+  PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
   candidateFingerprint,
   commitTimestamp,
   renderStatus,
+  squashCommitMessage,
+  squashCommitTitle,
 } from './state.mjs';
 
 export class MergeTrainConflictError extends Error {
@@ -18,6 +22,23 @@ export class MergeTrainNoopError extends Error {
     super(message);
     this.name = 'MergeTrainNoopError';
   }
+}
+
+// A hard, fail-closed promotion failure: a squash-merge landed (or the merge
+// API failed non-retryably) and a post-merge proof (real merged-state,
+// linear parent, or tree equality with the validated candidate) did not hold.
+// Unlike a stale/retryable outcome (which returns false so the next reconcile
+// rebuilds), this throws so the run fails loudly after publishing the
+// promotion-postcondition failure check on the ACTUAL landed commit.
+export class MergeTrainPromotionError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = 'MergeTrainPromotionError';
+  }
+}
+
+export function isMergeTrainPromotionError(error) {
+  return error instanceof MergeTrainPromotionError;
 }
 
 export function isMergeTrainConflictError(error) {
@@ -181,26 +202,14 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
         `PR #${entry.number} no longer changes main; its squash diff is already present in the candidate base`,
       );
     }
-    const title = String(entry.title)
-      .replace(/[\r\n]+/g, ' ')
-      .trim();
     const timestamp = commitTimestamp(entry);
-    git(
-      [
-        'commit',
-        '-m',
-        `${title} (#${entry.number})`,
-        '-m',
-        `Merge-Train-PR: ${entry.number}\nMerge-Train-Original-Head: ${entry.head.sha}`,
-      ],
-      {
-        env: {
-          GIT_AUTHOR_DATE: timestamp,
-          GIT_COMMITTER_DATE: timestamp,
-          ...CANDIDATE_GIT_IDENTITY,
-        },
+    git(['commit', '-m', squashCommitTitle(entry), '-m', squashCommitMessage(entry)], {
+      env: {
+        GIT_AUTHOR_DATE: timestamp,
+        GIT_COMMITTER_DATE: timestamp,
+        ...CANDIDATE_GIT_IDENTITY,
       },
-    );
+    });
   }
   const sha = git(['rev-parse', 'HEAD']);
   if (live) {
@@ -278,14 +287,17 @@ export async function promoteExactCandidate({
   live,
   fetchCurrentPr,
   fetchCurrentMain,
+  fetchCommit,
   eligible,
   git,
-  createTrainCheck,
+  mergePullRequest,
+  setLabel,
   removeLabel,
   updateStatus,
-  requiredCheckName,
+  postLandedComment,
+  publishPostconditionCheck,
   provenanceEntries = [pr],
-  waitForMergedPr,
+  recordMapping,
   reattestHealth,
 }) {
   return promoteExactBatch({
@@ -296,15 +308,18 @@ export async function promoteExactCandidate({
     live,
     fetchCurrentPr: async () => fetchCurrentPr(),
     fetchCurrentMain,
+    fetchCommit,
     eligible,
     git,
-    createTrainCheck,
+    mergePullRequest,
+    setLabel,
     removeLabel,
     updateStatus,
-    requiredCheckName,
+    postLandedComment,
+    publishPostconditionCheck,
     provenanceEntries,
     positions: [position],
-    waitForMergedPr,
+    recordMapping,
     reattestHealth,
   });
 }
@@ -317,15 +332,18 @@ export async function promoteExactBatch({
   live,
   fetchCurrentPr,
   fetchCurrentMain,
+  fetchCommit,
   eligible,
   git,
-  createTrainCheck,
+  mergePullRequest,
+  setLabel,
   removeLabel,
   updateStatus,
-  requiredCheckName,
+  postLandedComment,
+  publishPostconditionCheck,
   provenanceEntries = entries,
   positions = entries.map((_, index) => index + 1),
-  waitForMergedPr = async () => true,
+  recordMapping = () => {},
   reattestHealth = async () => true,
 }) {
   if (entries.length === 0 || entries.length !== candidateShas.length) {
@@ -365,6 +383,16 @@ export async function promoteExactBatch({
     if (!/^[A-Za-z0-9._/-]+$/.test(headRef)) {
       throw new Error(`Unsafe PR head ref: ${headRef}`);
     }
+    // An armed auto-merge could land this PR out of order underneath the
+    // sequential squash-merge loop below (see #1131's real merge-then-force-
+    // push-2s-later race). Fail closed; reconcile disables the arming and
+    // rebuilds before the next attempt.
+    if (currentPr.auto_merge) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number}; auto_merge is armed; disabling and rebuilding next reconcile\n`,
+      );
+      return false;
+    }
     currentPrs.push(currentPr);
   }
   if (!live) {
@@ -395,6 +423,12 @@ export async function promoteExactBatch({
       );
       return false;
     }
+    if (finalPr.auto_merge) {
+      process.stdout.write(
+        `blocked promotion pr=#${entry.number}; auto_merge armed at final reattestation\n`,
+      );
+      return false;
+    }
     currentPrs[index] = finalPr;
   }
   // Re-run the main-health guard here, immediately before publishing the
@@ -412,221 +446,283 @@ export async function promoteExactBatch({
   }
   const finalCandidateSha = candidateShas.at(-1);
   const promotionFingerprint = candidateFingerprint(expectedBase, currentPrs);
-  await createTrainCheck(
-    finalCandidateSha,
-    promotionFingerprint,
-    'completed',
-    'success',
-    requiredCheckName,
-    provenanceEntries,
-  );
-  try {
-    const refUpdates = currentPrs.map(
-      (currentPr) => `${finalCandidateSha}:refs/heads/${currentPr.head.ref}`,
-    );
-    const leases = currentPrs.map(
-      (currentPr) => `--force-with-lease=refs/heads/${currentPr.head.ref}:${currentPr.head.sha}`,
-    );
-    git([
-      'push',
-      '--atomic',
-      'origin',
-      ...refUpdates,
-      `${finalCandidateSha}:refs/heads/main`,
-      ...leases,
-      `--force-with-lease=refs/heads/main:${expectedBase}`,
-    ]);
-  } catch (error) {
-    await createTrainCheck(
-      finalCandidateSha,
-      promotionFingerprint,
-      'completed',
-      'failure',
-      requiredCheckName,
-      provenanceEntries,
-    );
-    throw error;
-  }
-  // The atomic `git push --atomic ... --force-with-lease` above already
-  // succeeded (no exception was thrown), which is the actual, authoritative
-  // proof that every entry's head ref *and* main were fast-forwarded to
-  // `finalCandidateSha`. `waitForMergedPr` below is a secondary confirmation
-  // via GitHub's own view of each PR (useful for auditability and to catch a
-  // genuinely wrong assumption), but it does NOT poll for GitHub's `merged`/
-  // `merged_at` fields to flip true -- those are only ever set when a PR is
-  // closed through GitHub's own merge machinery (its Merge API or the web
-  // "Merge" button), which this atomic multi-ref force-push strategy
-  // intentionally bypasses to get true cross-PR atomicity. This was
-  // originally believed to be an async *lag* under load (ADR 0062 DEC-024:
-  // a six-PR batch where the first entry's confirmation read hadn't landed
-  // within the old retry budget), but was proven live on 2026-07-15 to be
-  // *permanent*, not a lag (ADR 0062 DEC-025): seven real promoted PRs across
-  // two separate batches -- one over nine hours old -- never showed
-  // `merged: true`, despite `git log main --grep Merge-Train-PR` proving
-  // every one of their commits correctly landed. `waitForMergedPr` (built by
-  // `createWaitForMergedPr` above) instead polls for `state === 'closed'`,
-  // which GitHub reliably sets within ~20s of the push in every observed
-  // case, and is the actual achievable ground-truth signal for this
-  // promotion mechanism.
+  // ---- Sequential GitHub squash-merge promotion. ----
+  // The atomic multi-ref force-push is gone. Each PR is merged through
+  // GitHub's own squash machinery (the trusted App bypasses the required-check
+  // ruleset), so GitHub records it with `merged: true` and a real merge commit
+  // -- the completion semantics the force-push could never produce (it left
+  // every promoted PR permanently `merged:false, merged_at:null`; see the
+  // superseded ADR 0062 DEC-025). buildCandidate already built a linear
+  // one-squash-commit-per-PR chain, so merging each PR in order onto the
+  // growing `main` reproduces exactly that chain, and `main` stays linear.
   //
-  // The entire post-push phase below is therefore "collect failures, never
-  // abort early, throw once at the end" -- not just the confirmation check,
-  // but also cleanup (`removeLabel`/`updateStatus`) and publishing the
-  // postcondition failure check itself, since *any* of those throwing partway
-  // through can equally strand an already-confirmed sibling with a stale
-  // `merge-train` label (closed PRs are invisible to the next reconcile's
-  // `state=open` queue query, so nothing else will ever clean that label up).
-  // Confirmation reads run in parallel (not sequentially) so one entry's slow
-  // confirmation doesn't multiply the wall-clock budget by batch size.
-  const confirmations = await Promise.all(
-    entries.map(async (entry) => {
-      try {
-        const merged = await waitForMergedPr(entry, finalCandidateSha);
-        return { entry, merged, reason: null };
-      } catch (error) {
-        return {
-          entry,
-          merged: false,
-          reason: error instanceof Error ? error.message : String(error),
-        };
-      }
-    }),
-  );
-  const unconfirmed = confirmations.filter((confirmation) => !confirmation.merged);
-  let postconditionCheckError = null;
-  if (unconfirmed.length > 0) {
+  // Every landed commit is PROVEN (landedCommitProofError) to be recorded
+  // merged, be a single-parent child of the expected base, and carry the exact
+  // tree of the corresponding validated candidate prefix -- else the run fails
+  // closed after publishing the postcondition-failure check on the ACTUAL
+  // landed commit. Because each merge is a genuine GitHub merge, partial
+  // promotion is naturally idempotent-recoverable: any PR that already landed
+  // is real-merged (dropped from the next open-queue scan) and any that did
+  // not rebuilds from the new `main` next reconcile. We therefore stop (return
+  // false) on the first stale/retryable outcome rather than forcing the rest,
+  // and only THROW on a proof violation (a divergent/foreign commit reached
+  // main). A landed PR is never re-closed and never marked landed before its
+  // merge response and full proof succeed.
+  const landed = [];
+  const publishPostcondition = async (sha) => {
     try {
-      await createTrainCheck(
-        finalCandidateSha,
-        promotionFingerprint,
-        'completed',
-        'failure',
-        `${requiredCheckName}-promotion-postcondition`,
-        provenanceEntries,
-      );
+      await publishPostconditionCheck(sha, promotionFingerprint, provenanceEntries);
     } catch (error) {
-      postconditionCheckError = error instanceof Error ? error.message : String(error);
+      process.stdout.write(
+        `failed to publish ${PROMOTION_POSTCONDITION_CHECK_NAME} on ${sha}: ${
+          error instanceof Error ? error.message : String(error)
+        }\n`,
+      );
     }
-  }
-  const unconfirmedEntries = new Set(unconfirmed.map((confirmation) => confirmation.entry));
-  const cleanupFailures = [];
+  };
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
-    if (unconfirmedEntries.has(entry)) continue;
+    const currentPr = currentPrs[index];
+    const expectedParent = index === 0 ? expectedBase : landed[index - 1].sha;
+    const expectedTree = git(['rev-parse', `${candidateShas[index]}^{tree}`]);
+    // Base-CAS: GitHub's merge API has no expected-base parameter, so assert
+    // main is still exactly the base this squash will land on, immediately
+    // before the merge. This shrinks the base-movement window to the few ms
+    // before the PUT; the post-merge parent/tree proof catches any residual
+    // race and fails closed. Auto-merge fencing above removes the most likely
+    // competing writer.
+    const mainBeforeMerge = await fetchCurrentMain();
+    if (mainBeforeMerge !== expectedParent) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; main moved to ${mainBeforeMerge} (expected ${expectedParent}); rebuilding next reconcile\n`,
+      );
+      return false;
+    }
+    const merge = await mergePullRequest(entry, {
+      expectedHeadSha: currentPr.head.sha,
+      commitTitle: squashCommitTitle(currentPr),
+      commitMessage: squashCommitMessage(currentPr),
+    });
+    if (!merge.ok) {
+      if (merge.retryable) {
+        process.stdout.write(
+          `stale promotion pr=#${entry.number}; ${merge.reason}; rebuilding next reconcile\n`,
+        );
+        return false;
+      }
+      await publishPostcondition(landed.at(-1)?.sha || finalCandidateSha);
+      throw new MergeTrainPromotionError(
+        `promotion aborted at pr=#${entry.number}: ${merge.reason}`,
+      );
+    }
+    const landedSha = merge.sha;
+    const proofError = await landedCommitProofError({
+      fetchCommit,
+      fetchCurrentMain,
+      fetchCurrentPr,
+      entry,
+      index,
+      landedSha,
+      expectedParent,
+      expectedTree,
+    });
+    if (proofError) {
+      await publishPostcondition(landedSha);
+      throw new MergeTrainPromotionError(
+        `post-merge proof failed for pr=#${entry.number} at ${landedSha}: ${proofError}`,
+      );
+    }
+    landed.push({ entry, sha: landedSha });
+    recordMapping(entry.number, landedSha);
+    // Durable landed signal -- only AFTER the merge response + full proof. A
+    // label/comment hiccup must never abort the batch or re-close a genuinely
+    // merged PR; record and continue, and startup reconciliation backfills any
+    // missing signal idempotently next run.
     try {
+      await setLabel(entry.number, LANDED_LABEL);
       await removeLabel(entry.number, QUEUE_LABEL);
       await removeLabel(entry.number, BLOCKED_LABEL);
+      await postLandedComment(entry.number, landedSha, finalCandidateSha);
       await updateStatus(
         entry.number,
         renderStatus({
           position: positions[index],
           candidateSha: finalCandidateSha,
           state: 'merged',
-          detail: 'The exact validated combined candidate fast-forwarded main atomically.',
+          detail: `Landed on main as ${landedSha}; GitHub recorded this PR as merged.`,
         }),
       );
     } catch (error) {
-      cleanupFailures.push({
-        entry,
-        reason: error instanceof Error ? error.message : String(error),
-      });
+      process.stdout.write(
+        `landed pr=#${entry.number} sha=${landedSha} but landed-signal update failed: ${
+          error instanceof Error ? error.message : String(error)
+        }\n`,
+      );
     }
   }
-  const failureParts = [];
-  if (unconfirmed.length > 0) {
-    failureParts.push(
-      `PR${unconfirmed.length > 1 ? 's' : ''} ${unconfirmed
-        .map((confirmation) =>
-          confirmation.reason
-            ? `#${confirmation.entry.number} (confirmation check errored: ${confirmation.reason})`
-            : `#${confirmation.entry.number}`,
-        )
-        .join(
-          ', ',
-        )} ${unconfirmed.length > 1 ? 'were' : 'was'} not recorded as merged after atomic promotion to ${finalCandidateSha}`,
+  // Final whole-batch guard: main must end exactly at our last landed commit
+  // (whose tree was already proven == the full candidate's, since the last
+  // prefix IS the full candidate). Catches an external writer that moved main
+  // after our final merge.
+  const mainAfter = await fetchCurrentMain();
+  if (mainAfter !== landed.at(-1).sha) {
+    await publishPostcondition(landed.at(-1).sha);
+    throw new MergeTrainPromotionError(
+      `main moved to ${mainAfter} after promotion (expected last landed ${landed.at(-1).sha})`,
     );
-  }
-  if (cleanupFailures.length > 0) {
-    failureParts.push(
-      `cleanup failed for confirmed PR${cleanupFailures.length > 1 ? 's' : ''} ${cleanupFailures
-        .map((failure) => `#${failure.entry.number} (${failure.reason})`)
-        .join(', ')} after atomic promotion to ${finalCandidateSha}`,
-    );
-  }
-  if (postconditionCheckError) {
-    failureParts.push(
-      `failed to publish the ${requiredCheckName}-promotion-postcondition failure check: ${postconditionCheckError}`,
-    );
-  }
-  if (failureParts.length > 0) {
-    throw new Error(failureParts.join('; '));
   }
   process.stdout.write(
-    `promoted prs=${entries.map((entry) => `#${entry.number}`).join(',')} sha=${finalCandidateSha}\n`,
+    `promoted prs=${entries.map((entry) => `#${entry.number}`).join(',')} landed=${landed
+      .map((item) => `#${item.entry.number}=${item.sha}`)
+      .join(',')}\n`,
   );
   return true;
 }
 
 /**
- * Whether a PR's current GitHub state is acceptable confirmation that
- * `promoteExactBatch`'s atomic force-push already landed it. This predicate
- * is ONLY safe to trust for a PR whose atomic `git push --atomic ...
- * --force-with-lease` has already returned successfully -- it does not, on
- * its own, prove a promotion happened; it corroborates one that the caller
- * already knows (from the push's own success) took effect.
+ * Post-merge proof for a single sequentially squash-merged PR. Returns null
+ * when every invariant holds, or a human-readable reason string when a
+ * fail-closed tripwire fires. This is the guard that makes real GitHub merges
+ * safe as promotion: it proves the commit GitHub actually created is exactly
+ * the validated candidate prefix (tree), a single-parent child of the expected
+ * base (linear main), that `main` advanced to it, and that GitHub recorded the
+ * PR as merged with a timestamp. A non-null result means a divergent or
+ * foreign commit reached `main` -- the caller publishes the postcondition
+ * failure check on the ACTUAL landed commit and throws.
  *
- * GitHub's `merged`/`merged_at` PR fields are populated ONLY when a PR is
- * closed through GitHub's own merge machinery (the Merge Pull Request
- * REST/GraphQL API or the web "Merge" button). This promotion strategy
- * intentionally bypasses that machinery -- it force-pushes the exact
- * validated candidate SHA directly onto both `main` and every entry's own
- * head ref in one atomic multi-ref push, specifically to get true atomicity
- * across a multi-PR batch, which GitHub's own merge API cannot do. That
- * means `merged`/`merged_at` are NEVER set for a promotion done this way, no
- * matter how long you wait -- this was originally believed to be a lag
- * (ADR 0062 DEC-024) but was proven, live in production on 2026-07-15, to be
- * permanent: seven real promoted PRs across two separate batches, one over
- * nine hours old, still showed `merged: false, merged_at: null`, even though
- * `git log main --grep Merge-Train-PR` proved every one of their commits was
- * correctly present on `main`. What GitHub *does* reliably do -- observed
- * within ~20s of the push in all seven cases -- is auto-close the PR once
- * its head ref (now identical to `main`'s tip) shows no remaining diff
- * against the base branch. `state === 'closed'` is therefore the correct,
- * achievable, fast ground-truth completion signal for this promotion
- * mechanism; `merged === true` is kept only as a defensive OR-branch in case
- * some other/future promotion path ever does go through GitHub's own merge
- * API. See ADR 0062 DEC-025.
+ * `fetchCommit(sha)` returns the REST commit object
+ * (`GET /repos/{o}/{r}/commits/{sha}`): `{ sha, commit: { tree: { sha } },
+ * parents: [{ sha }] }`. Tree SHAs are content-addressed, so comparing the
+ * landed commit's tree to the locally-built candidate prefix tree
+ * (`git rev-parse <candidate>^{tree}`) is an exact content-equality proof.
  */
-export function isPostPushConfirmationSatisfied(prData) {
-  return Boolean(prData) && (prData.merged === true || prData.state === 'closed');
+export async function landedCommitProofError({
+  fetchCommit,
+  fetchCurrentMain,
+  fetchCurrentPr,
+  entry,
+  index,
+  landedSha,
+  expectedParent,
+  expectedTree,
+}) {
+  if (!/^[0-9a-f]{40}$/i.test(String(landedSha || ''))) {
+    return `merge response returned an invalid landed sha: ${landedSha}`;
+  }
+  const mainAfter = await fetchCurrentMain();
+  if (mainAfter !== landedSha) {
+    return `main is ${mainAfter}, not the landed commit ${landedSha}`;
+  }
+  const commit = await fetchCommit(landedSha);
+  const parents = (commit?.parents || []).map((parent) => parent.sha);
+  if (parents.length !== 1) {
+    return `landed commit ${landedSha} has ${parents.length} parents (expected 1 for a squash merge; main must stay linear)`;
+  }
+  if (parents[0] !== expectedParent) {
+    return `landed commit ${landedSha} parent is ${parents[0]} (expected ${expectedParent})`;
+  }
+  const landedTree = commit?.commit?.tree?.sha;
+  if (landedTree !== expectedTree) {
+    return `landed commit ${landedSha} tree ${landedTree} != validated candidate prefix tree ${expectedTree}`;
+  }
+  const prAfter = await fetchCurrentPr(entry, index);
+  // The hard gate: GitHub itself must record the PR merged with a real
+  // timestamp. `state === 'closed'` alone is explicitly INSUFFICIENT (that was
+  // the forbidden force-push outcome); `merge_commit_sha` alone is also
+  // insufficient (for a closed-unmerged PR it is an ephemeral test-merge SHA).
+  if (prAfter?.merged !== true) {
+    return `GitHub did not record PR #${entry.number} as merged (merged=${prAfter?.merged}, state=${prAfter?.state})`;
+  }
+  if (!prAfter.merged_at) {
+    return `GitHub recorded PR #${entry.number} merged but with no merged_at timestamp`;
+  }
+  return null;
 }
 
 /**
- * Create a `waitForMergedPr(entry, _finalCandidateSha)` confirmation poller bound to `request`
- * and `token`. Extracted here (rather than left inline in the untestable,
- * top-level `reconcile.mjs` CLI script) so the actual polling predicate --
- * previously only exercised in production via an injected fake in tests,
- * never for real -- gets direct unit test coverage with a fake `request`.
+ * Create a `mergePullRequest(entry, { expectedHeadSha, commitTitle,
+ * commitMessage })` bound to `request`/`token`. It waits (bounded) for GitHub
+ * to compute mergeability, then squash-merges the PR through GitHub's own
+ * Merge API, pinning the exact head SHA as a race guard and writing the
+ * durable `Merge-Train-PR` trailer into the squash commit message.
+ *
+ * Returns `{ ok: true, sha }` with GitHub's REAL merge commit SHA on success.
+ * Returns `{ ok: false, retryable: true, reason }` for a stale/transient
+ * outcome (head moved, not-yet-mergeable, 405/409) so the caller rebuilds on
+ * the next reconcile. THROWS a MergeTrainPromotionError for a
+ * policy/configuration failure (403/422/5xx or a network error) so a broken
+ * App-bypass/protection setup fails loudly rather than being misclassified as
+ * a stale candidate and silently retried forever.
  */
-export function createWaitForMergedPr({
+export function createMergePullRequest({
   request,
   token,
   owner,
   repo,
-  pollDelaysMs = [2000, 4000, 8000, 8000, 15000, 15000, 25000],
+  mergeablePollDelaysMs = [1000, 2000, 3000, 5000, 8000, 12000],
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
-  return async function waitForMergedPr(entry, _finalCandidateSha) {
-    for (let attempt = 0; attempt <= pollDelaysMs.length; attempt += 1) {
-      const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
-      if (isPostPushConfirmationSatisfied(current)) {
-        return true;
+  return async function mergePullRequest(entry, { expectedHeadSha, commitTitle, commitMessage }) {
+    for (let attempt = 0; attempt <= mergeablePollDelaysMs.length; attempt += 1) {
+      const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+      if (pr.head?.sha !== expectedHeadSha) {
+        return {
+          ok: false,
+          retryable: true,
+          reason: `head moved to ${pr.head?.sha} (expected ${expectedHeadSha})`,
+        };
       }
-      if (attempt < pollDelaysMs.length) {
-        await sleep(pollDelaysMs[attempt]);
+      if (pr.mergeable === false) {
+        return {
+          ok: false,
+          retryable: true,
+          reason: `PR is not mergeable (mergeable_state: ${pr.mergeable_state || 'unknown'})`,
+        };
+      }
+      if (pr.mergeable === true) break;
+      // mergeable === null: GitHub is still computing mergeability; wait and
+      // retry within the bounded budget.
+      if (attempt < mergeablePollDelaysMs.length) {
+        await sleep(mergeablePollDelaysMs[attempt]);
+      } else {
+        return { ok: false, retryable: true, reason: 'mergeability still unknown after polling' };
       }
     }
-    return false;
+    let response;
+    try {
+      response = await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}/merge`, {
+        method: 'PUT',
+        body: {
+          sha: expectedHeadSha,
+          merge_method: 'squash',
+          commit_title: commitTitle,
+          commit_message: commitMessage,
+        },
+      });
+    } catch (error) {
+      const status = error?.status;
+      // 405 Method Not Allowed = PR not currently mergeable; 409 Conflict =
+      // head SHA no longer matches the pinned `sha` (moved). Both mean the
+      // candidate is stale, so rebuild next reconcile rather than failing hard.
+      if (status === 405 || status === 409) {
+        return {
+          ok: false,
+          retryable: true,
+          reason: `merge API rejected the merge (${status}): ${error.message}`,
+        };
+      }
+      throw new MergeTrainPromotionError(
+        `merge API failed for PR #${entry.number} (${status ?? 'network'}): ${error.message}`,
+        { cause: error },
+      );
+    }
+    const data = response.data || {};
+    if (data.merged !== true || !/^[0-9a-f]{40}$/i.test(String(data.sha || ''))) {
+      throw new MergeTrainPromotionError(
+        `merge API did not record PR #${entry.number} as merged (merged=${data.merged}, sha=${data.sha})`,
+      );
+    }
+    return { ok: true, sha: String(data.sha) };
   };
 }
 

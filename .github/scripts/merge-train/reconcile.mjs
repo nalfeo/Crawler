@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 
-import { listReviewThreads, paginate, request } from '../ci-recovery/github.mjs';
+import { listReviewThreads, paginate, request, graphql } from '../ci-recovery/github.mjs';
 import {
   isTrainFastPathPushRun,
   parseStateComment,
@@ -9,7 +9,7 @@ import {
 import {
   buildCandidate,
   buildDispatchBindings,
-  createWaitForMergedPr,
+  createMergePullRequest,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
@@ -26,14 +26,17 @@ import {
   candidateFingerprint,
   candidateRef,
   hasLeadingMarker,
+  LANDED_LABEL,
+  LANDED_MARKER,
   MAX_TRAIN_SIZE,
   nextBisectStep,
   NOOP_LABEL,
   parseEnabledFlag,
+  PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
   queueEntries,
-  REQUIRED_CHECK_NAME,
   resolveAdmissionChecks,
+  renderLandedComment,
   renderStatus,
   STATUS_MARKER,
   successfulChecks,
@@ -252,33 +255,101 @@ async function mainHealthAllowsPromotion() {
   return true;
 }
 
-// `waitForMergedPr` polls each promoted entry's PR for GitHub's own view of
-// the promotion, as a secondary confirmation on top of the atomic push's own
-// (authoritative) success. It does NOT wait for `merged`/`merged_at` to flip
-// true -- those fields are only ever set when a PR is closed through
-// GitHub's own merge machinery (its Merge API or the web "Merge" button),
-// which this atomic multi-ref force-push strategy intentionally bypasses to
-// get true cross-PR atomicity; waiting on them can never succeed. It instead
-// polls for `state === 'closed'`, which GitHub reliably sets within ~20s of
-// the push (observed live on 2026-07-15 across two real promotion batches,
-// see ADR 0062 DEC-025 -- correcting DEC-024's original "async lag" framing,
-// which was itself proven wrong: `merged` never became true even 9+ hours
-// after promotion for PRs whose commits `git log main --grep Merge-Train-PR`
-// proved had already correctly landed). The ~77s budget below is kept as a
-// bounded safety margin against a genuine anomaly (a PR that never
-// auto-closes at all) even though `closed` typically fires in ~20s;
-// `createWaitForMergedPr` polls every entry in parallel (via
-// `promoteExactBatch`'s `Promise.all`), so a full batch's wall-clock stays
-// close to this single-entry budget regardless of batch size.
-const MERGED_PR_POLL_DELAYS_MS = [2000, 4000, 8000, 8000, 15000, 15000, 25000];
+// Real GitHub squash-merge promotion. `mergePullRequest` merges each admitted
+// PR through GitHub's own Merge API (the App bypasses the required-check
+// ruleset), producing genuine `merged: true` + a real merge commit SHA -- the
+// completion semantics the old atomic force-push could never produce. The
+// bounded mergeability poll absorbs GitHub's async `mergeable` computation.
+const mergePullRequest = createMergePullRequest({ request, token, owner, repo });
 
-const waitForMergedPr = createWaitForMergedPr({
-  request,
-  token,
-  owner,
-  repo,
-  pollDelaysMs: MERGED_PR_POLL_DELAYS_MS,
-});
+// Fetch a landed commit's REST object (tree + parents) for the post-merge
+// proof in promoteExactBatch.
+async function fetchCommit(sha) {
+  return (await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)).data;
+}
+
+// Publish the fail-closed promotion-postcondition check on the ACTUAL landed
+// commit (or the candidate, if nothing landed). Deliberately named
+// PROMOTION_POSTCONDITION_CHECK_NAME, never `merge-train`: a `merge-train`
+// check on a real landed main commit would masquerade as the fast-path
+// attestation ci.yml/mainHealthReason key on.
+async function publishPostconditionCheck(sha, fingerprint, entries) {
+  await createTrainCheck(
+    sha,
+    fingerprint,
+    'completed',
+    'failure',
+    PROMOTION_POSTCONDITION_CHECK_NAME,
+    entries,
+  );
+}
+
+// Post the durable landed-completion comment, idempotently (never duplicates
+// across reconciles or recovery). Only called after GitHub has recorded the
+// PR merged and the post-merge proof passed.
+async function postLandedComment(prNumber, landedSha, candidateSha) {
+  const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
+  if (comments.some((comment) => hasLeadingMarker(comment.body, LANDED_MARKER))) {
+    return;
+  }
+  await request(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+    method: 'POST',
+    body: { body: renderLandedComment({ landedSha, candidateSha }) },
+  });
+}
+
+// Fence the sequential promotion against the legacy auto-merge path: a PR with
+// an armed auto-merge could land out of order underneath the loop (see #1131's
+// real merge-then-force-push-2s-later race). Disable it on admission; the lib
+// also fails closed if it is still/again armed at final reattestation.
+async function disableAutoMerge(pr) {
+  if (!pr.auto_merge || !pr.node_id) return;
+  try {
+    await graphql(
+      token,
+      `
+        mutation ($id: ID!) {
+          disablePullRequestAutoMerge(input: { pullRequestId: $id }) {
+            clientMutationId
+          }
+        }
+      `,
+      { id: pr.node_id },
+    );
+    process.stdout.write(`disabled armed auto-merge pr=#${pr.number}\n`);
+  } catch (error) {
+    process.stdout.write(
+      `could not disable auto-merge pr=#${pr.number}: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+  }
+}
+
+// Crash-after-merge recovery. Because promotion now uses real GitHub merges,
+// GitHub's own merged-state IS the durable transaction journal: a PR that was
+// squash-merged but whose landed-signal update (label/comment) did not
+// complete still carries QUEUE_LABEL while being GitHub-merged. Find those and
+// backfill the durable landed signal idempotently. A closed-but-UNMERGED PR is
+// never relabeled landed (that is the forbidden outcome) and is left untouched.
+async function reconcileLandedSignals() {
+  const staleClosed = await paginate(
+    token,
+    `/repos/${owner}/${repo}/issues?state=closed&labels=${encodeURIComponent(QUEUE_LABEL)}`,
+  );
+  for (const item of staleClosed) {
+    if (!item.pull_request) continue;
+    const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${item.number}`)).data;
+    if (pr.merged !== true) continue;
+    if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
+      await setLabel(pr.number, LANDED_LABEL);
+    }
+    await removeLabel(pr.number, QUEUE_LABEL);
+    await removeLabel(pr.number, BLOCKED_LABEL);
+    await postLandedComment(pr.number, pr.merge_commit_sha, '');
+    process.stdout.write(`reconciled landed signal for merged pr=#${pr.number}\n`);
+  }
+}
 
 async function blockEntry(entry, { detail, validationFailure = false }) {
   await setLabel(entry.number, BLOCKED_LABEL);
@@ -336,6 +407,13 @@ await ensureLabel(
   'd1242f',
   'First failing addition isolated by merge-train validation',
 );
+await ensureLabel(LANDED_LABEL, '0e8a16', 'Landed on main via the merge train (GitHub-merged)');
+
+// Crash-after-merge recovery runs first, every reconcile: it backfills the
+// durable landed signal for any PR that was really merged but whose
+// label/comment update did not complete. Cheap in the normal case (successful
+// landings remove QUEUE_LABEL, so this query is usually empty).
+await reconcileLandedSignals();
 
 const pulls = await paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`);
 const queued = queueEntries(pulls, repository);
@@ -348,6 +426,9 @@ const admitted = [];
 for (const pr of queued) {
   const admission = await eligible(pr);
   if (admission.ok) {
+    // Fence the legacy auto-merge path before this PR can be sequentially
+    // squash-merged, so it cannot land out of order underneath the promotion.
+    await disableAutoMerge(pr);
     admitted.push(pr);
   } else {
     await removeLabel(pr.number, QUEUE_LABEL);
@@ -444,14 +525,16 @@ async function promotePrefix(prefixLength) {
       (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data,
     fetchCurrentMain: async () =>
       (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha,
+    fetchCommit,
     eligible,
     git,
-    createTrainCheck,
+    mergePullRequest,
+    setLabel,
     removeLabel,
     updateStatus,
-    requiredCheckName: REQUIRED_CHECK_NAME,
+    postLandedComment,
+    publishPostconditionCheck,
     provenanceEntries,
-    waitForMergedPr,
     reattestHealth: mainHealthAllowsPromotion,
   });
 }

@@ -1,0 +1,557 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  createMergePullRequest,
+  isMergeTrainPromotionError,
+  landedCommitProofError,
+  promoteExactBatch,
+} from './reconcile-lib.mjs';
+import { LANDED_LABEL, QUEUE_LABEL, BLOCKED_LABEL } from './state.mjs';
+
+// Deterministic 40-char hex SHAs for the fixtures.
+const BASE = 'a'.repeat(40);
+const HEAD1 = '1'.repeat(40);
+const HEAD2 = '2'.repeat(40);
+const CAND1 = 'c'.repeat(40);
+const CAND2 = 'd'.repeat(40);
+const LAND1 = 'e'.repeat(40);
+const LAND2 = 'f'.repeat(40);
+const TREE1 = '1a'.repeat(20);
+const TREE2 = '2b'.repeat(20);
+const REPO = 'nalfeo/Crawler';
+
+function makePromoPr(number, { merged = false, autoMerge = null, overrides = {} } = {}) {
+  return {
+    number,
+    title: `feat: pr ${number}`,
+    state: merged ? 'closed' : 'open',
+    draft: false,
+    labels: [{ name: QUEUE_LABEL }],
+    base: { ref: 'main' },
+    head: {
+      sha: number === 1 ? HEAD1 : HEAD2,
+      ref: `feature/pr-${number}`,
+      repo: { full_name: REPO },
+    },
+    auto_merge: autoMerge,
+    merged,
+    merged_at: merged ? '2026-07-15T00:00:00Z' : null,
+    node_id: `PR_${number}`,
+    ...overrides,
+  };
+}
+
+// A fully-wired 2-PR promotion harness. Overrides let each test inject a
+// specific failure while every other dependency stays on the happy path.
+function runPromotion(overrides = {}) {
+  const records = {
+    merges: [],
+    landedLabels: [],
+    removedLabels: [],
+    landedComments: [],
+    statuses: [],
+    mapping: [],
+    postconditions: [],
+  };
+  let main = overrides.startMain ?? BASE;
+  const mergedNumbers = new Set();
+
+  const candParents = { [CAND1]: BASE, [CAND2]: CAND1 };
+  const candTrees = { [CAND1]: TREE1, [CAND2]: TREE2 };
+  const gitCalls = [];
+  const git = (args) => {
+    gitCalls.push(args);
+    if (args[0] === 'rev-parse') {
+      const ref = args[1];
+      const tree = ref.match(/^([0-9a-f]{40})\^\{tree\}$/);
+      if (tree) return candTrees[tree[1]] ?? `tree-${tree[1]}`;
+      const parent = ref.match(/^([0-9a-f]{40})\^$/);
+      if (parent) return candParents[parent[1]] ?? BASE;
+      return ref;
+    }
+    return '';
+  };
+
+  const landedFor = (number) => (number === 1 ? LAND1 : LAND2);
+  const defaultMerge = async (entry) => ({ ok: true, sha: landedFor(entry.number) });
+  const mergePullRequest = async (entry, args) => {
+    records.merges.push({ number: entry.number, ...args });
+    const result = await (overrides.mergePullRequest || defaultMerge)(entry, args);
+    if (result.ok) {
+      main = result.sha;
+      if (!overrides.neverMarkMerged) mergedNumbers.add(entry.number);
+    }
+    return result;
+  };
+
+  const fetchCommitDefault = async (sha) => {
+    if (sha === LAND1) return { sha, parents: [{ sha: BASE }], commit: { tree: { sha: TREE1 } } };
+    if (sha === LAND2) return { sha, parents: [{ sha: LAND1 }], commit: { tree: { sha: TREE2 } } };
+    throw new Error(`unexpected fetchCommit ${sha}`);
+  };
+
+  const fetchCurrentPr = async (entry) =>
+    makePromoPr(entry.number, {
+      merged: mergedNumbers.has(entry.number),
+      autoMerge: overrides.autoMergeNumbers?.includes(entry.number) ? {} : null,
+    });
+
+  const entries = (overrides.entries || [1, 2]).map((n) => makePromoPr(n));
+  const candidateShas = overrides.candidateShas || [CAND1, CAND2].slice(0, entries.length);
+
+  const promise = promoteExactBatch({
+    entries,
+    candidateShas,
+    expectedBase: BASE,
+    repository: REPO,
+    live: overrides.live ?? true,
+    fetchCurrentPr,
+    fetchCurrentMain: async () => main,
+    fetchCommit: overrides.fetchCommit || fetchCommitDefault,
+    eligible: overrides.eligible || (async () => ({ ok: true, fingerprint: 'fp' })),
+    git,
+    mergePullRequest,
+    setLabel: async (number, name) => {
+      records.landedLabels.push({ number, name });
+    },
+    removeLabel: async (number, name) => {
+      records.removedLabels.push({ number, name });
+    },
+    updateStatus: async (number, body) => {
+      records.statuses.push({ number, body });
+    },
+    postLandedComment: async (number, landedSha, candidateSha) => {
+      records.landedComments.push({ number, landedSha, candidateSha });
+    },
+    publishPostconditionCheck: async (sha, fingerprint, provenance) => {
+      records.postconditions.push({ sha, fingerprint, provenance });
+    },
+    recordMapping: (number, sha) => records.mapping.push({ number, sha }),
+    reattestHealth: overrides.reattestHealth || (async () => true),
+  });
+
+  return { promise, records, gitCalls, getMain: () => main };
+}
+
+test('promoteExactBatch squash-merges each PR through GitHub and records real landed commits', async () => {
+  const { promise, records, gitCalls, getMain } = runPromotion();
+  const result = await promise;
+
+  assert.equal(result, true);
+  // Both PRs merged in order via GitHub's merge machinery.
+  assert.deepEqual(
+    records.merges.map((m) => m.number),
+    [1, 2],
+  );
+  // Real landed SHAs recorded as the PR<->commit mapping.
+  assert.deepEqual(records.mapping, [
+    { number: 1, sha: LAND1 },
+    { number: 2, sha: LAND2 },
+  ]);
+  // Durable landed label applied to each original PR (never removed).
+  assert.deepEqual(records.landedLabels, [
+    { number: 1, name: LANDED_LABEL },
+    { number: 2, name: LANDED_LABEL },
+  ]);
+  // Queue/blocked labels cleared on each original PR.
+  assert.ok(records.removedLabels.some((l) => l.number === 1 && l.name === QUEUE_LABEL));
+  assert.ok(records.removedLabels.some((l) => l.number === 2 && l.name === BLOCKED_LABEL));
+  // Completion comment posted on each original PR with the landed commit.
+  assert.deepEqual(records.landedComments, [
+    { number: 1, landedSha: LAND1, candidateSha: CAND2 },
+    { number: 2, landedSha: LAND2, candidateSha: CAND2 },
+  ]);
+  // No postcondition failure and main ends at the last landed commit.
+  assert.equal(records.postconditions.length, 0);
+  assert.equal(getMain(), LAND2);
+  // Promotion never force-pushes: git is used only for local rev-parse reads.
+  assert.ok(gitCalls.every((args) => args[0] === 'rev-parse'));
+});
+
+test('promoteExactBatch forwards the durable trailer and pins the head SHA on each merge', async () => {
+  const { promise, records } = runPromotion();
+  await promise;
+  assert.equal(records.merges[0].expectedHeadSha, HEAD1);
+  assert.equal(records.merges[0].commitTitle, 'feat: pr 1 (#1)');
+  assert.match(records.merges[0].commitMessage, /^Merge-Train-PR: 1$/m);
+  assert.match(records.merges[0].commitMessage, /Merge-Train-Original-Head: /);
+});
+
+test('promoteExactBatch fails closed (throws + postcondition) when a landed tree diverges', async () => {
+  // GitHub's squash produced a different tree than the validated candidate.
+  const { promise, records } = runPromotion({
+    fetchCommit: async (sha) => {
+      if (sha === LAND1) {
+        return { sha, parents: [{ sha: BASE }], commit: { tree: { sha: 'bad' + '0'.repeat(37) } } };
+      }
+      return { sha, parents: [{ sha: LAND1 }], commit: { tree: { sha: TREE2 } } };
+    },
+  });
+  await assert.rejects(promise, (error) => {
+    assert.ok(isMergeTrainPromotionError(error));
+    assert.match(error.message, /tree .* != validated candidate prefix tree/);
+    return true;
+  });
+  // Postcondition failure published on the ACTUAL landed commit.
+  assert.equal(records.postconditions.length, 1);
+  assert.equal(records.postconditions[0].sha, LAND1);
+  // The divergent PR is NOT marked landed.
+  assert.equal(records.landedLabels.length, 0);
+});
+
+test('promoteExactBatch fails closed when a landed commit has more than one parent', async () => {
+  const { promise, records } = runPromotion({
+    entries: [1],
+    candidateShas: [CAND1],
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }, { sha: HEAD1 }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+  });
+  await assert.rejects(promise, /has 2 parents/);
+  assert.equal(records.postconditions[0].sha, LAND1);
+  assert.equal(records.landedLabels.length, 0);
+});
+
+test('promoteExactBatch fails closed when GitHub does not record the PR merged', async () => {
+  // The merge API returns a SHA and main advances, but the PR never flips
+  // merged:true (the forbidden closed-not-merged outcome). The post-merge
+  // proof must catch it and fail closed.
+  const { promise, records } = runPromotion({
+    entries: [1],
+    candidateShas: [CAND1],
+    neverMarkMerged: true,
+  });
+  await assert.rejects(promise, /did not record PR #1 as merged/);
+  assert.equal(records.landedLabels.length, 0);
+  assert.equal(records.postconditions.length, 1);
+});
+
+test('promoteExactBatch returns false (stale, no landed signal) when a merge is retryable', async () => {
+  const { promise, records } = runPromotion({
+    entries: [1],
+    candidateShas: [CAND1],
+    mergePullRequest: async () => ({ ok: false, retryable: true, reason: 'not mergeable' }),
+  });
+  assert.equal(await promise, false);
+  assert.equal(records.landedLabels.length, 0);
+  assert.equal(records.postconditions.length, 0);
+});
+
+test('promoteExactBatch idempotently lands a partial batch and stops on the first retryable failure', async () => {
+  // PR1 merges for real; PR2 is transiently not mergeable. PR1 keeps its
+  // landed signal; PR2 gets none; no hard failure (rebuild next reconcile).
+  const { promise, records, getMain } = runPromotion({
+    mergePullRequest: async (entry) => {
+      if (entry.number === 1) return { ok: true, sha: LAND1 };
+      return { ok: false, retryable: true, reason: 'behind main; recompute' };
+    },
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+  });
+  assert.equal(await promise, false);
+  assert.deepEqual(records.landedLabels, [{ number: 1, name: LANDED_LABEL }]);
+  assert.deepEqual(records.mapping, [{ number: 1, sha: LAND1 }]);
+  assert.ok(!records.landedComments.some((c) => c.number === 2));
+  assert.equal(records.postconditions.length, 0);
+  assert.equal(getMain(), LAND1);
+});
+
+test('promoteExactBatch throws + publishes postcondition on a non-retryable merge failure', async () => {
+  const { promise, records } = runPromotion({
+    entries: [1],
+    candidateShas: [CAND1],
+    mergePullRequest: async () => ({ ok: false, retryable: false, reason: 'policy rejected' }),
+  });
+  await assert.rejects(promise, /promotion aborted at pr=#1/);
+  assert.equal(records.postconditions.length, 1);
+  assert.equal(records.landedLabels.length, 0);
+});
+
+test('promoteExactBatch fails closed (returns false) when main moved before a merge (base-CAS)', async () => {
+  const { promise, records } = runPromotion({ startMain: 'b'.repeat(40) });
+  assert.equal(await promise, false);
+  assert.equal(records.merges.length, 0);
+  assert.equal(records.landedLabels.length, 0);
+});
+
+test('promoteExactBatch refuses to promote a PR with an armed auto-merge', async () => {
+  const { promise, records } = runPromotion({ autoMergeNumbers: [2] });
+  assert.equal(await promise, false);
+  assert.equal(records.merges.length, 0);
+});
+
+test('promoteExactBatch does nothing in dry-run mode', async () => {
+  const { promise, records } = runPromotion({ live: false });
+  assert.equal(await promise, false);
+  assert.equal(records.merges.length, 0);
+  assert.equal(records.landedLabels.length, 0);
+});
+
+test('promoteExactBatch pauses when main health regresses at final reattestation', async () => {
+  const { promise, records } = runPromotion({ reattestHealth: async () => false });
+  assert.equal(await promise, false);
+  assert.equal(records.merges.length, 0);
+});
+
+test('promoteExactBatch still returns true when a post-merge label/comment update hiccups', async () => {
+  // A landed PR is genuinely merged; a labeling error must not abort the batch
+  // or re-close anything (startup reconciliation backfills next run).
+  const records = { merges: [] };
+  let main = BASE;
+  const result = await promoteExactBatch({
+    entries: [makePromoPr(1)],
+    candidateShas: [CAND1],
+    expectedBase: BASE,
+    repository: REPO,
+    live: true,
+    fetchCurrentPr: async () => makePromoPr(1, { merged: main === LAND1 }),
+    fetchCurrentMain: async () => main,
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+    eligible: async () => ({ ok: true }),
+    git: (args) => (args[1] === `${CAND1}^{tree}` ? TREE1 : args[1] === `${CAND1}^` ? BASE : ''),
+    mergePullRequest: async () => {
+      main = LAND1;
+      return { ok: true, sha: LAND1 };
+    },
+    setLabel: async () => {
+      throw new Error('label API flaked');
+    },
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    postLandedComment: async () => {},
+    publishPostconditionCheck: async () => {},
+    recordMapping: () => {},
+    reattestHealth: async () => true,
+  });
+  assert.equal(result, true);
+  void records;
+});
+
+// ---- createMergePullRequest ----
+
+function mergeRequestStub(responders) {
+  const calls = [];
+  const request = async (token, path, options = {}) => {
+    calls.push({ path, options });
+    const responder = responders(path, options, calls.length);
+    if (responder instanceof Error) throw responder;
+    return { data: responder };
+  };
+  return { request, calls };
+}
+
+const mergeableOpen = { head: { sha: HEAD1 }, mergeable: true, mergeable_state: 'clean' };
+
+test('createMergePullRequest squash-merges once mergeable and returns the real merge SHA', async () => {
+  const { request, calls } = mergeRequestStub((path, options) => {
+    if (options.method === 'PUT') return { merged: true, sha: LAND1 };
+    return mergeableOpen;
+  });
+  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const result = await mergePullRequest(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 'feat (#1)', commitMessage: 'Merge-Train-PR: 1' },
+  );
+  assert.deepEqual(result, { ok: true, sha: LAND1 });
+  const put = calls.find((c) => c.options.method === 'PUT');
+  assert.equal(put.options.body.sha, HEAD1);
+  assert.equal(put.options.body.merge_method, 'squash');
+  assert.equal(put.options.body.commit_title, 'feat (#1)');
+});
+
+test('createMergePullRequest waits for GitHub to finish computing mergeability', async () => {
+  let poll = 0;
+  const { request } = mergeRequestStub((path, options) => {
+    if (options.method === 'PUT') return { merged: true, sha: LAND1 };
+    poll += 1;
+    return { head: { sha: HEAD1 }, mergeable: poll >= 2 ? true : null };
+  });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
+  const result = await mergePullRequest(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.equal(result.ok, true);
+  assert.ok(poll >= 2);
+});
+
+test('createMergePullRequest treats a moved head as retryable and never merges', async () => {
+  const { request, calls } = mergeRequestStub(() => ({ head: { sha: HEAD2 }, mergeable: true }));
+  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const result = await mergePullRequest(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.retryable, true);
+  assert.ok(!calls.some((c) => c.options.method === 'PUT'));
+});
+
+test('createMergePullRequest treats mergeable:false as retryable', async () => {
+  const { request } = mergeRequestStub(() => ({
+    head: { sha: HEAD1 },
+    mergeable: false,
+    mergeable_state: 'dirty',
+  }));
+  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const result = await mergePullRequest(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.retryable, true);
+});
+
+for (const status of [405, 409]) {
+  test(`createMergePullRequest treats a ${status} merge rejection as retryable`, async () => {
+    const { request } = mergeRequestStub((path, options) => {
+      if (options.method === 'PUT') {
+        const error = new Error(`merge blocked (${status})`);
+        error.status = status;
+        return error;
+      }
+      return mergeableOpen;
+    });
+    const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+    const result = await mergePullRequest(
+      { number: 1 },
+      { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.retryable, true);
+  });
+}
+
+test('createMergePullRequest throws on a policy/configuration failure (403)', async () => {
+  const { request } = mergeRequestStub((path, options) => {
+    if (options.method === 'PUT') {
+      const error = new Error('bypass not configured');
+      error.status = 403;
+      return error;
+    }
+    return mergeableOpen;
+  });
+  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  await assert.rejects(
+    mergePullRequest(
+      { number: 1 },
+      { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+    ),
+    (error) => isMergeTrainPromotionError(error) && /\(403\)/.test(error.message),
+  );
+});
+
+test('createMergePullRequest throws when the merge response is not recorded merged', async () => {
+  const { request } = mergeRequestStub((path, options) => {
+    if (options.method === 'PUT') return { merged: false, sha: null };
+    return mergeableOpen;
+  });
+  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  await assert.rejects(
+    mergePullRequest(
+      { number: 1 },
+      { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+    ),
+    /did not record PR #1 as merged/,
+  );
+});
+
+// ---- landedCommitProofError ----
+
+const proofDefaults = {
+  entry: { number: 1 },
+  index: 0,
+  landedSha: LAND1,
+  expectedParent: BASE,
+  expectedTree: TREE1,
+  fetchCurrentMain: async () => LAND1,
+  fetchCurrentPr: async () => ({ merged: true, merged_at: '2026-07-15T00:00:00Z' }),
+  fetchCommit: async () => ({ parents: [{ sha: BASE }], commit: { tree: { sha: TREE1 } } }),
+};
+
+test('landedCommitProofError returns null when every invariant holds', async () => {
+  assert.equal(await landedCommitProofError({ ...proofDefaults }), null);
+});
+
+test('landedCommitProofError rejects an invalid landed SHA', async () => {
+  assert.match(
+    await landedCommitProofError({ ...proofDefaults, landedSha: 'nope' }),
+    /invalid landed sha/,
+  );
+});
+
+test('landedCommitProofError rejects when main is not the landed commit', async () => {
+  assert.match(
+    await landedCommitProofError({ ...proofDefaults, fetchCurrentMain: async () => BASE }),
+    /main is .*, not the landed commit/,
+  );
+});
+
+test('landedCommitProofError rejects a non-linear (multi-parent) landed commit', async () => {
+  assert.match(
+    await landedCommitProofError({
+      ...proofDefaults,
+      fetchCommit: async () => ({
+        parents: [{ sha: BASE }, { sha: HEAD1 }],
+        commit: { tree: { sha: TREE1 } },
+      }),
+    }),
+    /has 2 parents/,
+  );
+});
+
+test('landedCommitProofError rejects a wrong parent (base moved under the merge)', async () => {
+  assert.match(
+    await landedCommitProofError({
+      ...proofDefaults,
+      fetchCommit: async () => ({ parents: [{ sha: HEAD2 }], commit: { tree: { sha: TREE1 } } }),
+    }),
+    /parent is .* \(expected/,
+  );
+});
+
+test('landedCommitProofError rejects a divergent tree', async () => {
+  assert.match(
+    await landedCommitProofError({
+      ...proofDefaults,
+      fetchCommit: async () => ({ parents: [{ sha: BASE }], commit: { tree: { sha: TREE2 } } }),
+    }),
+    /tree .* != validated candidate prefix tree/,
+  );
+});
+
+test('landedCommitProofError rejects a PR GitHub did not record as merged (closed-not-merged is forbidden)', async () => {
+  assert.match(
+    await landedCommitProofError({
+      ...proofDefaults,
+      fetchCurrentPr: async () => ({ merged: false, state: 'closed', merged_at: null }),
+    }),
+    /did not record PR #1 as merged/,
+  );
+});
+
+test('landedCommitProofError rejects a merged PR with no merged_at timestamp', async () => {
+  assert.match(
+    await landedCommitProofError({
+      ...proofDefaults,
+      fetchCurrentPr: async () => ({ merged: true, merged_at: null }),
+    }),
+    /no merged_at timestamp/,
+  );
+});
