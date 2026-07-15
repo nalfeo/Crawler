@@ -190,10 +190,12 @@ async function createTrainCheck(
   });
 }
 
-const {
-  dispatchRecovery,
-  dispatchValidation: baseDispatchValidation,
-} = buildDispatchBindings({ request, workflowDispatchToken, owner, repo });
+const { dispatchRecovery, dispatchValidation: baseDispatchValidation } = buildDispatchBindings({
+  request,
+  workflowDispatchToken,
+  owner,
+  repo,
+});
 
 // Bound on how many recent push-triggered CI runs we inspect (and fetch
 // check-runs for) when looking for evidence on the current main SHA. Main
@@ -249,15 +251,26 @@ async function mainHealthAllowsPromotion() {
   return true;
 }
 
+// GitHub's own "PR merged" detection (triggered when a push moves the PR's
+// head ref to a commit that's now an ancestor of the base branch) is
+// asynchronous and, under heavy concurrent repository activity, can lag the
+// underlying ref update by well over the previous ~31s budget -- observed
+// live on 2026-07-15 (see ADR 0062 DEC-024), where a six-PR promotion batch
+// was git-verified as fully and correctly promoted, yet one entry's
+// confirmation read still hadn't landed after the old budget elapsed. ~77s
+// gives GitHub's indexing realistic headroom under load while staying well
+// inside the job's 15-minute timeout even for a full six-entry batch that
+// each individually exhausts the budget (~7.7 minutes worst case).
+const MERGED_PR_POLL_DELAYS_MS = [2000, 4000, 8000, 8000, 15000, 15000, 25000];
+
 async function waitForMergedPr(entry) {
-  const delays = [1000, 2000, 4000, 8000, 8000, 8000];
-  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+  for (let attempt = 0; attempt <= MERGED_PR_POLL_DELAYS_MS.length; attempt += 1) {
     const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
     if (current.merged === true || (current.state === 'closed' && current.merged_at)) {
       return true;
     }
-    if (attempt < delays.length) {
-      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    if (attempt < MERGED_PR_POLL_DELAYS_MS.length) {
+      await new Promise((resolve) => setTimeout(resolve, MERGED_PR_POLL_DELAYS_MS[attempt]));
     }
   }
   return false;
