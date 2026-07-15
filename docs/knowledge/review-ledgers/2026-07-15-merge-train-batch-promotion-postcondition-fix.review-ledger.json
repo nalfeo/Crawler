@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-15",
+  "session_slug": "merge-train-batch-promotion-postcondition-fix",
+  "task_title": "Fix promoteExactBatch sibling-cleanup coupling on postcondition failure",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 1,
+      "resolved_count": 1,
+      "plan_divergence": "minor",
+      "notes": "",
+      "summary": "Independent-model plan review of the promoteExactBatch sibling-cleanup fix. Found one blocking gap: only the waitForMergedPr=false path was decoupled from cleanup; other post-push exceptions (confirmation-read errors, postcondition-check publish errors, per-entry cleanup errors) could still abort the tail and re-strand confirmed siblings. Resolved by restructuring the entire post-push phase to collect-and-continue (parallelized confirmation polling, try/catch around postcondition-check publish, per-entry try/catch around cleanup), aggregating all failures into one final error. Reviewer also flagged the sequential polling worst-case time (fixed by parallelizing) and noted a stale-state repair sweep as a good non-blocking follow-up (deferred, documented in ADR/issue)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Traced git diff HEAD for reconcile-lib.mjs/reconcile.mjs/reconcile.test.mjs. Verified Promise.all confirmation-polling, unconfirmedEntries Set correctness, positions[index] alignment in the cleanup loop, and the failureParts aggregation/throw. Manually traced all 5 new promoteExactBatch tests against the implementation and confirmed each assertion matches actual behavior. Verified MERGED_PR_POLL_DELAYS_MS retry-loop has no off-by-one. Ran node --test reconcile.test.mjs: 40/40 pass. Zero concerns."
+        }
+      ]
+    }
+  }
+}

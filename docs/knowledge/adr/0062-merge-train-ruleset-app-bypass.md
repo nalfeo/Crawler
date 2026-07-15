@@ -380,6 +380,82 @@ true`, exactly one Integration bypass actor) at `09:08:47-07:00`, then
 warning even when the live bypass actor is not an Integration type at
 all'`) covering the non-Integration-actor case specifically.
 
+- **DEC-024** (4th gap, discovered live during the actual `enable` cutover on
+  2026-07-15, in `.github/scripts/merge-train/reconcile-lib.mjs` rather than
+  `protection.mjs`): after DEC-019 through DEC-023 shipped (PR #1153) and the
+  live cutover proceeded — `enable` succeeded cleanly with no false rollback,
+  `MERGE_TRAIN_ENABLED` was set `true`, and a real 6-PR batch
+  (#1087, #1092, #1099, #1140, #1141, #1147) was atomically promoted via
+  `promoteExactBatch`'s single `git push --atomic ... --force-with-lease` — the
+  dispatched reconcile run threw: `PR #1087 was not recorded as merged after
+atomic promotion to <sha>`. Investigation confirmed the atomic push had
+  **fully succeeded** (`git log origin/main` showed all 6 PRs' commits
+  correctly present, each tagged with its PR number) and the ruleset/classic
+  protection layer from DEC-019–023 remained completely healthy
+  (`protection.mjs status` → `problems: []` throughout). The bug was isolated
+  to `promoteExactBatch`'s **postcondition-and-cleanup tail**: GitHub's own
+  asynchronous "merged" detection (a secondary confirmation of a fact the
+  atomic push already proved) lagged past the ~31s retry budget for PR #1087
+  specifically, and the old code aborted the entire post-push loop on that
+  first failure — before the separate cleanup loop below it ever ran for
+  **any** entry, including the 5 siblings that had already confirmed cleanly.
+  Because `reconcile.mjs` builds its queue via `pulls?state=open`, and these
+  PRs closed within seconds (webhook-driven, independent of the slower
+  `merged_at` field), all 6 PRs were left permanently stuck with a stale
+  `merge-train` label that no future reconcile cycle would ever clean up —
+  requiring manual `gh pr edit --remove-label` cleanup for all 6 this session.
+  Per this task's explicit instruction ("if any invariant/config issue
+  appears, safe rollback first, then fix via separate PR"), the train was
+  immediately paused (`MERGE_TRAIN_ENABLED=false`) as a safety measure while
+  the fix below was implemented, tested, and reviewed in this same PR/ADR
+  update, before re-enabling and re-observing a live cycle.
+
+  **Fix** (preserves the trust invariant; does not weaken it — a genuinely
+  unconfirmed entry still blocks its own cleanup and the function still
+  throws): restructured the entire post-push phase in `promoteExactBatch` to
+  collect-and-continue instead of abort-on-first-failure, in three respects
+  that a separate-model plan review (gpt-5.4) confirmed were all necessary
+  (see below): (1) confirmation reads for every entry now run in parallel via
+  `Promise.all` with a per-entry `try/catch` — an API error confirming one
+  entry is treated as "unconfirmed" (with the error recorded) rather than
+  aborting the batch, and parallelizing also caps the worst-case wall-clock
+  wait near the single-entry budget instead of multiplying it by batch size;
+  (2) publishing the `-promotion-postcondition` failure check is wrapped in
+  its own `try/catch` so a failure to publish it cannot itself block cleanup;
+  (3) the cleanup loop (remove `merge-train`/`merge-train-blocked` labels,
+  update status) wraps each entry in its own `try/catch`, so one entry's
+  cleanup failure does not prevent cleanup for its siblings. All collected
+  failures (unconfirmed entries, cleanup failures, postcondition-check-publish
+  failures) are aggregated into a single thrown error only after cleanup has
+  been attempted for every eligible entry — an existing, deliberate
+  pre-existing test (`reconcile.test.mjs`, "promoteExactCandidate publishes a
+  separate failure when GitHub does not record the PR as merged") proves the
+  single-entry hard-fail contract is unchanged. `reconcile.mjs`'s
+  `waitForMergedPr` retry budget was also increased from ~31s to ~77s total
+  (`MERGED_PR_POLL_DELAYS_MS`) to reduce recurrence frequency under load,
+  while staying well inside the reconcile job's 15-minute timeout even for a
+  full batch where every entry independently exhausts the budget.
+
+  **API-representation distinction, generalized from DEC-021's ruleset
+  lesson**: DEC-021 fixed `protection.mjs` treating a summary API response
+  (list-rulesets) as if it were the authoritative detail response. DEC-024 is
+  the same class of lesson one layer up the stack, in `reconcile.mjs`/
+  `reconcile-lib.mjs`: GitHub's `merged`/`merged_at` PR fields are themselves
+  a **derived, asynchronously-computed mirror** of an underlying fact (here,
+  "is this ref an ancestor of main's tip"), not the ground truth — the actual
+  atomic `git push` result is. Both gaps share the same root shape: code
+  treated an eventually-consistent, secondary GitHub API signal as if it were
+  synchronous and authoritative, and let a lag in that signal override or
+  block correctly-established ground truth. Filed as a new issue rather than
+  reopening #1151, since it is a distinct discovery in `reconcile-lib.mjs`
+  outside #1151's declared `protection.mjs` scope (rollback/status/hydration).
+  New tests cover: a sibling confirms while another does not (cleanup runs for
+  the confirmed entry only); all entries unconfirmed (no cleanup runs at all);
+  a `waitForMergedPr` rejection is treated like an unconfirmed entry, not a
+  hard abort; a per-entry cleanup step throwing does not block a sibling's
+  cleanup; and a postcondition-check publish failure is surfaced in the
+  aggregated error without blocking cleanup.
+
 ## Consequences
 
 ### Positive
@@ -499,3 +575,8 @@ all'`) covering the non-Integration-actor case specifically.
 - Issue #1151 and `docs/knowledge/handoffs/2026-07-15-merge-train-rollback-status-hydration-fix.md`:
   the three rollback/status/hydration gaps found preparing for and during the
   first live `enable` cutover attempt (DEC-019/020/021, CTX-007)
+- Issue #1154 and `.github/scripts/merge-train/reconcile-lib.mjs`,
+  `.github/scripts/merge-train/reconcile.mjs`: the 4th gap (DEC-024),
+  discovered live during the actual cutover this ADR's fix enabled — a
+  distinct bug in `promoteExactBatch`'s promotion-postcondition/cleanup tail,
+  outside this ADR's `protection.mjs` scope

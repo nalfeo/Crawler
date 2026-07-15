@@ -447,8 +447,47 @@ export async function promoteExactBatch({
     );
     throw error;
   }
-  for (const entry of entries) {
-    if (!(await waitForMergedPr(entry, finalCandidateSha))) {
+  // The atomic `git push --atomic ... --force-with-lease` above already
+  // succeeded (no exception was thrown), which is the actual, authoritative
+  // proof that every entry's head ref *and* main were fast-forwarded to
+  // `finalCandidateSha`. `waitForMergedPr` below is a secondary, asynchronous
+  // confirmation via GitHub's own merge-detection (useful for auditability
+  // and to catch a genuinely wrong assumption), but GitHub's `merged`/
+  // `merged_at` fields can lag the underlying ref update by longer than any
+  // single reconcile invocation under heavy concurrent load -- observed live
+  // on 2026-07-15 (see ADR 0062 DEC-024): all six entries in a batch were
+  // git-verified as correctly promoted, yet the very first entry's
+  // confirmation read hadn't landed within the retry budget, which used to
+  // abort the loop and skip label/status cleanup for every remaining entry,
+  // including ones that *had* already confirmed.
+  //
+  // The entire post-push phase below is therefore "collect failures, never
+  // abort early, throw once at the end" -- not just the confirmation check,
+  // but also cleanup (`removeLabel`/`updateStatus`) and publishing the
+  // postcondition failure check itself, since *any* of those throwing partway
+  // through can equally strand an already-confirmed sibling with a stale
+  // `merge-train` label (closed PRs are invisible to the next reconcile's
+  // `state=open` queue query, so nothing else will ever clean that label up).
+  // Confirmation reads run in parallel (not sequentially) so one entry's slow
+  // lag doesn't multiply the wall-clock budget by batch size.
+  const confirmations = await Promise.all(
+    entries.map(async (entry) => {
+      try {
+        const merged = await waitForMergedPr(entry, finalCandidateSha);
+        return { entry, merged, reason: null };
+      } catch (error) {
+        return {
+          entry,
+          merged: false,
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }),
+  );
+  const unconfirmed = confirmations.filter((confirmation) => !confirmation.merged);
+  let postconditionCheckError = null;
+  if (unconfirmed.length > 0) {
+    try {
       await createTrainCheck(
         finalCandidateSha,
         promotionFingerprint,
@@ -457,24 +496,62 @@ export async function promoteExactBatch({
         `${requiredCheckName}-promotion-postcondition`,
         provenanceEntries,
       );
-      throw new Error(
-        `PR #${entry.number} was not recorded as merged after atomic promotion to ${finalCandidateSha}`,
-      );
+    } catch (error) {
+      postconditionCheckError = error instanceof Error ? error.message : String(error);
     }
   }
+  const unconfirmedEntries = new Set(unconfirmed.map((confirmation) => confirmation.entry));
+  const cleanupFailures = [];
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
-    await removeLabel(entry.number, QUEUE_LABEL);
-    await removeLabel(entry.number, BLOCKED_LABEL);
-    await updateStatus(
-      entry.number,
-      renderStatus({
-        position: positions[index],
-        candidateSha: finalCandidateSha,
-        state: 'merged',
-        detail: 'The exact validated combined candidate fast-forwarded main atomically.',
-      }),
+    if (unconfirmedEntries.has(entry)) continue;
+    try {
+      await removeLabel(entry.number, QUEUE_LABEL);
+      await removeLabel(entry.number, BLOCKED_LABEL);
+      await updateStatus(
+        entry.number,
+        renderStatus({
+          position: positions[index],
+          candidateSha: finalCandidateSha,
+          state: 'merged',
+          detail: 'The exact validated combined candidate fast-forwarded main atomically.',
+        }),
+      );
+    } catch (error) {
+      cleanupFailures.push({
+        entry,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  const failureParts = [];
+  if (unconfirmed.length > 0) {
+    failureParts.push(
+      `PR${unconfirmed.length > 1 ? 's' : ''} ${unconfirmed
+        .map((confirmation) =>
+          confirmation.reason
+            ? `#${confirmation.entry.number} (confirmation check errored: ${confirmation.reason})`
+            : `#${confirmation.entry.number}`,
+        )
+        .join(
+          ', ',
+        )} ${unconfirmed.length > 1 ? 'were' : 'was'} not recorded as merged after atomic promotion to ${finalCandidateSha}`,
     );
+  }
+  if (cleanupFailures.length > 0) {
+    failureParts.push(
+      `cleanup failed for confirmed PR${cleanupFailures.length > 1 ? 's' : ''} ${cleanupFailures
+        .map((failure) => `#${failure.entry.number} (${failure.reason})`)
+        .join(', ')} after atomic promotion to ${finalCandidateSha}`,
+    );
+  }
+  if (postconditionCheckError) {
+    failureParts.push(
+      `failed to publish the ${requiredCheckName}-promotion-postcondition failure check: ${postconditionCheckError}`,
+    );
+  }
+  if (failureParts.length > 0) {
+    throw new Error(failureParts.join('; '));
   }
   process.stdout.write(
     `promoted prs=${entries.map((entry) => `#${entry.number}`).join(',')} sha=${finalCandidateSha}\n`,
