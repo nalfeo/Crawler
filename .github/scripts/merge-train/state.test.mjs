@@ -11,6 +11,7 @@ import {
   nextBisectStep,
   parseEnabledFlag,
   parseMergeTrainPrNumber,
+  planPrefixPromotion,
   queueEntries,
   renderLandedComment,
   renderStatus,
@@ -354,4 +355,58 @@ test('renderLandedComment records the real landed commit and validated candidate
   assert.match(body, new RegExp(`Landed commit: \`${'c'.repeat(40)}\``));
   assert.match(body, new RegExp(`Validated candidate: \`${'d'.repeat(40)}\``));
   assert.match(body, /recorded this PR as \*\*merged\*\*/);
+});
+
+test('planPrefixPromotion dispatches every missing prefix in the target range in parallel', () => {
+  assert.deepEqual(planPrefixPromotion(['missing', 'missing', 'missing']), {
+    action: 'validate',
+    prefixes: [0, 1, 2],
+    firstFailure: -1,
+  });
+});
+
+test('planPrefixPromotion waits when a target-range prefix is still pending', () => {
+  assert.deepEqual(planPrefixPromotion(['success', 'pending', 'success']), {
+    action: 'wait',
+    firstFailure: -1,
+  });
+});
+
+test('planPrefixPromotion promotes the whole batch when every prefix is green', () => {
+  assert.deepEqual(planPrefixPromotion(['success', 'success', 'success']), {
+    action: 'promote',
+    greenPrefixLength: 3,
+    firstFailure: -1,
+  });
+});
+
+test('planPrefixPromotion promotes the green prefix and localizes the earliest failure', () => {
+  assert.deepEqual(planPrefixPromotion(['success', 'success', 'failure']), {
+    action: 'promote',
+    greenPrefixLength: 2,
+    firstFailure: 2,
+  });
+});
+
+test('planPrefixPromotion ignores prefixes at/after the earliest failure (does not validate them)', () => {
+  // Prefix 3 is missing but irrelevant because prefix 2 already failed; only the
+  // green [0,1) range matters, and it is fully validated -> promote 1, block PR2.
+  assert.deepEqual(planPrefixPromotion(['success', 'failure', 'missing']), {
+    action: 'promote',
+    greenPrefixLength: 1,
+    firstFailure: 1,
+  });
+});
+
+test('planPrefixPromotion validates only the target-range missing prefix before a later failure', () => {
+  // firstFailure=2, target=[0,2); prefix index 1 still missing -> validate just it.
+  assert.deepEqual(planPrefixPromotion(['success', 'missing', 'failure']), {
+    action: 'validate',
+    prefixes: [1],
+    firstFailure: 2,
+  });
+});
+
+test('planPrefixPromotion returns noop for an empty batch', () => {
+  assert.deepEqual(planPrefixPromotion([]), { action: 'noop' });
 });

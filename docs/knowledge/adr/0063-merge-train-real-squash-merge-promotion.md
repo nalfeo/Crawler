@@ -118,6 +118,21 @@ and the completion-signal contract that four prior gap-fix sessions built on.
   their GitHub state remains `closed`/`merged:false` because they predate this
   fix). Their GitHub merged-state is **never** falsified. Scoped so recovery
   (DEC-008) never reclassifies them.
+- **DEC-011**: **No unvalidated prefix is ever exposed on `main`.** Every
+  cumulative prefix `T_1 … T_k` that will be promoted must first hold terminal
+  SUCCESS validation evidence (a trusted `merge-train-candidate` check bound to
+  that prefix's exact candidate SHA + admission fingerprint) **before any merge
+  begins**. `planPrefixPromotion` dispatches every still-missing prefix in the
+  target range in parallel (a validation matrix, not N serial runs), waits while
+  any is pending, and only promotes once the whole `[0, target)` range is proven
+  green. `promoteExactBatch` additionally re-confirms each prefix's evidence live
+  (`verifyPrefixEvidence`) immediately before merging that PR, so a check deleted
+  or superseded between the gate and the merge fails closed. Because every prefix
+  is independently validated, failure localization is direct — the earliest
+  failing prefix's last-added PR is the culprit — retiring the binary-search
+  bisect. The maintainer explicitly accepts the extra `verify:fast`/targeted
+  candidate reruns this entails; the forbidden cost is repeated heavy CI/reviews,
+  which this does not incur.
 
 ## Consequences
 
@@ -133,24 +148,25 @@ and the completion-signal contract that four prior gap-fix sessions built on.
   review anchors survive (fixes ADR 0060 NEG-001).
 - **POS-005**: Partial promotion is naturally, idempotently recoverable via
   real merged-state; no PR is ever silently closed-without-merge.
+- **POS-006**: Every tree that reaches `main` — including each intermediate
+  state the sequential merges expose — has terminal deterministic validation
+  evidence bound to its exact prefix (DEC-011), so downstream automation
+  triggered by an intermediate push can never observe an unvalidated tree. This
+  preserves ADR 0060's no-unvalidated-`main` invariant under sequential merges.
 
 ### Negative
 
-- **NEG-001** (accepted tradeoff, flagged for human sign-off): sequential merges
-  transiently expose intermediate `main` states `T_1 … T_{N-1}` (base + prefix)
-  that were not **independently** `verify:fast`-validated — only the full
-  candidate and any bisected prefixes were. Each intermediate is base+greenPrefix
-  and each PR carried a green `ci`, and every merge happens within a single
-  reconcile job seconds apart, so the exposure is brief and the **persistent**
-  end state (`T_N`) equals the validated candidate tree and is self-healing via
-  ordinary push-CI. This weakens ADR 0060 POS-001's "every shipped SHA is the
-  exact validated SHA" to "every **persistent** shipped tree is the validated
-  tree; transient intermediates are base+green-prefix." Eliminating the
-  transient exposure entirely would require validating every prefix or reducing
-  to one-PR-per-cycle (see Alternatives).
+- **NEG-001**: A full 6-PR batch runs up to 6 prefix candidate validations
+  (`verify:fast` + targeted security) instead of the single full-candidate run
+  the old atomic push used on its happy path (DEC-011). They are dispatched in
+  parallel so wall-time stays close to one run, and the maintainer explicitly
+  accepts these fast/targeted reruns as the cost of never exposing an
+  unvalidated intermediate tree. The trade is bounded to the fast gate — it
+  never triggers repeated heavy CI (the ~306s Floor-1/coverage suite) or repeated
+  reviews.
 - **NEG-002**: Lower theoretical throughput ceiling than the single atomic push,
   since each PR is a separate merge API round-trip plus a bounded mergeability
-  poll. In practice the batch still validates once; only the landing is
+  poll. In practice the batch still admits together; only the landing is
   sequential.
 
 ### Risks
@@ -171,11 +187,13 @@ and the completion-signal contract that four prior gap-fix sessions built on.
 
 - **ALT-001**: **Description**: Rebuild/validate only `main + next PR`, merge it
   via the REST API, wait for the post-merge `main` CI, then start a new cycle.
-- **ALT-002**: **Rejection reason**: Fully eliminates unvalidated intermediate
-  states (NEG-001) and is the simplest recovery model, but it reverses ADR 0060's
-  approved speculative-batch throughput optimization (ADR 0060 ALT-003/004) and
-  meaningfully lowers throughput. Retained as the fallback if NEG-001's
-  transient exposure proves unacceptable in practice.
+- **ALT-002**: **Rejection reason**: Also fully eliminates unvalidated
+  intermediate states, but it reverses ADR 0060's approved speculative-batch
+  throughput optimization (ADR 0060 ALT-003/004) and meaningfully lowers
+  throughput. DEC-011 (validate every promoted prefix before merging) achieves
+  the same no-unvalidated-tree guarantee while keeping batch admission, so this
+  FIFO is retained only as the fallback if the parallel prefix-validation cost
+  ever proves unacceptable.
 
 ### Atomic force-push, then "flip" semantics via the merge API
 

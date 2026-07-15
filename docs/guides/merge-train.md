@@ -35,9 +35,10 @@ for the architectural rationale.
    of the expected base (linear `main`), and carry the exact tree of the
    validated candidate prefix, or the run fails closed (see
    [`0063-merge-train-real-squash-merge-promotion.md`](../knowledge/adr/0063-merge-train-real-squash-merge-promotion.md)).
-5. If the combined fast gate fails, the train binary-searches ordered prefixes,
-   promotes the longest validated green prefix in one atomic update, and returns
-   the first failing addition after it to recovery. Later ready PRs remain queued.
+5. Every cumulative prefix is validated (in parallel) before any merge, so no
+   unvalidated intermediate tree is ever exposed on `main`. If a prefix fails,
+   the train promotes the maximal fully-validated green prefix and returns the
+   first failing addition to recovery. Later ready PRs remain queued.
 6. A textual conflict removes only that PR from readiness. Recovery performs a
    conflict-only rebase onto the resulting `main`; the new head reruns heavy PR
    validation.
@@ -142,7 +143,7 @@ dry-run train mode.
    - six clean PRs validate together and merge in order;
    - editing a title or pushing a head invalidates the old candidate;
    - a cumulative conflict returns only that PR to recovery;
-   - a failed candidate is bisected and the maximal green prefix advances;
+   - a failed prefix is localized and the maximal validated green prefix advances;
    - a `main` race rejects promotion and rebuilds;
    - a failure between PR-head update and main update retries the same tested SHA.
 4. Confirm GitHub records **every** disposable PR as `merged` (real `merged_at`
@@ -301,8 +302,9 @@ repaired `main`.
 - **Blocked:** cumulative squash conflicts. The PR leaves the active queue and
   receives `merge-train-blocked`; recovery rebases it only after the conflict is
   present on `main`.
-- **Failed:** the train bisects prefixes, promotes the largest green prefix, and
-  returns the first failing addition with `merge-train-validation-failed`.
+- **Failed:** every prefix is validated, so the train localizes the first
+  failing PR directly, promotes the largest validated green prefix before it, and
+  returns the failing addition with `merge-train-validation-failed`.
 - **Stale:** a PR head/title or `main` changed. The candidate is abandoned and a
   new immutable generation is built.
 - **Promotion denied:** run `node .github/scripts/merge-train/protection.mjs

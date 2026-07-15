@@ -29,9 +29,10 @@ import {
   LANDED_LABEL,
   LANDED_MARKER,
   MAX_TRAIN_SIZE,
-  nextBisectStep,
   NOOP_LABEL,
   parseEnabledFlag,
+  parseMergeTrainPrNumber,
+  planPrefixPromotion,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
   queueEntries,
@@ -330,8 +331,12 @@ async function disableAutoMerge(pr) {
 // GitHub's own merged-state IS the durable transaction journal: a PR that was
 // squash-merged but whose landed-signal update (label/comment) did not
 // complete still carries QUEUE_LABEL while being GitHub-merged. Find those and
-// backfill the durable landed signal idempotently. A closed-but-UNMERGED PR is
-// never relabeled landed (that is the forbidden outcome) and is left untouched.
+// backfill the durable landed signal idempotently. It backfills ONLY a PR that
+// is genuinely train-landed: merged into `main`, and whose merge commit carries
+// this PR's `Merge-Train-PR` trailer (proving the train produced it, not a
+// manual/legacy merge or a merge into some other branch). A closed-but-UNMERGED
+// PR, a PR merged elsewhere, or a non-train merge is never relabeled landed
+// (relabeling those would be a false landed signal).
 async function reconcileLandedSignals() {
   const staleClosed = await paginate(
     token,
@@ -340,14 +345,28 @@ async function reconcileLandedSignals() {
   for (const item of staleClosed) {
     if (!item.pull_request) continue;
     const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${item.number}`)).data;
-    if (pr.merged !== true) continue;
+    // Must be genuinely merged INTO main (not closed-unmerged, not merged into
+    // another branch after a retarget).
+    if (pr.merged !== true || pr.base?.ref !== 'main') continue;
+    const landedSha = pr.merge_commit_sha;
+    if (!/^[0-9a-f]{40}$/i.test(String(landedSha || ''))) continue;
+    // Prove train provenance: the landed commit must carry this PR's trailer.
+    // This rejects a manually/legacy-merged queued PR (no trailer) so it is not
+    // falsely labeled as train-landed.
+    let landedCommit;
+    try {
+      landedCommit = await fetchCommit(landedSha);
+    } catch {
+      continue;
+    }
+    if (parseMergeTrainPrNumber(landedCommit?.commit?.message || '') !== pr.number) continue;
     if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
       await setLabel(pr.number, LANDED_LABEL);
     }
     await removeLabel(pr.number, QUEUE_LABEL);
     await removeLabel(pr.number, BLOCKED_LABEL);
-    await postLandedComment(pr.number, pr.merge_commit_sha, '');
-    process.stdout.write(`reconciled landed signal for merged pr=#${pr.number}\n`);
+    await postLandedComment(pr.number, landedSha, '');
+    process.stdout.write(`reconciled landed signal for train-merged pr=#${pr.number}\n`);
   }
 }
 
@@ -506,7 +525,7 @@ for (let index = 0; index < train.length; index += 1) {
       state,
       detail:
         state === 'failure'
-          ? 'Candidate validation failed; the merge train will bisect the failing prefix and return the first failing PR to recovery.'
+          ? 'Candidate validation failed; the merge train will localize the first failing PR and return it to recovery, promoting the validated green prefix before it.'
           : 'Candidate is immutable and bound to the listed PR revisions.',
     }),
   );
@@ -534,76 +553,92 @@ async function promotePrefix(prefixLength) {
     updateStatus,
     postLandedComment,
     publishPostconditionCheck,
+    // Re-confirm, immediately before merging each PR, that its cumulative
+    // prefix still has terminal SUCCESS validation evidence bound to that
+    // prefix's exact candidate SHA + fingerprint.
+    verifyPrefixEvidence: async (index) => {
+      const candidate = candidates[index];
+      const state = trainCheckState(
+        await checkRuns(candidate.candidateSha),
+        candidate.fingerprint,
+        trustedAppId,
+        new Date(),
+      );
+      return state === 'success';
+    },
     provenanceEntries,
     reattestHealth: mainHealthAllowsPromotion,
   });
 }
 
-const fullCandidate = candidates[candidates.length - 1];
-if (fullCandidate.state === 'missing') {
-  await dispatchValidation(
-    fullCandidate.candidateSha,
-    fullCandidate.fingerprint,
-    fullCandidate.entries,
+// Promotion gate (ADR 0063): every cumulative prefix that will be exposed on
+// main must have terminal SUCCESS validation evidence BEFORE any merge, so the
+// sequential squash-merges never land an unvalidated tree. `planPrefixPromotion`
+// decides the next action from the per-prefix candidate states.
+const plan = planPrefixPromotion(candidates.map((candidate) => candidate.state));
+
+if (plan.action === 'validate') {
+  // Validate every still-missing prefix in the target range in parallel, so a
+  // full batch's validation wall-time is one candidate run, not N serial runs.
+  await Promise.all(
+    plan.prefixes.map((index) =>
+      dispatchValidation(
+        candidates[index].candidateSha,
+        candidates[index].fingerprint,
+        candidates[index].entries,
+      ),
+    ),
   );
-  process.stdout.write(`validating combined candidate size=${train.length}\n`);
-  process.exit(0);
-}
-if (fullCandidate.state === 'pending') {
-  process.stdout.write(`waiting combined candidate size=${train.length}\n`);
-  process.exit(0);
-}
-if (fullCandidate.state === 'success') {
-  await promotePrefix(train.length);
-  process.exit(0);
-}
-
-const step = nextBisectStep(candidates.map((candidate) => candidate.state));
-if (step.type === 'validate') {
-  const candidate = candidates[step.prefixLength - 1];
-  if (candidate.state === 'missing') {
-    await dispatchValidation(candidate.candidateSha, candidate.fingerprint, candidate.entries);
-  }
-  process.stdout.write(`bisect validating prefix=${step.prefixLength} total=${train.length}\n`);
-  process.exit(0);
-}
-
-const failingEntry = train[step.failingPrefixLength - 1];
-
-// The candidates/train above were built from `mainSha` captured earlier in
-// this run; by the time bisection isolates a failing PR, main may have
-// moved or the PR's queued state may have changed (rebased, retargeted,
-// unlabeled, etc.). Reattest both immediately before mutating anything so a
-// stale bisection result can't block/label a PR for a problem that no
-// longer applies. This check runs unconditionally -- including when
-// step.greenPrefixLength === 0, the case where nothing else in this script
-// (mainHealthAllowsPromotion/promoteExactBatch) re-validates before mutation.
-const [liveMainSha, liveFailingPr] = await Promise.all([
-  request(token, `/repos/${owner}/${repo}/git/ref/heads/main`).then((r) => r.data.object.sha),
-  request(token, `/repos/${owner}/${repo}/pulls/${failingEntry.number}`).then((r) => r.data),
-]);
-const staleReason = promotionStaleReason({
-  currentMain: liveMainSha,
-  currentPr: liveFailingPr,
-  expectedBase: mainSha,
-  pr: failingEntry,
-  repository,
-});
-if (staleReason) {
   process.stdout.write(
-    `bisect stale pr=#${failingEntry.number} reason=${staleReason}; skipping mutation, will rebuild next run\n`,
+    `dispatched ${plan.prefixes.length} prefix validation(s) in parallel prefixes=${plan.prefixes
+      .map((index) => index + 1)
+      .join(',')} total=${train.length}\n`,
   );
   process.exit(0);
 }
 
-await blockEntry(failingEntry, {
-  validationFailure: true,
-  detail: `PR #${failingEntry.number} is the first failing addition in the validated prefix.`,
-});
-if (step.greenPrefixLength > 0) {
-  await promotePrefix(step.greenPrefixLength);
+if (plan.action === 'wait') {
+  process.stdout.write(`waiting on prefix validation(s); total=${train.length}\n`);
+  process.exit(0);
 }
-await dispatchRecovery(failingEntry.number, 'merge-train-validation-failure');
-process.stdout.write(
-  `bisect isolated pr=#${failingEntry.number} green_prefix=${step.greenPrefixLength}\n`,
-);
+
+// plan.action === 'promote': the whole [0, greenPrefixLength) is proven green.
+// Localize the earliest failing PR FIRST (before promoting the green prefix, so
+// promoting does not move main and make the failing-PR reattestation falsely
+// stale). No bisection is needed: every promotable prefix was validated, so the
+// first failing prefix's last-added PR is the culprit. Reattest against live
+// state before mutating so a stale result can't block a PR for a problem that no
+// longer applies.
+if (plan.firstFailure !== -1) {
+  const failingEntry = train[plan.firstFailure];
+  const [liveMainSha, liveFailingPr] = await Promise.all([
+    request(token, `/repos/${owner}/${repo}/git/ref/heads/main`).then((r) => r.data.object.sha),
+    request(token, `/repos/${owner}/${repo}/pulls/${failingEntry.number}`).then((r) => r.data),
+  ]);
+  const staleReason = promotionStaleReason({
+    currentMain: liveMainSha,
+    currentPr: liveFailingPr,
+    expectedBase: mainSha,
+    pr: failingEntry,
+    repository,
+  });
+  if (staleReason) {
+    process.stdout.write(
+      `failing pr=#${failingEntry.number} stale reason=${staleReason}; skipping mutation, will rebuild next run\n`,
+    );
+    process.exit(0);
+  }
+  await blockEntry(failingEntry, {
+    validationFailure: true,
+    detail: `PR #${failingEntry.number} is the first failing addition in the validated prefix.`,
+  });
+  await dispatchRecovery(failingEntry.number, 'merge-train-validation-failure');
+  process.stdout.write(
+    `isolated first failing pr=#${failingEntry.number} green_prefix=${plan.greenPrefixLength}\n`,
+  );
+}
+
+if (plan.greenPrefixLength > 0) {
+  await promotePrefix(plan.greenPrefixLength);
+}
+process.exit(0);

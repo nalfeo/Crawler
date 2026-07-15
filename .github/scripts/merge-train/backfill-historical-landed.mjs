@@ -75,6 +75,17 @@ async function hasLandedComment(number) {
 async function backfill({ number, sha }) {
   const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
 
+  // SAFETY PRECONDITION FIRST: only a genuinely historical force-push-era PR
+  // (closed + never GitHub-merged) may receive this backfill. Verify BEFORE any
+  // mutation so a mistaken target (an open PR, or a truly-merged PR) never gets
+  // a false historical record written to it.
+  const isHistorical = pr.state === 'closed' && pr.merged === false;
+  if (!isHistorical) {
+    throw new Error(
+      `#${number} is not a closed/unmerged historical PR (state=${pr.state}, merged=${pr.merged}); refusing to write a historical landed record to it`,
+    );
+  }
+
   // Ensure the durable label (idempotent: POST is a no-op if already present).
   if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
     await request(token, `/repos/${owner}/${repo}/issues/${number}/labels`, {
@@ -91,7 +102,7 @@ async function backfill({ number, sha }) {
     });
   }
 
-  // VERIFY the historical GitHub state is unchanged (never falsified).
+  // Re-verify the historical GitHub state is still unchanged (never falsified).
   const after = (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
   const preserved = after.state === 'closed' && after.merged === false;
   process.stdout.write(

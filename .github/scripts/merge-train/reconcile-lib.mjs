@@ -341,6 +341,7 @@ export async function promoteExactBatch({
   updateStatus,
   postLandedComment,
   publishPostconditionCheck,
+  verifyPrefixEvidence = async () => true,
   provenanceEntries = entries,
   positions = entries.map((_, index) => index + 1),
   recordMapping = () => {},
@@ -483,6 +484,17 @@ export async function promoteExactBatch({
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
     const currentPr = currentPrs[index];
+    // Invariant: never merge a PR onto main until its cumulative prefix T_i has
+    // successful trusted validation evidence bound to that exact prefix's
+    // candidate SHA + fingerprint (ADR 0063). Re-read it live immediately before
+    // merging so a check that was deleted/superseded between the reconcile gate
+    // and this merge fails closed rather than exposing an unvalidated tree.
+    if (!(await verifyPrefixEvidence(index))) {
+      process.stdout.write(
+        `stale promotion pr=#${entry.number}; prefix ${index + 1} lost its validation evidence; rebuilding next reconcile\n`,
+      );
+      return false;
+    }
     const expectedParent = index === 0 ? expectedBase : landed[index - 1].sha;
     const expectedTree = git(['rev-parse', `${candidateShas[index]}^{tree}`]);
     // Base-CAS: GitHub's merge API has no expected-base parameter, so assert
@@ -542,7 +554,7 @@ export async function promoteExactBatch({
       await setLabel(entry.number, LANDED_LABEL);
       await removeLabel(entry.number, QUEUE_LABEL);
       await removeLabel(entry.number, BLOCKED_LABEL);
-      await postLandedComment(entry.number, landedSha, finalCandidateSha);
+      await postLandedComment(entry.number, landedSha, candidateShas[index]);
       await updateStatus(
         entry.number,
         renderStatus({
@@ -649,10 +661,13 @@ export async function landedCommitProofError({
  * Returns `{ ok: true, sha }` with GitHub's REAL merge commit SHA on success.
  * Returns `{ ok: false, retryable: true, reason }` for a stale/transient
  * outcome (head moved, not-yet-mergeable, 405/409) so the caller rebuilds on
- * the next reconcile. THROWS a MergeTrainPromotionError for a
- * policy/configuration failure (403/422/5xx or a network error) so a broken
- * App-bypass/protection setup fails loudly rather than being misclassified as
- * a stale candidate and silently retried forever.
+ * the next reconcile. Returns `{ ok: false, retryable: false, reason }` for a
+ * policy/configuration or ambiguous failure (403/422/5xx, a network error, or a
+ * response not recorded merged); the caller then publishes the
+ * promotion-postcondition failure check and fails loudly (nothing landed for
+ * this entry, so it is safe to surface hard rather than be misclassified as a
+ * stale candidate and silently retried forever). It does not throw, so the
+ * caller's fail-closed postcondition publish is never bypassed.
  */
 export function createMergePullRequest({
   request,
@@ -711,16 +726,25 @@ export function createMergePullRequest({
           reason: `merge API rejected the merge (${status}): ${error.message}`,
         };
       }
-      throw new MergeTrainPromotionError(
-        `merge API failed for PR #${entry.number} (${status ?? 'network'}): ${error.message}`,
-        { cause: error },
-      );
+      // 403/422/5xx/network are policy/configuration or ambiguous failures. We
+      // return a NON-retryable result (not throw) so the caller publishes the
+      // promotion-postcondition failure check and then fails loudly -- throwing
+      // here instead would bubble past that fail-closed publish. Nothing landed
+      // for this entry, so it is safe to surface hard and re-evaluate from real
+      // state next reconcile.
+      return {
+        ok: false,
+        retryable: false,
+        reason: `merge API failed (${status ?? 'network'}): ${error.message}`,
+      };
     }
     const data = response.data || {};
     if (data.merged !== true || !/^[0-9a-f]{40}$/i.test(String(data.sha || ''))) {
-      throw new MergeTrainPromotionError(
-        `merge API did not record PR #${entry.number} as merged (merged=${data.merged}, sha=${data.sha})`,
-      );
+      return {
+        ok: false,
+        retryable: false,
+        reason: `merge API did not record PR #${entry.number} as merged (merged=${data.merged}, sha=${data.sha})`,
+      };
     }
     return { ok: true, sha: String(data.sha) };
   };

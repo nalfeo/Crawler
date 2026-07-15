@@ -183,6 +183,38 @@ export function nextBisectStep(prefixStates) {
   return { type: 'validate', prefixLength: Math.floor((green + red) / 2) };
 }
 
+// Decide the next promotion action under the "every promoted prefix is validated
+// before it is exposed on main" invariant (ADR 0063). `prefixStates[i]` is the
+// candidate-validation state of cumulative prefix T_(i+1) (one of
+// 'missing' | 'pending' | 'success' | 'failure').
+//
+// The intended green prefix to promote is [0, target) where `target` is the
+// earliest failing prefix (or the whole batch if none fails); prefixes at/after
+// the earliest failure contain the culprit and are irrelevant. Every prefix in
+// that target range must have terminal SUCCESS evidence before any merge:
+//   - if any target-range prefix is still 'missing' -> validate them (the
+//     caller dispatches all of them in parallel);
+//   - else if any is still 'pending' -> wait for the validators;
+//   - else the whole [0, target) is proven green -> promote it, and localize
+//     the earliest failing PR (target) directly (no bisection needed).
+export function planPrefixPromotion(prefixStates) {
+  if (!Array.isArray(prefixStates) || prefixStates.length === 0) {
+    return { action: 'noop' };
+  }
+  const firstFailure = prefixStates.indexOf('failure');
+  const target = firstFailure === -1 ? prefixStates.length : firstFailure;
+  const relevant = prefixStates.slice(0, target);
+  const missing = [];
+  let pending = false;
+  relevant.forEach((state, index) => {
+    if (state === 'missing') missing.push(index);
+    else if (state === 'pending') pending = true;
+  });
+  if (missing.length > 0) return { action: 'validate', prefixes: missing, firstFailure };
+  if (pending) return { action: 'wait', firstFailure };
+  return { action: 'promote', greenPrefixLength: target, firstFailure };
+}
+
 export function commitTimestamp(entry) {
   const digest = createHash('sha256')
     .update(`${entry.number}\0${compact(entry.head?.sha)}\0${compact(entry.title)}`)

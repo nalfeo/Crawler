@@ -25,7 +25,20 @@ async function resolve() {
       await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)
     ).data;
     const fromTrailer = parseMergeTrainPrNumber(commit?.commit?.message || '');
-    if (fromTrailer) return String(fromTrailer);
+    if (fromTrailer) {
+      // Corroborate the trailer against GitHub's own merge record before
+      // trusting it: the declared PR must actually be merged by THIS commit.
+      // This rejects an unrelated commit that merely quotes a `Merge-Train-PR:`
+      // line in its body, which would otherwise misdirect the comment.
+      try {
+        const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${fromTrailer}`)).data;
+        if (pr?.merged === true && pr.merge_commit_sha === sha) {
+          return String(fromTrailer);
+        }
+      } catch {
+        // fall through to GitHub inference
+      }
+    }
   } catch {
     // fall through to GitHub inference
   }
