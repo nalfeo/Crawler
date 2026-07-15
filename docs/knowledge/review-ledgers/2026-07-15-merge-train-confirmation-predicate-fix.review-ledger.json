@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-15",
+  "session_slug": "merge-train-confirmation-predicate-fix",
+  "task_title": "Merge-train promotion confirmation predicate fix (5th gap)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.5",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "convergent",
+      "notes": "Plan reviewed via rubber-duck agent (gpt-5.5) before implementing the isPostPushConfirmationSatisfied/createWaitForMergedPr fix. No blocking concerns. Feedback incorporated: document predicate as post-push corroboration not standalone proof; extract entire polling loop into a testable factory since reconcile.mjs is an untestable top-level CLI script; update stale comments in both files; add test cases for missing fields/closed+merged:false regression/OR-behavior; keep ~77s poll budget as safety margin; confirmed fix is a correction not a weakening of the trust invariant.",
+      "model": "gpt-5.5"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "No significant issues found. Verified predicate correctness, poll-loop boundary math (pollDelaysMs.length+1 requests), reconcile.mjs wiring into promoteExactBatch, preserved fail-closed behavior for genuinely unconfirmed entries, test coverage of the regression case and all poller paths, ~77s budget comment accuracy, and doc consistency between DEC-024 (historical, left as-is) and new DEC-025."
+        }
+      ]
+    }
+  }
+}
