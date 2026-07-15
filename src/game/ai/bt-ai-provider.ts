@@ -5893,8 +5893,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (progressSuppressed) {
-      // Still notify the committed hunt so the suppression-recovery branch in
-      // updateFloor2HuntProgress fires (advances patrol) even while suppressed.
+      // progressSuppressed is true when combat or navigation stalls have
+      // temporarily blocked quest-progress navigation (frameCount <
+      // progressGoalSuppressedUntilFrame). Still notify the committed hunt so
+      // the suppression-recovery branch in updateFloor2HuntProgress fires
+      // (advances patrol) even while suppressed.
       if (this.floor2HuntFamilyId) {
         this.updateFloor2HuntProgress(world, this.floor2HuntFamilyId);
       }
