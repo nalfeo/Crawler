@@ -1,5 +1,16 @@
 [
   {
+    "commit": "33fe34fa1db8c8239d5939bd4d7f5699cc886968",
+    "commitDate": "2026-07-15T07:20:55Z",
+    "commitSubject": "fix(ci-policy): move merge-train App bypass to a repository ruleset (GH006) (#1148)",
+    "capturedAt": "2026-07-15T08:18:31.616Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29397476975",
+    "winRate": 0.945,
+    "totalWins": 567,
+    "totalRuns": 600,
+    "path": "by-sha/33fe34fa1db8c8239d5939bd4d7f5699cc886968.json"
+  },
+  {
     "commit": "88828e6625e70bdc54fe7a7334791c1dd3961d9f",
     "commitDate": "2026-07-14T15:49:36-07:00",
     "commitSubject": "fix(ci): unblock merge train rollout (#1144)",
