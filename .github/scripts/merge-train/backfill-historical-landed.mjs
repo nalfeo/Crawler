@@ -116,6 +116,30 @@ async function backfill({ number, sha }) {
   }
   const resolvedSha = landedCommit.sha || sha;
 
+  // A readable, trailer-bearing commit is NOT proof it reached `main` -- the
+  // immutable candidate refs also contain these trailers. Verify the commit is
+  // actually an ancestor of current `main` via the compare API before claiming
+  // it landed. compare base...head = `${resolvedSha}...main`: status `ahead`
+  // (main has commits after it) or `identical` (it IS main's tip) both mean the
+  // commit is reachable from main; `behind`/`diverged` means it is not.
+  let comparison;
+  try {
+    comparison = (
+      await request(
+        token,
+        `/repos/${owner}/${repo}/compare/${encodeURIComponent(resolvedSha)}...main`,
+      )
+    ).data;
+  } catch (error) {
+    throw new Error(
+      `#${number}: could not verify ${resolvedSha} is on main (${error?.status ?? 'network'}); refusing to backfill`,
+    );
+  }
+  if (comparison?.status !== 'ahead' && comparison?.status !== 'identical') {
+    throw new Error(
+      `#${number}: commit ${resolvedSha} is not an ancestor of main (compare status: ${comparison?.status}); refusing to claim it landed`,
+    );
+  }
   // Ensure the durable label (idempotent: POST is a no-op if already present).
   if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
     await request(token, `/repos/${owner}/${repo}/issues/${number}/labels`, {

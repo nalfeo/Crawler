@@ -31,7 +31,6 @@ import {
   MAX_TRAIN_SIZE,
   NOOP_LABEL,
   parseEnabledFlag,
-  parseMergeTrainPrNumber,
   planPrefixPromotion,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
@@ -327,16 +326,17 @@ async function disableAutoMerge(pr) {
   }
 }
 
-// Crash-after-merge recovery. Because promotion now uses real GitHub merges,
-// GitHub's own merged-state IS the durable transaction journal: a PR that was
-// squash-merged but whose landed-signal update (label/comment) did not
-// complete still carries QUEUE_LABEL while being GitHub-merged. Find those and
-// backfill the durable landed signal idempotently. It backfills ONLY a PR that
-// is genuinely train-landed: merged into `main`, and whose merge commit carries
-// this PR's `Merge-Train-PR` trailer (proving the train produced it, not a
-// manual/legacy merge or a merge into some other branch). A closed-but-UNMERGED
-// PR, a PR merged elsewhere, or a non-train merge is never relabeled landed
-// (relabeling those would be a false landed signal).
+// Crash-recovery for an INTERRUPTED landing. Promotion writes signals in a
+// crash-safe order (reconcile-lib promoteExactBatch): LANDED_LABEL first (the
+// durable proof-complete marker, set ONLY after landedCommitProofError passed),
+// then the comment/status, then QUEUE_LABEL removed LAST. So a PR still carrying
+// QUEUE_LABEL after being merged is an interrupted landing. We finish its
+// cleanup idempotently ONLY when it carries the LANDED_LABEL proof marker --
+// which guarantees the full parent/tree/merged proof already ran for it. A
+// merged+queued PR that LACKS the marker crashed before the proof completed (or
+// is a non-train/manual/elsewhere merge); we must NOT assert it landed, so we
+// leave QUEUE_LABEL in place and log it for human review rather than claim an
+// unproven landing.
 async function reconcileLandedSignals() {
   const staleClosed = await paginate(
     token,
@@ -348,29 +348,22 @@ async function reconcileLandedSignals() {
     // Must be genuinely merged INTO main (not closed-unmerged, not merged into
     // another branch after a retarget).
     if (pr.merged !== true || pr.base?.ref !== 'main') continue;
-    const landedSha = pr.merge_commit_sha;
-    if (!/^[0-9a-f]{40}$/i.test(String(landedSha || ''))) continue;
-    // Prove train provenance: the landed commit must carry this PR's trailer.
-    // This rejects a manually/legacy-merged queued PR (no trailer) so it is not
-    // falsely labeled as train-landed.
-    let landedCommit;
-    try {
-      landedCommit = await fetchCommit(landedSha);
-    } catch {
+    const hasProofMarker = (pr.labels || []).some((label) => label.name === LANDED_LABEL);
+    if (!hasProofMarker) {
+      // Merged but the proof-complete marker is absent: the promotion crashed
+      // before landedCommitProofError finished, OR this is not a train landing.
+      // Do NOT assert it landed (that would claim an unproven/false landing).
+      process.stdout.write(
+        `WARN: pr=#${pr.number} is merged into main but lacks the ${LANDED_LABEL} proof marker; leaving ${QUEUE_LABEL} for human review rather than asserting an unproven landing\n`,
+      );
       continue;
     }
-    if (parseMergeTrainPrNumber(landedCommit?.commit?.message || '') !== pr.number) continue;
-    // Defense-in-depth: the landed commit must be linear (a squash merge has
-    // exactly one parent). Refuse to backfill a non-linear commit even if the
-    // trailer matches.
-    if ((landedCommit?.parents || []).length !== 1) continue;
-    if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
-      await setLabel(pr.number, LANDED_LABEL);
-    }
+    // Proof marker present => the full proof already ran for this exact landing.
+    // Finish the interrupted cleanup idempotently.
+    await postLandedComment(pr.number, pr.merge_commit_sha, '');
     await removeLabel(pr.number, QUEUE_LABEL);
     await removeLabel(pr.number, BLOCKED_LABEL);
-    await postLandedComment(pr.number, landedSha, '');
-    process.stdout.write(`reconciled landed signal for train-merged pr=#${pr.number}\n`);
+    process.stdout.write(`finished interrupted landing cleanup for pr=#${pr.number}\n`);
   }
 }
 

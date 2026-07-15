@@ -552,12 +552,17 @@ export async function promoteExactBatch({
     recordMapping(entry.number, landedSha);
     // Durable landed signal -- only AFTER the merge response + full proof. A
     // label/comment hiccup must never abort the batch or re-close a genuinely
-    // merged PR; record and continue, and startup reconciliation backfills any
-    // missing signal idempotently next run.
+    // merged PR; record and continue, and startup reconciliation finishes any
+    // interrupted cleanup idempotently next run.
+    //
+    // Ordering matters for crash recovery: set LANDED_LABEL FIRST (it is the
+    // durable proof-complete marker -- reconcileLandedSignals only finishes a
+    // landing that carries it), post the comment/status, and remove QUEUE_LABEL
+    // (the recovery journal key) LAST. If any middle step fails, the PR still
+    // carries both LANDED (proven) and QUEUE (discoverable), so recovery can
+    // finish it; removing QUEUE early would hide an incomplete landing forever.
     try {
       await setLabel(entry.number, LANDED_LABEL);
-      await removeLabel(entry.number, QUEUE_LABEL);
-      await removeLabel(entry.number, BLOCKED_LABEL);
       await postLandedComment(entry.number, landedSha, candidateShas[index]);
       await updateStatus(
         entry.number,
@@ -568,6 +573,8 @@ export async function promoteExactBatch({
           detail: `Landed on main as ${landedSha}; GitHub recorded this PR as merged.`,
         }),
       );
+      await removeLabel(entry.number, QUEUE_LABEL);
+      await removeLabel(entry.number, BLOCKED_LABEL);
     } catch (error) {
       process.stdout.write(
         `landed pr=#${entry.number} sha=${landedSha} but landed-signal update failed: ${
@@ -637,12 +644,19 @@ export async function landedCommitProofError({
   // Poll the eventually-consistent reads (main ref, PR merged-state, and the
   // commit object) until they reflect the just-completed merge, or the budget
   // is exhausted. Break as soon as they are consistent so the happy path does
-  // not sleep at all.
+  // not sleep at all. Each read is wrapped: a transient 5xx/network failure on
+  // any of them must retry within the budget, NOT reject the proof immediately
+  // (which would bypass the caller's postcondition publish on a valid land).
   let commit = null;
   let mainAfter;
   let prAfter;
   for (let attempt = 0; attempt <= pollDelaysMs.length; attempt += 1) {
-    [mainAfter, prAfter] = await Promise.all([fetchCurrentMain(), fetchCurrentPr(entry, index)]);
+    try {
+      [mainAfter, prAfter] = await Promise.all([fetchCurrentMain(), fetchCurrentPr(entry, index)]);
+    } catch {
+      mainAfter = undefined;
+      prAfter = undefined;
+    }
     if (!commit) {
       try {
         commit = await fetchCommit(landedSha);
@@ -780,17 +794,24 @@ export function createMergePullRequest({
       // caller runs the full post-merge proof on it (rather than skipping the
       // proof and letting recovery later trust it unverified). Only if it truly
       // did not merge do we return a non-retryable failure (so the caller
-      // publishes the postcondition check and fails loudly).
-      try {
-        const after = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
-        if (
-          after?.merged === true &&
-          /^[0-9a-f]{40}$/i.test(String(after.merge_commit_sha || ''))
-        ) {
-          return { ok: true, sha: String(after.merge_commit_sha) };
+      // publishes the postcondition check and fails loudly). Merged-state is
+      // eventually consistent (~20s lag), so POLL (bounded) before concluding
+      // the PUT did not merge -- a single stale read could otherwise misreport a
+      // successful merge as a hard failure.
+      for (let attempt = 0; attempt <= mergeablePollDelaysMs.length; attempt += 1) {
+        try {
+          const after = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`))
+            .data;
+          if (
+            after?.merged === true &&
+            /^[0-9a-f]{40}$/i.test(String(after.merge_commit_sha || ''))
+          ) {
+            return { ok: true, sha: String(after.merge_commit_sha) };
+          }
+        } catch {
+          // transient re-read failure; keep polling within the budget
         }
-      } catch {
-        // fall through to the non-retryable failure below
+        if (attempt < mergeablePollDelaysMs.length) await sleep(mergeablePollDelaysMs[attempt]);
       }
       return {
         ok: false,

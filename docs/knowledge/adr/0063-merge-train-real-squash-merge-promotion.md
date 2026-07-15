@@ -181,23 +181,25 @@ and the completion-signal contract that four prior gap-fix sessions built on.
   rename detection). Today's repo has none of those and only LF normalization,
   so the risk is low; DEC-004d fails closed if it ever occurs.
 - **RSK-003** (trust-boundary shift from ADR 0060, flagged for human awareness):
-  real sequential merges expose each landed PR's own tree — **including its
-  `.github/workflows/**`definitions** — as a real commit on`main`, and the
-push of that commit runs those workflow definitions (some privileged, e.g.
-`merge-train.yml`mints an App token). The old atomic force-push uniquely
-avoided this by only ever exposing the full validated candidate. This exposure
-is **inherent** to obtaining real`merged`semantics (GitHub must perform the
-merge, one PR at a time) and is the same risk the repository already carries
-for any PR merged to`main`. It is mitigated by the unchanged admission gate —
-a train PR admits only after its required `ci`+`Security checks`pass and all
-review threads resolve — and every promoted prefix additionally passes`verify:fast`+`security:check`(DEC-011), the same gate the final candidate
-passes. It is NOT a regression relative to normally merging PRs to`main`; it
-only gives up the atomic model's exceptional "intermediates never exposed"
-property, which cannot coexist with real merged semantics. Reducing to
-one-PR-per-cycle (ALT-001) does not remove this exposure — each PR still lands
-on `main` and runs its workflows. Privileged workflow changes remain governed
-  by the repository's normal CODEOWNERS / required-review / required-CI
-  protections; the train does **not** weaken, bypass, or shortcut any of those
+  real sequential merges expose each landed PR's own tree — including its
+  workflow definitions under `.github/workflows/` — as a real commit on `main`,
+  and the push of that commit runs those workflow definitions (some privileged;
+  for example `merge-train.yml` mints an App token). The old atomic force-push
+  uniquely avoided this by only ever exposing the full validated candidate. This
+  exposure is inherent to obtaining real GitHub `merged` semantics (GitHub must
+  perform the merge, one PR at a time) and is the same risk the repository
+  already carries for any PR merged to `main`. It is mitigated by the unchanged
+  admission gate — a train PR admits only after its required `ci` and
+  `Security checks` pass and all review threads resolve — and every promoted
+  prefix additionally passes `verify:fast` and `security:check` (DEC-011), the
+  same gate the final candidate passes. It is NOT a regression relative to
+  normally merging PRs to `main`; it only gives up the atomic model's exceptional
+  "intermediates never exposed" property, which cannot coexist with real merged
+  semantics. Reducing to one-PR-per-cycle (ALT-001) does not remove this exposure
+  — each PR still lands on `main` and runs its workflows. Privileged workflow
+  changes remain governed by the repository's normal CODEOWNERS / required-review
+  / required-CI protections; the train does **not** weaken, bypass, or shortcut
+  any of those
   admission checks (it only replaces how a fully-admitted PR is landed), and it
   deliberately does not add a workflow-file-change admission ban (an accepted
   scoping decision — the existing protections are the control).

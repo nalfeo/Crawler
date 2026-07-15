@@ -41,8 +41,10 @@ Core (`.github/scripts/merge-train/`):
   expected base + `tree(landed)==tree(candidate prefix)` + `merged_at`) → only
   then the durable landed label/comment. Added `createMergePullRequest`
   (bounded mergeability poll; `PUT /pulls/{n}/merge` squash with head-`sha`
-  pin + `Merge-Train-PR` trailer; 405/409 retryable, 403/422/5xx throw,
-  `merged!=true` throw), `landedCommitProofError`, `MergeTrainPromotionError`.
+  pin + `Merge-Train-PR` trailer; 405/409 retryable, 403/422/5xx and
+  `merged!=true` return a non-retryable `{ok:false}` result so the caller
+  publishes the postcondition check and fails loudly — never throwing past that
+  fail-closed publish), `landedCommitProofError`, `MergeTrainPromotionError`.
   Removed the retired `isPostPushConfirmationSatisfied`/`createWaitForMergedPr`
   (the forbidden `state===closed` predicate).
 - **reconcile.mjs** — wired `createMergePullRequest`, `fetchCommit`,

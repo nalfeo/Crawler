@@ -1,48 +1,56 @@
 import { request } from '../ci-recovery/github.mjs';
 import { parseMergeTrainPrNumber } from './state.mjs';
 
-// Resolve the origin PR for a landed commit and print its number to stdout
-// (empty when none resolves). Best-effort by design: every failure path prints
-// nothing and exits 0 so callers degrade gracefully.
+// Resolve the origin PR for a landed commit and print its number to stdout.
 //
-// Resolution order (durable mapping first, GitHub inference only as fallback,
-// per the merge-train completion-semantics design):
+// Exit codes let callers distinguish a genuine no-match from an outage:
+//   - exit 0 + a number  => resolved.
+//   - exit 0 + empty      => resolved cleanly to NO associated PR (e.g. a direct
+//                            push to main, or a PR-less commit).
+//   - exit 3 + empty      => resolution could not be completed because a GitHub
+//                            API request FAILED (outage/permissions). Callers
+//                            (deploy.yml / manual-preview.yml) treat this as a
+//                            warning, not a "no PR" notice.
+//
+// Resolution order (durable mapping first, GitHub inference only as fallback):
 //   1. The `Merge-Train-PR: <n>` trailer written into the squash commit by the
-//      merge train. This is the reliable mapping that does not depend on
-//      GitHub's commit-to-PR inference.
-//   2. GitHub's own commit-to-PR association, preferring the PR whose merge
-//      commit is exactly this SHA.
+//      merge train, corroborated against GitHub's own merge record.
+//   2. GitHub's commit-to-PR association, preferring the PR whose merge commit
+//      is exactly this SHA.
 const [sha] = process.argv.slice(2);
 const repository = process.env.GITHUB_REPOSITORY || '';
 const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
 const [owner, repo] = repository.split('/');
 
-async function resolve() {
-  if (!sha || !owner || !repo || !token) return '';
+const EXIT_API_FAILURE = 3;
 
+async function resolve() {
+  if (!sha || !owner || !repo || !token) {
+    // Missing inputs is a configuration error, not a clean no-match.
+    return { number: '', apiFailed: true };
+  }
+
+  let apiFailed = false;
+
+  // 1. Durable trailer, corroborated against GitHub's merge record.
   try {
     const commit = (
       await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)
     ).data;
     const fromTrailer = parseMergeTrainPrNumber(commit?.commit?.message || '');
     if (fromTrailer) {
-      // Corroborate the trailer against GitHub's own merge record before
-      // trusting it: the declared PR must actually be merged by THIS commit.
-      // This rejects an unrelated commit that merely quotes a `Merge-Train-PR:`
-      // line in its body, which would otherwise misdirect the comment.
-      try {
-        const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${fromTrailer}`)).data;
-        if (pr?.merged === true && pr.merge_commit_sha === sha) {
-          return String(fromTrailer);
-        }
-      } catch {
-        // fall through to GitHub inference
+      const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${fromTrailer}`)).data;
+      if (pr?.merged === true && pr.merge_commit_sha === sha) {
+        return { number: String(fromTrailer), apiFailed: false };
       }
     }
   } catch {
-    // fall through to GitHub inference
+    // Record the failure and fall back to inference; only report an outage if
+    // inference also cannot complete.
+    apiFailed = true;
   }
 
+  // 2. GitHub commit-to-PR inference.
   try {
     const pulls = (
       await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/pulls`, {
@@ -51,17 +59,25 @@ async function resolve() {
     ).data;
     if (Array.isArray(pulls) && pulls.length > 0) {
       const exact = pulls.find((pr) => pr.merge_commit_sha === sha);
-      return String((exact || pulls[0]).number);
+      return { number: String((exact || pulls[0]).number), apiFailed: false };
     }
+    // The inference request succeeded and found no PR: a genuine clean no-match.
+    return { number: '', apiFailed: false };
   } catch {
-    // fall through
+    apiFailed = true;
   }
 
-  return '';
+  return { number: '', apiFailed };
 }
 
 resolve()
-  .then((number) => {
-    if (number) process.stdout.write(number);
+  .then(({ number, apiFailed }) => {
+    if (number) {
+      process.stdout.write(number);
+      return;
+    }
+    if (apiFailed) process.exitCode = EXIT_API_FAILURE;
   })
-  .catch(() => {});
+  .catch(() => {
+    process.exitCode = EXIT_API_FAILURE;
+  });

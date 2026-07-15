@@ -6,10 +6,17 @@ export const NOOP_LABEL = 'merge-train-noop';
 // Durable, permanent marker that a PR's validated change actually reached
 // `main` through the train. Unlike the transient QUEUE/BLOCKED labels (which
 // are added and removed as a PR moves through admission and promotion), this
-// label is only ever added -- after GitHub itself has recorded the PR as
-// merged with a real merge commit -- and is never removed by the train. It is
-// the durable, queryable signal downstream automation and humans use to find
-// train-landed PRs regardless of GitHub's own merged-state bookkeeping.
+// label is only ever added and is never removed by the train. It carries the
+// same meaning in two cases: (a) the normal path, where promotion adds it only
+// AFTER the full post-merge proof passes and GitHub recorded the PR merged with
+// a real merge commit (it doubles as the proof-complete recovery marker); and
+// (b) the historical backfill (backfill-historical-landed.mjs), which adds it to
+// force-push-era PRs whose commit reached `main` even though GitHub still
+// records them `merged:false` -- those carry a truthful comment stating exactly
+// that. So the label means "this PR's change is on main via the train", NOT by
+// itself "GitHub records this PR merged"; consumers needing the latter must
+// check GitHub's merged-state (which the normal path guarantees and the
+// backfilled comment explicitly disclaims).
 export const LANDED_LABEL = 'merge-train-landed';
 export const CANDIDATE_CHECK_NAME = 'merge-train-candidate';
 export const REQUIRED_CHECK_NAME = 'merge-train';

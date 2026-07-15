@@ -391,7 +391,13 @@ test('createMergePullRequest squash-merges once mergeable and returns the real m
     if (options.method === 'PUT') return { merged: true, sha: LAND1 };
     return mergeableOpen;
   });
-  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
   const result = await mergePullRequest(
     { number: 1 },
     { expectedHeadSha: HEAD1, commitTitle: 'feat (#1)', commitMessage: 'Merge-Train-PR: 1' },
@@ -427,7 +433,13 @@ test('createMergePullRequest waits for GitHub to finish computing mergeability',
 
 test('createMergePullRequest treats a moved head as retryable and never merges', async () => {
   const { request, calls } = mergeRequestStub(() => ({ head: { sha: HEAD2 }, mergeable: true }));
-  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
   const result = await mergePullRequest(
     { number: 1 },
     { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
@@ -443,7 +455,13 @@ test('createMergePullRequest treats mergeable:false as retryable', async () => {
     mergeable: false,
     mergeable_state: 'dirty',
   }));
-  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
   const result = await mergePullRequest(
     { number: 1 },
     { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
@@ -462,7 +480,13 @@ for (const status of [405, 409]) {
       }
       return mergeableOpen;
     });
-    const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+    const mergePullRequest = createMergePullRequest({
+      request,
+      token: 't',
+      owner: 'o',
+      repo: 'r',
+      sleep: async () => {},
+    });
     const result = await mergePullRequest(
       { number: 1 },
       { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
@@ -481,7 +505,13 @@ test('createMergePullRequest returns a non-retryable result on a policy/configur
     }
     return mergeableOpen;
   });
-  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
   const result = await mergePullRequest(
     { number: 1 },
     { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
@@ -496,7 +526,13 @@ test('createMergePullRequest returns a non-retryable result when the merge is no
     if (options.method === 'PUT') return { merged: false, sha: null };
     return mergeableOpen;
   });
-  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
   const result = await mergePullRequest(
     { number: 1 },
     { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
@@ -512,7 +548,13 @@ test('createMergePullRequest treats a mergeability-poll GET failure as retryable
     error.status = 503;
     return error;
   });
-  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
   const result = await mergePullRequest(
     { number: 1 },
     { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
@@ -538,7 +580,13 @@ test('createMergePullRequest disambiguates an ambiguous PUT failure that actuall
       ? { head: { sha: HEAD1 }, merged: true, merge_commit_sha: LAND1 }
       : mergeableOpen;
   });
-  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
   const result = await mergePullRequest(
     { number: 1 },
     { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
@@ -559,7 +607,13 @@ test('createMergePullRequest returns non-retryable when an ambiguous PUT failure
       ? { head: { sha: HEAD1 }, merged: false, merge_commit_sha: null }
       : mergeableOpen;
   });
-  const mergePullRequest = createMergePullRequest({ request, token: 't', owner: 'o', repo: 'r' });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
   const result = await mergePullRequest(
     { number: 1 },
     { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
@@ -607,6 +661,22 @@ test('landedCommitProofError polls through read-replica lag before succeeding', 
   });
   assert.equal(error, null);
   assert.ok(mainReads >= 3 && prReads >= 3);
+});
+
+test('landedCommitProofError retries a transient read failure instead of failing closed', async () => {
+  // A transient 5xx on the main/PR read must be retried within the budget, not
+  // rejected immediately (which would bypass the caller's postcondition publish).
+  let mainReads = 0;
+  const error = await landedCommitProofError({
+    ...proofDefaults,
+    fetchCurrentMain: async () => {
+      mainReads += 1;
+      if (mainReads < 2) throw new Error('503 transient');
+      return LAND1;
+    },
+  });
+  assert.equal(error, null);
+  assert.ok(mainReads >= 2);
 });
 
 test('landedCommitProofError rejects an invalid landed SHA', async () => {
