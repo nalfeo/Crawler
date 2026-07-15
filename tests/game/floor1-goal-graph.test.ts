@@ -7,6 +7,7 @@ import {
 } from '../../src/game/ai/floor1-goal-graph.js';
 import {
   planObjectiveRoute,
+  IN_PLACE_LOCATION,
   type TravelOracle,
 } from '../../src/game/ai/objective-route-planner.js';
 import type { Floor1RunPlannerSnapshot, RunPlannerParams } from '../../src/game/ai/run-planner.js';
@@ -250,6 +251,24 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
     });
     expect(route.routeHeadId).toBe(route.steps[0]?.goalId ?? null);
     expect(route.nextActionableGoalId).toBe(route.routeHeadId);
+  });
+
+  it('treats missing straight-line oracle endpoints as unreachable while keeping in-place goals free', () => {
+    const oracle = makeStraightLineTravelOracle(
+      new Map([
+        [PLAYER_START_LOCATION, { x: 0, y: 0 }],
+        ['known', { x: 12, y: 0 }],
+      ]),
+      PARAMS.moveSpeedFtPerMs,
+    );
+
+    expect(oracle.travelCost(PLAYER_START_LOCATION, 'known')).toBeGreaterThan(0);
+    expect(oracle.travelCost(PLAYER_START_LOCATION, '__missing__')).toBe(Infinity);
+    expect(oracle.travelCost('__missing__', '__missing__')).toBe(Infinity);
+    expect(oracle.travelCost(PLAYER_START_LOCATION, 'known')).toBe(
+      Math.round(12 / PARAMS.moveSpeedFtPerMs),
+    );
+    expect(oracle.travelCost(PLAYER_START_LOCATION, IN_PLACE_LOCATION)).toBe(0);
   });
 
   it('drops completed goals from the graph entirely (mirrors "completed state removes nodes")', () => {

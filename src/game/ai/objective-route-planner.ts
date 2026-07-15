@@ -194,8 +194,10 @@ function assertValidTravelCost(value: number): void {
   }
 }
 
-/** Lexicographic compare of two goal-id path arrays. Shorter-is-not-implied:
- * only called on paths of equal length (equal mask popcount) in this module. */
+/** Lexicographic compare of two goal-id path arrays with deterministic
+ * prefix/length ordering (`a.length - b.length` after shared prefixes). Used
+ * both for equal-mask DP ties and final-route ties where optional bundles can
+ * yield paths of different lengths. */
 function comparePathsLex(a: readonly GoalId[], b: readonly GoalId[]): number {
   const len = Math.min(a.length, b.length);
   for (let i = 0; i < len; i++) {

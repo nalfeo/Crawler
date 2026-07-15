@@ -602,10 +602,11 @@ export function makeStraightLineTravelOracle(
   const speed = Math.max(moveSpeedFtPerMs, EPSILON);
   return {
     travelCost(from, to) {
-      if (from === to) return 0;
-      const a = to === IN_PLACE_LOCATION ? undefined : locations.get(to);
+      if (to === IN_PLACE_LOCATION) return 0;
+      const a = locations.get(to);
       const b = locations.get(from);
-      if (!a || !b) return 0;
+      if (!a || !b) return Infinity;
+      if (from === to) return 0;
       const distanceFt = Math.hypot(a.x - b.x, a.y - b.y);
       return Math.round(distanceFt / speed);
     },

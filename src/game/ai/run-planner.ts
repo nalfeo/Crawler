@@ -168,9 +168,9 @@ export interface Floor1RunPlan {
    * The unlock-aware goal-graph planner's chosen route head — the first
    * not-yet-completed goal id in the exact-optimum ordering computed by
    * `planObjectiveRoute` over the declarative Floor 1 goal graph (see
-   * `floor1-goal-graph.ts`). `null` only when nothing remains (floor clear) or
-   * a committed quest-giver detour is the current first leg (in which case
-   * the detour itself, not a graph goal, is what the agent should act on).
+   * `floor1-goal-graph.ts`). This remains the first pending graph goal even
+   * while a committed quest-giver detour is the current first leg in
+   * {@link segments}; `null` only when no graph goals remain (floor clear).
    */
   readonly routeHeadId: string | null;
   /**
