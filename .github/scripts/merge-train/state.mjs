@@ -343,11 +343,15 @@ export function parseMergeTrainPrNumber(commitMessage) {
 //     post-merge proof passed, so it records the REAL merge commit AND the
 //     validated candidate whose tree was proven identical.
 //   - Recovered (recovered=true): posted by crash recovery, which finishes an
-//     interrupted landing by re-establishing provenance (GitHub merged-state +
-//     Merge-Train-PR trailer + linear parent + no divergence signal) but does
-//     NOT re-run the candidate tree proof (the candidate is not reconstructable
-//     after main advances). It therefore does NOT cite a validated candidate or
-//     claim a tree proof -- stating only the facts it verified.
+//     interrupted landing ONLY when the durable proof-complete marker (the
+//     merge-train-landed label) is present. Promotion writes that marker
+//     exclusively AFTER the full post-merge tree proof passed, so its presence
+//     attests the proof ran and passed at merge time. Recovery also corroborates
+//     GitHub's merged-state, the Merge-Train-PR trailer, a single (linear)
+//     parent, and no promotion-postcondition failure, but does NOT re-run the
+//     tree proof (the candidate is not reconstructable after main advances). It
+//     therefore does NOT cite a validated candidate -- it reports only the
+//     marker-attested merge-time proof plus the facts it actually re-verified.
 export function renderLandedComment({ landedSha, candidateSha, recovered = false }) {
   if (recovered) {
     return [
@@ -358,10 +362,12 @@ export function renderLandedComment({ landedSha, candidateSha, recovered = false
       '',
       'GitHub recorded this PR as **merged** with the landed commit above. This',
       "record was completed by the train's crash recovery after an interrupted",
-      'landing: recovery re-verified the merge is recorded on `main` with this',
-      "PR's `Merge-Train-PR` provenance trailer, a single parent (linear), and no",
-      'promotion-postcondition failure. The original per-commit tree proof ran at',
-      'merge time; recovery does not re-run it.',
+      'landing. Recovery confirmed this PR carries the durable proof-complete',
+      'marker, which the train writes only after the full per-commit tree proof',
+      'passed at merge time, and corroborated the GitHub merged-state, the',
+      '`Merge-Train-PR` provenance trailer, a single (linear) parent, and no',
+      'promotion-postcondition failure. Recovery does not (and cannot) re-run the',
+      'tree proof; the marker attests it ran and passed at merge time.',
       '',
       '_Managed by the trusted repository merge-train workflow._',
     ].join('\n');

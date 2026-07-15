@@ -110,8 +110,9 @@ canary pre-enable step).
   recheck, extracted `planLandedRecovery` decision, final-guard polling
   behaviour, and the `hasLandedLabel` proof-complete marker gate added in
   subsequent review-fix passes).
-- `npm run test:guards` (the CI gate) → 851 pass / 36 fail (pre-existing
-  failures in unrelated test areas) / 0 skipped.
+- `npm run test:guards` (the CI gate) → 887 tests, 866 pass / 0 fail / 21 skipped
+  (the 21 skips are pre-existing intentional `describe.skip`/`test.skip` in
+  unrelated guard suites, not failures).
 - `npm run verify:fast` → passed. `npm run scope` → `gameplay_safe=true` (no
   headless/sweep needed; `.mjs` scripts are outside the TS lint/typecheck globs,
   covered by the node test suite instead).
