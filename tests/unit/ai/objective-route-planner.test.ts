@@ -391,6 +391,64 @@ describe('planObjectiveRoute', () => {
     ).toThrow(ObjectiveRoutePlannerError);
   });
 
+  it('rejects a required goal that directly depends on an optional goal', () => {
+    const oracle: TravelOracle = { travelCost: () => 1 };
+    const goals: GoalNode[] = [
+      {
+        id: 'opt-unlock',
+        location: 'A',
+        workCost: 0,
+        prerequisiteIds: [],
+        required: false,
+      },
+      {
+        id: 'req-blocked',
+        location: 'B',
+        workCost: 0,
+        prerequisiteIds: ['opt-unlock'],
+        required: true,
+      },
+    ];
+    expect(() =>
+      planObjectiveRoute({ goals, startLocation: 'start', travelOracle: oracle }),
+    ).toThrow(ObjectiveRoutePlannerError);
+    try {
+      planObjectiveRoute({ goals, startLocation: 'start', travelOracle: oracle });
+    } catch (err) {
+      expect((err as ObjectiveRoutePlannerError).code).toBe('required-goal-depends-on-optional');
+    }
+  });
+
+  it('rejects a required goal that transitively depends on an optional goal', () => {
+    // req-c → req-b → opt-a: the transitive closure of req-c includes opt-a
+    const oracle: TravelOracle = { travelCost: () => 1 };
+    const goals: GoalNode[] = [
+      { id: 'opt-a', location: 'A', workCost: 0, prerequisiteIds: [], required: false },
+      {
+        id: 'req-b',
+        location: 'B',
+        workCost: 0,
+        prerequisiteIds: ['opt-a'],
+        required: true,
+      },
+      {
+        id: 'req-c',
+        location: 'C',
+        workCost: 0,
+        prerequisiteIds: ['req-b'],
+        required: true,
+      },
+    ];
+    expect(() =>
+      planObjectiveRoute({ goals, startLocation: 'start', travelOracle: oracle }),
+    ).toThrow(ObjectiveRoutePlannerError);
+    try {
+      planObjectiveRoute({ goals, startLocation: 'start', travelOracle: oracle });
+    } catch (err) {
+      expect((err as ObjectiveRoutePlannerError).code).toBe('required-goal-depends-on-optional');
+    }
+  });
+
   it('correctly handles >=33 distinct effect tags without overflow (bigint effect masks)', () => {
     // 32 initial effects (all alphabetically before 'high-effect') saturate
     // bit indices 0-31 in the sorted effect-tag list.  'high-effect' therefore

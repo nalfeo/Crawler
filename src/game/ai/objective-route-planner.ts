@@ -109,7 +109,8 @@ export type ObjectiveRoutePlannerErrorCode =
   | 'node-cardinality-exceeded'
   | 'invalid-work-cost'
   | 'invalid-travel-cost'
-  | 'unreachable-required-goal';
+  | 'unreachable-required-goal'
+  | 'required-goal-depends-on-optional';
 
 export class ObjectiveRoutePlannerError extends Error {
   readonly code: ObjectiveRoutePlannerErrorCode;
@@ -295,6 +296,52 @@ export function planObjectiveRoute(input: PlanObjectiveRouteInput): ObjectiveRou
       color[i] = 2;
     };
     for (let i = 0; i < n; i++) visit(i);
+  }
+
+  // Validate that no required goal transitively depends on an optional goal.
+  // If it did, `bestForMask(requiredMask)` would be null (the optional prereq
+  // bit is absent from requiredMask, so the DP can never satisfy the required
+  // goal's prereqMask), causing a spurious `unreachable-required-goal` error
+  // even when a valid route exists.  Detecting this explicitly at graph
+  // definition time gives a clear, actionable error to the caller.
+  {
+    // transitiveDeps[i] = bitmask of ALL in-graph goals (optional or required)
+    // that must precede goal i — computed via DFS over prereqMask (cycle-free
+    // at this point) so the result includes indirect dependencies.
+    const transitiveDeps: number[] = new Array<number>(n).fill(0);
+    const visited = new Array<boolean>(n).fill(false);
+    const computeDeps = (i: number): number => {
+      if (visited[i]!) return transitiveDeps[i]!;
+      let deps = prereqMask[i]!;
+      let m = prereqMask[i]!;
+      while (m !== 0) {
+        const bit = m & -m;
+        const j = Math.log2(bit) | 0;
+        deps |= computeDeps(j);
+        m &= m - 1;
+      }
+      transitiveDeps[i] = deps;
+      visited[i] = true;
+      return deps;
+    };
+    for (let i = 0; i < n; i++) computeDeps(i);
+
+    for (let i = 0; i < n; i++) {
+      if (!goals[i]!.required) continue;
+      let deps = transitiveDeps[i]!;
+      while (deps !== 0) {
+        const bit = deps & -deps;
+        const j = Math.log2(bit) | 0;
+        if (!goals[j]!.required) {
+          throw new ObjectiveRoutePlannerError(
+            'required-goal-depends-on-optional',
+            `Required goal "${goals[i]!.id}" transitively depends on optional goal "${goals[j]!.id}". ` +
+              'Make the prerequisite required, or remove the dependency.',
+          );
+        }
+        deps &= deps - 1;
+      }
+    }
   }
 
   // Effect-tag bit assignment (stable ascending order).
