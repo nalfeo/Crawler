@@ -1,5 +1,16 @@
 [
   {
+    "commit": "95d89d35028d12d36564d464c66bc5c0f496e50f",
+    "commitDate": "2026-07-15T16:57:18Z",
+    "commitSubject": "fix(ci-policy): close merge-train rollback/status/hydration gaps before live enable (#1151) (#1153)",
+    "capturedAt": "2026-07-15T17:58:16.439Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29435059540",
+    "winRate": 0.945,
+    "totalWins": 567,
+    "totalRuns": 600,
+    "path": "by-sha/95d89d35028d12d36564d464c66bc5c0f496e50f.json"
+  },
+  {
     "commit": "33fe34fa1db8c8239d5939bd4d7f5699cc886968",
     "commitDate": "2026-07-15T07:20:55Z",
     "commitSubject": "fix(ci-policy): move merge-train App bypass to a repository ruleset (GH006) (#1148)",
