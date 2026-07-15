@@ -829,6 +829,7 @@ const recoveryDefaults = {
   parentCount: 1,
   hasPostconditionFailure: false,
   hasLandedLabel: true,
+  factsComplete: true,
 };
 
 test('planLandedRecovery finishes a fully-proven interrupted landing', () => {
@@ -876,4 +877,10 @@ test('planLandedRecovery skips when LANDED_LABEL proof-complete marker is absent
   const decision = planLandedRecovery({ ...recoveryDefaults, hasLandedLabel: false });
   assert.equal(decision.action, 'skip');
   assert.match(decision.reason, /proof-complete marker is absent/);
+});
+
+test('planLandedRecovery skips when recovery proof facts could not all be read', () => {
+  const decision = planLandedRecovery({ ...recoveryDefaults, factsComplete: false });
+  assert.equal(decision.action, 'skip');
+  assert.match(decision.reason, /could not reconstruct all landed-commit proof facts/);
 });

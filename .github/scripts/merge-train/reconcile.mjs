@@ -366,15 +366,22 @@ async function reconcileLandedSignals() {
     let trailerPrNumber = null;
     let parentCount = 0;
     let hasPostconditionFailure = false;
+    let factsComplete = false;
     if (/^[0-9a-f]{40}$/i.test(landedSha)) {
       try {
         const commit = await fetchCommit(landedSha);
-        trailerPrNumber = parseMergeTrainPrNumber(commit?.commit?.message || '');
-        parentCount = (commit?.parents || []).length;
-        hasPostconditionFailure = await landedCommitHasPostconditionFailure(landedSha);
+        const recoveredTrailerPrNumber = parseMergeTrainPrNumber(commit?.commit?.message || '');
+        const recoveredParentCount = (commit?.parents || []).length;
+        const recoveredHasPostconditionFailure =
+          await landedCommitHasPostconditionFailure(landedSha);
+        trailerPrNumber = recoveredTrailerPrNumber;
+        parentCount = recoveredParentCount;
+        hasPostconditionFailure = recoveredHasPostconditionFailure;
+        factsComplete = true;
       } catch {
-        // Leave the reconstructed facts at their safe defaults; planLandedRecovery
-        // will skip when they don't establish a proven landing.
+        // Keep factsComplete false: an unavailable check-runs read is NOT evidence
+        // that the postcondition failure check is absent. planLandedRecovery will
+        // therefore skip instead of asserting a possibly divergent landing.
       }
     }
     const hasLandedLabel = (pr.labels || []).some((label) => label.name === LANDED_LABEL);
@@ -387,6 +394,7 @@ async function reconcileLandedSignals() {
       parentCount,
       hasPostconditionFailure,
       hasLandedLabel,
+      factsComplete,
     });
     if (decision.action !== 'finish') {
       process.stdout.write(

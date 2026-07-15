@@ -761,6 +761,8 @@ export async function landedCommitProofError({
  *   - there is NO `merge-train-promotion-postcondition` failure recorded on it
  *     (that check is published precisely for the rare base-race that would have
  *     produced a divergent tree).
+ *   - every one of those recovery facts was read successfully. An API outage is
+ *     not evidence that the postcondition check is absent.
  *
  * Only when ALL hold does recovery finish the interrupted cleanup; otherwise it
  * skips (never asserting an unproven or known-divergent landing). Returns
@@ -775,11 +777,15 @@ export function planLandedRecovery({
   parentCount,
   hasPostconditionFailure,
   hasLandedLabel,
+  factsComplete,
 }) {
   if (merged !== true) return { action: 'skip', reason: 'PR is not recorded merged' };
   if (baseRef !== 'main') return { action: 'skip', reason: 'PR was not merged into main' };
   if (!/^[0-9a-f]{40}$/i.test(String(landedSha || ''))) {
     return { action: 'skip', reason: 'PR has no valid recorded merge commit sha' };
+  }
+  if (factsComplete !== true) {
+    return { action: 'skip', reason: 'could not reconstruct all landed-commit proof facts' };
   }
   if (trailerPrNumber !== prNumber) {
     return {
