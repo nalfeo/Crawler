@@ -262,13 +262,14 @@ describe('buildFloor1GoalGraph + planObjectiveRoute (Floor 1 integration)', () =
       PARAMS.moveSpeedFtPerMs,
     );
 
-    expect(oracle.travelCost(PLAYER_START_LOCATION, 'known')).toBeGreaterThan(0);
-    expect(oracle.travelCost(PLAYER_START_LOCATION, '__missing__')).toBe(Infinity);
-    expect(oracle.travelCost('__missing__', '__missing__')).toBe(Infinity);
-    expect(oracle.travelCost(PLAYER_START_LOCATION, 'known')).toBe(
+    const noEffects = new Set<string>();
+    expect(oracle.travelCost(PLAYER_START_LOCATION, 'known', noEffects)).toBeGreaterThan(0);
+    expect(oracle.travelCost(PLAYER_START_LOCATION, '__missing__', noEffects)).toBe(Infinity);
+    expect(oracle.travelCost('__missing__', '__missing__', noEffects)).toBe(Infinity);
+    expect(oracle.travelCost(PLAYER_START_LOCATION, 'known', noEffects)).toBe(
       Math.round(12 / PARAMS.moveSpeedFtPerMs),
     );
-    expect(oracle.travelCost(PLAYER_START_LOCATION, IN_PLACE_LOCATION)).toBe(0);
+    expect(oracle.travelCost(PLAYER_START_LOCATION, IN_PLACE_LOCATION, noEffects)).toBe(0);
   });
 
   it('drops completed goals from the graph entirely (mirrors "completed state removes nodes")', () => {
