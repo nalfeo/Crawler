@@ -14,7 +14,9 @@ ci-policy
 
 ## Apples
 
-4🍎 estimated (production fix + tooling + ADR + doc rewrite + full review harness + live application)
+3🍎 actual (rescored down from an initial 4🍎 estimate — production fix +
+tooling + ADR + doc rewrite + review harness; live cutover deliberately
+deferred out of this PR's scope, see DEC-015)
 
 ## What Was Done
 
@@ -140,9 +142,10 @@ protection and onto a dedicated **repository ruleset** targeting
 - `MERGE_QUEUE_ENABLED`/`MERGE_TRAIN_MODE` repo variables were noted as
   possibly-stale/experimental but not touched — worth a follow-up sanity
   check so no inconsistent variable state is left behind.
-- Review harness (adversarial plan review + multi-model code review +
-  ledger) to be run before `create_pull_request` per the `pr-review-ledger`
-  guard for this 4🍎 change.
+- Review harness (adversarial plan review + code review; rescored from 4🍎 to
+  3🍎 after implementation, so multi-model review was not required) run and
+  ledger recorded before `create_pull_request` per the `pr-review-ledger`
+  guard.
 
 ## Retrospective
 

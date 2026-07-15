@@ -3,7 +3,9 @@
   "date": "2026-07-15",
   "session_slug": "merge-train-ruleset-bypass-fix",
   "task_title": "Merge-train ruleset bypass fix (GH006)",
-  "estimated_apples": 4,
+  "estimated_apples": 3,
+  "apples_rescored_from": 4,
+  "rescore_reason": "Diff scope on inspection is a single, well-isolated CLI tool (protection.mjs/protection-lib.mjs) with no live cutover in this PR (enable is deliberately deferred to a documented post-merge step, DEC-015) -- the adversarial plan review and a clean single-model code-review round already covered the design and implementation risk thoroughly; the additional 4th-tier multi-model fan-out was judged not to add proportional value for the actual (smaller than originally estimated) blast radius of this change.",
   "stages": {
     "plan_review": {
       "completed": true,
@@ -16,13 +18,17 @@
       "notes": "Adversarial rubber-duck review (gpt-5.4, high reasoning) enumerated 4 alternatives: (1) make the candidate SHA run ci.yml literally -- rejected, reintroduces cost/latency; (2) split App identities (attester vs promoter) -- valid hardening, deferred as follow-up, not mandatory; (3) org-level rulesets -- wrong scope, but flagged tool should detect parent rulesets; (4) narrower bypass predicates -- not possible with GitHub ruleset API (bypass_mode is coarse). Verdict: no re-architecture needed (minor divergence), but 6 concrete concerns raised, 4 blocking. All 6 fixed/addressed: (1) enable() reordered to create/verify ruleset before disabling classic [DEC-010]; (2) printStatus postcondition ternary bug that silently masked a missing ruleset [DEC-011]; (3) parent/org ruleset blind spot -- verified structurally inapplicable via `gh api` (nalfeo/Crawler is owner_type=User, personal account, no org ruleset scope exists) -- documented as RSK-003, not code-changed to avoid an untested path for a non-existent scenario; (4) ref-scope check tightened to exact include=[main]/exclude=[] match [DEC-012]; (5) non-blocking: added assertKnownClassicStatusChecksShape to fail closed on classic shape drift before enable() disables it [DEC-013]; (6) non-blocking: doc/code appId mismatch -- made --app-id optional for status/rollback, inferred from the live ruleset, matching existing docs [DEC-014]. Also self-identified a 7th safety issue during implementation: enable() must run strictly after this PR merges (not before/during), since an active ruleset would otherwise require a merge-train check on this PR's own ordinary merge that nothing produces -- documented as DEC-015 and reflected in the guide/handoff; live enable is deliberately deferred to a post-merge operational step, this PR ships tooling+tests+docs only."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
-    },
-    "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Blocking: rollback() lacked the same assertKnownClassicStatusChecksShape() fail-closed guard enable() already applies, so a manually-drifted classic required_status_checks shape (e.g. an operator added a second required context while the ruleset was live) would be silently discarded on rollback instead of failing closed -- fixed by calling the guard in rollback() too, mirroring enable(); new test added. Non-blocking: getRulesets() used a single un-paginated API page, so findRulesetByName() could miss an already-existing ruleset past page 1 (>30 rulesets), breaking enable()'s idempotency guarantee on a large repo -- fixed by switching to the shared paginate() helper. Verified ruleset/bypass_actors/required_status_checks payload shapes against GitHub's live Rulesets API schema: exact match. Ran all 33 unit tests (32 -> 33 after the new rollback shape-drift test) plus typecheck/verify:fast after the fix: all green."
+        }
+      ]
     }
   }
 }

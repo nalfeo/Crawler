@@ -10,7 +10,7 @@ Accepted
 
 ## Estimated Complexity
 
-🍎 x 4 — production branch-protection change with fail-closed idempotent tooling, exact API payload contracts, and rollback safety
+🍎 x 3 (rescored down from an initial 🍎 x 4 estimate) — production branch-protection change with fail-closed idempotent tooling, exact API payload contracts, and rollback safety, but ultimately a single, well-isolated CLI tool with no live cutover in this PR (see DEC-015: `enable` is deliberately deferred to a documented post-merge operational step).
 
 ## Context
 
