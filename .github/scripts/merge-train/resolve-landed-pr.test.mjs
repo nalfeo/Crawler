@@ -40,8 +40,14 @@ test('resolver gives deploy, release sweep, and manual preview attribution to an
   const result = await resolveWith({
     [commitPath]: { commit: { message: 'ordinary preview commit' } },
     [pullsPath]: [
-      { number: 12, state: 'closed', merged: false, merge_commit_sha: 'b'.repeat(40) },
-      { number: 13, state: 'closed', merged: true, merge_commit_sha: 'c'.repeat(40) },
+      { number: 12, state: 'closed', merged: false, merge_commit_sha: SHA, merged_at: null },
+      {
+        number: 13,
+        state: 'closed',
+        merged: true,
+        merge_commit_sha: 'c'.repeat(40),
+        merged_at: '2026-07-15T00:00:00Z',
+      },
       { number: 99, state: 'open', merged: false, head: { sha: SHA } },
     ],
   });
@@ -54,7 +60,13 @@ test('resolver keeps an exact GitHub merge record ahead of an open matching head
     [commitPath]: { commit: { message: 'ordinary landed commit' } },
     [pullsPath]: [
       { number: 99, state: 'open', merged: false, head: { sha: SHA } },
-      { number: 417, state: 'closed', merged: true, merge_commit_sha: SHA },
+      {
+        number: 417,
+        state: 'closed',
+        merged: true,
+        merge_commit_sha: SHA,
+        merged_at: '2026-07-15T00:00:00Z',
+      },
     ],
   });
 

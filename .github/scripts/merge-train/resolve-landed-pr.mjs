@@ -15,8 +15,9 @@ import { parseMergeTrainPrNumber } from './state.mjs';
 // Resolution order (durable mapping first, GitHub inference only as fallback):
 //   1. The `Merge-Train-PR: <n>` trailer written into the squash commit by the
 //      merge train, corroborated against GitHub's own merge record.
-//   2. GitHub's commit-to-PR association, preferring the PR whose merge commit
-//      is exactly this SHA, then an open PR whose head is exactly this SHA.
+//   2. GitHub's commit-to-PR association, preferring a real merged PR whose
+//      merge commit is exactly this SHA, then an open PR whose head is exactly
+//      this SHA.
 
 const EXIT_API_FAILURE = 3;
 
@@ -56,7 +57,12 @@ export async function resolveLandedPr({ sha, repository, token, requestFn = requ
     ).data;
     if (Array.isArray(pulls) && pulls.length > 0) {
       const exact = pulls
-        .filter((pr) => pr?.merge_commit_sha === sha && Number.isInteger(pr?.number))
+        .filter(
+          (pr) =>
+            pr?.merge_commit_sha === sha &&
+            typeof pr?.merged_at === 'string' &&
+            Number.isInteger(pr?.number),
+        )
         .sort((left, right) => left.number - right.number)[0];
       if (exact) return { number: String(exact.number), apiFailed: false };
 
