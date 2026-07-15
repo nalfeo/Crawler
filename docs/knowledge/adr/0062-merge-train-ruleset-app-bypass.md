@@ -132,15 +132,19 @@ Accepted
   (stale) shape rather than what was actually live.
 - **DEC-014** (added after adversarial plan review): `--app-id` is optional
   for `status` and `rollback` (rollback's own write path derives the id it
-  needs directly from the live ruleset's bypass actor via
-  `requireTrainBypassId()`, independent of `--app-id`) but remains
-  **mandatory** for `enable`, since there may be no existing ruleset to infer
-  an id from on a first run. This matches `docs/guides/merge-train.md`'s
-  existing examples, which never passed `--app-id` to `status`/`rollback`.
+  needs directly from the live ruleset's bypass actor, independent of
+  `--app-id`) but remains **mandatory** for `enable`, since there may be no
+  existing ruleset to infer an id from on a first run. This matches
+  `docs/guides/merge-train.md`'s existing examples, which never passed
+  `--app-id` to `status`/`rollback`.
   **Superseded in part by DEC-018**: `printStatus()`'s `ruleset.problems`
   validation no longer falls back to an id inferred from the live ruleset
   itself (see DEC-018) — only the id used to locate/preserve the bypass actor
   during a write remains inference-eligible.
+  **Extended by DEC-019**: when the live ruleset has no bypass actor (drift /
+  partial `enable()`), `rollback()`'s disable path also falls back to the
+  supplied `--app-id`, so `--app-id` is now the recovery mechanism for the
+  bypass-actor-absent case.
 - **DEC-016** (added after code review, round 1): `enable()` and `rollback()`
   both fail closed if `getClassicProtection()` returns `null`/`undefined`
   (the branch-protection resource itself 404s), instead of treating a missing
@@ -175,9 +179,35 @@ Accepted
   _any_ single Integration actor — including a wrong or compromised one —
   would trivially report zero problems. Inference is still used (and remains
   safe) for the unrelated, purely-informational `ruleset.bypassActorId` field
-  and for rollback's own independent bypass-actor discovery
-  (`requireTrainBypassId()`, used only to _preserve_ the existing actor on a
-  disable payload, never to _validate_ it).
+  and for `rollback()`'s own independent bypass-actor discovery (used only to
+  _preserve_ the existing actor on a disable payload, never to _validate_ it).
+- **DEC-019** (added after post-merge Copilot review, issue #1151): `rollback()`'s
+  ruleset-disable path now also accepts the caller-supplied `--app-id`
+  (`appId`) as a `fallbackAppId` for `buildRulesetDisablePayload()`. The
+  prior implementation derived the App id solely from the live ruleset's
+  bypass actor via a private `requireTrainBypassId()` function; if the
+  ruleset was partially-applied or operator-drifted and had no bypass actor,
+  `requireTrainBypassId()` would throw _after_ classic protection had already
+  been restored, leaving `main` permanently blocked by the still-active
+  ruleset requiring `merge-train` (which nothing posts while
+  `MERGE_TRAIN_ENABLED=false`) with no automated recovery path. The fix
+  replaces the private helper with `inferTrainAppId(ruleset) ?? fallbackAppId`
+  in `buildRulesetDisablePayload()`: the live bypass actor is used when
+  present (nominal path), and the caller-supplied `--app-id` is the recovery
+  path. Throws with an informative error if both are absent.
+- **DEC-020** (added after post-merge Copilot review, issue #1151):
+  `printStatus()` now reports `classic.missing: true` and sets
+  `requiredStatusChecksDisabled: false` (not `true`) when the
+  classic-protection resource itself is absent (404 → `null`). The prior
+  implementation delegated directly to `classicStatusChecksDisabled(null)`,
+  which returns `true` because `null?.required_status_checks` is `undefined`
+  and `!undefined` is `true` — conflating "resource exists with status checks
+  disabled" with "resource does not exist at all." A missing resource also
+  means conversation-resolution, force-push/deletion restrictions, and admin
+  enforcement are entirely absent; reporting it as a clean "status checks
+  disabled" state would mask a materially broken repository configuration and
+  could let the `enable()` postcondition treat a fully-deleted classic
+  protection as a successful post-migration state.
 - **DEC-015** (deployment sequencing, added after adversarial plan review):
   `enable` must be run as a deliberate operational step **strictly after**
   this fix's own PR merges, never before or as part of the same PR's merge.

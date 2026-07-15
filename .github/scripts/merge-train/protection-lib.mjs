@@ -279,20 +279,32 @@ export function rulesetProblems(ruleset, { trainAppId }) {
   return problems;
 }
 
-/** Build the ruleset PATCH body used to disable it during rollback (kept, not deleted). */
-export function buildRulesetDisablePayload(ruleset) {
+/**
+ * Build the ruleset PATCH body used to disable it during rollback (kept, not deleted).
+ *
+ * The App id required to build the disable payload is read from the live
+ * ruleset's Integration bypass actor first (the nominal path). When the
+ * ruleset is drifted or partially-applied and has no bypass actor,
+ * `fallbackAppId` is used instead — this is the critical recovery path: if
+ * `enable()` partially applied and left an active ruleset with no bypass
+ * actor, `rollback()` must still be able to disable it so `main` is not
+ * permanently blocked behind a ruleset requiring `merge-train` while
+ * `MERGE_TRAIN_ENABLED` is false. `rollback()` supplies `--app-id` as the
+ * fallback for exactly this case.
+ */
+export function buildRulesetDisablePayload(ruleset, { fallbackAppId } = {}) {
+  const appId = inferTrainAppId(ruleset) ?? fallbackAppId;
+  if (!appId) {
+    throw new Error(
+      'Cannot disable ruleset: no Integration bypass actor found to preserve, and no ' +
+        'fallback App id supplied. Pass --app-id <id> or set MERGE_TRAIN_APP_ID so the ' +
+        'disable payload can be constructed even when the ruleset bypass actor is absent.',
+    );
+  }
   return {
-    ...buildRulesetPayload({ trainAppId: requireTrainBypassId(ruleset) }),
+    ...buildRulesetPayload({ trainAppId: appId }),
     enforcement: 'disabled',
   };
-}
-
-function requireTrainBypassId(ruleset) {
-  const bypass = (ruleset?.bypass_actors || []).find((actor) => actor.actor_type === 'Integration');
-  if (!bypass) {
-    throw new Error('Cannot disable ruleset: no Integration bypass actor found to preserve');
-  }
-  return bypass.actor_id;
 }
 
 /**

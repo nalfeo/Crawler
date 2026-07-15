@@ -432,3 +432,109 @@ test('printStatus reports an explicit "cannot validate" problem (never a false-c
   assert.equal(rollbackReport.classic.requiredStatusChecksRestored, true);
   assert.notEqual(rollbackReport.ruleset.enforcement, 'active');
 });
+
+test('rollback can disable a drifted ruleset whose bypass actor is absent, when --app-id is supplied as fallback', async () => {
+  // Simulates a partially-applied enable(): the ruleset is active but has no
+  // bypass actor (operator drift or interrupted enable run). rollback() must
+  // still be able to disable it -- if it throws here (after classic is already
+  // restored) main is permanently blocked by the active ruleset requiring
+  // merge-train while MERGE_TRAIN_ENABLED is false.
+  const driftedRuleset = { ...liveRuleset(), bypass_actors: [] };
+  const { api, calls } = makeFakeApi({
+    classicProtection: { ...legacyClassicProtection(), required_status_checks: null },
+    rulesets: [driftedRuleset],
+    mergeTrainEnabled: false,
+  });
+
+  const report = await rollback({ api, appId: TRAIN_APP_ID, force: false });
+
+  assert.equal(report.classic.requiredStatusChecksRestored, true);
+  assert.notEqual(report.ruleset.enforcement, 'active');
+  assert.ok(
+    calls.includes('updateRuleset'),
+    'rollback must disable the ruleset even when its bypass actor is absent',
+  );
+  const classicPutIndex = calls.indexOf('putClassicProtection');
+  const rulesetUpdateIndex = calls.indexOf('updateRuleset');
+  assert.ok(
+    classicPutIndex < rulesetUpdateIndex,
+    'classic must still be restored BEFORE the ruleset is disabled, even in the recovery path',
+  );
+});
+
+test('rollback throws an informative error when the ruleset has no bypass actor AND no --app-id is supplied', async () => {
+  // The permanent-lockout scenario: enable() left an active ruleset with no
+  // bypass actor, and the operator did not supply --app-id. rollback() must
+  // fail loudly so the operator can retry with --app-id rather than silently
+  // succeeding with a broken payload.
+  const driftedRuleset = { ...liveRuleset(), bypass_actors: [] };
+  const { api, calls } = makeFakeApi({
+    classicProtection: { ...legacyClassicProtection(), required_status_checks: null },
+    rulesets: [driftedRuleset],
+    mergeTrainEnabled: false,
+  });
+
+  await assert.rejects(
+    () => rollback({ api, appId: null, force: false }),
+    /no Integration bypass actor found.*no fallback App id supplied/,
+    'must report the missing bypass actor AND explain that --app-id is needed to recover',
+  );
+  assert.ok(
+    calls.includes('putClassicProtection'),
+    'classic restoration happened before the ruleset disable attempt -- that is correct ' +
+      'ordering; the error is specifically about building the disable payload',
+  );
+});
+
+test('printStatus flags a missing classic-protection resource (404) instead of reporting requiredStatusChecksDisabled: true', async () => {
+  // A fully-deleted classic protection resource is materially different from
+  // "classic protection exists but required_status_checks is disabled": the
+  // missing case also means conversation-resolution, force-push/deletion
+  // restrictions, and admin enforcement are entirely absent. printStatus must
+  // not conflate these two cases by reporting requiredStatusChecksDisabled:true.
+  const { api } = makeFakeApi({
+    classicProtection: null,
+    rulesets: [liveRuleset()],
+  });
+
+  const report = await printStatus({ api, appId: TRAIN_APP_ID });
+
+  assert.equal(
+    report.classic.missing,
+    true,
+    'classic.missing must be true when the protection resource itself is absent (404)',
+  );
+  assert.equal(
+    report.classic.requiredStatusChecksDisabled,
+    false,
+    'a missing classic-protection resource must NOT report as disabled -- it is absent, ' +
+      'which means conversation-resolution/force-push/deletion/admin settings are also gone; ' +
+      'reporting true would give a false "migration complete" signal for a broken configuration',
+  );
+  assert.equal(
+    report.classic.requiredStatusChecksRestored,
+    false,
+    'a missing resource cannot be "restored" either',
+  );
+  assert.equal(
+    report.classic.requiredStatusChecks,
+    null,
+    'no status checks to report for a missing resource',
+  );
+});
+
+test('printStatus reports classic.missing: false when the resource exists (normal case)', async () => {
+  const { api } = makeFakeApi({
+    classicProtection: { ...legacyClassicProtection(), required_status_checks: null },
+    rulesets: [liveRuleset()],
+  });
+
+  const report = await printStatus({ api, appId: TRAIN_APP_ID });
+
+  assert.equal(
+    report.classic.missing,
+    false,
+    'classic.missing must be false when the protection resource exists, even when status checks are disabled',
+  );
+  assert.equal(report.classic.requiredStatusChecksDisabled, true);
+});

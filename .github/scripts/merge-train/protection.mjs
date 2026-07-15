@@ -175,8 +175,7 @@ export async function printStatus({ api, appId, log = () => {} }) {
   // circular: a ruleset drifted to point at ANY single Integration actor
   // (including a wrong/compromised one) would trivially report zero problems.
   // Inference (`inferTrainAppId`) is still exposed below as `bypassActorId`
-  // for read-only display / for rollback's own independent bypass-actor
-  // discovery (`requireTrainBypassId`), but never feeds `problems`.
+  // for read-only display, but never feeds `problems`.
   const problems = appId
     ? rulesetProblems(ruleset, { trainAppId: appId })
     : ruleset
@@ -187,10 +186,27 @@ export async function printStatus({ api, appId, log = () => {} }) {
             'wrong or compromised one, so this reports unknown rather than a false "no problems"',
         ]
       : ['ruleset does not exist'];
+  // Explicitly detect when the classic-protection resource itself is absent
+  // (404 -- mapped to null by buildGithubApi). A missing resource is NOT the
+  // same as "required_status_checks is disabled": it also means
+  // conversation-resolution, force-push/deletion restrictions, and admin
+  // enforcement are entirely absent. Setting requiredStatusChecksDisabled to
+  // false (not true) when the resource is missing prevents postcondition checks
+  // from treating a fully-deleted classic-protection resource as a clean
+  // "migration complete" signal -- a false-clean pass that would mask a
+  // materially broken repository configuration.
+  const classicMissing = classicProtectionMissing(protection);
   const report = {
     mergeTrainEnabled: trainEnabled,
     classic: {
-      requiredStatusChecksDisabled: classicStatusChecksDisabled(protection),
+      // True only when the classic-protection resource itself is entirely
+      // absent (404). Distinct from requiredStatusChecksDisabled: a missing
+      // resource means ALL classic settings are gone, not just status checks.
+      missing: classicMissing,
+      // False when the resource is missing -- a missing resource must not
+      // report as "disabled" since that conflates two materially different
+      // states (resource absent vs. resource present with status checks off).
+      requiredStatusChecksDisabled: !classicMissing && classicStatusChecksDisabled(protection),
       requiredStatusChecksRestored: classicStatusChecksRestored(protection),
       requiredStatusChecks: protection?.required_status_checks || null,
     },
@@ -325,7 +341,11 @@ export async function rollback({ api, appId, force, log = () => {} }) {
   const existing = findRulesetByName(rulesets);
   if (existing && existing.enforcement === 'active') {
     const full = await api.getRuleset(existing.id);
-    await api.updateRuleset(existing.id, buildRulesetDisablePayload(full));
+    // Pass appId as the fallback so rollback() can disable a drifted/partially-applied
+    // ruleset whose bypass actor is absent -- without this, buildRulesetDisablePayload
+    // would throw after classic protection was already restored, leaving main permanently
+    // blocked by the still-active ruleset requiring merge-train.
+    await api.updateRuleset(existing.id, buildRulesetDisablePayload(full, { fallbackAppId: appId }));
     log(`disabled ruleset "${RULESET_NAME}" (id ${existing.id})\n`);
   } else if (existing) {
     log(`ruleset "${RULESET_NAME}" already disabled\n`);

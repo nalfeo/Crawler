@@ -313,10 +313,39 @@ test('buildRulesetDisablePayload preserves the trusted App bypass while setting 
 });
 
 test('buildRulesetDisablePayload refuses to disable a ruleset with no App bypass to preserve', () => {
+  // Without a fallback, the call must throw so callers know --app-id is needed.
   assert.throws(
     () => buildRulesetDisablePayload(liveRuleset({ bypass_actors: [] })),
     /no Integration bypass actor/,
   );
+});
+
+test('buildRulesetDisablePayload uses fallbackAppId when the live ruleset bypass actor is absent', () => {
+  // Recovery path for a partially-applied or drifted ruleset: if enable() left
+  // an active ruleset with no bypass actor, rollback() passes its --app-id as
+  // the fallback so the disable payload can still be constructed correctly.
+  const payload = buildRulesetDisablePayload(
+    liveRuleset({ bypass_actors: [] }),
+    { fallbackAppId: TRAIN_APP_ID },
+  );
+  assert.equal(payload.enforcement, 'disabled');
+  assert.deepEqual(payload.bypass_actors, [
+    { actor_id: TRAIN_APP_ID, actor_type: 'Integration', bypass_mode: 'always' },
+  ]);
+});
+
+test('buildRulesetDisablePayload prefers the live bypass actor over fallbackAppId when both are present', () => {
+  // The nominal path: if the live ruleset has a bypass actor, use it (not the
+  // fallback), so the disable payload faithfully preserves what was live.
+  const differentId = 9999;
+  const payload = buildRulesetDisablePayload(
+    liveRuleset(),
+    { fallbackAppId: differentId },
+  );
+  assert.equal(payload.enforcement, 'disabled');
+  assert.deepEqual(payload.bypass_actors, [
+    { actor_id: TRAIN_APP_ID, actor_type: 'Integration', bypass_mode: 'always' },
+  ]);
 });
 
 test('rulesetDisabled is true once enforcement is anything other than active', () => {
