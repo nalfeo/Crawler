@@ -142,7 +142,14 @@ pollDelaysMs, sleep })` in `reconcile-lib.mjs` (mirroring the existing
   behavior case; (e) keep the ~77s poll budget as a safety margin; (f)
   confirmed the fix is a correction, not a weakening, of the trust
   invariant. `plan_divergence: convergent`.
-- Code review: TODO — run before opening the PR (see What's Next).
+- Code review (`code-review` agent, `claude-sonnet-4.6`): **no concerns**.
+  Confirmed predicate correctness, poll-loop boundary math
+  (`pollDelaysMs.length + 1` requests), correct `reconcile.mjs` wiring into
+  `promoteExactBatch`, preserved fail-closed behavior for genuinely
+  unconfirmed entries, full coverage of the regression case and all three
+  poller paths, `~77s` budget comment accuracy against the actual
+  `pollDelaysMs` sum, and doc consistency between the historical DEC-024
+  entry (left as-is) and the new DEC-025 correction.
 - Ledger: `docs/knowledge/review-ledgers/2026-07-15-merge-train-confirmation-predicate-fix.review-ledger.json`.
 
 ## Verification
@@ -156,9 +163,9 @@ pollDelaysMs, sleep })` in `reconcile-lib.mjs` (mirroring the existing
 
 ## What's Next / Blockers
 
-- Run the code-review stage (2nd required stage for 3🍎), validate the
-  ledger, run `npm run verify:pr-prereqs`, open the PR, arm squash
-  auto-merge, and shepherd through CI/review.
+- Ledger validated (both required 3🍎 stages complete), `npm run
+verify:pr-prereqs` re-run clean; open the PR, arm squash auto-merge, and
+  shepherd through CI/review.
 - **After merge**: re-run `protection.mjs enable`, re-verify `status` stays
   clean (`problems: []`), set `MERGE_TRAIN_ENABLED=true`, dispatch CI
   Recovery + Merge Train, and observe a genuinely clean candidate validation
