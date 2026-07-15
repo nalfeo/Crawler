@@ -79,6 +79,13 @@ function gitCommandSucceeded(git, args) {
   }
 }
 
+function errorMessage(error) {
+  if (error && typeof error === 'object' && 'message' in error && error.message) {
+    return String(error.message);
+  }
+  return String(error);
+}
+
 const CANDIDATE_GIT_IDENTITY = {
   GIT_AUTHOR_NAME: 'crawler-merge-train[bot]',
   GIT_AUTHOR_EMAIL: 'crawler-merge-train[bot]@users.noreply.github.com',
@@ -459,18 +466,12 @@ export async function promoteExactBatch({
     }),
   );
   const unconfirmedEntries = new Set();
-  const toErrorMessage = (error) => {
-    if (error && typeof error === 'object' && 'message' in error && error.message) {
-      return String(error.message);
-    }
-    return String(error);
-  };
   for (const result of confirmationResults) {
     if (result.confirmed) {
       continue;
     }
     unconfirmedEntries.add(result.entry.number);
-    const suffix = result.error ? ` (${toErrorMessage(result.error)})` : '';
+    const suffix = result.error ? ` (${errorMessage(result.error)})` : '';
     postPromotionFailures.push(
       `PR #${result.entry.number} was not recorded as merged after atomic promotion to ${finalCandidateSha}${suffix}`,
     );
@@ -487,7 +488,7 @@ export async function promoteExactBatch({
       );
     } catch (error) {
       postPromotionFailures.push(
-        `Failed to publish ${requiredCheckName}-promotion-postcondition for ${finalCandidateSha}: ${toErrorMessage(error)}`,
+        `Failed to publish ${requiredCheckName}-promotion-postcondition for ${finalCandidateSha}: ${errorMessage(error)}`,
       );
     }
   }
@@ -510,7 +511,7 @@ export async function promoteExactBatch({
       );
     } catch (error) {
       postPromotionFailures.push(
-        `Failed post-promotion cleanup for PR #${entry.number}: ${toErrorMessage(error)}`,
+        `Failed post-promotion cleanup for PR #${entry.number}: ${errorMessage(error)}`,
       );
     }
   }

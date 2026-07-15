@@ -252,6 +252,9 @@ async function mainHealthAllowsPromotion() {
 }
 
 async function waitForMergedPr(entry) {
+  // ~77s total retry budget: 1 + 2 + 4 + 8 + 16 + 16 + 16 + 14 seconds.
+  // This materially reduces false negatives from laggy merged_at propagation
+  // while staying well inside the reconcile job timeout.
   const delays = [1000, 2000, 4000, 8000, 16000, 16000, 16000, 14000];
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
     const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
