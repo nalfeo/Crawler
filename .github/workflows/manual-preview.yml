@@ -171,6 +171,17 @@ jobs:
           echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
           echo "input=$TARGET_INPUT" >> "$GITHUB_OUTPUT"
 
+      - name: Save trusted resolver scripts before preview checkout
+        # Copy the resolver and its imports from the trusted workflow ref into
+        # /tmp before switching to the preview ref. The resolve-landed-pr step
+        # below runs from this trusted copy, so a preview branch that modifies
+        # the resolver (or github.mjs) cannot execute under GH_TOKEN.
+        run: |
+          mkdir -p /tmp/trusted-resolver/merge-train /tmp/trusted-resolver/ci-recovery
+          cp .github/scripts/merge-train/resolve-landed-pr.mjs /tmp/trusted-resolver/merge-train/
+          cp .github/scripts/merge-train/state.mjs /tmp/trusted-resolver/merge-train/
+          cp .github/scripts/ci-recovery/github.mjs /tmp/trusted-resolver/ci-recovery/
+
       - name: Checkout preview ref for preview build
         run: git checkout ${{ steps.preview-target.outputs.sha }} -- .
 
@@ -253,7 +264,9 @@ jobs:
           # a GitHub API failure vs empty-exit-0 on a genuine no-match; preserve
           # that distinction by warning on a real failure instead of silently
           # treating an outage as "no PR", then continue best-effort.
-          if PR_FROM_SHA=$(node .github/scripts/merge-train/resolve-landed-pr.mjs "${{ steps.preview-target.outputs.sha }}"); then
+          # Run from the trusted copy saved before the preview ref was checked
+          # out, so a modified resolver in the preview branch cannot execute here.
+          if PR_FROM_SHA=$(node /tmp/trusted-resolver/merge-train/resolve-landed-pr.mjs "${{ steps.preview-target.outputs.sha }}"); then
             echo "number=$PR_FROM_SHA" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::Could not resolve the preview PR (resolver API failure); skipping the preview comment."

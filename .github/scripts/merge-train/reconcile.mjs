@@ -348,12 +348,10 @@ async function landedCommitHasPostconditionFailure(landedSha) {
 // recovery cannot re-run the per-commit tree proof; instead planLandedRecovery
 // (in reconcile-lib) re-establishes the strongest post-hoc evidence -- genuinely
 // merged INTO main, this PR's Merge-Train-PR provenance trailer on the merge
-// commit, a single (linear) parent, and NO promotion-postcondition failure on
-// it -- and refuses anything weaker. This does NOT depend on the LANDED marker
-// (whose own write could have failed), so it recovers marker-less merges too,
-// and never asserts an unproven or known-divergent landing. Finishing posts the
-// truthful RECOVERED comment (no candidate-tree claim) and removes the transient
-// labels (BLOCKED first, QUEUE last).
+// commit, a single (linear) parent, NO promotion-postcondition failure on it,
+// and the LANDED_LABEL proof-complete marker (set only after the tree proof
+// succeeded). A crash before the marker write is left for human review; a crash
+// between marker write and comment/label cleanup is recovered here.
 async function reconcileLandedSignals() {
   const staleClosed = await paginate(
     token,
@@ -384,6 +382,7 @@ async function reconcileLandedSignals() {
         // therefore skip instead of asserting a possibly divergent landing.
       }
     }
+    const hasLandedLabel = (pr.labels || []).some((label) => label.name === LANDED_LABEL);
     const decision = planLandedRecovery({
       merged: pr.merged,
       baseRef: pr.base?.ref,
@@ -392,6 +391,7 @@ async function reconcileLandedSignals() {
       prNumber: pr.number,
       parentCount,
       hasPostconditionFailure,
+      hasLandedLabel,
       factsComplete,
     });
     if (decision.action !== 'finish') {
@@ -400,9 +400,8 @@ async function reconcileLandedSignals() {
       );
       continue;
     }
-    if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
-      await setLabel(pr.number, LANDED_LABEL);
-    }
+    // LANDED_LABEL is already present (required by planLandedRecovery); post the
+    // truthful RECOVERED comment and remove the transient labels.
     await postLandedComment(pr.number, landedSha, '', true);
     await removeLabel(pr.number, BLOCKED_LABEL);
     await removeLabel(pr.number, QUEUE_LABEL);

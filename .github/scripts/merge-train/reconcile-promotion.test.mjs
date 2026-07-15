@@ -337,6 +337,120 @@ test('promoteExactBatch pauses when main health regresses at final reattestation
   assert.equal(records.merges.length, 0);
 });
 
+test('promoteExactBatch fails closed and publishes postcondition when final main guard sees main moved after promotion', async () => {
+  // After both PRs are merged and their per-PR proofs pass, an external writer
+  // advances main. The final guard must detect this (after exhausting its zero-
+  // delay poll budget) and publish the postcondition on the last landed commit.
+  // We advance main inside the last removeLabel call — after the per-PR proof
+  // already passed — so the proof sees LAND1 and the final guard sees the
+  // unexpected SHA.
+  let main = BASE;
+  const postconditions = [];
+  let removeLabelCalled = false;
+  const EXTERNAL_SHA = '9'.repeat(40);
+
+  const result = promoteExactBatch({
+    entries: [makePromoPr(1)],
+    candidateShas: [CAND1],
+    expectedBase: BASE,
+    repository: REPO,
+    live: true,
+    fetchCurrentPr: async () => makePromoPr(1, { merged: main === LAND1 }),
+    fetchCurrentMain: async () => main,
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+    eligible: async () => ({ ok: true }),
+    git: (args) =>
+      args[1] === `${CAND1}^{tree}` ? TREE1 : args[1] === `${CAND1}^` ? BASE : '',
+    mergePullRequest: async () => {
+      main = LAND1;
+      return { ok: true, sha: LAND1 };
+    },
+    setLabel: async () => {},
+    removeLabel: async () => {
+      if (!removeLabelCalled) {
+        // Move main to an unexpected SHA after proof succeeded but before the
+        // final guard reads it. The final guard must catch this and fail closed.
+        removeLabelCalled = true;
+        main = EXTERNAL_SHA;
+      }
+    },
+    updateStatus: async () => {},
+    postLandedComment: async () => {},
+    publishPostconditionCheck: async (sha) => {
+      postconditions.push(sha);
+    },
+    recordMapping: () => {},
+    reattestHealth: async () => true,
+    // Zero-delay poll: one attempt in both the per-PR proof and the final guard.
+    proofPollDelaysMs: [],
+    proofSleep: async () => {},
+  });
+  await assert.rejects(result, (error) => {
+    assert.ok(isMergeTrainPromotionError(error));
+    assert.match(error.message, /main moved.*after promotion/);
+    return true;
+  });
+  // Postcondition published on the last landed commit, not the external SHA.
+  assert.deepEqual(postconditions, [LAND1]);
+});
+
+test('promoteExactBatch final main guard tolerates a transient fetchCurrentMain error and succeeds on retry', async () => {
+  // The first call to fetchCurrentMain in the final guard throws; the second
+  // returns the correct landed SHA. The guard must NOT fail closed on a transient
+  // network error during the final check.
+  let main = BASE;
+  let finalGuardCallCount = 0;
+  // Track which calls are "in the final guard" by counting all fetchCurrentMain
+  // calls in the harness: initial (1) + final-reattest (1) + base-CAS (1) +
+  // per-PR proof (1) = 4 calls before the final guard. The 5th+ are the guard.
+  let totalCalls = 0;
+
+  const result = await promoteExactBatch({
+    entries: [makePromoPr(1)],
+    candidateShas: [CAND1],
+    expectedBase: BASE,
+    repository: REPO,
+    live: true,
+    fetchCurrentPr: async () => makePromoPr(1, { merged: main === LAND1 }),
+    fetchCurrentMain: async () => {
+      totalCalls += 1;
+      if (totalCalls > 4 && finalGuardCallCount === 0) {
+        finalGuardCallCount += 1;
+        throw new Error('transient network error');
+      }
+      return main;
+    },
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+    eligible: async () => ({ ok: true }),
+    git: (args) =>
+      args[1] === `${CAND1}^{tree}` ? TREE1 : args[1] === `${CAND1}^` ? BASE : '',
+    mergePullRequest: async () => {
+      main = LAND1;
+      return { ok: true, sha: LAND1 };
+    },
+    setLabel: async () => {},
+    removeLabel: async () => {},
+    updateStatus: async () => {},
+    postLandedComment: async () => {},
+    publishPostconditionCheck: async () => {},
+    recordMapping: () => {},
+    reattestHealth: async () => true,
+    // One retry delay so the guard retries after the transient error.
+    proofPollDelaysMs: [0],
+    proofSleep: async () => {},
+  });
+  assert.equal(result, true);
+  assert.ok(finalGuardCallCount >= 1, 'final guard retried after transient error');
+});
+
 test('promoteExactBatch still returns true when a post-merge label/comment update hiccups', async () => {
   // A landed PR is genuinely merged; a labeling error must not abort the batch
   // or re-close anything (startup reconciliation backfills next run).
@@ -828,6 +942,7 @@ const recoveryDefaults = {
   prNumber: 42,
   parentCount: 1,
   hasPostconditionFailure: false,
+  hasLandedLabel: true,
   factsComplete: true,
 };
 
@@ -872,12 +987,10 @@ test('planLandedRecovery skips a landing with a promotion-postcondition failure 
   assert.match(decision.reason, /postcondition failure/);
 });
 
-test('planLandedRecovery finishes a markerless fully-proven interrupted landing', () => {
+test('planLandedRecovery skips a markerless landing (crash may have occurred before tree proof)', () => {
   const decision = planLandedRecovery({ ...recoveryDefaults, hasLandedLabel: false });
-  assert.deepEqual(decision, {
-    action: 'finish',
-    reason: 'proven interrupted landing',
-  });
+  assert.equal(decision.action, 'skip');
+  assert.match(decision.reason, /LANDED_LABEL proof-complete marker is absent/);
 });
 
 test('planLandedRecovery skips when recovery proof facts could not all be read', () => {

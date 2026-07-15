@@ -620,12 +620,28 @@ export async function promoteExactBatch({
   // Final whole-batch guard: main must end exactly at our last landed commit
   // (whose tree was already proven == the full candidate's, since the last
   // prefix IS the full candidate). Catches an external writer that moved main
-  // after our final merge.
-  const mainAfter = await fetchCurrentMain();
-  if (mainAfter !== landed.at(-1).sha) {
-    await publishPostcondition(landed.at(-1).sha);
+  // after our final merge. Poll through the same bounded consistency window
+  // used by landedCommitProofError -- a stale replica on the final read must
+  // not publish a false postcondition failure on an already-proven commit. A
+  // transient fetchCurrentMain error within the budget is retried (not an
+  // immediate failure) so a network blip never bypasses the success path.
+  const finalExpectedSha = landed.at(-1).sha;
+  const finalDelays = proofPollDelaysMs || [1000, 2000, 3000, 5000, 8000, 8000, 8000];
+  const finalSleep = proofSleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  let mainAfter;
+  for (let attempt = 0; attempt <= finalDelays.length; attempt += 1) {
+    try {
+      mainAfter = await fetchCurrentMain();
+    } catch {
+      mainAfter = undefined;
+    }
+    if (mainAfter === finalExpectedSha) break;
+    if (attempt < finalDelays.length) await finalSleep(finalDelays[attempt]);
+  }
+  if (mainAfter !== finalExpectedSha) {
+    await publishPostcondition(finalExpectedSha);
     throw new MergeTrainPromotionError(
-      `main moved to ${mainAfter} after promotion (expected last landed ${landed.at(-1).sha})`,
+      `main moved to ${mainAfter} after promotion (expected last landed ${finalExpectedSha})`,
     );
   }
   process.stdout.write(
@@ -776,6 +792,7 @@ export function planLandedRecovery({
   prNumber,
   parentCount,
   hasPostconditionFailure,
+  hasLandedLabel,
   factsComplete,
 }) {
   if (merged !== true) return { action: 'skip', reason: 'PR is not recorded merged' };
@@ -800,6 +817,13 @@ export function planLandedRecovery({
       action: 'skip',
       reason:
         'a promotion-postcondition failure is recorded on the landed commit (possible divergence)',
+    };
+  }
+  if (!hasLandedLabel) {
+    return {
+      action: 'skip',
+      reason:
+        'LANDED_LABEL proof-complete marker is absent; crash may have occurred before tree proof ran — leaving for human review',
     };
   }
   return { action: 'finish', reason: 'proven interrupted landing' };
