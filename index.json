@@ -1870,6 +1870,17 @@
     "path": "by-sha/ae7c887749b7d9c332ba18a9c7424eaea3054457.json"
   },
   {
+    "commit": "c8c57f8b75774fda0395a239b952510b59e78000",
+    "commitDate": "2025-08-05T18:32:58Z",
+    "commitSubject": "feat(devtools): add Azure credit dashboard canvas (#1149)",
+    "capturedAt": "2026-07-15T19:27:51.297Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29440870267",
+    "winRate": 0.9633333333333334,
+    "totalWins": 578,
+    "totalRuns": 600,
+    "path": "by-sha/c8c57f8b75774fda0395a239b952510b59e78000.json"
+  },
+  {
     "commit": "61f0effaaf7f0b22505491113636b212c9c7ec29",
     "commitDate": "2025-07-28T18:49:22Z",
     "commitSubject": "fix(sweep): count all victories as wins; track slow clears separately (#1147)",
