@@ -11,6 +11,17 @@
     "path": "by-sha/95d89d35028d12d36564d464c66bc5c0f496e50f.json"
   },
   {
+    "commit": "430022eec2cb53ecdc1dc984f077432efe712473",
+    "commitDate": "2026-07-15T11:11:21-07:00",
+    "commitSubject": "fix(merge-train): decouple promoteExactBatch cleanup from sibling postcondition failures (#1156)",
+    "capturedAt": "2026-07-15T19:13:19.892Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29440080451",
+    "winRate": 0.9633333333333334,
+    "totalWins": 578,
+    "totalRuns": 600,
+    "path": "by-sha/430022eec2cb53ecdc1dc984f077432efe712473.json"
+  },
+  {
     "commit": "33fe34fa1db8c8239d5939bd4d7f5699cc886968",
     "commitDate": "2026-07-15T07:20:55Z",
     "commitSubject": "fix(ci-policy): move merge-train App bypass to a repository ruleset (GH006) (#1148)",
