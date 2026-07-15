@@ -384,7 +384,6 @@ async function reconcileLandedSignals() {
         // therefore skip instead of asserting a possibly divergent landing.
       }
     }
-    const hasLandedLabel = (pr.labels || []).some((label) => label.name === LANDED_LABEL);
     const decision = planLandedRecovery({
       merged: pr.merged,
       baseRef: pr.base?.ref,
@@ -393,7 +392,6 @@ async function reconcileLandedSignals() {
       prNumber: pr.number,
       parentCount,
       hasPostconditionFailure,
-      hasLandedLabel,
       factsComplete,
     });
     if (decision.action !== 'finish') {
@@ -402,8 +400,9 @@ async function reconcileLandedSignals() {
       );
       continue;
     }
-    // LANDED_LABEL is already present (required by planLandedRecovery); post the
-    // truthful RECOVERED comment and remove the transient labels.
+    if (!(pr.labels || []).some((label) => label.name === LANDED_LABEL)) {
+      await setLabel(pr.number, LANDED_LABEL);
+    }
     await postLandedComment(pr.number, landedSha, '', true);
     await removeLabel(pr.number, BLOCKED_LABEL);
     await removeLabel(pr.number, QUEUE_LABEL);

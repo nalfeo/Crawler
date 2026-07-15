@@ -776,7 +776,6 @@ export function planLandedRecovery({
   prNumber,
   parentCount,
   hasPostconditionFailure,
-  hasLandedLabel,
   factsComplete,
 }) {
   if (merged !== true) return { action: 'skip', reason: 'PR is not recorded merged' };
@@ -801,13 +800,6 @@ export function planLandedRecovery({
       action: 'skip',
       reason:
         'a promotion-postcondition failure is recorded on the landed commit (possible divergence)',
-    };
-  }
-  if (!hasLandedLabel) {
-    return {
-      action: 'skip',
-      reason:
-        'LANDED_LABEL proof-complete marker is absent; crash may have occurred before tree proof ran — leaving for human review',
     };
   }
   return { action: 'finish', reason: 'proven interrupted landing' };
