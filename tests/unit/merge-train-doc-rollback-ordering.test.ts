@@ -13,9 +13,15 @@ import { describe, expect, it } from 'vitest';
  *
  * The "Emergency repair lane" section already had the safe order (disable
  * the flag first, which fails closed because nothing then publishes the
- * still-required `merge-train` check; only then remove the required check).
- * This test parses the real doc text (no reimplementation) and asserts both
- * sections disable the flag strictly before removing the required check, so
+ * still-required `merge-train` check; only then roll back protection).
+ *
+ * The mechanism changed with the ruleset-based App-bypass fix (ADR 0062,
+ * .github/scripts/merge-train/protection.mjs): rollback no longer deletes a
+ * classic required-status-check context -- it restores classic
+ * `required_status_checks` to the legacy ci-only shape and disables the
+ * "Merge Train Required Checks" ruleset via `protection.mjs rollback`. This
+ * test parses the real doc text (no reimplementation) and asserts both
+ * sections still disable the flag strictly before rolling back protection, so
  * a future edit that reintroduces the unsafe ordering in either section is
  * caught.
  */
@@ -35,45 +41,44 @@ function sectionText(doc: string, heading: string): string {
 }
 
 const DISABLE_MARKER = 'gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false';
-const REMOVE_CHECK_MARKER =
-  'gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks/contexts \\\n     --method DELETE';
+const ROLLBACK_MARKER = 'node .github/scripts/merge-train/protection.mjs rollback';
 
-describe('merge-train.md rollback ordering is fail-closed (disable flag before removing required check)', () => {
-  it('orders the Rollback section as: disable the flag, then remove the required check', () => {
+describe('merge-train.md rollback ordering is fail-closed (disable flag before rolling back protection)', () => {
+  it('orders the Rollout/Rollback section as: disable the flag, then roll back protection', () => {
     const doc = loadDoc();
     const rollback = sectionText(doc, '## Rollout');
     const disableAt = rollback.indexOf(DISABLE_MARKER);
-    const removeAt = rollback.indexOf(REMOVE_CHECK_MARKER);
+    const rollbackAt = rollback.indexOf(ROLLBACK_MARKER);
     expect(disableAt, 'disable-flag command should be present in Rollout/Rollback').toBeGreaterThan(
       -1,
     );
     expect(
-      removeAt,
-      'remove-required-check command should be present in Rollout/Rollback',
+      rollbackAt,
+      'protection.mjs rollback command should be present in Rollout/Rollback',
     ).toBeGreaterThan(-1);
-    expect(disableAt).toBeLessThan(removeAt);
+    expect(disableAt).toBeLessThan(rollbackAt);
   });
 
-  it('orders the Emergency repair lane section as: disable the flag, then remove the required check', () => {
+  it('orders the Emergency repair lane section as: disable the flag, then roll back protection', () => {
     const doc = loadDoc();
     const emergency = sectionText(doc, '## Emergency repair lane');
     const disableAt = emergency.indexOf(DISABLE_MARKER);
-    const removeAt = emergency.indexOf(REMOVE_CHECK_MARKER);
+    const rollbackAt = emergency.indexOf(ROLLBACK_MARKER);
     expect(
       disableAt,
       'disable-flag command should be present in Emergency repair lane',
     ).toBeGreaterThan(-1);
     expect(
-      removeAt,
-      'remove-required-check command should be present in Emergency repair lane',
+      rollbackAt,
+      'protection.mjs rollback command should be present in Emergency repair lane',
     ).toBeGreaterThan(-1);
-    expect(disableAt).toBeLessThan(removeAt);
+    expect(disableAt).toBeLessThan(rollbackAt);
   });
 
-  it('documents the fail-closed rationale for disabling the flag before removing the required check', () => {
+  it('documents the fail-closed rationale for disabling the flag before rolling back protection', () => {
     const doc = loadDoc();
     const rollback = sectionText(doc, '## Rollout');
     expect(rollback).toMatch(/fails closed/i);
-    expect(rollback).toMatch(/Do not\s+reverse this order/i);
+    expect(rollback).toMatch(/Do not\s+reverse this\s+order/i);
   });
 });
