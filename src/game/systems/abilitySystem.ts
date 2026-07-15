@@ -11,6 +11,8 @@ import { applyCooldownReduction } from '../../shared/stats.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
 import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
+import { getActiveWeaponDef } from '../../core/active-weapon.js';
+import { pushVfxEvent } from '../../shared/vfx-events.js';
 
 export function createAbilityState(): AbilityState {
   return {
@@ -277,23 +279,103 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
   state.cooldownFramesByAbilityId.set(abilityId, cooldownFramesForNewWindow);
 }
 
+/**
+ * Check whether the currently equipped weapon satisfies a passive ability's
+ * weapon prerequisite. Returns true when:
+ * - The ability has no prerequisite (always active), or
+ * - The prerequisite matches the active weapon's class OR type skill id.
+ */
+export function weaponPrerequisiteMet(
+  world: GameWorld,
+  holderEid: number,
+  passiveId: string,
+): boolean {
+  const def = getAbilityDefinition(passiveId);
+  if (def === undefined || def.kind !== 'passive') return false;
+  const prereq = def.weaponPrerequisite;
+  if (prereq === undefined) return true;
+
+  // Only player entities can equip weapons via the active-weapon subsystem.
+  // Non-player entities (e.g., mobs) return false intentionally — weapon-prereq
+  // passives granted to them via the v2 holder-scoped skill path are inert until
+  // per-entity weapon state is introduced. Revisit when multi-entity equip lands.
+  if (!hasComponent(world.ecs, holderEid, Player)) return false;
+
+  const weaponDef = getActiveWeaponDef(world);
+  if (weaponDef === undefined) return false;
+
+  return weaponDef.weaponClassSkillId === prereq || weaponDef.weaponTypeSkillId === prereq;
+}
+
+function applyPassive(
+  world: GameWorld,
+  holderEid: number,
+  passiveId: string,
+  state: AbilityState,
+): void {
+  const def = getAbilityDefinition(passiveId);
+  if (def === undefined || def.kind !== 'passive') return;
+
+  def.effects.forEach((effect, i) => {
+    applyCatalogEffect(world, {
+      sourceType: 'ability',
+      sourceId: `${passiveId}:passive:${holderEid}:${i}`,
+      effect,
+    });
+  });
+
+  state.appliedPassiveAbilityIds.add(passiveId);
+
+  // Emit VFX when a weapon-prerequisite passive becomes active so the player
+  // sees visual feedback that swapping to the right weapon unlocked a bonus.
+  if (def.weaponPrerequisite !== undefined && hasComponent(world.ecs, holderEid, Player)) {
+    const px = world.stores.position.x[holderEid] ?? 0;
+    const py = world.stores.position.y[holderEid] ?? 0;
+    pushVfxEvent(world.vfxEvents, { kind: 'weaponAbilityActivate', x: px, y: py });
+  }
+}
+
+function revokePassive(
+  world: GameWorld,
+  holderEid: number,
+  passiveId: string,
+  state: AbilityState,
+): void {
+  const def = getAbilityDefinition(passiveId);
+  if (def === undefined || def.kind !== 'passive') return;
+
+  def.effects.forEach((_effect, i) => {
+    removeStatModifiers(world, 'ability', `${passiveId}:passive:${holderEid}:${i}`);
+  });
+
+  // Update tracking only after stat cleanup succeeds so the ability is never
+  // considered "not applied" while its stat modifiers are still active.
+  state.appliedPassiveAbilityIds.delete(passiveId);
+}
+
 export function abilitySystem(world: GameWorld): void {
   for (const [holderEid, state] of world.abilityStatesByEntity.entries()) {
     for (const passiveId of state.passiveAbilityIds) {
-      if (state.appliedPassiveAbilityIds.has(passiveId)) continue;
       const def = getAbilityDefinition(passiveId);
       if (def === undefined || def.kind !== 'passive') continue;
 
-      // Include effect index so multi-effect passives keep distinct modifier source ids.
-      def.effects.forEach((effect, i) => {
-        applyCatalogEffect(world, {
-          sourceType: 'ability',
-          sourceId: `${passiveId}:passive:${holderEid}:${i}`,
-          effect,
-        });
-      });
+      if (def.weaponPrerequisite === undefined) {
+        // No prerequisite: apply once and never revoke.
+        if (!state.appliedPassiveAbilityIds.has(passiveId)) {
+          applyPassive(world, holderEid, passiveId, state);
+        }
+      } else {
+        // Weapon-prerequisite passive: evaluate each frame so weapon equip/unequip
+        // is reflected immediately without any per-entity generation cache.
+        const prereqMet = weaponPrerequisiteMet(world, holderEid, passiveId);
+        const alreadyApplied = state.appliedPassiveAbilityIds.has(passiveId);
 
-      state.appliedPassiveAbilityIds.add(passiveId);
+        if (prereqMet && !alreadyApplied) {
+          applyPassive(world, holderEid, passiveId, state);
+        } else if (!prereqMet && alreadyApplied) {
+          revokePassive(world, holderEid, passiveId, state);
+        }
+      }
     }
   }
 

@@ -33,6 +33,7 @@ export const ACHIEVEMENT_NUMBER_FACTS = [
   'completedQuestCount',
   'questLogSize',
   'playerGold',
+  'unlockedAbilityCount',
 ] as const;
 export type AchievementNumberFact = (typeof ACHIEVEMENT_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_BOOLEAN_FACTS = [

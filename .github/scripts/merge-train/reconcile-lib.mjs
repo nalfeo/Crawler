@@ -447,8 +447,55 @@ export async function promoteExactBatch({
     );
     throw error;
   }
-  for (const entry of entries) {
-    if (!(await waitForMergedPr(entry, finalCandidateSha))) {
+  // The atomic `git push --atomic ... --force-with-lease` above already
+  // succeeded (no exception was thrown), which is the actual, authoritative
+  // proof that every entry's head ref *and* main were fast-forwarded to
+  // `finalCandidateSha`. `waitForMergedPr` below is a secondary confirmation
+  // via GitHub's own view of each PR (useful for auditability and to catch a
+  // genuinely wrong assumption), but it does NOT poll for GitHub's `merged`/
+  // `merged_at` fields to be set -- those are unreliable for this promotion
+  // mechanism: absent in all seven promotions observed during the DEC-025
+  // discovery (including one entry 9+ hours old), but observed populated in
+  // at least one subsequent promotion (PR #1131, same date), so the fields
+  // cannot be depended on (see DEC-025 addendum in ADR 0062). This was
+  // originally believed to be an async *lag* under load (ADR 0062 DEC-024:
+  // a six-PR batch where the first entry's confirmation read hadn't landed
+  // within the old retry budget), then initially believed proven live on
+  // 2026-07-15 to be *permanent*, not a lag (ADR 0062 DEC-025), and finally
+  // narrowed to *unreliable* by the PR #1131 counter-evidence. `waitForMergedPr`
+  // (built by
+  // `createWaitForMergedPr` above) therefore polls for `state === 'closed'`,
+  // which GitHub reliably sets within ~20s of the push in every observed
+  // case, and is the actual achievable ground-truth signal for this
+  // promotion mechanism.
+  //
+  // The entire post-push phase below is therefore "collect failures, never
+  // abort early, throw once at the end" -- not just the confirmation check,
+  // but also cleanup (`removeLabel`/`updateStatus`) and publishing the
+  // postcondition failure check itself, since *any* of those throwing partway
+  // through can equally strand an already-confirmed sibling with a stale
+  // `merge-train` label (closed PRs are invisible to the next reconcile's
+  // `state=open` queue query, so nothing else will ever clean that label up).
+  // Confirmation reads run in parallel (not sequentially) so one entry's slow
+  // confirmation doesn't multiply the wall-clock budget by batch size.
+  const confirmations = await Promise.all(
+    entries.map(async (entry) => {
+      try {
+        const merged = await waitForMergedPr(entry, finalCandidateSha);
+        return { entry, merged, reason: null };
+      } catch (error) {
+        return {
+          entry,
+          merged: false,
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }),
+  );
+  const unconfirmed = confirmations.filter((confirmation) => !confirmation.merged);
+  let postconditionCheckError = null;
+  if (unconfirmed.length > 0) {
+    try {
       await createTrainCheck(
         finalCandidateSha,
         promotionFingerprint,
@@ -457,29 +504,126 @@ export async function promoteExactBatch({
         `${requiredCheckName}-promotion-postcondition`,
         provenanceEntries,
       );
-      throw new Error(
-        `PR #${entry.number} was not recorded as merged after atomic promotion to ${finalCandidateSha}`,
-      );
+    } catch (error) {
+      postconditionCheckError = error instanceof Error ? error.message : String(error);
     }
   }
+  const unconfirmedEntries = new Set(unconfirmed.map((confirmation) => confirmation.entry));
+  const cleanupFailures = [];
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
-    await removeLabel(entry.number, QUEUE_LABEL);
-    await removeLabel(entry.number, BLOCKED_LABEL);
-    await updateStatus(
-      entry.number,
-      renderStatus({
-        position: positions[index],
-        candidateSha: finalCandidateSha,
-        state: 'merged',
-        detail: 'The exact validated combined candidate fast-forwarded main atomically.',
-      }),
+    if (unconfirmedEntries.has(entry)) continue;
+    try {
+      await removeLabel(entry.number, QUEUE_LABEL);
+      await removeLabel(entry.number, BLOCKED_LABEL);
+      await updateStatus(
+        entry.number,
+        renderStatus({
+          position: positions[index],
+          candidateSha: finalCandidateSha,
+          state: 'merged',
+          detail: 'The exact validated combined candidate fast-forwarded main atomically.',
+        }),
+      );
+    } catch (error) {
+      cleanupFailures.push({
+        entry,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  const failureParts = [];
+  if (unconfirmed.length > 0) {
+    failureParts.push(
+      `PR${unconfirmed.length > 1 ? 's' : ''} ${unconfirmed
+        .map((confirmation) =>
+          confirmation.reason
+            ? `#${confirmation.entry.number} (confirmation check errored: ${confirmation.reason})`
+            : `#${confirmation.entry.number}`,
+        )
+        .join(
+          ', ',
+        )} ${unconfirmed.length > 1 ? 'were' : 'was'} not recorded as merged after atomic promotion to ${finalCandidateSha}`,
     );
+  }
+  if (cleanupFailures.length > 0) {
+    failureParts.push(
+      `cleanup failed for confirmed PR${cleanupFailures.length > 1 ? 's' : ''} ${cleanupFailures
+        .map((failure) => `#${failure.entry.number} (${failure.reason})`)
+        .join(', ')} after atomic promotion to ${finalCandidateSha}`,
+    );
+  }
+  if (postconditionCheckError) {
+    failureParts.push(
+      `failed to publish the ${requiredCheckName}-promotion-postcondition failure check: ${postconditionCheckError}`,
+    );
+  }
+  if (failureParts.length > 0) {
+    throw new Error(failureParts.join('; '));
   }
   process.stdout.write(
     `promoted prs=${entries.map((entry) => `#${entry.number}`).join(',')} sha=${finalCandidateSha}\n`,
   );
   return true;
+}
+
+/**
+ * Whether a PR's current GitHub state is acceptable confirmation that
+ * `promoteExactBatch`'s atomic force-push already landed it. This predicate
+ * is ONLY safe to trust for a PR whose atomic `git push --atomic ...
+ * --force-with-lease` has already returned successfully -- it does not, on
+ * its own, prove a promotion happened; it corroborates one that the caller
+ * already knows (from the push's own success) took effect.
+ *
+ * GitHub's `merged`/`merged_at` PR fields are **not reliably** set by this
+ * promotion mechanism -- absent in all seven promotions observed during the
+ * DEC-025 discovery (including one entry over nine hours old), but observed
+ * populated in at least one subsequent promotion (PR #1131, 2026-07-15 live
+ * cutover). Why this atomic multi-ref force-push strategy sometimes does and
+ * sometimes does not cause GitHub to set these fields is not fully understood;
+ * the fields cannot be depended on as a completion signal. This was originally
+ * believed to be a lag (ADR 0062 DEC-024) but was initially believed proven
+ * live on 2026-07-15 to be permanent (ADR 0062 DEC-025), and later narrowed
+ * to *unreliable* by the PR #1131 counter-evidence (see DEC-025 addendum in
+ * ADR 0062). What GitHub *does* reliably do -- observed within ~20s of the
+ * push in all seven DEC-025 cases -- is auto-close the PR once its head ref
+ * (now identical to `main`'s tip) shows no remaining diff against the base
+ * branch. `state === 'closed'` is therefore the correct, achievable, fast
+ * ground-truth completion signal for this promotion mechanism; `merged ===
+ * true` is kept as a defensive OR-branch for cases where GitHub does populate
+ * the field. See ADR 0062 DEC-025.
+ */
+export function isPostPushConfirmationSatisfied(prData) {
+  return Boolean(prData) && (prData.merged === true || prData.state === 'closed');
+}
+
+/**
+ * Create a `waitForMergedPr(entry, _finalCandidateSha)` confirmation poller bound to `request`
+ * and `token`. Extracted here (rather than left inline in the untestable,
+ * top-level `reconcile.mjs` CLI script) so the actual polling predicate --
+ * previously only exercised in production via an injected fake in tests,
+ * never for real -- gets direct unit test coverage with a fake `request`.
+ */
+export function createWaitForMergedPr({
+  request,
+  token,
+  owner,
+  repo,
+  pollDelaysMs = [2000, 4000, 8000, 8000, 15000, 15000, 25000],
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  return async function waitForMergedPr(entry, _finalCandidateSha) {
+    for (let attempt = 0; attempt <= pollDelaysMs.length; attempt += 1) {
+      const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+      if (isPostPushConfirmationSatisfied(current)) {
+        return true;
+      }
+      if (attempt < pollDelaysMs.length) {
+        await sleep(pollDelaysMs[attempt]);
+      }
+    }
+    return false;
+  };
 }
 
 /**

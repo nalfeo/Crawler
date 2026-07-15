@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-14",
+  "session_slug": "issue-pipeline-brief-mirror",
+  "task_title": "fix(sprites): mirror promoted brief to Azure in issue pipeline",
+  "estimated_apples": 1,
+  "stages": {}
+}

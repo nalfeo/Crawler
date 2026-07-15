@@ -1,10 +1,13 @@
+import { query } from 'bitecs';
+import { Player } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import type { StatKey } from '../../shared/stats.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
 import { applyCatalogEffect } from './progressionEffects.js';
-import { queueAbilityTrigger } from './abilitySystem.js';
+import { grantPassiveAbility, queueAbilityTrigger } from './abilitySystem.js';
+import { SKILL_LEVEL5_ABILITY_GRANTS } from '../abilities/registry.js';
 
 /**
  * Processes skill usage events each frame.
@@ -74,6 +77,21 @@ export function skillSystem(world: GameWorld): void {
       ) {
         state.triggeredMilestones.add(state.level);
         applyMilestone(world, def.id, state.level, event.holderEid);
+
+        // At level 5, also grant the corresponding passive ability (if any).
+        // Uses holderEid from v2 holder-scoped events directly. For v1-style
+        // events (no holderEid), falls back to the player entity so the milestone
+        // is never consumed without the ability being granted. The fallback can be
+        // removed once all skill-usage events are holder-scoped (v2 path only).
+        if (state.level === 5) {
+          const abilityId = SKILL_LEVEL5_ABILITY_GRANTS.get(def.id);
+          if (abilityId !== undefined) {
+            const targetEid = event.holderEid ?? query(world.ecs, [Player])[0];
+            if (targetEid !== undefined) {
+              grantPassiveAbility(world, targetEid, abilityId);
+            }
+          }
+        }
       }
     }
   }

@@ -35,7 +35,7 @@ import {
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floorScenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
-import { FLOOR1_LOADOUT_CHOICE_IDS } from '../../src/game/scenarios/floorLoadoutScenario.js';
+import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from '../../src/game/scenarios/floorLoadoutScenario.js';
 import {
   acceptQuest,
   isQuestComplete,
@@ -63,7 +63,11 @@ import {
   FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT,
   DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
 } from '../../src/shared/abilities.js';
-import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
+import {
+  flattenSetPieceLayers,
+  getSetPieceDef,
+  getSetPieceFootprint,
+} from '../../src/shared/set-piece-types.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
@@ -114,6 +118,33 @@ describe('floor1Scenario', () => {
     expect(new Set(world.floorScenario?.starterChoices ?? []).size).toBe(3);
     for (const weaponId of world.floorScenario?.starterChoices ?? []) {
       expect(getWeaponDef(weaponId)).toBeDefined();
+    }
+  });
+
+  it('widens the floor1 starter pool behind the experimental starter flag', () => {
+    const originalWindow = globalThis.window;
+    Object.assign(globalThis, {
+      window: { location: { search: '?floor1ExperimentalStarters=1' } },
+    });
+    try {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+
+      initializeFloor1Scenario(world, player);
+
+      expect(world.floorScenario?.starterWeaponPool).toEqual(
+        expect.arrayContaining(['laser', 'punch', 'landmine']),
+      );
+      expect(world.floorScenario?.starterChoices).toHaveLength(3);
+      for (const weaponId of world.floorScenario?.starterChoices ?? []) {
+        expect(world.floorScenario?.starterWeaponPool).toContain(weaponId);
+      }
+    } finally {
+      if (originalWindow === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        Object.assign(globalThis, { window: originalWindow });
+      }
     }
   });
 
@@ -368,6 +399,69 @@ describe('floor1Scenario', () => {
           inBounds,
           `seed ${seed}: prop ${index} at tile (${tile.x},${tile.y}) outside welcome room bounds`,
         ).toBe(true);
+      }
+    }
+  });
+
+  it('reserves a full welcome-room footprint without extra carved interior walls', () => {
+    const def = getSetPieceDef('welcome-room');
+    if (!def) {
+      throw new Error('Expected the welcome-room set piece to be registered');
+    }
+    const footprint = getSetPieceFootprint(def);
+    const structuralById = new Map(
+      def.props
+        .filter((prop) => prop.kind === 'wall' || prop.kind === 'door')
+        .map((prop) => [prop.id, prop]),
+    );
+
+    for (const seed of [1, 7, 42, 2024]) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+
+      const map = world.floorMap!;
+      const objective = world.floorScenario!.objective;
+      const welcomeTile = map.worldToTile(
+        objective.welcomeOfficePos.x,
+        objective.welcomeOfficePos.y,
+      );
+      const welcomeRoomId = map.roomGraph.getRoomAt(welcomeTile.x, welcomeTile.y);
+      const room = welcomeRoomId >= 0 ? map.roomGraph.get(welcomeRoomId) : undefined;
+      if (!room) {
+        throw new Error(`seed ${seed}: expected a welcome room at the welcome-office tile`);
+      }
+
+      expect(room.bounds.width).toBeGreaterThanOrEqual(footprint.width + 2);
+      expect(room.bounds.height).toBeGreaterThanOrEqual(footprint.height + 2);
+
+      const stamp = stampSetPiece(def, {
+        roomBounds: room.bounds,
+        tileSizeFt: map.config.tileSizeFt,
+      });
+      const authoredWallTiles = new Set<string>();
+      for (const stampedProp of stamp.props) {
+        const propId = stampedProp.render.label;
+        if (!propId) continue;
+        const prop = structuralById.get(propId);
+        if (!prop || prop.kind !== 'wall') continue;
+        for (let dy = 0; dy < prop.height; dy += 1) {
+          for (let dx = 0; dx < prop.width; dx += 1) {
+            authoredWallTiles.add(`${stampedProp.tileX + dx},${stampedProp.tileY + dy}`);
+          }
+        }
+      }
+
+      const { x, y, width, height } = room.bounds;
+      for (let ty = y + 1; ty < y + height - 1; ty += 1) {
+        for (let tx = x + 1; tx < x + width - 1; tx += 1) {
+          if (authoredWallTiles.has(`${tx},${ty}`)) continue;
+          const flags = map.tileMap.flags[ty * map.width + tx]!;
+          expect(
+            (flags & TileFlags.PASSABLE) !== 0,
+            `seed ${seed}: unexpected carved wall at (${tx},${ty}) in welcome room interior`,
+          ).toBe(true);
+        }
       }
     }
   });
@@ -1293,19 +1387,19 @@ describe('floor1Scenario', () => {
       // Reproduce the reported in-game case: the visible Floor 1 starter set is
       // sword/bow/baseball-bat, so the merchant must offer the two non-selected
       // canonical weapons instead of re-selling the chosen starter.
-      worldA.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
+      worldA.floorScenario!.starterChoices = [...FLOOR1_BASE_LOADOUT_CHOICE_IDS];
       worldA.floorScenario!.selectedWeaponId = 'sword';
       worldA.floorScenario!.selectedChoiceIndex = 0;
-      expect(worldA.floorScenario?.starterChoices).toEqual([...FLOOR1_LOADOUT_CHOICE_IDS]);
+      expect(worldA.floorScenario?.starterChoices).toEqual([...FLOOR1_BASE_LOADOUT_CHOICE_IDS]);
 
       const worldB = createTestWorld({ seed: 1 });
       const playerB = spawnPlayer(worldB, 0, 0);
       initializeFloor1Scenario(worldB, playerB);
       worldB.goalFlags.set('floor1-shop-quest-complete', true);
-      worldB.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
+      worldB.floorScenario!.starterChoices = [...FLOOR1_BASE_LOADOUT_CHOICE_IDS];
       worldB.floorScenario!.selectedWeaponId = 'sword';
       worldB.floorScenario!.selectedChoiceIndex = 0;
-      expect(worldB.floorScenario?.starterChoices).toEqual([...FLOOR1_LOADOUT_CHOICE_IDS]);
+      expect(worldB.floorScenario?.starterChoices).toEqual([...FLOOR1_BASE_LOADOUT_CHOICE_IDS]);
 
       const stockA = getShopkeeperPostQuestStock(worldA);
       const stockB = getShopkeeperPostQuestStock(worldB);

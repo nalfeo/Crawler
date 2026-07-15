@@ -9,73 +9,88 @@
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
-import { PIXEL_UI_DEPTH } from './pixel-ui.js';
+import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel, createStatBar } from './pixel-ui.js';
 import { resolveBossHealthBar } from './boss-health-bar-state.js';
-import { applyCrispText } from './ui-scale.js';
+import { applyCrispText, type ScreenBounds } from './ui-scale.js';
+import {
+  BOSS_PANEL_HEIGHT,
+  ENCOUNTER_PANEL_WIDTH,
+  ENCOUNTER_FIRST_ROW_Y,
+  ellipsizeEncounterLabel,
+} from './hud-encounter-layout.js';
 
 const CENTER_X = GAME.WIDTH / 2;
-const BAR_WIDTH = 360;
-const BAR_HEIGHT = 20;
-
-// `TOP_Y` is the "BOSS" label's top edge. The floor-timer panel occupies y
-// 14..52 (top 14, height 38); the bar shell extends a few px above TOP_Y, so a
-// value of 60 leaves a small clear gap beneath the timer at scale 1 — and the
-// shared scaled group keeps that gap proportional at larger UI scales.
-const TOP_Y = 60;
-const BAR_CENTER_Y = TOP_Y + 10;
-const NAME_Y = TOP_Y + 28;
+const PANEL_WIDTH = ENCOUNTER_PANEL_WIDTH;
+const PANEL_X = CENTER_X - PANEL_WIDTH / 2;
+const BAR_X = PANEL_X + 10;
+const BAR_Y = 34;
+const BAR_WIDTH = PANEL_WIDTH - 20;
+const BAR_HEIGHT = 16;
+const MAX_NAME_CHARACTERS = 48;
 
 export function createHudBossBar(
   scene: Phaser.Scene,
   options: { parent?: Phaser.GameObjects.Container } = {},
 ): {
   sync(world: GameWorld): void;
+  setTop(top: number): void;
+  getLayoutBounds(): { panel: ScreenBounds; text: ScreenBounds } | null;
   destroy(): void;
 } {
   const parent = options.parent;
-
-  const shell = scene.add
-    .rectangle(CENTER_X, BAR_CENTER_Y, BAR_WIDTH + 4, BAR_HEIGHT + 4, 0x111827, 0.92)
-    .setStrokeStyle(2, 0x4b5563)
+  const wrapper = scene.add
+    .container(0, ENCOUNTER_FIRST_ROW_Y)
     .setScrollFactor(0)
-    .setDepth(PIXEL_UI_DEPTH.panel)
-    .setVisible(false);
-  parent?.add(shell);
+    .setDepth(PIXEL_UI_DEPTH.panel);
+  parent?.add(wrapper);
 
-  const fill = scene.add
-    .rectangle(CENTER_X - BAR_WIDTH / 2, BAR_CENTER_Y, BAR_WIDTH, BAR_HEIGHT, 0xf97316)
-    .setOrigin(0, 0.5)
-    .setScrollFactor(0)
-    .setDepth(PIXEL_UI_DEPTH.content)
-    .setVisible(false);
-  parent?.add(fill);
+  const panel = createBeveledPanel(scene, PANEL_X, 0, PANEL_WIDTH, BOSS_PANEL_HEIGHT, {
+    parent: wrapper,
+  });
+
+  const bar = createStatBar(scene, BAR_X, BAR_Y, BAR_WIDTH, BAR_HEIGHT, {
+    fill: PIXEL_UI.hpHigh,
+    segment: 40,
+    parent: wrapper,
+  });
 
   const label = scene.add
-    .text(CENTER_X, TOP_Y, 'BOSS', {
+    .text(PANEL_X + 10, 17, 'BOSS', {
       fontFamily: 'monospace',
       fontSize: '12px',
+      fontStyle: 'bold',
       color: '#fde68a',
     })
-    .setOrigin(0.5, 0)
+    .setOrigin(0, 0.5)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.overlay)
     .setVisible(false);
-  parent?.add(label);
+  wrapper.add(label);
 
   const nameText = scene.add
-    .text(CENTER_X, NAME_Y, '', {
+    .text(PANEL_X + 58, 17, '', {
       fontFamily: 'monospace',
       fontSize: '13px',
       color: '#f8fafc',
-      backgroundColor: '#0f172acc',
-      padding: { x: 6, y: 3 },
     })
-    .setOrigin(0.5, 0)
+    .setOrigin(0, 0.5)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.overlay)
     .setVisible(false);
-  parent?.add(nameText);
-  const detachCrispText = applyCrispText(scene, [label, nameText]);
+  wrapper.add(nameText);
+
+  const hpText = scene.add
+    .text(PANEL_X + PANEL_WIDTH - 10, 17, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: '#cbd5e1',
+    })
+    .setOrigin(1, 0.5)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.overlay)
+    .setVisible(false);
+  wrapper.add(hpText);
+  const detachCrispText = applyCrispText(scene, [label, nameText, hpText]);
 
   function sync(world: GameWorld): void {
     const state = resolveBossHealthBar(
@@ -85,26 +100,69 @@ export function createHudBossBar(
       world.stores.health,
     );
     const visible = state !== null;
-    shell.setVisible(visible);
-    fill.setVisible(visible);
+    panel.setVisible(visible);
+    bar.setVisible(visible);
     label.setVisible(visible);
     nameText.setVisible(visible);
+    hpText.setVisible(visible);
     if (!state) {
       return;
     }
 
-    fill.setSize(Math.max(1, Math.round(BAR_WIDTH * state.pct)), BAR_HEIGHT);
-    fill.setFillStyle(state.fillColor);
-    nameText.setText(`${state.displayName}  ${Math.ceil(state.current)} / ${Math.ceil(state.max)}`);
+    bar.setPercent(state.pct);
+    bar.setColor(state.fillColor);
+    nameText.setText(ellipsizeEncounterLabel(state.displayName, MAX_NAME_CHARACTERS));
+    hpText.setText(`${Math.ceil(state.current)} / ${Math.ceil(state.max)}`);
   }
 
   function destroy(): void {
     detachCrispText();
-    shell.destroy();
-    fill.destroy();
+    panel.destroy();
+    bar.destroy();
     label.destroy();
     nameText.destroy();
+    hpText.destroy();
+    wrapper.destroy();
   }
 
-  return { sync, destroy };
+  function getLayoutBounds(): { panel: ScreenBounds; text: ScreenBounds } | null {
+    if (!label.visible) return null;
+    const textLeft = Math.min(label.x, nameText.x, hpText.x - hpText.width);
+    const textRight = Math.max(label.x + label.width, nameText.x + nameText.width, hpText.x);
+    const textTop =
+      wrapper.y +
+      Math.min(
+        label.y - label.height / 2,
+        nameText.y - nameText.height / 2,
+        hpText.y - hpText.height / 2,
+      );
+    const textBottom =
+      wrapper.y +
+      Math.max(
+        label.y + label.height / 2,
+        nameText.y + nameText.height / 2,
+        hpText.y + hpText.height / 2,
+      );
+    return {
+      panel: {
+        x: PANEL_X,
+        y: wrapper.y,
+        width: PANEL_WIDTH,
+        height: BOSS_PANEL_HEIGHT,
+      },
+      text: {
+        x: textLeft,
+        y: textTop,
+        width: textRight - textLeft,
+        height: textBottom - textTop,
+      },
+    };
+  }
+
+  return {
+    sync,
+    setTop: (top: number) => wrapper.setY(top),
+    getLayoutBounds,
+    destroy,
+  };
 }

@@ -20,13 +20,17 @@ import type { FloorMap } from '../core/map/FloorMap.js';
 import { findTilePath, type TilePoint } from '../core/map/pathfinding.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { attachBarriersToFloorMap } from '../core/barriers/index.js';
-import { sealRoomPerimeter, sealSpecialRooms } from '../core/map/special-rooms.js';
+import {
+  restoreRoomInterior,
+  sealRoomPerimeter,
+  sealSpecialRooms,
+} from '../core/map/special-rooms.js';
 import {
   stampSetPiece,
   type StampedSetPiece,
   type StampedSetPieceNpc,
 } from '../core/map/stampSetPiece.js';
-import { getSetPieceDef } from '../shared/set-piece-types.js';
+import { getSetPieceDef, getSetPieceFootprint } from '../shared/set-piece-types.js';
 import {
   Position,
   Rotation,
@@ -44,8 +48,12 @@ import {
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { SHAPE_BOX, SHAPE_CIRCLE } from '../core/physics-defs.js';
+import {
+  getFloor1StarterWeaponPool,
+  isFloor1ExperimentalStarterOptionsEnabled,
+} from '../shared/floor1-starter-weapons.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
-import { FLOOR1_LOADOUT_CHOICE_IDS } from './scenarios/floorLoadoutScenario.js';
+import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from './scenarios/floorLoadoutScenario.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import {
   clearEntityStores,
@@ -153,6 +161,7 @@ const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 // component carries matching dimensions in feet (px / PIXELS_PER_FOOT).
 const WELCOME_SIGN_WIDTH = 6;
 const WELCOME_SIGN_HEIGHT = 3.25;
+const WELCOME_ROOM_SET_PIECE_ID = 'welcome-room';
 
 /** Blood colours for Floor 1 enemy archetypes. */
 const BLOOD_COLOR_RAT = DEFAULT_BLOOD_COLOR; // red — 0xcc0000
@@ -277,10 +286,10 @@ function getPopulatedRooms(world: GameWorld): Set<number> {
   return rooms;
 }
 
-function pickStarterChoices(world: GameWorld): string[] {
+function pickStarterChoices(world: GameWorld, starterWeaponPool: readonly string[]): string[] {
   const seenWeaponIds = new Set<string>();
   const pool: string[] = [];
-  for (const weaponId of floor1Config.starterWeapons) {
+  for (const weaponId of starterWeaponPool) {
     if (getWeaponDef(weaponId) === undefined || seenWeaponIds.has(weaponId)) {
       continue;
     }
@@ -872,6 +881,22 @@ function chooseObjectiveTiles(world: GameWorld): {
     })
     .sort((a, b) => a.distanceSq - b.distanceSq);
 
+  const welcomeRoomSetPiece = getSetPieceDef(WELCOME_ROOM_SET_PIECE_ID);
+  const welcomeRoomFootprint = welcomeRoomSetPiece
+    ? getSetPieceFootprint(welcomeRoomSetPiece)
+    : null;
+  const sizedWelcomeCandidates =
+    welcomeRoomFootprint === null
+      ? candidates
+      : (() => {
+          const fittingCandidates = candidates.filter(
+            ({ room }) =>
+              room.bounds.width >= welcomeRoomFootprint.width + 2 &&
+              room.bounds.height >= welcomeRoomFootprint.height + 2,
+          );
+          return fittingCandidates.length > 0 ? fittingCandidates : candidates;
+        })();
+
   // Welcome office: 3–8 room-graph hops from spawn, targeting ~5 hops.
   // Among rooms in the valid range, prefer the hop count closest to 5; break
   // ties with Euclidean distance (nearest wins, matching prior behaviour).
@@ -879,7 +904,7 @@ function chooseObjectiveTiles(world: GameWorld): {
   const WELCOME_MIN_HOPS = 3;
   const WELCOME_MAX_HOPS = 8;
   const WELCOME_TARGET_HOPS = 5;
-  const welcomeHopCandidates = candidates.filter((e) => {
+  const welcomeHopCandidates = sizedWelcomeCandidates.filter((e) => {
     const hops = roomHopFromSpawn.get(e.room.id);
     return hops !== undefined && hops >= WELCOME_MIN_HOPS && hops <= WELCOME_MAX_HOPS;
   });
@@ -894,7 +919,7 @@ function chooseObjectiveTiles(world: GameWorld): {
           if (entryDelta > bestDelta) return best;
           return entry.distanceSq < best.distanceSq ? entry : best;
         })
-      : candidates[0];
+      : sizedWelcomeCandidates[0];
   // BFS hop distances from the welcome room — used to enforce the shop
   // placement constraint that the shop must be ≥ 3 hops from welcome.
   const roomHopFromWelcome = welcomeEntry
@@ -984,7 +1009,7 @@ function chooseObjectiveTiles(world: GameWorld): {
   };
 }
 
-/** Tag the shop room as a safe room and repaint its floor tiles so it renders correctly. */
+/** Tag a room as safe, restoring its full rectangular interior before repainting it. */
 function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
@@ -994,6 +1019,7 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
   floorMap.roomGraph.setRole(roomId, RoomRole.SAFE);
   const room = floorMap.roomGraph.get(roomId);
   if (!room) return;
+  restoreRoomInterior(floorMap.tileMap.flags, floorMap.terrain, floorMap.width, room);
   const { x: rx, y: ry, width, height } = room.bounds;
   const w = floorMap.config.widthTiles;
   for (let ty = ry; ty < ry + height; ty++) {
@@ -1322,9 +1348,6 @@ function spawnNpcFromPlacement(
   return spawnNpc(world, spawnPos.x, spawnPos.y, placement.npcTypeId, spawnOptions);
 }
 
-/** Id of the authored set piece stamped into Floor 1's welcome-office hub room. */
-const WELCOME_ROOM_SET_PIECE_ID = 'welcome-room';
-
 /**
  * Stamp the authored `welcome-room` set piece into Floor 1's welcome-office hub
  * so the three quest NPCs land at fixed, spaced positions dressed with themed
@@ -1533,10 +1556,16 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     placePropsForFloor(world, floorMap, floor1Manifest.props, world.rng);
   }
 
+  const starterWeaponPool = getFloor1StarterWeaponPool(floor1Config.starterWeapons, {
+    enableExperimental: isFloor1ExperimentalStarterOptionsEnabled(
+      typeof window !== 'undefined' ? window.location.search : undefined,
+    ),
+  });
+
   world.floorScenario = {
     protagonistName: world.playerName,
-    starterWeaponPool: floor1Config.starterWeapons,
-    starterChoices: pickStarterChoices(world),
+    starterWeaponPool,
+    starterChoices: pickStarterChoices(world, starterWeaponPool),
     offeredRewardSpellIds: pickOfferedRewardSpellIds(world),
     selectedWeaponId: null,
     selectedChoiceIndex: null,
@@ -3186,7 +3215,7 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
 export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockItem[] {
   const seen = new Set<string>();
   const starterPool: string[] = [];
-  for (const weaponId of FLOOR1_LOADOUT_CHOICE_IDS) {
+  for (const weaponId of FLOOR1_BASE_LOADOUT_CHOICE_IDS) {
     if (
       seen.has(weaponId) ||
       getWeaponDef(weaponId) === undefined ||

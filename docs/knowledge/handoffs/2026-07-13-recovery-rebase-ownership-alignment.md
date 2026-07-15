@@ -19,9 +19,11 @@ ci-policy
 ## What Was Done
 
 ### Rebase ownership alignment
+
 Updated CI recovery blocker generation so it only emits a `merge-conflict` blocker for truly non-mergeable/dirty PRs and no longer emits a generic `rebase` blocker for branches that are only behind `main`. Updated the recovery task prompt ordering text to start with merge-conflict resolution. Added a merge-queue guard to `auto-rebase-prs.yml` so the workflow cleanly no-ops when `MERGE_QUEUE_ENABLED` is enabled. Observed in the real CI recovery artifact path (`.github/scripts/ci-recovery/reconcile.mjs` task template) that before the task explicitly requested `conflict/rebase`, and after the change it requests `merge-conflict resolution`.
 
 ### Router hardening
+
 Added bounded retry with exponential backoff + jitter for retryable GitHub API failures (`403` rate-limit variants, `429`, `5xx`). The `requestWithBackoff` helper honours `retry-after` and `x-ratelimit-reset` response headers, capping delay at `DEFAULT_RETRY_MAX_DELAY_MS` (30 s) with up to 6 attempts.
 
 Added a per-sweep dispatch cap (`CI_RECOVERY_MAX_DISPATCH_PER_RUN`, default `8`) in `router.mjs`. When the sweep produces more eligible PRs than the cap, the first N PRs in API fetch order (`updated desc`) are dispatched; numeric sorting was explicitly removed to prevent starvation of higher-numbered PRs.

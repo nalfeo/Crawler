@@ -33,6 +33,7 @@ export type VfxEffectKind =
   | 'fireballBlast'
   | 'pulseShieldWave'
   | 'healGlow'
+  | 'weaponAbilityActivate'
   | 'arcaneBoltImpact'
   | 'frostNovaBurst'
   | 'buffAura'

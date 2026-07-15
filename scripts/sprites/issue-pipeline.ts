@@ -13,6 +13,7 @@ import type { VisionProvider } from './provider/vision-types.js';
 import { loadBrief } from './load-brief.js';
 import type { RunStore } from './store/types.js';
 import { briefDirectoryForType } from './brief-paths.js';
+import { mirrorBriefToStore } from './brief-durability.js';
 import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-ingester-controller.js';
 
 export interface IssuePipelineIssueApi {
@@ -154,6 +155,9 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   copyFileSync(winner.yamlPath, promotedAbs);
   const judgeEnabled = options.visionProvider !== null;
   enableJudge(promotedAbs, options.repoRoot, judgeEnabled);
+  // Mirror the final promoted brief into Azure so the local sidecar can
+  // load it after the CI runner (which wrote the file) shuts down.
+  await mirrorBriefToStore(options.store, options.repoRoot, promotedAbs);
 
   await progressComment(
     `📌 Promoted brief to \`${promotedRel}\`.\n\nStage: generate → postprocess` +

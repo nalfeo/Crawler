@@ -2,6 +2,11 @@ import { z } from 'zod';
 import type { AbilityTriggerCondition as SharedAbilityTriggerCondition } from '../../shared/abilities.js';
 import type { CatalogEffect, TimedBuffModifier } from '../../shared/progression-effects.js';
 import { STAT_KEYS } from '../../shared/stats.js';
+import {
+  WEAPON_CLASS_SKILL_IDS,
+  WEAPON_TYPE_SKILL_IDS,
+  type WeaponSkillId,
+} from '../../shared/weapon-skills.js';
 
 export { ACTIVE_ABILITY_SLOT_LIMIT } from '../../shared/abilities.js';
 export type {
@@ -33,9 +38,23 @@ export interface ActiveAbilityDefinition extends AbilityDefinitionBase {
 export interface PassiveAbilityDefinition extends AbilityDefinitionBase {
   kind: 'passive';
   effects: CatalogEffect[];
+  /**
+   * Optional weapon skill prerequisite. When set, the passive's stat bonuses
+   * are only applied while the player has a weapon of the given class or type
+   * equipped. Removing or swapping to an ineligible weapon disables the passive
+   * until a qualifying weapon is re-equipped.
+   *
+   * Weapon CLASS prerequisites (e.g. 'slashing') require any weapon whose
+   * `weaponClassSkillId` matches. Weapon TYPE prerequisites (e.g. 'sword')
+   * require any weapon whose `weaponTypeSkillId` matches.
+   */
+  weaponPrerequisite?: WeaponSkillId;
 }
 
 export type AbilityDefinition = ActiveAbilityDefinition | PassiveAbilityDefinition;
+
+// Re-export WeaponSkillId for consumers of this module.
+export type { WeaponSkillId };
 
 const triggerConditionSchema = z.discriminatedUnion('kind', [
   z
@@ -205,10 +224,14 @@ const activeAbilitySchema = baseAbilitySchema
   })
   .strict();
 
+// All valid weapon skill prerequisite IDs — class skills union type skills.
+const WEAPON_PREREQ_IDS = [...WEAPON_CLASS_SKILL_IDS, ...WEAPON_TYPE_SKILL_IDS] as const;
+
 const passiveAbilitySchema = baseAbilitySchema
   .extend({
     kind: z.literal('passive'),
     effects: z.array(effectSchema).min(1),
+    weaponPrerequisite: z.enum(WEAPON_PREREQ_IDS).optional(),
   })
   .strict();
 

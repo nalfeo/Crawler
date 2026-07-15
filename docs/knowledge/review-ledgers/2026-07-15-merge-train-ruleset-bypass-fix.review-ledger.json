@@ -1,0 +1,42 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-15",
+  "session_slug": "merge-train-ruleset-bypass-fix",
+  "task_title": "Merge-train ruleset bypass fix (GH006)",
+  "estimated_apples": 3,
+  "apples_rescored_from": 4,
+  "rescore_reason": "Diff scope on inspection is a single, well-isolated CLI tool (protection.mjs/protection-lib.mjs) with no live cutover in this PR (enable is deliberately deferred to a documented post-merge step, DEC-015) -- the adversarial plan review and a clean single-model code-review round already covered the design and implementation risk thoroughly; the additional 4th-tier multi-model fan-out was judged not to add proportional value for the actual (smaller than originally estimated) blast radius of this change.",
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck review (gpt-5.4, high reasoning) enumerated 4 alternatives: (1) make the candidate SHA run ci.yml literally -- rejected, reintroduces cost/latency; (2) split App identities (attester vs promoter) -- valid hardening, deferred as follow-up, not mandatory; (3) org-level rulesets -- wrong scope, but flagged tool should detect parent rulesets; (4) narrower bypass predicates -- not possible with GitHub ruleset API (bypass_mode is coarse). Verdict: no re-architecture needed (minor divergence), but 6 concrete concerns raised, 4 blocking. All 6 fixed/addressed: (1) enable() reordered to create/verify ruleset before disabling classic [DEC-010]; (2) printStatus postcondition ternary bug that silently masked a missing ruleset [DEC-011]; (3) parent/org ruleset blind spot -- verified structurally inapplicable via `gh api` (nalfeo/Crawler is owner_type=User, personal account, no org ruleset scope exists) -- documented as RSK-003, not code-changed to avoid an untested path for a non-existent scenario; (4) ref-scope check tightened to exact include=[main]/exclude=[] match [DEC-012]; (5) non-blocking: added assertKnownClassicStatusChecksShape to fail closed on classic shape drift before enable() disables it [DEC-013]; (6) non-blocking: doc/code appId mismatch -- made --app-id optional for status/rollback, inferred from the live ruleset, matching existing docs [DEC-014]. Also self-identified a 7th safety issue during implementation: enable() must run strictly after this PR merges (not before/during), since an active ruleset would otherwise require a merge-train check on this PR's own ordinary merge that nothing produces -- documented as DEC-015 and reflected in the guide/handoff; live enable is deliberately deferred to a post-merge operational step, this PR ships tooling+tests+docs only."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Blocking: rollback() lacked the same assertKnownClassicStatusChecksShape() fail-closed guard enable() already applies, so a manually-drifted classic required_status_checks shape (e.g. an operator added a second required context while the ruleset was live) would be silently discarded on rollback instead of failing closed -- fixed by calling the guard in rollback() too, mirroring enable(); new test added. Non-blocking: getRulesets() used a single un-paginated API page, so findRulesetByName() could miss an already-existing ruleset past page 1 (>30 rulesets), breaking enable()'s idempotency guarantee on a large repo -- fixed by switching to the shared paginate() helper. Verified ruleset/bypass_actors/required_status_checks payload shapes against GitHub's live Rulesets API schema: exact match. Ran all 33 unit tests (32 -> 33 after the new rollback shape-drift test) plus typecheck/verify:fast after the fix: all green."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 8,
+          "resolved_count": 8,
+          "clean": true,
+          "notes": "GitHub's built-in Copilot PR reviewer left 8 unresolved threads on PR #1148 post-open. All 8 addressed: (1) BLOCKING -- enable()/rollback() treated a missing classic-protection resource (404 -> null) the same as 'already migrated', silently skipping preservation of conversation-resolution/force-push/deletion/admin-enforcement; fixed with a new classicProtectionMissing() fail-closed guard in both functions (DEC-016), 2 new tests. (2) BLOCKING -- enable() validated the classic shape only after the ruleset was already created/activated, so an abort on drift could leave main behind an active merge-train-requiring ruleset while MERGE_TRAIN_ENABLED=false, permanently blocking ordinary merges; fixed by moving the read-only classic-shape validation before ruleset creation while preserving ruleset-first write ordering (DEC-017), existing drift test strengthened to assert createRuleset is never called. (3) BLOCKING -- printStatus()'s ruleset.problems validated the live ruleset's bypass actor against an id INFERRED FROM that same ruleset when --app-id was omitted, a circular check that would trivially pass any single (including wrong/compromised) Integration actor; fixed by requiring an explicit trusted --app-id/MERGE_TRAIN_APP_ID for problems validation, reporting an explicit 'cannot validate' entry otherwise, while keeping inference available only for informational display and rollback's own independent bypass-actor-preservation path (DEC-018); test rewritten to assert the new explicit-problem behavior. (4) doc: guide's App-permissions checklist omitted the repository Administration write access required to create/update rulesets (ADR RSK-001 already noted it operationally, guide didn't); added. (5) doc: handoff described enable()'s order as 'disable classic then create ruleset' -- backwards from the actual/tested ruleset-first order; corrected. (6) doc: handoff claimed 'ran enable live' in one place while 'What's Next' correctly said live enable was deferred -- a direct self-contradiction; corrected to state only a read-only live `status` check was performed. (7) doc: handoff's test-count note (16 lib + 9 orchestration = 25) was stale versus the actual 20 + 13 = 33 at the time (now 20 + 15 = 35 after this round's 2 new tests); corrected. (8) test: one test named 'rollback throws when...' whose body asserted a successful non-throwing report; renamed to describe actual behavior. Ran all 35 unit tests (33 -> 35) plus typecheck/verify:fast after the fixes: all green."
+        }
+      ]
+    }
+  }
+}

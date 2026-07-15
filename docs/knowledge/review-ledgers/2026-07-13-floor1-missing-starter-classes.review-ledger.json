@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "floor1-missing-starter-classes",
+  "task_title": "Add flagged Floor 1 starter options for missing weapon classes",
+  "estimated_apples": 2,
+  "stages": {}
+}

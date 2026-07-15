@@ -21,7 +21,11 @@ const OVERLAP_TILE = { x: 14, y: 8 };
 const OVERLAY_TILE_PX = 33;
 const OVERLAY_CENTER = { x: GAME_W / 2, y: 364 };
 
-const PRESENT_FAMILIES = loadFamilies().slice(0, 4);
+const PRESENT_FAMILIES = [...loadFamilies()]
+  .sort(
+    (a, b) => Math.max(b.name.length, b.species.length) - Math.max(a.name.length, a.species.length),
+  )
+  .slice(0, 4);
 
 function rgbFromHex(color: number): { r: number; g: number; b: number } {
   return {
@@ -87,6 +91,26 @@ interface CanvasRect {
   y: number;
   width: number;
   height: number;
+}
+
+interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function overlaps(a: Bounds, b: Bounds): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function contains(parent: Bounds, child: Bounds, tolerance = 0.5): boolean {
+  return (
+    child.x >= parent.x - tolerance &&
+    child.y >= parent.y - tolerance &&
+    child.x + child.width <= parent.x + parent.width + tolerance &&
+    child.y + child.height <= parent.y + parent.height + tolerance
+  );
 }
 
 async function getCanvasRect(page: Page): Promise<CanvasRect> {
@@ -337,6 +361,7 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     ).toBeGreaterThan(20);
   });
 
+<<<<<<< HEAD
   it('shows both family bands where territories overlap in the docked radar', async () => {
     await page.evaluate(() => {
       const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
@@ -371,4 +396,109 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     }
     await page.keyboard.press('m');
   });
+=======
+  it('contains every label and avoids the minimap and adjacent HUD at target viewports', async () => {
+    for (const viewport of [
+      { width: 1280, height: 720 },
+      { width: 960, height: 540 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        probe.setStressState('worst-case');
+      });
+      await page.waitForTimeout(400);
+
+      const layout = await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        return probe.getLayout();
+      });
+      const panel = layout.family.panel;
+      expect(
+        panel,
+        `family panel must be visible at ${viewport.width}x${viewport.height}`,
+      ).not.toBeNull();
+      if (!panel) continue;
+
+      expect(contains({ x: 0, y: 0, width: GAME_W, height: GAME_H }, panel)).toBe(true);
+      expect(layout.minimap).not.toBeNull();
+      if (layout.minimap) {
+        expect(
+          overlaps(panel, layout.minimap),
+          `family panel overlaps minimap at ${viewport.width}x${viewport.height}`,
+        ).toBe(false);
+      }
+      expect(
+        overlaps(panel, layout.bottomCenter),
+        `family panel overlaps bottom-center HUD at ${viewport.width}x${viewport.height}`,
+      ).toBe(false);
+
+      expect(layout.family.rows).toHaveLength(4);
+      expect(new Set(layout.family.rows.map((row) => row.band))).toEqual(
+        new Set(['hate', 'hostile', 'neutral', 'friendly']),
+      );
+      expect(layout.family.rows.map((row) => row.bossDefeated)).toEqual([false, true, false, true]);
+      for (const [index, row] of layout.family.rows.entries()) {
+        expect(
+          contains(panel, row.row),
+          `row ${index} escapes panel at ${viewport.width}x${viewport.height}`,
+        ).toBe(true);
+        for (const [name, bounds] of Object.entries({
+          name: row.name,
+          bar: row.bar,
+          value: row.value,
+          bossIcon: row.bossIcon,
+          status: row.status,
+        })) {
+          expect(
+            contains(row.row, bounds),
+            `${name} escapes row ${index} at ${viewport.width}x${viewport.height}`,
+          ).toBe(true);
+        }
+        const siblings = Object.entries({
+          name: row.name,
+          bar: row.bar,
+          value: row.value,
+          bossIcon: row.bossIcon,
+          status: row.status,
+        });
+        for (let left = 0; left < siblings.length; left += 1) {
+          for (let right = left + 1; right < siblings.length; right += 1) {
+            const [leftName, leftBounds] = siblings[left]!;
+            const [rightName, rightBounds] = siblings[right]!;
+            expect(
+              overlaps(leftBounds, rightBounds),
+              `${leftName} overlaps ${rightName} in row ${index} at ${viewport.width}x${viewport.height}`,
+            ).toBe(false);
+          }
+        }
+      }
+
+      const rapidSnapshots = await page.evaluate(() => {
+        const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+        if (!probe) throw new Error('__familyRelProbe missing');
+        return probe.cycleRapidState(64);
+      });
+      expect(rapidSnapshots).toHaveLength(64);
+      for (const [rapidIndex, rapid] of rapidSnapshots.entries()) {
+        expect(
+          rapid.family.rows,
+          `rapid frame ${rapidIndex} must keep four visible rows`,
+        ).toHaveLength(4);
+        if (rapid.family.panel && rapid.minimap) {
+          expect(
+            overlaps(rapid.family.panel, rapid.minimap),
+            `rapid frame ${rapidIndex} overlaps minimap`,
+          ).toBe(false);
+        }
+        expect(
+          rapid.family.panel && overlaps(rapid.family.panel, rapid.bottomCenter),
+          `rapid frame ${rapidIndex} overlaps bottom-center HUD`,
+        ).toBe(false);
+      }
+    }
+  });
+>>>>>>> origin/main
 });

@@ -4,11 +4,13 @@ import test from 'node:test';
 import {
   buildCandidate,
   buildDispatchBindings,
+  createWaitForMergedPr,
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
+  isPostPushConfirmationSatisfied,
   mainHealthReason,
   promoteExactBatch,
   promotionStaleReason,
@@ -670,6 +672,289 @@ test('promoteExactCandidate publishes a separate failure when GitHub does not re
   ]);
 });
 
+// Regression coverage for a live incident (2026-07-15, ADR 0062 DEC-024): a
+// six-PR batch promotion succeeded atomically in git (`--force-with-lease`
+// push did not throw), but GitHub's own asynchronous merge-detection for the
+// *first* entry hadn't landed within the retry budget. The old code threw
+// immediately on that single unconfirmed entry, before ever cleaning up the
+// queue label/status for any sibling -- including entries whose GitHub
+// confirmation *had* already landed. That left every PR in the batch,
+// confirmed or not, stuck with a stale `merge-train` label forever, since a
+// closed PR is invisible to the next reconcile's `state=open` queue query.
+// `promoteExactBatch` must check every entry (never abort early), clean up
+// every entry that GitHub *did* confirm, and only withhold cleanup -- and
+// still fail loudly -- for the entry(ies) that remain unconfirmed.
+test('promoteExactBatch cleans up confirmed entries even when a sibling entry is not recorded as merged', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+  const checkCalls = [];
+  const removedLabels = [];
+  const statusUpdates = [];
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async (...args) => checkCalls.push(args),
+        removeLabel: async (number, label) => removedLabels.push([number, label]),
+        updateStatus: async (number, status) => statusUpdates.push([number, status]),
+        requiredCheckName: 'merge-train',
+        // `first` (#42) never confirms; `second` (#43) confirms immediately.
+        waitForMergedPr: async (entry) => entry.number !== first.number,
+      }),
+    /PR #42 was not recorded as merged/,
+  );
+  // Only the confirmed entry (#43) gets its queue/blocked labels removed and
+  // status updated -- the unconfirmed entry (#42) is left alone so a human
+  // (or a later reconcile once GitHub catches up) can act on it, instead of
+  // silently discarding the discrepancy.
+  assert.deepEqual(removedLabels, [
+    [second.number, 'merge-train'],
+    [second.number, 'merge-train-blocked'],
+  ]);
+  assert.equal(statusUpdates.length, 1);
+  assert.equal(statusUpdates[0][0], second.number);
+  assert.match(statusUpdates[0][1], /fast-forwarded main atomically/);
+  // The postcondition-failure train check still fires exactly once for the
+  // whole batch, preserving the existing single-entry contract.
+  const postconditionChecks = checkCalls.filter(
+    (call) => call[4] === 'merge-train-promotion-postcondition',
+  );
+  assert.equal(postconditionChecks.length, 1);
+});
+
+test('promoteExactBatch withholds cleanup for every entry when none are recorded as merged', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+  const removedLabels = [];
+  const statusUpdates = [];
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async () => {},
+        removeLabel: async (number, label) => removedLabels.push([number, label]),
+        updateStatus: async (number, status) => statusUpdates.push([number, status]),
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async () => false,
+      }),
+    /PRs #42, #43 were not recorded as merged/,
+  );
+  assert.deepEqual(removedLabels, []);
+  assert.deepEqual(statusUpdates, []);
+});
+
+// Regression coverage for a plan-review finding on the fix above: the initial
+// version only decoupled cleanup from a `waitForMergedPr` *false* return --
+// but a *thrown* error from any post-push step (the confirmation read itself,
+// publishing the postcondition failure check, or per-entry cleanup) could
+// still abort the whole tail and re-strand already-confirmed siblings. The
+// entire post-push phase must collect failures and never abort early.
+test('promoteExactBatch treats a waitForMergedPr rejection like an unconfirmed entry, not a hard abort', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+  const removedLabels = [];
+  const statusUpdates = [];
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async () => {},
+        removeLabel: async (number, label) => removedLabels.push([number, label]),
+        updateStatus: async (number, status) => statusUpdates.push([number, status]),
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async (entry) => {
+          if (entry.number === first.number) throw new Error('GitHub API request timed out');
+          return true;
+        },
+      }),
+    /confirmation check errored: GitHub API request timed out/,
+  );
+  // The API error on #42 must not prevent #43 (which confirmed cleanly) from
+  // being cleaned up.
+  assert.deepEqual(removedLabels, [
+    [second.number, 'merge-train'],
+    [second.number, 'merge-train-blocked'],
+  ]);
+  assert.equal(statusUpdates.length, 1);
+  assert.equal(statusUpdates[0][0], second.number);
+});
+
+test('promoteExactBatch still cleans up other confirmed entries when one entry cleanup step throws', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+  const removedLabels = [];
+  const statusUpdates = [];
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async () => {},
+        // Both entries confirm merged; #42's label removal throws (e.g. a
+        // transient GitHub API failure), but that must not prevent #43 from
+        // still being cleaned up.
+        removeLabel: async (number, label) => {
+          if (number === first.number) throw new Error('label API rate limited');
+          removedLabels.push([number, label]);
+        },
+        updateStatus: async (number, status) => statusUpdates.push([number, status]),
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async () => true,
+      }),
+    /cleanup failed for confirmed PR #42 \(label API rate limited\)/,
+  );
+  assert.deepEqual(removedLabels, [
+    [second.number, 'merge-train'],
+    [second.number, 'merge-train-blocked'],
+  ]);
+  assert.equal(statusUpdates.length, 1);
+  assert.equal(statusUpdates[0][0], second.number);
+});
+
+test('promoteExactBatch surfaces a postcondition-check publish failure without blocking cleanup', async () => {
+  const first = makePr();
+  const second = makePr({
+    number: 43,
+    title: 'fix: second train entry',
+    head: {
+      sha: '2'.repeat(40),
+      ref: 'feature/second-train',
+      repo: { full_name: 'nalfeo/Crawler' },
+    },
+  });
+  const firstCandidate = 'b'.repeat(40);
+  const finalCandidate = 'c'.repeat(40);
+  const git = (args) => {
+    if (args[0] === 'rev-parse' && args[1] === `${firstCandidate}^`) return baseSha;
+    if (args[0] === 'rev-parse' && args[1] === `${finalCandidate}^`) return firstCandidate;
+    return '';
+  };
+  const removedLabels = [];
+  const statusUpdates = [];
+  await assert.rejects(
+    () =>
+      promoteExactBatch({
+        entries: [first, second],
+        candidateShas: [firstCandidate, finalCandidate],
+        expectedBase: baseSha,
+        repository: 'nalfeo/Crawler',
+        live: true,
+        fetchCurrentPr: async (entry) => entry,
+        fetchCurrentMain: async () => baseSha,
+        eligible: async () => ({ ok: true }),
+        git,
+        createTrainCheck: async (...args) => {
+          if (args[4] === 'merge-train-promotion-postcondition') {
+            throw new Error('checks API unavailable');
+          }
+        },
+        removeLabel: async (number, label) => removedLabels.push([number, label]),
+        updateStatus: async (number, status) => statusUpdates.push([number, status]),
+        requiredCheckName: 'merge-train',
+        waitForMergedPr: async (entry) => entry.number !== first.number,
+      }),
+    /failed to publish the merge-train-promotion-postcondition failure check: checks API unavailable/,
+  );
+  // #43 (confirmed) still gets cleaned up even though publishing the
+  // postcondition-failure check for #42 blew up.
+  assert.deepEqual(removedLabels, [
+    [second.number, 'merge-train'],
+    [second.number, 'merge-train-blocked'],
+  ]);
+  assert.equal(statusUpdates.length, 1);
+});
+
 // Regression coverage for a TOCTOU review finding: `mainHealthAllowsPromotion()`
 // was only checked once, before the sequential per-PR reads
 // (`fetchCurrentPr`/`eligible`) that follow it. A scheduled or push-triggered
@@ -845,4 +1130,101 @@ test('mainHealthReason allows promotion when a non-no-op schedule run is green',
     }),
     null,
   );
+});
+
+// Regression coverage for a 5th merge-train gap, discovered live in production
+// on 2026-07-15 (ADR 0062 DEC-025): `waitForMergedPr`'s original predicate
+// required GitHub's `merged`/`merged_at` PR fields to be set, which are ONLY
+// ever populated when a PR is closed through GitHub's own merge machinery
+// (its Merge API or the web "Merge" button) -- never by the atomic multi-ref
+// force-push this promotion strategy intentionally uses instead, to get true
+// cross-PR atomicity. That made the confirmation check permanently
+// unsatisfiable, not merely laggy (as DEC-024 originally assumed): seven real
+// promoted PRs across two separate production batches -- one over nine hours
+// old -- still showed `merged: false, merged_at: null`, even though
+// `git log main --grep Merge-Train-PR` proved every one of their commits had
+// correctly landed. GitHub does, however, reliably auto-close such a PR
+// (`state === 'closed'`) within ~20s of the push, once its head ref (now
+// identical to `main`'s tip) shows no remaining diff against the base
+// branch -- `isPostPushConfirmationSatisfied` treats that as sufficient.
+test('isPostPushConfirmationSatisfied treats state=closed as confirmed even when merged/merged_at are unset', () => {
+  // The real-world case that was broken: a PR promoted via atomic force-push
+  // is auto-closed by GitHub, but `merged`/`merged_at` never get set.
+  assert.equal(
+    isPostPushConfirmationSatisfied({ state: 'closed', merged: false, merged_at: null }),
+    true,
+  );
+});
+
+test('isPostPushConfirmationSatisfied still treats merged=true as confirmed (defensive OR-branch)', () => {
+  assert.equal(isPostPushConfirmationSatisfied({ state: 'open', merged: true }), true);
+});
+
+test('isPostPushConfirmationSatisfied returns false while the PR is still open and unmerged', () => {
+  assert.equal(
+    isPostPushConfirmationSatisfied({ state: 'open', merged: false, merged_at: null }),
+    false,
+  );
+});
+
+test('isPostPushConfirmationSatisfied returns false for missing/empty PR data', () => {
+  assert.equal(isPostPushConfirmationSatisfied(undefined), false);
+  assert.equal(isPostPushConfirmationSatisfied({}), false);
+});
+
+test('createWaitForMergedPr resolves true on the first poll once state=closed, without waiting on merged_at', async () => {
+  const requests = [];
+  const sleeps = [];
+  const waitForMergedPr = createWaitForMergedPr({
+    request: async (token, path) => {
+      requests.push(path);
+      return { data: { state: 'closed', merged: false, merged_at: null } };
+    },
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    pollDelaysMs: [2000, 4000],
+    sleep: async (ms) => sleeps.push(ms),
+  });
+  const confirmed = await waitForMergedPr({ number: 1149 });
+  assert.equal(confirmed, true);
+  assert.deepEqual(requests, ['/repos/nalfeo/Crawler/pulls/1149']);
+  assert.deepEqual(sleeps, []);
+});
+
+test('createWaitForMergedPr keeps polling while open, then confirms once closed', async () => {
+  const responses = [
+    { state: 'open', merged: false, merged_at: null },
+    { state: 'open', merged: false, merged_at: null },
+    { state: 'closed', merged: false, merged_at: null },
+  ];
+  let call = 0;
+  const sleeps = [];
+  const waitForMergedPr = createWaitForMergedPr({
+    request: async () => ({ data: responses[call++] }),
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    pollDelaysMs: [2000, 4000, 8000],
+    sleep: async (ms) => sleeps.push(ms),
+  });
+  const confirmed = await waitForMergedPr({ number: 1149 });
+  assert.equal(confirmed, true);
+  assert.equal(call, 3);
+  assert.deepEqual(sleeps, [2000, 4000]);
+});
+
+test('createWaitForMergedPr returns false after exhausting the poll budget while still open', async () => {
+  const sleeps = [];
+  const waitForMergedPr = createWaitForMergedPr({
+    request: async () => ({ data: { state: 'open', merged: false, merged_at: null } }),
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    pollDelaysMs: [2000, 4000],
+    sleep: async (ms) => sleeps.push(ms),
+  });
+  const confirmed = await waitForMergedPr({ number: 1149 });
+  assert.equal(confirmed, false);
+  assert.deepEqual(sleeps, [2000, 4000]);
 });

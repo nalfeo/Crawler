@@ -99,4 +99,32 @@ describe('formatBaselineComment', () => {
       formatBaselineComment({ winRate: 0.84, totalWins: 252, totalRuns: 300 }, [], options),
     ).toThrow('baseline index is empty or invalid');
   });
+
+  it('shows slow-victory breakdown line when totalSlowVictories and totalTrueLosses are present', () => {
+    const body = formatBaselineComment(
+      {
+        winRate: 0.97,
+        totalWins: 582,
+        totalRuns: 600,
+        totalSlowVictories: 15,
+        totalTrueLosses: 18,
+      },
+      [entry(10, 0.97)],
+      options,
+    );
+
+    expect(body).toContain('📊 Baseline win-rate for this release: **97%** (582/600)');
+    expect(body).toContain('↳ 567 fast wins · 15 slow victories · 18 true losses');
+  });
+
+  it('omits breakdown line when totalSlowVictories is absent (backward-compatible with old baselines)', () => {
+    const body = formatBaselineComment(
+      { winRate: 0.84, totalWins: 252, totalRuns: 300 },
+      [entry(10, 0.84)],
+      options,
+    );
+
+    expect(body).not.toContain('↳');
+    expect(body).toContain('📊 Baseline win-rate for this release: **84%** (252/300)');
+  });
 });

@@ -27,6 +27,7 @@ import {
 } from '../../core/index.js';
 import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import type { MainGameSceneOptions } from '../../engine/scenes/MainGameScene.js';
+import type { AbilityLoadoutConfig, AbilityLoadoutEntry } from '../../engine/AbilityLoadoutUI.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import {
   abilitySystem,
@@ -45,12 +46,15 @@ import {
   statsSystem,
   unequipActiveAbility,
   weaponSystem,
+  weaponPrerequisiteMet,
   type AbilityDefinition,
 } from '../../game/index.js';
-import { ACTIVE_ABILITY_SLOT_LIMIT } from '../../shared/abilities.js';
+import { getAbilityPresentation } from '../../shared/ability-presentation.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
 import { BiomeType } from '../../shared/map-types.js';
 import type { MapConfig } from '../../shared/map-types.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
+import { getActiveWeaponDef } from '../../core/active-weapon.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -284,7 +288,7 @@ interface LabRuntime {
 }
 
 interface AbilityLoadoutProbe {
-  open(config: never): void;
+  open(config: AbilityLoadoutConfig): void;
   close(): void;
   isOpen(): boolean;
   getPanelScreenBounds(): ScreenBounds;
@@ -299,6 +303,7 @@ interface AbilitiesSceneProbe {
   world?: GameWorld;
   playerEid?: number;
   queuedAbilitiesToggle?: boolean;
+  openAbilitiesConfigModal?(): void;
   abilityLoadoutUI?: AbilityLoadoutProbe;
   hudUi?: {
     getAbilityBarBounds(): ScreenBounds;
@@ -602,6 +607,91 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     const scene = game.scene.getScene('MainGameScene');
     return scene ? (scene as unknown as AbilitiesSceneProbe) : null;
   };
+  let probeLoadoutPreviousState: GameWorld['state'] | null = null;
+  const openLoadoutFromProbe = (scene: AbilitiesSceneProbe): void => {
+    const world = scene.world;
+    const playerEid = scene.playerEid ?? -1;
+    const loadout = scene.abilityLoadoutUI;
+    if (!world || playerEid < 0 || !loadout || loadout.isOpen()) {
+      return;
+    }
+
+    let state = world.abilityStatesByEntity.get(playerEid);
+    if (!state) {
+      state = {
+        learnedSpellIds: [],
+        equippedActiveAbilityIds: [],
+        passiveAbilityIds: [],
+        cooldownByAbilityId: new Map(),
+        cooldownFramesByAbilityId: new Map(),
+        appliedPassiveAbilityIds: new Set(),
+      } satisfies AbilityState;
+      world.abilityStatesByEntity.set(playerEid, state);
+    }
+    const availableIds = [
+      ...new Set([...state.equippedActiveAbilityIds, ...state.learnedSpellIds]),
+    ];
+    if (availableIds.length === 0) {
+      return;
+    }
+
+    probeLoadoutPreviousState = world.state;
+    world.state = 'safe_room';
+
+    const buildEntries = (): AbilityLoadoutEntry[] =>
+      availableIds.map((abilityId) => {
+        const presentation = getAbilityPresentation(abilityId);
+        const cooldownSeconds = presentation?.cooldownFrames ? presentation.cooldownFrames / 60 : 0;
+        return {
+          id: abilityId,
+          name: presentation?.name ?? abilityId,
+          shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
+          description: presentation?.description ?? 'Configured auto ability.',
+          category: presentation?.category ?? 'utility',
+          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${
+            presentation?.mpCost ?? 0
+          } MP  •  ${cooldownSeconds}s CD`,
+          equipped: state.equippedActiveAbilityIds.includes(abilityId),
+        };
+      });
+
+    loadout.open({
+      entries: buildEntries(),
+      slotLimit: ACTIVE_ABILITY_SLOT_LIMIT,
+      onToggle: (abilityId) => {
+        const presentation = getAbilityPresentation(abilityId);
+        const name = presentation?.name ?? abilityId;
+        const equippedIndex = state.equippedActiveAbilityIds.indexOf(abilityId);
+        if (equippedIndex >= 0) {
+          state.equippedActiveAbilityIds.splice(equippedIndex, 1);
+          return {
+            entries: buildEntries(),
+            feedback: `${name} removed from the auto bar.`,
+            tone: 'success',
+          };
+        }
+        if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
+          return {
+            entries: buildEntries(),
+            feedback: `All ${ACTIVE_ABILITY_SLOT_LIMIT} slots are full. Remove an ability first.`,
+            tone: 'warning',
+          };
+        }
+        state.equippedActiveAbilityIds.push(abilityId);
+        return {
+          entries: buildEntries(),
+          feedback: `${name} equipped to the auto bar.`,
+          tone: 'success',
+        };
+      },
+      onClose: () => {
+        if (probeLoadoutPreviousState !== null) {
+          world.state = probeLoadoutPreviousState;
+          probeLoadoutPreviousState = null;
+        }
+      },
+    });
+  };
   const probeWindow = window as unknown as { __abilitiesProbe?: AbilitiesProbeApi };
   const probe: AbilitiesProbeApi = {
     ready: () => {
@@ -615,10 +705,17 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     },
     openLoadout: () => {
       const scene = getScene();
-      if (scene) scene.queuedAbilitiesToggle = true;
+      if (scene) {
+        openLoadoutFromProbe(scene);
+      }
     },
     closeLoadout: () => {
+      const world = getScene()?.world;
       getScene()?.abilityLoadoutUI?.close();
+      if (world && probeLoadoutPreviousState !== null) {
+        world.state = probeLoadoutPreviousState;
+        probeLoadoutPreviousState = null;
+      }
     },
     getSnapshot: () => {
       const scene = getScene();
@@ -677,17 +774,35 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     const state = world.abilityStatesByEntity.get(eid);
     const enemyCount = query(world.ecs, [Enemy]).length;
     const equippedCount = state?.equippedActiveAbilityIds.length ?? 0;
-    const passives = state?.passiveAbilityIds.length ?? 0;
+    const passiveIds = state?.passiveAbilityIds ?? [];
     const hp = world.stores.health.current[eid] ?? 0;
     const hpMax = world.stores.health.max[eid] ?? 0;
+    const currentWeapon = getActiveWeaponDef(world);
+
+    const passiveLines = passiveIds.map((pid) => {
+      const def = ABILITIES.find((a) => a.id === pid);
+      if (!def || def.kind !== 'passive') return '';
+      const prereq = def.weaponPrerequisite;
+      const active = state?.appliedPassiveAbilityIds.has(pid) ?? false;
+      if (prereq !== undefined) {
+        const met = weaponPrerequisiteMet(world, eid, pid);
+        return `  ${met ? '✓' : '✗'} ${def.name} [needs: ${prereq}]${active ? ' (applied)' : ''}`;
+      }
+      return `  ✓ ${def.name}${active ? ' (applied)' : ''}`;
+    });
+
     hud.textContent = [
+      `Weapon: ${currentWeapon?.id ?? '(none)'}`,
       `Scenario: ${getScenario(settings.scenario).label}`,
       `HP: ${hp.toFixed(0)} / ${hpMax.toFixed(0)}`,
       `MP: ${world.playerMp.toFixed(0)} / ${world.playerMaxMp.toFixed(0)}`,
       `Enemies: ${enemyCount}`,
-      `Equipped: ${equippedCount} active/spell   ${passives} passive`,
+      `Equipped: ${equippedCount} active/spell   ${passiveIds.length} passive`,
+      passiveIds.length > 0 ? `Passives:\n${passiveLines.filter(Boolean).join('\n')}` : '',
       `State: ${world.state}`,
-    ].join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
   }, 100);
 
   // ---- GUI ----

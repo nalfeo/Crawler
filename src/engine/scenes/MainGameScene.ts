@@ -107,8 +107,11 @@ const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
 const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
+const CORNER_BUTTON_DEPTH = 1100;
+const MODAL_DISMISS_BUTTON_DEPTH = 5001;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
+const MOBILE_CORNER_BUTTON_DEPTH = CORNER_BUTTON_DEPTH;
 const SET_PIECE_LIGHT_RADIUS_FT = 20;
 const SET_PIECE_LIGHT_INTENSITY = 0.7;
 const FLOOR_1_COMMENTARY = {
@@ -494,8 +497,18 @@ export class MainGameScene extends Phaser.Scene {
 
   private achievementsButton?: Phaser.GameObjects.Text;
 
+  /** Touch button for the abilities config modal. */
+  private abilitiesButton?: Phaser.GameObjects.Text;
+
   /** One-frame latch set by tapping the on-screen achievements button. */
   private queuedAchievementsToggle = false;
+
+  /**
+   * Tracks whether the currently open modalPicker is the abilities config modal
+   * (vs loadout or spell-selection modals). Used to allow [B] to toggle-close
+   * and to auto-close when the player leaves the safe room.
+   */
+  private abilitiesModalOpen = false;
 
   /** Transient "New achievement" toast, separate from the interaction hint. */
   private achievementToast?: Phaser.GameObjects.Text;
@@ -795,6 +808,9 @@ export class MainGameScene extends Phaser.Scene {
       this.achievementsUI = undefined;
       this.achievementsButton?.destroy();
       this.achievementsButton = undefined;
+      this.abilitiesButton?.destroy();
+      this.abilitiesButton = undefined;
+      this.abilitiesModalOpen = false;
       this.achievementToast?.destroy();
       this.achievementToast = undefined;
       this.gameOverUI?.destroy();
@@ -872,7 +888,8 @@ export class MainGameScene extends Phaser.Scene {
     if (
       isCornerButtonHit(this.inventoryButton) ||
       isCornerButtonHit(this.equipButton) ||
-      isCornerButtonHit(this.achievementsButton)
+      isCornerButtonHit(this.achievementsButton) ||
+      isCornerButtonHit(this.abilitiesButton)
     ) {
       return;
     }
@@ -924,7 +941,7 @@ export class MainGameScene extends Phaser.Scene {
         event.preventDefault();
         event.stopImmediatePropagation();
         this.queuedAbilitiesToggle = false;
-        this.abilityLoadoutUI.close();
+        this.closeAbilitiesModal();
       }
       return;
     }
@@ -935,9 +952,6 @@ export class MainGameScene extends Phaser.Scene {
       // Allow browser key-repeat so holding E can advance dialogue lines.
       this.queuedInteraction = true;
       return;
-    }
-    if (event.code === 'KeyB' && !event.repeat) {
-      this.queuedAbilitiesToggle = true;
     }
   };
 
@@ -973,6 +987,33 @@ export class MainGameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Close the abilities config modal and reset tracking state.
+   * Safe to call even if the modal is not open.
+   */
+  private closeAbilitiesModal(): void {
+    if (this.abilityLoadoutUI?.isOpen()) {
+      this.abilityLoadoutUI.close();
+    } else if (this.abilitiesModalOpen && this.modalPicker?.isOpen()) {
+      this.modalPicker.close();
+    }
+    this.abilitiesModalOpen = false;
+    this.updateOverlayText();
+  }
+
+  private processOpenAbilitiesModal(): void {
+    if (!(this.abilitiesModalOpen && (this.modalPicker?.isOpen() ?? false))) {
+      return;
+    }
+    if (this.queuedAbilitiesToggle) {
+      this.queuedAbilitiesToggle = false;
+      this.closeAbilitiesModal();
+      return;
+    }
+    if (!isInSafeContext(this.world)) {
+      this.closeAbilitiesModal();
+    }
+  }
   private closeCharacterPanels(
     options: {
       keepInventory?: boolean;
@@ -1025,12 +1066,17 @@ export class MainGameScene extends Phaser.Scene {
     this.showDeathScreenIfNeeded();
     this.refreshCameraMasks();
 
+    this.processOpenAbilitiesModal();
     if (this.modalPicker?.isOpen()) {
       this.updateOverlayText();
       return;
     }
 
     if (this.abilityLoadoutUI?.isOpen()) {
+      if (this.queuedAbilitiesToggle || !isInSafeContext(this.world)) {
+        this.queuedAbilitiesToggle = false;
+        this.closeAbilitiesModal();
+      }
       this.updateOverlayText();
       return;
     }
@@ -1254,12 +1300,36 @@ export class MainGameScene extends Phaser.Scene {
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
 
+    // Per-panel open state — used below to show each panel's own button as a
+    // touch dismiss affordance even while that panel is blocking other opens.
+    const inventoryOpen = this.inventoryUI?.isOpen() ?? false;
+    const equipOpen = this.equipmentUI?.isOpen() ?? false;
+    const achievementsOpen = this.achievementsUI?.isOpen() ?? false;
+    const abilitiesOpen = this.abilityLoadoutUI?.isOpen() ?? false;
+
+    // A "hard blocker" prevents all touch-button navigation (conversation,
+    // level-up, map overlay, or a non-abilities modal).
+    const hardBlocker =
+      this.conversationNpcEid !== null ||
+      (this.hudUi?.isMapOverlayOpen() ?? false) ||
+      (this.levelUpUI?.isOpen() ?? false) ||
+      (!abilitiesOpen && (this.modalPicker?.isOpen() ?? false));
+
+    // canOpenNew: no panel or modal is blocking, so "open" buttons should show.
+    const canOpenNew =
+      !hardBlocker && !inventoryOpen && !equipOpen && !achievementsOpen && !abilitiesOpen;
+
     // Toggle the on-screen touch buttons in step with the key affordances.
-    this.inventoryButton?.setVisible(unlocks.inventory && safeCtx && !this.isBlockingSurfaceOpen());
-    this.equipButton?.setVisible(unlocks.equipment && safeCtx && !this.isBlockingSurfaceOpen());
+    // Each button shows when its own panel is open (to allow touch dismiss) OR
+    // when nothing is blocking (to allow opening a panel).
+    this.inventoryButton?.setVisible(unlocks.inventory && safeCtx && (inventoryOpen || canOpenNew));
+    this.equipButton?.setVisible(unlocks.equipment && safeCtx && (equipOpen || canOpenNew));
     this.achievementsButton?.setVisible(
-      safeCtx && this.world.achievements.unlockedIds.size > 0 && !this.isBlockingSurfaceOpen(),
+      safeCtx && this.world.achievements.unlockedIds.size > 0 && (achievementsOpen || canOpenNew),
     );
+    this.abilitiesButton
+      ?.setDepth(abilitiesOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+      .setVisible(unlocks.spells && safeCtx && (abilitiesOpen || canOpenNew));
 
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
@@ -1271,7 +1341,9 @@ export class MainGameScene extends Phaser.Scene {
     }
     if (unlocks.spells && !this.spellsUnlockNotified) {
       this.spellsUnlockNotified = true;
-      this.flashHint('Abilities unlocked! Press [B] to open Abilities and configure your bar.');
+      this.flashHint(
+        'Abilities unlocked! Press [B] or tap Skills in a safe room to configure your bar.',
+      );
     }
 
     const inventoryToggleRequested =
@@ -1319,10 +1391,18 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedAbilitiesToggle ||
       Boolean(this.keyAbilities && Phaser.Input.Keyboard.JustDown(this.keyAbilities));
     this.queuedAbilitiesToggle = false;
-    if (unlocks.spells && !isUiLockOpen() && abilitiesToggleRequested) {
+    // Three branches for abilities:
+    //   1. Toggle-close: [B] / Skills button pressed while modal is open → close it.
+    //   2. Open: prerequisites met and player requested toggle → open the config modal.
+    //   3. Auto-close: player left the saferoom while modal was open → force-close.
+    if (abilitiesToggleRequested && abilitiesOpen) {
+      this.closeAbilitiesModal();
+    } else if (unlocks.spells && safeCtx && !isUiLockOpen() && abilitiesToggleRequested) {
       this.closeMapOverlayIfOpen();
       this.closeCharacterPanels();
       this.openAbilitiesConfigModal();
+    } else if (abilitiesOpen && !safeCtx) {
+      this.closeAbilitiesModal();
     }
 
     const achievementsToggleRequested =
@@ -1530,7 +1610,7 @@ export class MainGameScene extends Phaser.Scene {
         align: 'center',
       })
       .setOrigin(0.5, 1)
-      .setDepth(1100)
+      .setDepth(CORNER_BUTTON_DEPTH)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true })
       .setVisible(false);
@@ -1562,7 +1642,7 @@ export class MainGameScene extends Phaser.Scene {
           align: 'left',
         })
         .setOrigin(0, 0)
-        .setDepth(1100)
+        .setDepth(MOBILE_CORNER_BUTTON_DEPTH)
         .setScrollFactor(0)
         .setInteractive({ useHandCursor: true })
         .setVisible(false)
@@ -1576,15 +1656,22 @@ export class MainGameScene extends Phaser.Scene {
     this.achievementsButton = makeCornerButton(128, '🏆 Awards', () => {
       this.queuedAchievementsToggle = true;
     });
+    this.abilitiesButton = makeCornerButton(184, '🔮 Skills', () => {
+      this.queuedAbilitiesToggle = true;
+    });
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
       this.equipButton?.setScale(buttonScale);
       this.achievementsButton?.setScale(buttonScale);
-      // Keep the second/third buttons clear of the (scaled) first button.
+      this.abilitiesButton?.setScale(buttonScale);
+      // Keep buttons clear of each other when scaled.
       const bagH = (this.inventoryButton?.height ?? 44) * buttonScale + 8;
       this.equipButton?.setY(16 + bagH);
-      this.achievementsButton?.setY(16 + bagH + (this.equipButton?.height ?? 44) * buttonScale + 8);
+      const gearH = (this.equipButton?.height ?? 44) * buttonScale + 8;
+      this.achievementsButton?.setY(16 + bagH + gearH);
+      const awardsH = (this.achievementsButton?.height ?? 44) * buttonScale + 8;
+      this.abilitiesButton?.setY(16 + bagH + gearH + awardsH);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
@@ -2195,11 +2282,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private openAbilitiesConfigModal(): void {
-    if (
-      !this.abilityLoadoutUI ||
-      this.world.state !== 'playing' ||
-      this.abilityLoadoutUI.isOpen()
-    ) {
+    if (!this.abilityLoadoutUI || !isInSafeContext(this.world) || this.abilityLoadoutUI.isOpen()) {
       return;
     }
     let state = this.world.abilityStatesByEntity.get(this.playerEid);
@@ -2239,6 +2322,7 @@ export class MainGameScene extends Phaser.Scene {
         };
       });
 
+    this.abilitiesModalOpen = true;
     this.clearPendingInteractionInput();
     this.abilityLoadoutUI.open({
       entries: buildEntries(),
@@ -2272,6 +2356,7 @@ export class MainGameScene extends Phaser.Scene {
         };
       },
       onClose: () => {
+        this.abilitiesModalOpen = false;
         this.clearPendingInteractionInput();
         this.updateOverlayText();
       },
@@ -2590,6 +2675,7 @@ export class MainGameScene extends Phaser.Scene {
       (this.modalPicker?.isOpen() ?? false) ||
       (this.abilityLoadoutUI?.isOpen() ?? false) ||
       (this.levelUpUI?.isOpen() ?? false);
+    const abilityLoadoutOpen = this.abilityLoadoutUI?.isOpen() ?? false;
     if (panelOpen !== this.hudHiddenForPanel) {
       this.hudHiddenForPanel = panelOpen;
       this.hudUi?.setVisible(!panelOpen);
@@ -2598,8 +2684,14 @@ export class MainGameScene extends Phaser.Scene {
         this.inventoryButton?.setVisible(false);
         this.equipButton?.setVisible(false);
         this.achievementsButton?.setVisible(false);
+        this.abilitiesButton
+          ?.setDepth(abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH)
+          .setVisible(abilityLoadoutOpen);
       }
     }
+    this.abilitiesButton?.setDepth(
+      abilityLoadoutOpen ? MODAL_DISMISS_BUTTON_DEPTH : MOBILE_CORNER_BUTTON_DEPTH,
+    );
     // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateDirectorCommentary();

@@ -30,6 +30,7 @@ import {
   TileFlags,
   TilePresets,
   type DoorLocation,
+  type RoomBounds,
   type RoomData,
 } from '../../shared/map-types.js';
 import type { FloorMap } from './FloorMap.js';
@@ -56,6 +57,29 @@ export interface SealSpecialRoomsOptions {
   readonly extraRoomIds?: Iterable<number>;
   /** Room ids to explicitly skip — the "told NOT to seal" opt-out. */
   readonly skipRoomIds?: ReadonlySet<number>;
+}
+
+/**
+ * Restore a room's full rectangular interior to passable floor tiles. Use when a
+ * reserved/special room must keep its full footprint instead of inheriting
+ * variety-carved interior walls from a generic room pass.
+ */
+export function restoreRoomInterior(
+  tileFlags: Uint8Array,
+  terrain: Uint8Array,
+  mapWidth: number,
+  room: { bounds: RoomBounds },
+  floorTerrain: TerrainType = TerrainType.STONE_FLOOR,
+): void {
+  const { x, y, width, height } = room.bounds;
+  for (let ty = y + 1; ty < y + height - 1; ty += 1) {
+    for (let tx = x + 1; tx < x + width - 1; tx += 1) {
+      const idx = ty * mapWidth + tx;
+      if ((tileFlags[idx]! & TileFlags.DOOR) !== 0) continue;
+      tileFlags[idx] = TilePresets.FLOOR;
+      terrain[idx] = floorTerrain;
+    }
+  }
 }
 
 /**

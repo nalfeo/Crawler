@@ -18,7 +18,9 @@ import {
 } from '../core/systems/questWaypoints.js';
 import { GAME } from '../shared/constants.js';
 import { PIXELS_PER_FOOT } from '../shared/units.js';
-import { applyCrispText } from './ui-scale.js';
+import { applyCrispText, type ScreenBounds } from './ui-scale.js';
+import { BLUE_STEEL } from './ui-theme.js';
+import { boundsOverlap } from './navigation-hud-layout.js';
 
 const DEPTH = 1000;
 const CX = GAME.WIDTH / 2;
@@ -31,11 +33,15 @@ const ARROW_SIZE = 22;
 const SCREEN_MARGIN = 80;
 const MIN_ARROW_SEPARATION = 48;
 const FAN_ANGLE_STEP = Math.PI / 24;
-const LABEL_OFFSET = ARROW_SIZE + 4;
-const LABEL_CHAR_WIDTH = 7;
-const LABEL_HEIGHT = 16;
+const LABEL_CHAR_WIDTH = 8;
+const LABEL_LINE_HEIGHT = 15;
+const LABEL_HORIZONTAL_PADDING = 14;
+const LABEL_VERTICAL_PADDING = 12;
 const LABEL_COLLISION_PADDING = 6;
-const LABEL_VIEWPORT_PADDING = 8;
+const LABEL_VIEWPORT_PADDING = 18;
+const LABEL_ARROW_GAP = 10;
+const MAX_LABEL_LINE_CHARS = 36;
+const MAX_LABEL_LINES = 2;
 
 const KIND_COLORS: Readonly<Record<QuestWaypointKind, number>> = {
   npc: 0xfcd34d,
@@ -72,15 +78,21 @@ function labelLayout(
   screenY: number,
   text: string,
 ): { x: number; y: number; width: number; height: number } {
-  const width = Math.min(text.length * LABEL_CHAR_WIDTH, GAME.WIDTH - LABEL_VIEWPORT_PADDING * 2);
+  const lines = text.split('\n');
+  const width = Math.min(
+    Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_WIDTH + LABEL_HORIZONTAL_PADDING,
+    GAME.WIDTH - LABEL_VIEWPORT_PADDING * 2,
+  );
+  const height = lines.length * LABEL_LINE_HEIGHT + LABEL_VERTICAL_PADDING;
+  const verticalDirection = screenY >= CY ? -1 : 1;
   return {
     x: Math.min(
       GAME.WIDTH - LABEL_VIEWPORT_PADDING - width / 2,
       Math.max(LABEL_VIEWPORT_PADDING + width / 2, screenX),
     ),
-    y: screenY + (screenY >= CY ? -LABEL_OFFSET : LABEL_OFFSET),
+    y: screenY + verticalDirection * (ARROW_SIZE / 2 + height / 2 + LABEL_ARROW_GAP),
     width,
-    height: LABEL_HEIGHT,
+    height,
   };
 }
 
@@ -94,12 +106,71 @@ function labelsOverlap(
   );
 }
 
+export function formatWaypointDistance(distanceFt: number): string {
+  if (distanceFt >= 10_000) {
+    return `${Math.round(distanceFt / 1000)}k'`;
+  }
+  if (distanceFt >= 1000) {
+    return `${(distanceFt / 1000).toFixed(1)}k'`;
+  }
+  return `${Math.round(distanceFt)}'`;
+}
+
+function wrapWaypointText(text: string): string {
+  const lines: string[] = [];
+  let current = '';
+  const words = text
+    .split(/\s+/)
+    .filter((word) => word.length > 0)
+    .flatMap((word) => {
+      const chunks: string[] = [];
+      for (let i = 0; i < word.length; i += MAX_LABEL_LINE_CHARS) {
+        chunks.push(word.slice(i, i + MAX_LABEL_LINE_CHARS));
+      }
+      return chunks;
+    });
+  for (const word of words) {
+    const candidate = current.length === 0 ? word : `${current} ${word}`;
+    if (candidate.length <= MAX_LABEL_LINE_CHARS) {
+      current = candidate;
+      continue;
+    }
+    lines.push(current);
+    current = word;
+  }
+  if (current.length > 0) lines.push(current);
+  if (lines.length <= MAX_LABEL_LINES) return lines.join('\n');
+  const visible = lines.slice(0, MAX_LABEL_LINES);
+  visible[MAX_LABEL_LINES - 1] =
+    `${visible[MAX_LABEL_LINES - 1]!.slice(0, MAX_LABEL_LINE_CHARS - 3).trimEnd()}...`;
+  return visible.join('\n');
+}
+
+function arrowBounds(x: number, y: number): ScreenBounds {
+  return {
+    x: x - ARROW_SIZE / 2,
+    y: y - ARROW_SIZE / 2,
+    width: ARROW_SIZE,
+    height: ARROW_SIZE,
+  };
+}
+
+function labelBounds(label: { x: number; y: number; width: number; height: number }): ScreenBounds {
+  return {
+    x: label.x - label.width / 2,
+    y: label.y - label.height / 2,
+    width: label.width,
+    height: label.height,
+  };
+}
+
 /** Pure screen-space layout used by the Phaser widget and unit tests. */
 export function resolveDirectionArrowStates(
   waypoints: readonly QuestWaypoint[],
   playerX: number,
   playerY: number,
   zoom: number,
+  forbiddenRegions: readonly ScreenBounds[] = [],
 ): DirectionArrowState[] {
   const scale = PIXELS_PER_FOOT * (zoom || 1);
   const states: DirectionArrowState[] = [];
@@ -120,27 +191,33 @@ export function resolveDirectionArrowStates(
 
     const targetAngle = Math.atan2(dy, dx);
     const distanceFt = Math.hypot(dx, dy);
-    const labelText = `${waypoint.label}  ${Math.round(distanceFt)}'`;
+    const labelText = wrapWaypointText(`${waypoint.label}  ${formatWaypointDistance(distanceFt)}`);
     let screenX = CX + Math.cos(targetAngle) * RX;
     let screenY = CY + Math.sin(targetAngle) * RY;
     let label = labelLayout(screenX, screenY, labelText);
-    const maxAttempts = Math.max(24, waypoints.length * 8);
+    const maxAttempts = Math.max(48, waypoints.length * 12);
     for (let attempt = 0; attempt <= maxAttempts; attempt += 1) {
       const displayAngle = targetAngle + fanOffset(attempt);
       const candidateX = CX + Math.cos(displayAngle) * RX;
       const candidateY = CY + Math.sin(displayAngle) * RY;
       const candidateLabel = labelLayout(candidateX, candidateY, labelText);
-      const clear = states.every(
-        (state) =>
-          Math.hypot(candidateX - state.screenX, candidateY - state.screenY) >=
-            MIN_ARROW_SEPARATION &&
-          !labelsOverlap(candidateLabel, {
-            x: state.labelScreenX,
-            y: state.labelScreenY,
-            width: state.labelWidth,
-            height: state.labelHeight,
-          }),
+      const avoidsHud = forbiddenRegions.every(
+        (region) =>
+          !boundsOverlap(arrowBounds(candidateX, candidateY), region, LABEL_COLLISION_PADDING) &&
+          !boundsOverlap(labelBounds(candidateLabel), region, LABEL_COLLISION_PADDING),
       );
+      const clear =
+        states.every(
+          (state) =>
+            Math.hypot(candidateX - state.screenX, candidateY - state.screenY) >=
+              MIN_ARROW_SEPARATION &&
+            !labelsOverlap(candidateLabel, {
+              x: state.labelScreenX,
+              y: state.labelScreenY,
+              width: state.labelWidth,
+              height: state.labelHeight,
+            }),
+        ) && avoidsHud;
       screenX = candidateX;
       screenY = candidateY;
       label = candidateLabel;
@@ -170,14 +247,16 @@ export function resolveDirectionArrowStates(
 
 interface ArrowVisual {
   readonly arrow: Phaser.GameObjects.Triangle;
+  readonly labelBg: Phaser.GameObjects.Rectangle;
   readonly label: Phaser.GameObjects.Text;
   readonly pulse: Phaser.Tweens.Tween;
   readonly detachCrispText: () => void;
 }
 
 export function createHudDirectionArrows(scene: Phaser.Scene): {
-  sync(world: GameWorld, playerEid: number): void;
+  sync(world: GameWorld, playerEid: number, forbiddenRegions?: readonly ScreenBounds[]): void;
   setVisible(visible: boolean): void;
+  getBounds(): readonly ScreenBounds[];
   destroy(): void;
 } {
   const visuals = new Map<string, ArrowVisual>();
@@ -192,11 +271,20 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
       .setDepth(DEPTH)
       .setName(`quest-direction-arrow:${questId}`)
       .setVisible(false);
+    const labelBg = scene.add
+      .rectangle(CX, CY, 1, LABEL_LINE_HEIGHT + LABEL_VERTICAL_PADDING, BLUE_STEEL.panelBg, 0.94)
+      .setStrokeStyle(1, BLUE_STEEL.panelBorder, 1)
+      .setOrigin(0.5, 0.5)
+      .setScrollFactor(0)
+      .setDepth(DEPTH - 1)
+      .setVisible(false);
     const label = scene.add
       .text(CX, CY, '', {
-        fontFamily: 'monospace',
-        fontSize: '11px',
+        fontFamily: '"Press Start 2P", "Courier New", monospace',
+        fontSize: '8px',
         fontStyle: 'bold',
+        align: 'center',
+        lineSpacing: 3,
         color: '#fde68a',
         stroke: '#02040a',
         strokeThickness: 3,
@@ -215,11 +303,12 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
       ease: 'Sine.easeInOut',
       paused: true,
     });
-    return { arrow, label, pulse, detachCrispText: applyCrispText(scene, [label]) };
+    return { arrow, labelBg, label, pulse, detachCrispText: applyCrispText(scene, [label]) };
   }
 
   function hideVisual(visual: ArrowVisual): void {
     visual.arrow.setVisible(false);
+    visual.labelBg.setVisible(false);
     visual.label.setVisible(false);
     visual.pulse.pause();
   }
@@ -228,10 +317,15 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
     visual.detachCrispText();
     visual.pulse.stop();
     visual.arrow.destroy();
+    visual.labelBg.destroy();
     visual.label.destroy();
   }
 
-  function sync(world: GameWorld, playerEid: number): void {
+  function sync(
+    world: GameWorld,
+    playerEid: number,
+    forbiddenRegions: readonly ScreenBounds[] = [],
+  ): void {
     if (playerEid < 0) {
       for (const visual of visuals.values()) {
         hideVisual(visual);
@@ -256,7 +350,13 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
       }
     }
 
-    const states = resolveDirectionArrowStates(waypoints, px, py, scene.cameras.main.zoom || 1);
+    const states = resolveDirectionArrowStates(
+      waypoints,
+      px,
+      py,
+      scene.cameras.main.zoom || 1,
+      forbiddenRegions,
+    );
     const stateByQuestId = new Map(states.map((state) => [state.questId, state]));
     for (const waypoint of waypoints) {
       const state = stateByQuestId.get(waypoint.questId);
@@ -275,6 +375,10 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
         .setPosition(state.screenX, state.screenY)
         .setRotation(state.rotation)
         .setFillStyle(KIND_COLORS[state.kind], 1)
+        .setVisible(true);
+      visual.labelBg
+        .setPosition(state.labelScreenX, state.labelScreenY)
+        .setSize(state.labelWidth, state.labelHeight)
         .setVisible(true);
       visual.label
         .setPosition(state.labelScreenX, state.labelScreenY)
@@ -305,5 +409,22 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
     visuals.clear();
   }
 
-  return { sync, setVisible, destroy };
+  function getBounds(): readonly ScreenBounds[] {
+    const bounds: ScreenBounds[] = [];
+    for (const visual of visuals.values()) {
+      if (!visual.arrow.visible || !visual.labelBg.visible) {
+        continue;
+      }
+      const arrow = visual.arrow.getBounds();
+      const label = visual.labelBg.getBounds();
+      const left = Math.min(arrow.x, label.x);
+      const top = Math.min(arrow.y, label.y);
+      const right = Math.max(arrow.right, label.right);
+      const bottom = Math.max(arrow.bottom, label.bottom);
+      bounds.push({ x: left, y: top, width: right - left, height: bottom - top });
+    }
+    return bounds;
+  }
+
+  return { sync, setVisible, getBounds, destroy };
 }

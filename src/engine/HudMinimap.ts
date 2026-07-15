@@ -21,21 +21,20 @@ import {
 } from './minimap-family-tint.js';
 import { PIXEL_UI } from './pixel-ui.js';
 import { applyCrispText, getUiScale, type ScreenBounds } from './ui-scale.js';
+import { NAV_RADAR_DIAMETER, resolveNavigationHudLayout } from './navigation-hud-layout.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
 
 const HUD_DEPTH = 1000;
 const MAP_BORDER = 2;
 // Round radar minimap pinned to the very top-right corner.
-const HUD_RADAR_DIAMETER = 152;
-const HUD_RADAR_MARGIN = 12;
+const HUD_RADAR_DIAMETER = NAV_RADAR_DIAMETER;
 /**
  * Upper bound on docked-radar magnification on small screens. The dial is a
  * spatial widget anchored to the top-right corner; capping the scale keeps it
  * legible/tappable on mobile while leaving room for the quest tracker that
  * stacks beneath it. At scale 1 (desktop) the dial is pixel-identical.
  */
-const HUD_RADAR_MAX_SCALE = 1.4;
 const HUD_RADAR_RADIUS = HUD_RADAR_DIAMETER / 2;
 // Inner radius the radar content is clipped to (leaves a thin rim for the rings).
 const RADAR_CLIP_RADIUS = HUD_RADAR_RADIUS - 4;
@@ -46,7 +45,8 @@ const ZOOM_STEP_IN = 1.15;
 const ZOOM_STEP_OUT = 0.87;
 const OVERLAY_CLOSE_BUTTON_SIZE = 52;
 const OVERLAY_CLOSE_BUTTON_MAX_SIZE = 72;
-const OVERLAY_CLOSE_BUTTON_MARGIN = 14;
+const OVERLAY_CLOSE_BUTTON_MARGIN_X = 22;
+const OVERLAY_CLOSE_BUTTON_MARGIN_Y = 18;
 const DOT_PLAYER = 0xffffff;
 const DOT_PLAYER_RING = 0xffd23f;
 const DOT_OUTLINE = 0x0b0b14;
@@ -254,21 +254,23 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setVisible(false);
 
   const panelTitle = scene.add
-    .text(0, 0, 'Dungeon Map', {
-      fontFamily: 'monospace',
-      fontSize: '16px',
+    .text(0, 0, 'DUNGEON MAP', {
+      fontFamily: '"Press Start 2P", "Courier New", monospace',
+      fontSize: '10px',
       fontStyle: 'bold',
       color: '#fcd34d',
+      padding: { top: 3, bottom: 2 },
     })
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 2)
     .setVisible(false);
 
   const panelHint = scene.add
-    .text(0, 0, 'Drag/pinch: pan & zoom  ·  Wheel/+/-: zoom  ·  M: close', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#94a3b8',
+    .text(0, 0, 'DRAG/PINCH: PAN & ZOOM  |  WHEEL / +/-: ZOOM  |  M: CLOSE', {
+      fontFamily: '"Press Start 2P", "Courier New", monospace',
+      fontSize: '8px',
+      color: '#aebdd5',
+      padding: { top: 3, bottom: 2 },
     })
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 2)
@@ -382,10 +384,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
     // The radar content composites into a fixed-size, dial-local RenderTexture,
     // so scaling the chrome + radarRt display uniformly grows the whole widget
     // without touching the per-tile clip math in drawRadar.
-    const radarScale = Math.min(getUiScale(scene), HUD_RADAR_MAX_SCALE);
+    const navLayout = resolveNavigationHudLayout(getUiScale(scene), 1);
+    const radarScale = navLayout.radarScale;
     const scaledRadius = HUD_RADAR_RADIUS * radarScale;
-    const scaledCx = width - HUD_RADAR_MARGIN - scaledRadius;
-    const scaledCy = HUD_RADAR_MARGIN + scaledRadius;
+    const scaledCx = navLayout.radarBounds.x + navLayout.radarBounds.width / 2;
+    const scaledCy = navLayout.radarBounds.y + HUD_RADAR_DIAMETER * radarScale * 0.5;
     hudRadarCenterX = scaledCx;
     hudRadarCenterY = scaledCy;
 
@@ -403,14 +406,15 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
     overlayDimmer.setSize(width, height);
     panelBg.setPosition(panelX + panelW / 2, panelY + panelH / 2).setSize(panelW, panelH);
-    panelTitle.setPosition(panelX + 14, panelY + 10);
-    panelHint.setPosition(panelX + 14, panelY + panelH - 26);
+    panelTitle.setPosition(panelX + 18, panelY + 14);
+    panelHint.setPosition(panelX + 18, panelY + panelH - 27);
     const closeButtonSize = Math.min(
       OVERLAY_CLOSE_BUTTON_MAX_SIZE,
       Math.round(OVERLAY_CLOSE_BUTTON_SIZE * getUiScale(scene)),
     );
-    const closeButtonCenterX = panelX + panelW - OVERLAY_CLOSE_BUTTON_MARGIN - closeButtonSize / 2;
-    const closeButtonCenterY = panelY + OVERLAY_CLOSE_BUTTON_MARGIN + closeButtonSize / 2;
+    const closeButtonCenterX =
+      panelX + panelW - OVERLAY_CLOSE_BUTTON_MARGIN_X - closeButtonSize / 2;
+    const closeButtonCenterY = panelY + OVERLAY_CLOSE_BUTTON_MARGIN_Y + closeButtonSize / 2;
     closeButtonBg.setPosition(closeButtonCenterX, closeButtonCenterY);
     closeButtonBg.setSize(closeButtonSize, closeButtonSize);
     closeLabel.setPosition(closeButtonCenterX, closeButtonCenterY);
@@ -1277,8 +1281,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
     },
     getDockedBounds: (): ScreenBounds | null => {
       if (masterHidden || !hudMapBg.visible) return null;
-      const b = hudMapBg.getBounds();
-      return { x: b.x, y: b.y, width: b.width, height: b.height };
+      const dial = hudMapBg.getBounds();
+      const label = hudMapLabel.getBounds();
+      const x = Math.min(dial.x, label.x);
+      const y = Math.min(dial.y, label.y);
+      const right = Math.max(dial.right, label.right);
+      const bottom = Math.max(dial.bottom, label.bottom);
+      return { x, y, width: right - x, height: bottom - y };
     },
     destroy,
   };

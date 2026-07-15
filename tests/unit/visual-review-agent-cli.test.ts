@@ -27,4 +27,11 @@ describe('visual-review-agent viewport parsing', () => {
   it('preserves the existing viewport when --viewport is omitted', () => {
     expect(parseArgs([]).viewport).toEqual({ width: 1600, height: 1000 });
   });
+
+  it('updates the effective viewport when width/height flags are provided separately', () => {
+    expect(parseArgs(['--viewport-width', '1280', '--viewport-height', '720']).viewport).toEqual({
+      width: 1280,
+      height: 720,
+    });
+  });
 });

@@ -101,6 +101,53 @@ describe('MainGameScene UI exclusivity', () => {
     }
   });
 
+  it('keeps the Skills dismiss shortcut visible above the abilities loadout and closes on tap', async () => {
+    await bootPlayingSafeScene();
+
+    const opened = await (async () => {
+      await mainSceneProbe.queueAbilitiesToggle(page);
+      return waitForState(page, (s) => s.abilityLoadoutOpen && s.abilitiesButtonVisible, {
+        label: 'abilities loadout opened with visible Skills dismiss shortcut',
+      });
+    })();
+
+    expect(opened.abilityLoadoutOpen, 'abilities loadout should be open').toBe(true);
+    expect(
+      opened.abilitiesButtonVisible,
+      'Skills dismiss shortcut should remain visible above the loadout',
+    ).toBe(true);
+
+    const tapped = await mainSceneProbe.tapAbilitiesButton(page);
+    expect(tapped, 'probe should be able to tap the visible Skills dismiss shortcut').toBe(true);
+    await waitForState(page, (s) => !s.abilityLoadoutOpen, {
+      label: 'abilities loadout closed from Skills dismiss shortcut tap',
+    });
+  });
+
+  it('opens the abilities loadout from safe_room world state', async () => {
+    await bootPlayingSafeScene();
+
+    await mainSceneProbe.setSafeContext(page, false);
+    await mainSceneProbe.setWorldState(page, 'safe_room');
+    await waitForState(page, (s) => s.worldState === 'safe_room' && s.safeContext, {
+      label: 'safe_room world state activated',
+    });
+
+    await mainSceneProbe.queueAbilitiesToggle(page);
+    const state = await waitForState(page, (s) => s.abilityLoadoutOpen, {
+      label: 'abilities loadout opened from safe_room world state',
+    });
+
+    expect(state.worldState, 'probe should be exercising the post-floor safe_room state').toBe(
+      'safe_room',
+    );
+    expect(state.safeContext, 'safe_room should count as a safe context on its own').toBe(true);
+    expect(
+      state.abilityLoadoutOpen,
+      'Skills should open from the post-floor safe_room state even without playerInSafeRoom',
+    ).toBe(true);
+  });
+
   it('does not open inventory after pressing I inside the abilities loadout', async () => {
     await bootPlayingSafeScene();
 
@@ -128,10 +175,6 @@ describe('MainGameScene UI exclusivity', () => {
 
   it('does not move after closing the abilities loadout with S held', async () => {
     await bootPlayingSafeScene();
-    await mainSceneProbe.setSimulationPaused(page, false);
-    await waitForState(page, (s) => !s.simulationPaused, {
-      label: 'simulation resumed for held movement check',
-    });
 
     await mainSceneProbe.queueAbilitiesToggle(page);
     await waitForState(page, (s) => s.abilityLoadoutOpen, {
@@ -143,6 +186,10 @@ describe('MainGameScene UI exclusivity', () => {
       await page.keyboard.press('b');
       const closed = await waitForState(page, (s) => !s.abilityLoadoutOpen, {
         label: 'abilities loadout closed with S held',
+      });
+      await mainSceneProbe.setSimulationPaused(page, false);
+      await waitForState(page, (s) => !s.simulationPaused, {
+        label: 'simulation resumed after held movement close',
       });
       await page.waitForTimeout(250);
       const after = await mainSceneProbe.getState(page);

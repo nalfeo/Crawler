@@ -9,6 +9,7 @@ export {
   grantPassiveAbility,
   queueAbilityTrigger,
   getOrCreateAbilityState,
+  weaponPrerequisiteMet,
 } from './abilitySystem.js';
 export {
   achievementSystem,

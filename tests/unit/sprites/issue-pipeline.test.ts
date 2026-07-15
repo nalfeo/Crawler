@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IssueAssetRequest } from '../../../scripts/sprites/queue/types.js';
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
+import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
 
 vi.mock('../../../scripts/sprites/synthesize-brief.js', () => ({
   synthesizeBrief: vi.fn(),
@@ -408,5 +409,78 @@ describe('runIssuePipeline', () => {
     const callArgs = mockSynthesizeBrief.mock.calls[0]![0];
     expect(callArgs.name).toBe('dagger');
     expect(callArgs.type).toBe('weapon');
+  });
+
+  it('mirrors the post-enableJudge brief bytes into the store before runFull executes', async () => {
+    // Regression test: issue-pipeline must mirror the promoted brief to the store
+    // (via mirrorBriefToStore) AFTER enableJudge mutates it and BEFORE runFull starts,
+    // so the sidecar can load it via materializeBriefFromStore after the CI runner shuts down.
+    const winnerPath = path.join(repoRoot, 'bone-dagger.yaml');
+    writeFileSync(winnerPath, 'name: bone-dagger\njudge:\n  enabled: false\n', 'utf8');
+    const store = makeStore();
+    const promotedRel = 'briefs/draft/weapons/bone-dagger.yaml';
+    const briefKey = workflowBriefKey(promotedRel);
+
+    // Capture the store state from *inside* the runFull mock to verify ordering.
+    let mirroredBeforeRunFull = false;
+    let mirroredBytesAtRunFull: string | undefined;
+
+    mockSynthesizeBrief.mockResolvedValueOnce({
+      name: 'bone-dagger',
+      type: 'weapon',
+      sizeVariant: 'default',
+      outDir: repoRoot,
+      written: [
+        {
+          id: 'bone-dagger-v1',
+          type: 'weapon',
+          description: 'bone dagger',
+          embellishmentSeeds: [],
+          synthesisRationale: 'best silhouette',
+          yamlPath: winnerPath,
+        },
+      ],
+      rejected: [],
+      sidecarPath: path.join(repoRoot, 'synthesis.json'),
+      providerLabel: 'azure-openai:synth',
+      promptHash: 'prompt-hash',
+    });
+    mockRunFull.mockImplementationOnce(async () => {
+      // At this point mirrorBriefToStore must already have run.
+      mirroredBeforeRunFull = store.mem.has(briefKey);
+      mirroredBytesAtRunFull = store.mem.get(briefKey)?.toString('utf8');
+      return {
+        summary: { brief: 'bone-dagger', runId: 'run-1' },
+        summaryPath: '/tmp/run-1/summary.json',
+      } as never;
+    });
+
+    await runIssuePipeline({
+      request: makeRequest(),
+      repoRoot,
+      store,
+      imageProvider: {} as never,
+      textProvider: null,
+      synthProvider: {} as never,
+      briefSelectorProvider: {
+        modelDeployment: 'selector-deploy',
+        async selectBrief() {
+          return { index: 0, rationale: 'best match', modelDeployment: 'selector-deploy' };
+        },
+      },
+      // Use a non-null visionProvider so enableJudge sets enabled: true — proves
+      // the mirrored bytes are the post-mutation version, not the pre-mutation copy.
+      visionProvider: {} as never,
+      issueApi: { comment: async () => {} },
+      env: {},
+    });
+
+    // Ordering: brief must be in the store when runFull starts.
+    expect(mirroredBeforeRunFull).toBe(true);
+    // Post-enableJudge bytes: enabled must be true (vision provider was configured).
+    expect(mirroredBytesAtRunFull).toContain('enabled: true');
+    // Final state: key and correct bytes still present after the pipeline completes.
+    expect(store.mem.has(briefKey)).toBe(true);
+    expect(store.mem.get(briefKey)!.toString('utf8')).toContain('enabled: true');
   });
 });

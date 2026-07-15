@@ -92,6 +92,33 @@ assets:
       kind: sprite-registry
       id: fireball
 
+  - id: laser
+    type: weapon
+    label: 'Laser'
+    brief: 'Laser — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show a compact emitter or beam-focused device in a clean side or three-quarter profile so the weapon type reads at a glance. A continuous beam for contestants who hate subtlety.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: laser
+
+  - id: punch
+    type: weapon
+    label: 'Punch'
+    brief: 'Punch — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show stylized wrapped knuckles or a fighting fist in a clean side or three-quarter profile so the weapon type reads at a glance. Your own two knuckles and a bad attitude.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: punch
+
+  - id: landmine
+    type: weapon
+    label: 'Landmine'
+    brief: 'Landmine — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show a compact explosive trap in a clean top-down or three-quarter profile so the weapon type reads at a glance. Set it, bait it, and let the room solve itself.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: landmine
+
   - id: toxic-blowgun
     type: weapon
     label: 'Toxic Blowgun'

@@ -61,17 +61,61 @@ candidate SHA, and state.
 
 Before live mode:
 
-1. Configure branch protection for `main` to require the `merge-train` check.
-   Keep existing PR checks required during rollout.
-2. Permit only the repository App identified by `APP_ID` to bypass protection
-   for the exact fast-forward update. Do not grant broad user bypass.
+1. **Run `enable` only after the `protection.mjs` tooling's own PR has merged
+   to `main` -- never before, and never as part of that same PR's merge.**
+   Once the ruleset is active, every non-bypass actor (including an ordinary
+   `gh pr merge`) must satisfy both `ci` and `merge-train`; nothing posts a
+   `merge-train` check for an ordinary PR. Running `enable` before the
+   tooling PR merges would self-block that PR's own merge -- and every other
+   in-flight ordinary PR -- behind a check that can never be satisfied.
+2. Run the idempotent protection tool to move live required-status enforcement
+   for `refs/heads/main` from classic branch protection to a dedicated
+   repository ruleset:
+
+   ```bash
+   node .github/scripts/merge-train/protection.mjs enable --app-id <APP_ID>
+   ```
+
+   This creates/updates the **"Merge Train Required Checks"** ruleset, which:
+   - requires `ci` (the built-in GitHub Actions App) **and** `merge-train` for
+     every actor except one;
+   - grants exactly one bypass actor `bypass_mode: always`: the repository App
+     identified by `APP_ID` (`actor_type: 'Integration'`) -- the only identity
+     that may push the exact, internally reattested atomic promotion;
+   - leaves classic branch protection's `required_conversation_resolution`,
+     `allow_force_pushes`, `allow_deletions`, and every other classic setting
+     untouched.
+
+   It also disables (does not delete) classic protection's
+   `required_status_checks`, because classic protection has **no mechanism** to
+   grant a per-App bypass for a required context -- only rulesets support
+   `bypass_actors`. Leaving classic `required_status_checks` live alongside the
+   ruleset would let it independently block the App's promotion push even once
+   the ruleset is correctly configured. See
+   [`0062-merge-train-ruleset-app-bypass.md`](../knowledge/adr/0062-merge-train-ruleset-app-bypass.md)
+   for the full rationale, including why this failed with `GH006` under the
+   original classic-protection design (ADR 0060 DEC-009).
+
 3. Confirm the App has contents, actions, checks, issues, and pull-request write
-   permissions.
-4. Keep force-pushes to `main` disabled. Promotion is a fast-forward.
+   permissions, **plus repository Administration write access** (required to
+   create/update rulesets via `POST`/`PUT .../rulesets` -- without it, `enable`
+   fails with `403` even though every other prerequisite in this checklist is
+   satisfied).
+4. Keep force-pushes to `main` disabled (unchanged, still enforced by classic
+   protection). Promotion is a fast-forward.
 5. Ensure `MERGE_TRAIN_ADMISSION_CHECKS` names the current PR admission checks.
    The default is `ci,Security checks`.
+6. Verify the postcondition before enabling the train:
 
-Without the App bypass, promotion fails closed after candidate validation.
+   ```bash
+   node .github/scripts/merge-train/protection.mjs status --app-id <APP_ID>
+   ```
+
+   Confirm `classic.requiredStatusChecksDisabled: true` and
+   `ruleset.problems: []`.
+
+Without the ruleset's App bypass live and classic `required_status_checks`
+disabled, promotion fails closed after candidate validation (`GH006`).
 
 ## Rollout
 
@@ -79,7 +123,10 @@ One strict boolean controls the complete behavior. There is no partial or
 dry-run train mode.
 
 1. Merge the implementation while `MERGE_TRAIN_ENABLED=false`.
-2. Configure the required check and App bypass, then set:
+2. Configure the ruleset and App bypass (see
+   [Required repository configuration](#required-repository-configuration)
+   above), confirm `protection.mjs status` reports a clean postcondition, then
+   set:
 
    ```bash
    gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body true
@@ -92,10 +139,40 @@ dry-run train mode.
    - a failed candidate is bisected and the maximal green prefix advances;
    - a `main` race rejects promotion and rebuilds;
    - a failure between PR-head update and main update retries the same tested SHA.
-4. Confirm GitHub records every disposable PR as merged and that the merge commit
-   OIDs equal their successful `merge-train` check OIDs.
-   Promotion also checks this postcondition in production and fails the train
-   run if GitHub does not record every included PR as merged.
+4. Confirm every disposable PR is closed or recorded as merged (`state ===
+   'closed'` or `merged === true`). Promotion polls this postcondition in
+   production after the atomic push; the train fails if an entry never
+   confirms within the poll budget. No merge-commit OID comparison is
+   performed — the atomic push's own success is the authoritative proof of a
+   correct promotion.
+
+   > **GitHub's "merged" confirmation is a secondary corroboration, not the
+   > ground truth — and `merged`/`merged_at` are not reliably set by this promotion
+   > mechanism.** The atomic `git push --atomic ... --force-with-lease` is the actual, authoritative proof that a batch
+   > promoted correctly. GitHub's `merged`/`merged_at` PR fields are **not
+   > reliably** set by this promotion mechanism — absent in all seven
+   > promotions observed during the DEC-025 discovery (including one entry
+   > 9+ hours old), but observed populated in at least one subsequent
+   > promotion (PR #1131, 2026-07-15 live cutover). Why a direct atomic
+   > multi-ref force-push sometimes does and sometimes does not cause GitHub
+   > to set these fields is not fully understood; the fields cannot be
+   > depended on as a completion signal for this mechanism. This was originally
+   > believed to be an async _lag_ under load (ADR 0062 DEC-024, from a six-PR
+   > batch where one entry's confirmation read hadn't landed within the old
+   > retry budget) but was shown to be a persistent unreliability (ADR 0062
+   > DEC-025, narrowed to "unreliable" from the initial "permanent" framing by
+   > the PR #1131 observation — see the DEC-025 addendum in ADR 0062).
+   > What GitHub _does_ reliably do (observed within ~20s of the push in all
+   > seven cases) is auto-close the PR once its head ref shows no remaining
+   > diff against `main`. `promoteExactBatch`'s confirmation poller
+   > (`createWaitForMergedPr` / `isPostPushConfirmationSatisfied`, ADR 0062
+   > DEC-025) therefore treats `state === 'closed'` as sufficient
+   > confirmation, keeping `merged === true` only as a defensive OR-branch.
+   > It still polls every entry in parallel and fails closed (throws, blocks
+   > that entry's cleanup) if an entry never confirms — but a slow-to-confirm
+   > entry no longer strands its already-confirmed siblings with a stale
+   > `merge-train` label, since closed PRs are invisible to the next
+   > reconcile's open-PR queue and would otherwise never self-heal.
 
 To return to the legacy independent-auto-merge and blanket-rebase behavior:
 
@@ -105,30 +182,34 @@ To return to the legacy independent-auto-merge and blanket-rebase behavior:
    gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false
    ```
 
-   This fails closed: while `merge-train` is still a required status check,
-   nothing publishes it once the train stops running, so every PR is safely
-   _blocked_ from merging rather than merging without validation. Do not
-   reverse this order: removing the required check before disabling the flag
-   opens a window where the train is still enabled but no longer gated by
-   branch protection, so a PR could merge before the train (or anything else)
-   has actually validated it.
+   This fails closed: while the ruleset still requires `merge-train`, nothing
+   publishes it once the train stops running, so every PR is safely _blocked_
+   from merging rather than merging without validation. Do not reverse this
+   order: rolling back protection before disabling the flag opens a window
+   where the train is still enabled but no longer gated, so a PR could merge
+   before the train (or anything else) has actually validated it.
 
-2. Once the train is confirmed disabled, remove `merge-train` from `main`'s
-   required status checks to resume the legacy path:
-
-   ```bash
-   gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks/contexts \
-     --method DELETE -f 'contexts[]=merge-train'
-   # If main is protected by a ruleset instead of classic branch protection,
-   # edit the ruleset's required-status-checks list to drop merge-train
-   # instead (`gh api repos/nalfeo/Crawler/rulesets` to find it).
-   ```
-
-   Confirm it is gone before proceeding:
+2. Once the train is confirmed disabled, restore classic `ci`-only protection
+   and disable the ruleset:
 
    ```bash
-   gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks --jq '.contexts'
+   node .github/scripts/merge-train/protection.mjs rollback
    ```
+
+   This restores classic `required_status_checks` to the exact pre-fix legacy
+   shape (`ci`, strict, scoped to the GitHub Actions App) **before** disabling
+   the ruleset, so there is never a window where neither classic protection
+   nor the ruleset enforces `ci` on `main`. It refuses to run (without
+   `--force`) while `MERGE_TRAIN_ENABLED=true`, and it disables the ruleset
+   rather than deleting it, so it can be re-enabled or audited later. Confirm
+   with:
+
+   ```bash
+   node .github/scripts/merge-train/protection.mjs status
+   ```
+
+   `classic.requiredStatusChecksRestored` must be `true` and
+   `ruleset.enforcement` must not be `active`.
 
 With `MERGE_TRAIN_ENABLED=false`, CI recovery's `merge-train`-owned skip
 (`ci-recovery/reconcile.mjs`) stops applying, so CI recovery and broad
@@ -136,10 +217,10 @@ auto-rebase automatically resume owning freshness and promotion for every PR
 still carrying a `merge-train*` label -- no separate step restores that part.
 The next recovery sweep removes the train-owned labels (`merge-train`,
 `merge-train-blocked`, `merge-train-noop`, `merge-train-validation-failed`)
-before returning each PR fully to legacy automation. Step 2 (removing the
-required check, once the train is confirmed disabled) is the only manual
-action rollback still requires; freshness/promotion ownership resumes
-automatically.
+before returning each PR fully to legacy automation. Step 2 (restoring classic
+protection and disabling the ruleset, once the train is confirmed disabled) is
+the only manual action rollback still requires; freshness/promotion ownership
+resumes automatically.
 
 ## Emergency repair lane (main-health deadlock)
 
@@ -169,18 +250,17 @@ replace, using machinery this repository already has and already trusts:
    gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body false
    ```
 
-2. Remove `merge-train` from `main`'s required status checks (same command as
-   the Rollback section above):
+2. Restore classic `ci`-only protection and disable the ruleset (same command
+   as the Rollback section above):
 
    ```bash
-   gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks/contexts \
-     --method DELETE -f 'contexts[]=merge-train'
+   node .github/scripts/merge-train/protection.mjs rollback
    ```
 
-   Confirm it is gone before proceeding:
+   Confirm it is done before proceeding:
 
    ```bash
-   gh api repos/nalfeo/Crawler/branches/main/protection/required_status_checks --jq '.contexts'
+   node .github/scripts/merge-train/protection.mjs status
    ```
 
 3. Confirm legacy freshness ownership resumed. No manual action is needed:
@@ -199,10 +279,11 @@ replace, using machinery this repository already has and already trusts:
    `mainHealthAllowsPromotion()` looks for; do not re-enable the train on the
    strength of the repair PR's own head-check evidence alone, since that
    predates the merge.
-6. Only once that push-triggered run is green: re-add `merge-train` to `main`'s
-   required status checks and re-enable the train:
+6. Only once that push-triggered run is green: re-enable the ruleset and the
+   train:
 
    ```bash
+   node .github/scripts/merge-train/protection.mjs enable --app-id <APP_ID>
    gh variable set MERGE_TRAIN_ENABLED --repo nalfeo/Crawler --body true
    ```
 
@@ -224,8 +305,10 @@ repaired `main`.
   returns the first failing addition with `merge-train-validation-failed`.
 - **Stale:** a PR head/title or `main` changed. The candidate is abandoned and a
   new immutable generation is built.
-- **Promotion denied:** verify App bypass and contents-write permissions. Never
-  merge the PR through the ordinary squash path to work around this failure.
+- **Promotion denied:** run `node .github/scripts/merge-train/protection.mjs
+status --app-id <APP_ID>` and verify `classic.requiredStatusChecksDisabled`
+  is `true` and `ruleset.problems` is empty. Never merge the PR through the
+  ordinary squash path to work around this failure.
 - **Main-health deadlock:** every hourly full-CI run for the current `main` SHA
   is red (or missing/pending), so `mainHealthAllowsPromotion()` pauses all
   promotion, including the repair PR's own. This is the one case where the

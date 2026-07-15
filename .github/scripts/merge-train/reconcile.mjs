@@ -9,6 +9,7 @@ import {
 import {
   buildCandidate,
   buildDispatchBindings,
+  createWaitForMergedPr,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
@@ -190,10 +191,12 @@ async function createTrainCheck(
   });
 }
 
-const {
-  dispatchRecovery,
-  dispatchValidation: baseDispatchValidation,
-} = buildDispatchBindings({ request, workflowDispatchToken, owner, repo });
+const { dispatchRecovery, dispatchValidation: baseDispatchValidation } = buildDispatchBindings({
+  request,
+  workflowDispatchToken,
+  owner,
+  repo,
+});
 
 // Bound on how many recent push-triggered CI runs we inspect (and fetch
 // check-runs for) when looking for evidence on the current main SHA. Main
@@ -249,19 +252,35 @@ async function mainHealthAllowsPromotion() {
   return true;
 }
 
-async function waitForMergedPr(entry) {
-  const delays = [1000, 2000, 4000, 8000, 8000, 8000];
-  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
-    const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
-    if (current.merged === true || (current.state === 'closed' && current.merged_at)) {
-      return true;
-    }
-    if (attempt < delays.length) {
-      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
-    }
-  }
-  return false;
-}
+// `waitForMergedPr` polls each promoted entry's PR for GitHub's own view of
+// the promotion, as a secondary confirmation on top of the atomic push's own
+// (authoritative) success. It does NOT require GitHub's `merged`/`merged_at`
+// fields to be set -- those are unreliable for this promotion mechanism:
+// absent in all seven promotions observed during the DEC-025 discovery
+// (including one entry 9+ hours old), but observed populated in at least one
+// subsequent promotion (PR #1131, same date), so the fields cannot be
+// depended on as a completion signal (see DEC-025 addendum in ADR 0062).
+// This was originally believed to be an async *lag* under load (ADR 0062
+// DEC-024), then initially believed proven live on 2026-07-15 to be
+// *permanent*, not a lag (ADR 0062 DEC-025), and finally narrowed to
+// *unreliable* by the PR #1131 counter-evidence. `waitForMergedPr` therefore
+// polls for `state === 'closed'`, which GitHub reliably sets within ~20s of
+// the push in every observed case, and is the actual achievable ground-truth
+// signal for this promotion mechanism. The ~77s budget below is kept as a
+// bounded safety margin against a genuine anomaly (a PR that never
+// auto-closes at all) even though `closed` typically fires in ~20s;
+// `createWaitForMergedPr` polls every entry in parallel (via
+// `promoteExactBatch`'s `Promise.all`), so a full batch's wall-clock stays
+// close to this single-entry budget regardless of batch size.
+const MERGED_PR_POLL_DELAYS_MS = [2000, 4000, 8000, 8000, 15000, 15000, 25000];
+
+const waitForMergedPr = createWaitForMergedPr({
+  request,
+  token,
+  owner,
+  repo,
+  pollDelaysMs: MERGED_PR_POLL_DELAYS_MS,
+});
 
 async function blockEntry(entry, { detail, validationFailure = false }) {
   await setLabel(entry.number, BLOCKED_LABEL);

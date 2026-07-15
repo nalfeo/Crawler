@@ -33,6 +33,11 @@ loop, and multi-model review are recorded in
   and reopen.
 - Added a clean real-scene abilities review mode, stable geometry probes, and
   deterministic browser coverage at 1280x720 and 960x540.
+- Added a real-scene Floor-1 boss-reward trigger and measured `ModalPickerUI`
+  snapshot so the actual one-shot ability-selection path is covered at both
+  supported viewports.
+- Increased reward-picker body, description, and footer legibility while adding
+  true row breathing room without weakening deterministic containment.
 
 ## Validation
 
@@ -41,6 +46,8 @@ loop, and multi-model review are recorded in
   `deviceScaleFactor: 2`.
 - `tests/e2e/main-game-scene-ui-exclusivity.test.ts` passed with the dedicated
   abilities surface.
+- `tests/e2e/boss-reward-picker-ux.test.ts` passed at 1280x720 and 960x540,
+  with every measured title/body/row/description/footer box inside its parent.
 - Deterministic visual geometry reported zero overlap/overflow blockers.
 - Final observed loadout captures:
   - `change-8-final-loadout-1280x720.png`
@@ -48,6 +55,9 @@ loop, and multi-model review are recorded in
 - Final observed hotbar captures:
   - `change-7-legibility-hotbar-1280x720.png`
   - `change-7-legibility-hotbar-960x540.png`
+- Final real boss-reward picker captures:
+  - `reward-picker-final-1280x720-v3-2026-07-13T07-49-00-397Z.png`
+  - `reward-picker-final-960x540-v3-2026-07-13T08-06-25-453Z.png`
 
 ## Visual review outcome
 
@@ -58,9 +68,19 @@ restoring it. Deterministic geometry remained clean throughout. Valid independen
 signals were still applied: generated icons, stronger secondary text contrast, larger
 fallback labels, more row breathing room, and greater icon/cooldown separation.
 
+The final real boss-reward picker review reached the same bounded deadlock at the
+supported viewports. After body/description/footer contrast and size were increased,
+body line spacing grew, and rows gained 4px of true height, the judge continued to
+request moving 15px-high descriptions down beyond their measured 52px row bottoms.
+It also called a footer with 30px measured bottom clearance "cramped." Those
+geometry-degrading requests were rejected explicitly on each loop. Both final runs
+reported 14 measured regions and zero deterministic blockers; 844x390 was removed
+from the acceptance contract by the maintainer and was not rerun.
+
 ## Key decisions
 
-- Kept the generic `ModalPickerUI` unchanged for unrelated one-shot flows.
+- Kept `ModalPickerUI` generic for one-shot flows while improving its shared text
+  readability and exposing a read-only measured layout snapshot for automation.
 - Resolved generated art through the boot-loaded sprite registry rather than loading
   duplicate public paths.
 - Used deterministic ability IDs to select approved variants and preserve replay-safe

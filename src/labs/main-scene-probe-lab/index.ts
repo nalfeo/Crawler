@@ -44,6 +44,7 @@ import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
+import type { ModalPickerLayoutSnapshot } from '../../engine/ModalPickerUI.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 const LAB_ID = 'main-scene-probe-lab';
@@ -110,7 +111,13 @@ interface MainSceneInternals {
   inventoryButton?: { visible: boolean };
   equipButton?: { visible: boolean };
   achievementsButton?: { visible: boolean };
-  modalPicker?: { isOpen(): boolean; close(): void };
+  abilitiesButton?: { visible: boolean; emit(eventName: string): boolean };
+  modalPicker?: {
+    isOpen(): boolean;
+    close(): void;
+    getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
+  };
+  openSpellSelectionModal?(): void;
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
   queuedAbilitiesToggle?: boolean;
@@ -187,7 +194,8 @@ export interface MainSceneState {
   readonly inventoryButtonVisible: boolean;
   readonly equipButtonVisible: boolean;
   readonly achievementsButtonVisible: boolean;
-  /** Number of primary surfaces currently open. */
+  readonly abilitiesButtonVisible: boolean;
+  /** Number of primary surfaces currently open (modal/inventory/equipment/achievements). */
   readonly primarySurfaceCount: number;
   /** True when safe-room-gated surfaces should be allowed. */
   readonly safeContext: boolean;
@@ -298,6 +306,10 @@ export interface MainSceneProbeApi {
   activateFamilyRelationships(): void;
   /** Mounted family-HUD visibility and bounds plus fullscreen-map state. */
   getFamilyHudState(): FamilyHudProbeState;
+  /** Trigger the shipped Floor-1 boss reward condition and open its real picker path. */
+  openBossRewardPicker(): void;
+  /** Measured layout for the currently open real modal picker. */
+  getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
   /** Overwrite the player's FEET position and zero its velocity. */
@@ -315,6 +327,10 @@ export interface MainSceneProbeApi {
   requestEquipToggle(): void;
   /** Queue abilities ([B]) toggle for the next update frame. */
   queueAbilitiesToggle(): void;
+  /** Override the live world state machine value for targeted scene-flow probes. */
+  setWorldState(state: GameWorld['state']): void;
+  /** Emit a pointer tap on the Skills corner button. Returns false if unavailable/hidden. */
+  tapAbilitiesButton(): boolean;
   /** Queue B + V in the same frame to exercise single-surface exclusivity. */
   queueAbilitiesAndAchievementsToggle(): void;
   /** Queue the shared interaction request used by touch and repeated E presses. */
@@ -468,6 +484,7 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         inventoryButtonVisible: scene?.inventoryButton?.visible ?? false,
         equipButtonVisible: scene?.equipButton?.visible ?? false,
         achievementsButtonVisible: scene?.achievementsButton?.visible ?? false,
+        abilitiesButtonVisible: scene?.abilitiesButton?.visible ?? false,
         primarySurfaceCount: [
           modalOpen,
           abilityLoadoutOpen,
@@ -490,6 +507,34 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       }
     },
 
+    openBossRewardPicker: () => {
+      const scene = getScene();
+      const world = scene?.world;
+      if (!scene || !world) {
+        throw new Error('MainGameScene is not ready');
+      }
+      if (world.state === 'loadout') {
+        scene.modalPicker?.close();
+        sceneOptions.selectLoadoutOption?.(world, 0);
+      }
+      world.state = 'playing';
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      world.featureUnlocks.spells = false;
+      scene.modalPicker?.close();
+      scene.openSpellSelectionModal?.();
+      if (!scene.modalPicker?.isOpen()) {
+        throw new Error('real boss reward picker did not open');
+      }
+    },
+
+    getModalPickerLayout: () => getScene()?.modalPicker?.getLayoutSnapshot() ?? null,
+
+    setWorldState: (state) => {
+      const world = getScene()?.world;
+      if (world) {
+        world.state = state;
+      }
+    },
     unlockSafeRoomSurfaces: () => {
       const scene = getScene();
       const world = scene?.world;
@@ -650,6 +695,15 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       if (scene) {
         scene.queuedAbilitiesToggle = true;
       }
+    },
+
+    tapAbilitiesButton: () => {
+      const button = getScene()?.abilitiesButton;
+      if (!button?.visible) {
+        return false;
+      }
+      button.emit('pointerdown');
+      return true;
     },
 
     queueAbilitiesAndAchievementsToggle: () => {

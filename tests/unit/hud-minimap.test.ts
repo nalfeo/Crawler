@@ -137,7 +137,7 @@ describe('HudMinimap small/docked radar architectural guards', () => {
   });
 
   it('uses the correct dial diameter and derives radius from it', () => {
-    expect(source).toContain('const HUD_RADAR_DIAMETER = 152;');
+    expect(source).toContain('const HUD_RADAR_DIAMETER = NAV_RADAR_DIAMETER;');
     expect(source).toContain('const HUD_RADAR_RADIUS = HUD_RADAR_DIAMETER / 2;');
   });
 
@@ -146,15 +146,14 @@ describe('HudMinimap small/docked radar architectural guards', () => {
   });
 
   it('pins the dial to the top-right corner using margin and the responsive radius', () => {
-    expect(source).toContain('const scaledCx = width - HUD_RADAR_MARGIN - scaledRadius;');
-    expect(source).toContain('const scaledCy = HUD_RADAR_MARGIN + scaledRadius;');
+    expect(source).toContain('const navLayout = resolveNavigationHudLayout(getUiScale(scene), 1);');
+    expect(source).toContain(
+      'const scaledCx = navLayout.radarBounds.x + navLayout.radarBounds.width / 2;',
+    );
   });
 
   it('scales the docked dial up on small screens (capped, mirrors the HUD)', () => {
-    expect(source).toContain('const HUD_RADAR_MAX_SCALE = 1.4;');
-    expect(source).toContain(
-      'const radarScale = Math.min(getUiScale(scene), HUD_RADAR_MAX_SCALE);',
-    );
+    expect(source).toContain('const radarScale = navLayout.radarScale;');
     expect(source).toContain('const scaledRadius = HUD_RADAR_RADIUS * radarScale;');
     expect(source).toContain('hudMapBg.setPosition(scaledCx, scaledCy).setScale(radarScale);');
     expect(source).toContain(
@@ -294,12 +293,12 @@ describe('HudMinimap enlarged overlay architectural guards', () => {
   });
 
   it('displays "Dungeon Map" as the overlay title', () => {
-    expect(source).toContain(".text(0, 0, 'Dungeon Map', {");
+    expect(source).toContain(".text(0, 0, 'DUNGEON MAP', {");
   });
 
   it('shows pan/zoom and keyboard hints at the bottom of the overlay', () => {
     expect(source).toContain(
-      ".text(0, 0, 'Drag/pinch: pan & zoom  ·  Wheel/+/-: zoom  ·  M: close', {",
+      ".text(0, 0, 'DRAG/PINCH: PAN & ZOOM  |  WHEEL / +/-: ZOOM  |  M: CLOSE', {",
     );
   });
 
@@ -442,8 +441,9 @@ describe('HudMinimap mobile layout regression', () => {
 
   it('keeps the dial pinned to the top-right at any screen width via the margin constant', () => {
     // The formula uses `width` from getGameSize(), so it always tracks the real edge.
-    expect(source).toContain('const scaledCx = width - HUD_RADAR_MARGIN - scaledRadius;');
-    expect(source).toContain('const HUD_RADAR_MARGIN = 12;');
+    expect(source).toContain(
+      'const scaledCx = navLayout.radarBounds.x + navLayout.radarBounds.width / 2;',
+    );
   });
 
   it('re-clamps the view state after a resize so the map stays within new viewport bounds', () => {

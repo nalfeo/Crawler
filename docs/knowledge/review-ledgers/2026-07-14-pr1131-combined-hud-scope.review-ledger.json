@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-14",
+  "session_slug": "pr1131-combined-hud-scope",
+  "task_title": "Holistic review for PR #1131 combined HUD scope",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A: edit the live PR metadata directly and add only append-only recovery artifacts — preferred if permissions allow, but not guaranteed from this session. Alt B: reopen/reland as a correctly scoped combined HUD PR — deterministic but much higher churn than needed. Alt C: split the branch back into promised slices — most correct relative to the old body, but the heaviest path. Chosen salvage path: keep the branch, add a holistic combined-scope ledger, add a new recovery handoff, and correct the original reland handoff with a pointer rather than falsifying historical session metrics. Divergence=minor because the red-team changed the accounting strategy (do not rewrite the 2026-07-13 apple metric) and made live PR metadata correction a first-class blocker if permissions remain absent."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Holistic branch review vs origin/main found no remaining merge-blocking correctness or audit-trail issues after the recovery docs changes. Reviewer explicitly rechecked the earlier HUD bug fixes and the branch-scope recovery artifacts."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "All three reviewers agreed the only live merge blocker on pushed HEAD was that this combined-scope ledger still had a scaffold-only multi_model_review block. No substantive code or design defects were found across the branch diff. The concern was resolved by truthfully recording this completed stage instead of lowering the apple tier."
+        }
+      ]
+    }
+  }
+}
