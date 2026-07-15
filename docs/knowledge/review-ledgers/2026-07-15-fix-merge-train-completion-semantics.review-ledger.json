@@ -6,23 +6,59 @@
   "estimated_apples": 5,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Adversarial plan review (rubber-duck, gpt-5.6-terra; separate model from the Opus implementer). Verdict: the initial 'replace only the force-push' plan was UNSOUND. Enumerated 4 alternatives (one-PR-per-cycle FIFO; atomic force-push then flip semantics; git-ancestry-only attestation; staging integration branch) and 7 blocking findings, ALL folded into the shipped design: (1) merge API has no base-CAS -> pre-merge main==expectedParent assertion + auto-merge fencing + queue:max; (2) intermediate prefixes unvalidated -> escalated to the human, who chose prefix-validated Option B (validate every prefix before promotion, DEC-011); (3) post-commit mismatch=containment -> fail-closed postcondition check on the actual landed commit; (4) no crash recovery -> real merged-state is the durable journal + reconcileLandedSignals; (5) legacy auto-merge race -> disableAutoMerge + fail-closed; (6) bypass unproven for behind PRs -> required 2-PR canary documented; (7) downstream unsafe -> trailer-first resolver + preview state==open fix. plan_divergence=major_fork: the design fundamentally changed from a promotion swap to a hardened prefix-validated redesign with an ADR amendment."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.6-terra"],
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": false,
+          "notes": "Round 1 on the initial squash-merge promotion. Gemini: createMergePullRequest threw for hard failures, bypassing the caller's fail-closed postcondition publish (fixed: returns {ok:false,retryable:false}). GPT: (High) unvalidated prefixes promoted -> resolved by the human-chosen prefix-validation design (planPrefixPromotion + verifyPrefixEvidence); (High) reconcileLandedSignals backfilled any merged PR without provenance -> now requires base==main + Merge-Train-PR trailer + linearity; (Med) landed comment cited finalCandidateSha -> now candidateShas[index]; (Med) resolve-landed-pr trusted arbitrary trailer lines -> now corroborates merge_commit_sha===sha; (Med) backfill mutated before precondition -> now verifies closed+unmerged + commit/trailer provenance first."
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.6-terra"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Round 2 confirmed the prefix-validation gate, parent-chaining/indexing, reconcileLandedSignals provenance, resolver, and backfill preconditions CLEAN, and surfaced 4 more, all fixed: (Gemini Critical) landedCommitProofError read main/PR immediately after PUT with no retry -> now polls the eventually-consistent reads through GitHub read-replica lag before failing; (GPT High) ambiguous PUT failure that actually merged skipped the proof -> createMergePullRequest re-reads the PR and returns the real merge SHA so the full proof runs; (GPT Med) mergeability-poll GET could throw past the fail-closed contract -> wrapped as retryable; (GPT Med) backfill accepted an unvalidated SHA -> requires commit existence + matching trailer. Every fix has deterministic test coverage (143 merge-train unit tests). Proceeding under the 2-round cap with all findings resolved (no unresolved disagreement)."
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.6-terra"],
+          "concerns_count": 6,
+          "valid_count": 6,
+          "resolved_count": 6,
+          "clean": false,
+          "notes": "Two independent models reviewed the same diff in parallel; adjudicated by the Opus implementer. Distinct findings (no material disagreement): Gemini flagged the throw-bypass; GPT flagged the unvalidated-prefix promotion (High) plus 4 provenance/accuracy issues. All accepted and fixed except GPT's workflow-execution facet, which was adjudicated as inherent to real-merge semantics (documented ADR 0063 RSK-003, human-accepted)."
+        },
+        {
+          "round": 2,
+          "models": ["gemini-3.1-pro-preview", "gpt-5.6-terra"],
+          "concerns_count": 4,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Re-review of the prefix-validation delta + round-1 fixes. Both models confirmed the core gate/proof/provenance clean; adjudicator accepted and fixed all 4 remaining findings (proof read-replica polling, ambiguous-merge disambiguation, poll-GET wrap, backfill SHA provenance), each with deterministic tests. No unresolved cross-model disagreement; adjudication converged."
+        }
+      ]
     }
   }
 }
