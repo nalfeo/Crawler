@@ -259,8 +259,10 @@ async function mainHealthAllowsPromotion() {
 // was git-verified as fully and correctly promoted, yet one entry's
 // confirmation read still hadn't landed after the old budget elapsed. ~77s
 // gives GitHub's indexing realistic headroom under load while staying well
-// inside the job's 15-minute timeout even for a full six-entry batch that
-// each individually exhausts the budget (~7.7 minutes worst case).
+// inside the job's 15-minute timeout: promoteExactBatch polls every entry's
+// confirmation in parallel (Promise.all), so a full batch's wall-clock stays
+// close to this single-entry budget (~77s) rather than scaling with batch
+// size, even if every entry independently exhausts it.
 const MERGED_PR_POLL_DELAYS_MS = [2000, 4000, 8000, 8000, 15000, 15000, 25000];
 
 async function waitForMergedPr(entry) {
