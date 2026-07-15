@@ -1901,5 +1901,16 @@
     "totalWins": 578,
     "totalRuns": 600,
     "path": "by-sha/61f0effaaf7f0b22505491113636b212c9c7ec29.json"
+  },
+  {
+    "commit": "0a319820952c0170857de8707741a6299c6fcfc6",
+    "commitDate": "2025-04-10T15:34:02Z",
+    "commitSubject": "feat(hud): ship combined navigation, family, and encounter HUD UX batch (#1131)",
+    "capturedAt": "2026-07-15T20:31:02.035Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29445069893",
+    "winRate": 0.9633333333333334,
+    "totalWins": 578,
+    "totalRuns": 600,
+    "path": "by-sha/0a319820952c0170857de8707741a6299c6fcfc6.json"
   }
 ]
