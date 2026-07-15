@@ -11,9 +11,13 @@
 // Auth/target resolution (in order):
 //   --repo owner/repo         | GITHUB_REPOSITORY            | `gh repo view`
 //   --app-id <id>             | MERGE_TRAIN_APP_ID            | required for `enable`;
-//                                                                optional for `status`/`rollback`
-//                                                                (inferred from the live ruleset's
-//                                                                bypass actor when omitted)
+//                                                                optional for `status`/`rollback`.
+//                                                                When omitted, `status`/`rollback`
+//                                                                still run, but `status.ruleset.problems`
+//                                                                reports "trusted App id not supplied"
+//                                                                instead of silently validating against
+//                                                                an id inferred from the very ruleset
+//                                                                being checked (that would be circular).
 //   MERGE_TRAIN_TOKEN | GITHUB_TOKEN | `gh auth token` (for API calls)
 //
 // Orchestration (`enable`/`rollback`/`printStatus`) takes an injected `api`
@@ -29,6 +33,7 @@ import {
   buildClassicProtectionPayload,
   buildRulesetDisablePayload,
   buildRulesetPayload,
+  classicProtectionMissing,
   classicStatusChecksDisabled,
   classicStatusChecksRestored,
   findRulesetByName,
@@ -38,6 +43,30 @@ import {
   rulesetProblems,
   RULESET_NAME,
 } from './protection-lib.mjs';
+
+/**
+ * Fail closed if classic branch protection for `main` does not exist at all
+ * (404 -- mapped to `null`/`undefined` by `buildGithubApi`). A missing
+ * protection resource is NOT the same as "required_status_checks already
+ * disabled": it also means conversation-resolution, force-push/deletion
+ * restrictions, and admin enforcement are entirely absent, which this tool
+ * has no way to distinguish from unintentional drift. `enable()` and
+ * `rollback()` both call this before doing anything else with the fetched
+ * classic protection object.
+ */
+function assertClassicProtectionExists(protection) {
+  if (classicProtectionMissing(protection)) {
+    throw new Error(
+      'Classic branch protection for main does not exist (404 from ' +
+        '/branches/main/protection). Refusing to proceed: this tool only migrates ' +
+        'required_status_checks off of an EXISTING classic configuration -- a missing ' +
+        'protection resource means conversation-resolution/force-push/deletion/admin-' +
+        'enforcement settings are also entirely absent, and treating that the same as ' +
+        '"already migrated" would silently skip preserving them. Configure classic branch ' +
+        'protection for main (matching the documented legacy shape) before running this.',
+    );
+  }
+}
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
@@ -139,11 +168,25 @@ export async function printStatus({ api, appId, log = () => {} }) {
   const [protection, rulesets] = await Promise.all([api.getClassicProtection(), api.getRulesets()]);
   const ruleset = findRulesetByName(rulesets);
   const trainEnabled = await api.getMergeTrainEnabled();
-  // Fall back to inferring the trusted App id from the live ruleset's own
-  // bypass actor when the caller didn't supply one (status/rollback allow
-  // this so an incident responder doesn't need to remember/re-supply the
-  // App id just to read state or roll back).
-  const effectiveAppId = appId ?? inferTrainAppId(ruleset);
+  // `problems` MUST be validated against a trusted, independently-supplied App
+  // id (--app-id / MERGE_TRAIN_APP_ID) -- never against an id inferred from
+  // the very ruleset being validated. Inferring the "expected" id from the
+  // live bypass actor and then comparing that live bypass actor against it is
+  // circular: a ruleset drifted to point at ANY single Integration actor
+  // (including a wrong/compromised one) would trivially report zero problems.
+  // Inference (`inferTrainAppId`) is still exposed below as `bypassActorId`
+  // for read-only display / for rollback's own independent bypass-actor
+  // discovery (`requireTrainBypassId`), but never feeds `problems`.
+  const problems = appId
+    ? rulesetProblems(ruleset, { trainAppId: appId })
+    : ruleset
+      ? [
+          'trusted App id not supplied (--app-id or MERGE_TRAIN_APP_ID); cannot validate the ' +
+            'ruleset bypass actor against a trusted identity -- inferring "expected" from the ' +
+            "ruleset's own live bypass actor would trivially match any single actor, including a " +
+            'wrong or compromised one, so this reports unknown rather than a false "no problems"',
+        ]
+      : ['ruleset does not exist'];
   const report = {
     mergeTrainEnabled: trainEnabled,
     classic: {
@@ -155,11 +198,14 @@ export async function printStatus({ api, appId, log = () => {} }) {
       exists: Boolean(ruleset),
       id: ruleset?.id,
       enforcement: ruleset?.enforcement,
-      // Always computed (even when the ruleset is missing -- rulesetProblems
-      // reports "ruleset does not exist" in that case) so enable()/rollback()
+      // Informational only -- read-only display of who the live bypass actor
+      // currently is. Never used to validate `problems` (see above).
+      bypassActorId: inferTrainAppId(ruleset),
+      // Always computed (even when the ruleset is missing -- reports
+      // "ruleset does not exist" in that case) so enable()/rollback()
       // postcondition checks can rely on `problems.length === 0` alone rather
       // than also having to remember to check `exists` separately.
-      problems: rulesetProblems(ruleset, { trainAppId: effectiveAppId }),
+      problems,
     },
   };
   log(`${JSON.stringify(report, null, 2)}\n`);
@@ -167,6 +213,24 @@ export async function printStatus({ api, appId, log = () => {} }) {
 }
 
 export async function enable({ api, appId, log = () => {} }) {
+  // Read and validate the live classic protection FIRST -- before ANY
+  // mutation, including ruleset creation -- so an unknown/drifted classic
+  // shape (or a missing classic-protection resource entirely) aborts before
+  // the ruleset is ever created/activated. Validating this only after
+  // creating the ruleset (as an earlier version of this function did) would
+  // leave `main` behind an ACTIVE ruleset requiring the `merge-train` context
+  // on abort, while `MERGE_TRAIN_ENABLED` is still false and nothing posts
+  // that check -- permanently blocking every ordinary merge into `main`
+  // until a human manually disables the half-applied ruleset. Reading here
+  // is safe to do before the ruleset write because it is read-only; the
+  // actual WRITE ordering below (ruleset first, then classic) is preserved
+  // for the same fail-closed reason described there.
+  const initialProtection = await api.getClassicProtection();
+  assertClassicProtectionExists(initialProtection);
+  if (!classicStatusChecksDisabled(initialProtection)) {
+    assertKnownClassicStatusChecksShape(initialProtection);
+  }
+
   // Create/verify the ruleset FIRST, and only disable classic protection
   // once the ruleset postcondition is confirmed live. Reversing this order
   // (disable classic, then create the ruleset) would leave a window where
@@ -196,7 +260,11 @@ export async function enable({ api, appId, log = () => {} }) {
     );
   }
 
+  // Re-fetch (rather than reusing `initialProtection`) in case classic
+  // protection changed between the pre-flight read above and this write --
+  // re-validate defensively for the same reason.
   const protection = await api.getClassicProtection();
+  assertClassicProtectionExists(protection);
   if (!classicStatusChecksDisabled(protection)) {
     assertKnownClassicStatusChecksShape(protection);
     const payload = buildClassicProtectionPayload(protection, { requiredStatusChecks: null });
@@ -236,6 +304,7 @@ export async function rollback({ api, appId, force, log = () => {} }) {
   // there is never a window where neither classic protection nor the
   // ruleset enforces `ci` on main.
   const protection = await api.getClassicProtection();
+  assertClassicProtectionExists(protection);
   if (!classicStatusChecksRestored(protection)) {
     // Same fail-closed guard enable() applies before *disabling* classic
     // required_status_checks: if an operator manually strengthened classic

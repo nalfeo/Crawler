@@ -188,7 +188,7 @@ test('enable throws when the postcondition is not met (ruleset missing required 
   );
 });
 
-test('enable fails closed instead of silently discarding a drifted classic required_status_checks shape', async () => {
+test('enable fails closed instead of silently discarding a drifted classic required_status_checks shape, and never creates the ruleset', async () => {
   const { api, calls } = makeFakeApi({
     classicProtection: {
       ...legacyClassicProtection(),
@@ -206,6 +206,26 @@ test('enable fails closed instead of silently discarding a drifted classic requi
   assert.ok(
     !calls.includes('putClassicProtection'),
     'a drifted classic shape must never be silently overwritten/discarded',
+  );
+  assert.ok(
+    !calls.includes('createRuleset') && !calls.includes('updateRuleset'),
+    'classic shape must be validated BEFORE the ruleset is created/activated -- otherwise an ' +
+      'aborted run would leave main behind an active ruleset requiring merge-train while ' +
+      'MERGE_TRAIN_ENABLED is still false, permanently blocking ordinary merges',
+  );
+});
+
+test('enable fails closed when classic branch protection does not exist at all (404), and never touches the ruleset', async () => {
+  const { api, calls } = makeFakeApi({ classicProtection: null });
+
+  await assert.rejects(() => enable({ api, appId: TRAIN_APP_ID }), /does not exist \(404/);
+  assert.ok(
+    !calls.includes('createRuleset') && !calls.includes('updateRuleset'),
+    'a missing classic-protection resource must abort before the ruleset is ever touched',
+  );
+  assert.ok(
+    !calls.includes('putClassicProtection'),
+    'a missing classic-protection resource must never be silently treated as "already migrated"',
   );
 });
 
@@ -279,7 +299,7 @@ test('rollback is idempotent: re-running against an already-rolled-back repo is 
   assert.ok(!calls.includes('updateRuleset'), 'ruleset already disabled, must not be re-patched');
 });
 
-test('rollback throws when the ruleset does not exist to disable but classic restore is still verified', async () => {
+test('rollback succeeds when the ruleset does not exist to disable, verifying classic restore only', async () => {
   const { api } = makeFakeApi({
     classicProtection: { ...legacyClassicProtection(), required_status_checks: null },
     rulesets: [],
@@ -326,6 +346,23 @@ test('rollback fails closed instead of silently discarding a drifted classic req
   );
 });
 
+test('rollback fails closed when classic branch protection does not exist at all (404), and never touches the ruleset', async () => {
+  const { api, calls } = makeFakeApi({
+    classicProtection: null,
+    rulesets: [liveRuleset()],
+    mergeTrainEnabled: false,
+  });
+
+  await assert.rejects(
+    () => rollback({ api, appId: TRAIN_APP_ID, force: false }),
+    /does not exist \(404/,
+  );
+  assert.ok(
+    !calls.includes('putClassicProtection') && !calls.includes('updateRuleset'),
+    'a missing classic-protection resource must abort before any write, on rollback too',
+  );
+});
+
 test('printStatus reports both classic and ruleset state without mutating anything', async () => {
   const { api, calls } = makeFakeApi({
     classicProtection: { ...legacyClassicProtection(), required_status_checks: null },
@@ -361,18 +398,31 @@ test('printStatus always computes ruleset.problems, even when the ruleset does n
   assert.deepEqual(report.ruleset.problems, ['ruleset does not exist']);
 });
 
-test('printStatus/rollback infer the trusted App id from the live ruleset when appId is not supplied', async () => {
+test('printStatus reports an explicit "cannot validate" problem (never a false-clean pass) when appId is not supplied, since inferring the expected id from the live ruleset itself would be circular', async () => {
   const { api } = makeFakeApi({
     classicProtection: { ...legacyClassicProtection(), required_status_checks: null },
     rulesets: [liveRuleset()],
   });
 
   const statusReport = await printStatus({ api, appId: null });
-  assert.deepEqual(
-    statusReport.ruleset.problems,
-    [],
-    'inferring appId from the live bypass actor should match reality and report no problems',
+  assert.equal(
+    statusReport.ruleset.problems.length,
+    1,
+    'without a trusted --app-id/MERGE_TRAIN_APP_ID, problems must not silently report [] -- a ' +
+      'ruleset drifted to bypass a wrong/compromised Integration actor would otherwise trivially ' +
+      'validate against itself',
   );
+  assert.match(statusReport.ruleset.problems[0], /trusted App id not supplied/);
+  assert.equal(
+    statusReport.ruleset.bypassActorId,
+    TRAIN_APP_ID,
+    'the live bypass actor id is still surfaced for informational/display purposes',
+  );
+
+  // With an explicit trusted appId, validation proceeds normally and can
+  // report a genuinely clean ruleset.
+  const validatedReport = await printStatus({ api, appId: TRAIN_APP_ID });
+  assert.deepEqual(validatedReport.ruleset.problems, []);
 
   const { api: rollbackApi } = makeFakeApi({
     classicProtection: { ...legacyClassicProtection(), required_status_checks: null },

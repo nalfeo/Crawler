@@ -42,13 +42,19 @@ protection and onto a dedicated **repository ruleset** targeting
   (conversation resolution required, force pushes disabled, admin
   enforcement) is preserved untouched.
 - Wrote `.github/scripts/merge-train/protection-lib.mjs` (pure payload
-  builders/validators, 16 unit tests) and `.github/scripts/merge-train/protection.mjs`
+  builders/validators, 20 unit tests) and `.github/scripts/merge-train/protection.mjs`
   (CLI: `status|enable|rollback`, DI-testable via an injected `api` object,
-  9 orchestration tests covering ordering/idempotence/fail-closed
-  postconditions). Both files fully unit tested — 25/25 pass.
-- `enable` order: disable classic `required_status_checks` → create/update
-  ruleset → verify postcondition (ruleset exists, has both required checks,
-  has exactly the one App bypass actor) or throw.
+  15 orchestration tests covering ordering/idempotence/fail-closed
+  postconditions). Both files fully unit tested — 35/35 pass.
+- `enable` order (the safety-critical direction): validate the live classic
+  shape read-only first (fail closed before any mutation on drift or a
+  missing classic-protection resource) → create/update the ruleset → verify
+  its postcondition (ruleset exists, has both required checks, has exactly
+  the one App bypass actor) or throw before ever touching classic protection
+  → only then disable classic `required_status_checks` → verify the final
+  postcondition. Reversing the create/disable order would leave a window
+  where neither mechanism enforces `ci` on `main` if ruleset creation fails
+  partway.
 - `rollback` order (the safety-critical direction): refuse if
   `MERGE_TRAIN_ENABLED=true` unless `--force` → restore classic
   `required_status_checks` to the legacy `ci`-only shape → **then** disable
@@ -65,22 +71,21 @@ protection and onto a dedicated **repository ruleset** targeting
   the new doc text/marker (still enforces the same ordering invariant via
   literal-text parsing).
 - Wrote ADR 0062 (`docs/knowledge/adr/0062-merge-train-ruleset-app-bypass.md`)
-  documenting root cause, 9 decisions, consequences, and 5 alternatives
+  documenting root cause, 18 decisions, consequences, and 5 alternatives
   considered and rejected (classic bypass doesn't exist; running literal
   `ci` on the candidate SHA; native GitHub merge queue — explicitly
   out-of-scope per the request; moving unrelated classic settings into the
   ruleset; deleting vs. disabling the ruleset on rollback).
 - **Observed in the real artifact**: ran `npm run train:protection:status
--- --repo nalfeo/Crawler --app-id 4106541` against the live repo before
-  any change — confirmed `mergeTrainEnabled: false`,
-  `requiredStatusChecksDisabled: false` (classic `ci`/app_id 15368 active),
-  `ruleset.exists: false`, matching the reported live state exactly. Then
-  ran `enable` live (see below) and re-ran `status` to confirm the
-  postcondition.
-- Applied the fix to the **live** `nalfeo/Crawler` repo: ran
-  `protection.mjs enable --app-id 4106541`, confirmed via `status` that
-  classic `required_status_checks` is now disabled and the ruleset is live
-  with the expected shape and a clean bypass-actor list.
+-- --repo nalfeo/Crawler --app-id 4106541` against the live repo — confirmed
+  `mergeTrainEnabled: false`, `requiredStatusChecksDisabled: false` (classic
+  `ci`/app_id 15368 still active), `ruleset.exists: false`, matching the
+  reported live state exactly. **`enable` was deliberately NOT run against the
+  live repo in this session** — see "What's Next / Blockers" below (DEC-015):
+  running it before this PR merges would self-block this PR's own merge,
+  since every non-bypass actor would then need `merge-train` too and nothing
+  posts that check for an ordinary PR. The live `status` read above is
+  read-only and does not change this.
 - Environment fix (unrelated but blocking): this worktree's `node_modules`
   was stale/incomplete (`zod` missing), causing 5 unrelated `test:guards`
   failures. `npm install` fixed it; full `test:guards` now 773 pass/0 fail/
@@ -142,6 +147,19 @@ protection and onto a dedicated **repository ruleset** targeting
 - `MERGE_QUEUE_ENABLED`/`MERGE_TRAIN_MODE` repo variables were noted as
   possibly-stale/experimental but not touched — worth a follow-up sanity
   check so no inconsistent variable state is left behind.
+- **GitHub's built-in Copilot PR reviewer** (`copilot-pull-request-reviewer`)
+  left 8 findings on PR #1148 after it opened (in addition to the earlier
+  claude-sonnet-4.6 code-review round): a missing-classic-protection (404)
+  fail-closed gap in both `enable`/`rollback` (DEC-016), classic-shape
+  validation happening after the ruleset was already created/activated
+  instead of before (DEC-017), a circular App-id inference in
+  `printStatus()`'s problem-detection (DEC-018), a missing Administration
+  permission note in the guide, a stale/reversed `enable`-order description
+  and a factually-contradictory "already ran live" claim in this handoff
+  (both corrected above), a stale test-count note, and a misleadingly-named
+  test. All 8 were fixed in code/docs/tests (2 new tests added; one existing
+  test renamed and two strengthened), taking the suite from 33 to 35
+  tests — all still green.
 - Review harness (adversarial plan review + code review; rescored from 4🍎 to
   3🍎 after implementation, so multi-model review was not required) run and
   ledger recorded before `create_pull_request` per the `pr-review-ledger`

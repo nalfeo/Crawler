@@ -97,7 +97,10 @@ Before live mode:
    original classic-protection design (ADR 0060 DEC-009).
 
 3. Confirm the App has contents, actions, checks, issues, and pull-request write
-   permissions.
+   permissions, **plus repository Administration write access** (required to
+   create/update rulesets via `POST`/`PUT .../rulesets` -- without it, `enable`
+   fails with `403` even though every other prerequisite in this checklist is
+   satisfied).
 4. Keep force-pushes to `main` disabled (unchanged, still enforced by classic
    protection). Promotion is a fast-forward.
 5. Ensure `MERGE_TRAIN_ADMISSION_CHECKS` names the current PR admission checks.

@@ -140,6 +140,22 @@ export function buildClassicProtectionPayload(current, { requiredStatusChecks })
   };
 }
 
+/**
+ * True only when the classic branch-protection *resource itself* is missing
+ * entirely (the `GET .../branches/main/protection` endpoint 404s -- mapped to
+ * `null` by `buildGithubApi`). This is a materially different state from "the
+ * protection resource exists but `required_status_checks` is disabled": a 404
+ * means conversation-resolution, force-push/deletion restrictions, and admin
+ * enforcement are ALSO entirely absent, not merely that the migration already
+ * ran. `enable()`/`rollback()` must fail closed on this rather than treating
+ * a missing resource as "already migrated" -- see `classicStatusChecksDisabled`,
+ * which only reflects `required_status_checks` and is deliberately blind to
+ * this distinction.
+ */
+export function classicProtectionMissing(protection) {
+  return protection === null || protection === undefined;
+}
+
 /** True when classic protection's required_status_checks is disabled (null/absent). */
 export function classicStatusChecksDisabled(protection) {
   return !protection?.required_status_checks;
