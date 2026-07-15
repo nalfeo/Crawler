@@ -26,6 +26,15 @@ function resolveWith(routes) {
 
 const commitPath = `/repos/nalfeo/Crawler/commits/${SHA}`;
 const pullsPath = `${commitPath}/pulls`;
+const pullsPagePath = (page) => `${pullsPath}?per_page=100&page=${page}`;
+const unrelatedPulls = () =>
+  Array.from({ length: 100 }, (_, index) => ({
+    number: index + 1,
+    state: 'closed',
+    merged: false,
+    merge_commit_sha: 'b'.repeat(40),
+    merged_at: null,
+  }));
 
 test('resolver keeps corroborated merge-train trailers ahead of every inference candidate', async () => {
   const result = await resolveWith({
@@ -39,7 +48,7 @@ test('resolver keeps corroborated merge-train trailers ahead of every inference 
 test('resolver gives deploy, release sweep, and manual preview attribution to an open matching head', async () => {
   const result = await resolveWith({
     [commitPath]: { commit: { message: 'ordinary preview commit' } },
-    [pullsPath]: [
+    [pullsPagePath(1)]: [
       { number: 12, state: 'closed', merged: false, merge_commit_sha: SHA, merged_at: null },
       {
         number: 13,
@@ -58,7 +67,7 @@ test('resolver gives deploy, release sweep, and manual preview attribution to an
 test('resolver keeps an exact GitHub merge record ahead of an open matching head', async () => {
   const result = await resolveWith({
     [commitPath]: { commit: { message: 'ordinary landed commit' } },
-    [pullsPath]: [
+    [pullsPagePath(1)]: [
       { number: 99, state: 'open', merged: false, head: { sha: SHA } },
       {
         number: 417,
@@ -76,7 +85,9 @@ test('resolver keeps an exact GitHub merge record ahead of an open matching head
 test('resolver returns a clean no-match instead of attributing an unrelated closed association', async () => {
   const result = await resolveWith({
     [commitPath]: { commit: { message: 'ordinary commit' } },
-    [pullsPath]: [{ number: 12, state: 'closed', merged: false, merge_commit_sha: 'b'.repeat(40) }],
+    [pullsPagePath(1)]: [
+      { number: 12, state: 'closed', merged: false, merge_commit_sha: 'b'.repeat(40) },
+    ],
   });
 
   assert.deepEqual(result, { number: '', apiFailed: false });
@@ -85,7 +96,45 @@ test('resolver returns a clean no-match instead of attributing an unrelated clos
 test('resolver preserves an API failure when inference cannot complete', async () => {
   const result = await resolveWith({
     [commitPath]: { commit: { message: 'ordinary commit' } },
-    [pullsPath]: new Error('GitHub unavailable'),
+    [pullsPagePath(1)]: new Error('GitHub unavailable'),
+  });
+
+  assert.deepEqual(result, { number: '', apiFailed: true });
+});
+
+test('resolver finds an exact merged record on a later association page', async () => {
+  const result = await resolveWith({
+    [commitPath]: { commit: { message: 'ordinary commit' } },
+    [pullsPagePath(1)]: unrelatedPulls(),
+    [pullsPagePath(2)]: [
+      {
+        number: 417,
+        state: 'closed',
+        merged: true,
+        merge_commit_sha: SHA,
+        merged_at: '2026-07-15T00:00:00Z',
+      },
+    ],
+  });
+
+  assert.deepEqual(result, { number: '417', apiFailed: false });
+});
+
+test('resolver finds an open matching head on a later association page', async () => {
+  const result = await resolveWith({
+    [commitPath]: { commit: { message: 'ordinary commit' } },
+    [pullsPagePath(1)]: unrelatedPulls(),
+    [pullsPagePath(2)]: [{ number: 99, state: 'open', merged: false, head: { sha: SHA } }],
+  });
+
+  assert.deepEqual(result, { number: '99', apiFailed: false });
+});
+
+test('resolver preserves an API failure on a later association page', async () => {
+  const result = await resolveWith({
+    [commitPath]: { commit: { message: 'ordinary commit' } },
+    [pullsPagePath(1)]: unrelatedPulls(),
+    [pullsPagePath(2)]: new Error('GitHub unavailable'),
   });
 
   assert.deepEqual(result, { number: '', apiFailed: true });

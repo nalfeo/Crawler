@@ -28,6 +28,9 @@ deterministic test suite, and documentation corrections.
   match (`state === 'open'` and `head.sha === requested SHA`), ordered by PR
   number if GitHub supplies duplicate open-head associations. Closed or merged
   associations without an exact merge record are no longer misattributed.
+- Paginated the commit-to-PR association endpoint in 100-item pages before
+  ranking, so historical associations cannot hide a later exact merge record or
+  matching open head.
 - Added resolver regressions for trailer priority, exact merge-record priority,
   an unmerged closed PR's ephemeral `merge_commit_sha` alongside an open-head
   association, clean no-match, and API failure. `deploy.yml`'s

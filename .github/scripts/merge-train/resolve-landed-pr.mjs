@@ -20,6 +20,26 @@ import { parseMergeTrainPrNumber } from './state.mjs';
 //      this SHA.
 
 const EXIT_API_FAILURE = 3;
+const ASSOCIATED_PULLS_PER_PAGE = 100;
+
+async function fetchAssociatedPulls({ requestFn, token, owner, repo, sha }) {
+  const pulls = [];
+  const path = `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/pulls`;
+
+  for (let page = 1; ; page += 1) {
+    const response = await requestFn(
+      token,
+      `${path}?per_page=${ASSOCIATED_PULLS_PER_PAGE}&page=${page}`,
+      { headers: { Accept: 'application/vnd.github+json' } },
+    );
+    if (!Array.isArray(response.data)) {
+      throw new Error('GitHub commit-to-PR association response was not an array');
+    }
+
+    pulls.push(...response.data);
+    if (response.data.length < ASSOCIATED_PULLS_PER_PAGE) return pulls;
+  }
+}
 
 export async function resolveLandedPr({ sha, repository, token, requestFn = request }) {
   const [owner, repo] = repository.split('/');
@@ -50,11 +70,7 @@ export async function resolveLandedPr({ sha, repository, token, requestFn = requ
 
   // 2. GitHub commit-to-PR inference.
   try {
-    const pulls = (
-      await requestFn(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/pulls`, {
-        headers: { Accept: 'application/vnd.github+json' },
-      })
-    ).data;
+    const pulls = await fetchAssociatedPulls({ requestFn, token, owner, repo, sha });
     if (Array.isArray(pulls) && pulls.length > 0) {
       const exact = pulls
         .filter(
