@@ -1857,5 +1857,16 @@
     "totalWins": 237,
     "totalRuns": 300,
     "path": "by-sha/ae7c887749b7d9c332ba18a9c7424eaea3054457.json"
+  },
+  {
+    "commit": "61f0effaaf7f0b22505491113636b212c9c7ec29",
+    "commitDate": "2025-07-28T18:49:22Z",
+    "commitSubject": "fix(sweep): count all victories as wins; track slow clears separately (#1147)",
+    "capturedAt": "2026-07-15T18:13:51.742Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29436050173",
+    "winRate": 0.9633333333333334,
+    "totalWins": 578,
+    "totalRuns": 600,
+    "path": "by-sha/61f0effaaf7f0b22505491113636b212c9c7ec29.json"
   }
 ]
