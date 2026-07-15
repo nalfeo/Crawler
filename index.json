@@ -11,6 +11,17 @@
     "path": "by-sha/95d89d35028d12d36564d464c66bc5c0f496e50f.json"
   },
   {
+    "commit": "3c8b1ad3da865f4cf4a36a44172fc9e1950bf894",
+    "commitDate": "2026-07-15T12:18:06-07:00",
+    "commitSubject": "fix(merge-train): correct permanently-unsatisfiable merged/merged_at confirmation predicate (gap 5) (#1159)",
+    "capturedAt": "2026-07-15T20:20:01.510Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29444492050",
+    "winRate": 0.9633333333333334,
+    "totalWins": 578,
+    "totalRuns": 600,
+    "path": "by-sha/3c8b1ad3da865f4cf4a36a44172fc9e1950bf894.json"
+  },
+  {
     "commit": "430022eec2cb53ecdc1dc984f077432efe712473",
     "commitDate": "2026-07-15T11:11:21-07:00",
     "commitSubject": "fix(merge-train): decouple promoteExactBatch cleanup from sibling postcondition failures (#1156)",
