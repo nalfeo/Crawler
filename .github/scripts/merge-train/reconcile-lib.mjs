@@ -450,16 +450,24 @@ export async function promoteExactBatch({
   // The atomic `git push --atomic ... --force-with-lease` above already
   // succeeded (no exception was thrown), which is the actual, authoritative
   // proof that every entry's head ref *and* main were fast-forwarded to
-  // `finalCandidateSha`. `waitForMergedPr` below is a secondary, asynchronous
-  // confirmation via GitHub's own merge-detection (useful for auditability
-  // and to catch a genuinely wrong assumption), but GitHub's `merged`/
-  // `merged_at` fields can lag the underlying ref update by longer than any
-  // single reconcile invocation under heavy concurrent load -- observed live
-  // on 2026-07-15 (see ADR 0062 DEC-024): all six entries in a batch were
-  // git-verified as correctly promoted, yet the very first entry's
-  // confirmation read hadn't landed within the retry budget, which used to
-  // abort the loop and skip label/status cleanup for every remaining entry,
-  // including ones that *had* already confirmed.
+  // `finalCandidateSha`. `waitForMergedPr` below is a secondary confirmation
+  // via GitHub's own view of each PR (useful for auditability and to catch a
+  // genuinely wrong assumption), but it does NOT poll for GitHub's `merged`/
+  // `merged_at` fields to flip true -- those are only ever set when a PR is
+  // closed through GitHub's own merge machinery (its Merge API or the web
+  // "Merge" button), which this atomic multi-ref force-push strategy
+  // intentionally bypasses to get true cross-PR atomicity. This was
+  // originally believed to be an async *lag* under load (ADR 0062 DEC-024:
+  // a six-PR batch where the first entry's confirmation read hadn't landed
+  // within the old retry budget), but was proven live on 2026-07-15 to be
+  // *permanent*, not a lag (ADR 0062 DEC-025): seven real promoted PRs across
+  // two separate batches -- one over nine hours old -- never showed
+  // `merged: true`, despite `git log main --grep Merge-Train-PR` proving
+  // every one of their commits correctly landed. `waitForMergedPr` (built by
+  // `createWaitForMergedPr` above) instead polls for `state === 'closed'`,
+  // which GitHub reliably sets within ~20s of the push in every observed
+  // case, and is the actual achievable ground-truth signal for this
+  // promotion mechanism.
   //
   // The entire post-push phase below is therefore "collect failures, never
   // abort early, throw once at the end" -- not just the confirmation check,
@@ -469,7 +477,7 @@ export async function promoteExactBatch({
   // `merge-train` label (closed PRs are invisible to the next reconcile's
   // `state=open` queue query, so nothing else will ever clean that label up).
   // Confirmation reads run in parallel (not sequentially) so one entry's slow
-  // lag doesn't multiply the wall-clock budget by batch size.
+  // confirmation doesn't multiply the wall-clock budget by batch size.
   const confirmations = await Promise.all(
     entries.map(async (entry) => {
       try {
@@ -557,6 +565,69 @@ export async function promoteExactBatch({
     `promoted prs=${entries.map((entry) => `#${entry.number}`).join(',')} sha=${finalCandidateSha}\n`,
   );
   return true;
+}
+
+/**
+ * Whether a PR's current GitHub state is acceptable confirmation that
+ * `promoteExactBatch`'s atomic force-push already landed it. This predicate
+ * is ONLY safe to trust for a PR whose atomic `git push --atomic ...
+ * --force-with-lease` has already returned successfully -- it does not, on
+ * its own, prove a promotion happened; it corroborates one that the caller
+ * already knows (from the push's own success) took effect.
+ *
+ * GitHub's `merged`/`merged_at` PR fields are populated ONLY when a PR is
+ * closed through GitHub's own merge machinery (the Merge Pull Request
+ * REST/GraphQL API or the web "Merge" button). This promotion strategy
+ * intentionally bypasses that machinery -- it force-pushes the exact
+ * validated candidate SHA directly onto both `main` and every entry's own
+ * head ref in one atomic multi-ref push, specifically to get true atomicity
+ * across a multi-PR batch, which GitHub's own merge API cannot do. That
+ * means `merged`/`merged_at` are NEVER set for a promotion done this way, no
+ * matter how long you wait -- this was originally believed to be a lag
+ * (ADR 0062 DEC-024) but was proven, live in production on 2026-07-15, to be
+ * permanent: seven real promoted PRs across two separate batches, one over
+ * nine hours old, still showed `merged: false, merged_at: null`, even though
+ * `git log main --grep Merge-Train-PR` proved every one of their commits was
+ * correctly present on `main`. What GitHub *does* reliably do -- observed
+ * within ~20s of the push in all seven cases -- is auto-close the PR once
+ * its head ref (now identical to `main`'s tip) shows no remaining diff
+ * against the base branch. `state === 'closed'` is therefore the correct,
+ * achievable, fast ground-truth completion signal for this promotion
+ * mechanism; `merged === true` is kept only as a defensive OR-branch in case
+ * some other/future promotion path ever does go through GitHub's own merge
+ * API. See ADR 0062 DEC-025.
+ */
+export function isPostPushConfirmationSatisfied(prData) {
+  return Boolean(prData) && (prData.merged === true || prData.state === 'closed');
+}
+
+/**
+ * Create a `waitForMergedPr(entry)` confirmation poller bound to `request`
+ * and `token`. Extracted here (rather than left inline in the untestable,
+ * top-level `reconcile.mjs` CLI script) so the actual polling predicate --
+ * previously only exercised in production via an injected fake in tests,
+ * never for real -- gets direct unit test coverage with a fake `request`.
+ */
+export function createWaitForMergedPr({
+  request,
+  token,
+  owner,
+  repo,
+  pollDelaysMs = [2000, 4000, 8000, 8000, 15000, 15000, 25000],
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  return async function waitForMergedPr(entry) {
+    for (let attempt = 0; attempt <= pollDelaysMs.length; attempt += 1) {
+      const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+      if (isPostPushConfirmationSatisfied(current)) {
+        return true;
+      }
+      if (attempt < pollDelaysMs.length) {
+        await sleep(pollDelaysMs[attempt]);
+      }
+    }
+    return false;
+  };
 }
 
 /**

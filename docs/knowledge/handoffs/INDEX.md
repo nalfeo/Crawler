@@ -366,6 +366,7 @@ _…and 45 older, see `archive/`._
 ## ci-policy
 
 - [2026-07-15-merge-train-batch-promotion-postcondition-fix](2026-07-15-merge-train-batch-promotion-postcondition-fix.md) — Live `enable` cutover for #1151 (PR #1153) succeeded, but a real 6-PR atomic promotion exposed a 4th gap: `promoteExactBatch` aborted cleanup for all confirmed entries when one sibling's GitHub "merged" confirmation lagged.
+- [2026-07-15-merge-train-confirmation-predicate-fix](2026-07-15-merge-train-confirmation-predicate-fix.md) — Re-attempted live cutover after the 4th-gap fix (#1154/PR #1156) exposed a 5th, deeper gap: GitHub's `merged`/`merged_at` PR fields are permanently unsatisfiable for this atomic force-push promotion strategy, not merely laggy — corrected the confirmation predicate to `state === 'closed'` and gave it its first-ever direct test coverage via a new testable factory.
 - [2026-07-15-merge-train-rollback-status-hydration-fix](2026-07-15-merge-train-rollback-status-hydration-fix.md) — PR #1148 (ADR 0062) shipped the ruleset-based fix for `GH006` (tooling only —
 - [2026-07-15-merge-train-ruleset-bypass-fix](2026-07-15-merge-train-ruleset-bypass-fix.md) — PR #1143 merged the build-expiry train, but promotion of the next candidate
 - [2026-07-14-build-expiry-train](2026-07-14-build-expiry-train.md) — Replaced independent PR competition with an oldest-first six-slot recovery

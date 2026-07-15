@@ -456,6 +456,81 @@ atomic promotion to <sha>`. Investigation confirmed the atomic push had
   cleanup; and a postcondition-check publish failure is surfaced in the
   aggregated error without blocking cleanup.
 
+- **DEC-025**: Corrected `waitForMergedPr`'s confirmation predicate: GitHub's
+  `merged`/`merged_at` PR fields are **permanently unsatisfiable** for this
+  promotion mechanism, not merely laggy as DEC-024 assumed — replaced the
+  predicate with `state === 'closed'` (keeping `merged === true` as a
+  defensive OR-branch), extracted the entire polling loop into a directly
+  unit-testable factory, and gave the real predicate its first-ever direct
+  test coverage.
+
+  **Discovery** (live, 2026-07-15, during the re-attempted live cutover
+  immediately after DEC-024 shipped): validation succeeded and the atomic
+  push for PR #1149's 1-PR candidate succeeded (`main`'s HEAD moved to the
+  candidate SHA, confirmed via `git log main --grep Merge-Train-PR` and
+  `gh api .../git/refs/heads/main`), but the very next reconcile run still
+  failed with `PR #1149 was not recorded as merged after atomic promotion`.
+  Investigating why DEC-024's larger ~77s budget didn't help revealed the
+  true root cause: `gh api repos/nalfeo/Crawler/pulls/<n>` showed
+  `merged: false, merged_at: null` for **all seven** real promoted PRs across
+  both the earlier 6-PR batch and this PR #1149 — including entries promoted
+  **9+ hours** earlier — even though every one of their commits was correctly
+  present on `main`. This is not lag; no amount of waiting would ever satisfy
+  it. Confirmed via web research: GitHub only sets `merged`/`merged_at` when
+  a PR is closed through its own Merge API/UI, which this atomic multi-ref
+  force-push strategy intentionally bypasses (that bypass is the entire point
+  — it's what makes the promotion atomic across a multi-PR batch, which
+  GitHub's own merge API cannot do). DEC-024's framing ("an async lag under
+  load") was itself a wrong inference from a true observation (the six-PR
+  batch's confirmation read hadn't landed within the old budget) — the actual
+  cause was that the predicate could never be satisfied, at any budget.
+  Per this task's explicit instruction, the train was immediately paused
+  (`MERGE_TRAIN_ENABLED=false`) and protection was safely rolled back
+  (`protection.mjs rollback`) the moment the failure was understood to be
+  systemic rather than a one-off, before implementing this fix — confirming
+  first via `protection.mjs status` (`problems: []`) that the ruleset/
+  protection configuration itself (DEC-019–023) was healthy and the bug was
+  isolated to reconcile's confirmation logic.
+
+  **Fix** (a correction of a previously-wrong, unsatisfiable invariant, not a
+  weakening of the trust invariant — the atomic push's own success remains
+  the true, untouched source of correctness; this predicate is only ever
+  consulted as corroboration _after_ that push has already succeeded):
+  replaced the confirmation predicate with the exported, pure
+  `isPostPushConfirmationSatisfied(prData)` — `merged === true` (kept as a
+  defensive OR-branch for any future/alternate promotion path that might go
+  through GitHub's real merge API) **or** `state === 'closed'` (the actual,
+  reliable signal for this mechanism, observed firing within ~20s of the push
+  in all seven live cases, confirmed via PR #1149's own issue timeline). Per
+  independent plan review (`rubber-duck`, gpt-5.5, no blocking concerns), the
+  entire polling loop — not just the predicate — was extracted into a new
+  factory, `createWaitForMergedPr({ request, token, owner, repo,
+pollDelaysMs, sleep })`, mirroring the existing `buildDispatchBindings`
+  factory pattern in the same file. This matters because `reconcile.mjs` (the
+  CLI entrypoint) is a top-level script that reads env vars and can call
+  `process.exit()` at module-load time, so it was never safely importable for
+  unit tests — its own inline `waitForMergedPr` (the actual, broken
+  implementation) therefore had **zero** direct test coverage; every existing
+  test exercised `promoteExactBatch` via an injected fake
+  (`waitForMergedPr: async () => true`), which could never have caught this.
+  The injectable `sleep` parameter (default: real `setTimeout`-based) makes
+  the retry loop itself independently testable with zero-delay fakes. New
+  tests cover: `state: 'closed', merged: false, merged_at: null` (the exact
+  real-world regression case) is confirmed; `merged: true` alone is still
+  confirmed (OR-branch); still-open/unmerged is not confirmed; missing/empty
+  PR data is not confirmed; and `createWaitForMergedPr` resolves immediately,
+  resolves after several polls, and correctly returns `false` after
+  exhausting the poll budget while still open.
+
+  **Deferred future-work idea** (from plan review, intentionally out of scope
+  for this fix to keep it bounded and shippable quickly): a more robust
+  long-term design would replace PR-API confirmation entirely with a
+  git-level ref/ancestry postcondition (verify `origin/main`'s tip, and/or
+  each entry's own head ref, actually equals `finalCandidateSha`), treating
+  GitHub's PR `state`/`merged` fields as audit/UI signals only rather than
+  any part of the trust boundary. Tracked as a follow-up in issue #1157
+  rather than implemented now.
+
 ## Consequences
 
 ### Positive
@@ -580,3 +655,7 @@ atomic promotion to <sha>`. Investigation confirmed the atomic push had
   discovered live during the actual cutover this ADR's fix enabled — a
   distinct bug in `promoteExactBatch`'s promotion-postcondition/cleanup tail,
   outside this ADR's `protection.mjs` scope
+- Issue #1157: the 5th gap (DEC-025) — the `merged`/`merged_at` confirmation
+  predicate is permanently unsatisfiable (not laggy, as DEC-024 assumed) for
+  this promotion mechanism; discovered live during the re-attempted cutover
+  immediately after DEC-024/#1154/PR #1156 shipped

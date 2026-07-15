@@ -4,11 +4,13 @@ import test from 'node:test';
 import {
   buildCandidate,
   buildDispatchBindings,
+  createWaitForMergedPr,
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
+  isPostPushConfirmationSatisfied,
   mainHealthReason,
   promoteExactBatch,
   promotionStaleReason,
@@ -1128,4 +1130,101 @@ test('mainHealthReason allows promotion when a non-no-op schedule run is green',
     }),
     null,
   );
+});
+
+// Regression coverage for a 5th merge-train gap, discovered live in production
+// on 2026-07-15 (ADR 0062 DEC-025): `waitForMergedPr`'s original predicate
+// required GitHub's `merged`/`merged_at` PR fields to be set, which are ONLY
+// ever populated when a PR is closed through GitHub's own merge machinery
+// (its Merge API or the web "Merge" button) -- never by the atomic multi-ref
+// force-push this promotion strategy intentionally uses instead, to get true
+// cross-PR atomicity. That made the confirmation check permanently
+// unsatisfiable, not merely laggy (as DEC-024 originally assumed): seven real
+// promoted PRs across two separate production batches -- one over nine hours
+// old -- still showed `merged: false, merged_at: null`, even though
+// `git log main --grep Merge-Train-PR` proved every one of their commits had
+// correctly landed. GitHub does, however, reliably auto-close such a PR
+// (`state === 'closed'`) within ~20s of the push, once its head ref (now
+// identical to `main`'s tip) shows no remaining diff against the base
+// branch -- `isPostPushConfirmationSatisfied` treats that as sufficient.
+test('isPostPushConfirmationSatisfied treats state=closed as confirmed even when merged/merged_at are unset', () => {
+  // The real-world case that was broken: a PR promoted via atomic force-push
+  // is auto-closed by GitHub, but `merged`/`merged_at` never get set.
+  assert.equal(
+    isPostPushConfirmationSatisfied({ state: 'closed', merged: false, merged_at: null }),
+    true,
+  );
+});
+
+test('isPostPushConfirmationSatisfied still treats merged=true as confirmed (defensive OR-branch)', () => {
+  assert.equal(isPostPushConfirmationSatisfied({ state: 'open', merged: true }), true);
+});
+
+test('isPostPushConfirmationSatisfied returns false while the PR is still open and unmerged', () => {
+  assert.equal(
+    isPostPushConfirmationSatisfied({ state: 'open', merged: false, merged_at: null }),
+    false,
+  );
+});
+
+test('isPostPushConfirmationSatisfied returns false for missing/empty PR data', () => {
+  assert.equal(isPostPushConfirmationSatisfied(undefined), false);
+  assert.equal(isPostPushConfirmationSatisfied({}), false);
+});
+
+test('createWaitForMergedPr resolves true on the first poll once state=closed, without waiting on merged_at', async () => {
+  const requests = [];
+  const sleeps = [];
+  const waitForMergedPr = createWaitForMergedPr({
+    request: async (token, path) => {
+      requests.push(path);
+      return { data: { state: 'closed', merged: false, merged_at: null } };
+    },
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    pollDelaysMs: [2000, 4000],
+    sleep: async (ms) => sleeps.push(ms),
+  });
+  const confirmed = await waitForMergedPr({ number: 1149 });
+  assert.equal(confirmed, true);
+  assert.deepEqual(requests, ['/repos/nalfeo/Crawler/pulls/1149']);
+  assert.deepEqual(sleeps, []);
+});
+
+test('createWaitForMergedPr keeps polling while open, then confirms once closed', async () => {
+  const responses = [
+    { state: 'open', merged: false, merged_at: null },
+    { state: 'open', merged: false, merged_at: null },
+    { state: 'closed', merged: false, merged_at: null },
+  ];
+  let call = 0;
+  const sleeps = [];
+  const waitForMergedPr = createWaitForMergedPr({
+    request: async () => ({ data: responses[call++] }),
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    pollDelaysMs: [2000, 4000, 8000],
+    sleep: async (ms) => sleeps.push(ms),
+  });
+  const confirmed = await waitForMergedPr({ number: 1149 });
+  assert.equal(confirmed, true);
+  assert.equal(call, 3);
+  assert.deepEqual(sleeps, [2000, 4000]);
+});
+
+test('createWaitForMergedPr returns false after exhausting the poll budget while still open', async () => {
+  const sleeps = [];
+  const waitForMergedPr = createWaitForMergedPr({
+    request: async () => ({ data: { state: 'open', merged: false, merged_at: null } }),
+    token: 'tok',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    pollDelaysMs: [2000, 4000],
+    sleep: async (ms) => sleeps.push(ms),
+  });
+  const confirmed = await waitForMergedPr({ number: 1149 });
+  assert.equal(confirmed, false);
+  assert.deepEqual(sleeps, [2000, 4000]);
 });
