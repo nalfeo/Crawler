@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  AmbiguousRulesetNameError,
   GITHUB_ACTIONS_APP_ID,
   PROTECTED_REF,
   RULESET_NAME,
@@ -12,6 +13,7 @@ import {
   buildClassicProtectionPayload,
   buildRulesetDisablePayload,
   buildRulesetPayload,
+  classicProtectionMissing,
   classicStatusChecksDisabled,
   classicStatusChecksRestored,
   findRulesetByName,
@@ -158,6 +160,19 @@ test('classicStatusChecksDisabled/Restored read the classic protection shape cor
   );
 });
 
+test('classicProtectionMissing distinguishes a 404 (null/undefined) from an existing resource with disabled checks (issue #1151 gap 2)', () => {
+  assert.equal(classicProtectionMissing(null), true);
+  assert.equal(classicProtectionMissing(undefined), true);
+  assert.equal(
+    classicProtectionMissing({ ...LIVE_CLASSIC_PROTECTION, required_status_checks: null }),
+    false,
+    'an existing protection resource with required_status_checks disabled is NOT "missing" -- ' +
+      'classicStatusChecksDisabled(null) intentionally conflates both, but callers that need to ' +
+      'tell them apart (status/enable/rollback postconditions) must use this function instead',
+  );
+  assert.equal(classicProtectionMissing(LIVE_CLASSIC_PROTECTION), false);
+});
+
 test('buildRulesetPayload requires everyone except the trusted App to satisfy ci + merge-train', () => {
   const payload = buildRulesetPayload({ trainAppId: TRAIN_APP_ID });
   assert.equal(payload.target, 'branch');
@@ -189,6 +204,15 @@ test('findRulesetByName finds by exact name and returns null when absent', () =>
   assert.equal(findRulesetByName(rulesets, RULESET_NAME)?.id, 2);
   assert.equal(findRulesetByName(rulesets, 'does not exist'), null);
   assert.equal(findRulesetByName([], RULESET_NAME), null);
+});
+
+test('findRulesetByName fails closed (throws) instead of silently picking one when duplicates exist (issue #1151 adversarial plan review)', () => {
+  const rulesets = [
+    { id: 2, name: RULESET_NAME },
+    { id: 3, name: RULESET_NAME },
+  ];
+  assert.throws(() => findRulesetByName(rulesets, RULESET_NAME), AmbiguousRulesetNameError);
+  assert.throws(() => findRulesetByName(rulesets, RULESET_NAME), /Found 2 rulesets named/);
 });
 
 test('rulesetProblems accepts a live ruleset that exactly matches the expected shape', () => {
@@ -310,13 +334,52 @@ test('buildRulesetDisablePayload preserves the trusted App bypass while setting 
   assert.deepEqual(payload.bypass_actors, [
     { actor_id: TRAIN_APP_ID, actor_type: 'Integration', bypass_mode: 'always' },
   ]);
+  assert.equal(payload.name, RULESET_NAME);
+  assert.deepEqual(payload.conditions, liveRuleset().conditions);
+  assert.deepEqual(payload.rules, liveRuleset().rules);
 });
 
-test('buildRulesetDisablePayload refuses to disable a ruleset with no App bypass to preserve', () => {
-  assert.throws(
-    () => buildRulesetDisablePayload(liveRuleset({ bypass_actors: [] })),
-    /no Integration bypass actor/,
+test('buildRulesetDisablePayload recovers a ruleset with a missing bypass actor instead of throwing (issue #1151 gap 1)', () => {
+  // A partially-applied enable() or manual tampering can leave the live
+  // ruleset ACTIVE but with no Integration bypass actor at all. rollback()
+  // already restores classic ci BEFORE calling this function, so throwing
+  // here used to leave main behind an active ruleset requiring merge-train
+  // with no automated way to disable it. Shape-preserving disable succeeds
+  // regardless -- it only changes `enforcement`.
+  const broken = liveRuleset({ bypass_actors: [] });
+  const payload = buildRulesetDisablePayload(broken);
+  assert.equal(payload.enforcement, 'disabled');
+  assert.deepEqual(
+    payload.bypass_actors,
+    [],
+    'no App id supplied and none present on the ruleset -- disable still succeeds with an empty list',
   );
+});
+
+test('buildRulesetDisablePayload repairs bypass_actors from an independently-supplied trainAppId when the live ruleset has none', () => {
+  // Gap 1's other half: give rollback an App-id source independent of the
+  // (possibly-broken) live ruleset, via --app-id/MERGE_TRAIN_APP_ID, so a
+  // later enable() re-run starts from a ruleset that still names the
+  // trusted App rather than one that silently lost track of it.
+  const broken = liveRuleset({ bypass_actors: [] });
+  const payload = buildRulesetDisablePayload(broken, { trainAppId: TRAIN_APP_ID });
+  assert.equal(payload.enforcement, 'disabled');
+  assert.deepEqual(payload.bypass_actors, [
+    { actor_id: TRAIN_APP_ID, actor_type: 'Integration', bypass_mode: 'always' },
+  ]);
+});
+
+test('buildRulesetDisablePayload prefers the live ruleset shape over a supplied trainAppId when both are present', () => {
+  // Shape-preservation takes priority: if the live ruleset already has
+  // bypass actors (even a drifted/wrong one), disabling must not silently
+  // discard/replace them just because --app-id was also passed.
+  const drifted = liveRuleset({
+    bypass_actors: [{ actor_id: 999, actor_type: 'Integration', bypass_mode: 'always' }],
+  });
+  const payload = buildRulesetDisablePayload(drifted, { trainAppId: TRAIN_APP_ID });
+  assert.deepEqual(payload.bypass_actors, [
+    { actor_id: 999, actor_type: 'Integration', bypass_mode: 'always' },
+  ]);
 });
 
 test('rulesetDisabled is true once enforcement is anything other than active', () => {

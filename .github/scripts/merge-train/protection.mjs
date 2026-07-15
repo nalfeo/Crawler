@@ -165,8 +165,30 @@ export function buildGithubApi(token, owner, repo) {
 }
 
 export async function printStatus({ api, appId, log = () => {} }) {
-  const [protection, rulesets] = await Promise.all([api.getClassicProtection(), api.getRulesets()]);
-  const ruleset = findRulesetByName(rulesets);
+  const [protection, rulesetSummaries] = await Promise.all([
+    api.getClassicProtection(),
+    api.getRulesets(),
+  ]);
+  const rulesetSummary = findRulesetByName(rulesetSummaries);
+  // Hydrate to the FULL ruleset detail (`GET .../rulesets/{id}`) before
+  // validating anything. `getRulesets()` calls the LIST endpoint
+  // (`GET .../rulesets`), which GitHub documents as returning summary objects
+  // only -- `id`/`name`/`target`/`enforcement`/etc, but NOT `conditions`,
+  // `rules`, or `bypass_actors`. Validating those fields straight off the
+  // list-summary object makes every live, correctly-configured ruleset look
+  // completely broken (empty ref scope, no required status checks, no
+  // bypass actor) regardless of its real state. This exact bug caused a live
+  // false-failure incident on 2026-07-15: `enable` created ruleset 19000576
+  // correctly (verified moments later via the detail endpoint), but this
+  // function's postcondition read validated the un-hydrated list-summary
+  // object, reported the ruleset as empty/missing, failed the postcondition,
+  // and triggered an automatic rollback of a config that was actually
+  // correct. `enable()`'s OWN internal postcondition check (right after
+  // create/update) already hydrated correctly via a direct `getRuleset(id)`
+  // call -- only this shared status path had the bug, and since both
+  // `enable()`/`rollback()` delegate their final postcondition to this
+  // function, they inherited it too.
+  const ruleset = rulesetSummary ? await api.getRuleset(rulesetSummary.id) : null;
   const trainEnabled = await api.getMergeTrainEnabled();
   // `problems` MUST be validated against a trusted, independently-supplied App
   // id (--app-id / MERGE_TRAIN_APP_ID) -- never against an id inferred from
@@ -175,8 +197,9 @@ export async function printStatus({ api, appId, log = () => {} }) {
   // circular: a ruleset drifted to point at ANY single Integration actor
   // (including a wrong/compromised one) would trivially report zero problems.
   // Inference (`inferTrainAppId`) is still exposed below as `bypassActorId`
-  // for read-only display / for rollback's own independent bypass-actor
-  // discovery (`requireTrainBypassId`), but never feeds `problems`.
+  // for read-only display / as rollback's preferred (but not required, see
+  // buildRulesetDisablePayload) bypass-actor-preserving source, but never
+  // feeds `problems`.
   const problems = appId
     ? rulesetProblems(ruleset, { trainAppId: appId })
     : ruleset
@@ -187,9 +210,22 @@ export async function printStatus({ api, appId, log = () => {} }) {
             'wrong or compromised one, so this reports unknown rather than a false "no problems"',
         ]
       : ['ruleset does not exist'];
+  // A 404 on classic protection (the resource itself does not exist) is a
+  // materially different, more severe state than "required_status_checks is
+  // disabled": it also means conversation-resolution, force-push/deletion
+  // restrictions, and admin enforcement are entirely absent. Treating null
+  // the same as "cleanly migrated" here let `enable()`/`rollback()`'s shared
+  // postcondition check (which reuses this report) silently pass even if
+  // classic protection vanished entirely between the mutation and this read
+  // -- see classicProtectionMissing()'s doc comment. `missing` is reported
+  // explicitly so both the read-only `status` command and the write-path
+  // postcondition checks can fail closed on it instead of just inferring a
+  // false "disabled: true" from a 404.
+  const classicMissing = classicProtectionMissing(protection);
   const report = {
     mergeTrainEnabled: trainEnabled,
     classic: {
+      missing: classicMissing,
       requiredStatusChecksDisabled: classicStatusChecksDisabled(protection),
       requiredStatusChecksRestored: classicStatusChecksRestored(protection),
       requiredStatusChecks: protection?.required_status_checks || null,
@@ -276,13 +312,18 @@ export async function enable({ api, appId, log = () => {} }) {
 
   const report = await printStatus({ api, appId, log });
   const problems = report.ruleset.problems || [];
+  // `classic.missing` is checked explicitly rather than folded into
+  // `requiredStatusChecksDisabled` -- a 404 must never be silently accepted
+  // as "cleanly disabled" (see printStatus's classicMissing comment).
   if (
+    report.classic.missing ||
     !report.classic.requiredStatusChecksDisabled ||
     !report.ruleset.exists ||
     problems.length > 0
   ) {
     throw new Error(
-      `enable postcondition failed: classicDisabled=${report.classic.requiredStatusChecksDisabled} ` +
+      `enable postcondition failed: classicMissing=${report.classic.missing} ` +
+        `classicDisabled=${report.classic.requiredStatusChecksDisabled} ` +
         `rulesetExists=${report.ruleset.exists} problems=${JSON.stringify(problems)}`,
     );
   }
@@ -325,7 +366,38 @@ export async function rollback({ api, appId, force, log = () => {} }) {
   const existing = findRulesetByName(rulesets);
   if (existing && existing.enforcement === 'active') {
     const full = await api.getRuleset(existing.id);
-    await api.updateRuleset(existing.id, buildRulesetDisablePayload(full));
+    // Pass the independently-supplied `appId` (--app-id/MERGE_TRAIN_APP_ID)
+    // as a repair fallback so disabling a ruleset that lost/never had its
+    // Integration bypass actor (partial `enable()`, manual tampering) still
+    // succeeds -- see buildRulesetDisablePayload for the recovery rationale.
+    //
+    // buildRulesetDisablePayload always preserves ANY EXISTING bypass actor
+    // verbatim (it is inert once enforcement=disabled), so a drifted/wrong
+    // one is carried forward silently unless flagged here. Surface it as an
+    // operator-visible warning rather than normalizing it away: normalizing
+    // would mean this read-then-write rollback path starts making a policy
+    // decision about "the right" bypass actor during an incident response,
+    // which is exactly the kind of surprise mutation rollback should avoid.
+    //
+    // Checked against `hasLiveActors` (any bypass_actors entry), not just
+    // `inferTrainAppId()`'s Integration-typed result: `inferTrainAppId`
+    // returns null both when there are zero bypass actors (nothing to warn
+    // about -- buildRulesetDisablePayload will repair via trainAppId) AND
+    // when a live actor exists but isn't type 'Integration' (e.g. tampered
+    // into a 'RepositoryRole' or 'Team' actor) -- the latter IS drift that
+    // still gets preserved verbatim and deserves the same warning (raised in
+    // issue #1151's multi-model review).
+    const liveBypassId = inferTrainAppId(full);
+    const hasLiveActors = Boolean(full.bypass_actors && full.bypass_actors.length > 0);
+    if (appId && hasLiveActors && liveBypassId !== appId) {
+      log(
+        `WARNING: ruleset "${RULESET_NAME}" (id ${existing.id}) bypass actor is ` +
+          `${liveBypassId ?? JSON.stringify(full.bypass_actors)}, which does not match the ` +
+          `supplied trusted --app-id ${appId}. Disabling makes this inert, but the drifted actor ` +
+          'is preserved as-is (not normalized) -- investigate before the next enable.\n',
+      );
+    }
+    await api.updateRuleset(existing.id, buildRulesetDisablePayload(full, { trainAppId: appId }));
     log(`disabled ruleset "${RULESET_NAME}" (id ${existing.id})\n`);
   } else if (existing) {
     log(`ruleset "${RULESET_NAME}" already disabled\n`);
@@ -335,9 +407,11 @@ export async function rollback({ api, appId, force, log = () => {} }) {
 
   const report = await printStatus({ api, appId, log });
   const rulesetOk = rulesetDisabled(report.ruleset);
-  if (!report.classic.requiredStatusChecksRestored || !rulesetOk) {
+  if (report.classic.missing || !report.classic.requiredStatusChecksRestored || !rulesetOk) {
     throw new Error(
-      `rollback postcondition failed: classicRestored=${report.classic.requiredStatusChecksRestored} rulesetEnforcement=${report.ruleset.enforcement}`,
+      `rollback postcondition failed: classicMissing=${report.classic.missing} ` +
+        `classicRestored=${report.classic.requiredStatusChecksRestored} ` +
+        `rulesetEnforcement=${report.ruleset.enforcement}`,
     );
   }
   log('rollback postcondition verified: legacy classic ci restored, ruleset inactive\n');
