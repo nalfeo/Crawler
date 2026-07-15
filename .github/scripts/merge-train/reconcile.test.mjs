@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildCandidate,
   buildDispatchBindings,
+  createWaitForMergedPr,
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
   isDisabledTrainScheduleRun,
@@ -304,6 +305,68 @@ test('buildDispatchBindings routes both dispatch calls to workflowDispatchToken 
   );
   assert.match(calls[0].path, /ci-recovery\.yml\/dispatches$/);
   assert.match(calls[1].path, /merge-train-validate\.yml\/dispatches$/);
+});
+
+test('createWaitForMergedPr confirms closed PRs even when merged_at is null', async () => {
+  const seenPaths = [];
+  const waitForMergedPr = createWaitForMergedPr({
+    request: async (_token, path) => {
+      seenPaths.push(path);
+      return { data: { merged: false, state: 'closed', merged_at: null } };
+    },
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    pollDelaysMs: [1, 2, 3],
+    sleep: async () => {
+      throw new Error('sleep should not run when the first read confirms');
+    },
+  });
+  const merged = await waitForMergedPr({ number: 42 });
+  assert.equal(merged, true);
+  assert.deepEqual(seenPaths, ['/repos/nalfeo/Crawler/pulls/42']);
+});
+
+test('createWaitForMergedPr retries until a PR confirms merged', async () => {
+  let readCount = 0;
+  const sleeps = [];
+  const waitForMergedPr = createWaitForMergedPr({
+    request: async () => {
+      readCount += 1;
+      return {
+        data: readCount < 3 ? { merged: false, state: 'open' } : { merged: true, state: 'open' },
+      };
+    },
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    pollDelaysMs: [1000, 2000, 3000],
+    sleep: async (delayMs) => sleeps.push(delayMs),
+  });
+  const merged = await waitForMergedPr({ number: 42 });
+  assert.equal(merged, true);
+  assert.equal(readCount, 3);
+  assert.deepEqual(sleeps, [1000, 2000]);
+});
+
+test('createWaitForMergedPr returns false after exhausting all poll attempts', async () => {
+  let readCount = 0;
+  const sleeps = [];
+  const waitForMergedPr = createWaitForMergedPr({
+    request: async () => {
+      readCount += 1;
+      return { data: { merged: false, state: 'open' } };
+    },
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    pollDelaysMs: [1000, 2000],
+    sleep: async (delayMs) => sleeps.push(delayMs),
+  });
+  const merged = await waitForMergedPr({ number: 42 });
+  assert.equal(merged, false);
+  assert.equal(readCount, 3);
+  assert.deepEqual(sleeps, [1000, 2000]);
 });
 
 test('buildCandidate classifies already-applied squash diffs as no-op candidates', () => {

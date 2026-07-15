@@ -139,23 +139,24 @@ dry-run train mode.
    - a failed candidate is bisected and the maximal green prefix advances;
    - a `main` race rejects promotion and rebuilds;
    - a failure between PR-head update and main update retries the same tested SHA.
-4. Confirm GitHub records every disposable PR as merged and that the merge commit
-   OIDs equal their successful `merge-train` check OIDs.
+4. Confirm GitHub auto-closes every disposable PR after promotion and that the
+   merge commit OIDs equal their successful `merge-train` check OIDs.
    Promotion also checks this postcondition in production and fails the train
-   run if GitHub does not record every included PR as merged.
+   run if GitHub does not close every included PR (or report it as merged).
 
    > **GitHub's "merged" confirmation is a secondary, laggy signal, not the
    > ground truth.** The atomic `git push --atomic ... --force-with-lease` is
    > the actual, authoritative proof that a batch promoted correctly; GitHub's
-   > own `merged`/`merged_at` fields are a derived, asynchronously-computed
-   > mirror of that fact and can lag the underlying ref update by well over a
-   > minute under heavy concurrent repository activity (observed live
-   > 2026-07-15, ADR 0062 DEC-024). `promoteExactBatch` polls every entry's
-   > confirmation in parallel and still fails closed (throws, blocks that
-   > entry's cleanup) if an entry never confirms — but a slow-to-confirm
-   > entry no longer strands its already-confirmed siblings with a stale
-   > `merge-train` label, since closed PRs are invisible to the next
-   > reconcile's open-PR queue and would otherwise never self-heal.
+   > own `merged`/`merged_at` fields are derived, asynchronously-computed UI
+   > signals and can stay unset indefinitely for this train's atomic
+   > multi-ref-push promotion path (observed live 2026-07-15, ADR 0062
+   > DEC-025). `promoteExactBatch` confirms each entry when GitHub reports
+   > either `merged === true` or `state === 'closed'`, polls every entry in
+   > parallel, and still fails closed (throws, blocks that entry's cleanup) if
+   > an entry never confirms — but a slow-to-confirm entry no longer strands
+   > its already-confirmed siblings with a stale `merge-train` label, since
+   > closed PRs are invisible to the next reconcile's open-PR queue and would
+   > otherwise never self-heal.
 
 To return to the legacy independent-auto-merge and blanket-rebase behavior:
 

@@ -9,6 +9,7 @@ import {
 import {
   buildCandidate,
   buildDispatchBindings,
+  createWaitForMergedPr,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
@@ -251,32 +252,22 @@ async function mainHealthAllowsPromotion() {
   return true;
 }
 
-// GitHub's own "PR merged" detection (triggered when a push moves the PR's
-// head ref to a commit that's now an ancestor of the base branch) is
-// asynchronous and, under heavy concurrent repository activity, can lag the
-// underlying ref update by well over the previous ~31s budget -- observed
-// live on 2026-07-15 (see ADR 0062 DEC-024), where a six-PR promotion batch
-// was git-verified as fully and correctly promoted, yet one entry's
-// confirmation read still hadn't landed after the old budget elapsed. ~77s
-// gives GitHub's indexing realistic headroom under load while staying well
-// inside the job's 15-minute timeout: promoteExactBatch polls every entry's
-// confirmation in parallel (Promise.all), so a full batch's wall-clock stays
-// close to this single-entry budget (~77s) rather than scaling with batch
-// size, even if every entry independently exhausts it.
+// GitHub's PR `merged` / `merged_at` fields are asynchronous UI signals, not
+// the authoritative proof for this train's atomic multi-ref push path; live
+// promotions on 2026-07-15 showed they can remain unset even when GitHub has
+// already auto-closed the promoted PR (ADR 0062 DEC-025). Confirmation accepts
+// `merged === true` OR `state === 'closed'`, and this retry budget gives
+// GitHub enough headroom to close entries under load while staying inside the
+// reconcile job timeout.
 const MERGED_PR_POLL_DELAYS_MS = [2000, 4000, 8000, 8000, 15000, 15000, 25000];
 
-async function waitForMergedPr(entry) {
-  for (let attempt = 0; attempt <= MERGED_PR_POLL_DELAYS_MS.length; attempt += 1) {
-    const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
-    if (current.merged === true || (current.state === 'closed' && current.merged_at)) {
-      return true;
-    }
-    if (attempt < MERGED_PR_POLL_DELAYS_MS.length) {
-      await new Promise((resolve) => setTimeout(resolve, MERGED_PR_POLL_DELAYS_MS[attempt]));
-    }
-  }
-  return false;
-}
+const waitForMergedPr = createWaitForMergedPr({
+  request,
+  token,
+  owner,
+  repo,
+  pollDelaysMs: MERGED_PR_POLL_DELAYS_MS,
+});
 
 async function blockEntry(entry, { detail, validationFailure = false }) {
   await setLabel(entry.number, BLOCKED_LABEL);

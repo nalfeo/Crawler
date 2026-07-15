@@ -142,6 +142,28 @@ export async function dispatchValidationWorkflow({
   );
 }
 
+export function createWaitForMergedPr({
+  request,
+  token,
+  owner,
+  repo,
+  pollDelaysMs,
+  sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+}) {
+  return async function waitForMergedPr(entry) {
+    for (let attempt = 0; attempt <= pollDelaysMs.length; attempt += 1) {
+      const current = (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data;
+      if (current.merged === true || current.state === 'closed') {
+        return true;
+      }
+      if (attempt < pollDelaysMs.length) {
+        await sleep(pollDelaysMs[attempt]);
+      }
+    }
+    return false;
+  };
+}
+
 export function buildCandidate({ baseSha, entries, refName, git, live }) {
   git(['fetch', 'origin', 'main', '--prune']);
   const candidateRefs = entries.map((entry) => fetchCandidateHead(git, entry));
@@ -451,15 +473,12 @@ export async function promoteExactBatch({
   // succeeded (no exception was thrown), which is the actual, authoritative
   // proof that every entry's head ref *and* main were fast-forwarded to
   // `finalCandidateSha`. `waitForMergedPr` below is a secondary, asynchronous
-  // confirmation via GitHub's own merge-detection (useful for auditability
-  // and to catch a genuinely wrong assumption), but GitHub's `merged`/
-  // `merged_at` fields can lag the underlying ref update by longer than any
-  // single reconcile invocation under heavy concurrent load -- observed live
-  // on 2026-07-15 (see ADR 0062 DEC-024): all six entries in a batch were
-  // git-verified as correctly promoted, yet the very first entry's
-  // confirmation read hadn't landed within the retry budget, which used to
-  // abort the loop and skip label/status cleanup for every remaining entry,
-  // including ones that *had* already confirmed.
+  // confirmation via GitHub's own PR API (useful for auditability and to catch
+  // a genuinely wrong assumption), but `merged` / `merged_at` are derived UI
+  // signals and can remain unset for this atomic-push path even after GitHub
+  // has auto-closed the PR (observed live on 2026-07-15; ADR 0062 DEC-025).
+  // The caller's `waitForMergedPr` uses a close-or-merged predicate and this
+  // post-push phase still fails closed on entries that never confirm.
   //
   // The entire post-push phase below is therefore "collect failures, never
   // abort early, throw once at the end" -- not just the confirmation check,
