@@ -7,11 +7,17 @@ import {
   candidateRef,
   commitTimestamp,
   hasLeadingMarker,
+  LANDED_MARKER,
   nextBisectStep,
   parseEnabledFlag,
+  parseMergeTrainPrNumber,
+  planPrefixPromotion,
   queueEntries,
+  renderLandedComment,
   renderStatus,
   resolveAdmissionChecks,
+  squashCommitMessage,
+  squashCommitTitle,
   successfulChecks,
   trainCheckState,
   unsatisfiedChecks,
@@ -314,4 +320,111 @@ test('status comments carry the stable marker and candidate state', () => {
   });
   assert.match(body, /crawler-merge-train:v1/);
   assert.match(body, /Candidate: `abc`/);
+});
+
+test('squashCommitTitle collapses newlines and keeps the PR autolink suffix', () => {
+  assert.equal(
+    squashCommitTitle({ number: 42, title: 'feat: add\r\nthing' }),
+    'feat: add thing (#42)',
+  );
+});
+
+test('squashCommitMessage emits the durable Merge-Train-PR trailer', () => {
+  const message = squashCommitMessage({ number: 42, head: { sha: 'a'.repeat(40) } });
+  assert.match(message, /^Merge-Train-PR: 42$/m);
+  assert.match(message, new RegExp(`^Merge-Train-Original-Head: ${'a'.repeat(40)}$`, 'm'));
+});
+
+test('parseMergeTrainPrNumber round-trips the squash trailer', () => {
+  const message = squashCommitMessage({ number: 1149, head: { sha: 'b'.repeat(40) } });
+  assert.equal(parseMergeTrainPrNumber(message), 1149);
+});
+
+test('parseMergeTrainPrNumber returns null when the trailer is absent or malformed', () => {
+  assert.equal(parseMergeTrainPrNumber('just a normal commit body'), null);
+  assert.equal(parseMergeTrainPrNumber('Merge-Train-PR: not-a-number'), null);
+  assert.equal(parseMergeTrainPrNumber(''), null);
+  assert.equal(parseMergeTrainPrNumber(null), null);
+  // A mid-line mention must not be misread as the mapping.
+  assert.equal(parseMergeTrainPrNumber('see Merge-Train-PR: 7 inline'), null);
+});
+
+test('renderLandedComment records the real landed commit and validated candidate under the landed marker', () => {
+  const body = renderLandedComment({ landedSha: 'c'.repeat(40), candidateSha: 'd'.repeat(40) });
+  assert.ok(hasLeadingMarker(body, LANDED_MARKER));
+  assert.match(body, new RegExp(`Landed commit: \`${'c'.repeat(40)}\``));
+  assert.match(body, new RegExp(`Validated candidate: \`${'d'.repeat(40)}\``));
+  assert.match(body, /recorded this PR as \*\*merged\*\*/);
+});
+
+test('renderLandedComment recovered variant omits the candidate/tree-proof claim', () => {
+  const body = renderLandedComment({
+    landedSha: 'c'.repeat(40),
+    candidateSha: '',
+    recovered: true,
+  });
+  assert.ok(hasLeadingMarker(body, LANDED_MARKER));
+  assert.match(body, new RegExp(`Landed commit: \`${'c'.repeat(40)}\``));
+  assert.match(body, /recovered/i);
+  // Must NOT claim a validated candidate or a tree proof it did not re-run.
+  assert.doesNotMatch(body, /Validated candidate/);
+  assert.doesNotMatch(body, /tree was proven/);
+  // Must be truthful: cite the durable proof-complete marker as the basis for
+  // the merge-time proof claim, and state recovery does not re-run the proof.
+  assert.match(body, /proof-complete\s+marker/i);
+  assert.match(body, /does not \(and cannot\) re-run/i);
+});
+
+test('planPrefixPromotion dispatches every missing prefix in the target range in parallel', () => {
+  assert.deepEqual(planPrefixPromotion(['missing', 'missing', 'missing']), {
+    action: 'validate',
+    prefixes: [0, 1, 2],
+    firstFailure: -1,
+  });
+});
+
+test('planPrefixPromotion waits when a target-range prefix is still pending', () => {
+  assert.deepEqual(planPrefixPromotion(['success', 'pending', 'success']), {
+    action: 'wait',
+    firstFailure: -1,
+  });
+});
+
+test('planPrefixPromotion promotes the whole batch when every prefix is green', () => {
+  assert.deepEqual(planPrefixPromotion(['success', 'success', 'success']), {
+    action: 'promote',
+    greenPrefixLength: 3,
+    firstFailure: -1,
+  });
+});
+
+test('planPrefixPromotion promotes the green prefix and localizes the earliest failure', () => {
+  assert.deepEqual(planPrefixPromotion(['success', 'success', 'failure']), {
+    action: 'promote',
+    greenPrefixLength: 2,
+    firstFailure: 2,
+  });
+});
+
+test('planPrefixPromotion ignores prefixes at/after the earliest failure (does not validate them)', () => {
+  // Prefix 3 is missing but irrelevant because prefix 2 already failed; only the
+  // green [0,1) range matters, and it is fully validated -> promote 1, block PR2.
+  assert.deepEqual(planPrefixPromotion(['success', 'failure', 'missing']), {
+    action: 'promote',
+    greenPrefixLength: 1,
+    firstFailure: 1,
+  });
+});
+
+test('planPrefixPromotion validates only the target-range missing prefix before a later failure', () => {
+  // firstFailure=2, target=[0,2); prefix index 1 still missing -> validate just it.
+  assert.deepEqual(planPrefixPromotion(['success', 'missing', 'failure']), {
+    action: 'validate',
+    prefixes: [1],
+    firstFailure: 2,
+  });
+});
+
+test('planPrefixPromotion returns noop for an empty batch', () => {
+  assert.deepEqual(planPrefixPromotion([]), { action: 'noop' });
 });

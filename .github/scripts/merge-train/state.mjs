@@ -3,15 +3,50 @@ import { createHash } from 'node:crypto';
 export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
 export const NOOP_LABEL = 'merge-train-noop';
+// Durable, permanent marker that a PR's validated change actually reached
+// `main` through the train. Unlike the transient QUEUE/BLOCKED labels (which
+// are added and removed as a PR moves through admission and promotion), this
+// label is only ever added and is never removed by the train. It carries the
+// same meaning in two cases: (a) the normal path, where promotion adds it only
+// AFTER the full post-merge proof passes and GitHub recorded the PR merged with
+// a real merge commit (it doubles as the proof-complete recovery marker); and
+// (b) the historical backfill (backfill-historical-landed.mjs), which adds it to
+// force-push-era PRs whose commit reached `main` even though GitHub still
+// records them `merged:false` -- those carry a truthful comment stating exactly
+// that. So the label means "this PR's change is on main via the train", NOT by
+// itself "GitHub records this PR merged"; consumers needing the latter must
+// check GitHub's merged-state (which the normal path guarantees and the
+// backfilled comment explicitly disclaims).
+export const LANDED_LABEL = 'merge-train-landed';
 export const CANDIDATE_CHECK_NAME = 'merge-train-candidate';
 export const REQUIRED_CHECK_NAME = 'merge-train';
+// The post-merge postcondition check is published on the ACTUAL landed commit
+// (or the candidate, if no merge landed) when a sequential squash-merge
+// promotion fails its proof. It is deliberately NOT named `merge-train`
+// (REQUIRED_CHECK_NAME): a `merge-train` check on a real landed `main` commit
+// would masquerade as the fast-path attestation `ci.yml`/`mainHealthReason`
+// key on, and a squash-merged commit must instead earn ordinary push-CI
+// evidence. This name is distinct so it never collides with that machinery.
+export const PROMOTION_POSTCONDITION_CHECK_NAME = 'merge-train-promotion-postcondition';
 export const STATUS_MARKER = '<!-- crawler-merge-train:v1 -->';
+// Distinct sticky marker for the durable landed-completion comment. Kept
+// separate from STATUS_MARKER so the permanent landed record is never
+// overwritten by an ordinary queue-state update (renderStatus).
+export const LANDED_MARKER = '<!-- crawler-merge-train-landed:v1 -->';
+// Structured commit-message trailer keys. The exact same title/message are
+// used both for the local candidate squash commits (buildCandidate) and for
+// the real GitHub squash-merge commit_title/commit_message, so the durable
+// PR<->commit mapping is identical no matter which path produced the commit.
+export const MERGE_TRAIN_PR_TRAILER = 'Merge-Train-PR';
+export const MERGE_TRAIN_ORIGINAL_HEAD_TRAILER = 'Merge-Train-Original-Head';
 export const VALIDATION_FAILED_LABEL = 'merge-train-validation-failed';
 export const DEFAULT_ADMISSION_CHECKS = ['ci', 'Security checks'];
 export const MAX_TRAIN_SIZE = 6;
 
 function compact(value) {
-  return String(value ?? '').trim().replace(/\s+/g, ' ');
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 export function parseEnabledFlag(value) {
@@ -155,6 +190,38 @@ export function nextBisectStep(prefixStates) {
   return { type: 'validate', prefixLength: Math.floor((green + red) / 2) };
 }
 
+// Decide the next promotion action under the "every promoted prefix is validated
+// before it is exposed on main" invariant (ADR 0063). `prefixStates[i]` is the
+// candidate-validation state of cumulative prefix T_(i+1) (one of
+// 'missing' | 'pending' | 'success' | 'failure').
+//
+// The intended green prefix to promote is [0, target) where `target` is the
+// earliest failing prefix (or the whole batch if none fails); prefixes at/after
+// the earliest failure contain the culprit and are irrelevant. Every prefix in
+// that target range must have terminal SUCCESS evidence before any merge:
+//   - if any target-range prefix is still 'missing' -> validate them (the
+//     caller dispatches all of them in parallel);
+//   - else if any is still 'pending' -> wait for the validators;
+//   - else the whole [0, target) is proven green -> promote it, and localize
+//     the earliest failing PR (target) directly (no bisection needed).
+export function planPrefixPromotion(prefixStates) {
+  if (!Array.isArray(prefixStates) || prefixStates.length === 0) {
+    return { action: 'noop' };
+  }
+  const firstFailure = prefixStates.indexOf('failure');
+  const target = firstFailure === -1 ? prefixStates.length : firstFailure;
+  const relevant = prefixStates.slice(0, target);
+  const missing = [];
+  let pending = false;
+  relevant.forEach((state, index) => {
+    if (state === 'missing') missing.push(index);
+    else if (state === 'pending') pending = true;
+  });
+  if (missing.length > 0) return { action: 'validate', prefixes: missing, firstFailure };
+  if (pending) return { action: 'wait', firstFailure };
+  return { action: 'promote', greenPrefixLength: target, firstFailure };
+}
+
 export function commitTimestamp(entry) {
   const digest = createHash('sha256')
     .update(`${entry.number}\0${compact(entry.head?.sha)}\0${compact(entry.title)}`)
@@ -231,6 +298,90 @@ export function renderStatus({ position, candidateSha, state, detail }) {
     `- Candidate: \`${candidateSha || 'not built'}\``,
     `- State: \`${state}\``,
     `- Detail: ${compact(detail)}`,
+    '',
+    '_Managed by the trusted repository merge-train workflow._',
+  ].join('\n');
+}
+
+// The one-line squash commit subject for a promoted PR. Newlines in the PR
+// title are collapsed so the subject stays a single line (mirrors the
+// sanitization buildCandidate applied inline before this was shared). The
+// trailing `(#<n>)` keeps GitHub's PR autolink and matches the local
+// candidate commit subject exactly.
+export function squashCommitTitle(entry) {
+  const title = String(entry.title ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
+  return `${title} (#${entry.number})`;
+}
+
+// The squash commit body carrying the durable PR<->commit trailer. Emitted
+// identically for the local candidate commit and the real GitHub squash
+// merge, so `parseMergeTrainPrNumber` resolves the origin PR from either.
+export function squashCommitMessage(entry) {
+  const headSha = String(entry.head?.sha ?? '').trim();
+  return `${MERGE_TRAIN_PR_TRAILER}: ${entry.number}\n${MERGE_TRAIN_ORIGINAL_HEAD_TRAILER}: ${headSha}`;
+}
+
+// Resolve the origin PR number from a landed commit's full message via the
+// durable trailer. Returns null when absent so callers can fall back to
+// GitHub's commit-to-PR inference. Anchored to a full line and requires the
+// exact `Merge-Train-PR: <digits>` shape so an unrelated mention in a body
+// cannot be misread as the mapping.
+export function parseMergeTrainPrNumber(commitMessage) {
+  const match = String(commitMessage ?? '').match(/^Merge-Train-PR:[ \t]*(\d+)[ \t]*$/m);
+  if (!match) return null;
+  const number = Number(match[1]);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+// The durable landed-completion comment, under LANDED_MARKER so it is a
+// permanent standalone record (never overwritten by renderStatus).
+//
+// Two truthful modes:
+//   - Normal (recovered=false): posted by promotion only after the full
+//     post-merge proof passed, so it records the REAL merge commit AND the
+//     validated candidate whose tree was proven identical.
+//   - Recovered (recovered=true): posted by crash recovery, which finishes an
+//     interrupted landing ONLY when the durable proof-complete marker (the
+//     merge-train-landed label) is present. Promotion writes that marker
+//     exclusively AFTER the full post-merge tree proof passed, so its presence
+//     attests the proof ran and passed at merge time. Recovery also corroborates
+//     GitHub's merged-state, the Merge-Train-PR trailer, a single (linear)
+//     parent, and no promotion-postcondition failure, but does NOT re-run the
+//     tree proof (the candidate is not reconstructable after main advances). It
+//     therefore does NOT cite a validated candidate -- it reports only the
+//     marker-attested merge-time proof plus the facts it actually re-verified.
+export function renderLandedComment({ landedSha, candidateSha, recovered = false }) {
+  if (recovered) {
+    return [
+      LANDED_MARKER,
+      '## Landed on `main` via the merge train ✅ (recovered)',
+      '',
+      `- Landed commit: \`${compact(landedSha)}\``,
+      '',
+      'GitHub recorded this PR as **merged** with the landed commit above. This',
+      "record was completed by the train's crash recovery after an interrupted",
+      'landing. Recovery confirmed this PR carries the durable proof-complete',
+      'marker, which the train writes only after the full per-commit tree proof',
+      'passed at merge time, and corroborated the GitHub merged-state, the',
+      '`Merge-Train-PR` provenance trailer, a single (linear) parent, and no',
+      'promotion-postcondition failure. Recovery does not (and cannot) re-run the',
+      'tree proof; the marker attests it ran and passed at merge time.',
+      '',
+      '_Managed by the trusted repository merge-train workflow._',
+    ].join('\n');
+  }
+  return [
+    LANDED_MARKER,
+    '## Landed on `main` via the merge train ✅',
+    '',
+    `- Landed commit: \`${compact(landedSha)}\``,
+    `- Validated candidate: \`${compact(candidateSha)}\``,
+    '',
+    'GitHub recorded this PR as **merged** with the landed commit above. Its',
+    'tree was proven identical to the validated merge-train candidate before',
+    'this record was written.',
     '',
     '_Managed by the trusted repository merge-train workflow._',
   ].join('\n');

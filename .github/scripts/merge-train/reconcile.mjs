@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 
-import { listReviewThreads, paginate, request } from '../ci-recovery/github.mjs';
+import { listReviewThreads, paginate, request, graphql } from '../ci-recovery/github.mjs';
 import {
   isTrainFastPathPushRun,
   parseStateComment,
@@ -9,11 +9,12 @@ import {
 import {
   buildCandidate,
   buildDispatchBindings,
-  createWaitForMergedPr,
+  createMergePullRequest,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
+  planLandedRecovery,
   promoteExactBatch,
   promotionStaleReason,
   resolveMergeTrainTokens,
@@ -26,14 +27,18 @@ import {
   candidateFingerprint,
   candidateRef,
   hasLeadingMarker,
+  LANDED_LABEL,
+  LANDED_MARKER,
   MAX_TRAIN_SIZE,
-  nextBisectStep,
   NOOP_LABEL,
   parseEnabledFlag,
+  parseMergeTrainPrNumber,
+  planPrefixPromotion,
+  PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
   queueEntries,
-  REQUIRED_CHECK_NAME,
   resolveAdmissionChecks,
+  renderLandedComment,
   renderStatus,
   STATUS_MARKER,
   successfulChecks,
@@ -252,35 +257,157 @@ async function mainHealthAllowsPromotion() {
   return true;
 }
 
-// `waitForMergedPr` polls each promoted entry's PR for GitHub's own view of
-// the promotion, as a secondary confirmation on top of the atomic push's own
-// (authoritative) success. It does NOT require GitHub's `merged`/`merged_at`
-// fields to be set -- those are unreliable for this promotion mechanism:
-// absent in all seven promotions observed during the DEC-025 discovery
-// (including one entry 9+ hours old), but observed populated in at least one
-// subsequent promotion (PR #1131, same date), so the fields cannot be
-// depended on as a completion signal (see DEC-025 addendum in ADR 0062).
-// This was originally believed to be an async *lag* under load (ADR 0062
-// DEC-024), then initially believed proven live on 2026-07-15 to be
-// *permanent*, not a lag (ADR 0062 DEC-025), and finally narrowed to
-// *unreliable* by the PR #1131 counter-evidence. `waitForMergedPr` therefore
-// polls for `state === 'closed'`, which GitHub reliably sets within ~20s of
-// the push in every observed case, and is the actual achievable ground-truth
-// signal for this promotion mechanism. The ~77s budget below is kept as a
-// bounded safety margin against a genuine anomaly (a PR that never
-// auto-closes at all) even though `closed` typically fires in ~20s;
-// `createWaitForMergedPr` polls every entry in parallel (via
-// `promoteExactBatch`'s `Promise.all`), so a full batch's wall-clock stays
-// close to this single-entry budget regardless of batch size.
-const MERGED_PR_POLL_DELAYS_MS = [2000, 4000, 8000, 8000, 15000, 15000, 25000];
+// Real GitHub squash-merge promotion. `mergePullRequest` merges each admitted
+// PR through GitHub's own Merge API (the App bypasses the required-check
+// ruleset), producing genuine `merged: true` + a real merge commit SHA -- the
+// completion semantics the old atomic force-push could never produce. The
+// bounded mergeability poll absorbs GitHub's async `mergeable` computation.
+const mergePullRequest = createMergePullRequest({ request, token, owner, repo });
 
-const waitForMergedPr = createWaitForMergedPr({
-  request,
-  token,
-  owner,
-  repo,
-  pollDelaysMs: MERGED_PR_POLL_DELAYS_MS,
-});
+// Fetch a landed commit's REST object (tree + parents) for the post-merge
+// proof in promoteExactBatch.
+async function fetchCommit(sha) {
+  return (await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)).data;
+}
+
+// Publish the fail-closed promotion-postcondition check on the ACTUAL landed
+// commit (or the candidate, if nothing landed). Deliberately named
+// PROMOTION_POSTCONDITION_CHECK_NAME, never `merge-train`: a `merge-train`
+// check on a real landed main commit would masquerade as the fast-path
+// attestation ci.yml/mainHealthReason key on.
+async function publishPostconditionCheck(sha, fingerprint, entries) {
+  await createTrainCheck(
+    sha,
+    fingerprint,
+    'completed',
+    'failure',
+    PROMOTION_POSTCONDITION_CHECK_NAME,
+    entries,
+  );
+}
+
+// Post the durable landed-completion comment, idempotently (never duplicates
+// across reconciles or recovery). `recovered` selects the truthful recovery
+// variant (no candidate-tree claim) for interrupted-landing cleanup.
+async function postLandedComment(prNumber, landedSha, candidateSha, recovered = false) {
+  const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
+  if (comments.some((comment) => hasLeadingMarker(comment.body, LANDED_MARKER))) {
+    return;
+  }
+  await request(token, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+    method: 'POST',
+    body: { body: renderLandedComment({ landedSha, candidateSha, recovered }) },
+  });
+}
+
+// Fence the sequential promotion against the legacy auto-merge path: a PR with
+// an armed auto-merge could land out of order underneath the loop (see #1131's
+// real merge-then-force-push-2s-later race). Disable it on admission; the lib
+// also fails closed if it is still/again armed at final reattestation.
+async function disableAutoMerge(pr) {
+  if (!pr.auto_merge || !pr.node_id) return;
+  try {
+    await graphql(
+      token,
+      `
+        mutation ($id: ID!) {
+          disablePullRequestAutoMerge(input: { pullRequestId: $id }) {
+            clientMutationId
+          }
+        }
+      `,
+      { id: pr.node_id },
+    );
+    process.stdout.write(`disabled armed auto-merge pr=#${pr.number}\n`);
+  } catch (error) {
+    process.stdout.write(
+      `could not disable auto-merge pr=#${pr.number}: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+  }
+}
+
+// Whether a promotion-postcondition FAILURE check is recorded on a landed
+// commit. That check is published precisely for the rare base-race that would
+// have produced a divergent tree, so its presence means recovery must NOT treat
+// the landing as clean.
+async function landedCommitHasPostconditionFailure(landedSha) {
+  const runs = await checkRuns(landedSha);
+  return runs.some(
+    (run) =>
+      run.name === PROMOTION_POSTCONDITION_CHECK_NAME &&
+      run.status === 'completed' &&
+      run.conclusion === 'failure',
+  );
+}
+
+// Crash-recovery for an INTERRUPTED landing. A PR still carrying QUEUE_LABEL
+// after being merged is an interrupted landing (promotion removes QUEUE last).
+// Because the validated candidate is not reconstructable after main advances,
+// recovery cannot re-run the per-commit tree proof; instead planLandedRecovery
+// (in reconcile-lib) re-establishes the strongest post-hoc evidence -- genuinely
+// merged INTO main, this PR's Merge-Train-PR provenance trailer on the merge
+// commit, a single (linear) parent, NO promotion-postcondition failure on it,
+// and the LANDED_LABEL proof-complete marker (set only after the tree proof
+// succeeded). A crash before the marker write is left for human review; a crash
+// between marker write and comment/label cleanup is recovered here.
+async function reconcileLandedSignals() {
+  const staleClosed = await paginate(
+    token,
+    `/repos/${owner}/${repo}/issues?state=closed&labels=${encodeURIComponent(QUEUE_LABEL)}`,
+  );
+  for (const item of staleClosed) {
+    if (!item.pull_request) continue;
+    const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${item.number}`)).data;
+    const landedSha = String(pr.merge_commit_sha || '');
+    let trailerPrNumber = null;
+    let parentCount = 0;
+    let hasPostconditionFailure = false;
+    let factsComplete = false;
+    if (/^[0-9a-f]{40}$/i.test(landedSha)) {
+      try {
+        const commit = await fetchCommit(landedSha);
+        const recoveredTrailerPrNumber = parseMergeTrainPrNumber(commit?.commit?.message || '');
+        const recoveredParentCount = (commit?.parents || []).length;
+        const recoveredHasPostconditionFailure =
+          await landedCommitHasPostconditionFailure(landedSha);
+        trailerPrNumber = recoveredTrailerPrNumber;
+        parentCount = recoveredParentCount;
+        hasPostconditionFailure = recoveredHasPostconditionFailure;
+        factsComplete = true;
+      } catch {
+        // Keep factsComplete false: an unavailable check-runs read is NOT evidence
+        // that the postcondition failure check is absent. planLandedRecovery will
+        // therefore skip instead of asserting a possibly divergent landing.
+      }
+    }
+    const hasLandedLabel = (pr.labels || []).some((label) => label.name === LANDED_LABEL);
+    const decision = planLandedRecovery({
+      merged: pr.merged,
+      baseRef: pr.base?.ref,
+      landedSha,
+      trailerPrNumber,
+      prNumber: pr.number,
+      parentCount,
+      hasPostconditionFailure,
+      hasLandedLabel,
+      factsComplete,
+    });
+    if (decision.action !== 'finish') {
+      process.stdout.write(
+        `WARN: pr=#${pr.number} still queued after close but not a provable train landing (${decision.reason}); leaving ${QUEUE_LABEL} for review\n`,
+      );
+      continue;
+    }
+    // LANDED_LABEL is already present (required by planLandedRecovery); post the
+    // truthful RECOVERED comment and remove the transient labels.
+    await postLandedComment(pr.number, landedSha, '', true);
+    await removeLabel(pr.number, BLOCKED_LABEL);
+    await removeLabel(pr.number, QUEUE_LABEL);
+    process.stdout.write(`recovered interrupted landing for pr=#${pr.number} sha=${landedSha}\n`);
+  }
+}
 
 async function blockEntry(entry, { detail, validationFailure = false }) {
   await setLabel(entry.number, BLOCKED_LABEL);
@@ -338,6 +465,13 @@ await ensureLabel(
   'd1242f',
   'First failing addition isolated by merge-train validation',
 );
+await ensureLabel(LANDED_LABEL, '0e8a16', "This PR's change landed on main via the merge train");
+
+// Crash-after-merge recovery runs first, every reconcile: it backfills the
+// durable landed signal for any PR that was really merged but whose
+// label/comment update did not complete. Cheap in the normal case (successful
+// landings remove QUEUE_LABEL, so this query is usually empty).
+await reconcileLandedSignals();
 
 const pulls = await paginate(token, `/repos/${owner}/${repo}/pulls?state=open&base=main`);
 const queued = queueEntries(pulls, repository);
@@ -350,6 +484,9 @@ const admitted = [];
 for (const pr of queued) {
   const admission = await eligible(pr);
   if (admission.ok) {
+    // Fence the legacy auto-merge path before this PR can be sequentially
+    // squash-merged, so it cannot land out of order underneath the promotion.
+    await disableAutoMerge(pr);
     admitted.push(pr);
   } else {
     await removeLabel(pr.number, QUEUE_LABEL);
@@ -427,7 +564,7 @@ for (let index = 0; index < train.length; index += 1) {
       state,
       detail:
         state === 'failure'
-          ? 'Candidate validation failed; the merge train will bisect the failing prefix and return the first failing PR to recovery.'
+          ? 'Candidate validation failed; the merge train will localize the first failing PR and return it to recovery, promoting the validated green prefix before it.'
           : 'Candidate is immutable and bound to the listed PR revisions.',
     }),
   );
@@ -446,83 +583,101 @@ async function promotePrefix(prefixLength) {
       (await request(token, `/repos/${owner}/${repo}/pulls/${entry.number}`)).data,
     fetchCurrentMain: async () =>
       (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha,
+    fetchCommit,
     eligible,
     git,
-    createTrainCheck,
+    mergePullRequest,
+    setLabel,
     removeLabel,
     updateStatus,
-    requiredCheckName: REQUIRED_CHECK_NAME,
+    postLandedComment,
+    publishPostconditionCheck,
+    // Re-confirm, immediately before merging each PR, that its cumulative
+    // prefix still has terminal SUCCESS validation evidence bound to that
+    // prefix's exact candidate SHA + fingerprint.
+    verifyPrefixEvidence: async (index) => {
+      const candidate = candidates[index];
+      const state = trainCheckState(
+        await checkRuns(candidate.candidateSha),
+        candidate.fingerprint,
+        trustedAppId,
+        new Date(),
+      );
+      return state === 'success';
+    },
     provenanceEntries,
-    waitForMergedPr,
     reattestHealth: mainHealthAllowsPromotion,
   });
 }
 
-const fullCandidate = candidates[candidates.length - 1];
-if (fullCandidate.state === 'missing') {
-  await dispatchValidation(
-    fullCandidate.candidateSha,
-    fullCandidate.fingerprint,
-    fullCandidate.entries,
+// Promotion gate (ADR 0063): every cumulative prefix that will be exposed on
+// main must have terminal SUCCESS validation evidence BEFORE any merge, so the
+// sequential squash-merges never land an unvalidated tree. `planPrefixPromotion`
+// decides the next action from the per-prefix candidate states.
+const plan = planPrefixPromotion(candidates.map((candidate) => candidate.state));
+
+if (plan.action === 'validate') {
+  // Validate every still-missing prefix in the target range in parallel, so a
+  // full batch's validation wall-time is one candidate run, not N serial runs.
+  await Promise.all(
+    plan.prefixes.map((index) =>
+      dispatchValidation(
+        candidates[index].candidateSha,
+        candidates[index].fingerprint,
+        candidates[index].entries,
+      ),
+    ),
   );
-  process.stdout.write(`validating combined candidate size=${train.length}\n`);
-  process.exit(0);
-}
-if (fullCandidate.state === 'pending') {
-  process.stdout.write(`waiting combined candidate size=${train.length}\n`);
-  process.exit(0);
-}
-if (fullCandidate.state === 'success') {
-  await promotePrefix(train.length);
-  process.exit(0);
-}
-
-const step = nextBisectStep(candidates.map((candidate) => candidate.state));
-if (step.type === 'validate') {
-  const candidate = candidates[step.prefixLength - 1];
-  if (candidate.state === 'missing') {
-    await dispatchValidation(candidate.candidateSha, candidate.fingerprint, candidate.entries);
-  }
-  process.stdout.write(`bisect validating prefix=${step.prefixLength} total=${train.length}\n`);
-  process.exit(0);
-}
-
-const failingEntry = train[step.failingPrefixLength - 1];
-
-// The candidates/train above were built from `mainSha` captured earlier in
-// this run; by the time bisection isolates a failing PR, main may have
-// moved or the PR's queued state may have changed (rebased, retargeted,
-// unlabeled, etc.). Reattest both immediately before mutating anything so a
-// stale bisection result can't block/label a PR for a problem that no
-// longer applies. This check runs unconditionally -- including when
-// step.greenPrefixLength === 0, the case where nothing else in this script
-// (mainHealthAllowsPromotion/promoteExactBatch) re-validates before mutation.
-const [liveMainSha, liveFailingPr] = await Promise.all([
-  request(token, `/repos/${owner}/${repo}/git/ref/heads/main`).then((r) => r.data.object.sha),
-  request(token, `/repos/${owner}/${repo}/pulls/${failingEntry.number}`).then((r) => r.data),
-]);
-const staleReason = promotionStaleReason({
-  currentMain: liveMainSha,
-  currentPr: liveFailingPr,
-  expectedBase: mainSha,
-  pr: failingEntry,
-  repository,
-});
-if (staleReason) {
   process.stdout.write(
-    `bisect stale pr=#${failingEntry.number} reason=${staleReason}; skipping mutation, will rebuild next run\n`,
+    `dispatched ${plan.prefixes.length} prefix validation(s) in parallel prefixes=${plan.prefixes
+      .map((index) => index + 1)
+      .join(',')} total=${train.length}\n`,
   );
   process.exit(0);
 }
 
-await blockEntry(failingEntry, {
-  validationFailure: true,
-  detail: `PR #${failingEntry.number} is the first failing addition in the validated prefix.`,
-});
-if (step.greenPrefixLength > 0) {
-  await promotePrefix(step.greenPrefixLength);
+if (plan.action === 'wait') {
+  process.stdout.write(`waiting on prefix validation(s); total=${train.length}\n`);
+  process.exit(0);
 }
-await dispatchRecovery(failingEntry.number, 'merge-train-validation-failure');
-process.stdout.write(
-  `bisect isolated pr=#${failingEntry.number} green_prefix=${step.greenPrefixLength}\n`,
-);
+
+// plan.action === 'promote': the whole [0, greenPrefixLength) is proven green.
+// Localize the earliest failing PR FIRST (before promoting the green prefix, so
+// promoting does not move main and make the failing-PR reattestation falsely
+// stale). No bisection is needed: every promotable prefix was validated, so the
+// first failing prefix's last-added PR is the culprit. Reattest against live
+// state before mutating so a stale result can't block a PR for a problem that no
+// longer applies.
+if (plan.firstFailure !== -1) {
+  const failingEntry = train[plan.firstFailure];
+  const [liveMainSha, liveFailingPr] = await Promise.all([
+    request(token, `/repos/${owner}/${repo}/git/ref/heads/main`).then((r) => r.data.object.sha),
+    request(token, `/repos/${owner}/${repo}/pulls/${failingEntry.number}`).then((r) => r.data),
+  ]);
+  const staleReason = promotionStaleReason({
+    currentMain: liveMainSha,
+    currentPr: liveFailingPr,
+    expectedBase: mainSha,
+    pr: failingEntry,
+    repository,
+  });
+  if (staleReason) {
+    process.stdout.write(
+      `failing pr=#${failingEntry.number} stale reason=${staleReason}; skipping mutation, will rebuild next run\n`,
+    );
+    process.exit(0);
+  }
+  await blockEntry(failingEntry, {
+    validationFailure: true,
+    detail: `PR #${failingEntry.number} is the first failing addition in the validated prefix.`,
+  });
+  await dispatchRecovery(failingEntry.number, 'merge-train-validation-failure');
+  process.stdout.write(
+    `isolated first failing pr=#${failingEntry.number} green_prefix=${plan.greenPrefixLength}\n`,
+  );
+}
+
+if (plan.greenPrefixLength > 0) {
+  await promotePrefix(plan.greenPrefixLength);
+}
+process.exit(0);
