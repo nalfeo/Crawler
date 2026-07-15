@@ -119,8 +119,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   // Helper to find the sheet entry for a sprite
   function getSheetForSprite(sprite: SpriteCatalogEntry): SpriteSheetCatalogEntry | undefined {
     return entries.find((e) => e.kind === 'sheet' && e.sheetKey === sprite.sheetKey) as
-      | SpriteSheetCatalogEntry
-      | undefined;
+      SpriteSheetCatalogEntry | undefined;
   }
 
   const root = document.createElement('div');
