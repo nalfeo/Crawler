@@ -96,23 +96,37 @@ export function describeDoorUnlock(group: DoorConditionGroup | undefined): DoorU
  * Whether A* should currently treat a configured door as impassable. A door is
  * blocked when its unlock condition is not satisfied, or when its relock
  * condition is satisfied. Doors without a lock configuration always auto-open
- * on approach and are therefore never blocked.
+ * on approach and are therefore never blocked. `goalOverrides`, when supplied,
+ * lets planning code ask "would this door be open IF goal X were already
+ * satisfied?" without mutating the world — see {@link evaluateDoorConditionGroup}.
  */
-function isDoorNavigationBlocked(world: GameWorld, config: DoorLockConfig | undefined): boolean {
+function isDoorNavigationBlocked(
+  world: GameWorld,
+  config: DoorLockConfig | undefined,
+  goalOverrides?: ReadonlyMap<string, boolean> | null,
+): boolean {
   if (!config) {
     return false;
   }
-  const unlockSatisfied = evaluateDoorConditionGroup(world, config.unlock);
-  const relockSatisfied = config.relock ? evaluateDoorConditionGroup(world, config.relock) : false;
+  const unlockSatisfied = evaluateDoorConditionGroup(world, config.unlock, goalOverrides);
+  const relockSatisfied = config.relock
+    ? evaluateDoorConditionGroup(world, config.relock, goalOverrides)
+    : false;
   return !(unlockSatisfied && !relockSatisfied);
 }
 
 /**
  * Enumerate every {@link DoorState} door with its live lock status and
  * forward-looking navigation verdict. This is the canonical interface the AI
- * consumes to "see" the doors the UX shows.
+ * consumes to "see" the doors the UX shows. Pass `goalOverrides` to evaluate
+ * hypothetical door state (e.g. "as if goal X were already complete") for
+ * planning purposes — every existing caller omits it and sees identical,
+ * live-world-only behavior.
  */
-export function getDoorNavInfos(world: GameWorld): DoorNavInfo[] {
+export function getDoorNavInfos(
+  world: GameWorld,
+  goalOverrides?: ReadonlyMap<string, boolean> | null,
+): DoorNavInfo[] {
   const { doorState } = world.stores;
   const infos: DoorNavInfo[] = [];
   for (const eid of query(world.ecs, [DoorState])) {
@@ -124,7 +138,7 @@ export function getDoorNavInfos(world: GameWorld): DoorNavInfo[] {
       logicalOpen: (doorState.logicalOpen[eid] ?? 0) !== 0,
       effectiveOpen: (doorState.effectiveOpen[eid] ?? 0) !== 0,
       isLocked: (doorState.isLocked[eid] ?? 0) !== 0,
-      navigationBlocked: isDoorNavigationBlocked(world, config),
+      navigationBlocked: isDoorNavigationBlocked(world, config, goalOverrides),
       unlock: config?.unlock,
       relock: config?.relock,
       unlockRequirement: describeDoorUnlock(config?.unlock),
@@ -134,8 +148,11 @@ export function getDoorNavInfos(world: GameWorld): DoorNavInfo[] {
 }
 
 /** The subset of {@link getDoorNavInfos} that A* must currently treat as walls. */
-export function getNavigationBlockedDoors(world: GameWorld): DoorNavInfo[] {
-  return getDoorNavInfos(world).filter((info) => info.navigationBlocked);
+export function getNavigationBlockedDoors(
+  world: GameWorld,
+  goalOverrides?: ReadonlyMap<string, boolean> | null,
+): DoorNavInfo[] {
+  return getDoorNavInfos(world, goalOverrides).filter((info) => info.navigationBlocked);
 }
 
 /**
@@ -149,13 +166,20 @@ export function getNavigationBlockedDoors(world: GameWorld): DoorNavInfo[] {
  * a door it cannot open.
  *
  * The blocked-door set is snapshotted once per call, so rebuild the predicate
- * each AI poll to pick up freshly-satisfied unlock conditions.
+ * each AI poll to pick up freshly-satisfied unlock conditions. Pass
+ * `goalOverrides` to build a HYPOTHETICAL predicate (e.g. "as if goal X were
+ * already satisfied") for planning code that must ask what would be reachable
+ * after a not-yet-completed goal unlocks a door — see `floor1-travel-oracle.ts`.
+ * Every existing caller omits it and gets the exact live-world predicate.
  */
-export function buildDoorAwarePassable(world: GameWorld): (x: number, y: number) => boolean {
+export function buildDoorAwarePassable(
+  world: GameWorld,
+  goalOverrides?: ReadonlyMap<string, boolean> | null,
+): (x: number, y: number) => boolean {
   const floorMap = world.floorMap;
   const blockedDoorTiles = new Set<string>();
   if (floorMap) {
-    for (const info of getDoorNavInfos(world)) {
+    for (const info of getDoorNavInfos(world, goalOverrides)) {
       if (info.navigationBlocked) {
         blockedDoorTiles.add(tileKey(info.tileX, info.tileY));
       }

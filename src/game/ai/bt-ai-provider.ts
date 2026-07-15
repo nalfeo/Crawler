@@ -283,6 +283,13 @@ import {
   type ObjectiveTravelAdapters,
 } from './objective-travel-estimate.js';
 import {
+  applyFloor1WorkCosts,
+  buildFloor1GoalGraph,
+  PLAYER_START_LOCATION,
+} from './floor1-goal-graph.js';
+import { makeFloor1DoorAwareTravelOracle } from './floor1-travel-oracle.js';
+import { planObjectiveRoute } from './objective-route-planner.js';
+import {
   evaluateTacticalOpportunities,
   projectTacticalObjectiveLookahead,
   type TacticalOpportunityCandidate,
@@ -305,6 +312,13 @@ const SAFE_ROOM_EGRESS_SUPPRESS_FRAMES = 120;
  */
 const SLACK_AWARE_URGENCY_THRESHOLD = 0.66;
 const MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES = 30;
+/**
+ * Throttle for {@link BehaviorTreeAI.resolveFloor1MiddleChainObjective}'s
+ * unlock-aware goal-graph route recompute (real A* + bitmask DP). Refreshed
+ * immediately on a navigation-epoch bump regardless of this budget — see the
+ * `floor1MiddleChainCache` field doc.
+ */
+const FLOOR1_MIDDLE_CHAIN_CACHE_FRAMES = 15;
 
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
@@ -536,6 +550,27 @@ interface LootTarget extends WorldTarget {
 interface ProgressTarget extends WorldTarget {
   reason: string;
   npcInteraction: AINpcInteractionIntent | null;
+}
+
+function floor1GoalIdForNpcInteraction(action: AINpcInteractionActionValue | null): string | null {
+  switch (action) {
+    case AINpcInteractionAction.ACCEPT_TUTORIAL_QUEST:
+      return 'meet-tutorial-goon';
+    case AINpcInteractionAction.MEET_SHOPKEEPER:
+      return 'meet-shopkeeper';
+    case AINpcInteractionAction.RETURN_SHOPKEEPER_PRIZE:
+      return 'return-shop-prize';
+    case AINpcInteractionAction.BUY_SHOPKEEPER_EQUIPMENT:
+      return 'buy-shop-charm';
+    case AINpcInteractionAction.ACCEPT_SPELL_QUEST:
+      return 'accept-spell-quest';
+    case AINpcInteractionAction.CLAIM_SPELL_REWARD:
+      return 'claim-spell-reward';
+    case AINpcInteractionAction.GENERIC_INTERACTION:
+    case AINpcInteractionAction.MEET_BROKER_INTRO:
+    case null:
+      return null;
+  }
 }
 
 /**
@@ -969,6 +1004,22 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private navEpoch = 0;
   private navSignature: string | null = null;
+  /**
+   * Deterministic per-poll cache for {@link resolveFloor1MiddleChainObjective}'s
+   * unlock-aware goal-graph route: rebuilding the graph and re-running the
+   * strict door-aware A-star/DP planner is real work, so it is throttled to
+   * {@link FLOOR1_MIDDLE_CHAIN_CACHE_FRAMES} frames — refreshed immediately on
+   * a navigation-epoch bump (a door flipped state) rather than waiting out the
+   * frame budget, so a freshly-unlocked door is never routed around stale.
+   * Caches only the resolved goal id (not the constructed `ProgressTarget`,
+   * which is cheap to rebuild per-frame from the player's live position).
+   */
+  private floor1MiddleChainCache: {
+    frame: number;
+    navEpoch: number;
+    stateKey: string;
+    goalId: string | null;
+  } | null = null;
   /**
    * Locked doors the AI is currently aware of, keyed by door entity. Populated
    * from {@link getNavigationBlockedDoors} each poll and pruned when a door's
@@ -3091,9 +3142,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     this.decisionRunPlan =
       this.config.decisionMode === AIDecisionMode.SLACK_AWARE ? currentRunPlan : null;
-    if (merchantWeaponIntent.enabled) {
-      updateMerchantWeaponIntent(world, currentRunPlan, RUN_PLANNER_GOLD_FARM_MS);
-    }
 
     // Build context for behavior tree
     const context: BTContext = {
@@ -3110,6 +3158,16 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Execute behavior tree (Track A sets this.decision; Track B writes
     // opportunisticPullX/Y and dodgeVecX/Y as side-effects)
     this.tree.tick(context);
+    if (merchantWeaponIntent.enabled) {
+      const validatedMerchantPlan = this.getMerchantDecisionRunPlan(
+        world,
+        playerEid,
+        playerX,
+        playerY,
+        playerSpeedFtPerFrame,
+      );
+      updateMerchantWeaponIntent(world, validatedMerchantPlan, RUN_PLANNER_GOLD_FARM_MS);
+    }
     if (!this.npcApproachThreatProgressEvaluatedThisPoll) {
       this.resetNpcApproachThreatTracking();
     }
@@ -3924,22 +3982,53 @@ export class BehaviorTreeAI implements AIInputProvider {
     const slimeRat = objective.bossBattles.get('slime-rat')!;
     const staircase = objective.bossBattles.get('staircase')!;
     const shopStage = getShopkeeperStage(world);
-    const currentTarget =
-      this.decision.targetX !== null && this.decision.targetY !== null
-        ? {
-            x: this.decision.targetX,
-            y: this.decision.targetY,
-            eid: this.decision.targetEid,
-            reason: this.decision.reason,
-            kind: this.getCurrentRunPlannerTargetKind(world, shopStage),
-          }
+    const merchantWeaponIntent = getMerchantWeaponIntent(world);
+    const committedDetourEid = this.committedDetourNpcEid;
+    const committedDetourX =
+      committedDetourEid === null ? undefined : world.stores.position.x[committedDetourEid];
+    const committedDetourY =
+      committedDetourEid === null ? undefined : world.stores.position.y[committedDetourEid];
+    const committedDetourAction =
+      committedDetourEid === null
+        ? null
+        : this.getNpcInteractionReason(world, playerEid, committedDetourEid);
+    const committedDetourAnchor =
+      committedDetourEid !== null &&
+      committedDetourX !== undefined &&
+      committedDetourY !== undefined
+        ? this.resolveNpcInteractionAnchor(
+            world,
+            playerX,
+            playerY,
+            committedDetourX,
+            committedDetourY,
+            committedDetourEid,
+          )
         : null;
+    const currentTarget =
+      committedDetourEid !== null && committedDetourAnchor
+        ? {
+            ...committedDetourAnchor,
+            eid: committedDetourEid,
+            reason: `Committed quest-giver detour`,
+            kind: 'other' as const,
+            committedGoalId: floor1GoalIdForNpcInteraction(committedDetourAction),
+          }
+        : this.decision.targetX !== null && this.decision.targetY !== null
+          ? {
+              x: this.decision.targetX,
+              y: this.decision.targetY,
+              eid: this.decision.targetEid,
+              reason: this.decision.reason,
+              kind: this.getCurrentRunPlannerTargetKind(world, shopStage),
+            }
+          : null;
     const snapshot: Floor1RunPlannerSnapshot = {
       nowMs: world.elapsedMs,
       deadlineMs: objective.deadlineMs,
       player: { x: playerX, y: playerY },
       currentTarget,
-      activeQuestGiverDetour: this.committedDetourNpcEid !== null,
+      activeQuestGiverDetour: committedDetourEid !== null && committedDetourAnchor !== null,
       tutorialAccepted: world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID),
       playerLevel: world.playerLevel.level,
       questCompleted: objective.questCompleted,
@@ -3956,10 +4045,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       slimeRatStarted: slimeRat.started,
       slimeRatDefeated: slimeRat.defeated,
       spellsUnlocked: world.featureUnlocks.spells,
+      bossBattleComplete: world.goalFlags.get('floor1-boss-battle-complete') === true,
       staircaseStarted: staircase.started,
       staircaseDefeated: staircase.defeated,
       staircaseUnlocked: objective.staircaseUnlocked,
       staircaseDiscovered: objective.staircaseDiscovered,
+      merchantWeaponIntent:
+        merchantWeaponIntent.enabled &&
+        (merchantWeaponIntent.status === 'farming' || merchantWeaponIntent.status === 'returning')
+          ? { status: merchantWeaponIntent.status, cost: merchantWeaponIntent.cost }
+          : null,
       positions: {
         welcomeOffice: objective.welcomeOfficePos,
         shop: objective.shopRoomPos,
@@ -4326,15 +4421,22 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.committedDetourNpcEid = npc.eid;
       this.committedDetourBestDistance = npc.distance;
       this.committedDetourNoProgressFrames = 0;
+      this.merchantDecisionRunPlan = null;
+      this.merchantDecisionRunPlanFrame = -Infinity;
     }
     return this.detourTargetFor(world, npc, playerX, playerY);
   }
 
   /** Clear any active detour commitment and its no-progress bookkeeping. */
   private releaseDetourCommitment(): void {
+    const hadCommitment = this.committedDetourNpcEid !== null;
     this.committedDetourNpcEid = null;
     this.committedDetourBestDistance = Number.POSITIVE_INFINITY;
     this.committedDetourNoProgressFrames = 0;
+    if (hadCommitment) {
+      this.merchantDecisionRunPlan = null;
+      this.merchantDecisionRunPlanFrame = -Infinity;
+    }
   }
 
   /**
@@ -5784,6 +5886,347 @@ export class BehaviorTreeAI implements AIInputProvider {
     return reachable;
   }
 
+  /**
+   * Unlock-aware goal-graph resolution of the Floor 1 "middle chain" — the
+   * shop errand (meet -> fetch -> return -> farm-gold -> buy -> equip) and
+   * the spell-broker chain (accept -> Slime Rat -> claim), plus the
+   * staircase boss, which the real door-lock config gates on BOTH chains
+   * completing (verified against `floorScenario.ts`'s door-lock setup — see
+   * `floor1-goal-graph.ts`'s module doc). Historically these were checked in
+   * a fixed source order (fully resolve the shop errand, THEN attempt the
+   * spell broker), which forced repeated west-hub/east-cluster round trips
+   * whenever both chains had remaining work on opposite sides of the map.
+   * Delegating ordering to the SAME declarative goal graph the run-planner
+   * ETA uses (`buildFloor1GoalGraph` / `applyFloor1WorkCosts`), via the
+   * strict, door-aware `floor1-travel-oracle.ts` oracle (real A* plus
+   * hypothetical door-unlock effects — this is the runtime navigation
+   * DECISION, not an ETA estimate, so it must NOT use the pure estimator's
+   * straight-line fallback), lets the AI interleave same-neighborhood visits
+   * instead.
+   *
+   * Returns `undefined` — NOT `null` — only when the planner does not own the
+   * current phase (the floor map is not initialized yet, or the middle chain
+   * is complete). Planner and graph errors intentionally propagate: silently
+   * falling back to source-order logic would hide invalid or unreachable
+   * objective graphs and reintroduce the route-ordering defect this planner
+   * exists to remove. Returns the final, already detour-wrapped answer
+   * (`ProgressTarget | null`) otherwise — `null` for goals with no navigable
+   * target of their own (`equip-shop-charm`, or a boss fight already in
+   * progress), matching the legacy behavior of returning `null` and letting
+   * Engage/Hunt handle it.
+   */
+  private resolveFloor1MiddleChainObjective(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    floorScenario: NonNullable<GameWorld['floorScenario']>,
+    objective: NonNullable<GameWorld['floorScenario']>['objective'],
+    shopStage: ReturnType<typeof getShopkeeperStage>,
+    hasFetchItem: boolean,
+    progressSuppressed: boolean,
+    maybeDetourToQuestGiver: (target: ProgressTarget) => ProgressTarget,
+  ): ProgressTarget | null | undefined {
+    if (!world.floorMap) return undefined;
+
+    const slimeRat = objective.bossBattles.get('slime-rat');
+    const staircase = objective.bossBattles.get('staircase');
+    if (!slimeRat || !staircase) return undefined;
+
+    const snapshot: Floor1RunPlannerSnapshot = {
+      nowMs: world.elapsedMs,
+      deadlineMs: objective.deadlineMs,
+      player: { x: playerX, y: playerY },
+      currentTarget: null,
+      activeQuestGiverDetour: false,
+      tutorialAccepted: true,
+      playerLevel: Math.max(2, world.playerLevel.level),
+      questCompleted: true,
+      ratsKilled: objective.requiredRats,
+      slimesKilled: objective.requiredSlimes,
+      requiredRats: objective.requiredRats,
+      requiredSlimes: objective.requiredSlimes,
+      requiredTotalKills: objective.requiredRats + objective.requiredSlimes,
+      shopStage,
+      playerGold: world.playerGold,
+      shopkeeperEquipmentCost: SHOPKEEPER_EQUIPMENT_COST,
+      hasShopFetchItem: hasFetchItem,
+      bossBattleAccepted: world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID),
+      slimeRatStarted: slimeRat.started,
+      slimeRatDefeated: slimeRat.defeated,
+      spellsUnlocked: world.featureUnlocks.spells,
+      bossBattleComplete: world.goalFlags.get('floor1-boss-battle-complete') === true,
+      staircaseStarted: staircase.started,
+      staircaseDefeated: staircase.defeated,
+      staircaseUnlocked: objective.staircaseUnlocked,
+      staircaseDiscovered: objective.staircaseDiscovered,
+      merchantWeaponIntent: (() => {
+        const intent = getMerchantWeaponIntent(world);
+        return intent.enabled && (intent.status === 'farming' || intent.status === 'returning')
+          ? { status: intent.status, cost: intent.cost }
+          : null;
+      })(),
+      positions: {
+        welcomeOffice: objective.welcomeOfficePos,
+        shop: objective.shopRoomPos,
+        questItem: objective.questItemPos,
+        spellQuestGiver: objective.spellQuestGiverPos,
+        slimeRatRoom: objective.slimeRatRoomPos,
+        staircase: objective.staircasePos,
+      },
+    };
+
+    const cache = this.floor1MiddleChainCache;
+    const stateKey = [
+      snapshot.shopStage,
+      snapshot.hasShopFetchItem,
+      snapshot.playerGold,
+      snapshot.bossBattleAccepted,
+      snapshot.slimeRatStarted,
+      snapshot.slimeRatDefeated,
+      snapshot.spellsUnlocked,
+      snapshot.bossBattleComplete,
+      snapshot.staircaseStarted,
+      snapshot.staircaseDefeated,
+      snapshot.staircaseUnlocked,
+      snapshot.staircaseDiscovered,
+      snapshot.merchantWeaponIntent?.status ?? 'none',
+      snapshot.merchantWeaponIntent?.cost ?? 0,
+    ].join('|');
+    const cacheFresh =
+      cache !== null &&
+      cache.navEpoch === this.navEpoch &&
+      cache.stateKey === stateKey &&
+      world.frameCount - cache.frame < FLOOR1_MIDDLE_CHAIN_CACHE_FRAMES;
+
+    let nextGoalId: string | null;
+    if (cacheFresh) {
+      nextGoalId = cache.goalId;
+    } else {
+      const rawGraph = buildFloor1GoalGraph(snapshot);
+      if (rawGraph.goals.length === 0) return null;
+
+      const playerSpeedFtPerFrame = this.getPlayerSpeedFtPerFrame(world, playerEid);
+      const params = this.getRunPlannerParams(playerSpeedFtPerFrame);
+      const graph = applyFloor1WorkCosts(rawGraph, snapshot, params);
+      const oracle = makeFloor1DoorAwareTravelOracle(world, graph.locations, {
+        moveSpeedFtPerMs: params.moveSpeedFtPerMs,
+        pathOptions: this.groundPathOptions(),
+      });
+
+      const route = planObjectiveRoute({
+        goals: graph.goals,
+        startLocation: PLAYER_START_LOCATION,
+        initialSatisfiedEffects: graph.initialSatisfiedEffects,
+        budgetMs: Math.max(0, snapshot.deadlineMs - snapshot.nowMs - params.safetyBufferMs),
+        travelOracle: oracle,
+      });
+      nextGoalId = route.nextActionableGoalId;
+      this.floor1MiddleChainCache = {
+        frame: world.frameCount,
+        navEpoch: this.navEpoch,
+        stateKey,
+        goalId: nextGoalId,
+      };
+    }
+    if (!nextGoalId) return null;
+
+    switch (nextGoalId) {
+      case 'meet-shopkeeper': {
+        const reason = 'Seeking Shopkeeper to start the merchant errand';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
+        return maybeDetourToQuestGiver(
+          this.createNpcProgressTarget(
+            world,
+            playerX,
+            playerY,
+            floorScenario.shopkeeperNpcEid ?? -1,
+            reason,
+            objective.shopRoomPos.x,
+            objective.shopRoomPos.y,
+            AINpcInteractionAction.MEET_SHOPKEEPER,
+          ),
+        );
+      }
+      case 'fetch-shop-prize': {
+        const reason = 'Seeking the merchant fetch item';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            objective.questItemPos.x,
+            objective.questItemPos.y,
+            playerX,
+            playerY,
+            reason,
+          ),
+        );
+      }
+      case 'return-shop-prize': {
+        const reason = 'Returning the merchant prize';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
+        return maybeDetourToQuestGiver(
+          this.createNpcProgressTarget(
+            world,
+            playerX,
+            playerY,
+            floorScenario.shopkeeperNpcEid ?? -1,
+            reason,
+            objective.shopRoomPos.x,
+            objective.shopRoomPos.y,
+            AINpcInteractionAction.RETURN_SHOPKEEPER_PRIZE,
+          ),
+        );
+      }
+      case 'farm-shop-gold': {
+        const goldOwed = Math.max(0, SHOPKEEPER_EQUIPMENT_COST - world.playerGold);
+        const target = this.findMerchantGoldFarmTarget(
+          world,
+          playerX,
+          playerY,
+          goldOwed,
+          'merchant charm',
+        );
+        return target ? maybeDetourToQuestGiver(target) : null;
+      }
+      case 'buy-shop-charm': {
+        const reason = 'Returning to the Shopkeeper to buy the charm';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
+        return maybeDetourToQuestGiver(
+          this.createNpcProgressTarget(
+            world,
+            playerX,
+            playerY,
+            floorScenario.shopkeeperNpcEid ?? -1,
+            reason,
+            objective.shopRoomPos.x,
+            objective.shopRoomPos.y,
+            AINpcInteractionAction.BUY_SHOPKEEPER_EQUIPMENT,
+          ),
+        );
+      }
+      case 'equip-shop-charm':
+        // Handled ambiently/automatically — no legacy branch existed for
+        // this transient stage either (the shop-stage switch had no
+        // 'awaiting-equip' case), so Progress correctly has nothing to say.
+        return null;
+      case 'farm-merchant-weapon-gold': {
+        const intent = getMerchantWeaponIntent(world);
+        const goldOwed = Math.max(0, intent.cost - world.playerGold);
+        const target = this.findMerchantGoldFarmTarget(
+          world,
+          playerX,
+          playerY,
+          goldOwed,
+          'merchant weapon',
+        );
+        return target ? maybeDetourToQuestGiver(target) : null;
+      }
+      case 'buy-merchant-weapon': {
+        const reason = 'Returning to the Shopkeeper to buy the selected weapon';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'shop');
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            objective.shopRoomPos.x,
+            objective.shopRoomPos.y,
+            playerX,
+            playerY,
+            reason,
+            floorScenario.shopkeeperNpcEid ?? -1,
+          ),
+        );
+      }
+      case 'accept-spell-quest': {
+        const reason = 'Seeking the Spell Broker to start the Slime Rat quest';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
+        return maybeDetourToQuestGiver(
+          this.createNpcProgressTarget(
+            world,
+            playerX,
+            playerY,
+            floorScenario.spellQuestGiverNpcEid ?? -1,
+            reason,
+            objective.spellQuestGiverPos.x,
+            objective.spellQuestGiverPos.y,
+            AINpcInteractionAction.ACCEPT_SPELL_QUEST,
+          ),
+        );
+      }
+      case 'kill-slime-rat': {
+        const reason = 'Heading to the Slime Rat room';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            objective.slimeRatRoomPos.x,
+            objective.slimeRatRoomPos.y,
+            playerX,
+            playerY,
+            reason,
+          ),
+        );
+      }
+      case 'finish-slime-rat':
+        // Active battle — let Engage/Hunt fight it, exactly like legacy.
+        return null;
+      case 'claim-spell-reward': {
+        const reason = 'Returning to the Spell Broker to claim a spell reward';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'spell-broker');
+        return maybeDetourToQuestGiver(
+          this.createNpcProgressTarget(
+            world,
+            playerX,
+            playerY,
+            floorScenario.spellQuestGiverNpcEid ?? -1,
+            reason,
+            objective.spellQuestGiverPos.x,
+            objective.spellQuestGiverPos.y,
+            AINpcInteractionAction.CLAIM_SPELL_REWARD,
+          ),
+        );
+      }
+      case 'kill-staircase-boss': {
+        const reason = 'Heading to the staircase boss room';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'staircase');
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            objective.staircasePos.x,
+            objective.staircasePos.y,
+            playerX,
+            playerY,
+            reason,
+          ),
+        );
+      }
+      case 'finish-staircase-boss':
+        // Active battle — let Engage/Hunt fight it, exactly like legacy.
+        return null;
+      case 'take-stairs': {
+        const reason = 'Heading to the stairs to clear the floor';
+        if (progressSuppressed)
+          return this.recordSuppressedProgressNavigation(world, reason, 'post-stairs');
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            objective.staircasePos.x,
+            objective.staircasePos.y,
+            playerX,
+            playerY,
+            reason,
+          ),
+        );
+      }
+      default:
+        throw new Error(`Unsupported Floor 1 objective planner goal "${nextGoalId}".`);
+    }
+  }
+
   private findProgressObjective(
     world: GameWorld,
     playerEid: number,
@@ -5884,6 +6327,26 @@ export class BehaviorTreeAI implements AIInputProvider {
         );
       }
       return null;
+    }
+
+    // Let the unlock-aware goal-graph planner own the shop/spell/final-boss
+    // middle chain. The legacy code below remains responsible only for phases
+    // outside that graph (startup before a floor map exists, and post-chain
+    // stair interaction).
+    const middleChainTarget = this.resolveFloor1MiddleChainObjective(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+      floorScenario,
+      objective,
+      shopStage,
+      hasFetchItem,
+      progressSuppressed,
+      maybeDetourToQuestGiver,
+    );
+    if (middleChainTarget !== undefined) {
+      return middleChainTarget;
     }
 
     if (shopStage === 'not-met') {
@@ -7568,6 +8031,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.resolveGoalMemoEpoch = -1;
     this.navEpoch = 0;
     this.navSignature = null;
+    this.floor1MiddleChainCache = null;
     this.hasPerceptionData = false;
     this.frontierBfsVisited = null;
     this.retreating = false;
