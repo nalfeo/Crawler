@@ -1,0 +1,55 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-15",
+  "session_slug": "merge-train-rollback-status-hydration-fix",
+  "task_title": "merge-train: fix rollback/status recovery gaps before live enable cutover (issue #1151)",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review (gpt-5.4, high reasoning) red-teamed DEC-019/020/021 with 3 alternatives (separate machine-verification from printStatus; centralize hydrated-lookup helper; canonicalize vs shape-preserve on rollback) and 6 concerns. All 6 resolved: (1) [Blocking] findRulesetByName silently picked first match on duplicate-named rulesets -- fixed to throw AmbiguousRulesetNameError, propagated + tested at status/enable/rollback. (2) postcondition-vs-printStatus coupling -- deferred, only one hydrate-then-validate call site exists today, no duplication to centralize yet; documented as DEC-022. (3) hydration race on getRuleset(id) -- verified already fail-closed (no 404 catch, unlike getClassicProtection/getMergeTrainEnabled), no code change needed. (4) rollback preserves drifted bypass actor -- fixed: added explicit WARNING log on actor-id mismatch vs supplied --app-id, without normalizing (keeps disable non-policy-making). (5) classic.missing tri-state suggestion -- deferred, existing pure-function contract predates this fix, churn not justified for a naming/readability change with no behavior delta. (6) duplicate-ruleset test coverage -- added (1 unit + 3 orchestration tests). See ADR 0062 DEC-022 for full per-concern writeup."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "2 non-blocking suggestions: (a) hydration-fetch race in printStatus accepted as intentional fail-closed (ADR DEC-022 pt3), no change; (b) missing negative test for rollback drift-warning gate -- fixed by adding new test."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Re-reviewed full diff plus new negative test; confirmed test is load-bearing (brackets both sides of the appId&&liveBypassId&&mismatch gate). No new issues. Verdict: clean, no remaining concerns."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "gpt-5.4: no significant issues found. gemini-3.1-pro-preview: found 1 legitimate non-blocking gap -- rollback's drift-warning gate (added in plan-review fix #4) only detected drift via inferTrainAppId(), which strictly filters for actor_type==='Integration', so a live bypass actor tampered into a non-Integration type (e.g. RepositoryRole) would silently escape the warning even though buildRulesetDisablePayload still preserves it verbatim. Adjudicated (claude-sonnet-5) as valid and fixed: gate now checks hasLiveActors (any bypass_actors entry present) instead of liveBypassId truthiness. Added test covering the non-Integration-actor case. Re-ran full suite: 53/53 passing after fix. ADR 0062 DEC-023 records this finding and fix."
+        }
+      ]
+    }
+  }
+}

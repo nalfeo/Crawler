@@ -202,9 +202,36 @@ export function buildRulesetPayload({ trainAppId, name = RULESET_NAME }) {
   };
 }
 
-/** Locate an existing ruleset by name from a `GET .../rulesets` list response. */
+/**
+ * Thrown by `findRulesetByName` when more than one ruleset shares the
+ * expected name -- see that function's doc comment for why this fails
+ * closed instead of picking one.
+ */
+export class AmbiguousRulesetNameError extends Error {}
+
+/**
+ * Locate an existing ruleset by name from a `GET .../rulesets` list
+ * response. Fails closed (throws `AmbiguousRulesetNameError`) if MORE THAN
+ * ONE ruleset shares the name, instead of silently returning the first
+ * match. This tool only ever creates a ruleset by this name after first
+ * confirming none exists (see `enable()`), so a genuine second one appearing
+ * means manual tampering, a race, or a bug elsewhere -- picking one blindly
+ * risks `status`/`enable`/`rollback` all inspecting/mutating the "wrong" one
+ * while another stale or active duplicate keeps enforcing (or fails to
+ * enforce) independently, invisible to every command in this tool (raised
+ * during issue #1151's adversarial plan review).
+ */
 export function findRulesetByName(rulesets, name = RULESET_NAME) {
-  return (rulesets || []).find((ruleset) => ruleset.name === name) || null;
+  const matches = (rulesets || []).filter((ruleset) => ruleset.name === name);
+  if (matches.length > 1) {
+    throw new AmbiguousRulesetNameError(
+      `Found ${matches.length} rulesets named "${name}" (ids: ` +
+        `${matches.map((ruleset) => ruleset.id).join(', ')}) -- refusing to guess which one is ` +
+        'authoritative. Resolve this manually in the GitHub UI/API (delete or rename the extra ' +
+        'ruleset) before re-running status/enable/rollback.',
+    );
+  }
+  return matches[0] || null;
 }
 
 /**
@@ -279,32 +306,71 @@ export function rulesetProblems(ruleset, { trainAppId }) {
   return problems;
 }
 
-/** Build the ruleset PATCH body used to disable it during rollback (kept, not deleted). */
-export function buildRulesetDisablePayload(ruleset) {
+/**
+ * Build the ruleset PATCH body used to disable it during rollback (kept, not
+ * deleted). Shape-preserving: copies `name`/`target`/`conditions`/`rules`/
+ * `bypass_actors` verbatim from the fetched LIVE ruleset object, only
+ * overriding `enforcement`.
+ *
+ * An earlier version of this function instead called
+ * `buildRulesetPayload({ trainAppId: requireTrainBypassId(ruleset) })`,
+ * reconstructing an "expected" ruleset body from scratch and THROWING if the
+ * live ruleset had no Integration bypass actor to infer the trusted App id
+ * from. That made recovery impossible for exactly the incident this function
+ * exists to handle: a partially-applied `enable()` (or manual tampering)
+ * leaves the ruleset active but missing/wrong its bypass actor. Because
+ * `rollback()` restores classic `ci` protection BEFORE this function runs, a
+ * throw here left `main` in a state where classic `ci` is enforced (good)
+ * but the ruleset is STILL ACTIVE requiring `merge-train` (bad -- nothing
+ * posts that check while the train is off) with no automated way to shut it
+ * off, since the only disable path required data (a valid bypass actor) the
+ * broken ruleset itself didn't have -- a permanent-lockout window.
+ *
+ * Disabling (`enforcement: 'disabled'`) makes a ruleset's `rules`/
+ * `bypass_actors` content functionally inert: nothing is enforced, so there
+ * is no correctness reason to also "fix" the bypass actor just to turn
+ * enforcement off. Preserving the ruleset's OWN live shape verbatim (rather
+ * than reconstructing an idealized one) means disabling always succeeds
+ * regardless of how broken the ruleset currently is; the only field this
+ * function changes is `enforcement`.
+ *
+ * `trainAppId`, when supplied (from `--app-id`/`MERGE_TRAIN_APP_ID` --
+ * independent of the ruleset's own possibly-broken content), is used ONLY to
+ * repair `bypass_actors` in the case the live ruleset has none at all, so a
+ * later `enable()` re-run starts from a ruleset that still names the trusted
+ * App instead of one that silently lost track of it. It is never required:
+ * omitting it still produces a valid disable payload with whatever
+ * `bypass_actors` the live ruleset already has (including none).
+ */
+export function buildRulesetDisablePayload(ruleset, { trainAppId } = {}) {
+  const bypassActors =
+    ruleset.bypass_actors && ruleset.bypass_actors.length > 0
+      ? ruleset.bypass_actors
+      : trainAppId
+        ? [{ actor_id: trainAppId, actor_type: 'Integration', bypass_mode: 'always' }]
+        : [];
   return {
-    ...buildRulesetPayload({ trainAppId: requireTrainBypassId(ruleset) }),
+    name: ruleset.name,
+    target: ruleset.target,
+    conditions: ruleset.conditions,
+    rules: ruleset.rules,
+    bypass_actors: bypassActors,
     enforcement: 'disabled',
   };
 }
 
-function requireTrainBypassId(ruleset) {
-  const bypass = (ruleset?.bypass_actors || []).find((actor) => actor.actor_type === 'Integration');
-  if (!bypass) {
-    throw new Error('Cannot disable ruleset: no Integration bypass actor found to preserve');
-  }
-  return bypass.actor_id;
-}
-
 /**
  * Infer the trusted App id from a live ruleset's Integration bypass actor,
- * for the read-only `status`/`rollback` reporting paths where `--app-id`
- * is optional (rollback's actual disable action already derives the id
- * itself via `requireTrainBypassId`; this is only used so `printStatus`
- * can render `problems` against the right expected id without requiring
- * the operator to re-supply it during an incident). Returns `null` (never
- * throws) when no ruleset or no Integration bypass actor exists yet --
- * `enable` always requires an explicit `--app-id` since there may be
- * nothing to infer from on a first run.
+ * for the read-only `status` reporting path and as the preferred (but never
+ * required -- see `buildRulesetDisablePayload`) source `rollback()` uses to
+ * preserve the existing bypass actor on disable, so `printStatus` can render
+ * `problems` against the right expected id without requiring the operator to
+ * re-supply it during an incident. Returns `null` (never throws) when no
+ * ruleset or no Integration bypass actor exists yet -- `enable` always
+ * requires an explicit `--app-id` since there may be nothing to infer from
+ * on a first run, and `rollback`'s disable path falls back to an
+ * independently-supplied `--app-id`/`MERGE_TRAIN_APP_ID` (or an empty
+ * `bypass_actors` list) when this returns `null` too.
  */
 export function inferTrainAppId(ruleset) {
   const bypass = (ruleset?.bypass_actors || []).find((actor) => actor.actor_type === 'Integration');

@@ -46,6 +46,33 @@ Accepted
   push that fails its own requirements — so leaving classic
   `required_status_checks` live would let it re-block the App even after a
   correctly configured ruleset grants the bypass.
+- **CTX-007** (issue #1151, live incident 2026-07-15): the first attempt to
+  actually flip `MERGE_TRAIN_ENABLED` on after PR #1148 merged surfaced three
+  additional gaps, none of which were exercised by the 15/15-green test suite
+  that shipped with #1148:
+  1. `rollback()`'s disable path threw instead of recovering when the live
+     ruleset's `bypass_actors` was missing/drifted (a partial-enable or
+     manually-tampered state) — see DEC-019.
+  2. Nothing distinguished classic branch protection returning `null` because
+     the resource genuinely does not exist (a 404) from `null` meaning "this
+     tool already migrated `required_status_checks` off it" — see DEC-020.
+  3. **The actual production incident**: `enable --app-id 4106541` created
+     ruleset id `19000576` correctly (independently verified via
+     `GET /repos/nalfeo/Crawler/rulesets/19000576`: target
+     `refs/heads/main`, both `ci`/`merge-train` required checks, `strict:
+true`, exactly one Integration bypass actor) at `09:08:47-07:00`, then
+     disabled classic `ci` — but `enable()`'s own trailing call to the shared
+     `printStatus()` validated the **un-hydrated list-summary object**
+     (`GET /repos/{owner}/{repo}/rulesets`, which returns only
+     `id`/`name`/`target`/`enforcement` — no `conditions`, `rules`, or
+     `bypass_actors`) instead of re-fetching detail via
+     `GET /repos/{owner}/{repo}/rulesets/{id}`. `rulesetProblems()` therefore
+     saw an object with no ref scope, no required-checks rule, and no bypass
+     actor, reported the ruleset as completely broken, and `enable()`'s final
+     postcondition threw — triggering an automatic (correct-behavior-given-
+     the-false-input, but factually unnecessary) `rollback` that disabled the
+     genuinely-correct ruleset at `09:09:14-07:00`, ~27 seconds later. See
+     DEC-021.
 
 ## Decision
 
@@ -132,21 +159,26 @@ Accepted
   (stale) shape rather than what was actually live.
 - **DEC-014** (added after adversarial plan review): `--app-id` is optional
   for `status` and `rollback` (rollback's own write path derives the id it
-  needs directly from the live ruleset's bypass actor via
-  `requireTrainBypassId()`, independent of `--app-id`) but remains
-  **mandatory** for `enable`, since there may be no existing ruleset to infer
-  an id from on a first run. This matches `docs/guides/merge-train.md`'s
-  existing examples, which never passed `--app-id` to `status`/`rollback`.
+  needs directly from the live ruleset's bypass actor, independent of
+  `--app-id`) but remains **mandatory** for `enable`, since there may be no
+  existing ruleset to infer an id from on a first run. This matches
+  `docs/guides/merge-train.md`'s existing examples, which never passed
+  `--app-id` to `status`/`rollback`.
   **Superseded in part by DEC-018**: `printStatus()`'s `ruleset.problems`
   validation no longer falls back to an id inferred from the live ruleset
   itself (see DEC-018) — only the id used to locate/preserve the bypass actor
   during a write remains inference-eligible.
+  **Superseded in part by DEC-019**: rollback's write path no longer derives
+  the bypass actor id via a throwing `requireTrainBypassId()` helper (that
+  helper has been removed); see DEC-019 for the shape-preserving replacement,
+  which never throws and treats `--app-id` as an optional repair fallback
+  rather than a required source of truth.
 - **DEC-016** (added after code review, round 1): `enable()` and `rollback()`
   both fail closed if `getClassicProtection()` returns `null`/`undefined`
   (the branch-protection resource itself 404s), instead of treating a missing
-  resource the same as "required_status_checks already disabled." A 404 means
+  resource the same as "required*status_checks already disabled." A 404 means
   conversation-resolution, force-push/deletion restrictions, and admin
-  enforcement are _also_ entirely absent — a materially different state than
+  enforcement are \_also* entirely absent — a materially different state than
   "classic protection exists but its status-check requirement was already
   migrated" — and this tool cannot safely infer which case it's looking at.
   Silently proceeding in the missing case risked completing a migration while
@@ -174,10 +206,9 @@ Accepted
   very same live ruleset it was validating, so a ruleset drifted to bypass
   _any_ single Integration actor — including a wrong or compromised one —
   would trivially report zero problems. Inference is still used (and remains
-  safe) for the unrelated, purely-informational `ruleset.bypassActorId` field
-  and for rollback's own independent bypass-actor discovery
-  (`requireTrainBypassId()`, used only to _preserve_ the existing actor on a
-  disable payload, never to _validate_ it).
+  safe) for the unrelated, purely-informational `ruleset.bypassActorId` field.
+  **Superseded in part by DEC-019**: rollback's own bypass-actor handling on
+  disable no longer uses a separate inference-then-throw helper; see DEC-019.
 - **DEC-015** (deployment sequencing, added after adversarial plan review):
   `enable` must be run as a deliberate operational step **strictly after**
   this fix's own PR merges, never before or as part of the same PR's merge.
@@ -190,6 +221,164 @@ Accepted
   behind a check that can never be satisfied for a non-candidate change. This
   PR therefore ships tooling + tests + docs only; the live cutover is a
   documented follow-up.
+- **DEC-019** (issue #1151 gap 1, rollback recovery): `buildRulesetDisablePayload()`
+  is rewritten to be **shape-preserving and non-throwing** instead of
+  constructing an idealized payload and throwing
+  (`requireTrainBypassId()`, now removed) when the live ruleset had no
+  Integration bypass actor to preserve. Since disabling
+  (`enforcement: 'disabled'`) makes `rules`/`bypass_actors` functionally
+  inert on the ruleset, there is no correctness reason to require a "clean"
+  bypass actor before disabling — the function now copies `name`/`target`/
+  `conditions`/`rules`/`bypass_actors` verbatim from whatever the live
+  ruleset actually is and only overrides `enforcement`. An optional,
+  independently-supplied `trainAppId` (from `--app-id`/`MERGE_TRAIN_APP_ID`)
+  is used **only** as a repair fallback to populate `bypass_actors` when the
+  live ruleset has none at all — so a subsequent `enable()` isn't starting
+  from a bypass-less ruleset — and the live ruleset's own shape always wins
+  over a supplied `trainAppId` when both exist, since the live shape is
+  ground truth and the supplied id is untrusted for this purpose (rollback's
+  job is "make main safe again," not "re-validate/repair the ruleset").
+  Without this fix, `rollback()` could restore classic `ci` successfully and
+  then throw partway through disabling a partially-enabled or
+  manually-drifted ruleset, leaving `main` behind an **active** ruleset that
+  requires the `merge-train` context with no automated way to finish
+  disabling it.
+- **DEC-020** (issue #1151 gap 2, classic-404 flagging): a new
+  `classic.missing` boolean field is added to `printStatus()`'s report,
+  computed via the existing pure `classicProtectionMissing()` helper (already
+  used by `assertClassicProtectionExists()` at read time in `enable()`/
+  `rollback()`, but previously not surfaced in the status report or checked
+  in either function's **final** postcondition). `classicStatusChecksDisabled()`
+  itself is left unchanged — its doc comment already documents that it is
+  deliberately blind to the 404-vs-disabled distinction, and existing tests
+  assert `classicStatusChecksDisabled(null) === true`. Instead,
+  `enable()`'s and `rollback()`'s final postcondition checks now also fail
+  if `report.classic.missing` is true, and the read-only `status` command
+  surfaces it directly. This closes a gap where classic branch protection
+  disappearing entirely between a mutation and its postcondition read (e.g.
+  deleted out-of-band by another operator/tool) would have been silently
+  treated as "the migration already happened," rather than flagged as a
+  materially different and more dangerous state (conversation-resolution,
+  force-push/deletion restrictions, and admin enforcement are also entirely
+  gone, not just the status-check requirement).
+- **DEC-021** (issue #1151 gap 3, ruleset hydration — the live-reproduced
+  2026-07-15 incident, see CTX-007): `printStatus()` now fetches the full
+  ruleset **detail** via `await api.getRuleset(rulesetSummary.id)`
+  immediately after locating a ruleset by name in the **list** results
+  (`findRulesetByName(await api.getRulesets(), RULESET_NAME)`), and validates
+  that hydrated object — never the raw list-summary object — via
+  `rulesetProblems()`. This is the direct fix for the incident in CTX-007:
+  GitHub's list endpoint (`GET /repos/{owner}/{repo}/rulesets`) returns only
+  `id`/`name`/`target`/`enforcement`; only the detail endpoint
+  (`GET /repos/{owner}/{repo}/rulesets/{id}`) includes `conditions`, `rules`,
+  and `bypass_actors`. `enable()`'s own internal postcondition check was
+  never affected by this bug — it already called `getRuleset(id)` directly
+  right after create/update — but its final, shared call to `printStatus()`
+  was, which is why the incident manifested as "`enable` appeared to succeed
+  internally, then immediately reported failure and rolled itself back." The
+  test suite's in-memory fake `api` is updated so `getRulesets()` returns
+  stripped summary objects (matching the real list endpoint) while
+  `getRuleset(id)` returns full detail from the same in-memory store — the
+  previous fake returned identical full objects from both, which is exactly
+  why 15/15 green tests from PR #1148 did not catch this gap. New tests
+  cover: (a) a genuinely correct live ruleset, visible only as a stripped
+  summary in `getRulesets()`, must report zero problems once hydrated; (b)
+  `enable()` against a fresh repository (no pre-existing ruleset) must not
+  false-fail its own trailing postcondition; and (c) a ruleset that matches
+  by name in the list summary but whose hydrated detail reveals a genuine
+  drift (e.g. an emptied `bypass_actors`) must still report that problem —
+  proving hydration is actually used for validation, not merely fetched and
+  discarded.
+- **DEC-022** (issue #1151, adversarial plan review response): before
+  implementation, a separate-model adversarial plan review (per the
+  apple-scaled review-harness policy, 4🍎 tier) red-teamed DEC-019/020/021
+  and raised six concerns. Each is addressed here, resolved or explicitly
+  and reasonedly deferred rather than silently dropped:
+  1. **[Blocking, fixed]** `findRulesetByName()` previously picked the FIRST
+     ruleset matching the expected name via `.find()`, silently ignoring any
+     duplicates. If a second same-named ruleset ever existed live (manual
+     tampering, a race, a bug), `status`/`enable`/`rollback` could all
+     inspect/mutate the wrong one while the other kept enforcing (or failing
+     to enforce) invisibly — directly threatening the "use the current
+     ruleset idempotently, never create a duplicate" invariant. Fixed:
+     `findRulesetByName()` now throws `AmbiguousRulesetNameError` when more
+     than one ruleset shares the name, propagating through all three
+     commands rather than guessing. Covered by a unit test
+     (`protection-lib.test.mjs`) and three orchestration tests proving
+     `status`/`enable`/`rollback` all fail closed and never mutate anything
+     once duplicates are detected (`protection.test.mjs`).
+  2. **[Non-blocking, deferred with rationale]** Extracting a dedicated
+     machine-postcondition verifier separate from the human-readable
+     `printStatus()` report (so a future `status`-only change can't
+     re-introduce a shared-path bug like CTX-007) is a real architectural
+     improvement, but is a larger refactor than this incident-response fix
+     warrants right now — `printStatus()` has exactly one read path
+     (hydrate-then-validate) after DEC-021, and there is currently only one
+     call site of the hydrate-then-validate pattern, so there is no
+     duplication yet to centralize. Deferred to when a second call site
+     appears or as dedicated follow-up work; not blocking for this PR.
+  3. **[Non-blocking, resolved — already fail-closed]** A hydration race
+     (list finds a ruleset by name, then `getRuleset(id)` 404s or errors
+     before the read completes) was flagged as unhandled. Verified: unlike
+     `getClassicProtection()`/`getMergeTrainEnabled()`, which explicitly
+     catch a 404 and normalize it to `null`/`false`, `getRuleset(id)` in
+     `buildGithubApi()` has no such catch — any error (including a 404)
+     propagates as an uncaught rejection, aborting `status`/`enable`/
+     `rollback` outright rather than silently misreporting. This is already
+     the correct fail-closed behavior; no code change needed, only this
+     note.
+  4. **[Non-blocking, fixed]** `buildRulesetDisablePayload()` preserves an
+     existing (possibly wrong/drifted) live bypass actor verbatim rather
+     than normalizing it against a supplied `--app-id`, which is inert once
+     `enforcement: 'disabled'` but leaves "tainted" state an operator might
+     not notice. Rather than have the disable path silently make a policy
+     decision about which actor is "correct" during an incident response,
+     `rollback()` now logs an explicit `WARNING` when the live bypass actor
+     id does not match the supplied trusted `--app-id`, while still
+     preserving the live shape verbatim. Covered by a new orchestration
+     test. **Refined further during multi-model review** (see below): the
+     initial implementation gated the warning on `inferTrainAppId(full)`
+     being truthy, which only detects `actor_type: 'Integration'` bypass
+     actors — a ruleset tampered to bypass via a non-Integration actor
+     (`'RepositoryRole'`, `'Team'`) would make `liveBypassId` null, silently
+     escaping the warning even though `buildRulesetDisablePayload` still
+     preserves that actor verbatim. Fixed by gating on `hasLiveActors` (any
+     `bypass_actors` entry present) instead of `liveBypassId` truthiness,
+     with a new test covering the non-Integration-actor case.
+  5. **[Suggestion, deferred with rationale]** A tri-state
+     `classic.missing`/`disabled`/`present-and-enabled` was suggested over
+     the current `{ missing: bool, requiredStatusChecksDisabled: bool }`
+     pair. Kept as two fields: `classicStatusChecksDisabled()` is an
+     existing, independently tested pure function whose contract
+     (`classic-protection-exists → checks-disabled?`) predates this fix;
+     changing its return shape to a tri-state would ripple into every
+     existing caller/test for a readability improvement only, with no
+     behavior change (both fields are already read together everywhere
+     that matters). Not worth the churn for this fix.
+  6. **[Suggestion, fixed]** Add duplicate-same-name-ruleset test coverage —
+     done as part of resolving concern #1 above.
+
+  `plan_divergence: minor` — the review did not change the load-bearing
+  design of gaps 1/2/3 (shape-preserving disable, explicit `classic.missing`,
+  hydrate-before-validate), but did surface and lead to fixing one genuine
+  blocking gap (duplicate-ruleset ambiguity) plus a smaller drift-visibility
+  improvement, both additive rather than a re-architecture.
+
+- **DEC-023** (issue #1151, multi-model code review): after implementation,
+  two independent models (gpt-5.4, gemini-3.1-pro-preview) reviewed the full
+  diff in parallel, focused on correctness/security. gpt-5.4 found no issues.
+  gemini-3.1-pro-preview found one legitimate, non-blocking gap: the
+  drift-warning gate added in DEC-022 point 4 checked
+  `inferTrainAppId(full)` truthiness, which only recognizes
+  `actor_type: 'Integration'` bypass actors — a ruleset tampered to bypass
+  via a non-Integration actor type would produce a null `liveBypassId`,
+  silently indistinguishable from "no bypass actors at all" and therefore
+  never warned about, even though `buildRulesetDisablePayload` still
+  preserves that actor verbatim. Adjudicated as valid and fixed: the gate
+  now checks `hasLiveActors` (any `bypass_actors` entry present) instead of
+  `liveBypassId` truthiness, with a new test (`'rollback logs the drift
+warning even when the live bypass actor is not an Integration type at
+all'`) covering the non-Integration-actor case specifically.
 
 ## Consequences
 
@@ -307,3 +496,6 @@ Accepted
   ruleset + classic-disable mechanism
 - `.github/scripts/merge-train/protection-lib.mjs`,
   `.github/scripts/merge-train/protection.mjs`: implementation
+- Issue #1151 and `docs/knowledge/handoffs/2026-07-15-merge-train-rollback-status-hydration-fix.md`:
+  the three rollback/status/hydration gaps found preparing for and during the
+  first live `enable` cutover attempt (DEC-019/020/021, CTX-007)
