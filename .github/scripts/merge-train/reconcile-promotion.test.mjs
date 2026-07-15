@@ -598,6 +598,41 @@ test('createMergePullRequest disambiguates an ambiguous PUT failure that actuall
   assert.deepEqual(result, { ok: true, sha: LAND1 });
 });
 
+test('createMergePullRequest polls disambiguation when first read is stale (merged:false) then resolves', async () => {
+  // Merged-state can lag ~20s on read replicas. The disambiguation loop must not
+  // conclude the PUT failed on the first stale read -- it should keep polling
+  // until a consistent replica returns merged:true.
+  let putAttempted = false;
+  let disambigReads = 0;
+  const { request } = mergeRequestStub((path, options) => {
+    if (options.method === 'PUT') {
+      putAttempted = true;
+      const error = new Error('gateway timeout');
+      error.status = 504;
+      return error;
+    }
+    if (!putAttempted) return mergeableOpen;
+    disambigReads += 1;
+    // First disambiguation read returns stale merged:false; second returns truth.
+    return disambigReads < 2
+      ? { head: { sha: HEAD1 }, merged: false, merge_commit_sha: null }
+      : { head: { sha: HEAD1 }, merged: true, merge_commit_sha: LAND1 };
+  });
+  const mergePullRequest = createMergePullRequest({
+    request,
+    token: 't',
+    owner: 'o',
+    repo: 'r',
+    sleep: async () => {},
+  });
+  const result = await mergePullRequest(
+    { number: 1 },
+    { expectedHeadSha: HEAD1, commitTitle: 't', commitMessage: 'm' },
+  );
+  assert.deepEqual(result, { ok: true, sha: LAND1 });
+  assert.ok(disambigReads >= 2, 'should have polled at least twice for merged state');
+});
+
 test('createMergePullRequest returns non-retryable when an ambiguous PUT failure did not merge', async () => {
   let putAttempted = false;
   const { request } = mergeRequestStub((path, options) => {
@@ -699,6 +734,21 @@ test('landedCommitProofError retries a transient read failure instead of failing
   });
   assert.equal(error, null);
   assert.ok(mainReads >= 2);
+});
+
+test('landedCommitProofError retries a transient fetchCurrentPr failure instead of failing closed', async () => {
+  // The same per-attempt retry budget applies to fetchCurrentPr as to fetchCurrentMain.
+  let prReads = 0;
+  const error = await landedCommitProofError({
+    ...proofDefaults,
+    fetchCurrentPr: async () => {
+      prReads += 1;
+      if (prReads < 2) throw new Error('503 transient');
+      return { merged: true, merged_at: '2026-07-15T00:00:00Z', merge_commit_sha: LAND1 };
+    },
+  });
+  assert.equal(error, null);
+  assert.ok(prReads >= 2);
 });
 
 test('landedCommitProofError rejects an invalid landed SHA', async () => {
