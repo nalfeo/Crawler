@@ -844,7 +844,7 @@ export function createMergePullRequest({
         return {
           ok: false,
           retryable: true,
-          reason: `mergeability poll failed (${error?.status ?? 'network'}): ${error.message}`,
+          reason: `mergeability poll failed (${error?.status ?? 'network'}): ${error?.message ?? String(error)}`,
         };
       }
       if (pr.head?.sha !== expectedHeadSha) {
@@ -891,7 +891,7 @@ export function createMergePullRequest({
         return {
           ok: false,
           retryable: true,
-          reason: `merge API rejected the merge (${status}): ${error.message}`,
+          reason: `merge API rejected the merge (${status}): ${error?.message ?? String(error)}`,
         };
       }
       // 5xx/network failures are AMBIGUOUS: GitHub may have merged the PR before
@@ -922,7 +922,7 @@ export function createMergePullRequest({
       return {
         ok: false,
         retryable: false,
-        reason: `merge API failed (${status ?? 'network'}): ${error.message}`,
+        reason: `merge API failed (${status ?? 'network'}): ${error?.message ?? String(error)}`,
       };
     }
     const data = response.data || {};
