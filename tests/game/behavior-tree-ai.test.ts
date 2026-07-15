@@ -1424,6 +1424,21 @@ describe('BehaviorTreeAI', () => {
     expect(decision.targetX).toBe(expectedAnchor.x);
     expect(decision.targetY).toBe(expectedAnchor.y);
     expect(decision.targetX).not.toBe(shopkeeperPos.x);
+
+    const cacheHarness = ai as unknown as {
+      floor1MiddleChainCache: object | null;
+    };
+    const initialRoute = cacheHarness.floor1MiddleChainCache;
+    expect(initialRoute).not.toBeNull();
+
+    world.frameCount += 1_000;
+    world.elapsedMs += 100_000;
+    ai.poll(createInputState(), world);
+    expect(cacheHarness.floor1MiddleChainCache).toBe(initialRoute);
+
+    world.goalFlags.set('floor1-shop-prize-returned', true);
+    ai.poll(createInputState(), world);
+    expect(cacheHarness.floor1MiddleChainCache).not.toBe(initialRoute);
   });
 
   it('plumbs a committed quest-giver detour into run planning as its exact graph goal', () => {

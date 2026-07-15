@@ -22,13 +22,13 @@ The seven high-progression timeout pairs from baseline
 
 | Weapon         | Seed | Outcome | Game time |
 | -------------- | ---: | ------- | --------: |
-| baseball-bat   |   10 | victory |    358.8s |
+| baseball-bat   |   10 | victory |    309.3s |
 | baseball-bat   |   35 | victory |    346.4s |
-| baseball-bat   |   53 | victory |    313.3s |
-| baseball-bat   |   71 | victory |    299.5s |
+| baseball-bat   |   53 | victory |    297.2s |
+| baseball-bat   |   71 | victory |    308.3s |
 | bow            |   53 | victory |    331.9s |
-| sword          |   71 | victory |    306.4s |
-| throwing-knife |   53 | victory |    322.4s |
+| sword          |   71 | victory |    287.3s |
+| throwing-knife |   53 | victory |    314.7s |
 
 ## Implementation
 
@@ -41,7 +41,9 @@ The seven high-progression timeout pairs from baseline
   negative goal flags, final-boss relocking, and door-specific Slime Rat reopening;
   unreachable routes return `Infinity`, never Euclidean fallback.
 - Integrated the same graph into runtime BehaviorTreeAI decisions and ETA/slack
-  planning. Cache invalidation includes all graph-shaping objective state.
+  planning. Runtime route heads stay committed while navigation and objective
+  state are unchanged, then replan immediately on door, quest, inventory, boss,
+  or optional-intent transitions. There is no frame-based staleness window.
 - Added detour-aware route origins and budgets. A committed NPC interaction carries
   an explicit typed graph goal identity, so it is charged once and its effects
   satisfy downstream prerequisites.

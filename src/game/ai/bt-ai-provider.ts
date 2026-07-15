@@ -312,13 +312,6 @@ const SAFE_ROOM_EGRESS_SUPPRESS_FRAMES = 120;
  */
 const SLACK_AWARE_URGENCY_THRESHOLD = 0.66;
 const MERCHANT_DECISION_RUN_PLAN_CACHE_FRAMES = 30;
-/**
- * Throttle for {@link BehaviorTreeAI.resolveFloor1MiddleChainObjective}'s
- * unlock-aware goal-graph route recompute (real A* + bitmask DP). Refreshed
- * immediately on a navigation-epoch bump regardless of this budget — see the
- * `floor1MiddleChainCache` field doc.
- */
-const FLOOR1_MIDDLE_CHAIN_CACHE_FRAMES = 15;
 
 // Below this magnitude a heading is treated as "no direction" (skip steering /
 // neutral continuity) — matches the pure module's own zero-vector epsilon.
@@ -1005,17 +998,11 @@ export class BehaviorTreeAI implements AIInputProvider {
   private navEpoch = 0;
   private navSignature: string | null = null;
   /**
-   * Deterministic per-poll cache for {@link resolveFloor1MiddleChainObjective}'s
-   * unlock-aware goal-graph route: rebuilding the graph and re-running the
-   * strict door-aware A-star/DP planner is real work, so it is throttled to
-   * {@link FLOOR1_MIDDLE_CHAIN_CACHE_FRAMES} frames — refreshed immediately on
-   * a navigation-epoch bump (a door flipped state) rather than waiting out the
-   * frame budget, so a freshly-unlocked door is never routed around stale.
-   * Caches only the resolved goal id (not the constructed `ProgressTarget`,
-   * which is cheap to rebuild per-frame from the player's live position).
+   * The chosen route head stays committed while the navigation graph and known
+   * objective state are unchanged. Door, quest, inventory, boss, and optional
+   * intent transitions change the key and trigger an immediate exact replan.
    */
   private floor1MiddleChainCache: {
-    frame: number;
     navEpoch: number;
     stateKey: string;
     goalId: string | null;
@@ -5976,7 +5963,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       },
     };
 
-    const cache = this.floor1MiddleChainCache;
     const stateKey = [
       snapshot.shopStage,
       snapshot.hasShopFetchItem,
@@ -5993,14 +5979,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       snapshot.merchantWeaponIntent?.status ?? 'none',
       snapshot.merchantWeaponIntent?.cost ?? 0,
     ].join('|');
-    const cacheFresh =
-      cache !== null &&
-      cache.navEpoch === this.navEpoch &&
-      cache.stateKey === stateKey &&
-      world.frameCount - cache.frame < FLOOR1_MIDDLE_CHAIN_CACHE_FRAMES;
+    const cache = this.floor1MiddleChainCache;
 
     let nextGoalId: string | null;
-    if (cacheFresh) {
+    if (cache?.navEpoch === this.navEpoch && cache.stateKey === stateKey) {
       nextGoalId = cache.goalId;
     } else {
       const rawGraph = buildFloor1GoalGraph(snapshot);
@@ -6023,7 +6005,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       });
       nextGoalId = route.nextActionableGoalId;
       this.floor1MiddleChainCache = {
-        frame: world.frameCount,
         navEpoch: this.navEpoch,
         stateKey,
         goalId: nextGoalId,
