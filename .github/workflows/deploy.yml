@@ -523,28 +523,52 @@ jobs:
           BASELINE_BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/baselines/by-sha/${{ steps.sha.outputs.sha }}.json
         run: |
           # Post the freshly published baseline win-rate onto the PR whose
-          # squash-merge produced this released commit. Mirrors the deploy job's
-          # "Label and comment on released PRs" step.
+          # squash-merge produced this released commit, AND any other recently-
+          # released PRs that share the same deployment but whose baseline-sweep
+          # was cancelled (batch-merge scenario).
+          #
+          # Root cause of the batch gap: when the merge train lands multiple PRs
+          # in quick succession, the `pages` concurrency group cancels earlier
+          # deploy jobs and their dependent baseline-sweeps.  The surviving
+          # deploy run already labels ALL batch PRs via "Label and comment on
+          # released PRs", so querying for the "released" label here catches
+          # every PR in the batch that still needs the comment.
 
-          # 1. Resolve the triggering PR from the released commit. Prefer the
-          #    durable merge-train `Merge-Train-PR` trailer over GitHub's
-          #    commit-to-PR inference (the shared resolver does trailer-first,
-          #    then falls back to inference), so a train-landed squash commit
-          #    maps back to its original PR reliably. Distinguish a real API
-          #    failure from a commit with genuinely no associated PR -- e.g. a
-          #    direct push to main or a dispatch on a PR-less commit. Either
-          #    way, skip gracefully; never fail.
-          PR=$(GITHUB_TOKEN="$GH_TOKEN" node .github/scripts/merge-train/resolve-landed-pr.mjs "$SHA" 2>/dev/null) || {
-            echo "::warning::Failed to resolve PR for released commit $SHA; skipping baseline comment."
-            exit 0
+          # 1. Resolve the triggering PR from the swept commit.  Prefer the
+          #    durable `Merge-Train-PR` trailer over GitHub's commit-to-PR
+          #    inference (the shared resolver does trailer-first, then falls
+          #    back to inference).  Non-fatal on failure; the label-based path
+          #    below can still cover batch PRs.
+          SPECIFIC_PR=$(GITHUB_TOKEN="$GH_TOKEN" node .github/scripts/merge-train/resolve-landed-pr.mjs "$SHA" 2>/dev/null) || {
+            echo "::warning::Failed to resolve PR for released commit $SHA; continuing with label-based fallback."
+            SPECIFIC_PR=""
           }
-          if [ -z "$PR" ]; then
-            echo "::notice::No PR associated with released commit $SHA; skipping baseline comment."
+
+          # 2. Also find all recently released PRs via the "released" label to
+          #    cover PRs in the same batch whose own baseline-sweeps were
+          #    cancelled.  Capped at 50; the idempotency check below skips any
+          #    that already have the comment.
+          BATCH_PRS=$(gh pr list \
+            --repo "${{ github.repository }}" \
+            --state merged \
+            --base main \
+            --label "released" \
+            --limit 50 \
+            --json number \
+            --jq '.[].number' 2>/dev/null || true)
+
+          # 3. Merge into a deduplicated, sorted list of target PRs.
+          ALL_COMMENT_PRS=$(printf '%s\n' $SPECIFIC_PR $BATCH_PRS \
+            | sort -n -u | grep -v '^[[:space:]]*$' || true)
+
+          if [ -z "$ALL_COMMENT_PRS" ]; then
+            echo "::notice::No PRs to comment on for released commit $SHA; skipping."
             exit 0
           fi
 
-          # 2. Build the comment body from the enriched baseline and its published
-          #    history. Guard against missing/unreadable data or invalid win rates.
+          # 4. Build the comment body from the enriched baseline and its
+          #    published history. Guard against missing/unreadable data or
+          #    invalid win rates.
           BODY=$(npx tsx scripts/agent/perf/format-baseline-comment.ts) || {
             echo "::warning::Could not build baseline comment body; skipping."
             exit 0
@@ -554,7 +578,20 @@ jobs:
             exit 0
           fi
 
-          # 3. Post the comment. Best-effort: warn (do not fail) on error.
-          if ! gh pr comment "$PR" --repo "${{ github.repository }}" --body "$BODY"; then
-            echo "::warning::Failed to comment baseline win-rate on PR #$PR"
-          fi
+          # 5. Post the comment on each target PR that doesn't already have one
+          #    (idempotency guard for re-runs and overlapping sweeps).
+          for PR in $ALL_COMMENT_PRS; do
+            HAS=$(gh pr view "$PR" \
+              --repo "${{ github.repository }}" \
+              --json comments \
+              --jq '[.comments[].body | select(contains("📊 Baseline win-rate"))] | length' \
+              2>/dev/null || echo 0)
+            if [ "${HAS:-0}" -gt 0 ]; then
+              echo "::notice::PR #$PR already has a baseline win-rate comment; skipping."
+              continue
+            fi
+            echo "Posting baseline win-rate comment on PR #$PR"
+            if ! gh pr comment "$PR" --repo "${{ github.repository }}" --body "$BODY"; then
+              echo "::warning::Failed to comment baseline win-rate on PR #$PR"
+            fi
+          done
