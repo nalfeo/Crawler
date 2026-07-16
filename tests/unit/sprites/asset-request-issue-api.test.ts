@@ -13,7 +13,6 @@ vi.mock('node:child_process', () => ({
 }));
 
 import { createGhAssetRequestIssueApi } from '../../../scripts/sprites/sidecar/asset-request-issue-api.js';
-import { ASSET_REQUEST_MARKER } from '../../../scripts/sprites/asset-request.js';
 
 /** Minimal valid issue-form body. */
 function validBody(name: string, brief: string): string {
@@ -116,32 +115,19 @@ describe('createGhAssetRequestIssueApi', () => {
   });
 
   it('does not suppress non-AssetRequestValidationError exceptions from parseAssetRequestIssueBody', async () => {
-    // Simulate an unexpected error (not a validation error) by returning a body
-    // that contains a marker with valid JSON but triggering a throw from a mock.
-    // We inject it by providing a body whose marker JSON throws a non-validation
-    // error via mocking the underlying module — here we just verify the baseline:
-    // the API itself does not swallow unexpected exceptions through its parse path.
-    // (Integration-level: if parseAssetRequestIssueBody throws a non-validation
-    // error, listOpenAssetRequestIssues propagates it.)
-    const body = [
-      `<!-- ${ASSET_REQUEST_MARKER}`,
-      JSON.stringify({
-        version: 1,
-        name: 'iron-shield',
-        briefSentence: 'A small round iron shield.',
-        sizeVariant: 'huge',
-      }),
-      '-->',
-    ].join('\n');
-    // 'huge' is an invalid size → AssetRequestValidationError → skip (not rethrow).
-    const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     execFileAsyncMock.mockResolvedValueOnce({
-      stdout: JSON.stringify([{ number: 200, body }]),
+      stdout: JSON.stringify([
+        { number: 200, body: validBody('iron-shield', 'A small round iron shield.') },
+      ]),
       stderr: '',
     });
-    const issues = await createGhAssetRequestIssueApi('/repo').listOpenAssetRequestIssues();
-    expect(issues).toHaveLength(0);
-    expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('#200'));
-    stderrWrite.mockRestore();
+    const unexpected = new Error('unexpected parser failure');
+    const parseIssue = vi.fn(() => {
+      throw unexpected;
+    });
+
+    await expect(
+      createGhAssetRequestIssueApi('/repo', parseIssue).listOpenAssetRequestIssues(),
+    ).rejects.toBe(unexpected);
   });
 });

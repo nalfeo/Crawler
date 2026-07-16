@@ -163,7 +163,7 @@ export function resolveAssetRequestSizeVariant(input: {
     : DEFAULT_SIZE_VARIANT;
 }
 
-export function isBossAssetRequest(name: string, briefSentence: string, type?: string): boolean {
+function isBossAssetRequest(name: string, briefSentence: string, type?: string): boolean {
   const normalizedType = type?.trim().toLowerCase();
   // Explicit non-enemy type always suppresses boss sizing.
   if (normalizedType && normalizedType !== 'enemy') return false;

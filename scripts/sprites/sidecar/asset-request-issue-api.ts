@@ -54,7 +54,12 @@ interface GhIssueListItem {
 
 const OPEN_ASSET_REQUEST_ISSUE_LIMIT = '200';
 
-export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssueApi {
+type AssetRequestIssueParser = typeof parseAssetRequestIssueBody;
+
+export function createGhAssetRequestIssueApi(
+  repoRoot: string,
+  parseIssue: AssetRequestIssueParser = parseAssetRequestIssueBody,
+): AssetRequestIssueApi {
   return {
     async listOpenAssetRequestIssues(): Promise<readonly OpenAssetRequestIssue[]> {
       const { stdout } = await execFileAsync(
@@ -86,7 +91,7 @@ export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssu
           continue;
         if (typeof row.body !== 'string') continue;
         // Filter to issues that actually carry the machine-readable contract.
-        if (!parseIssueBody(row.number, row.body)) continue;
+        if (!parseIssueBody(row.number, row.body, parseIssue)) continue;
         // `gh issue list --json author` returns `{ login, id, name, is_bot }`.
         // We only need `login` for downstream trust-gates.
         const authorLogin =
@@ -144,7 +149,7 @@ export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssu
         return typeof name === 'string' && name === ASSET_REQUEST_LABEL;
       });
       if (!hasAssetLabel) return null;
-      if (!parseIssueBody(row.number, row.body)) return null;
+      if (!parseIssueBody(row.number, row.body, parseIssue)) return null;
       const authorLogin =
         row.author &&
         typeof row.author === 'object' &&
@@ -157,9 +162,9 @@ export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssu
   };
 }
 
-function parseIssueBody(issueNumber: number, body: string) {
+function parseIssueBody(issueNumber: number, body: string, parseIssue: AssetRequestIssueParser) {
   try {
-    return parseAssetRequestIssueBody(body);
+    return parseIssue(body);
   } catch (error) {
     if (error instanceof AssetRequestValidationError) {
       process.stderr.write(`asset-request-issue-api: issue #${issueNumber}: ${error.message}\n`);

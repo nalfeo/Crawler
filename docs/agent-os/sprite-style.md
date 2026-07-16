@@ -98,9 +98,9 @@ the baseline.
 
 GitHub `asset-request` issues expose the same variants through the optional
 **Size** field. An explicit value always wins. When Size is omitted, canonical
-boss requests (a terminal `-boss` asset name or an enemy/type-omitted brief with
-a standalone boss/godfather cue) default to `large`; ordinary enemies and all
-other assets remain `default`.
+boss requests (a terminal `-boss` asset name, or an explicitly enemy-typed brief
+with a standalone boss/godfather cue) default to `large`; ordinary enemies and
+all other assets remain `default`.
 
 | `--size`  | Width | Height |
 | --------- | ----- | ------ |
