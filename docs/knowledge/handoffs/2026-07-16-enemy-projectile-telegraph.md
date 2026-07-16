@@ -218,10 +218,19 @@ seed sweep (only one seed-42 smoke run had been reported). Per AGENTS.md's
 two GitHub-Actions `weapon-sweep.yml` `workflow_dispatch` runs (not local
 compute), comparing pre-PR `main` (no telegraph; instant fire) against this
 PR's branch (250ms telegraph default) across all 6 Floor-1 starter weapons ×
-seeds 1-15 (90 runs each side):
+seeds 1-15 (90 runs each side).
 
-- `main` baseline run: <https://github.com/nalfeo/Crawler/actions/runs/29494326172>
-- PR-branch run (250ms telegraph): <https://github.com/nalfeo/Crawler/actions/runs/29494332304>
+**Re-validated on the final diff (round-11 shepherding)**: the originally
+recorded sweep ran against `0a0435b3`, which predates the dodge range-gate
+clamp, the round-7 dodge-math off-by-one fix, and `main`'s since-merged
+legacy-Floor1-deaths fix (#1197) — all of which can plausibly move AI
+outcomes (`copilot-pull-request-reviewer` finding). Re-ran the identical
+methodology against the current heads of both `main` (`b61c1bc7`, now
+including #1197) and this PR's branch (`104926c1`, the final round-10
+commit):
+
+- `main` baseline re-run: <https://github.com/nalfeo/Crawler/actions/runs/29507839303>
+- PR-branch re-run (250ms telegraph): <https://github.com/nalfeo/Crawler/actions/runs/29507847482>
 
 | weapon         | runs | main win% | PR win% (250ms) | delta  |
 | -------------- | ---- | --------- | --------------- | ------ |
@@ -231,7 +240,7 @@ seeds 1-15 (90 runs each side):
 | pistol         | 15   | 100.0%    | 100.0%          | +0.0%  |
 | sword          | 15   | 93.3%     | 86.7%           | -6.7%  |
 | throwing-knife | 15   | 80.0%     | 66.7%           | -13.3% |
-| **OVERALL**    | 90   | **95.6%** | **92.2%**       | -3.3%  |
+| **OVERALL**    | 90   | **95.6%** | **92.2%**       | -3.4%  |
 
 Both the pre-PR baseline and the post-PR (telegraph-enabled) overall win
 rate stay comfortably at/above the repo's Floor-1 90%+ win-rate gate
@@ -246,7 +255,14 @@ telegraphs for 250ms before firing (rather than firing instantly on
 detection): melee weapons must still close the distance during that window,
 so they carry the exposure a beat longer than before. This is the observed
 effect of adding the telegraph delay itself (not a change to the enemy's aim
-or damage), which is the intended effect of the feature, not a bug. Recorded
-here as the sweep artifact this thread requested; raw JSON
-available via the two workflow run's uploaded artifacts (`weapon-sweep-<weapon>.json`,
-30-day retention).
+or damage), which is the intended effect of the feature, not a bug. The
+re-run confirms the range-gate clamp, round-7 dodge-math fix, round-9
+MainGameScene poll-ordering fix (browser-only — does not affect this
+headless sweep at all), round-10 Float32-guard fix, and `main`'s
+legacy-Floor1-deaths fix did not materially shift these numbers (the
+overall delta moved by 0.1pp, within rounding noise for 90 runs/side).
+Recorded here as the sweep artifact this thread requested; raw JSON
+available via the four workflow runs' uploaded artifacts
+(`weapon-sweep-<weapon>.json`, 30-day retention). The original
+(now-superseded) sweep run links remain in this section's git history for
+provenance.
