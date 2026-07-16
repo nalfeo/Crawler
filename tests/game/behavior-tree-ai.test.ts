@@ -9,11 +9,12 @@ import {
   spawnPlayer,
   spawnXpGem,
 } from '../../src/core/helpers.js';
-import { spawnEnemyProjectile } from '../../src/core/spawners/projectiles.js';
+import { spawnEnemyProjectile, spawnAoeProjectile } from '../../src/core/spawners/projectiles.js';
 import { createInputState } from '../../src/shared/input.js';
-import { GAME } from '../../src/shared/constants.js';
+import { GAME, TeamId } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
 import {
   initializeFloor1Scenario,
@@ -55,7 +56,12 @@ import {
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
-import { FamilyMembership, AoeOnImpact, EnemyProjectile } from '../../src/core/components.js';
+import {
+  FamilyMembership,
+  AoeOnImpact,
+  EnemyProjectile,
+  Projectile,
+} from '../../src/core/components.js';
 import { asFamilyId, type FamilyId } from '../../src/core/faction-relations.js';
 
 /**
@@ -2202,6 +2208,103 @@ describe('BehaviorTreeAI', () => {
     // bound in place the candidate is out of the real projectile's reach and
     // must be skipped, leaving dodgeY at 0.
     expect(dodge.dodgeY).toBe(0);
+  });
+
+  it("dodges a telegraphed shot whose closest approach lands just PAST nominal range, within the real pipeline's one-step grace (regression: copilot-pull-request-reviewer finding)", () => {
+    // projectileCleanupSystem despawns a projectile once its traveled
+    // distance EXCEEDS maxRange, but that check runs AFTER movement +
+    // collision + damage each step (simulation-core-step.ts), so the real
+    // shot can still land on the exact step it first crosses maxRange —
+    // one whole step beyond the nominal boundary. A hard `> rangeFt`
+    // rejection (the previous fix) would make the AI ignore a threat that
+    // can genuinely still hit. Fireball: range=32ft, projectileSpeed=0.5ft/
+    // frame -> last reachable step is floor(32/0.5)+1 = 65 frames (32.5ft).
+    //
+    // The enemy's LIVE body sits close to the player (15ft, well inside the
+    // player-AI's own melee-engage threshold) purely so the opportunistic
+    // dodge action actually runs — travel steering zeroes the dodge vector
+    // outright while the player AI is in EXPLORE (see
+    // buildOpportunisticDodge's travel-steering block), which would
+    // otherwise mask this candidate's math regardless of the fix under
+    // test. The telegraph's locked origin (what the range/geometry math
+    // reads) is set independently, 34ft behind the player, so the shot
+    // itself still has to travel the full 32.5ft grace distance to connect
+    // — exactly like a shooter that telegraphed at max range and then the
+    // player closed distance toward it during the delay.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 15, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = 0; // ready to fire immediately
+    // 32.5ft (muzzle-offset-adjusted) west of the player — just past the
+    // nominal 32ft range but exactly at the one-step grace boundary.
+    enemyBehavior.telegraphOriginX[enemy] = -34;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Without the grace fix, this candidate's raw analytic frame (65) would
+    // have been hard-rejected for exceeding the nominal 32ft range,
+    // leaving dodgeX/Y at 0.
+    expect(Math.abs(dodge.dodgeX) + Math.abs(dodge.dodgeY)).toBeGreaterThan(0);
+  });
+
+  it('real pipeline: an enemy AoE projectile can still hit the player on the exact step it first exceeds nominal maxRange, before cleanup removes it (validates the dodge grace window above)', () => {
+    // Proves the "one-step grace" the dodge-math fix above models is real:
+    // movementSystem -> collisionSystem -> damageSystem all run BEFORE
+    // projectileCleanupSystem removes a projectile that has exceeded
+    // maxRange (simulation-core-step.ts ordering), so a hit landing exactly
+    // on the range-crossing step is genuine, not a modeling artifact.
+    // Fireball travels only 0.5ft/frame, so rather than simulate 64 steps to
+    // reach the boundary, fast-forward the projectile's Position to the
+    // last-safe distance (32ft, exactly at range) while leaving its
+    // Projectile.originX/Y at the true spawn point (0,0) — one real
+    // simulation step then advances it to 32.5ft (past the nominal 32ft
+    // range) in the same step collision/damage run.
+    const world = createTestWorld({ seed: 42 });
+    const fireballDef = getWeaponDef('fireball')!;
+    const enemy = spawnBehaviorEnemy(world, -50, 0, 40, AI_TYPE.RANGED, 0, 1, 1);
+    const player = spawnPlayer(world, 32.5, 0);
+
+    const projectile = spawnAoeProjectile(
+      world,
+      0,
+      0,
+      fireballDef.projectileSpeed,
+      0,
+      fireballDef.baseDamage,
+      fireballDef.aoeRadius,
+      fireballDef.baseDamage,
+      enemy,
+      TeamId.ENEMY,
+      fireballDef.range,
+    );
+    // spawnAoeProjectile does not tag EnemyProjectile itself — the real fire
+    // path (enemyAISystem.ts's fireEnemyProjectileFrom) adds it right after
+    // spawning; damageSystem's applyEnemyProjectileHit requires it to treat a
+    // hit as a legitimate enemy-on-player attack.
+    addComponent(world.ecs, projectile, EnemyProjectile);
+    // Fast-forward: already traveled to exactly the nominal range boundary
+    // (32ft); origin stays at the true spawn point for the cleanup system's
+    // distance-from-origin check.
+    world.stores.position.x[projectile] = fireballDef.range;
+    world.stores.position.y[projectile] = 0;
+
+    const healthBefore = world.stores.health.current[player] ?? 0;
+    runSimulationStep(world, createInputState(), GAME.DELTA_MS);
+
+    expect(world.stores.health.current[player] ?? 0).toBeLessThan(healthBefore);
+    // The same step that lands the hit also removes the now-out-of-range projectile.
+    expect(query(world.ecs, [Projectile]).includes(projectile)).toBe(false);
   });
 
   it('triggers dodge for an AoE fireball that misses the direct-hit clearance but lands within splash radius+buffer, and ignores one just outside', () => {

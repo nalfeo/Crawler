@@ -2408,20 +2408,37 @@ export class BehaviorTreeAI implements AIInputProvider {
         const speedSq = relativeVx * relativeVx + relativeVy * relativeVy;
         if (speedSq <= Number.EPSILON) continue;
 
-        const impactFramesAfterSpawn = -(relativeX * relativeVx + relativeY * relativeVy) / speedSq;
+        let impactFramesAfterSpawn = -(relativeX * relativeVx + relativeY * relativeVy) / speedSq;
         if (impactFramesAfterSpawn < 0) continue;
         // The real fire path spawns via spawnAoeProjectile(..., FIREBALL_DEF.range)
         // (see enemyAISystem.ts's fireEnemyProjectileFrom), and
         // projectileCleanupSystem despawns a projectile once it has traveled
-        // that far from its spawn point. A virtual projectile is otherwise
-        // modeled as unbounded range, so without this check the AI can dodge
-        // an impact point the real shot will never reach (production bosses
-        // can begin firing well beyond the fireball's actual range). `dirX`/
-        // `dirY` are a unit vector (see enemyAISystem's `normalize()` call
-        // before `startEnemyProjectileTelegraph`), so distance traveled is
-        // simply `projectileSpeed * frames`.
+        // that far from its spawn point — but that check runs AFTER
+        // movement + collision + damage each step (simulation-core-step.ts:
+        // movementSystem, collisionSystem, damageSystem, ..., then
+        // projectileCleanupSystem last), so the real shot can still land on
+        // the exact step where it first exceeds maxRange, one whole step
+        // beyond the nominal boundary. Rejecting every candidate whose
+        // analytic closest-approach point lies beyond rangeFt (rather than
+        // this true last-reachable step) makes the AI ignore a threat that
+        // can genuinely still hit. `dirX`/`dirY` are a unit vector (see
+        // enemyAISystem's `normalize()` call before
+        // `startEnemyProjectileTelegraph`), so distance traveled after N
+        // whole steps is simply `projectileSpeed * N`; the last step at
+        // which the projectile is still alive to collide is the smallest
+        // integer step whose traveled distance first exceeds rangeFt, i.e.
+        // `floor(rangeFt / projectileSpeed) + 1`. Relative distance to the
+        // player is convex in time for constant relative velocity, so when
+        // the unconstrained analytic minimum lies beyond that last
+        // reachable step, clamping to the step itself still yields the true
+        // closest reachable point (rather than skipping the threat outright).
         const rangeFt = TELEGRAPH_FIREBALL_DEF?.range ?? 0;
-        if (rangeFt > 0 && impactFramesAfterSpawn * projectileSpeed > rangeFt) continue;
+        if (rangeFt > 0) {
+          const maxReachableFrames = Math.floor(rangeFt / projectileSpeed) + 1;
+          if (impactFramesAfterSpawn > maxReachableFrames) {
+            impactFramesAfterSpawn = maxReachableFrames;
+          }
+        }
         const totalImpactFrames = remainingFrames + impactFramesAfterSpawn;
         if (
           totalImpactFrames > PROJECTILE_DODGE_HORIZON_FRAMES ||

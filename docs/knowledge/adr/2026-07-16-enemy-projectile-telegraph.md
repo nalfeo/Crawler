@@ -82,9 +82,14 @@ telegraph window.
    computing a **virtual projectile's** future impact using the exact same
    closest-approach relative-motion formula as real in-flight projectiles,
    just time-shifted to the projectile's future spawn instant, and gated by
-   `canPerceiveWorldPosition()` on the locked origin (no privileged access —
-   same visibility rule as any other entity). It competes in the same
-   earliest-impact race as real projectiles. `computeRiskRewardFusedHeading()`'s
+   `canCurrentlyPerceiveWorldPosition()` — a strict-current-FOV sibling of the
+   existing `canPerceiveWorldPosition()` (no discovered/remembered-tile
+   fallback), matching `PhaserBridge`'s render-cue visibility gate exactly —
+   evaluated at the shooter's **live** position, not the locked telegraph
+   origin, so a shooter displaced by knockback after locking never lets the
+   AI dodge a threat the render cue is not currently showing (no privileged
+   access — same visibility rule the player's own cue uses). It competes in
+   the same earliest-impact race as real projectiles. `computeRiskRewardFusedHeading()`'s
    danger bubble now uses `max(RISK_REWARD_DANGER_RADIUS_FT, enemy.attackRange)`
    per threat instead of a single fixed radius, so long-range enemies read as
    dangerous from farther away.
@@ -117,8 +122,14 @@ telegraph window.
   and the production AI, using one shared, deterministic contract instead of
   privileged prediction.
 - `0`ms is exact legacy parity by construction (same fire-time accuracy roll,
-  same immediate-fire code path), so no regression risk for existing
-  headless baselines that don't pass the new flag differently than before.
+  same immediate-fire code path) **only when explicitly passed** — a headless
+  baseline that omits `--enemy-telegraph-ms` (or otherwise leaves
+  `world.enemyTelegraphMs` unset) now defaults to 250ms via
+  `ENEMY_PROJECTILE.TELEGRAPH_MS`, changing hostile-fire cadence/AI dodge
+  behavior versus pre-PR runs. Only a caller that explicitly passes `0`
+  preserves byte-identical legacy behavior; this is an accepted,
+  intentional consequence of shipping a non-zero default, not a regression
+  in the resolver's `0`-means-legacy contract.
 - Per-mob overrides and the configured default share one resolver function,
   so future mobs/bosses opt into custom pacing without touching fire logic.
 - Ranged danger evaluation now scales with actual attack range instead of a
