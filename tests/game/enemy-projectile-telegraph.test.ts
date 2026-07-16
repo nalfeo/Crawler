@@ -188,7 +188,7 @@ describe('enemy projectile telegraph — nonzero delay lifecycle', () => {
     vi.spyOn(world.rng, 'next').mockReturnValue(0);
 
     const player = spawnPlayer(world, 0, 0);
-    // Enemy directly west of the player (aim should lock pointing -x).
+    // Enemy directly east of the player (aim should lock pointing -x, back toward the player).
     const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
 
     enemyAISystem(world); // locks aim at (-1, 0)
