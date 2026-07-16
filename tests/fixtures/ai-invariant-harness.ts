@@ -100,7 +100,7 @@ function sameAxis(left: AIInvariantAxis, right: AIInvariantAxis): boolean {
   return left.decisionMode === right.decisionMode && left.pathingMode === right.pathingMode;
 }
 
-export function getAiInvariantCoverage(
+function getAiInvariantCoverage(
   cases: readonly AIInvariantCase[],
 ): readonly AIInvariantCoverageRow[] {
   return ALL_INVARIANTS.flatMap((invariant) =>
@@ -192,14 +192,13 @@ export function defineAiInvariantSuite(cases: readonly AIInvariantCase[]): void 
   describe('deterministic AI invariant matrix', () => {
     for (const testCase of cases) {
       for (const axis of testCase.axes) {
-        const canonicalAxis = SLICE_A_DECISION_AXES.find((candidate) => sameAxis(candidate, axis));
-        if (!canonicalAxis) {
-          throw new Error(
-            `Case ${testCase.id} uses an undeclared Slice A axis: ${axis.decisionMode}/${axis.pathingMode}`,
-          );
-        }
-
         it(`${testCase.invariant} :: ${testCase.id} :: ${axis.decisionMode}/${axis.pathingMode}`, () => {
+          const canonicalAxis = SLICE_A_DECISION_AXES.find((candidate) => sameAxis(candidate, axis));
+          expect(
+            canonicalAxis,
+            `Case ${testCase.id} uses an undeclared Slice A axis: ${axis.decisionMode}/${axis.pathingMode}`,
+          ).toBeDefined();
+
           const first = testCase.run(axis);
           const replay = testCase.run(axis);
           expect(replay).toEqual(first);
