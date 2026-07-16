@@ -487,6 +487,34 @@ describe('autoFloor1ProgressionSystem', () => {
     );
   });
 
+  it('uses persona gear selection when weaponPersonas is omitted', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floorScenario = makeFloor1({ staircaseUnlocked: false });
+    setActiveWeaponDef(world, getWeaponDef('sword')!);
+    const bag = world.inventories.get(player)!;
+    addItem(bag, 'signet-of-focus', 1);
+
+    autoFloor1ProgressionSystem(world, player);
+
+    expect(hasItem(bag, 'signet-of-focus')).toBe(true);
+  });
+
+  it('preserves legacy purchased-gear flow when weaponPersonas is false', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.floorScenario = makeFloor1({ staircaseUnlocked: false });
+    setActiveWeaponDef(world, getWeaponDef('sword')!);
+    const bag = world.inventories.get(player)!;
+    addItem(bag, 'signet-of-focus', 1);
+
+    autoFloor1ProgressionSystem(world, player, undefined, false);
+
+    expect(hasItem(bag, 'signet-of-focus')).toBe(false);
+    const equipment = getEquipmentState(world, player)!;
+    expect(equipment.instances.get(equipment.equipped.ringRight!)?.def.id).toBe('signet-of-focus');
+  });
+
   it("still equips the Merchant's Charm even when persona scoring is zero", () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
