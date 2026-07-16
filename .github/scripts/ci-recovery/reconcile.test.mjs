@@ -412,6 +412,7 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
           { name: 'merge-train' },
           { name: 'merge-train-blocked' },
           { name: 'human-approval-required' },
+          { name: 'ci-recovery-opt-out' },
         ],
       },
     }),
@@ -478,6 +479,7 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
   assert.match(stdout, /blocked pr=#42 reason=human-approval-required/);
   assert.match(stdout, /disabled auto-merge pr=#42 reason=human-approval-required/);
   assert.match(stdout, /wait pr=#42 required-checks=ci/);
+  assert.doesNotMatch(stdout, /removed temporary approval opt-out/);
   assert.ok(
     mutatingCalls.some(
       (call) =>
@@ -493,6 +495,14 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
       (call) =>
         call.method === 'DELETE' &&
         call.url.endsWith(`/labels/${encodeURIComponent('merge-train-blocked')}`),
+    ),
+    false,
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url.endsWith(`/labels/${encodeURIComponent('ci-recovery-opt-out')}`),
     ),
     false,
   );

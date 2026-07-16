@@ -49,7 +49,11 @@ regression coverage.
   block.
 - Applied `human-approval-required` to issue #1190 and PR #1191, applied
   `merge-train-blocked` to PR #1191, removed any train admission, and confirmed
-  auto-merge was disabled. PR #1191 remains open and blocked.
+  auto-merge was disabled. When the old production reconciler removed the
+  transient block before this fix landed, added `ci-recovery-opt-out` as a
+  temporary hard fence. The new reconciler preserves that fence while approval
+  is pending and removes it only after valid owner approval. PR #1191 remains
+  open and blocked.
 
 ## Review harness
 
@@ -61,6 +65,8 @@ regression coverage.
   reconciler now ignores only approval-derived aggregate failures while still
   repairing unrelated failures, and the approval rerun handles in-progress CI.
 - Code review round 2: `claude-sonnet-4.6`, clean.
+- Follow-up review after the live opt-out race: one test-coverage concern
+  resolved, then a clean final review.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-16-enforce-balance-human-approval.review-ledger.json`.
 

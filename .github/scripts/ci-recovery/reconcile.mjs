@@ -28,7 +28,11 @@ import {
   unsatisfiedChecks,
   VALIDATION_FAILED_LABEL,
 } from '../merge-train/state.mjs';
-import { HUMAN_APPROVAL_LABEL, humanApprovalRejection } from '../merge-train/human-approval.mjs';
+import {
+  HUMAN_APPROVAL_LABEL,
+  humanApprovalRejection,
+  requiresHumanApproval,
+} from '../merge-train/human-approval.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -84,10 +88,6 @@ if (pr.draft) {
 }
 if (pr.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) {
   process.stdout.write(`skip pr=#${prNumber} reason=fork\n`);
-  process.exit(0);
-}
-if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
-  process.stdout.write(`skip pr=#${prNumber} reason=opt-out\n`);
   process.exit(0);
 }
 const comments = await paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
@@ -309,6 +309,7 @@ if (operation.startsWith('lease-')) {
 }
 
 const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
+const humanApprovalRequired = requiresHumanApproval(pr, closingIssues);
 approvalRejection = humanApprovalRejection({
   pullRequest: pr,
   closingIssues,
@@ -327,6 +328,17 @@ if (pendingHumanApproval) {
   await removePrLabel(QUEUE_LABEL);
   await disableAutoMergeForHumanGate();
   process.stdout.write(`blocked pr=#${prNumber} reason=human-approval-required\n`);
+}
+
+if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
+  if (!humanApprovalRequired) {
+    process.stdout.write(`skip pr=#${prNumber} reason=opt-out\n`);
+    process.exit(0);
+  }
+  if (!pendingHumanApproval) {
+    await removePrLabel('ci-recovery-opt-out');
+    process.stdout.write(`removed temporary approval opt-out pr=#${prNumber}\n`);
+  }
 }
 
 if (
