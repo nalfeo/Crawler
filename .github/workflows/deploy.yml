@@ -39,6 +39,8 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deploy-url.outputs.page_url }}
+    outputs:
+      released_pr_numbers: ${{ steps.released-prs.outputs.pr_numbers }}
     steps:
       - name: Admin check (manual triggers only)
         if: github.event_name == 'workflow_dispatch'
@@ -208,6 +210,24 @@ jobs:
             echo "::warning::Both deployment attempts failed; page_url will be empty."
           fi
 
+      - name: Select released PR targets
+        id: released-prs
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBERS=$(gh pr list \
+            --repo "${{ github.repository }}" \
+            --state merged \
+            --base main \
+            --json number,labels \
+            --jq '[.[] | select(.labels | map(.name) | index("released") | not)] | .[].number' 2>/dev/null || true)
+          {
+            echo "pr_numbers<<EOF"
+            echo "$PR_NUMBERS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Label and comment on released PRs
         if: success()
         env:
@@ -221,12 +241,9 @@ jobs:
           fi
 
           # Find merged PRs targeting main that don't have the "released" label yet
-          PR_NUMBERS=$(gh pr list \
-            --repo "${{ github.repository }}" \
-            --state merged \
-            --base main \
-            --json number,labels \
-            --jq '[.[] | select(.labels | map(.name) | index("released") | not)] | .[].number')
+          # (already selected once in the previous step and shared to baseline-sweep
+          # as a deploy job output to avoid cross-run mis-association).
+          PR_NUMBERS="${{ steps.released-prs.outputs.pr_numbers }}"
 
           LAB_BASE="${PAGES_URL}dev/lab.html"
 
@@ -521,6 +538,7 @@ jobs:
           BASELINE_INDEX_JSON: ${{ runner.temp }}/baselines-wt/index.json
           FALLBACK_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BASELINE_BLOB_URL: ${{ github.server_url }}/${{ github.repository }}/blob/baselines/by-sha/${{ steps.sha.outputs.sha }}.json
+          DEPLOY_PR_NUMBERS: ${{ needs.deploy.outputs.released_pr_numbers }}
         run: |
           # Post the freshly published baseline win-rate onto the PR whose
           # squash-merge produced this released commit, AND any other recently-
@@ -544,21 +562,10 @@ jobs:
             SPECIFIC_PR=""
           }
 
-          # 2. Also find all recently released PRs via the "released" label to
-          #    cover PRs in the same batch whose own baseline-sweeps were
-          #    cancelled.  Capped at 50; the idempotency check below skips any
-          #    that already have the comment.
-          BATCH_PRS=$(gh pr list \
-            --repo "${{ github.repository }}" \
-            --state merged \
-            --base main \
-            --label "released" \
-            --limit 50 \
-            --json number \
-            --jq '.[].number' 2>/dev/null || true)
-
-          # 3. Merge into a deduplicated, sorted list of target PRs.
-          ALL_COMMENT_PRS=$(printf '%s\n' $SPECIFIC_PR $BATCH_PRS \
+          # 2. Use the exact PR set selected by this run's deploy job (plus the
+          #    commit-resolved PR) to avoid cross-run overlap with other releases.
+          #    The idempotency check below still safely skips already-commented PRs.
+          ALL_COMMENT_PRS=$(printf '%s\n' $SPECIFIC_PR $DEPLOY_PR_NUMBERS \
             | sort -n -u | grep -v '^[[:space:]]*$' || true)
 
           if [ -z "$ALL_COMMENT_PRS" ]; then
