@@ -140,6 +140,13 @@ function buildFloor2LabMap(families: readonly FamilyDef[]): FloorMap {
       x: LAB_PLAYER_TILE.x,
       y: LAB_PLAYER_TILE.y,
     },
+    undefined,
+    [
+      { familyIndex: 0, centerX: 10, centerY: 8, radius: 6 },
+      { familyIndex: 1, centerX: 14, centerY: 8, radius: 6 },
+      { familyIndex: 2, centerX: 6, centerY: 12, radius: 4 },
+      { familyIndex: 3, centerX: 18, centerY: 12, radius: 4 },
+    ],
   );
   floorMap.revealAll();
   return floorMap;

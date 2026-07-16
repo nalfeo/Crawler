@@ -117,6 +117,32 @@ describe('headless runner AI telemetry', () => {
     // No boost applied — player XP/level should not be inflated above a normal start.
     expect(stats.finalLevel).toBeLessThan(2);
   });
+
+  it('counts real Floor 2 enemy deaths without treating director pruning as kills', async () => {
+    let realEnemyDeaths = -1;
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      floorId: 'floor2',
+      maxFrames: 3000,
+      maxWallTimeMs: 60_000,
+      forceWeaponId: 'sword',
+      onFinish: (world) => {
+        realEnemyDeaths = world.combatEvents.filter(
+          (event) => event.type === 'death' && event.targetType === 'enemy',
+        ).length;
+      },
+    });
+
+    expect(realEnemyDeaths).toBeGreaterThan(0);
+    expect(stats.combat.totalKills).toBe(realEnemyDeaths);
+    expect(Object.values(stats.combat.killsByType).reduce((total, count) => total + count, 0)).toBe(
+      realEnemyDeaths,
+    );
+    expect(stats.floor2Progression?.hunt.huntTimeMs).toBeGreaterThan(0);
+    expect(stats.floor2Progression?.hunt.engageTimeMs).toBeGreaterThanOrEqual(0);
+    expect(stats.floor2Progression?.hunt.engageRatio).toBeGreaterThanOrEqual(0);
+    expect(stats.floor2Progression?.hunt.engageRatio).toBeLessThanOrEqual(1);
+  });
 });
 
 describe('headless runner weapon telemetry (opt-in)', () => {

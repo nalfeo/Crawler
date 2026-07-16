@@ -182,6 +182,34 @@ async function main(): Promise<void> {
     }
   }
 
+  if (stats.floor2Progression) {
+    console.log('');
+    console.log('🏰 Floor 2 Progression');
+    for (const [familyId, family] of Object.entries(stats.floor2Progression.families)) {
+      const unlockKills =
+        family.trashKillsAtDenUnlock === null ? 'n/a' : String(family.trashKillsAtDenUnlock);
+      console.log(
+        `  ${familyId.padEnd(10)} kills ${String(family.trashKills).padStart(3)} ` +
+          `(unlock ${unlockKills.padStart(3)}) · den ${family.denEntered ? 'entered' : 'not entered'} · ` +
+          `boss ${family.encounterStarted ? `started ${(family.encounterStartedMs! / 1000).toFixed(1)}s` : 'not started'}/` +
+          `${family.encounterDefeated ? `defeated ${(family.encounterDefeatedMs! / 1000).toFixed(1)}s` : 'alive'}`,
+      );
+    }
+    console.log(
+      `  Exit:       ${stats.floor2Progression.exitCompleted ? 'completed' : 'incomplete'}`,
+    );
+    const hunt = stats.floor2Progression.hunt;
+    const huntKills = hunt.familyTrashKills + hunt.neutralTrashKills;
+    const familyKillRatio = huntKills > 0 ? hunt.familyTrashKills / huntKills : 0;
+    console.log(
+      `  Hunt:       ${(hunt.huntTimeMs / 1000).toFixed(1)}s · COMBAT ${(hunt.activeCombatRatio * 100).toFixed(1)}% ` +
+        `(ENGAGE ${(hunt.engageRatio * 100).toFixed(1)}%) · ` +
+        `kills ${hunt.familyTrashKills} family/${hunt.neutralTrashKills} neutral ` +
+        `(${(familyKillRatio * 100).toFixed(1)}% family) · ` +
+        `nearby ${hunt.averageNearbyEnemies.toFixed(1)} avg/${hunt.peakNearbyEnemies} peak`,
+    );
+  }
+
   if (stats.error) {
     console.log('');
     console.log(`Error:        ${stats.error}`);

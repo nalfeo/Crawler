@@ -5,7 +5,7 @@
  * Phaser, no rendering — kept pure so band + role math can be unit-tested.
  */
 import type { FamilyDef } from '../shared/data/families.js';
-import { RoomRole, type RoomData } from '../shared/map-types.js';
+import { RoomRole, type RoomData, type TerritoryZone } from '../shared/map-types.js';
 import { type FamilyId, type FactionRelationsWorldFacet } from '../core/faction-relations.js';
 import { bossDefeatedGoalFlag, parseHexColor } from './family-relationships-state.js';
 
@@ -20,6 +20,7 @@ export const BOSS_DEN_OUTLINE = 0xdc2626; // fallback red when family unknown
  * rather than dropping it entirely when `RoomData.familyIndex` is unset.
  */
 export const TERRITORY_NEUTRAL_TINT = 0x6b7280; // slate gray
+export const TERRITORY_OVERLAY_ALPHA = 0.42;
 
 /** Roles the tint helper knows how to color. */
 export type FamilyTintRole =
@@ -85,6 +86,7 @@ export function familyTintForRoom(
       const base = parseHexColor(fam.def.hudColor);
       return isFamilyBossDefeated(world, fam.id) ? toGrayscale(base) : base;
     }
+
     case RoomRole.BOSS_DEN: {
       const fam = resolveFamilyByIndex(world, families, room.familyIndex);
       if (!fam) return BOSS_DEN_OUTLINE;
@@ -94,6 +96,40 @@ export function familyTintForRoom(
     default:
       return null;
   }
+}
+
+/**
+ * Return every family tint influencing a map tile, ordered by family index.
+ * Multiple colors are retained so the minimap can display overlap without
+ * collapsing it into an ambiguous blended color.
+ */
+export function territoryTintsForTile(
+  world: FactionRelationsWorldFacet & { goalFlags: Map<string, boolean> },
+  families: readonly FamilyDef[],
+  zones: readonly TerritoryZone[],
+  tileX: number,
+  tileY: number,
+): readonly number[] {
+  const tintByFamilyIndex = new Map<number, number>();
+  for (const zone of zones) {
+    const dx = tileX - zone.centerX;
+    const dy = tileY - zone.centerY;
+    if (dx * dx + dy * dy > zone.radius * zone.radius) {
+      continue;
+    }
+    const family = resolveFamilyByIndex(world, families, zone.familyIndex);
+    if (!family) {
+      continue;
+    }
+    const base = parseHexColor(family.def.hudColor);
+    tintByFamilyIndex.set(
+      zone.familyIndex,
+      isFamilyBossDefeated(world, family.id) ? toGrayscale(base) : base,
+    );
+  }
+  return [...tintByFamilyIndex.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, tint]) => tint);
 }
 
 /**
