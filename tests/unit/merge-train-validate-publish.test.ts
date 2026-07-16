@@ -242,6 +242,13 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     // reconcile.mjs's own dispatchValidation catch block) BEFORE the wake
     // dispatches, so the woken reconciliation redispatches validation
     // immediately instead of waiting.
+    //
+    // Scope limitation: this fallback handles post-token-mint publish failures
+    // only (e.g. a transient checks.create API error after the App token was
+    // minted). If the `app-token` mint step itself fails, the fallback step
+    // also has no valid token and cannot post the cancelled check; the train
+    // falls back to the CANDIDATE_VALIDATION_STALE_MS (40-minute) stale bound
+    // for that rarer failure mode.
     function getFallbackStep(doc: WorkflowDoc): WorkflowStep {
       const steps = doc.jobs.publish?.steps ?? [];
       const step = steps.find(
@@ -251,7 +258,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       return step;
     }
 
-    it('exists, runs on failure(), and uses the App token', () => {
+    it('exists, runs on failure(), and uses the App token (covers post-token-mint publish failures)', () => {
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
       expect(step.if).toBe('failure()');

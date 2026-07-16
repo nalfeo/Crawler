@@ -96,9 +96,9 @@ jobs:
               },
             });
 
-      # If "Publish immutable candidate result" itself failed (transient
-      # checks.create API error, or the app-token mint failing), the
-      # fingerprinted check is still whatever `dispatchValidation()`
+      # If "Publish immutable candidate result" itself failed (e.g. a transient
+      # checks.create API error after the app token was successfully minted),
+      # the fingerprinted check is still whatever `dispatchValidation()`
       # (reconcile.mjs) originally posted: `in_progress`. trainCheckState()
       # (state.mjs) only demotes a stuck in_progress check to retryable
       # ("missing") after CANDIDATE_VALIDATION_STALE_MS (40 minutes) --
@@ -106,12 +106,15 @@ jobs:
       # maps to the `wait` action. So without this step, the "Wake merge-train
       # reconciliation" dispatch below would immediately wake reconcile.mjs
       # only to have it see `pending` and do nothing -- the wake would be
-      # ineffective for exactly the failure case it exists to cover, silently
-      # falling back to the same ~40-minute staleness bound the unreliable
-      # schedule fallback already provides. Post a `cancelled` conclusion here
-      # -- mirroring reconcile.mjs's own dispatchValidation catch block -- so
-      # trainCheckState() sees "missing" immediately and the woken
-      # reconciliation redispatches validation right away instead of waiting.
+      # ineffective for exactly the failure case it exists to cover. Post a
+      # `cancelled` conclusion here -- mirroring reconcile.mjs's own
+      # dispatchValidation catch block -- so trainCheckState() sees "missing"
+      # immediately and the woken reconciliation redispatches validation right
+      # away. Scope: this step covers post-token-mint publish failures only.
+      # If the app-token mint itself fails (the `app-token` step above),
+      # this step also has no valid token and cannot post the cancelled check;
+      # the train falls back to the 40-minute CANDIDATE_VALIDATION_STALE_MS
+      # bound for that failure mode.
       - name: Mark candidate check retryable if publishing failed
         if: failure()
         uses: actions/github-script@v7

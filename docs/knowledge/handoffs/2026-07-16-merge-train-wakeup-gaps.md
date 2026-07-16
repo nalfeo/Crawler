@@ -37,7 +37,11 @@ requirements. This PR closes both:
    dispatch) that posts a `cancelled` conclusion for the fingerprinted check —
    mirroring `reconcile.mjs`'s own `dispatchValidation` catch block — so the
    woken reconciliation redispatches validation immediately instead of waiting
-   on staleness.
+   on staleness. **Scope:** this fallback covers post-token-mint publish
+   failures only (e.g. a transient `checks.create` API error). If the
+   `app-token` mint step itself fails, the fallback also has no valid token
+   and cannot post the cancelled check; the train falls back to the 40-minute
+   stale bound for that rarer failure mode.
 
 2. **Scheduled-CI wake-up gap**: `merge-train.yml`'s `reconcile` job guard for
    `workflow_run` events named `'CI'` only allowed
