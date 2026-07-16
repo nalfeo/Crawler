@@ -304,3 +304,58 @@ available via the four workflow runs' uploaded artifacts
 (`weapon-sweep-<weapon>.json`, 30-day retention). The original
 (now-superseded) sweep run links remain in this section's git history for
 provenance.
+
+## Post-merge verification addendum
+
+After #1196 landed (squash-merged to `main` at `51d5347f`, on top of #1200's
+telegraph feature and #1203's unrelated stats/mana overhaul), a follow-up
+verification pass confirmed the requirements still hold on the current `main`
+tip and closed two remaining observability gaps:
+
+- **Burst-follow-up independent locking, made explicit**: the existing
+  "telegraphs every subsequent shot" test only proved the second shot
+  re-enters `telegraphActive`. Added a new regression test — `'gives every
+burst follow-up shot its OWN independently locked aim vector, not a stale
+copy of the previous shot'` (`tests/game/enemy-projectile-telegraph.test.ts`)
+  — that moves the player to a very different angle between the first shot's
+  fire and the second shot's telegraph start, then asserts the second shot's
+  `telegraphDirX/Y` point toward the player's _new_ position (not a stale
+  copy of the first shot's lock), and that the fired projectile's velocity
+  matches the second lock. This is guaranteed by construction
+  (`startEnemyProjectileTelegraph` unconditionally overwrites all four locked
+  fields on every call, including every burst/rapid-fire follow-up), but is
+  now also directly regression-tested. 29/29 tests pass in that file on the
+  current `main` tip.
+- **0ms legacy parity reconfirmed on current `main`**: all 170 tests across
+  `enemy-projectile-telegraph.test.ts` / `behavior-tree-ai.test.ts` /
+  `phaser-bridge.test.ts` (including the explicit byte-identical-RNG-draw and
+  0ms-fires-immediately assertions) still pass unmodified on top of #1203's
+  stats/mana overhaul — the telegraph gating logic is independent of stat
+  values, so the original git-stash byte-for-byte parity proof still holds.
+- **seed42 Floor 2 baseball-bat smoke artifacts, captured for real**: ran
+  `npx tsx src/game/ai/headless-runner-cli.ts --seed 42 --floor floor2
+--weapon baseball-bat --max-frames 60000` at both the 250ms production
+  default and `--enemy-telegraph-ms 0`. Both runs end in `DEATH` (this is a
+  known-hard seed/weapon/floor combination pre-dating this feature — per the
+  explicit spec constraint, this was observed and reported, not tuned around
+  or special-cased). 250ms run: Floor 2, Level 5, 19 kills, dies at 98.3s
+  game-time. 0ms run: Floor 2, Level 7, 76 kills, dies at 457.3s game-time —
+  the large survival-time difference across configs is expected (0ms removes
+  the player's only defensive signal against ranged fire) and is itself
+  evidence the telegraph is doing real work, not a no-op. Full run logs saved
+  as session artifacts (`seed42-floor2-baseballbat-250ms.log`,
+  `seed42-floor2-baseballbat-0ms.log`).
+- **Real screenshot-based visual observation remains blocked**: re-attempted
+  via both the `chrome-devtools` skill and the `playwright-browser_*` tools
+  against a live `npm run dev` server (confirmed serving via `curl`, HTTP 200) pointed at `enemy-ai-lab` (which spawns `AI_TYPE.RANGED` groups, ticks
+  the real `enemyAISystem`, and renders through the real `createPhaserBridge`
+  — i.e. the correct place to observe the cue live). Every
+  `playwright-browser_navigate`/`browser_snapshot` call timed out
+  (`MCP error -32001`); no `chrome-devtools`-prefixed tools were exposed in
+  this session at all despite the skill loading successfully. This
+  reconfirms the environment limitation already documented above (no working
+  browser automation for Phaser canvas content in this sandbox) rather than
+  a new finding. The 7 deterministic `phaser-bridge.test.ts` cue-lifecycle
+  assertions remain the actual verification evidence for the render cue, per
+  the repo's own preference for deterministic checks over ad hoc visual QA
+  (rule #9) when the latter is genuinely unavailable.
