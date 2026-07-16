@@ -1,6 +1,7 @@
 import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
 import { DeathTimer, Position, Prop, Rotation, Sprite } from '../core/components.js';
+import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
@@ -1342,8 +1343,24 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // shooter killed earlier this same frame can still have
           // `telegraphActive` set until the NEXT enemyAISystem pass cancels
           // it — without this guard the cue would draw from a corpse.
+          //
+          // The `telegraphWasActiveThisFrame` sticky flag handles the 16×
+          // AI-runner-lab playback case: at high simulation speeds the
+          // catch-up loop can run many sim steps per rendered frame, so a
+          // short telegraph (e.g. 250ms default delay at 16× = only ~1 sim
+          // step) can start AND complete within a single batch, meaning
+          // `telegraphActive` flips 0→1→0 before the next sync(). The sticky
+          // flag is set once by `startEnemyProjectileTelegraph()` and cleared
+          // here (after rendering) so the cue is visible for exactly one
+          // rendered frame even when `telegraphActive` is already 0 at sync
+          // time. Production (1× speed) is unaffected: every step is followed
+          // by a sync, so `telegraphActive` alone is sufficient.
+          const { enemyBehavior: eb } = world.stores;
           const isTelegraphing =
-            world.stores.enemyBehavior.telegraphActive[eid] === 1 && isVisible && !isDeadEnemy;
+            (isEnemyProjectileTelegraphActive(world, eid) ||
+              eb.telegraphWasActiveThisFrame[eid] === 1) &&
+            isVisible &&
+            !isDeadEnemy;
           const existingTelegraph = telegraphGraphics.get(eid);
           if (!isTelegraphing) {
             existingTelegraph?.setVisible(false);
@@ -1389,6 +1406,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             tg.fillStyle(0xff2222, Math.min(1, alpha + 0.15));
             tg.fillCircle(originX, originY, 4);
           }
+          // Clear the per-frame sticky flag after it has been consumed. If the
+          // telegraph is still active (`eb.telegraphActive[eid] === 1`) the cue
+          // will keep rendering via that flag in future frames; if it completed
+          // during the batch, it will have rendered for exactly one frame here
+          // and now correctly goes dark.
+          eb.telegraphWasActiveThisFrame[eid] = 0;
         }
       }
 

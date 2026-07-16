@@ -1884,5 +1884,45 @@ describe('createPhaserBridge', () => {
       expect(lateLine).toBeDefined();
       expect(lateLine?.alpha).toBeCloseTo(earlyLine!.alpha, 10);
     });
+
+    it('renders the cue for one frame via the sticky flag when the telegraph completes within a batch (16× AI-runner lab scenario)', () => {
+      // Reproduces the 16× catch-up-loop scenario: multiple sim steps run
+      // between renders, so a short telegraph (e.g. 250ms default) can start
+      // AND fire entirely within one batch — `telegraphActive` is 0 by the
+      // time sync() is called, but `telegraphWasActiveThisFrame` remains 1
+      // so the cue is still visible for exactly one rendered frame.
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+
+      // Step 1 of the simulated batch: telegraph begins.
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+      // telegraphWasActiveThisFrame must be set immediately by startEnemyProjectileTelegraph.
+      expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[eid]).toBe(1);
+
+      // Step N of the same batch: telegraph fires — active clears to 0.
+      // (In the real game cancelEnemyProjectileTelegraph / fire code does this.)
+      world.stores.enemyBehavior.telegraphActive[eid] = 0;
+
+      // At this point `telegraphActive = 0` but `wasActiveThisFrame = 1`.
+      // sync() must render the cue for one frame via the sticky flag.
+      bridge.sync(world);
+
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeDefined();
+      expect(telegraphGfx?.visible).toBe(true);
+
+      // After sync() the sticky flag must be cleared, so the NEXT sync does
+      // NOT render the cue (both flags are 0).
+      expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[eid]).toBe(0);
+
+      const countAfterFirstSync = graphics.length;
+      bridge.sync(world);
+
+      // No new cue graphics created; existing one now hidden.
+      expect(graphics.length).toBe(countAfterFirstSync);
+      expect(telegraphGfx?.visible).toBe(false);
+    });
   });
 });

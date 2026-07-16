@@ -20,6 +20,7 @@ import {
   TELEGRAPH_MS_UNSET,
   getEffectiveTelegraphMs,
   isEnemyProjectileTelegraphActive,
+  startEnemyProjectileTelegraph,
 } from '../../src/core/systems/enemyTelegraph.js';
 import { AI_TYPE, enemyAISystem } from '../../src/game/index.js';
 import { ENEMY_PROJECTILE } from '../../src/shared/constants.js';
@@ -383,5 +384,33 @@ describe('enemy projectile telegraph — nonzero delay lifecycle', () => {
     world.elapsedMs = 351 + ENEMY_PROJECTILE.FIRE_COOLDOWN_MS + 1 + 251;
     enemyAISystem(world);
     expect(query(world.ecs, [EnemyProjectile]).length).toBe(2);
+  });
+});
+
+describe('telegraphWasActiveThisFrame sticky render-frame flag', () => {
+  it('is set to 1 by startEnemyProjectileTelegraph() and remains set when telegraphActive is cleared', () => {
+    // This is the key invariant that lets PhaserBridge.sync() render the
+    // telegraph cue for one frame even when the shot fires entirely within a
+    // multi-step catch-up batch (16× AI-runner lab playback).
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 10, AI_TYPE.RANGED, 0, 20, 20);
+
+    expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[enemy]).toBe(0);
+
+    startEnemyProjectileTelegraph(world, enemy, 1, 0);
+    expect(world.stores.enemyBehavior.telegraphActive[enemy]).toBe(1);
+    expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[enemy]).toBe(1);
+
+    // Simulate the shot firing within the same batch: telegraphActive cleared.
+    world.stores.enemyBehavior.telegraphActive[enemy] = 0;
+
+    // Sticky flag must still be 1 — PhaserBridge.sync() hasn't run yet.
+    expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[enemy]).toBe(1);
+  });
+
+  it('is 0 by default on a freshly spawned enemy (no residual from previous entities)', () => {
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 10, AI_TYPE.RANGED, 0, 20, 20);
+    expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[enemy]).toBe(0);
   });
 });
