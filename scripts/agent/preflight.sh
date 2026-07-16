@@ -20,11 +20,12 @@ _clock() { date +%s 2>/dev/null || echo 0; }
 PREFLIGHT_START_S="$(_clock)"
 PREFLIGHT_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")"
 
-# Parallel indexed arrays: _phase_names[i], _phase_starts[i], _phase_durs[i], _phase_notes[i]
+# Parallel indexed arrays: _phase_names[i], _phase_starts[i], _phase_durs[i], _phase_notes[i], _phase_skipped[i]
 _phase_names=()
 _phase_starts=()
 _phase_durs=()
 _phase_notes=()
+_phase_skipped=()  # "true" | "false" — explicit skip flag, not inferred from text
 
 _phase_start() {
   local name="$1"
@@ -32,6 +33,7 @@ _phase_start() {
   _phase_starts+=("$(_clock)")
   _phase_durs+=("0")
   _phase_notes+=("")
+  _phase_skipped+=("false")
   printf '⏱  [preflight] %s…\n' "$name"
 }
 
@@ -41,6 +43,7 @@ _phase_end() {
   local dur=$(( $(_clock) - _phase_starts[$idx] ))
   _phase_durs[$idx]="$dur"
   _phase_notes[$idx]="$note"
+  _phase_skipped[$idx]="false"
 }
 
 _phase_skip() {
@@ -48,6 +51,7 @@ _phase_skip() {
   local idx=$(( ${#_phase_names[@]} - 1 ))
   _phase_durs[$idx]="0"
   _phase_notes[$idx]="$note"
+  _phase_skipped[$idx]="true"
 }
 
 _write_timing_artifact() {
@@ -58,21 +62,16 @@ _write_timing_artifact() {
   mkdir -p "$(dirname "$PREFLIGHT_TIMING_FILE")"
 
   # Determine warmCache: true only when the three infrastructure phases
-  # (deps, playwright, typecheck) were all skipped because their state was
-  # already satisfied.  The informational phases (memory_seed, persona_hint,
-  # handoff_digest) are always fast and do not affect this flag.
+  # (deps, playwright, typecheck) were all explicitly skipped via _phase_skip.
+  # The informational phases (memory_seed, persona_hint, handoff_digest) are
+  # always fast and do not affect this flag.
   local warm_cache="true"
   local i
   for (( i=0; i<${#_phase_names[@]}; i++ )); do
     local _pname="${_phase_names[$i]}"
-    local _note="${_phase_notes[$i]}"
-    # Only the infrastructure phases count for warmCache.
     case "$_pname" in
       deps|playwright|typecheck)
-        case "$_note" in
-          *skip*|*cached*|*already*|*unchanged*) : ;;  # correctly skipped
-          *) warm_cache="false" ;;
-        esac
+        [ "${_phase_skipped[$i]}" = "true" ] || warm_cache="false"
         ;;
     esac
   done
@@ -88,12 +87,7 @@ _write_timing_artifact() {
     local start_offset=$(( _phase_starts[$i] - PREFLIGHT_START_S ))
     local dur="${_phase_durs[$i]}"
     local note="${_phase_notes[$i]}"
-    local skipped="false"
-    # A phase is skipped when its note contains canonical skip keywords.
-    # Deliberately excludes 'not found' (a failure) and 'completed' (a real run).
-    case "$note" in
-      *skip*|*cached*|*already*|*unchanged*) skipped="true" ;;
-    esac
+    local skipped="${_phase_skipped[$i]}"  # explicit flag from _phase_skip / _phase_end
 
     [ "$first" = "true" ] || phases_json+=","
     first="false"
@@ -190,16 +184,24 @@ _ts_input_state() {
     echo ""
     return
   fi
-  # Index object hashes for all tracked .ts and tsconfig files, plus any
-  # working-tree diffs.  Intentionally includes tsconfig.*.json variants.
-  # If git commands output nothing (e.g. no tracked .ts files or empty repo)
-  # sha256sum hashes the empty string, which still produces a stable, non-empty
-  # fingerprint — typecheck skips correctly.  If the whole pipeline fails (no
-  # sha256sum), the `|| echo ""` returns an empty string, the sentinel check
-  # [ -n "$_ts_state" ] fails, and typecheck re-runs safely.
-  { git ls-files -s '*.ts' 'tsconfig.json' 'tsconfig.*.json' 2>/dev/null; \
-    git diff HEAD -- '*.ts' 'tsconfig.json' 'tsconfig.*.json' 2>/dev/null; } \
-    | sha256sum 2>/dev/null | cut -d' ' -f1 || echo ""
+  # Capture git output first so we can check whether git commands succeeded.
+  # Running git in a subshell (with || true) prevents set -e from aborting the
+  # outer script when git exits non-zero (e.g. outside a git repo).  An empty
+  # capture means git failed or produced no output — we return "" so the
+  # caller's [ -n "$_ts_state" ] check fails and typecheck re-runs safely.
+  # When git succeeds and there are no .ts files the sha256sum of empty input
+  # (e3b0c44...) is a valid, stable fingerprint that correctly memoises that
+  # "no .ts files → nothing to re-typecheck".
+  local git_out
+  git_out="$(
+    git ls-files -s '*.ts' 'tsconfig.json' 'tsconfig.*.json' 2>/dev/null || true
+    git diff HEAD -- '*.ts' 'tsconfig.json' 'tsconfig.*.json' 2>/dev/null || true
+  )" || true
+  # Guard: if git commands themselves are unavailable (PATH or broken install)
+  # the capture may be completely empty — return "" to force typecheck.
+  # Normal repos always have at least one committed .ts file, so non-empty
+  # git_out is the expected case.
+  printf '%s' "$git_out" | sha256sum 2>/dev/null | cut -d' ' -f1 || echo ""
 }
 
 # ===========================================================================

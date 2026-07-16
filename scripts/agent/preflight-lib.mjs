@@ -116,6 +116,10 @@ export function resolveNodeBin({
   if (!npmPath) return '';
 
   const resolvedNpm = _realpathSync(npmPath);
+  // `|| npmPath` is a defensive fallback for test-injected `_realpathSync`
+  // implementations that might return null/undefined.  The production
+  // `defaultRealpathSync` always returns a non-empty string (the original
+  // path on error), so the fallback only fires in test scenarios.
   const npmDir = dirname(resolvedNpm || npmPath);
   for (const candidate of [join(npmDir, 'node'), join(npmDir, 'node.exe')]) {
     if (_existsSync(candidate)) return candidate;
