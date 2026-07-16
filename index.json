@@ -1,5 +1,16 @@
 [
   {
+    "commit": "726ca639fbd525aacc89af25ff18e3612ff1a12e",
+    "commitDate": "2026-07-15T23:19:23Z",
+    "commitSubject": "fix(merge-train): real GitHub squash-merge promotion for MERGED completion semantics (#1162)",
+    "capturedAt": "2026-07-16T00:09:22.808Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29458572765",
+    "winRate": 0.9633333333333334,
+    "totalWins": 578,
+    "totalRuns": 600,
+    "path": "by-sha/726ca639fbd525aacc89af25ff18e3612ff1a12e.json"
+  },
+  {
     "commit": "95d89d35028d12d36564d464c66bc5c0f496e50f",
     "commitDate": "2026-07-15T16:57:18Z",
     "commitSubject": "fix(ci-policy): close merge-train rollback/status/hydration gaps before live enable (#1151) (#1153)",
