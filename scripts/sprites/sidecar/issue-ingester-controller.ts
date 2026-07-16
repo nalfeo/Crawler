@@ -269,11 +269,13 @@ export function createIssueIngesterController(
     row.briefSentence === payload.briefSentence &&
     row.sizeVariant === payload.sizeVariant;
 
-  const matchingStateRow = <T extends IngestState['claims'] | IngestState['rejected']>(
-    table: T,
+  const matchingStateRow = <
+    TRow extends IngestState['claims'][string] | IngestState['rejected'][string],
+  >(
+    table: Record<string, TRow>,
     issueNumber: number,
     payload: LegacyStateComparableRequest,
-  ): { readonly key: string; readonly row: T[string] | undefined } => {
+  ): { readonly key: string; readonly row: TRow | undefined } => {
     const key = claimKey(issueNumber, payload.fingerprint);
     const current = table[key];
     if (current) return { key, row: current };
@@ -281,8 +283,9 @@ export function createIssueIngesterController(
       payload.legacyFingerprint && payload.legacyFingerprint !== payload.fingerprint
         ? claimKey(issueNumber, payload.legacyFingerprint)
         : null;
-    if (legacyKey && sameLegacyStateSemantics(table[legacyKey], payload)) {
-      return { key: legacyKey, row: table[legacyKey] };
+    const legacyRow = legacyKey ? table[legacyKey] : undefined;
+    if (legacyKey && sameLegacyStateSemantics(legacyRow, payload)) {
+      return { key: legacyKey, row: legacyRow };
     }
     return { key, row: undefined };
   };
