@@ -7,6 +7,10 @@
 **ADR:** [`0040`](../adr/0040-floor2-family-territory-and-relationship-architecture.md) decision D4 (reuse existing plumbing)
 **Reused ADRs:** 0010 (boss door-lock), 0011 (data-driven quests), 0023 (special-room sealing)
 
+## Systems touched
+
+enemies
+
 ## What was done
 
 Slice 4 turns each Floor-2 family's boss into a real gated encounter and lays

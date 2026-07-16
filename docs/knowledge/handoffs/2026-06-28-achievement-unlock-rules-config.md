@@ -1,5 +1,9 @@
 # 2026-06-28 — achievement unlock rules config-driven
 
+## Systems touched
+
+quests
+
 ## Summary
 
 - Moved Floor 1 achievement unlocking from hard-coded branching to declarative config rules.

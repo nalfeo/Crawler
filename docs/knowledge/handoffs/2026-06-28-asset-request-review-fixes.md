@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — the work stayed in the expected medium follow-up band: a
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+quests
+
 ## What Was Done
 
 - Fixed issue-pipeline brief promotion to use the canonical draft-family mapping via `briefDirectoryForType(...)` instead of naive pluralization, so `enemy -> enemies` and `vfx -> vfx` land in discoverable locations.

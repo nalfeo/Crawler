@@ -5,6 +5,10 @@
 **Persona:** Producer
 **Apple estimate:** 🍎🍎 (2) · **Actual:** 🍎🍎 (2) · verdict **exact**
 
+## Systems touched
+
+ai-combat-balance
+
 ## Goal
 
 Add an **official headless test suite that proves Floor 1 can be completed**, runnable

@@ -23,6 +23,10 @@ Verdict: 🎯 Exact — bug fix plus one new pure helper module and a focused un
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+ai-combat-balance
+
 ## What Was Done
 
 The AI Runner Lab path overlay always drew a zigzag, even though the player AI now

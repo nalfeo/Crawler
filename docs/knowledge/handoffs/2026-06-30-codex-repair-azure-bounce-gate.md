@@ -26,6 +26,10 @@ ADR was needed and no game systems were touched.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+azure-infra
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-06-30-azure-openai-provider.review-ledger.json`

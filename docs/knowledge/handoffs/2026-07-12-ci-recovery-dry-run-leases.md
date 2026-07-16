@@ -32,6 +32,19 @@ ci-policy
 
 ## Retrospective
 
+### Lessons Learned
+
 The recovery rollout mode and explicit lease ownership are separate concerns:
 shadowing automated repair must not disable the ownership primitive that prevents
 automation and shepherds from racing.
+
+### Mistakes Made
+
+Dry-run mode was narrowly interpreted as "no repair mutations" without considering
+that lease acquire/heartbeat/release operations are shepherd-coordination primitives,
+not repair actions. The distinction was not explicit in the rollout spec.
+
+### Opportunities for Future Improvement
+
+Document the lease ownership API as a required-always primitive in the CI recovery
+design doc so future dry-run or shadow mode expansions cannot inadvertently disable it.

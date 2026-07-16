@@ -21,6 +21,10 @@ Verdict: 🎯 Exact — the work stayed focused on one telemetry pipeline plus t
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+docs-tooling
+
 ## What Was Done
 
 1. Extended `copilot-guards` telemetry to append every guard event to the session-local artifact `files/guard-telemetry.jsonl` while preserving the existing `session.log()` emission.

@@ -8,6 +8,10 @@
 
 Producer — multi-layer task spanning quest data, floor scenario logic, ECS systems, and tests.
 
+## Systems touched
+
+enemies, quests
+
 ## Apple estimate / actual
 
 Estimated: 🍎🍎🍎

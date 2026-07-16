@@ -27,6 +27,10 @@ implementation surface; landed right at the 2🍎 estimate.
 
 Hello kitties: 2/5 = 0.40 🎀 (canonical `actual_apples / 5`)
 
+## Systems touched
+
+sprite-workflow
+
 ## Review Harness
 
 2🍎 tier → **plan review** (>1🍎) + **code-review loop** (all). Multi-model NOT

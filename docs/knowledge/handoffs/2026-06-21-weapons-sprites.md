@@ -4,6 +4,10 @@
 **Branch:** (current PR branch)  
 **Persona:** Producer
 
+## Systems touched
+
+weapons
+
 ## What Was Done
 
 Changed the starting weapon loadout from (sword, pistol, fireball) → (sword, bow, baseball-bat) and replaced vector-placeholder weapon rendering with real Kenney tiny-dungeon sprites.

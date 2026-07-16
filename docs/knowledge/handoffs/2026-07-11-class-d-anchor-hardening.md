@@ -7,7 +7,7 @@
 
 ## Systems touched
 
-ai, progression, tests
+ai-behavior-tree, inventory
 
 ## Problem
 

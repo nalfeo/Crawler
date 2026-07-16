@@ -20,6 +20,10 @@ Verdict: 📈 Over — the fix collapsed to a one-line gameplay gate correction 
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+inventory
+
 ## What Was Done
 
 - Removed the `slime-mini` bypass in `/home/runner/work/Crawler/Crawler/src/core/systems/dropSystem.ts` so Floor 1 baby slimes obey the same tutorial drop gate as every other enemy.

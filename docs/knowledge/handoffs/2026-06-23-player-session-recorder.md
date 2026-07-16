@@ -38,6 +38,10 @@ Added a dev-only player session recorder so human play can be captured at the sa
 
 ---
 
+## Systems touched
+
+devtools
+
 ## Agent-OS Telemetry
 
 _No guard telemetry artifact was captured in this session._

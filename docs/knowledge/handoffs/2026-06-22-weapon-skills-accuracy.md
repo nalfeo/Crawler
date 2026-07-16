@@ -4,6 +4,10 @@
 **Persona:** Producer (Systems Engineer + Game Designer)
 **Apple estimate declared:** 🍎🍎🍎🍎🍎 | **Actual:** 🍎🍎🍎🍎🍎 | **Verdict:** Accurate
 
+## Systems touched
+
+weapons
+
 ## What was done
 
 Implemented the full weapon skills system as described in the problem statement, plus an accuracy system that those skills feed into.

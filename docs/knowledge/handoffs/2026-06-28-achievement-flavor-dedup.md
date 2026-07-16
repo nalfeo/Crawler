@@ -1,5 +1,9 @@
 # 2026-06-28 — achievement flavor dedup
 
+## Systems touched
+
+quests
+
 ## Summary
 
 - Clarified achievement flavor handling by removing unlock-criteria text duplication from Director flavor at load time.

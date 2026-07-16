@@ -4,6 +4,10 @@
 
 2026-06-22
 
+## Systems touched
+
+enemies, mobile-ux
+
 ## PR
 
 #192 — `copilot/mobile-ux-usability-improvements` →

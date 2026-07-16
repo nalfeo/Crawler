@@ -5,6 +5,10 @@
 **Branch:** copilot/add-link-to-ai-runner-lab
 **Apple estimate:** 🍎🍎 | **Actual:** 🍎🍎 | **Verdict:** on target
 
+## Systems touched
+
+devtools, docs-tooling
+
 ## What was done
 
 Added lab links to the PR release comment posted by the `deploy.yml` workflow.

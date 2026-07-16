@@ -10,7 +10,7 @@ Producer (PR shepherd)
 
 ## Systems touched
 
-_(docs/tooling-only session — no runtime systems touched; `ci-policy`, `agent-tooling`)_
+ci-policy, docs-tooling
 
 ## Apples
 

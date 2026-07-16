@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — the work stayed confined to one config lookup, one gamep
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+inventory
+
 ## What Was Done
 
 - Added a shared enemy drop override in `/home/runner/work/Crawler/Crawler/src/shared/loot-tables.ts` marking `slime-mini` as `dropsEnabled: false`.

@@ -5,6 +5,10 @@
 **Persona:** Producer (content + AI voice policy coordination)  
 **Apples:** 🍎🍎🍎 estimated -> 🍎🍎🍎 actual (exact)
 
+## Systems touched
+
+quests
+
 ## Summary
 
 - Reworked the full Floor 1 achievement catalog to cap rewards at `rare` or below.

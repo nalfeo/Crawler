@@ -3,6 +3,10 @@
 **Date:** 2026-06-28  
 **Session goal:** Tune experience rate so player ends floor 1 at ~level 6; make bosses drop lots of XP gems and gold for dramatic visual impact.
 
+## Systems touched
+
+enemies, inventory
+
 ## What Was Done
 
 ### Problem

@@ -11,6 +11,10 @@
 Reason: cross-layer wiring (game → engine → lab) plus a UI state-machine driver
 and two test files — no new ECS system or ADR, so squarely Medium.
 
+## Systems touched
+
+ai-combat-balance
+
 ## Goal
 
 Make the **in-browser AI playthrough** (AI Runner Lab) go through the _real_

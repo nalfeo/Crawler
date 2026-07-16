@@ -24,6 +24,10 @@ everything before you open the PR".
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+worktree-server
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-worktree-server-localhost-url.review-ledger.json`

@@ -27,6 +27,10 @@ Verdict: 🎯 Exact — multi-layer as predicted (guard-extension test isolation
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+docs-tooling
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-guard-telemetry-repair.review-ledger.json`

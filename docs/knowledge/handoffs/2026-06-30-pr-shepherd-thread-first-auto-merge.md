@@ -20,6 +20,10 @@ Verdict: 🎯 Exact - single-file docs/process update with direct operational im
 
 Hello kitties: 1/5 = 0.20 🎀
 
+## Systems touched
+
+ci-policy
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-06-30-pr-shepherd-thread-first-auto-merge.review-ledger.json`  

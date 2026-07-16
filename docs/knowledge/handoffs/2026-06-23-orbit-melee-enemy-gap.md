@@ -4,6 +4,10 @@
 **PR:** #253  
 **Apple estimate declared:** 🍎🍎 | **Actual:** 🍎🍎 | **Verdict:** on-target
 
+## Systems touched
+
+enemies, weapons
+
 ## What changed
 
 ### bt-ai-provider.ts

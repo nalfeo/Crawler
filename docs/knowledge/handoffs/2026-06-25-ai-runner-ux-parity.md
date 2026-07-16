@@ -4,6 +4,10 @@
 **Persona:** Producer (cross-surface UX/bootstrap wiring)
 **Apples:** estimated 🍎🍎 / actual 🍎🍎 (exact)
 
+## Systems touched
+
+ai-combat-balance
+
 ## Task
 
 Enable the new base-game zoom/polish path in the visual AI runner lab and keep

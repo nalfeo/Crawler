@@ -10,7 +10,7 @@
 
 ## Systems touched
 
-floor2, main-game-scene, faction-relations, bootstrap
+mapgen, enemies
 
 ## Context
 

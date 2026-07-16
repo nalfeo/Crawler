@@ -177,6 +177,8 @@ train and re-observe a clean cycle.
 
 ## Retrospective
 
+### Lessons Learned
+
 - The GitHub Actions `schedule` cron and `workflow_run` triggers on
   `merge-train.yml` were observed running unreliably under heavy concurrent
   Actions load in this shared repo (real gaps of 1.5–2 hours vs. the
@@ -191,3 +193,17 @@ train and re-observe a clean cycle.
   lag in it was allowed to override/block already-established ground truth
   (the atomic git push). Worth keeping in mind for any future GitHub-API-based
   postcondition check in this codebase.
+
+### Mistakes Made
+
+The batch-promotion postcondition trusted the GitHub REST `merged`/`merged_at`
+field as a synchronous, authoritative signal rather than as an eventually-consistent
+secondary indicator. The atomic git push already established ground truth; polling a
+lagging field on top of it introduced a false-failure path.
+
+### Opportunities for Future Improvement
+
+Any future GitHub-API-based postcondition check should prefer the locally-established
+ground truth (e.g., exit code of the git push, or the exact merge-commit SHA) over
+polling GitHub's eventually-consistent summary fields. Document this as a design
+principle in the merge-train architecture notes.

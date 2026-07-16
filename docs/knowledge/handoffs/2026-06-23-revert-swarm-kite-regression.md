@@ -16,6 +16,10 @@ Verdict: 🎯 Exact — bounded to root-causing one regression and reverting one
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+ai-combat-balance
+
 ## Problem
 
 The canonical Floor 1 headless completion gate

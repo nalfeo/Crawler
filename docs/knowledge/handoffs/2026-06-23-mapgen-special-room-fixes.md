@@ -4,6 +4,10 @@
 **Persona:** Engineer  
 **Apple estimate:** 🍎🍎 (actual: 🍎🍎, verdict: on-target)
 
+## Systems touched
+
+mapgen
+
 ## What Was Done
 
 Fixed four mapgen issues across two sessions (the prior session started; this one finished and addressed code review):

@@ -27,6 +27,10 @@ runs across many seeds plus a coverage-gate fix, but stayed within a focused
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+ai-combat-balance, ai-pathfinding
+
 ## What Was Done
 
 - **Root-caused & fixed the seed-2 (and 12345) headless stall.** After accepting

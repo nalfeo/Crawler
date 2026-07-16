@@ -4,6 +4,10 @@
 **Session:** Merge conflict fix for PR `copilot/floor-1-lab-features-comparison`  
 **Apple estimate:** 🍎 (conflict resolution only)
 
+## Systems touched
+
+devtools
+
 ## What happened
 
 The PR "Consolidate Floor 1 lab workflows into AI Runner and retire floor1-lab" had a merge

@@ -47,7 +47,22 @@ protection.
 
 ## Retrospective
 
+### Lessons Learned
+
 The initial rollout tests covered deterministic synthetic commits but did not
 exercise hosted-runner identity or the distinct permission boundary between
 repository App tokens and the workflow's built-in Actions token. The corrected
 tests now make both runtime assumptions explicit.
+
+### Mistakes Made
+
+The permission boundary between the repository App token (used for promotion)
+and the built-in Actions token (used for workflow dispatch) was not modelled
+in the initial test suite, leaving a gap that only surfaced in live hosted-runner
+execution.
+
+### Opportunities for Future Improvement
+
+Add a pre-merge test fixture that explicitly verifies the token-role boundary
+so future authentication changes trigger a test failure before reaching
+production runners.

@@ -373,6 +373,8 @@ wave of 5 unresolved Copilot review threads:
 
 ## Retrospective
 
+### Lessons Learned
+
 - JavaScript function placement inside a nearby function can survive syntax
   checks while failing only on a rare state-machine branch; targeted lint and
   branch execution tests are required for workflow scripts.
@@ -381,3 +383,16 @@ wave of 5 unresolved Copilot review threads:
   check run with an external fingerprint.
 - Build-expiry savings remain safe when heavy PR evidence is immutable and the
   combined candidate receives a small integration plus security gate.
+
+### Mistakes Made
+
+Early drafts used commit-message footers as the sole post-promotion suppression
+signal, which is spoofable. Switching to an exact-SHA check-run attestation tied
+to the repository App identity closed that gap but required reworking the
+validation publication flow.
+
+### Opportunities for Future Improvement
+
+Add a corpus-level invariant test that verifies no workflow script contains
+inner-function declarations; the hoisting ambiguity silently survived syntax
+checks and was only caught by branch-specific execution tests.
