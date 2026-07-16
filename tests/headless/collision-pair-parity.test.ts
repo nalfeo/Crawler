@@ -236,12 +236,30 @@ interface CollisionFingerprint {
 //   seed  13:  unchanged
 //   seed  42:  5/193.14999961853027/5/2   →  6/223.44999933242798/5/0
 //   seed 137:  unchanged
+//
+// Re-baselined after fix: safe-room doorway livelock (PR #1212, 2026-07-16):
+// `buildLeaveSafeRoomBehavior` no longer instantly cedes control to Hunt on a
+// single-frame `world.playerInSafeRoom` flicker once an egress waypoint is
+// already committed — it now defers to the existing bounded egress-exit
+// hysteresis/no-progress watchdog instead of re-arming every frame the coarse
+// doorway-boundary flag toggles. That resolved a frame-perfect Floor-1 timeout
+// livelock (canonical repro: sword@14) at the safe-room exit for several
+// seed/weapon starting conditions. The corrected suppress-cooldown bookkeeping
+// exposed by the fix also lets the AI commit to and finish an extra kill within
+// this 1500-frame slice for seeds 13 and 42 instead of stalling mid-approach.
+// Seeds 7/137 unchanged. Verified deterministic across two back-to-back
+// invocations for every rebaselined seed.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  unchanged
+//   seed  13:  5/215.00000381469727/20/2   →  5/225.100004196167/20/2
+//   seed  42:  6/223.44999933242798/5/0    →  7/229.14999961853027/5/0
+//   seed 137:  unchanged
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 223.44999933242798,
+    kills: 7,
+    damageDealt: 229.14999961853027,
     damageTaken: 5,
     finalScore: 0,
   },
@@ -257,7 +275,7 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 5,
-    damageDealt: 215.00000381469727,
+    damageDealt: 225.100004196167,
     damageTaken: 20,
     finalScore: 2,
   },
