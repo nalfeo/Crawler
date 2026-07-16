@@ -22,6 +22,13 @@ declare -A SHARED_LAB_MAP=(
   # The family-relationship drain/decay system is exercised by the
   # family-territory-lab (its delta buttons queue + drain relationship deltas).
   [familyrelationship]="family-territory-lab"
+  # enemyTelegraph.ts is a shared resolver/state module (not a per-frame
+  # System), called from enemyAISystem's real fire path. enemy-ai-lab already
+  # spawns AI_TYPE.RANGED enemy groups, ticks the real enemyAISystem every
+  # frame, and renders through createPhaserBridge — the same production
+  # PhaserBridge telegraph render cue — so the full start/hold/fire lifecycle
+  # is genuinely observable live there.
+  [enemytelegraph]="enemy-ai-lab"
 )
 
 echo "🔬 Lab Gate Check: Verifying every system has a lab..."

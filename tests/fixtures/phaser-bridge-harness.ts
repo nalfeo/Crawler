@@ -171,11 +171,19 @@ export class MockGraphics {
   fillRects: Array<{ x: number; y: number; w: number; h: number }> = [];
   fillEllipses: Array<{ x: number; y: number; w: number; h: number }> = [];
   fillCalls: Array<{ color: number; alpha: number }> = [];
+  moveToCalls: Array<{ x: number; y: number }> = [];
+  lineToCalls: Array<{ x: number; y: number }> = [];
+  fillCircleCalls: Array<{ x: number; y: number; r: number }> = [];
+  lineStyleCalls: Array<{ width: number; color: number; alpha: number }> = [];
 
   clear(): this {
     this.fillRects = [];
     this.fillEllipses = [];
     this.fillCalls = [];
+    this.moveToCalls = [];
+    this.lineToCalls = [];
+    this.fillCircleCalls = [];
+    this.lineStyleCalls = [];
     return this;
   }
 
@@ -194,7 +202,8 @@ export class MockGraphics {
     return this;
   }
 
-  lineStyle(_width: number, _color: number, _alpha = 1): this {
+  lineStyle(width: number, color: number, alpha = 1): this {
+    this.lineStyleCalls.push({ width, color, alpha });
     return this;
   }
 
@@ -206,11 +215,13 @@ export class MockGraphics {
     return this;
   }
 
-  moveTo(_x: number, _y: number): this {
+  moveTo(x: number, y: number): this {
+    this.moveToCalls.push({ x, y });
     return this;
   }
 
-  lineTo(_x: number, _y: number): this {
+  lineTo(x: number, y: number): this {
+    this.lineToCalls.push({ x, y });
     return this;
   }
 
@@ -229,7 +240,8 @@ export class MockGraphics {
     return this;
   }
 
-  fillCircle(_x: number, _y: number, _r: number): this {
+  fillCircle(x: number, y: number, r: number): this {
+    this.fillCircleCalls.push({ x, y, r });
     return this;
   }
 

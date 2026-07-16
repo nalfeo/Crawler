@@ -76,6 +76,12 @@ export function startEnemyProjectileTelegraph(
 ): void {
   const { enemyBehavior, position } = world.stores;
   enemyBehavior.telegraphActive[eid] = 1;
+  // Sticky render-frame flag: stays set until `PhaserBridge.sync()` clears it
+  // at the end of the rendered frame. This ensures a telegraph that starts AND
+  // completes entirely within a multi-step catch-up batch (e.g. AI-runner 16×
+  // playback) is still visible for one rendered frame even though
+  // `telegraphActive` returned to 0 before the next sync call.
+  enemyBehavior.telegraphWasActiveThisFrame[eid] = 1;
   enemyBehavior.telegraphStartMs[eid] = world.elapsedMs;
   enemyBehavior.telegraphDelayMs[eid] = getEffectiveTelegraphMs(world, eid);
   enemyBehavior.telegraphDirX[eid] = dirX;

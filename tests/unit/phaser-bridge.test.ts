@@ -1,4 +1,4 @@
-import { addComponent, addEntity, removeEntity } from 'bitecs';
+import { addComponent, addEntity, removeComponent, removeEntity } from 'bitecs';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -36,6 +36,9 @@ import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
 import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
 import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
+import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
+import { AI_TYPE } from '../../src/game/enemyAISystem.js';
+import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTelegraph.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -1695,6 +1698,231 @@ describe('createPhaserBridge', () => {
         graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
         'wired crimson node should render a sprite, not a circle',
       ).toBe(false);
+    });
+  });
+
+  // Deterministic render-cue coverage for the locked-trajectory enemy
+  // projectile telegraph (core/systems/enemyTelegraph.ts). The bridge reads
+  // ONLY the locked `telegraphOrigin*`/`telegraphDir*` fields — never live
+  // position — so this pins the "what the player sees IS what will fire"
+  // contract at the render layer, satisfying the repo's "observe before
+  // done" rule via a reproducible, CI-enforced check rather than an ad-hoc
+  // manual screenshot.
+  describe('enemy projectile telegraph render cue', () => {
+    it('draws a locked-trajectory line + origin marker while an enemy is telegraphing, pinned to the LOCKED origin even after the shooter drifts', () => {
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+
+      // Lock the telegraph aiming due east; origin is the enemy's current
+      // (10, 10) position at lock time — this is what must render, even if
+      // the enemy later drifts (knockback/jiggle never un-locks it).
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+
+      // Simulate knockback moving the shooter AFTER the origin locked — the
+      // cue must still render at the ORIGINAL (10, 10) ft / (80, 80) px
+      // origin, not the enemy's new live position, and along the originally
+      // locked (1, 0) direction.
+      world.stores.position.x[eid] = 40;
+      world.stores.position.y[eid] = 60;
+
+      bridge.sync(world);
+
+      // The cue's red fillStyle (origin-marker circle) must appear on some
+      // graphics object created this sync, and that object must be visible.
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeDefined();
+      expect(telegraphGfx?.visible).toBe(true);
+
+      // Pin the actual drawn coordinates: moveTo/fillCircle must sit at the
+      // LOCKED origin (10ft → 80px), not the drifted live position
+      // (40ft/60ft → 320px/480px), and lineTo must extend east from there —
+      // proving the cue tracks the locked trajectory, not the live entity.
+      expect(telegraphGfx?.moveToCalls).toContainEqual({ x: 80, y: 80 });
+      expect(telegraphGfx?.fillCircleCalls).toContainEqual({ x: 80, y: 80, r: 4 });
+      const lineTo = telegraphGfx?.lineToCalls[telegraphGfx.lineToCalls.length - 1];
+      expect(lineTo).toBeDefined();
+      expect(lineTo?.y).toBeCloseTo(80, 5);
+      expect(lineTo?.x).toBeGreaterThan(80);
+    });
+
+    it('hides (but does not recreate) the telegraph graphic once telegraphActive clears', () => {
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+
+      bridge.sync(world);
+      const countAfterFirstSync = graphics.length;
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx?.visible).toBe(true);
+
+      // Simulate the telegraph resolving (shot fired) or being cancelled —
+      // either way `telegraphActive` clears without the entity being removed.
+      world.stores.enemyBehavior.telegraphActive[eid] = 0;
+      bridge.sync(world);
+
+      // Same graphics object, now hidden — no new telegraph graphics created.
+      expect(graphics.length).toBe(countAfterFirstSync);
+      expect(telegraphGfx?.visible).toBe(false);
+    });
+
+    it('does not draw the cue for a telegraphing enemy hidden outside current FOV visibility', () => {
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const floorMap = createBridgeTestMap();
+      world.floorMap = floorMap;
+      floorMap.clearVisibility();
+      // Leave every tile dark — the shooter below sits at tile (8,8), which
+      // stays unlit, so it must be treated exactly like the sprite/health-bar
+      // FOV gate: never reveal position or aim line while hidden.
+      const eid = spawnBehaviorEnemy(
+        world,
+        8 * 32 + 16,
+        8 * 32 + 16,
+        10,
+        AI_TYPE.RANGED,
+        0,
+        20,
+        20,
+      );
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+
+      bridge.sync(world);
+
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeUndefined();
+    });
+
+    it('does not draw the cue for a shooter killed this same frame, matching the health-bar dead-enemy gate', () => {
+      // Damage/drop/death processing runs after enemy AI, and this render
+      // pass runs after that — so a shooter killed earlier this frame can
+      // still have `telegraphActive` set until the NEXT enemyAISystem pass
+      // cancels it. Without gating on `!isDeadEnemy` the cue would draw from
+      // a corpse (indefinitely, if simulation ever paused on this frame).
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+      addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 3000 }));
+
+      bridge.sync(world);
+
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeUndefined();
+    });
+
+    it('destroys a stale telegraph graphic if its EID stops resolving as an enemy (recycled mid-simulation)', () => {
+      // Multiple fixed-step simulation ticks can run between renders (e.g.
+      // while catching up / fast-forwarding), so bitecs can recycle a
+      // removed enemy's EID for an unrelated entity before the next
+      // bridge.sync(). `activeEntities.has(eid)` alone can't tell "same
+      // enemy" apart from "different entity now at this recycled EID" — the
+      // cleanup pass must also require the EID to still resolve as 'enemy',
+      // or the old aim line would keep rendering pinned to the wrong entity.
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+
+      bridge.sync(world);
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeDefined();
+      expect(telegraphGfx?.destroyed).toBe(false);
+
+      // Simulate the EID being recycled for a non-enemy entity: strip the
+      // `Enemy` tag while leaving Sprite/Position in place, so the eid
+      // still satisfies the render query (stays in `activeEntities`) but no
+      // longer resolves as an enemy.
+      removeComponent(world.ecs, eid, Enemy);
+
+      bridge.sync(world);
+
+      expect(telegraphGfx?.destroyed).toBe(true);
+    });
+
+    it("phases the urgency pulse on the telegraph's own elapsed time, not the absolute render clock (regression: copilot-pull-request-reviewer finding)", () => {
+      // The pulse's sine phase must depend only on how long THIS telegraph
+      // has been active (elapsedMs = renderElapsedMs - telegraphStartMs), not
+      // on the absolute `renderElapsedMs` the game has been running for.
+      // Because the pulse FREQUENCY also depends on `progress` (time-since-
+      // start / delay), phasing on the absolute clock makes the sine phase
+      // jump by an amount proportional to total run time — after the game
+      // has run a while, tiny per-frame progress changes would produce
+      // effectively random high-frequency flicker instead of a smooth
+      // urgency ramp. Prove this can't happen: two telegraphs at the same
+      // RELATIVE elapsed-since-start-of-telegraph time, but wildly different
+      // ABSOLUTE render clock values, must produce an identical stroke alpha.
+      const relativeElapsedMs = 5000;
+
+      const early = createSceneStub({ withGraphics: true });
+      const earlyBridge = createPhaserBridge(early.scene);
+      const earlyWorld = createTestWorld();
+      earlyWorld.elapsedMs = 0;
+      const earlyEid = spawnBehaviorEnemy(earlyWorld, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(earlyWorld, earlyEid, 1, 0);
+      earlyBridge.sync(earlyWorld, relativeElapsedMs);
+      const earlyGfx = early.graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      const earlyLine = earlyGfx?.lineStyleCalls.find((c) => c.color === 0xff2222);
+
+      const late = createSceneStub({ withGraphics: true });
+      const lateBridge = createPhaserBridge(late.scene);
+      const lateWorld = createTestWorld();
+      lateWorld.elapsedMs = 1_000_000; // long-running game session
+      const lateEid = spawnBehaviorEnemy(lateWorld, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(lateWorld, lateEid, 1, 0);
+      lateBridge.sync(lateWorld, 1_000_000 + relativeElapsedMs);
+      const lateGfx = late.graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      const lateLine = lateGfx?.lineStyleCalls.find((c) => c.color === 0xff2222);
+
+      expect(earlyLine).toBeDefined();
+      expect(lateLine).toBeDefined();
+      expect(lateLine?.alpha).toBeCloseTo(earlyLine!.alpha, 10);
+    });
+
+    it('renders the cue for one frame via the sticky flag when the telegraph completes within a batch (16× AI-runner lab scenario)', () => {
+      // Reproduces the 16× catch-up-loop scenario: multiple sim steps run
+      // between renders, so a short telegraph (e.g. 250ms default) can start
+      // AND fire entirely within one batch — `telegraphActive` is 0 by the
+      // time sync() is called, but `telegraphWasActiveThisFrame` remains 1
+      // so the cue is still visible for exactly one rendered frame.
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+
+      // Step 1 of the simulated batch: telegraph begins.
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+      // telegraphWasActiveThisFrame must be set immediately by startEnemyProjectileTelegraph.
+      expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[eid]).toBe(1);
+
+      // Step N of the same batch: telegraph fires — active clears to 0.
+      // (In the real game cancelEnemyProjectileTelegraph / fire code does this.)
+      world.stores.enemyBehavior.telegraphActive[eid] = 0;
+
+      // At this point `telegraphActive = 0` but `wasActiveThisFrame = 1`.
+      // sync() must render the cue for one frame via the sticky flag.
+      bridge.sync(world);
+
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeDefined();
+      expect(telegraphGfx?.visible).toBe(true);
+
+      // After sync() the sticky flag must be cleared, so the NEXT sync does
+      // NOT render the cue (both flags are 0).
+      expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[eid]).toBe(0);
+
+      const countAfterFirstSync = graphics.length;
+      bridge.sync(world);
+
+      // No new cue graphics created; existing one now hidden.
+      expect(graphics.length).toBe(countAfterFirstSync);
+      expect(telegraphGfx?.visible).toBe(false);
     });
   });
 });

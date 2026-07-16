@@ -216,6 +216,17 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       telegraphOriginX: new Float32Array(maxEntities),
       /** Locked firing origin (y), captured once at telegraph start; the real fire spawns from here, not live position. */
       telegraphOriginY: new Float32Array(maxEntities),
+      /**
+       * Render-frame sticky: set to 1 whenever `telegraphActive` transitions
+       * to 1 within any simulation step in a batch; cleared by
+       * `PhaserBridge.sync()` at the end of each rendered frame. Ensures a
+       * telegraph that starts AND completes entirely within a multi-step
+       * catch-up batch (e.g. AI-runner lab 16× playback) still renders its
+       * cue for at least one frame instead of being silently skipped because
+       * `telegraphActive` returned to 0 before the next sync. Default (0) is
+       * correct — `clearEntityStores()` zeroes this on every `createEntity()`.
+       */
+      telegraphWasActiveThisFrame: new Uint8Array(maxEntities),
     },
     spawner: {
       /** Index into the SPAWNER_ARCHETYPES registry (src/game/spawners). */
