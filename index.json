@@ -1,5 +1,16 @@
 [
   {
+    "commit": "51d5347f77d7fb00c20691f9307bfc93205aa412",
+    "commitDate": "2026-07-16T19:35:57Z",
+    "commitSubject": "fix(enemies): harden enemy telegraph delay validation; document telegraph design (#1196)",
+    "capturedAt": "2026-07-16T20:52:20.189Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29529322893",
+    "winRate": 0.9533333333333334,
+    "totalWins": 572,
+    "totalRuns": 600,
+    "path": "by-sha/51d5347f77d7fb00c20691f9307bfc93205aa412.json"
+  },
+  {
     "commit": "2745ec9d42b4da0f1c1000d765e25d71974b437e",
     "commitDate": "2026-07-16T18:55:15Z",
     "commitSubject": "feat(stats): overhaul primary stats and remove mana (#1203)",
