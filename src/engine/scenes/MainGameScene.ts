@@ -2840,7 +2840,7 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionMessagePending = false;
       this.floorCompletionMessageShown = true;
       this.floorCompletionScreen?.setVisible(true);
-      this.time.delayedCall(1500, this.options.onFloor1Cleared);
+      this.time.delayedCall(1500, () => this.options.onFloor1Cleared?.());
       return;
     } else {
       this.floorCompletionTitleText?.setText('Floor 1 Complete!');

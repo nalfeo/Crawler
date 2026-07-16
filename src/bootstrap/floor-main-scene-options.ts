@@ -73,7 +73,6 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
       ? () => {
           const url = new URL(window.location.href);
           url.searchParams.set('floor', 'floor2');
-          url.searchParams.delete('seed');
           window.location.replace(url.toString());
         }
       : undefined,
