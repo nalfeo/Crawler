@@ -1920,7 +1920,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private buildLeaveSafeRoomBehavior(): BTNode {
     return sequence(
       'LeaveSafeRoom',
-      condition('In Safe Room With Threat', (ctx) => {
+      condition('Safe Room Egress With Threat', (ctx) => {
         const hasCommittedEgress =
           this.safeRoomEgressTargetX !== null && this.safeRoomEgressTargetY !== null;
         // `world.playerInSafeRoom` is a coarse, single-tile-boundary flag: it can

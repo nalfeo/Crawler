@@ -1069,9 +1069,12 @@ describe('BehaviorTreeAI', () => {
 
     const initial = ai.getDecision();
     expect(initial.reason).toContain('Leaving safe room');
-    const targetX = initial.targetX!;
-    const targetY = initial.targetY!;
-    expect(targetX).not.toBeNull();
+    expect(initial.targetX).not.toBeNull();
+    expect(initial.targetY).not.toBeNull();
+    const { targetX, targetY } = initial;
+    if (targetX === null || targetY === null) {
+      throw new Error('LeaveSafeRoom should commit both egress coordinates');
+    }
 
     // Simulate the doorway flicker directly at the sword@14 root cause: the
     // coarse single-tile boundary flag flips false then true again on
