@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7003b302b54d70a37bb21edd66224acd5f9450fc",
+    "commitDate": "2026-07-16T17:15:14Z",
+    "commitSubject": "feat(equipment): author complete weightLb values and encumbrance display system (#1205)",
+    "capturedAt": "2026-07-16T18:32:19.089Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29519918166",
+    "winRate": 0.9833333333333333,
+    "totalWins": 590,
+    "totalRuns": 600,
+    "path": "by-sha/7003b302b54d70a37bb21edd66224acd5f9450fc.json"
+  },
+  {
     "commit": "9af4fdc988d0e37ecdb618c7ab03426903735179",
     "commitDate": "2026-07-16T16:53:10Z",
     "commitSubject": "fix(deploy): post baseline win-rate comment on all batch-merged PRs, not just the last one (#1202)",
