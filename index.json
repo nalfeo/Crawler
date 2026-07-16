@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2cca6f1037771f212add3f8b8669d9de66d8b7f0",
+    "commitDate": "2026-07-16T07:59:28Z",
+    "commitSubject": "fix(automation): harden intake, review, and train cleanup (#1189)",
+    "capturedAt": "2026-07-16T09:12:44.684Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29482413892",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/2cca6f1037771f212add3f8b8669d9de66d8b7f0.json"
+  },
+  {
     "commit": "411559e7208bf8ebd0d15c0ba0603c7ab79b66bb",
     "commitDate": "2026-07-16T07:48:01Z",
     "commitSubject": "feat: suppress quest direction arrows blocked by other active quests (#1188)",
