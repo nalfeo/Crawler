@@ -63,6 +63,11 @@ interface IngestState {
   >;
 }
 
+type LegacyStateComparableRequest = Pick<
+  ParsedAssetRequestIssue,
+  'name' | 'briefSentence' | 'sizeVariant' | 'fingerprint' | 'legacyFingerprint'
+>;
+
 export interface IssueIngesterStatus {
   readonly running: boolean;
   readonly startedAt: string | null;
@@ -255,9 +260,9 @@ export function createIssueIngesterController(
   const claimKey = (issueNumber: number, fingerprint: string): string =>
     `${issueNumber}:${fingerprint}`;
 
-  const sameRequestSemantics = (
+  const sameLegacyStateSemantics = (
     row: IngestState['claims'][string] | IngestState['rejected'][string] | undefined,
-    payload: ParsedAssetRequestIssue,
+    payload: LegacyStateComparableRequest,
   ): boolean =>
     row !== undefined &&
     row.name === payload.name &&
@@ -267,7 +272,7 @@ export function createIssueIngesterController(
   const matchingStateRow = <T extends IngestState['claims'] | IngestState['rejected']>(
     table: T,
     issueNumber: number,
-    payload: ParsedAssetRequestIssue,
+    payload: LegacyStateComparableRequest,
   ): { readonly key: string; readonly row: T[string] | undefined } => {
     const key = claimKey(issueNumber, payload.fingerprint);
     const current = table[key];
@@ -275,7 +280,7 @@ export function createIssueIngesterController(
     if (
       payload.legacyFingerprint &&
       payload.legacyFingerprint !== payload.fingerprint &&
-      sameRequestSemantics(table[claimKey(issueNumber, payload.legacyFingerprint)], payload)
+      sameLegacyStateSemantics(table[claimKey(issueNumber, payload.legacyFingerprint)], payload)
     ) {
       const legacyKey = claimKey(issueNumber, payload.legacyFingerprint);
       return { key: legacyKey, row: table[legacyKey] };
@@ -685,7 +690,7 @@ export function createIssueIngesterController(
         const key = claimKey(issueNumber, fingerprint);
         const payloadForStateMatch =
           name !== '' && briefSentence !== ''
-            ? ({ name, briefSentence, sizeVariant, fingerprint } as ParsedAssetRequestIssue)
+            ? { name, briefSentence, sizeVariant, fingerprint }
             : undefined;
         const existingClaim = payloadForStateMatch
           ? matchingStateRow(ingestState.claims, issueNumber, payloadForStateMatch)

@@ -180,10 +180,10 @@ function fingerprintParsedAssetRequest(input: {
   if (input.explicitSizeVariant !== undefined) return legacyFingerprint;
   const normalizedType = input.type?.trim().toLowerCase();
   if (!normalizedType) return legacyFingerprint;
-  const typeAffectsBossInference =
+  const typeChangesBossInference =
     isBossAssetRequest(input.name, input.briefSentence, normalizedType) !==
     isBossAssetRequest(input.name, input.briefSentence);
-  if (!typeAffectsBossInference) return legacyFingerprint;
+  if (!typeChangesBossInference) return legacyFingerprint;
   return createHash('sha256').update(`${legacyFingerprint}\ntype:${normalizedType}`).digest('hex');
 }
 
