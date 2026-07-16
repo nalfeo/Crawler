@@ -247,20 +247,22 @@ export function isDisabledTrainScheduleRun(jobs) {
  * both hourly `schedule` runs and `push` runs but excluding push runs that
  * merely attest a merge-train fast-path shortcut (`isTrainFastPath: true`;
  * their own green conclusion is not full-CI evidence). Fails closed: no
- * evidence, or evidence that is still pending, is treated as NOT healthy,
- * so the circuit breaker cannot be bypassed by an empty/incomplete run list.
+ * evidence is treated as NOT healthy, so the circuit breaker cannot be
+ * bypassed by an empty/incomplete run list. A pending duplicate cannot hide
+ * completed evidence for the same SHA; the newest completed run remains
+ * authoritative, including a later completed failure.
  */
 export function mainHealthReason({ mainSha, runs }) {
   const authoritative = (runs || [])
     .filter((run) => run.head_sha === mainSha && run.name === 'CI' && !run.isTrainFastPath)
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-  const latest = authoritative[0];
-  if (!latest) return `no full-CI evidence yet for current main ${mainSha}`;
-  if (latest.status !== 'completed') {
-    return `full-CI run for current main ${mainSha} is still ${latest.status}`;
+  if (authoritative.length === 0) return `no full-CI evidence yet for current main ${mainSha}`;
+  const latestCompleted = authoritative.find((run) => run.status === 'completed');
+  if (!latestCompleted) {
+    return `full-CI run for current main ${mainSha} is still ${authoritative[0].status}`;
   }
-  if (latest.conclusion !== 'success') {
-    return `latest full-CI run for current main ${mainSha} concluded ${latest.conclusion}`;
+  if (latestCompleted.conclusion !== 'success') {
+    return `latest completed full-CI run for current main ${mainSha} concluded ${latestCompleted.conclusion}`;
   }
   return null;
 }
@@ -342,7 +344,7 @@ export async function promoteExactBatch({
   updateStatus,
   postLandedComment,
   publishPostconditionCheck,
-  verifyPrefixEvidence = async () => true,
+  verifyCandidateEvidence = async () => true,
   provenanceEntries = entries,
   positions = entries.map((_, index) => index + 1),
   recordMapping = () => {},
@@ -486,14 +488,12 @@ export async function promoteExactBatch({
   };
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
-    // Invariant: never merge a PR onto main until its cumulative prefix T_i has
-    // successful trusted validation evidence bound to that exact prefix's
-    // candidate SHA + fingerprint (ADR 0063). Re-read it live immediately before
-    // merging so a check that was deleted/superseded between the reconcile gate
-    // and this merge fails closed rather than exposing an unvalidated tree.
-    if (!(await verifyPrefixEvidence(index))) {
+    // Re-read the selected batch candidate's immutable validation immediately
+    // before every merge. A deleted/superseded result fails closed even after
+    // earlier PRs in the same FIFO prefix have landed.
+    if (!(await verifyCandidateEvidence())) {
       process.stdout.write(
-        `stale promotion pr=#${entry.number}; prefix ${index + 1} lost its validation evidence; rebuilding next reconcile\n`,
+        `stale promotion pr=#${entry.number}; batch candidate lost its validation evidence; rebuilding next reconcile\n`,
       );
       return false;
     }
@@ -598,7 +598,7 @@ export async function promoteExactBatch({
     // finish it; removing QUEUE early would hide an incomplete landing forever.
     try {
       await setLabel(entry.number, LANDED_LABEL);
-      await postLandedComment(entry.number, landedSha, candidateShas[index]);
+      await postLandedComment(entry.number, landedSha, finalCandidateSha);
       await updateStatus(
         entry.number,
         renderStatus({

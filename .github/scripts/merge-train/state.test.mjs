@@ -353,7 +353,7 @@ test('renderLandedComment records the real landed commit and validated candidate
   const body = renderLandedComment({ landedSha: 'c'.repeat(40), candidateSha: 'd'.repeat(40) });
   assert.ok(hasLeadingMarker(body, LANDED_MARKER));
   assert.match(body, new RegExp(`Landed commit: \`${'c'.repeat(40)}\``));
-  assert.match(body, new RegExp(`Validated candidate: \`${'d'.repeat(40)}\``));
+  assert.match(body, new RegExp(`Validated batch candidate: \`${'d'.repeat(40)}\``));
   assert.match(body, /recorded this PR as \*\*merged\*\*/);
 });
 
@@ -375,53 +375,59 @@ test('renderLandedComment recovered variant omits the candidate/tree-proof claim
   assert.match(body, /does not \(and cannot\) re-run/i);
 });
 
-test('planPrefixPromotion dispatches every missing prefix in the target range in parallel', () => {
+test('planPrefixPromotion validates only the maximal prefix first', () => {
   assert.deepEqual(planPrefixPromotion(['missing', 'missing', 'missing']), {
     action: 'validate',
-    prefixes: [0, 1, 2],
+    prefixes: [2],
     firstFailure: -1,
   });
 });
 
-test('planPrefixPromotion waits when a target-range prefix is still pending', () => {
-  assert.deepEqual(planPrefixPromotion(['success', 'pending', 'success']), {
+test('planPrefixPromotion waits while maximal validation is pending', () => {
+  assert.deepEqual(planPrefixPromotion(['missing', 'missing', 'pending']), {
     action: 'wait',
     firstFailure: -1,
   });
 });
 
-test('planPrefixPromotion promotes the whole batch when every prefix is green', () => {
-  assert.deepEqual(planPrefixPromotion(['success', 'success', 'success']), {
+test('planPrefixPromotion promotes the whole batch from maximal success alone', () => {
+  assert.deepEqual(planPrefixPromotion(['missing', 'missing', 'success']), {
     action: 'promote',
     greenPrefixLength: 3,
     firstFailure: -1,
+    validationIndex: 2,
   });
 });
 
-test('planPrefixPromotion promotes the green prefix and localizes the earliest failure', () => {
-  assert.deepEqual(planPrefixPromotion(['success', 'success', 'failure']), {
-    action: 'promote',
-    greenPrefixLength: 2,
+test('planPrefixPromotion bisects only after a genuine maximal failure', () => {
+  assert.deepEqual(planPrefixPromotion(['missing', 'missing', 'failure']), {
+    action: 'validate',
+    prefixes: [0],
     firstFailure: 2,
   });
 });
 
-test('planPrefixPromotion ignores prefixes at/after the earliest failure (does not validate them)', () => {
-  // Prefix 3 is missing but irrelevant because prefix 2 already failed; only the
-  // green [0,1) range matters, and it is fully validated -> promote 1, block PR2.
-  assert.deepEqual(planPrefixPromotion(['success', 'failure', 'missing']), {
+test('planPrefixPromotion promotes the oldest green prefix after bisection isolates a failure', () => {
+  assert.deepEqual(planPrefixPromotion(['success', 'failure', 'failure']), {
     action: 'promote',
     greenPrefixLength: 1,
     firstFailure: 1,
+    validationIndex: 0,
   });
 });
 
-test('planPrefixPromotion validates only the target-range missing prefix before a later failure', () => {
-  // firstFailure=2, target=[0,2); prefix index 1 still missing -> validate just it.
-  assert.deepEqual(planPrefixPromotion(['success', 'missing', 'failure']), {
-    action: 'validate',
-    prefixes: [1],
+test('planPrefixPromotion waits on the selected bisection prefix', () => {
+  assert.deepEqual(planPrefixPromotion(['pending', 'missing', 'failure']), {
+    action: 'wait',
     firstFailure: 2,
+  });
+});
+
+test('planPrefixPromotion retries cancelled or infrastructure maximal validation', () => {
+  assert.deepEqual(planPrefixPromotion(['success', 'failure', 'missing']), {
+    action: 'validate',
+    prefixes: [2],
+    firstFailure: -1,
   });
 });
 

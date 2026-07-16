@@ -17,7 +17,7 @@ on:
 
 concurrency:
   group: crawler-merge-train
-  queue: max
+  queue: single
 
 permissions:
   actions: write
@@ -29,7 +29,8 @@ permissions:
 jobs:
   reconcile:
     # Fail-closed job gate:
-    #   - pull_request_target: only for PRs from this repo (not forks), as before.
+    #   - pull_request_target: only for PRs from this repo (not forks) that
+    #     currently carry or are transitioning the merge-train queue label.
     #   - workflow_run named 'CI': allowed only for (a) a push-triggered CI
     #     completion on the default branch, or (b) a schedule-triggered CI
     #     completion while the train is enabled. (b) closes a gap:
@@ -49,7 +50,9 @@ jobs:
     if: >-
       ${{
         (github.event_name != 'pull_request_target' ||
-        github.event.pull_request.head.repo.full_name == github.repository) &&
+        (github.event.pull_request.head.repo.full_name == github.repository &&
+        (contains(github.event.pull_request.labels.*.name, 'merge-train') ||
+        github.event.label.name == 'merge-train'))) &&
         (github.event_name != 'workflow_run' ||
         github.event.workflow_run.name != 'CI' ||
         (github.event.workflow_run.event == 'push' &&

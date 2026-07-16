@@ -8,6 +8,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 interface WorkflowDoc {
   on: { workflow_run?: { workflows?: string[]; types?: string[]; branches?: string[] } };
+  concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
   jobs: { reconcile?: { if?: string } };
 }
 
@@ -24,6 +25,10 @@ function evaluatesReconcileCondition(
 ): boolean {
   const expression = condition
     .replace(/^\s*\${{\s*|\s*}}\s*$/g, '')
+    .replace("contains(github.event.pull_request.labels.*.name, 'merge-train')", 'false')
+    .replaceAll('github.event.pull_request.head.repo.full_name', JSON.stringify(''))
+    .replaceAll('github.event.label.name', JSON.stringify(null))
+    .replaceAll('github.repository', JSON.stringify('nalfeo/Crawler'))
     .replaceAll('github.event.repository.default_branch', JSON.stringify('main'))
     .replaceAll('github.event.workflow_run.head_branch', JSON.stringify(workflowRun.headBranch))
     .replaceAll('github.event.workflow_run.event', JSON.stringify(workflowRun.event))
@@ -34,7 +39,88 @@ function evaluatesReconcileCondition(
   return new Function(`return (${expression});`)() as boolean;
 }
 
+function evaluatesPullRequestCondition(
+  condition: string,
+  event: {
+    repository: string;
+    headRepository: string;
+    labels: string[];
+    transitionedLabel?: string;
+  },
+): boolean {
+  const expression = condition
+    .replace(/^\s*\${{\s*|\s*}}\s*$/g, '')
+    .replace(
+      "contains(github.event.pull_request.labels.*.name, 'merge-train')",
+      JSON.stringify(event.labels.includes('merge-train')),
+    )
+    .replaceAll(
+      'github.event.pull_request.head.repo.full_name',
+      JSON.stringify(event.headRepository),
+    )
+    .replaceAll('github.event.label.name', JSON.stringify(event.transitionedLabel ?? null))
+    .replaceAll('github.repository', JSON.stringify(event.repository))
+    .replaceAll('github.event_name', JSON.stringify('pull_request_target'));
+
+  return new Function(`return (${expression});`)() as boolean;
+}
+
 describe('merge-train workflow wake-ups', () => {
+  it('keeps one active reconcile and only the latest pending wake', () => {
+    const concurrency = loadWorkflow().concurrency;
+    expect(concurrency?.group).toBe('crawler-merge-train');
+    expect(concurrency?.queue).toBe('single');
+    expect(concurrency?.['cancel-in-progress']).not.toBe(true);
+  });
+
+  it.each(['synchronize', 'edited', 'closed', 'ready_for_review'])(
+    'admits queued same-repo PR work for %s events',
+    () => {
+      const condition = loadWorkflow().jobs.reconcile?.if;
+      if (!condition) throw new Error('reconcile job condition not found');
+      expect(
+        evaluatesPullRequestCondition(condition, {
+          repository: 'nalfeo/Crawler',
+          headRepository: 'nalfeo/Crawler',
+          labels: ['merge-train'],
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it('admits merge-train label transitions, including removal', () => {
+    const condition = loadWorkflow().jobs.reconcile?.if;
+    if (!condition) throw new Error('reconcile job condition not found');
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'nalfeo/Crawler',
+        labels: [],
+        transitionedLabel: 'merge-train',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects unrelated PR wakes and fork PRs', () => {
+    const condition = loadWorkflow().jobs.reconcile?.if;
+    if (!condition) throw new Error('reconcile job condition not found');
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'nalfeo/Crawler',
+        labels: [],
+        transitionedLabel: 'unrelated',
+      }),
+    ).toBe(false);
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'fork/Crawler',
+        labels: ['merge-train'],
+      }),
+    ).toBe(false);
+  });
+
   it('subscribes to only default-branch candidate validation and CI completions', () => {
     const workflowRun = loadWorkflow().on.workflow_run;
     expect(workflowRun?.workflows).toEqual(
