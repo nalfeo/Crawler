@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e9e26ffe83e8b729a8b6f68313b0b816d4d53824",
+    "commitDate": "2026-07-16T06:53:21Z",
+    "commitSubject": "fix: resolve nightly docs-check blocking errors (ADR stale paths, missing Status headings, handoff retrospective subsections) (#1171)",
+    "capturedAt": "2026-07-16T07:56:34.454Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29478110225",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/e9e26ffe83e8b729a8b6f68313b0b816d4d53824.json"
+  },
+  {
     "commit": "7974d2ec998db69213ffee1b0ff18ae16bbd2922",
     "commitDate": "2026-07-16T04:23:20Z",
     "commitSubject": "fix(merge-train): fail-closed dispatch + scheduled-CI reconcile wake-up (#1168)",
