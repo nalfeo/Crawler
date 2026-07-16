@@ -211,7 +211,7 @@ const DEFAULT_BASE_STATS: Record<StatId, number> = {
   hpRegen: 0,
   xpBonus: 0,
   cooldownReduction: 0,
-  maxHp: 90, // + 10 per effective Constitution point (base CON=1 -> 100 HP)
+  maxHp: 140, // + 10 per effective Constitution point (base CON=1 -> 150 HP)
   accuracy: 0,
   // Inert snapshot fields (no current derivation/consumer)
   pickupRange: 0,

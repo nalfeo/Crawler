@@ -139,10 +139,11 @@ export const STAT_CLAMPS: Readonly<Record<StatId, StatClamp>> = {
 /**
  * Base-floor Max HP before Constitution's per-point contribution. Combined
  * with `CORE_STAT_TO_SECONDARY.constitution.maxHp` (10/point) so a fresh
- * character (effective CON = 1, no allocation/gear) lands on the historical
- * 100 HP baseline: `90 + 10 * 1 === 100`.
+ * character (effective CON = 1, no allocation/gear) starts at 150 HP:
+ * `140 + 10 * 1 === 150`. The extra floor replaces survivability removed when
+ * Strength stopped granting armor.
  */
-const BASE_MAX_HP_FLOOR = 90;
+const BASE_MAX_HP_FLOOR = 140;
 
 export const DEFAULT_BASE_STATS: Readonly<Record<StatId, number>> = {
   strength: 1,
