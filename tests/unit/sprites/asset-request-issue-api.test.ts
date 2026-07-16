@@ -13,6 +13,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 import { createGhAssetRequestIssueApi } from '../../../scripts/sprites/sidecar/asset-request-issue-api.js';
+import { ASSET_REQUEST_MARKER } from '../../../scripts/sprites/asset-request.js';
 
 /** Minimal valid issue-form body. */
 function validBody(name: string, brief: string): string {
@@ -112,6 +113,25 @@ describe('createGhAssetRequestIssueApi', () => {
     // Diagnostic written to stderr with the issue number.
     expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('#100'));
     stderrWrite.mockRestore();
+  });
+
+  it('skips a marker-only issue whose type field is a non-string, leaving other issues processable', async () => {
+    const malformedTypeBody = [
+      `<!-- ${ASSET_REQUEST_MARKER}`,
+      '{"version":1,"name":"carved-idol","briefSentence":"A small carved stone idol with hollow eyes.","type":false}',
+      '-->',
+    ].join('\n');
+    execFileAsyncMock.mockResolvedValueOnce({
+      stdout: JSON.stringify([
+        { number: 110, body: malformedTypeBody },
+        { number: 111, body: validBody('iron-sword', 'A short iron sword blade.') },
+      ]),
+      stderr: '',
+    });
+    const issues = await createGhAssetRequestIssueApi('/repo').listOpenAssetRequestIssues();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.number).toBe(111);
   });
 
   it('does not suppress non-AssetRequestValidationError exceptions from parseAssetRequestIssueBody', async () => {

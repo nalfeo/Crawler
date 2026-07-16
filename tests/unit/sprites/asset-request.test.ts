@@ -134,6 +134,22 @@ describe('parseAssetRequestIssueBody', () => {
     expect(parsed?.type).toBeUndefined();
   });
 
+  it('rejects marker payloads with non-string types without throwing', () => {
+    for (const type of [false, 42, []]) {
+      const body = [
+        `<!-- ${ASSET_REQUEST_MARKER}`,
+        JSON.stringify({
+          version: 1,
+          name: 'carved-idol',
+          briefSentence: 'A small carved stone idol with hollow eyes.',
+          type,
+        }),
+        '-->',
+      ].join('\n');
+      expect(parseAssetRequestIssueBody(body)).toBeNull();
+    }
+  });
+
   it('rejects invalid marker floors even when type is omitted', () => {
     for (const floor of ['21', '"12"']) {
       const body = [

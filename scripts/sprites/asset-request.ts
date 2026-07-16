@@ -192,7 +192,8 @@ function isAssetRequestPayload(value: unknown): value is AssetRequestPayload {
   if (containsUnrenderedTemplate(v.name) || containsUnrenderedTemplate(v.briefSentence)) {
     return false;
   }
-  // Validate type if present: must be empty string, or a valid SPRITE_TYPES value
+  // Validate type if present: must be empty or a valid SPRITE_TYPES string.
+  if (v.type !== undefined && typeof v.type !== 'string') return false;
   if (typeof v.type === 'string' && v.type.trim() !== '') {
     if (!(SPRITE_TYPES as readonly string[]).includes(v.type.trim().toLowerCase())) {
       return false;
