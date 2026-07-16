@@ -252,10 +252,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       return step;
     }
 
-    it("exists, is gated on failure() AND the app-token/publish steps' own outcomes, and uses a separately-minted recovery App token", () => {
+    it("exists, is gated on (failure() || cancelled()) AND the app-token/publish steps' own outcomes, and uses a separately-minted recovery App token", () => {
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
-      // Regression coverage for two real review/verification findings:
+      // Regression coverage for three real review/verification findings:
       //
       // 1. A bare `steps.app-token.outcome == 'failure' ||
       //    steps.publish.outcome == 'failure'` condition (no status-check
@@ -266,7 +266,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       //    this shape of bare condition was SKIPPED even though the step it
       //    referenced genuinely failed. The `failure() &&` prefix is
       //    required to actually run the step.
-      // 2. Scoping to the two step-local `outcome`s (rather than bare
+      // 2. Scoping to the step-local `outcome`s (rather than bare
       //    `failure()` alone) is defense-in-depth against `failure()`
       //    reflecting an ancestor `needs:` job's result: a genuine candidate
       //    defect fails `verify`, but "Publish immutable candidate result"
@@ -274,8 +274,15 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       //    case -- this fallback must not overwrite that correct `failure`
       //    with `cancelled`, which would make reconcile retry the same
       //    broken candidate forever instead of bisecting it.
+      // 3. `cancelled()` (and the `outcome == 'cancelled'` checks) are needed
+      //    alongside `failure()`: if "Publish immutable candidate result" is
+      //    itself cancelled mid-flight (e.g. a manually-cancelled run) before
+      //    its checks.create call completes, its outcome is 'cancelled', not
+      //    'failure', and bare failure() is false -- without cancelled()
+      //    this fallback would never fire for that case, leaving the
+      //    original check in_progress indefinitely.
       expect(step.if).toBe(
-        "failure() && steps.recovery-app-token.outcome == 'success' && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')",
+        "(failure() || cancelled()) && steps.recovery-app-token.outcome == 'success' && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')",
       );
       expect(step.uses).toMatch(/^actions\/github-script/);
       // Must NOT reuse steps.app-token.outputs.token: if the ORIGINAL
@@ -294,14 +301,16 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(step?.id).toBe('publish');
     });
 
-    it("does NOT fire when only an ancestor job (verify) failed and this job's own steps succeeded, but DOES fire on a genuine app-token/publish failure", () => {
+    it("does NOT fire when only an ancestor job (verify) failed and this job's own steps succeeded, but DOES fire on a genuine app-token/publish failure or cancellation", () => {
       // Simulates the exact bug the review finding described, plus the
-      // dead-code regression the bare-outcome condition introduced.
+      // dead-code regression the bare-outcome condition introduced, plus the
+      // cancelled-publish gap.
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
       const condition = step.if ?? '';
       const evaluate = (
         failureValue: boolean,
+        cancelledValue: boolean,
         appTokenOutcome: string,
         publishOutcome: string,
         recoveryTokenOutcome = 'success',
@@ -309,6 +318,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         new Function(
           'steps',
           'failure',
+          'cancelled',
           `return (${condition
             .replaceAll('steps.app-token', "steps['app-token']")
             .replaceAll('steps.recovery-app-token', "steps['recovery-app-token']")});`,
@@ -319,32 +329,38 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
             publish: { outcome: publishOutcome },
           },
           () => failureValue,
+          () => cancelledValue,
         ) as boolean;
 
       // Ancestor-only failure (verify failed, but publish's own steps
       // succeeded and already posted the correct `failure` conclusion):
-      // failure() is false in the real job (verified empirically, run
-      // 29467076748), so this must not fire.
-      expect(evaluate(false, 'success', 'success')).toBe(false);
-      // Defense-in-depth: even if failure() were (hypothetically) true here,
-      // the step-local outcome checks alone must still gate it off unless
-      // app-token or publish itself is what failed.
-      expect(evaluate(true, 'success', 'success')).toBe(false);
+      // failure() and cancelled() are both false in the real job (verified
+      // empirically, run 29467076748), so this must not fire.
+      expect(evaluate(false, false, 'success', 'success')).toBe(false);
+      // Defense-in-depth: even if failure()/cancelled() were (hypothetically)
+      // true here, the step-local outcome checks alone must still gate it
+      // off unless app-token or publish itself is what failed/cancelled.
+      expect(evaluate(true, false, 'success', 'success')).toBe(false);
+      expect(evaluate(false, true, 'success', 'success')).toBe(false);
       // Genuine same-job failures: both failure() and the relevant outcome
       // check are true, so the fallback must fire.
-      expect(evaluate(true, 'failure', 'skipped')).toBe(true);
-      expect(evaluate(true, 'success', 'failure')).toBe(true);
+      expect(evaluate(true, false, 'failure', 'skipped')).toBe(true);
+      expect(evaluate(true, false, 'success', 'failure')).toBe(true);
+      // Genuine same-job cancellation (e.g. a manually-cancelled run):
+      // cancelled() true, and the outcome check reflects the cancelled step.
+      expect(evaluate(false, true, 'cancelled', 'skipped')).toBe(true);
+      expect(evaluate(false, true, 'success', 'cancelled')).toBe(true);
       // A failed recovery mint leaves no valid App token for checks.create.
-      expect(evaluate(true, 'failure', 'skipped', 'failure')).toBe(false);
+      expect(evaluate(true, false, 'failure', 'skipped', 'failure')).toBe(false);
     });
 
-    it('mints the recovery app token from a dedicated step gated the same way (failure() plus outcomes)', () => {
+    it('mints the recovery app token from a dedicated step gated the same way (failure()/cancelled() plus outcomes)', () => {
       const doc = loadWorkflow();
       const steps = doc.jobs.publish?.steps ?? [];
       const recoveryTokenStep = steps.find((s) => s.name === 'Generate recovery app token');
       expect(recoveryTokenStep).toBeDefined();
       expect(recoveryTokenStep?.if).toBe(
-        "failure() && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')",
+        "(failure() || cancelled()) && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')",
       );
       expect(recoveryTokenStep?.uses).toMatch(/^actions\/create-github-app-token/);
       const publishIndex = steps.findIndex((s) => s.name === 'Publish immutable candidate result');

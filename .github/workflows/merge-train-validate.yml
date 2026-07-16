@@ -123,49 +123,80 @@ jobs:
       # failures): a fresh mint attempt gets a real chance to succeed.
       #
       # Both this step and the retryable-check step below are gated on
-      # `failure() && (steps.app-token.outcome == 'failure' ||
-      # steps.publish.outcome == 'failure')`.
+      # `(failure() || cancelled()) && (steps.app-token.outcome == 'failure' ||
+      # steps.app-token.outcome == 'cancelled' || steps.publish.outcome ==
+      # 'failure' || steps.publish.outcome == 'cancelled')`.
       #
-      # The `failure() &&` prefix is REQUIRED, not decorative: a step `if:`
-      # that contains no status-check function (`success()`/`failure()`/
-      # `cancelled()`/`always()`) gets an implicit `success()` ANDed in by
-      # GitHub Actions. A bare `steps.app-token.outcome == 'failure' ||
-      # steps.publish.outcome == 'failure'` condition is therefore silently
-      # rewritten to `success() && (...)` -- which can NEVER be true, because
-      # `success()` requires every previous step in this job to have
-      # succeeded, while the outcome checks require one of those same two
-      # steps to have failed. Verified empirically in this repo
-      # (nalfeo/Crawler run 29467286711): a step with a bare
+      # `cancelled()` is included alongside `failure()`, not just for symmetry:
+      # this workflow has no `concurrency:` block, so the only realistic path
+      # to a mid-flight cancellation of this specific step is a human
+      # manually cancelling a stuck run via the UI/API -- rare, but real. If
+      # "Publish immutable candidate result" is cancelled before its
+      # `checks.create` call completes, its `outcome` is `cancelled` (not
+      # `failure`), and bare `failure()` is false for a cancelled run --
+      # without `cancelled()` this fallback would never fire, leaving the
+      # original check `in_progress` and reconcile waiting out the 40-minute
+      # staleness bound purely because of how this fallback recovers, not
+      # because of any candidate defect. `always()`/`cancelled()` steps are
+      # documented by GitHub Actions to still execute after a run
+      # cancellation (that is their entire purpose), so this fallback firing
+      # on `cancelled()` is expected to work the same way the `always()`-gated
+      # wake-dispatch step below already does.
+      #
+      # The `failure() || cancelled()` prefix is REQUIRED, not decorative: a
+      # step `if:` that contains no status-check function (`success()`/
+      # `failure()`/`cancelled()`/`always()`) gets an implicit `success()`
+      # ANDed in by GitHub Actions. A bare `steps.app-token.outcome ==
+      # 'failure' || steps.publish.outcome == 'failure'` condition is
+      # therefore silently rewritten to `success() && (...)` -- which can
+      # NEVER be true, because `success()` requires every previous step in
+      # this job to have succeeded, while the outcome checks require one of
+      # those same two steps to have failed. Verified empirically in this
+      # repo (nalfeo/Crawler run 29467286711): a step with a bare
       # `steps.X.outcome == 'failure'` condition was SKIPPED even though step
       # X genuinely failed, while the same condition prefixed with
       # `failure() &&` ran as expected. Without the prefix this whole
       # fallback mechanism would be permanently dead code.
       #
       # The step-local outcome checks are still worth keeping alongside
-      # `failure()` (not just bare `failure()`) as defense-in-depth: verified
-      # empirically (run 29467076748) that `failure()` at step level, once a
-      # job is already running via `if: always()`, only reflects STEPS in
-      # THIS job -- not an ancestor `needs:` job's result. So today, plain
-      # `failure()` already would NOT misfire when `verify` fails but
-      # "Publish immutable candidate result" itself succeeds (that step
-      # would still run normally, post the correct `failure` conclusion, and
-      # `failure()` afterward would be false). But GitHub's own docs describe
-      # `failure()` as considering "any ancestor job" in some job-dependency
-      # chains, so scoping explicitly to the two step-local outcomes removes
-      # any reliance on that ambiguity and keeps the intent self-documenting
-      # for future maintainers: this fallback exists ONLY to recover from a
-      # genuine app-token-mint or publish-step failure, never to react to an
-      # upstream `verify` failure that publish already handled correctly.
+      # `failure() || cancelled()` (not just those bare status functions) as
+      # defense-in-depth: verified empirically (run 29467076748) that
+      # `failure()` at step level, once a job is already running via
+      # `if: always()`, only reflects STEPS in THIS job -- not an ancestor
+      # `needs:` job's result. So today, plain `failure()` already would NOT
+      # misfire when `verify` fails but "Publish immutable candidate result"
+      # itself succeeds (that step would still run normally, post the
+      # correct `failure` conclusion, and `failure()` afterward would be
+      # false). But GitHub's own docs describe `failure()` as considering
+      # "any ancestor job" in some job-dependency chains, so scoping
+      # explicitly to the two step-local outcomes removes any reliance on
+      # that ambiguity and keeps the intent self-documenting for future
+      # maintainers: this fallback exists ONLY to recover from a genuine
+      # app-token-mint or publish-step failure/cancellation, never to react
+      # to an upstream `verify` failure that publish already handled
+      # correctly. (The `cancelled()` extension above has not been
+      # independently re-verified with a live probe the way `failure()`/
+      # `success()` were -- it follows by documented design and by analogy
+      # with the same job-status-function category, but should be reverified
+      # empirically if this fallback's behavior is ever in question.)
+      #
+      # The retryable-check step additionally requires
+      # `steps.recovery-app-token.outcome == 'success'`: if the recovery mint
+      # itself failed (e.g. the same transient GitHub Apps auth error that hit
+      # the original app-token step also hits the recovery attempt), there is
+      # no valid App-authored token to call `checks.create` with, so attempting
+      # the retryable-check step would just waste an attempt and produce a
+      # confusing secondary failure instead of a clean, diagnosable no-op.
       - name: Generate recovery app token
         id: recovery-app-token
-        if: failure() && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')
+        if: (failure() || cancelled()) && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Mark candidate check retryable if publishing failed
-        if: failure() && steps.recovery-app-token.outcome == 'success' && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')
+        if: (failure() || cancelled()) && steps.recovery-app-token.outcome == 'success' && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
         uses: actions/github-script@v7
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}

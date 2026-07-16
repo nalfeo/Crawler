@@ -60,11 +60,19 @@
         },
         {
           "round": 6,
-          "models": ["gemini-3.1-pro-preview"],
-          "concerns_count": 0,
-          "resolved_count": 0,
+          "models": ["copilot-pull-request-reviewer", "claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
           "clean": true,
-          "summary": "Round 6: reviewed the final recovery-token-success guard layered onto the empirically proven failure() plus step-outcome condition. Verified it remains reachable after original token/publish failure, skips the Checks API call after recovery-mint failure, and preserves genuine candidate failure/bisection behavior. No significant issues found."
+          "summary": "Round 6: copilot-pull-request-reviewer flagged that the round-5 fallback conditions still skip the cancelled-publication case: failure() is false when a step is cancelled (not failed), so if 'Publish immutable candidate result' is itself cancelled mid-flight (e.g. a manual UI/API run cancellation) before its checks.create call completes, neither fallback step fires, leaving the original check in_progress and reconcile waiting out the 40-minute staleness bound. Confirmed this workflow has no concurrency: block, so the only realistic trigger is a manual cancellation -- rare but real. Fixed by extending both conditions to `(failure() || cancelled()) && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')`. Documented explicitly (in both the workflow comment and the handoff) that this cancelled() extension was NOT independently re-verified with a live probe the way failure()/success() were in round 5 -- it follows by GitHub's documented always()/cancelled() design and by analogy with the already-verified same-job-only scoping of failure()/success(), and should be re-verified with a real probe if this specific behavior is ever in question. Updated the workflow comment block and 2 test assertions (string checks + the semantic eval test, now injecting a mock cancelled() alongside failure() and covering the same-job-cancellation and defensive cancelled()-true/both-success cases). Also updated the PR description and handoff Files-touched/Summary sections to reflect the final end-state and resolved several stale-description review threads flagging the same drift. No remaining concerns."
+        },
+        {
+          "round": 7,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round 7: an independently-landed autonomous agent-merge commit (fad5097f) added a `steps.recovery-app-token.outcome == 'success'` clause to the retryable-check fallback step's condition, requiring the recovery-mint step to have actually succeeded before attempting checks.create with its token -- otherwise a failed recovery mint would waste an attempt calling the Checks API with no valid App token, producing a confusing secondary failure instead of a clean no-op. Reconciled this guard together with round 6's cancelled()-extension work (the two changes landed on divergent commits and needed merging): the final condition is `(failure() || cancelled()) && steps.recovery-app-token.outcome == 'success' && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')`. Verified the guard remains reachable after a genuine app-token/publish failure or cancellation (recovery mint independently succeeds in the common case), correctly suppresses the fallback when the recovery mint itself fails or is cancelled, and does not reintroduce the round-5 implicit-success() dead-code trap (the guard is ANDed alongside the already-verified failure()||cancelled() prefix, not in place of it). Updated the workflow comment block, the semantic eval test (new case: recovery mint failure with genuine app-token failure -> fallback must not fire), and the handoff Files-touched section to document the combined condition. No remaining concerns."
         }
       ]
     }

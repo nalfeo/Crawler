@@ -95,14 +95,19 @@ main.
 - `.github/workflows/merge-train-validate.yml` — added `if: always()` to the
   "Wake merge-train reconciliation" step, plus a new "Generate recovery app
   token" step and "Mark candidate check retryable if publishing failed" step
-  (both gated on `failure() && (steps.app-token.outcome == 'failure' ||
-steps.publish.outcome == 'failure')` — the `failure() &&` prefix is required
-  to avoid an implicit-`success()` dead-code trap, verified empirically; see
-  the fourth-round follow-up below — the latter also requires the independently
-  minted recovery token step to succeed) that posts a `cancelled` conclusion for the fingerprinted
-  check before the wake dispatches, with bounded retry for transient Checks
-  API failures. "Publish immutable candidate result" has an explicit `id:
-publish` so the fallback conditions can check its own outcome.
+  (both gated on `(failure() || cancelled()) && steps.recovery-app-token.outcome
+== 'success' && (steps.app-token.outcome == 'failure' || steps.app-token.outcome
+== 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome
+== 'cancelled')` — the `failure() || cancelled()` prefix is required to avoid
+  an implicit-`success()` dead-code trap, verified empirically for
+  `failure()`/`success()`; see the fourth- and fifth-round follow-ups below — the
+  `steps.recovery-app-token.outcome == 'success'` clause additionally requires the
+  independently-minted recovery token to have actually succeeded, so a failed
+  recovery mint doesn't waste an attempt calling `checks.create` with no valid
+  App token) that posts a `cancelled` conclusion for the fingerprinted check
+  before the wake dispatches, with bounded retry for transient Checks API
+  failures. "Publish immutable candidate result" has an explicit `id: publish`
+  so the fallback conditions can check its own outcome.
 - `.github/workflows/merge-train.yml` — added the schedule/`MERGE_TRAIN_ENABLED`
   carve-out to the `reconcile` job's `if:` guard, with an explanatory comment
   describing the `mainHealthReason()` race scenario it closes.
@@ -364,3 +369,52 @@ literal code snippets (and any autonomous auto-fix that adopts them
 verbatim) as requiring the same runtime verification as hand-written fixes,
 especially for GitHub Actions expression semantics, which are easy to get
 subtly wrong from documentation alone.
+
+## Fifth round follow-up (cancelled-publication gap)
+
+A further `copilot-pull-request-reviewer` finding on the fallback conditions:
+bare `failure()` is false when a step is cancelled rather than failed, so if
+"Publish immutable candidate result" is itself cancelled mid-flight (e.g. a
+human manually cancels a stuck validation run via the UI/API) before its
+`checks.create` call completes, neither fallback step fires — leaving the
+original fingerprinted check `in_progress` and reconcile waiting out the full
+40-minute staleness bound purely because of how this fallback recovers, not
+because of any candidate defect.
+
+This workflow has no `concurrency:` block, so the only realistic trigger for
+a mid-flight cancellation is a manual UI/API cancellation — rare, but real,
+and directly analogous to the failure() gap already fixed. Extended both
+fallback steps' conditions from `failure() && (...)` to
+`(failure() || cancelled()) && (steps.app-token.outcome == 'failure' ||
+steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure'
+|| steps.publish.outcome == 'cancelled')`. `always()`/`cancelled()`-gated
+steps are documented by GitHub Actions to still execute after a run
+cancellation (that is the entire purpose of those functions), so this
+follows the same design as the already-shipped `if: always()` wake-dispatch
+step.
+
+**Verification caveat, stated explicitly rather than glossed over**: the
+`cancelled()` extension was **not** independently re-verified with a live
+throwaway-workflow probe the way `failure()`/`success()` were in the fourth
+round. It follows by GitHub's documented design (the stated purpose of
+`always()`/`cancelled()` is to run following steps despite cancellation) and
+by analogy with `failure()`/`success()`'s already-verified same-job-only
+scoping (all three are the same category of job/step-status function). This
+is noted in the workflow comment and should be re-verified with a real probe
+run if this fallback's cancellation-handling behavior is ever specifically
+in question — the two `failure()`/`success()` empirical probes (run IDs
+29467076748, 29467286711) already demonstrate that "GitHub's docs" alone are
+an insufficient basis for these expressions' exact semantics.
+
+Updated `tests/unit/merge-train-validate-publish.test.ts`:
+
+- Both `if:` string assertions (recovery-app-token step, retryable-check
+  step) updated to the new `(failure() || cancelled()) && (...)` string.
+- The semantic eval test now injects a mock `cancelled()` function alongside
+  `failure()` and covers two additional cases: same-job cancellation of
+  app-token or publish → must fire; hypothetical `cancelled()` true with
+  both outcomes still `success` → must still not fire (same
+  defense-in-depth principle as the `failure()`-true/both-`success` case).
+
+Test counts unchanged (24 = 19 + 5) — extended existing test bodies, no new
+test cases added.
