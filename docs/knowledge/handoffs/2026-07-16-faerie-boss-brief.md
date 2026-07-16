@@ -95,12 +95,19 @@ will be superseded and the enemy will render at the correct tall aspect ratio.
 **To complete the pipeline (requires local dev or a new workflow trigger):**
 
 ```bash
-# Warmup brief first (dodge cold-call flake), then run the real brief:
-npm run sprites:run -- --brief briefs/weapons/iron-sword.yaml  # warmup
-npm run sprites:run -- --brief briefs/enemies/faerie-boss.yaml
+# Run warmup + real brief in one invocation so the first brief warms the provider
+# and the second call does not hit a cold-start failure:
+npm run sprites:run -- --brief briefs/weapons/iron-sword.yaml --brief briefs/enemies/faerie-boss.yaml
 
 # Judge variants in the gallery:
 npm run sprites:gallery
+
+# BEFORE approving, remove the rejected 64×64 faerie-boss-var-1 so it cannot remain
+# in the runtime registry alongside the new tall sprite.  Three files to purge manually:
+#   1. public/assets/generated/faerie-boss-var-1.png  (delete the file)
+#   2. Remove "faerie-boss-var-1" key from public/assets/generated/manifest.json
+#   3. Remove the { "id": "generated:faerie-boss-var-1", ... } object from
+#      src/shared/data/sprite-catalog.json
 
 # Approve the best tall variant (N = 0-based index):
 npm run sprites:approve -- generated/runs/faerie-boss/<runId> --variant N

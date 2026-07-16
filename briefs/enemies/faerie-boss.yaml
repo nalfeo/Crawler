@@ -1,5 +1,6 @@
 type: enemy
 name: faerie-boss
+floor: 2
 sizeVariant: tall
 description: |
   Queen Mab Tarnish, the corroded faerie queen of Floor 2. She must read as a
@@ -33,8 +34,7 @@ description: |
     no floating wing segments, no wand-like thin protrusions, no detached pieces.
   - Wing interiors MUST be fully filled / opaque — no transparent holes inside
     wing membranes.
-  - No staff, wand, or floating orb unless it is gripped in a hand and visually
-    attached to the figure. Prefer no held item at all.
+  - No staff, wand, held orb, or held item of any kind.
   - No loose sparkle or magic-circle elements floating independently of the figure.
   - Silhouette must remain one contiguous connected shape.
 
