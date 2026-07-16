@@ -1,19 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { addComponent } from 'bitecs';
-import { SkillHolder, Stats } from '../../src/core/components.js';
+import { SkillHolder } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { skillSystem } from '../../src/game/systems/skillSystem.js';
-import { statsSystem } from '../../src/game/systems/statsSystem.js';
+import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
+import { statSystem } from '../../src/core/systems/index.js';
 import type { SkillState } from '../../src/game/skills/types.js';
 
 function setupPlayerWithSkill() {
   const world = createTestWorld();
   const player = spawnPlayer(world, 0, 0);
-  addComponent(world.ecs, player, Stats);
+  initializeBaseStats(world, player);
   addComponent(world.ecs, player, SkillHolder);
-  world.statsDirty = true;
-  statsSystem(world);
+  statSystem(world);
 
   // Register 'swordsmanship' skill state
   const state: SkillState = {
@@ -30,10 +30,9 @@ function setupPlayerWithSkill() {
 function setupPlayerWithSkillState(skillId: string) {
   const world = createTestWorld();
   const player = spawnPlayer(world, 0, 0);
-  addComponent(world.ecs, player, Stats);
+  initializeBaseStats(world, player);
   addComponent(world.ecs, player, SkillHolder);
-  world.statsDirty = true;
-  statsSystem(world);
+  statSystem(world);
 
   const state: SkillState = {
     level: 0,
@@ -108,14 +107,6 @@ describe('skillSystem', () => {
     );
     expect(damageModifiers.length).toBeGreaterThan(0);
     expect(damageModifiers[0]!.value).toBe(1);
-  });
-
-  it('marks statsDirty on level-up', () => {
-    const { world } = setupPlayerWithSkill();
-    world.statsDirty = false;
-    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 10 });
-    skillSystem(world);
-    expect(world.statsDirty).toBe(true);
   });
 
   it('does not exceed naturalCap (15) without itemBonus', () => {

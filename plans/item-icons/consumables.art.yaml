@@ -11,14 +11,14 @@ assets:
       kind: sprite-registry
       id: health-vial
 
-  - id: mana-flask
+  - id: recharge-tonic
     type: item
-    label: 'Mana Flask'
-    brief: 'Mana Flask — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Blue, bubbly, and slightly radioactive.'
+    label: 'Recharge Tonic'
+    brief: 'Recharge Tonic — a single centered consumable item icon with a clear, readable silhouette on a transparent background. Favor a recognizable container, food, or charm form so the consumable reads instantly. Fizzy, electric, and rude to your cooldowns.'
     placeholderInUse: true
     integration:
       kind: sprite-registry
-      id: mana-flask
+      id: recharge-tonic
 
   - id: stim-shot
     type: item

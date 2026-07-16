@@ -133,7 +133,6 @@ describe('level-up allocation state', () => {
   it('does not increment non-allocatable primary stats', () => {
     const state = createLevelUpAllocationState(2);
     expect(incrementStat(state, 'charisma')).toBe(state);
-    expect(incrementStat(state, 'weight')).toBe(state);
   });
 
   it('keeps luck allocatable', () => {

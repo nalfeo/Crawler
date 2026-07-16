@@ -94,7 +94,7 @@ export const RANGED_STANDOFF_ABS_FT = 6;
 // continuing to close toward the healthy 6ft damage-optimized ring. The healthy
 // baseline stays unchanged; this only arrests the deterministic contact-damage
 // spiral after the player is wounded.
-export const RANGED_DEFENSIVE_HP_FRACTION = 0.6;
+export const RANGED_DEFENSIVE_HP_FRACTION = 0.7;
 // A wounded projectile user expands only to a short, combat-effective ring.
 // Longer standoffs avoid contact but make un-led projectiles miss moving targets,
 // converting deaths into tutorial stalls. Ten feet keeps pistol/knife shots

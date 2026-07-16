@@ -1,20 +1,34 @@
 # Progression Systems
 
-**Status:** ✅ Implemented (equipment stat bonuses 🚧 partial)  
-**Layer:** `src/game/systems/` + `src/core/systems/equipmentSystem.ts`  
-**Labs:** `xp-curve-lab`, `stat-lab`, `stats-lab`, `skill-lab`, `equipment-lab`
+**Status:** ✅ Implemented
+**Layer:** `src/game/systems/` + `src/core/systems/statSystem.ts` + `src/core/systems/equipmentSystem.ts`
+**Labs:** `xp-curve-lab`, `stat-lab`, `stats-lab`, `skill-lab`, `equipment-lab`, `level-up-lab`
+
+> Reconciled to the
+> [primary-stat system overhaul](../knowledge/adr/2026-07-16-primary-stat-system-overhaul.md):
+> `EffectiveStats` is the SOLE runtime stat snapshot (the older computed `Stats`
+> component and its game-layer `statsSystem` are deleted); there is no
+> `statsDirty` flag — the core `statSystem` always recomputes every frame.
+> Mana/MP does not exist — ability access is unlock + cooldown gated only. See
+> `.specify/specs/stats-skills-levels.md` for the full contract.
 
 ---
 
 ## Systems in this group
 
-| System            | File                                  | Pipeline position |
-| ----------------- | ------------------------------------- | ----------------- |
-| `levelSystem`     | `src/game/systems/levelSystem.ts`     | postSystems       |
-| `statsSystem`     | `src/game/systems/statsSystem.ts`     | postSystems       |
-| `skillSystem`     | `src/game/systems/skillSystem.ts`     | postSystems       |
-| `abilitySystem`   | `src/game/systems/abilitySystem.ts`   | postSystems       |
-| `equipmentSystem` | `src/core/systems/equipmentSystem.ts` | postSystems       |
+| System            | File                                  | Pipeline position                                      |
+| ----------------- | ------------------------------------- | ------------------------------------------------------ |
+| `levelSystem`     | `src/game/systems/levelSystem.ts`     | postSystems                                            |
+| `statSystem`      | `src/core/systems/statSystem.ts`      | preSystems                                             |
+| `skillSystem`     | `src/game/systems/skillSystem.ts`     | postSystems                                            |
+| `abilitySystem`   | `src/game/systems/abilitySystem.ts`   | postSystems                                            |
+| `equipmentSystem` | `src/core/systems/equipmentSystem.ts` | (event-driven — equip/unequip, not a per-frame system) |
+
+`src/game/systems/statsSystem.ts` still exists but is **not** a `(world) =>
+void` system — it exports only the allocation APIs `spendPoints`,
+`addStatModifier`, `removeStatModifiers`, which write to
+`world.stores.coreStatPoints` / `world.statModifiers` for the core
+`statSystem` to fold in on its next tick.
 
 ---
 
@@ -29,20 +43,20 @@ graph TD
         PA[abilityStatesByEntity\nMap<eid, AbilityState>]
         SUE[skillUsageEvents[]\ncleared per frame]
         ATE[abilityTriggerEvents[]\ncleared per frame]
-        SD[statsDirty flag]
     end
 
     subgraph stores["ComponentStores (per-entity)"]
-        BS[BaseStats\nprimary stats array]
-        ES[EffectiveStats\ncomputed stats]
-        ST[Stats\nfinal gameplay values]
-        SP[StatPoints\nspent allocation]
+        BS[BaseStats\nauthored base primary+secondary values]
+        CSP[CoreStatPoints\nallocated per-primary points]
+        ES[EffectiveStats\nSOLE runtime snapshot — base + points + gear + modifiers]
+        DM[DamageMeta\nfail-closed origin/affinity/scale/crit tags]
     end
 
-    PL -->|level-up grants unspentPoints| SD
-    SM -->|filtered by expiresFrame| SD
-    SP -->|spend via spendPoints| SD
-    SD -->|true → statsSystem reruns| ST
+    PL -->|level-up grants unspentPoints| CSP
+    CSP -->|spendPoints| ES
+    SM -->|foldLegacyStatModifier, filtered by expiresFrame| ES
+    BS --> ES
+    ES -->|statSystem runs every frame, no dirty flag| ES
 ```
 
 ---
@@ -51,7 +65,7 @@ graph TD
 
 ### What it does
 
-Each step, accumulates XP in `world.playerLevel.xp` (XP is added elsewhere, typically by `itemPickupSystem`). Advances `playerLevel.level` as far as `xpRequiredForLevel(n)` allows, granting `pointsPerLevel` unspent stat points per level. Sets `world.statsDirty = true` and transitions to `level_up` state so the UI can show an allocation screen.
+Each step, accumulates XP in `world.playerLevel.xp` (XP is added elsewhere, typically by `itemPickupSystem`). Advances `playerLevel.level` as far as `xpRequiredForLevel(n)` allows, granting `pointsPerLevel` unspent stat points per level. Transitions to `level_up` state so the UI can show an allocation screen.
 
 ### Allocation UX
 
@@ -59,13 +73,15 @@ The visual game surfaces the earned points through the **level-up overlay**
 (`src/engine/LevelUpUI.ts`, sandboxed in `level-up-lab`). When
 `world.state === 'level_up'` and the player has unspent points, `MainGameScene`
 freezes the simulation and opens the overlay, where the player distributes
-points across the gameplay stats (−/+ per row or keyboard), previews the
-resulting values, and confirms. Confirming calls `spendPoints` (injected via the
-scene's `allocateStatPoints` option) and resumes play; leftover points are banked
-toward the next level. All clamp/navigation rules live in the pure, unit-tested
+points across the seven primary stats (Charisma excluded — non-allocatable)
+(−/+ per row or keyboard), previews the resulting values, and confirms.
+Confirming calls `spendPoints` (injected via the scene's `allocateStatPoints`
+option) and resumes play; leftover points are banked toward the next level. All
+clamp/navigation rules live in the pure, unit-tested
 `src/shared/level-up-allocation.ts` module, with display labels/formatting in
 `src/shared/stat-display.ts`. The headless runner has no UI and instead automates
-allocation via `auto-progression.ts`.
+allocation via `auto-progression.ts` (see the default AI allocator sequence in
+`.specify/specs/stats-skills-levels.md`).
 
 ### Contract
 
@@ -73,7 +89,6 @@ allocation via `auto-progression.ts`.
 Reads:   world.playerLevel.{xp, level}
          xpRequiredForLevel(n) — quadratic XP curve from xpMath.ts
 Writes:  world.playerLevel.{level, unspentPoints}
-         world.statsDirty = true
          world.state = 'level_up' (when leveled)
 Side effects: none beyond state mutation
 ```
@@ -84,40 +99,49 @@ Side effects: none beyond state mutation
 graph LR
     XP[XP accumulated] -->|xpRequiredForLevel check| LVL[level++]
     LVL -->|+pointsPerLevel| PTS[unspentPoints]
-    PTS -->|player allocates via spendPoints| STATS[Stats update]
+    PTS -->|player allocates via spendPoints| CSP[CoreStatPoints]
+    CSP -->|next statSystem tick| ES[EffectiveStats]
 ```
 
 XP required formula: `BASE_PER_LEVEL × level ^ SCALING_FACTOR` (tuned in `shared/data/tuning.json`).
 
 ---
 
-## statsSystem
+## statSystem (core) — the sole EffectiveStats recompute
 
 ### What it does
 
-Recomputes final `Stats` component values from three inputs:
+`src/core/systems/statSystem.ts` is the ONLY per-frame stat recompute — there
+is no dirty-flag gating, it always runs for every `[Equipment, BaseStats,
+EffectiveStats]` entity (in practice only the player). Each tick:
 
-1. **Base values** — `STAT_BASE[stat]` constants.
-2. **Allocated points** — `statPoints[stat] × STAT_POINT_INCREMENT[stat]`.
-3. **Active modifiers** — `StatModifier[]` filtered for `expiresFrame` (expired ones are pruned).
+1. **Prunes expired modifiers** — filters `world.statModifiers` for
+   `expiresFrame <= world.frameCount`.
+2. **Derives EffectiveStats** via the single pure formula
+   (`computeEffectiveStatsFromLoadout`, `src/core/effective-stats.ts`):
+   base → fold `CoreStatPoints` into their typed primary field → fold
+   equipped-item `statBonuses` (deduped by instance) → fold active
+   `StatModifier`s (`foldLegacyStatModifier`) → derive secondaries from the
+   now-complete effective primaries (`CORE_STAT_TO_SECONDARY`) → clamp.
+3. **Syncs Health by delta** — captures `prevMaxHp` before recompute, then
+   applies `Health.max/current += (newMaxHp - prevMaxHp)` so a Constitution
+   change heals/damages by exactly the delta (never resets current HP to
+   full, never lets repeated ticks creep max HP).
 
-Formula per stat:
-
-```
-raw   = base[stat] + (points[stat] × increment[stat]) + Σ(add modifiers)
-final = clamp(STAT_MIN[stat], raw) × (1 + Σ(multiply modifier values))
-```
-
-Only runs when `world.statsDirty = true`, then clears the flag.
+Strength and Intelligence do **not** derive a generic secondary — their
+payoff is a typed-primary multiplier (`computeTypedPrimaryMultiplier`)
+applied directly at damage/spell resolution, keeping physical and magical
+offense independent.
 
 ### Contract
 
 ```
-Reads:   world.statsDirty, world.statModifiers, world.frameCount
-         ComponentStores.statPoints (per player entity)
-Writes:  ComponentStores.stats (final gameplay values per entity)
+Reads:   world.statModifiers, world.frameCount
+         ComponentStores.baseStats, .coreStatPoints (per entity)
+         Equipment side-map state (per entity)
+Writes:  ComponentStores.effectiveStats (the sole runtime stat snapshot)
          world.statModifiers (prunes expired)
-         world.statsDirty = false
+         Health.max/current (delta-synced to effectiveStats.maxHp)
 Side effects: none
 ```
 
@@ -125,34 +149,37 @@ Side effects: none
 
 ```mermaid
 flowchart LR
-    BASE[STAT_BASE\nconstants]
-    PTS[statPoints × increment]
-    MODS[active StatModifiers\n'add' ops summed]
-    RAW[raw = BASE + PTS + add_mods]
-    CLAMP[clamp to STAT_MIN]
-    MULT[× (1 + sum of multiply mods)]
-    FINAL[Stats component\n(gameplay-facing values)]
+    BASE[BaseStats\nauthored defaults]
+    CSP[CoreStatPoints\nallocated primary points]
+    GEAR[Equipped-item statBonuses\ndeduped by instance]
+    MODS[Active StatModifiers\nfoldLegacyStatModifier]
+    EFFPRIM[Effective primaries\nbase + points + gear]
+    SEC[Derive secondaries\nCORE_STAT_TO_SECONDARY]
+    CLAMP[Clamp to STAT_CLAMPS]
+    FINAL[EffectiveStats\nsole runtime snapshot]
 
-    BASE --> RAW
-    PTS --> RAW
-    MODS --> RAW
-    RAW --> CLAMP
-    CLAMP --> MULT
-    MULT --> FINAL
+    BASE --> EFFPRIM
+    CSP --> EFFPRIM
+    GEAR --> EFFPRIM
+    EFFPRIM --> SEC
+    MODS --> SEC
+    SEC --> CLAMP
+    CLAMP --> FINAL
 ```
 
-### Stats exposed to gameplay
+### EffectiveStats fields used by gameplay
 
-| Stat key          | Used by                          |
-| ----------------- | -------------------------------- |
-| `maxHp`           | healthSystem HP cap              |
-| `moveSpeed`       | playerInputSystem velocity       |
-| `damage`          | weaponSystem damage bonus        |
-| `armor`           | applyDamage reduction            |
-| `attackSpeed`     | weaponSystem cooldown multiplier |
-| `pickupRange`     | itemPickupSystem radius          |
-| `projectileCount` | weaponSystem multi-shot          |
-| `projectileSpeed` | weaponSystem projectile velocity |
+| Field                                               | Used by                                                                |
+| --------------------------------------------------- | ---------------------------------------------------------------------- |
+| `maxHp`                                             | `statSystem`'s own Health-delta sync                                   |
+| `moveSpeed`                                         | `core/movement-speed.ts#computeMoveSpeed` (before status/encumbrance)  |
+| `damageBonus`/`damagePercent`                       | `apply-damage.ts` generic offense step (player→enemy only)             |
+| `strength`/`intelligence`                           | `computeTypedPrimaryMultiplier` (physical/magic damage, spell outputs) |
+| `armor`                                             | `apply-damage.ts` incoming-damage reduction                            |
+| `attackSpeed`/`cooldownReduction`                   | `applyAttackSpeedAndCooldownReduction` (weapon cadence)                |
+| `critChance`/`critMultiplier`/`dodgeChance`         | `apply-damage.ts` crit/dodge rolls                                     |
+| `accuracy`                                          | `weaponSystem.computeEffectiveAccuracy`                                |
+| `pickupRange`, `projectileSpeed`, `projectileCount` | Inert snapshot fields (no current consumer)                            |
 
 ---
 
@@ -164,7 +191,7 @@ Consumes `world.skillUsageEvents` each frame. For each event:
 
 1. Finds the `SkillState` for the holder entity.
 2. Increments cumulative usage.
-3. If usage crosses a level threshold, increments `SkillState.level` and applies per-level `StatModifier`s.
+3. If usage crosses a level threshold, increments `SkillState.level` and applies per-level `StatModifier`s (which fold into `EffectiveStats` on the next `statSystem` tick).
 4. Fires any one-time milestone effects when thresholds are crossed.
 5. Clears `skillUsageEvents` at end of frame.
 
@@ -223,7 +250,7 @@ Manages two ability slots per entity:
 - **Active abilities** — up to `ACTIVE_ABILITY_SLOT_LIMIT` equipped; each has a cooldown. Triggered by `AbilityTriggerCondition` events in `world.abilityTriggerEvents`.
 - **Passive abilities** — applied once on equip, removed on unequip via `StatModifier`s.
 
-Each step: processes `abilityTriggerEvents`, checks conditions, resolves effects via `applyCatalogEffect`, clears the event list.
+Each step: processes `abilityTriggerEvents`, checks conditions, resolves effects via `applyCatalogEffect`, clears the event list. Ability access is gated by unlock progression (`world.featureUnlocks.spells`) and cooldown only — **there is no mana/MP cost or resource pool.**
 
 ### Contract
 
@@ -232,9 +259,15 @@ Reads:   world.abilityTriggerEvents[]
          AbilityDefinition from registry (conditions, effects, cooldown)
          world.abilityStatesByEntity (cooldowns, equipped ids)
 Writes:  AbilityState.cooldownByAbilityId (sets cooldown after fire)
-         applyCatalogEffect → StatModifier or world-state mutation
+         applyCatalogEffect → StatModifier, EffectiveStats-scaled damage/heal, or world-state mutation
          world.abilityTriggerEvents.length = 0
 ```
+
+Every spell's numeric outputs (damage, healing, duration, radius, etc.) are
+authored inline as `{ base, scalesWithIntelligence }` and resolved through
+`resolveScalableOutput(Rounded)` against the caster's effective Intelligence —
+see `.specify/specs/stats-skills-levels.md` for the full formula and the
+magic-weapon/spell scaling-parity guarantee.
 
 ### Ability resolution
 
@@ -261,18 +294,25 @@ flowchart TD
 
 ---
 
-## equipmentSystem (🚧 Partial)
+## equipmentSystem
 
 ### What it does
 
-Manages the six equipment slots (`head`, `body`, `legs`, `gloves`, `weapon`, `offhand`). Equipping/unequipping an item applies or removes its `StatModifier`s via `addStatModifier`/`removeStatModifiers`. The slot management and UI wiring exist, but automatic stat application from item definitions is not yet fully connected.
+Manages the full paper-doll slot set (`src/shared/equipment-slots.ts`).
+Equipping/unequipping an item recomputes `EffectiveStats` directly through
+`computeEffectiveStatsFromLoadout` (not via `StatModifier`s) — equipped-item
+`statBonuses` are one of that formula's direct inputs, deduped by equipment
+instance so a multi-slot item's bonuses (and `weightLb`) count once. Every
+`EquipmentItemDef` also carries a required `weightLb` (currently `0` on every
+shipped item), feeding the encumbrance system
+(`src/core/encumbrance.ts`) that `EquipmentUI` displays alongside stats.
 
-### Contract (intended)
+### Contract
 
 ```
-Reads:   Equipment slots per entity, ItemDef stat bonuses
-Writes:  world.statModifiers (add on equip, remove on unequip)
-         world.statsDirty = true
+Reads:   Equipment slots per entity, EquipmentItemDef.statBonuses/weightLb
+Writes:  Equipment side-map state (equip/unequip)
+         EffectiveStats (recomputed immediately via computeEffectiveStatsFromLoadout)
 ```
 
 ---
@@ -282,15 +322,16 @@ Writes:  world.statModifiers (add on equip, remove on unequip)
 ```mermaid
 graph TD
     PKP[itemPickupSystem\nXP gems → world.playerLevel.xp] --> LEVEL[levelSystem]
-    LEVEL -->|level++| STATS_DIRTY[statsDirty = true]
-    SPEND[spendPoints\nUI allocates unspentPoints] --> STATS_DIRTY
-    SKILLS[skillSystem\nusage events → modifiers] --> SM[statModifiers[]]
+    LEVEL -->|level++, unspentPoints| CSP[CoreStatPoints]
+    SPEND[spendPoints\nUI allocates unspentPoints] --> CSP
+    SKILLS[skillSystem\nusage events → modifiers] --> SM[statModifiers]
     ABILS[abilitySystem\ntrigger events → effects] --> SM
-    EQUIP[equipmentSystem\nequip/unequip] --> SM
-    SM --> STATS_DIRTY
-    STATS_DIRTY --> STATSSYS[statsSystem recomputes Stats]
-    STATSSYS -->|Stats.moveSpeed| MOV[movementSystem]
-    STATSSYS -->|Stats.damage| WS[weaponSystem]
-    STATSSYS -->|Stats.armor| DAM[applyDamage]
-    STATSSYS -->|Stats.pickupRange| PKP2[itemPickupSystem]
+    EQUIP[equipmentSystem\nequip/unequip] --> ES
+    CSP --> STATSYS[core statSystem]
+    SM --> STATSYS
+    STATSYS --> ES[EffectiveStats]
+    ES -->|moveSpeed| MOV[core/movement-speed.ts]
+    ES -->|strength/intelligence| WS[weaponSystem / apply-damage.ts typed multiplier]
+    ES -->|armor, critChance, dodgeChance| DAM[apply-damage.ts]
+    ES -->|pickupRange| PKP2[itemPickupSystem]
 ```
