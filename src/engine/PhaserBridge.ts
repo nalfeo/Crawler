@@ -1,6 +1,7 @@
 import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
 import { DeathTimer, Position, Prop, Rotation, Sprite } from '../core/components.js';
+import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
@@ -1356,7 +1357,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // by a sync, so `telegraphActive` alone is sufficient.
           const { enemyBehavior: eb } = world.stores;
           const isTelegraphing =
-            (eb.telegraphActive[eid] === 1 || eb.telegraphWasActiveThisFrame[eid] === 1) &&
+            (isEnemyProjectileTelegraphActive(world, eid) ||
+              eb.telegraphWasActiveThisFrame[eid] === 1) &&
             isVisible &&
             !isDeadEnemy;
           const existingTelegraph = telegraphGraphics.get(eid);

@@ -23,7 +23,8 @@ describe('enemy ranged shooting', () => {
     vi.spyOn(world.rng, 'next').mockReturnValue(0);
 
     spawnPlayer(world, 0, 0);
-    spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+    // telegraphMs: 0 → legacy immediate-fire behavior (no telegraph delay)
+    spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150, { telegraphMs: 0 });
 
     enemyAISystem(world);
 
@@ -41,7 +42,8 @@ describe('enemy ranged shooting', () => {
     vi.spyOn(world.rng, 'next').mockReturnValue(0);
 
     spawnPlayer(world, 0, 0);
-    spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+    // telegraphMs: 0 → legacy immediate-fire behavior (no telegraph delay)
+    spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150, { telegraphMs: 0 });
 
     // First call — should fire
     enemyAISystem(world);
@@ -68,7 +70,10 @@ describe('enemy ranged shooting', () => {
     vi.spyOn(world.rng, 'next').mockReturnValueOnce(0.95).mockReturnValue(0);
 
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+    // telegraphMs: 0 → legacy immediate-fire behavior (no telegraph delay)
+    const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150, {
+      telegraphMs: 0,
+    });
 
     enemyAISystem(world);
     expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
