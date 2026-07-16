@@ -2232,13 +2232,6 @@ describe('BehaviorTreeAI', () => {
 
     const ai = new BehaviorTreeAI({ seed: 42 });
     const input = createInputState();
-    // Priming poll (before the telegraph even starts): `hasPerceptionData` is
-    // only refreshed from `floorMap.hasVisibleTiles()` near the END of
-    // poll() (see bt-ai-provider.ts's `this.hasPerceptionData ||= ...`),
-    // textually AFTER the telegraph-dodge section — so any poll() call uses
-    // the PREVIOUS call's hasPerceptionData value for this gate. One no-op
-    // poll flips it to true for every poll after this one.
-    ai.poll(input, world);
 
     // Drive the real fire logic to start (but not resolve) a telegraph aimed
     // at the player, exactly as the real game loop would.

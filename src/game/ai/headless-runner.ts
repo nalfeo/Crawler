@@ -220,6 +220,19 @@ function normalizeEnemyTelegraphMs(configuredTelegraphMs: number | undefined): n
       `Invalid enemyTelegraphMs "${String(configuredTelegraphMs)}" (must be a finite number >= 0)`,
     );
   }
+  // `telegraphDelayMs` (EnemyBehavior component, components.ts) is stored in a
+  // Float32Array. A finite JS number outside Float32's representable range
+  // rounds to Infinity on assignment -- and isEnemyProjectileTelegraphReady's
+  // `elapsed >= delayMs` fire check can then never trip, so the enemy
+  // telegraphs forever and never fires (regression: copilot-pull-request-
+  // reviewer finding). Math.fround performs the exact same rounding as the
+  // Float32Array store, so this rejects anything that would silently become
+  // Infinity there.
+  if (!Number.isFinite(Math.fround(configuredTelegraphMs))) {
+    throw new Error(
+      `Invalid enemyTelegraphMs "${String(configuredTelegraphMs)}" (exceeds the largest value representable in the Float32 telegraphDelayMs store)`,
+    );
+  }
   return configuredTelegraphMs;
 }
 
