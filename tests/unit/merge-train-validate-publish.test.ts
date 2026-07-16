@@ -254,8 +254,9 @@ describe('merge-train-validate.yml publish step (failed-publish recovery)', () =
     }
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].status).toBe('completed');
-    expect(calls[0].conclusion).toBe('cancelled');
+    expect(calls[0]).toEqual(
+      expect.objectContaining({ status: 'completed', conclusion: 'cancelled' }),
+    );
   });
 });
 
