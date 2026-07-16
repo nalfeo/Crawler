@@ -1,6 +1,9 @@
 # ADR: Active-weapon-only HUD source and per-attack weapon XP attribution
 
-**Status:** Accepted  
+## Status
+
+Accepted
+
 **Date:** 2026-07-12
 
 ## Context

@@ -1,7 +1,10 @@
 # ADR 0061: Game Intro Screen — Player Identity Before Run Start
 
+## Status
+
+Accepted
+
 **Date:** 2026-07-13  
-**Status:** Accepted  
 **Deciders:** @nalfeo (maintainer)
 
 ## Context
