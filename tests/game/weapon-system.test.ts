@@ -10,6 +10,7 @@ import {
   Projectile,
   Velocity,
 } from '../../src/core/components.js';
+import { asFamilyId } from '../../src/core/faction-relations.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { denUnlockGoalId } from '../../src/game/floor2Scenario.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
@@ -237,7 +238,7 @@ describe('weaponSystem', () => {
     // right.  The boss has FamilyMembership.isBoss=1 so isEnemyCombatEligible
     // gates it; the trash enemy (no FamilyMembership) is always eligible and
     // stands at +X so a correct skip fires +X.
-    const familyId = 'imps';
+    const familyId = asFamilyId('imps');
 
     function makeWorld(): ReturnType<typeof createTestWorld> {
       const w = createTestWorld({ floor: 2 });
