@@ -171,11 +171,13 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
 
     // Skip quests whose current objective is blocked on another active quest's
     // completion.  The blocker already has its own direction arrow.
-    if (objDef.kind === 'goal' && objDef.goalId) {
-      const flagOwner = completionFlagOwner.get(objDef.goalId);
-      if (flagOwner !== undefined && flagOwner !== quest.questId) {
-        continue;
-      }
+    if (
+      objDef.kind === 'goal' &&
+      objDef.goalId &&
+      completionFlagOwner.has(objDef.goalId) &&
+      completionFlagOwner.get(objDef.goalId) !== quest.questId
+    ) {
+      continue;
     }
 
     const target = objectiveTarget(

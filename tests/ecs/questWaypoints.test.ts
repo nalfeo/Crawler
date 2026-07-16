@@ -155,7 +155,7 @@ describe('getQuestWaypoints', () => {
     expect(ids).toContain(FLOOR1_MEET_NPCS_QUEST_ID);
   });
 
-  it('suppresses meet-npcs when boss-battle quest is active and blocks its second objective', () => {
+  it('suppresses meet-npcs when boss-battle blocks second objective', () => {
     const world = withFloor1(createTestWorld());
     spawnPlayer(world, 0, 0);
     acceptQuest(world, FLOOR1_MEET_NPCS_QUEST_ID);
