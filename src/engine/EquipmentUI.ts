@@ -38,6 +38,14 @@ import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
+import {
+  computeEquippedWeightLb,
+  getCarryThresholdLb,
+  getEncumbranceBand,
+  ENCUMBRANCE_BAND_LABELS,
+  ENCUMBRANCE_BAND_COLORS,
+  ENCUMBRANCE_HEAVY_FACTOR,
+} from '../shared/encumbrance.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -76,6 +84,16 @@ const COLORS = {
 
 function formatStatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+/**
+ * Format a gear-weight value (lb) for the LOAD readout.
+ * Uses the minimum decimal places needed: integers show no decimal point,
+ * fractions show up to 2 decimal places with trailing zeros removed.
+ * Avoids `toFixed(1)` which incorrectly rounds 0.25 → "0.3" in JS.
+ */
+function formatLb(lb: number): string {
+  return parseFloat(lb.toFixed(2)).toString();
 }
 
 function formatStatLabel(statId: StatId): string {
@@ -1067,6 +1085,66 @@ export function createEquipmentUI(
     for (const statId of SECONDARY_STATS) {
       drawStat(statId);
     }
+
+    // -----------------------------------------------------------------------
+    // Encumbrance / load readout — compact rows just below the STATS heading.
+    // Placed in the ~26px gap between the heading frame bottom and the first
+    // stat row so it does not shift the existing stat-row layout.
+    // Shows: gear weight (lb), carry capacity, and the encumbrance band.
+    // -----------------------------------------------------------------------
+    const equipState = getEquipmentState(lastWorld, playerEid);
+    const gearLb = computeEquippedWeightLb(equipState);
+    const strength = Math.max(1, Math.floor(effective['strength'] ?? 1));
+    const capLb = getCarryThresholdLb(strength);
+    const band = getEncumbranceBand(gearLb, strength);
+    const bandLabel = ENCUMBRANCE_BAND_LABELS[band];
+    const bandColor = ENCUMBRANCE_BAND_COLORS[band];
+
+    // Single compact row between heading (dollY+26, h=30) and first stat (dollY+68).
+    // Centre in the gap: dollY + 41 + (68-41)/2 ≈ dollY + 54
+    const loadY = dollY + 50;
+    const loadColW = colW;
+
+    const loadBg = scene.add.rectangle(
+      statsX + loadColW / 2 + 6,
+      loadY + 8,
+      loadColW - 8,
+      18,
+      0x1a2d4a,
+      0.97,
+    );
+    loadBg.setStrokeStyle(1, bandColor, 0.8);
+    container.add(loadBg);
+    statObjects.push(loadBg);
+
+    const loadLabel = crispText(statsX + 10, loadY + 2, 'LOAD', {
+      fontFamily: FONT_FAMILY,
+      fontSize: '7px',
+      color: hex(COLORS.textSecondary),
+    });
+    loadLabel.setOrigin(0, 0);
+    container.add(loadLabel);
+    statObjects.push(loadLabel);
+
+    const loadBand = crispText(statsX + 52, loadY + 2, bandLabel, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '7px',
+      color: hex(bandColor),
+      fontStyle: 'bold',
+    });
+    loadBand.setOrigin(0, 0);
+    container.add(loadBand);
+    statObjects.push(loadBand);
+
+    const gearStr = `${formatLb(gearLb)}/${formatLb(capLb * ENCUMBRANCE_HEAVY_FACTOR)}lb`;
+    const loadVal = crispText(statsX + loadColW, loadY + 2, gearStr, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '7px',
+      color: hex(COLORS.textSecondary),
+    });
+    loadVal.setOrigin(1, 0);
+    container.add(loadVal);
+    statObjects.push(loadVal);
   }
 
   function render(): void {

@@ -159,6 +159,13 @@ function validateItemDef(itemDef: EquipmentItemDef): EquipFailureReason[] {
     }
   }
 
+  if (!Number.isFinite(itemDef.weightLb) || itemDef.weightLb < 0) {
+    reasons.push({
+      type: 'invalidDef',
+      message: `Invalid weightLb: must be a finite non-negative number, got ${itemDef.weightLb}`,
+    });
+  }
+
   for (const spec of itemDef.grantsStatusEffects ?? []) {
     if (!isValidSpec(spec)) {
       reasons.push({
