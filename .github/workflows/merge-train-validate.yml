@@ -123,28 +123,49 @@ jobs:
       # failures): a fresh mint attempt gets a real chance to succeed.
       #
       # Both this step and the retryable-check step below are gated on
-      # `steps.app-token.outcome == 'failure' || steps.publish.outcome ==
-      # 'failure'` -- NOT the bare `failure()` function. `failure()` at step
-      # level also returns true when an ANCESTOR job (`verify`, via `needs:`)
-      # fails, even if every step in THIS job succeeded. A genuine candidate
-      # defect makes `verify` fail, but "Publish immutable candidate result"
-      # still runs and successfully posts the correct `failure` conclusion --
-      # under bare `failure()` this fallback would then immediately overwrite
-      # that correct `failure` with `cancelled`, making reconcile retry the
-      # same broken candidate forever instead of bisecting it. Scoping to the
-      # two step-local `outcome`s (not the job-wide `failure()`) means this
-      # only fires for a genuine app-token-mint or publish-step failure, never
-      # for an upstream `verify` failure that publish already handled.
+      # `failure() && (steps.app-token.outcome == 'failure' ||
+      # steps.publish.outcome == 'failure')`.
+      #
+      # The `failure() &&` prefix is REQUIRED, not decorative: a step `if:`
+      # that contains no status-check function (`success()`/`failure()`/
+      # `cancelled()`/`always()`) gets an implicit `success()` ANDed in by
+      # GitHub Actions. A bare `steps.app-token.outcome == 'failure' ||
+      # steps.publish.outcome == 'failure'` condition is therefore silently
+      # rewritten to `success() && (...)` -- which can NEVER be true, because
+      # `success()` requires every previous step in this job to have
+      # succeeded, while the outcome checks require one of those same two
+      # steps to have failed. Verified empirically in this repo
+      # (nalfeo/Crawler run 29467286711): a step with a bare
+      # `steps.X.outcome == 'failure'` condition was SKIPPED even though step
+      # X genuinely failed, while the same condition prefixed with
+      # `failure() &&` ran as expected. Without the prefix this whole
+      # fallback mechanism would be permanently dead code.
+      #
+      # The step-local outcome checks are still worth keeping alongside
+      # `failure()` (not just bare `failure()`) as defense-in-depth: verified
+      # empirically (run 29467076748) that `failure()` at step level, once a
+      # job is already running via `if: always()`, only reflects STEPS in
+      # THIS job -- not an ancestor `needs:` job's result. So today, plain
+      # `failure()` already would NOT misfire when `verify` fails but
+      # "Publish immutable candidate result" itself succeeds (that step
+      # would still run normally, post the correct `failure` conclusion, and
+      # `failure()` afterward would be false). But GitHub's own docs describe
+      # `failure()` as considering "any ancestor job" in some job-dependency
+      # chains, so scoping explicitly to the two step-local outcomes removes
+      # any reliance on that ambiguity and keeps the intent self-documenting
+      # for future maintainers: this fallback exists ONLY to recover from a
+      # genuine app-token-mint or publish-step failure, never to react to an
+      # upstream `verify` failure that publish already handled correctly.
       - name: Generate recovery app token
         id: recovery-app-token
-        if: steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'
+        if: failure() && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Mark candidate check retryable if publishing failed
-        if: steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'
+        if: failure() && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')
         uses: actions/github-script@v7
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}

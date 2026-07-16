@@ -252,22 +252,30 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       return step;
     }
 
-    it("exists, is gated on the app-token/publish steps' own outcomes (not the job-wide failure()), and uses a separately-minted recovery App token", () => {
+    it("exists, is gated on failure() AND the app-token/publish steps' own outcomes, and uses a separately-minted recovery App token", () => {
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
-      // Regression coverage for a real review finding: bare `failure()` at
-      // step level also returns true when an ANCESTOR job (here `verify`, via
-      // `needs:`) fails -- even if every step in *this* job succeeded. A
-      // genuine candidate defect fails `verify`, but "Publish immutable
-      // candidate result" still runs and correctly posts a `failure`
-      // conclusion; under bare `failure()` this fallback would immediately
-      // overwrite that correct `failure` with `cancelled`, making reconcile
-      // retry the same broken candidate forever instead of bisecting it.
-      // Gating on the two step-local `outcome`s means this only fires for a
-      // genuine app-token-mint or publish-step failure, never for an
-      // upstream `verify` failure that publish already handled correctly.
+      // Regression coverage for two real review/verification findings:
+      //
+      // 1. A bare `steps.app-token.outcome == 'failure' ||
+      //    steps.publish.outcome == 'failure'` condition (no status-check
+      //    function) gets an implicit `success()` ANDed in by GitHub
+      //    Actions -- which can NEVER be true alongside an outcome-failed
+      //    check, making the fallback permanently dead code. Verified
+      //    empirically in this repo (run 29467286711): a step with exactly
+      //    this shape of bare condition was SKIPPED even though the step it
+      //    referenced genuinely failed. The `failure() &&` prefix is
+      //    required to actually run the step.
+      // 2. Scoping to the two step-local `outcome`s (rather than bare
+      //    `failure()` alone) is defense-in-depth against `failure()`
+      //    reflecting an ancestor `needs:` job's result: a genuine candidate
+      //    defect fails `verify`, but "Publish immutable candidate result"
+      //    still runs and correctly posts a `failure` conclusion in that
+      //    case -- this fallback must not overwrite that correct `failure`
+      //    with `cancelled`, which would make reconcile retry the same
+      //    broken candidate forever instead of bisecting it.
       expect(step.if).toBe(
-        "steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'",
+        "failure() && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')",
       );
       expect(step.uses).toMatch(/^actions\/github-script/);
       // Must NOT reuse steps.app-token.outputs.token: if the ORIGINAL
@@ -286,34 +294,48 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(step?.id).toBe('publish');
     });
 
-    it("does NOT fire when only an ancestor job (verify) failed and this job's own steps succeeded", () => {
-      // Simulates the exact bug the review finding described: verify fails
-      // (genuine candidate defect), but app-token and publish both succeed in
-      // this job (publish already posted the correct `failure` conclusion).
+    it("does NOT fire when only an ancestor job (verify) failed and this job's own steps succeeded, but DOES fire on a genuine app-token/publish failure", () => {
+      // Simulates the exact bug the review finding described, plus the
+      // dead-code regression the bare-outcome condition introduced.
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
       const condition = step.if ?? '';
-      const evaluate = (appTokenOutcome: string, publishOutcome: string): boolean =>
+      const evaluate = (
+        failureValue: boolean,
+        appTokenOutcome: string,
+        publishOutcome: string,
+      ): boolean =>
         new Function(
           'steps',
+          'failure',
           `return (${condition.replaceAll('steps.app-token', "steps['app-token']")});`,
-        )({
-          'app-token': { outcome: appTokenOutcome },
-          publish: { outcome: publishOutcome },
-        }) as boolean;
+        )(
+          { 'app-token': { outcome: appTokenOutcome }, publish: { outcome: publishOutcome } },
+          () => failureValue,
+        ) as boolean;
 
-      expect(evaluate('success', 'success')).toBe(false);
-      expect(evaluate('failure', 'skipped')).toBe(true);
-      expect(evaluate('success', 'failure')).toBe(true);
+      // Ancestor-only failure (verify failed, but publish's own steps
+      // succeeded and already posted the correct `failure` conclusion):
+      // failure() is false in the real job (verified empirically, run
+      // 29467076748), so this must not fire.
+      expect(evaluate(false, 'success', 'success')).toBe(false);
+      // Defense-in-depth: even if failure() were (hypothetically) true here,
+      // the step-local outcome checks alone must still gate it off unless
+      // app-token or publish itself is what failed.
+      expect(evaluate(true, 'success', 'success')).toBe(false);
+      // Genuine same-job failures: both failure() and the relevant outcome
+      // check are true, so the fallback must fire.
+      expect(evaluate(true, 'failure', 'skipped')).toBe(true);
+      expect(evaluate(true, 'success', 'failure')).toBe(true);
     });
 
-    it('mints the recovery app token from a dedicated step gated the same way, not bare failure()', () => {
+    it('mints the recovery app token from a dedicated step gated the same way (failure() plus outcomes)', () => {
       const doc = loadWorkflow();
       const steps = doc.jobs.publish?.steps ?? [];
       const recoveryTokenStep = steps.find((s) => s.name === 'Generate recovery app token');
       expect(recoveryTokenStep).toBeDefined();
       expect(recoveryTokenStep?.if).toBe(
-        "steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'",
+        "failure() && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')",
       );
       expect(recoveryTokenStep?.uses).toMatch(/^actions\/create-github-app-token/);
       const publishIndex = steps.findIndex((s) => s.name === 'Publish immutable candidate result');

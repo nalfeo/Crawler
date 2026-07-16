@@ -95,8 +95,10 @@ main.
 - `.github/workflows/merge-train-validate.yml` — added `if: always()` to the
   "Wake merge-train reconciliation" step, plus a new "Generate recovery app
   token" step and "Mark candidate check retryable if publishing failed" step
-  (both gated on `steps.app-token.outcome == 'failure' || steps.publish.outcome
-== 'failure'`, not bare `failure()`; the latter uses the independently-minted
+  (both gated on `failure() && (steps.app-token.outcome == 'failure' ||
+steps.publish.outcome == 'failure')` — the `failure() &&` prefix is required
+  to avoid an implicit-`success()` dead-code trap, verified empirically; see
+  the fourth-round follow-up below — the latter uses the independently-minted
   recovery token) that posts a `cancelled` conclusion for the fingerprinted
   check before the wake dispatches, with bounded retry for transient Checks
   API failures. "Publish immutable candidate result" has an explicit `id:
@@ -267,3 +269,92 @@ bounded-retry fixes above:
    `{publish: failure}` (must fire).
 
 Test counts after this round: **24 = 19 + 5** (was 22 = 17 + 5).
+
+## Fourth round follow-up (empirical verification of the third round's fix, and a regression caught in it)
+
+The third round's fix (scoping the fallback conditions to
+`steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'`,
+without a `failure()`/`always()` wrapper) was itself never independently
+verified against real GitHub Actions runtime semantics — it was implemented
+directly off the reviewer's suggested condition text. Two things needed
+checking: (a) was the reviewer's original ancestor-`failure()` claim actually
+correct in this exact job shape, and (b) is a bare `outcome ==` condition (no
+status-check function) actually reachable at all.
+
+**Empirical method**: rather than trust ambiguous phrasing in GitHub's docs
+("If you have a chain of dependent jobs, `failure()` returns `true` if any
+ancestor job fails"), two real throwaway workflow runs were pushed to this
+branch and inspected via the Checks API (`gh api
+repos/nalfeo/Crawler/actions/runs/<id>/jobs`):
+
+1. **Run 29467076748**: a `downstream` job (`if: always()`, `needs: [upstream]`
+   where `upstream` deliberately fails) containing an implicit-condition step,
+   an `if: failure()` step, and an `if: success()` step. Result: the
+   implicit-condition step **ran** (success), the `if: failure()` step was
+   **skipped**, the `if: success()` step **ran**. This empirically refutes the
+   reviewer's claim for this job shape: step-level `failure()`/`success()`
+   inside an already-running (`if: always()`) job reflects only **same-job**
+   step outcomes, not an ancestor `needs:` job's result. Cross-checked with a
+   separate-model rubber-duck review (`gpt-5.4`): verdict **AGREE**, finding
+   not applicable, no fix needed for that specific concern.
+2. **Run 29467286711**: a step with a bare
+   `if: steps.fail_step.outcome == 'failure'` condition (the exact shape the
+   third round's fix used, minus a wrapper) where `fail_step` genuinely
+   failed. Result: the bare-outcome step was **skipped** — because GitHub
+   Actions implicitly ANDs `success()` into any `if:` that contains no
+   explicit status-check function, and `success()` (no prior step failed)
+   directly contradicts an outcome check that requires a prior step to have
+   failed. A sibling step with `if: failure() && steps.fail_step.outcome ==
+'failure'` **ran** correctly. This proves the bare-outcome condition
+   introduced by the third round (and by an independent autonomous commit
+   `973e9476` that landed the same suggested fix) is **permanently
+   unreachable dead code** — the two fallback steps (recovery-app-token mint,
+   retryable-check) would never fire under any real circumstance, silently
+   reintroducing the original 40-minute-staleness stall for every publish or
+   app-token-mint failure.
+
+**Fix**: both fallback steps' conditions changed from the bare
+`steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'`
+to `failure() && (steps.app-token.outcome == 'failure' ||
+steps.publish.outcome == 'failure')`. The `failure() &&` prefix is required
+(not decorative) to suppress the implicit `success()` AND-ing and make the
+condition reachable; the step-local outcome checks are retained as
+defense-in-depth against `failure()`'s ancestor-job semantics in job-chain
+shapes other than this one, even though finding (1) shows they are
+currently redundant with bare `failure()` for this exact job. Rewrote the
+comment block above the fallback steps to document both run IDs and the
+rationale.
+
+Updated `tests/unit/merge-train-validate-publish.test.ts`:
+
+- Both `if:` string assertions (recovery-app-token step, retryable-check
+  step) updated to the new `failure() && (...)` string.
+- The semantic eval test now injects a mock `failure()` function into the
+  `new Function()` scope and covers four cases: ancestor-only failure with
+  same-job steps succeeding (`failure()` false) → must not fire; a
+  hypothetical `failure()` true but both outcomes `success` → must still not
+  fire (validates the outcome-check layer is independently load-bearing, not
+  just `failure()`); app-token step itself failed → must fire; publish step
+  itself failed → must fire.
+
+Test counts unchanged (24 = 19 + 5) — this round modified existing test
+bodies/assertions rather than adding new tests, since the third round's tests
+already covered the right _scenarios_, just against the wrong (dead-code)
+condition string.
+
+Also deleted two scratch/throwaway probe workflow files
+(`zz-scratch-failure-semantics-probe.yml`,
+`zz-scratch-bare-outcome-probe.yml`) used only for this empirical
+verification — neither ships in the final PR.
+
+**Process note for the coordinator**: the autonomous "agent-merge" automation
+attached to this PR independently pushed 5 competing fix commits across this
+session in response to evolving `copilot-pull-request-reviewer` findings.
+Most were reconciled without incident, but one (`973e9476`) implemented
+exactly the reviewer's suggested condition text and, absent empirical
+verification, would have shipped a fallback mechanism that could never
+execute. This is a concrete argument for treating reviewer-bot-suggested
+literal code snippets (and any autonomous auto-fix that adopts them
+verbatim) as requiring the same runtime verification as hand-written fixes,
+especially for GitHub Actions expression semantics, which are easy to get
+subtly wrong from documentation alone.
