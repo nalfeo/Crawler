@@ -93,6 +93,43 @@ describe('getEffectiveTelegraphMs resolver', () => {
     const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
     expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
   });
+
+  // Regression: copilot-pull-request-reviewer finding — clampToFloat32SafeTelegraphMs
+  // only rejected values that overflow Float32 on `Math.fround`, but a
+  // negative finite value (e.g. `world.enemyTelegraphMs = -5`) survives
+  // `Math.fround` unchanged and is NOT an overflow, so it used to pass
+  // through untouched. isEnemyProjectileTelegraphReady's `elapsed >=
+  // delayMs` check then trips immediately (elapsed starts at 0, and
+  // `0 >= -5` is true), producing an effectively-instant fire with no
+  // visible telegraph window — silently violating the "every hostile
+  // projectile telegraphs" contract. A negative delay must fall back to
+  // the default, same as a Float32-overflowing or non-finite one.
+  it('falls back to the default for a negative world-level override', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = -5;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
+
+  it('an explicit per-mob 0 still overrides a negative world default (0 stays legitimate legacy parity)', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = -5;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 0,
+    });
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(0);
+  });
+
+  it('a negative per-mob override (not the -1 unset sentinel) falls through to the world default, not the negative value', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 500;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: -7,
+    });
+    // perMob >= 0 is false for -7, same branch as the -1 unset sentinel, so
+    // this resolves the world-level default rather than -7 or the constant.
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(500);
+  });
 });
 
 describe('enemy projectile telegraph — 0ms legacy parity', () => {
