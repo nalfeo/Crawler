@@ -89,6 +89,14 @@
           "concerns_count": 7,
           "resolved_count": 7,
           "clean": true
+        },
+        {
+          "round": 10,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Round 19, against the 86e0381d push. One documentation-accuracy finding: the ADR's \"every early-exit path\" telegraph-cancellation inventory (in the Fire logic section) only listed tryFireEnemyProjectile()'s own three branches (aggro-not-yet-enabled, player not detectable, out-of-range) and implicitly claimed exhaustiveness, but enemyAISystem also cancels telegraphs on three more branches higher up in the function: no player entity present, an inactive Floor 2 boss encounter, and the shooter entering its post-death DeathTimer linger window (src/game/enemyAISystem.ts:1727-1738, 1773-1789). Fixed by rewording the ADR to explicitly enumerate all six branches and reference enemyAISystem's early-exits generally rather than implying tryFireEnemyProjectile is the sole source. Docs-only; no code or logic change (the cancellation calls themselves already existed and were already covered by tests). Verified via direct code read of the three additional call sites; tsc/eslint/verify:fast all clean, seed=42 damage unchanged at 37.14999961853027."
         }
       ]
     },

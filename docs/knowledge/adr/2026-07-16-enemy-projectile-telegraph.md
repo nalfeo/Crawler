@@ -78,7 +78,12 @@ telegraph window.
    consequence is that some telegraphs show a locked trajectory that never
    spawns a projectile if the roll misses, matching today's miss rate.
    Telegraphs are cancelled (never silently left active) on every early-exit
-   path: aggro-not-yet-enabled, player not detectable, and out-of-range.
+   path that can make the shooter stop being a valid threat before it fires,
+   including: aggro-not-yet-enabled, player not detectable, out-of-range,
+   no player entity present, an inactive Floor 2 boss encounter, and the
+   shooter itself entering its post-death `DeathTimer` linger window
+   (`src/game/enemyAISystem.ts`'s early-exit branches, not just
+   `tryFireEnemyProjectile()`'s own three).
    Movement is frozen for the enemy while telegraphing (velocity zeroed,
    separation impulses skipped) as a visual/behavioral choice — never as the
    correctness mechanism, since origin/direction are locked independently of
