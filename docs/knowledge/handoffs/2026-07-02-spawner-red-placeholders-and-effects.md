@@ -27,6 +27,10 @@ over-claimed "adjacency" comment.
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+enemies
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-spawner-red-placeholders-and-effects.review-ledger.json`

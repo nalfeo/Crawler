@@ -4,6 +4,10 @@
 **Persona:** Producer (Game Designer + Systems Engineer)  
 **Apple estimate declared:** 🍎🍎🍎 | **Actual:** 🍎🍎🍎 | **Verdict:** Accurate
 
+## Systems touched
+
+inventory
+
 ## What was done
 
 Replaced the level-up allocation system's direct STAT_KEYS (maxHp, damage, armor, …)

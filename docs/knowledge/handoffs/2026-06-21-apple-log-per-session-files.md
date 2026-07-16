@@ -8,6 +8,10 @@
 - Verdict: 🎯 Exact
 - Notes: Exactly as scoped — 3 files + new directory, no new systems.
 
+## Systems touched
+
+docs-tooling
+
 ## What Changed
 
 The apple complexity system was still appending to a single shared

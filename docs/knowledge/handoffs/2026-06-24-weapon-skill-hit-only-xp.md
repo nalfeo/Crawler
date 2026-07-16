@@ -5,6 +5,10 @@
 **Persona:** Game Designer  
 **Apple estimate:** 🍎🍎 | **Actual:** 🍎🍎 | **Verdict:** exact
 
+## Systems touched
+
+inventory, weapons
+
 ## What Was Done
 
 Implemented the feature: **weapon skills only gain XP when they hit and do damage**.

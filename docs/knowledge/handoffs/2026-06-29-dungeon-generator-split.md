@@ -25,6 +25,10 @@ so it neither ballooned to 4 nor shrank to 2.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+mapgen
+
 ## What Was Done
 
 Decomposed the **1726-line** `src/core/map/generators/DungeonGenerator.ts` monolith

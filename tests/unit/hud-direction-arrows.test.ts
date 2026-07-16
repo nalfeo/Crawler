@@ -105,6 +105,21 @@ describe('resolveDirectionArrowStates', () => {
     expect(states.map((state) => state.questId)).toEqual(['far']);
   });
 
+  it('omits an NPC 9 feet away at BASE_ZOOM (zoom=2, the real game zoom on a 1x display)', () => {
+    // Regression: camera.zoom = BASE_ZOOM * renderScale; the sync() caller must
+    // divide by renderScale so the on-screen check sees design-space pixels.
+    // At zoom=2 (design-space), an NPC 9 feet above the player occupies
+    // 360 - 9*16 = 216 design-px from the top — well within the safe zone.
+    const states = resolveDirectionArrowStates(
+      [waypoint('goon', 0, -9)],
+      0,
+      0,
+      2, // BASE_ZOOM = 2.0
+    );
+
+    expect(states).toHaveLength(0);
+  });
+
   it('fans arrows away from reserved HUD regions', () => {
     const reserved = [{ x: 1080, y: 0, width: 200, height: 340 }];
     const [state] = resolveDirectionArrowStates([waypoint('right', 100, -10)], 0, 0, 1, reserved);

@@ -5,6 +5,10 @@
 **Persona:** Producer  
 **Apples:** 🍎🍎 estimated → 🍎🍎 actual (exact)
 
+## Systems touched
+
+enemies, lighting
+
 ## What Was Done
 
 Fixed the dynamic light/shadow overlay only darkening floor tiles. Mobs, NPCs, and props now dim with the torch falloff like the floor.

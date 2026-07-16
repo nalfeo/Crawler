@@ -10,6 +10,10 @@ Content Designer — the work is authored quest-flow content: Tutorial Goon
 contextual dialogue + a quest-summary nudge in the Floor 1 quest pack. No
 mechanics/ECS changes.
 
+## Systems touched
+
+enemies, hud-ux
+
 ## Apple estimate / actual
 
 Estimated: 🍎

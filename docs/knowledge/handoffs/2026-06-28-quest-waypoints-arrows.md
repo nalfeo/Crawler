@@ -35,6 +35,10 @@ wasn't the bottleneck, navigation was.
 
 ## Apples: 🍎🍎🍎 estimated → 🍎🍎🍎 actual (exact)
 
+## Systems touched
+
+quests
+
 ## Next ideas
 
 - Promote a deterministic UI probe for the minimap marker / edge arrow.

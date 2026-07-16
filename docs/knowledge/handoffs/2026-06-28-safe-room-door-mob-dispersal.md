@@ -21,6 +21,10 @@ Verdict: 🎯 Exact — small, focused AI dispersal change once the wrong door-l
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+enemies
+
 ## What Was Done
 
 Bug: a group of enemies crowded the door to a safe room. Intended behavior: doors

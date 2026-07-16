@@ -25,6 +25,10 @@ three test suites landed as one cohesive PR, matching the "Massive" estimate.
 
 Hello kitties: 5/5 = 1.00 🎀
 
+## Systems touched
+
+enemies, vfx
+
 ## What Was Done
 
 Implemented Phase 0 (foundation pipeline) + Phase 1 (high-impact effects) of the

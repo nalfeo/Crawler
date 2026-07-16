@@ -1,5 +1,9 @@
 # Handoff: Quarter-tile FOV resolution (2026-06-30)
 
+## Systems touched
+
+ai-pathfinding
+
 ## Summary
 
 Upgraded the FOV/fog-of-war system from full-tile to quarter-tile (2× per axis)

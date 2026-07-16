@@ -7,7 +7,7 @@
 
 ## Systems touched
 
-ai-behavior-tree, ai-pathfinding, progression, tests
+ai-behavior-tree, ai-pathfinding, inventory
 
 ## Problem
 

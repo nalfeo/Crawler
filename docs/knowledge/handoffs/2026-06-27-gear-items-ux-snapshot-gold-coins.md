@@ -67,3 +67,7 @@ Two gaps identified by the operator:
 ## Apples
 
 Estimated 🍎🍎, actual 🍎🍎 (exact). Two focused files, both following existing patterns (gem bob/shadow → gold bob/shadow; HudUI → InventoryUI + EquipmentUI). No new ECS systems, no new labs required, no ADR.
+
+## Systems touched
+
+inventory

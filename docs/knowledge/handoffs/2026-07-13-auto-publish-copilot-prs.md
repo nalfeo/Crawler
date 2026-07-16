@@ -8,11 +8,11 @@ Two changes were made to ensure Copilot-created PRs are published immediately an
 
 1. **`pr-ready-reviewer-guard.yml`** — Changed the `github-token` for the `actions/github-script` step from `github.token` to `secrets.CRAWLER_CI_PAT` (no fallback). The GITHUB_TOKEN in `pull_request_target` context silently fails when calling `markPullRequestReadyForReview` on a PR created by the Copilot GitHub App; using the owner PAT (`CRAWLER_CI_PAT`) ensures the GraphQL mutation succeeds. A missing/expired PAT now fails the job (instead of silently falling back to the broken token). Any draft-publish failure is accumulated and surfaced via `core.setFailed()` after all PRs are processed.
 
-2. **`.github/copilot-instructions.md`** — Added an explicit rule in the Merge Policy section: *Always create PRs as ready for review — never as draft.* This instruction-level enforcement prevents agents from passing `draft: true` in the first place.
+2. **`.github/copilot-instructions.md`** — Added an explicit rule in the Merge Policy section: _Always create PRs as ready for review — never as draft._ This instruction-level enforcement prevents agents from passing `draft: true` in the first place.
 
 ## Systems touched
 
-ci
+ci-policy
 
 ## Files touched
 

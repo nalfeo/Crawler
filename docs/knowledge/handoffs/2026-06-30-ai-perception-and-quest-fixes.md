@@ -4,6 +4,10 @@
 **Branch:** `nalfeo-fix-ai-exploration-quest-behavior`  
 **Estimate:** 2 apples 🍎🍎 (mid-complexity, AI-logic-focused, gameplay-critical)
 
+## Systems touched
+
+quests
+
 ## Summary
 
 Addressed three interconnected AI behavior issues in seed 697392 and general gameplay:

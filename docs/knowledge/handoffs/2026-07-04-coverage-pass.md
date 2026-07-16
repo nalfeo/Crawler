@@ -6,8 +6,6 @@
 
 ## Systems touched
 
-shared, core, game
-
 ## What was done
 
 Ran a systematic coverage pass: re-ran `verify:coverage`, sorted files by line coverage, and added targeted tests for real uncovered branches across ~15 files. No production code was changed.

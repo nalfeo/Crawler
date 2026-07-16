@@ -26,6 +26,10 @@ tests. Deep investigation, but a 2-apple deliverable.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+devtools, weapons
+
 ## What Was Done
 
 Re-synced `src/labs/weapons-lab/index.ts` with how weapons behave in the live

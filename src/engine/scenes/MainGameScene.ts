@@ -156,6 +156,13 @@ export interface MainGameSceneOptions {
   configureWorld?: (world: GameWorld, playerEid: number) => void;
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
+  /**
+   * Called when Floor 1 is cleared (player descends the stairs).
+   * Typically navigates the browser to Floor 2. When provided, the floor
+   * completion screen shows a transitional message and then invokes this
+   * callback after a brief delay instead of displaying a dead-end message.
+   */
+  onFloor1Cleared?: () => void;
   /** Shopkeeper errand callbacks (game-layer logic injected from main.ts). */
   shopkeeper?: {
     getIndicatorState?: (world: GameWorld) => NpcQuestIndicatorState;
@@ -212,7 +219,7 @@ export interface MainGameSceneOptions {
     world: GameWorld,
     playerEid: number,
     available: number,
-  ) => Partial<Record<PrimaryStatId, number>>;
+  ) => Partial<Record<PrimaryStatId, number>> | null;
   /**
    * Optional factory for a human player session recorder (dev/debug only).
    *
@@ -2826,8 +2833,17 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionBodyText?.setText(
         'Congratulations — you escaped the dungeon!\nMore floors coming soon...',
       );
+    } else if (this.options.onFloor1Cleared) {
+      this.floorCompletionTitleText?.setText('Floor 1 Complete!');
+      this.floorCompletionSubtitleText?.setText('Heading to Floor 2...');
+      this.floorCompletionBodyText?.setText('Prepare yourself for the next challenge!');
+      this.floorCompletionMessagePending = false;
+      this.floorCompletionMessageShown = true;
+      this.floorCompletionScreen?.setVisible(true);
+      this.time.delayedCall(1500, () => this.options.onFloor1Cleared?.());
+      return;
     } else {
-      this.floorCompletionTitleText?.setText('Game Over');
+      this.floorCompletionTitleText?.setText('Floor 1 Complete!');
       this.floorCompletionSubtitleText?.setText('Floor 1 complete!');
       this.floorCompletionBodyText?.setText(
         'Thanks for completing the first floor!\nMore game coming soon...',
@@ -2877,12 +2893,18 @@ export class MainGameScene extends Phaser.Scene {
       this.levelUpAutoHoldFrames = 0;
       return;
     }
+    const available = this.world.playerLevel.unspentPoints;
+    const allocations = allocator(this.world, this.playerEid, available);
+    if (allocations === null) {
+      // Allocator opted out (e.g. manual control is active) — keep the modal
+      // open and reset the hold timer so the human can allocate freely.
+      this.levelUpAutoHoldFrames = 0;
+      return;
+    }
     this.levelUpAutoHoldFrames += 1;
     if (this.levelUpAutoHoldFrames < LEVEL_UP_AUTO_HOLD_FRAMES) {
       return;
     }
-    const available = this.world.playerLevel.unspentPoints;
-    const allocations = allocator(this.world, this.playerEid, available);
     this.levelUpUI.autoResolve(allocations);
     this.levelUpAutoHoldFrames = 0;
   }

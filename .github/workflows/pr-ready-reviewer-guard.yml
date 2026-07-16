@@ -52,27 +52,60 @@ jobs:
             let reviewerRemovals = 0;
             const publishFailures = [];
 
+            async function changedFilesForDraft(prNumber) {
+              const isFreshSynchronize =
+                context.eventName === 'pull_request_target' &&
+                context.payload.action === 'synchronize' &&
+                context.payload.pull_request?.number === prNumber;
+              const delaysMs = isFreshSynchronize ? [0, 1000, 2000] : [0];
+              let changedFiles = 0;
+
+              for (const delayMs of delaysMs) {
+                if (delayMs > 0) {
+                  await new Promise((resolve) => setTimeout(resolve, delayMs));
+                }
+                const details = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                });
+                changedFiles = Number(details.data.changed_files || 0);
+                if (changedFiles > 0) {
+                  break;
+                }
+              }
+
+              return changedFiles;
+            }
+
             for (const pr of openPrs) {
               const prNumber = pr.number;
 
               if (pr.draft) {
                 try {
-                  await github.graphql(
-                    `
-                    mutation MarkPullRequestReadyForReview($pullRequestId: ID!) {
-                      markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
-                        pullRequest {
-                          number
+                  const changedFiles = await changedFilesForDraft(prNumber);
+                  if (changedFiles === 0) {
+                    core.info(`Kept PR #${prNumber} in draft: no changed files.`);
+                  } else {
+                    await github.graphql(
+                      `
+                      mutation MarkPullRequestReadyForReview($pullRequestId: ID!) {
+                        markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
+                          pullRequest {
+                            number
+                          }
                         }
                       }
-                    }
-                    `,
-                    {
-                      pullRequestId: pr.node_id,
-                    },
-                  );
-                  draftsPublished += 1;
-                  core.info(`Marked PR #${prNumber} as ready for review.`);
+                      `,
+                      {
+                        pullRequestId: pr.node_id,
+                      },
+                    );
+                    draftsPublished += 1;
+                    core.info(
+                      `Marked PR #${prNumber} as ready for review with ${changedFiles} changed file(s).`,
+                    );
+                  }
                 } catch (error) {
                   publishFailures.push(`PR #${prNumber}: ${error.message}`);
                   core.error(`Could not mark PR #${prNumber} ready: ${error.message}`);
