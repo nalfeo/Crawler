@@ -2402,6 +2402,18 @@ export class BehaviorTreeAI implements AIInputProvider {
 
         const impactFramesAfterSpawn = -(relativeX * relativeVx + relativeY * relativeVy) / speedSq;
         if (impactFramesAfterSpawn < 0) continue;
+        // The real fire path spawns via spawnAoeProjectile(..., FIREBALL_DEF.range)
+        // (see enemyAISystem.ts's fireEnemyProjectileFrom), and
+        // projectileCleanupSystem despawns a projectile once it has traveled
+        // that far from its spawn point. A virtual projectile is otherwise
+        // modeled as unbounded range, so without this check the AI can dodge
+        // an impact point the real shot will never reach (production bosses
+        // can begin firing well beyond the fireball's actual range). `dirX`/
+        // `dirY` are a unit vector (see enemyAISystem's `normalize()` call
+        // before `startEnemyProjectileTelegraph`), so distance traveled is
+        // simply `projectileSpeed * frames`.
+        const rangeFt = TELEGRAPH_FIREBALL_DEF?.range ?? 0;
+        if (rangeFt > 0 && impactFramesAfterSpawn * projectileSpeed > rangeFt) continue;
         const totalImpactFrames = remainingFrames + impactFramesAfterSpawn;
         if (
           totalImpactFrames > PROJECTILE_DODGE_HORIZON_FRAMES ||

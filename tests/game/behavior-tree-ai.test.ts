@@ -2168,6 +2168,42 @@ describe('BehaviorTreeAI', () => {
     expect(dodge.dodgeY).toBe(0);
   });
 
+  it("ignores a telegraphed shot whose closest approach lies beyond the real projectile's range (regression: copilot-pull-request-reviewer finding)", () => {
+    // The real fire path spawns via spawnAoeProjectile(..., FIREBALL_DEF.range)
+    // (enemyAISystem.ts's fireEnemyProjectileFrom) and projectileCleanupSystem
+    // despawns the projectile once it has traveled that far (32ft for
+    // fireball) from its spawn point. The virtual-projectile dodge model must
+    // respect the same bound — otherwise the AI dodges a shot that will
+    // despawn long before it could ever reach the player.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    // Stand directly on the aim ray, 38.5ft from the (muzzle-offset) spawn
+    // point — well beyond the fireball's 32ft range — so the shot would
+    // despawn in flight and can never actually hit.
+    spawnPlayer(world, 40, 0);
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = 0; // ready to fire immediately
+    enemyBehavior.telegraphOriginX[enemy] = 0;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Without the range bound, this dead-center trajectory (well within the
+    // dodge horizon) would trigger a nonzero perpendicular dodge; with the
+    // bound in place the candidate is out of the real projectile's reach and
+    // must be skipped, leaving dodgeY at 0.
+    expect(dodge.dodgeY).toBe(0);
+  });
+
   it('triggers dodge for an AoE fireball that misses the direct-hit clearance but lands within splash radius+buffer, and ignores one just outside', () => {
     // PROJECTILE_DODGE_CLEARANCE_FT = 2.5 ft (direct projectile threshold)
     // PROJECTILE_DODGE_AOE_BUFFER_FT = 1.5 ft

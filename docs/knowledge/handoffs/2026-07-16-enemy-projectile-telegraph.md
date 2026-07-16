@@ -137,10 +137,11 @@ None blocking. Follow-up ideas (not required by the approved spec):
   "the code path looks like it does nothing" — it proves byte-for-byte
   output identity on the real pipeline.
 - **No screenshot capability for Phaser canvas in this sandboxed
-  environment's Playwright/chrome-devtools tools**: pivoted to writing 2
+  environment's Playwright/chrome-devtools tools**: pivoted to writing 4
   deterministic `tests/unit/phaser-bridge.test.ts` assertions (cue created +
   visible while telegraphing; same object hidden, not recreated, once
-  cleared) instead of a manual visual pass. This matches the repo's own
+  cleared; hidden outside FOV; hidden for a shooter killed this frame)
+  instead of a manual visual pass. This matches the repo's own
   stated preference (rule #9) for deterministic checks over ad hoc visual
   QA, so treat "no screenshot tool" as a nudge toward the better default,
   not just a workaround.

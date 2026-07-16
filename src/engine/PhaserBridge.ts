@@ -1637,7 +1637,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
 
       for (const [eid, tg] of telegraphGraphics) {
-        if (activeEntities.has(eid)) {
+        // Beyond the usual active-entity liveness check, also require the
+        // EID to still resolve as an enemy: bitecs may recycle a removed
+        // enemy's EID for an unrelated sprite (e.g. a gem/prop) across a
+        // batch of simulation steps that runs before the next render, and
+        // `activeEntities` alone can't distinguish "same enemy, still alive"
+        // from "different entity now occupying this recycled EID" — without
+        // this check the old aim line would keep rendering indefinitely,
+        // now pinned to the wrong entity's position.
+        if (activeEntities.has(eid) && resolveRenderKind(world, eid) === 'enemy') {
           continue;
         }
         tg.destroy();

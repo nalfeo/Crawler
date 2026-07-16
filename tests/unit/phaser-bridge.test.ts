@@ -1,4 +1,4 @@
-import { addComponent, addEntity, removeEntity } from 'bitecs';
+import { addComponent, addEntity, removeComponent, removeEntity } from 'bitecs';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -1796,6 +1796,36 @@ describe('createPhaserBridge', () => {
 
       const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
       expect(telegraphGfx).toBeUndefined();
+    });
+
+    it('destroys a stale telegraph graphic if its EID stops resolving as an enemy (recycled mid-simulation)', () => {
+      // Multiple fixed-step simulation ticks can run between renders (e.g.
+      // while catching up / fast-forwarding), so bitecs can recycle a
+      // removed enemy's EID for an unrelated entity before the next
+      // bridge.sync(). `activeEntities.has(eid)` alone can't tell "same
+      // enemy" apart from "different entity now at this recycled EID" — the
+      // cleanup pass must also require the EID to still resolve as 'enemy',
+      // or the old aim line would keep rendering pinned to the wrong entity.
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+
+      bridge.sync(world);
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeDefined();
+      expect(telegraphGfx?.destroyed).toBe(false);
+
+      // Simulate the EID being recycled for a non-enemy entity: strip the
+      // `Enemy` tag while leaving Sprite/Position in place, so the eid
+      // still satisfies the render query (stays in `activeEntities`) but no
+      // longer resolves as an enemy.
+      removeComponent(world.ecs, eid, Enemy);
+
+      bridge.sync(world);
+
+      expect(telegraphGfx?.destroyed).toBe(true);
     });
   });
 });
