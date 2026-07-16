@@ -478,7 +478,7 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /blocked pr=#42 reason=human-approval-required/);
   assert.match(stdout, /disabled auto-merge pr=#42 reason=human-approval-required/);
-  assert.match(stdout, /wait pr=#42 required-checks=ci/);
+  assert.match(stdout, /wait pr=#42 (required-checks|admission)=ci/);
   assert.doesNotMatch(stdout, /removed temporary approval opt-out/);
   assert.ok(
     mutatingCalls.some(

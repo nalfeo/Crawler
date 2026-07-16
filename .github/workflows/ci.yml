@@ -346,6 +346,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup-node
       - name: Enforce owner approval for human-gated PRs
         env:

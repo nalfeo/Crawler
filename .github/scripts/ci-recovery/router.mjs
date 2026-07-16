@@ -141,16 +141,20 @@ export function collectPrNumbers({
   if (trainEnabled) {
     const directlyTriggeredPrs = eventPrNumbers(payload);
     return scheduledPulls
-      .filter(
-        (pullRequest) =>
+      .filter((pullRequest) => {
+        const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
+        return (
           pullRequest.state === 'open' &&
           !pullRequest.draft &&
           pullRequest.base?.ref === 'main' &&
           pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
           !(pullRequest.labels || []).some(
-            (label) => label.name === QUEUE_LABEL || label.name === 'ci-recovery-opt-out',
-          ),
-      )
+            (label) =>
+              label.name === QUEUE_LABEL ||
+              (label.name === 'ci-recovery-opt-out' && !directlyTriggered),
+          )
+        );
+      })
       .sort(
         (left, right) =>
           new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
