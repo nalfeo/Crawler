@@ -43,7 +43,7 @@ export async function stabilizeTerminalSnapshot(snapshot, options) {
   const { attempts, delayMs, signal, isTerminalRun, loadSnapshot, sleep = defaultSleep } = options;
   if (!isTerminalRun(snapshot.run)) return snapshot;
   let current = snapshot;
-  for (let attempt = 1; attempt < attempts; attempt += 1) {
+  for (let attempt = 0; attempt < Math.max(0, attempts - 1); attempt += 1) {
     const complete =
       current.expectedWeapons.length > 0 &&
       current.aggregateOutputs.length >= current.expectedWeapons.length;
