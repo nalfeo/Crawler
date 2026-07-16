@@ -202,3 +202,14 @@ test('terminal partial warning says Missing not Waiting; active partial says Wai
   assert.match(active, /Waiting/);
   assert.match(active, /bow/);
 });
+
+test('partial warnings are keyed by missing membership, not only array length', () => {
+  const warning = cloudResultWarning({
+    run: { status: 'completed', conclusion: 'success' },
+    expectedWeapons: ['sword'],
+    availableWeapons: ['bow'],
+    expiredCount: 0,
+  });
+  assert.match(warning, /Missing/);
+  assert.match(warning, /sword/);
+});

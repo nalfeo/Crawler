@@ -59,7 +59,7 @@ export function sanitizeErrorText(value, environment = process.env) {
     }
   }
   return text
-    .replace(/\b(?:gh[opsu]_|github_pat_)[A-Za-z0-9_]+\b/g, '<redacted>')
+    .replace(/\b(?:gh[oprsu]_|github_pat_)[A-Za-z0-9_]+\b/g, '<redacted>')
     .replace(/\s+/g, ' ')
     .trim();
 }

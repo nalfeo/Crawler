@@ -11,6 +11,11 @@ import {
 } from './lib/cloud-results.mjs';
 import { listWeaponSweepRuns, loadCloudRun, resolveProjectContext } from './lib/github-client.mjs';
 import { tokensMatch } from './lib/http-security.mjs';
+import {
+  formatCloudFailure,
+  isCurrentLocalSelection,
+  stabilizeTerminalSnapshot,
+} from './lib/state-helpers.mjs';
 import { renderHtml } from './renderer.mjs';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -152,46 +157,6 @@ function schedulePoll(instanceId) {
   state.pollTimer.unref?.();
 }
 
-function sleep(milliseconds, signal) {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason ?? new Error('Aborted'));
-      return;
-    }
-    const timer = setTimeout(resolve, milliseconds);
-    signal.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        reject(signal.reason ?? new Error('Aborted'));
-      },
-      { once: true },
-    );
-  });
-}
-
-async function stabilizeTerminalSnapshot(state, snapshot, signal) {
-  if (!isTerminalRun(snapshot.run)) return snapshot;
-  let current = snapshot;
-  for (let attempt = 1; attempt < TERMINAL_SYNC_ATTEMPTS; attempt += 1) {
-    const complete =
-      current.expectedWeapons.length > 0 &&
-      current.aggregateOutputs.length >= current.expectedWeapons.length;
-    if (complete || current.expiredArtifactCount > 0) {
-      break;
-    }
-    await sleep(TERMINAL_SYNC_DELAY_MS, signal);
-    const next = await loadCloudRun(state.context.repository, state.selectedRun.id, signal);
-    const unchanged =
-      next.aggregateArtifactIds.join(',') === current.aggregateArtifactIds.join(',');
-    current = next;
-    if (unchanged) {
-      break;
-    }
-  }
-  return current;
-}
-
 async function refreshCloudState(instanceId, options = {}) {
   const state = states.get(instanceId);
   if (!state || state.closed || state.source !== 'cloud') return state;
@@ -236,7 +201,14 @@ async function refreshCloudState(instanceId, options = {}) {
       state.selectedRun.id,
       controller.signal,
     );
-    cloud = await stabilizeTerminalSnapshot(state, cloud, controller.signal);
+    cloud = await stabilizeTerminalSnapshot(cloud, {
+      attempts: TERMINAL_SYNC_ATTEMPTS,
+      delayMs: TERMINAL_SYNC_DELAY_MS,
+      signal: controller.signal,
+      isTerminalRun,
+      loadSnapshot: (signal) =>
+        loadCloudRun(state.context.repository, state.selectedRun.id, signal),
+    });
     if (state.closed || state.generation !== generation || state.source !== 'cloud') {
       return state;
     }
@@ -273,7 +245,7 @@ async function refreshCloudState(instanceId, options = {}) {
       ) {
         return state;
       }
-      state.error = `Cloud refresh failed: ${errorMessage(error)}. Authenticate with "gh auth login" and retry.`;
+      state.error = formatCloudFailure('Cloud refresh failed: ', errorMessage(error));
       state.lastRefreshedAt = new Date().toISOString();
       return state;
     })
@@ -316,20 +288,29 @@ async function switchToLocal(instanceId, path) {
   state.expiredArtifactCount = 0;
   state.warning = null;
   state.refreshing = true;
+  const selection = { generation: state.generation, path };
   notifyClients(instanceId);
   try {
     const loaded = await loadLocalData(path);
+    if (!isCurrentLocalSelection(state, selection)) {
+      return state;
+    }
     state.data = loaded.data;
     state.loadedAt = loaded.loadedAt;
     state.lastRefreshedAt = new Date().toISOString();
     state.error = null;
   } catch (error) {
+    if (!isCurrentLocalSelection(state, selection)) {
+      return state;
+    }
     state.data = null;
     state.loadedAt = null;
     state.error = `Local file load failed: ${errorMessage(error)}`;
   } finally {
-    state.refreshing = false;
-    notifyClients(instanceId);
+    if (isCurrentLocalSelection(state, selection)) {
+      state.refreshing = false;
+      notifyClients(instanceId);
+    }
   }
   return state;
 }
@@ -407,7 +388,7 @@ async function initializeCloud(instanceId, explicitRunId) {
     }
     await refreshCloudState(instanceId, { refreshRuns: false });
   } catch (error) {
-    state.error = `Cloud initialization failed: ${errorMessage(error)}. Authenticate with "gh auth login" and retry.`;
+    state.error = formatCloudFailure('Cloud initialization failed: ', errorMessage(error));
     state.lastRefreshedAt = new Date().toISOString();
     notifyClients(instanceId);
   }

@@ -165,8 +165,8 @@ export function cloudResultWarning({ run, expectedWeapons, availableWeapons, exp
   if (!isTerminalRun(run) && availableWeapons.length === 0) {
     return 'No aggregate weapon results are available yet. This active run will refresh automatically.';
   }
-  if (expectedWeapons.length > availableWeapons.length) {
-    const missing = expectedWeapons.filter((weapon) => !availableWeapons.includes(weapon));
+  const missing = expectedWeapons.filter((weapon) => !availableWeapons.includes(weapon));
+  if (missing.length > 0) {
     if (isTerminalRun(run)) {
       return `Run finished with partial results. Missing: ${missing.join(', ')}.`;
     }

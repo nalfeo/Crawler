@@ -11,12 +11,15 @@ test('parses supported GitHub origin URL forms', () => {
 });
 
 test('redacts environment and recognizable GitHub tokens from surfaced errors', () => {
+  const classicTokenShape = `${'gh' + 'o_'}testtoken123`;
+  const refreshTokenShape = `${'gh' + 'r_'}0123456789abcdef`;
   const text = sanitizeErrorText(
-    'request failed for secret-value and gho_abcdefghijklmnopqrstuvwxyz0123456789',
+    `request failed for secret-value and ${classicTokenShape} and ${refreshTokenShape}`,
     { GH_TOKEN: 'secret-value' },
   );
   assert.equal(text.includes('secret-value'), false);
   assert.equal(text.includes('gho_'), false);
+  assert.equal(text.includes('ghr_'), false);
   assert.match(text, /<redacted>/);
 });
 
