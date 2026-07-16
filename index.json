@@ -1,5 +1,16 @@
 [
   {
+    "commit": "52372b3bbf5556686b81765cd00e0ac4f5fd3d05",
+    "commitDate": "2026-07-16T17:39:22Z",
+    "commitSubject": "test(ai): add deterministic invariant harness (#1206)",
+    "capturedAt": "2026-07-16T18:38:44.388Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29521374674",
+    "winRate": 0.9833333333333333,
+    "totalWins": 590,
+    "totalRuns": 600,
+    "path": "by-sha/52372b3bbf5556686b81765cd00e0ac4f5fd3d05.json"
+  },
+  {
     "commit": "7003b302b54d70a37bb21edd66224acd5f9450fc",
     "commitDate": "2026-07-16T17:15:14Z",
     "commitSubject": "feat(equipment): author complete weightLb values and encumbrance display system (#1205)",
