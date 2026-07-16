@@ -243,12 +243,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     // dispatches, so the woken reconciliation redispatches validation
     // immediately instead of waiting.
     //
-    // Scope limitation: this fallback handles post-token-mint publish failures
-    // only (e.g. a transient checks.create API error after the App token was
-    // minted). If the `app-token` mint step itself fails, the fallback step
-    // also has no valid token and cannot post the cancelled check; the train
-    // falls back to the CANDIDATE_VALIDATION_STALE_MS (40-minute) stale bound
-    // for that rarer failure mode.
+    // Scope: this fallback reuses the App token minted above, so it can only
+    // authenticate its own checks.create call when that mint succeeded. It is
+    // gated on `steps.app-token.outcome == 'success'` so it never attempts a
+    // doomed call with an empty token if the mint itself failed; that rarer,
+    // config/secrets-shaped failure mode falls back to the pre-existing
+    // CANDIDATE_VALIDATION_STALE_MS (40-minute) stale bound instead.
     function getFallbackStep(doc: WorkflowDoc): WorkflowStep {
       const steps = doc.jobs.publish?.steps ?? [];
       const step = steps.find(
@@ -258,10 +258,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       return step;
     }
 
-    it('exists, runs on failure(), and uses the App token (covers post-token-mint publish failures)', () => {
+    it('runs on failure() scoped to a successful app-token mint, and uses the App token', () => {
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
-      expect(step.if).toBe('failure()');
+      expect(step.if).toBe("failure() && steps.app-token.outcome == 'success'");
       expect(step.uses).toMatch(/^actions\/github-script/);
       expect(step.with?.['github-token']).toBe('${{ steps.app-token.outputs.token }}');
     });

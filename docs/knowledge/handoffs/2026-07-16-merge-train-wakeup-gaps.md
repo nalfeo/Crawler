@@ -33,15 +33,20 @@ requirements. This PR closes both:
    `wait` action. So the immediate wake would just see `pending` and do
    nothing — no better than the unreliable schedule fallback it exists to
    replace. Added a new "Mark candidate check retryable if publishing failed"
-   step (`if: failure()`, runs after the publish step and before the wake
-   dispatch) that posts a `cancelled` conclusion for the fingerprinted check —
-   mirroring `reconcile.mjs`'s own `dispatchValidation` catch block — so the
-   woken reconciliation redispatches validation immediately instead of waiting
-   on staleness. **Scope:** this fallback covers post-token-mint publish
-   failures only (e.g. a transient `checks.create` API error). If the
-   `app-token` mint step itself fails, the fallback also has no valid token
-   and cannot post the cancelled check; the train falls back to the 40-minute
-   stale bound for that rarer failure mode.
+   step (runs after the publish step and before the wake dispatch) that posts
+   a `cancelled` conclusion for the fingerprinted check — mirroring
+   `reconcile.mjs`'s own `dispatchValidation` catch block — so the woken
+   reconciliation redispatches validation immediately instead of waiting on
+   staleness.
+
+   **Second review-pass fix**: this fallback reuses the App token minted
+   above, so a second reviewer pass flagged that if the `app-token` mint step
+   itself fails, the fallback also has no valid token to authenticate its own
+   `checks.create` call — it would fail a second time and post nothing.
+   Rather than just documenting that gap, scoped the step's condition to
+   `if: failure() && steps.app-token.outcome == 'success'` so it never
+   attempts the doomed call; that rarer, config/secrets-shaped failure mode
+   falls back to the pre-existing 40-minute stale bound instead.
 
 2. **Scheduled-CI wake-up gap**: `merge-train.yml`'s `reconcile` job guard for
    `workflow_run` events named `'CI'` only allowed

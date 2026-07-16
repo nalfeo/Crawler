@@ -110,13 +110,17 @@ jobs:
       # `cancelled` conclusion here -- mirroring reconcile.mjs's own
       # dispatchValidation catch block -- so trainCheckState() sees "missing"
       # immediately and the woken reconciliation redispatches validation right
-      # away. Scope: this step covers post-token-mint publish failures only.
-      # If the app-token mint itself fails (the `app-token` step above),
-      # this step also has no valid token and cannot post the cancelled check;
-      # the train falls back to the 40-minute CANDIDATE_VALIDATION_STALE_MS
-      # bound for that failure mode.
+      # away.
+      #
+      # Scoped to `steps.app-token.outcome == 'success'`: this step reuses the
+      # App token minted above, so if minting itself failed there is no valid
+      # token to authenticate this fallback's own checks.create call either --
+      # it would just fail a second time and post nothing. Gating on the mint
+      # outcome means we don't even attempt that doomed call; the train falls
+      # back to the pre-existing 40-minute CANDIDATE_VALIDATION_STALE_MS bound
+      # for that rarer, config/secrets-shaped failure mode.
       - name: Mark candidate check retryable if publishing failed
-        if: failure()
+        if: failure() && steps.app-token.outcome == 'success'
         uses: actions/github-script@v7
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
