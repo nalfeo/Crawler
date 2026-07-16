@@ -157,12 +157,114 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
 });
 
 /**
+ * Regression coverage for the "Recover failed check publication" step:
+ * when `checks.create` in the `publish` step fails (App token obtained but
+ * the API call throws), the `in_progress` check pre-created by
+ * `dispatchValidation` in `reconcile.mjs` would otherwise remain pending for
+ * 40 minutes before `trainCheckState()`'s stale-check guard treats it as
+ * retryable. The recovery step force-completes it as `cancelled` immediately
+ * so the dispatched reconcile can act on the next run.
+ */
+describe('merge-train-validate.yml publish step (failed-publish recovery)', () => {
+  function getRecoveryStep(doc: WorkflowDoc): WorkflowStep {
+    const steps = doc.jobs.publish?.steps ?? [];
+    const step = steps.find((candidate) => candidate.name === 'Recover failed check publication');
+    if (!step) throw new Error('"Recover failed check publication" step not found');
+    return step;
+  }
+
+  it('exists in the publish job', () => {
+    const doc = loadWorkflow();
+    const step = getRecoveryStep(doc);
+    expect(step).toBeDefined();
+  });
+
+  it('only runs on failure when the app-token step succeeded', () => {
+    const doc = loadWorkflow();
+    const step = getRecoveryStep(doc);
+    // Must NOT run unconditionally (that would duplicate checks on success paths)
+    // and must gate on app-token success to ensure a valid token is available.
+    expect(step.if).toBe("failure() && steps.app-token.outcome == 'success'");
+  });
+
+  it('runs after the immutable candidate publish step and before the dispatch step', () => {
+    const doc = loadWorkflow();
+    const steps = doc.jobs.publish?.steps ?? [];
+    const publishIndex = steps.findIndex(
+      (candidate) => candidate.name === 'Publish immutable candidate result',
+    );
+    const recoveryIndex = steps.findIndex(
+      (candidate) => candidate.name === 'Recover failed check publication',
+    );
+    const dispatchIndex = steps.findIndex((candidate) => candidate.name === 'Dispatch Merge Train');
+    expect(publishIndex).toBeGreaterThanOrEqual(0);
+    expect(recoveryIndex).toBeGreaterThan(publishIndex);
+    expect(dispatchIndex).toBeGreaterThan(recoveryIndex);
+  });
+
+  it('uses the App token (same identity as the publish step) so trustedAppId filter matches', () => {
+    // trainCheckState() filters checks by trustedAppId. The recovery check
+    // must be posted by the same App identity as the normal publish step,
+    // otherwise trainCheckState() would not see it.
+    const doc = loadWorkflow();
+    const step = getRecoveryStep(doc);
+    expect(step.with?.['github-token']).toBe('${{ steps.app-token.outputs.token }}');
+  });
+
+  it('creates a completed/cancelled check so trainCheckState() returns missing', async () => {
+    // cancelled → trainCheckState() returns 'missing' → planPrefixPromotion()
+    // returns { action: 'validate' } instead of { action: 'wait' }
+    const doc = loadWorkflow();
+    const step = getRecoveryStep(doc);
+    if (!step.uses?.startsWith('actions/github-script')) {
+      throw new Error('expected the recovery step to use actions/github-script');
+    }
+    const script = step.with?.script;
+    if (typeof script !== 'string') throw new Error('expected step.with.script to be a string');
+
+    const calls: Array<{ status: string; conclusion: string }> = [];
+    const github = {
+      rest: {
+        checks: {
+          create: async (args: { status: string; conclusion: string }) => {
+            calls.push(args);
+            return { data: {} };
+          },
+        },
+      },
+    };
+    const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+    const previousEnv = {
+      CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+      FINGERPRINT: process.env.FINGERPRINT,
+    };
+    process.env.CANDIDATE_SHA = 'b'.repeat(40);
+    process.env.FINGERPRINT = 'cafebabe';
+    try {
+      const run = new Function('github', 'context', `return (async () => {\n${script}\n})();`) as (
+        github: unknown,
+        context: unknown,
+      ) => Promise<void>;
+      await run(github, context);
+    } finally {
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].status).toBe('completed');
+    expect(calls[0].conclusion).toBe('cancelled');
+  });
+});
+
+/**
  * Regression coverage for the missing post-validation promotion trigger:
  * `merge-train.yml`'s `workflow_run` trigger on this workflow never fired in
  * production, and its declared 5-minute cron schedule arrived ~hourly in
  * practice, so neither was a reliable completion signal. The `publish` job
- * now explicitly
- * dispatches `merge-train.yml` after publishing the immutable
+ * now explicitly dispatches `merge-train.yml` after publishing the immutable
  * `merge-train-candidate` check, for every verify outcome
  * (success/failure/cancelled), so `reconcile` promptly
  * consumes/retries/bisects instead of waiting on an unreliable trigger.
