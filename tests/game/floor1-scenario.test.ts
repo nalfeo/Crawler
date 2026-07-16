@@ -466,19 +466,26 @@ describe('floor1Scenario', () => {
     }
   });
 
-  it('applies welcome-room wall/door props to real map tiles', () => {
+  it('welcome-room set-piece has no structural (wall/door) props and interior stays fully passable', () => {
+    // The welcome-room set-piece is purely decorative: room walls, floors, and
+    // doors come from the dungeon generator. Auto-generated wall/door props from
+    // the set-piece editor were removed because they caused "walls not solid"
+    // (auto-wall props set terrain=STONE_WALL without updating physics flags) and
+    // "door doesn't work" (door props at interior positions out of alignment with
+    // the actual dungeon doors).
     const def = getSetPieceDef('welcome-room');
     if (!def) {
       throw new Error('Expected the welcome-room set piece to be registered');
     }
 
-    const structuralById = new Map(
-      def.props
-        .filter((prop) => prop.kind === 'wall' || prop.kind === 'door')
-        .map((prop) => [prop.id, prop]),
+    const structuralProps = def.props.filter(
+      (prop) => prop.kind === 'wall' || prop.kind === 'door',
     );
-    expect(structuralById.size).toBeGreaterThan(0);
+    expect(structuralProps).toHaveLength(0);
 
+    // After stamping the set-piece, every interior tile that was not already a
+    // dungeon wall should remain passable (decorative props must not inadvertently
+    // seal the room interior).
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -492,35 +499,16 @@ describe('floor1Scenario', () => {
       throw new Error('Expected a welcome room at the welcome-office tile');
     }
 
-    const stamp = stampSetPiece(def, {
-      roomBounds: room.bounds,
-      tileSizeFt: map.config.tileSizeFt,
-    });
-    const validated = new Set<string>();
-    for (const stampedProp of stamp.props) {
-      const propId = stampedProp.render.label;
-      if (!propId || validated.has(propId)) continue;
-      const prop = structuralById.get(propId);
-      if (!prop) continue;
-      validated.add(propId);
-
-      for (let dy = 0; dy < prop.height; dy += 1) {
-        for (let dx = 0; dx < prop.width; dx += 1) {
-          const tx = stampedProp.tileX + dx;
-          const ty = stampedProp.tileY + dy;
-          const idx = ty * map.width + tx;
-          const flags = map.tileMap.flags[idx]!;
-          if (prop.kind === 'wall') {
-            expect(map.terrain[idx]).toBe(TerrainType.STONE_WALL);
-          } else {
-            expect((flags & TileFlags.DOOR) !== 0).toBe(true);
-            expect((flags & TileFlags.PASSABLE) !== 0).toBe(true);
-            expect(map.terrain[idx]).toBe(TerrainType.DOOR);
-          }
-        }
+    const { x, y, width, height } = room.bounds;
+    for (let ty = y + 1; ty < y + height - 1; ty += 1) {
+      for (let tx = x + 1; tx < x + width - 1; tx += 1) {
+        const flags = map.tileMap.flags[ty * map.width + tx]!;
+        expect(
+          (flags & TileFlags.PASSABLE) !== 0,
+          `unexpected impassable tile at (${tx},${ty}) in welcome room interior after set-piece stamp`,
+        ).toBe(true);
       }
     }
-    expect(validated.size).toBe(structuralById.size);
   });
 
   it('does not accumulate set-piece props when re-initialized on a reused world', () => {
