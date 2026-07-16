@@ -1,5 +1,16 @@
 [
   {
+    "commit": "574552e8d98c2538a24ad973654f262f667aa2a8",
+    "commitDate": "2026-07-16T21:42:01Z",
+    "commitSubject": "feat(sprites): add asset-request size variants (#1213)",
+    "capturedAt": "2026-07-16T23:04:32.204Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29537899557",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/574552e8d98c2538a24ad973654f262f667aa2a8.json"
+  },
+  {
     "commit": "605b62450e1c3ceff0ccf6654532110b8180fbd2",
     "commitDate": "2026-07-16T20:59:33Z",
     "commitSubject": "feat(devtools): redesign the AI Runner side panel (#1211)",
