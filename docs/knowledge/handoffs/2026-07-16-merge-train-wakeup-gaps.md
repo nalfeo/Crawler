@@ -696,3 +696,27 @@ Test counts: **29 (24 + 5, up from 26 = 21 + 5)**. Ran
 `npx vitest run tests/unit/merge-train-validate-publish.test.ts
 tests/unit/merge-train-workflow-wakeups.test.ts` -- 29/29 passed. Re-ran
 `npm run verify:fast` -- passed.
+
+## Eleventh round follow-up (complete and authoritative recovery lookup)
+
+A final review of the update-in-place recovery found two coupled gaps:
+
+1. `checks.listForRef` still used GitHub's default 30-result page. A matching
+   trusted check beyond that page could be missed, incorrectly taking the
+   `checks.create` fallback and reopening the masking race.
+2. `findMatch()` returned `matching[0]`, but the API's array order is not the
+   repository's authoritative selection rule. `trainCheckState()` resolves
+   duplicate matching checks by highest check-run ID, so updating an older
+   cancelled run could leave a newer in-progress run authoritative and keep
+   reconciliation parked.
+
+Fixed by requesting `per_page: 100` on every lookup (including the visibility-
+lag re-list) and reducing trusted fingerprint matches to the highest numeric ID
+before `checks.update`. Extended the existing update-in-place test without
+adding a new test case: it returns older cancelled ID 700 before newer
+in-progress ID 777, asserts ID 777 is updated, and asserts the lookup requests
+100 results. The previous `matching[0]` implementation fails this regression.
+
+Separate-model review (`claude-sonnet-4.6`) found no significant issues and
+confirmed terminal success/failure preservation and the no-match create
+fallback remain sound. Targeted tests remain **29/29 passed (24 + 5)**.

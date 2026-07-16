@@ -211,8 +211,8 @@ jobs:
       # always get a fresher/higher ID than whatever the in-flight request
       # persists next, masking the real result again regardless of the
       # lookup. To close this, when the lookup finds an existing (non-
-      # terminal) check run for this fingerprint, this step *updates that
-      # same check run in place* (`checks.update`, same check_run_id) instead
+      # terminal) check run for this fingerprint, this step *updates the
+      # highest-ID matching run in place* (`checks.update`, same check_run_id) instead
       # of creating a new one -- preserving its original (older, lower) ID.
       # If the in-flight original request then lands afterwards, its
       # `checks.create` call mints a genuinely new, higher-ID check, which
@@ -260,6 +260,7 @@ jobs:
                 repo: context.repo.repo,
                 ref: process.env.CANDIDATE_SHA,
                 check_name: 'merge-train-candidate',
+                per_page: 100,
               });
               const trustedAppId = Number(process.env.APP_ID);
               const matching = (existing.check_runs ?? []).filter(
@@ -272,7 +273,11 @@ jobs:
                   run.status === 'completed' &&
                   (run.conclusion === 'success' || run.conclusion === 'failure'),
               );
-              return { existingRun: matching[0], alreadyTerminal };
+              const existingRun = matching.reduce(
+                (latest, run) => (!latest || Number(run.id) > Number(latest.id) ? run : latest),
+                undefined,
+              );
+              return { existingRun, alreadyTerminal };
             };
             let lastError;
             for (const delayMs of [0, 1000, 2000]) {

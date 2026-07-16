@@ -515,22 +515,33 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
 
       let createCalls = 0;
       let updateArgs: { check_run_id: number; conclusion: string } | undefined;
+      let listArgs: { per_page?: number } | undefined;
       const github = {
         rest: {
           checks: {
-            listForRef: async () => ({
-              data: {
-                check_runs: [
-                  {
-                    id: 777,
-                    external_id: 'cafef00d',
-                    app: { id: 12345 },
-                    status: 'in_progress',
-                    conclusion: null,
-                  },
-                ],
-              },
-            }),
+            listForRef: async (args: { per_page?: number }) => {
+              listArgs = args;
+              return {
+                data: {
+                  check_runs: [
+                    {
+                      id: 700,
+                      external_id: 'cafef00d',
+                      app: { id: 12345 },
+                      status: 'completed',
+                      conclusion: 'cancelled',
+                    },
+                    {
+                      id: 777,
+                      external_id: 'cafef00d',
+                      app: { id: 12345 },
+                      status: 'in_progress',
+                      conclusion: null,
+                    },
+                  ],
+                },
+              };
+            },
             create: async () => {
               createCalls += 1;
               return { data: {} };
@@ -568,6 +579,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(updateArgs).toBeDefined();
       expect(updateArgs?.check_run_id).toBe(777);
       expect(updateArgs?.conclusion).toBe('cancelled');
+      expect(listArgs?.per_page).toBe(100);
     });
 
     it('re-lists once after a short delay when no matching check is found on the first read, and updates in place if one appears (residual visibility-lag hardening)', async () => {
