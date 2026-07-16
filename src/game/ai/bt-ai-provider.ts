@@ -332,7 +332,7 @@ import {
 } from './tactical-opportunity-evaluator.js';
 
 const logger = createLogger('game:bt-ai-provider');
-const SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES = 30;
+export const SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES = 30;
 const SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES = 45;
 const SAFE_ROOM_EGRESS_PROGRESS_EPSILON_FT = 3;
 const SAFE_ROOM_EGRESS_MAX_ACTIVE_FRAMES = 300;
@@ -1921,11 +1921,40 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'LeaveSafeRoom',
       condition('In Safe Room With Threat', (ctx) => {
-        if (!ctx.world.playerInSafeRoom) {
-          this.safeRoomEgressSuppressFrames = 0;
+        const hasCommittedEgress =
+          this.safeRoomEgressTargetX !== null && this.safeRoomEgressTargetY !== null;
+        // `world.playerInSafeRoom` is a coarse, single-tile-boundary flag: it can
+        // flip false for exactly one frame right as the player's feet cross the
+        // doorway threshold, then flip back true the instant a lower-priority
+        // behavior (e.g. Hunt, once this condition stops gating it) nudges them
+        // back over the line — which re-arms this condition, pushing them across
+        // again, forever. That produced a frame-perfect livelock at the doorway
+        // (net-zero progress, oscillating decision.reason every single frame —
+        // see sword@14 root-cause writeup). `updateSafeRoomEgressWaypointLatch`
+        // (called once per poll, before this tree runs) already implements the
+        // grace window this is meant to use: it only clears a committed egress
+        // target after SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES consecutive frames
+        // genuinely outside the safe room, resetting that counter to 0 the instant
+        // playerInSafeRoom flips back true. This condition used to ignore that
+        // latch entirely and bail on ANY single flicker frame, defeating the
+        // hysteresis it was built to provide. Trust the latch instead: starting a
+        // BRAND NEW egress still requires genuinely being inside the safe room;
+        // an already-committed, in-flight egress may keep driving until the latch
+        // itself releases it (bounded to that window, not until arrival).
+        if (!ctx.world.playerInSafeRoom && !hasCommittedEgress) {
+          // NOTE: unlike the pre-fix code, this branch can now be reached after a
+          // no-progress/max-active watchdog trip that happened while genuinely
+          // outside (see below) — that trip already set a fresh
+          // safeRoomEgressSuppressFrames cooldown intended to hold off
+          // LeaveSafeRoom for SAFE_ROOM_EGRESS_SUPPRESS_FRAMES once back inside.
+          // Do NOT zero it here: Guard 2 below only ever consumes it while
+          // genuinely inside the safe room, so leaving it untouched here simply
+          // preserves that cooldown until it's actually spent; zeroing it would
+          // collapse a just-armed 120-frame cooldown to effectively nothing the
+          // very next frame.
           return false;
         }
-        if (this.safeRoomEgressSuppressFrames > 0) {
+        if (ctx.world.playerInSafeRoom && this.safeRoomEgressSuppressFrames > 0) {
           this.safeRoomEgressSuppressFrames -= 1;
           return false;
         }
@@ -1975,6 +2004,13 @@ export class BehaviorTreeAI implements AIInputProvider {
             }
           }
           this.clearSafeRoomEgressWaypoint();
+        }
+        // The prior egress (if any) is done or was never committed. Starting a
+        // fresh one still requires genuinely being inside the safe room — a
+        // momentary flicker with no committed target in flight shouldn't kick
+        // one off.
+        if (!ctx.world.playerInSafeRoom) {
+          return false;
         }
         // During the tutorial's pre-level-2 grind, relying on the default 50ft
         // scan can deadlock in the safe room when the nearest swarm is just

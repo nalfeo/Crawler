@@ -13,7 +13,10 @@ import { spawnEnemyProjectile, spawnAoeProjectile } from '../../src/core/spawner
 import { createInputState } from '../../src/shared/input.js';
 import { GAME, TeamId } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
-import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import {
+  BehaviorTreeAI,
+  SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES,
+} from '../../src/game/ai/bt-ai-provider.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
 import {
@@ -1013,17 +1016,77 @@ describe('BehaviorTreeAI', () => {
     expect(latched.targetX).toBeCloseTo(firstTargetX, 6);
     expect(latched.targetY).toBeCloseTo(firstTargetY, 6);
 
-    // Next frame outside safe room, threat still >50ft away: the AI should keep
-    // committing to the same far threat (Hunt), not drop to EXPLORE.
+    // Genuinely leaving the safe room (not a flicker): the egress commitment
+    // must survive the *first* poll after the transition too, since a single
+    // false frame is indistinguishable from a doorway flicker at the moment it
+    // happens (see "holds a committed egress waypoint through a
+    // playerInSafeRoom flicker" below for the pure-flicker case). It should
+    // keep the same latched waypoint, not instantly jump to Hunt.
     world.playerInSafeRoom = false;
     world.stores.position.x[player] = 20;
     world.stores.position.y[player] = 10;
 
     ai.poll(input, world);
-    const postExit = ai.getDecision();
+    const justExited = ai.getDecision();
+    expect(justExited.reason).toContain('Leaving safe room');
+    expect(justExited.targetX).toBeCloseTo(firstTargetX, 6);
+    expect(justExited.targetY).toBeCloseTo(firstTargetY, 6);
+
+    // Once genuinely outside for SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES
+    // consecutive frames, the egress latch itself releases the commitment
+    // (bounded — not "until arrival at the far overshoot waypoint"), and Hunt
+    // picks up the same distant threat.
+    let postExit = ai.getDecision();
+    for (let i = 0; i < SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES + 2; i += 1) {
+      ai.poll(input, world);
+      postExit = ai.getDecision();
+    }
     expect(postExit.state).toBe(AIState.ENGAGE);
     expect(postExit.targetEid).toBe(farThreat);
     expect(postExit.reason).toContain('Hunting enemy');
+  });
+
+  it('holds a committed egress waypoint through a playerInSafeRoom flicker (does not livelock at the doorway)', () => {
+    const world = createTestWorld({ seed: 31 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 0;
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 10;
+    world.playerInSafeRoom = true;
+
+    // Far threat (outside engage range) so LeaveSafeRoom, not Engage, drives.
+    spawnEnemy(world, 84, 10, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 31 });
+    const input = createInputState();
+    ai.poll(input, world);
+
+    const initial = ai.getDecision();
+    expect(initial.reason).toContain('Leaving safe room');
+    const targetX = initial.targetX!;
+    const targetY = initial.targetY!;
+    expect(targetX).not.toBeNull();
+
+    // Simulate the doorway flicker directly at the sword@14 root cause: the
+    // coarse single-tile boundary flag flips false then true again on
+    // consecutive polls, with the player's position essentially unchanged
+    // (straddling the threshold). Pre-fix, the first false poll instantly
+    // dropped LeaveSafeRoom to a lower-priority behavior (Hunt), which then
+    // pulled the player back across the boundary every alternate frame
+    // forever — a frame-perfect livelock with zero net progress. Post-fix, the
+    // already-committed waypoint must survive every one of these flips.
+    for (let i = 0; i < 6; i += 1) {
+      world.playerInSafeRoom = i % 2 === 0 ? false : true;
+      ai.poll(input, world);
+      const decision = ai.getDecision();
+      expect(decision.reason).toContain('Leaving safe room');
+      expect(decision.targetX).toBeCloseTo(targetX, 6);
+      expect(decision.targetY).toBeCloseTo(targetY, 6);
+    }
   });
 
   it('prioritizes the broker while floor2 reputation is locked, then drops broker targeting after intro completion', () => {
