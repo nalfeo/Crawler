@@ -142,20 +142,32 @@ jobs:
         with:
           github-token: ${{ steps.recovery-app-token.outputs.token }}
           script: |
-            await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'merge-train-candidate',
-              head_sha: process.env.CANDIDATE_SHA,
-              status: 'completed',
-              conclusion: 'cancelled',
-              external_id: process.env.FINGERPRINT,
-              output: {
-                title: 'Merge-train candidate validation was not completed (publish step failed)',
-                summary:
-                  'The "Publish immutable candidate result" step failed before it could post a terminal check. Marked cancelled so the next reconciliation retries validation immediately instead of waiting for the stale in_progress check to expire.',
-              },
-            });
+            let lastError;
+            for (const delayMs of [0, 1000, 2000]) {
+              if (delayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+              }
+              try {
+                await github.rest.checks.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'merge-train-candidate',
+                  head_sha: process.env.CANDIDATE_SHA,
+                  status: 'completed',
+                  conclusion: 'cancelled',
+                  external_id: process.env.FINGERPRINT,
+                  output: {
+                    title: 'Merge-train candidate validation was not completed (publish step failed)',
+                    summary:
+                      'The "Publish immutable candidate result" step failed before it could post a terminal check. Marked cancelled so the next reconciliation retries validation immediately instead of waiting for the stale in_progress check to expire.',
+                  },
+                });
+                return;
+              } catch (error) {
+                lastError = error;
+              }
+            }
+            throw lastError;
 
       # `workflow_run` delivery is best-effort; wake reconciliation after the
       # immutable result is durable. Must use GITHUB_TOKEN, not the App token:

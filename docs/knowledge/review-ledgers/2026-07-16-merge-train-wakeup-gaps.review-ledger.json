@@ -33,6 +33,14 @@
           "resolved_count": 0,
           "clean": true,
           "summary": "Round 2: reviewed a follow-up delta responding to a copilot-pull-request-reviewer bot finding on an autonomous agent-merge commit -- the retryable-check fallback step reused the original (possibly-failed) app-token output. Added a dedicated recovery-app-token mint step (if: failure()) and rewired the fallback step to use it. Verified if: failure() semantics are job-scoped (fires correctly even if the original app-token mint step is what failed), confirmed graceful degradation if the recovery mint also fails (wake dispatch still fires via if: always() with GITHUB_TOKEN, falling back to the pre-existing staleness bound), confirmed complete test coverage (token reference, step existence/ordering/condition), and found no permission/cost/syntax issues. No significant issues found."
+        },
+        {
+          "round": 3,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "summary": "Round 3: reviewed the bounded retry added to the recovery check publication. Verified exactly three attempts, immediate first attempt, 1-second and 2-second waits, early return on success, final-error propagation after exhaustion, and executable parsed-workflow coverage proving third-attempt success. No significant issues found."
         }
       ]
     }

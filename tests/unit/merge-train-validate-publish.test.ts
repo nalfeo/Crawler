@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 /**
  * Regression coverage for a real review finding on merge-train-validate.yml's
@@ -302,10 +302,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       let createArgs:
         | { conclusion: string; head_sha: string; external_id: string; output: { title: string } }
         | undefined;
+      let createCalls = 0;
       const github = {
         rest: {
           checks: {
             create: async (args: typeof createArgs) => {
+              createCalls += 1;
               createArgs = args;
               return { data: {} };
             },
@@ -336,6 +338,58 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(createArgs?.conclusion).toBe('cancelled');
       expect(createArgs?.head_sha).toBe('b'.repeat(40));
       expect(createArgs?.external_id).toBe('cafef00d');
+      expect(createCalls).toBe(1);
+    });
+
+    it('retries transient check publication failures twice before succeeding', async () => {
+      vi.useFakeTimers();
+      const doc = loadWorkflow();
+      const script = getFallbackStep(doc).with?.script;
+      expect(typeof script).toBe('string');
+
+      let createCalls = 0;
+      let createArgs:
+        | { conclusion: string; head_sha: string; external_id: string; output: { title: string } }
+        | undefined;
+      const github = {
+        rest: {
+          checks: {
+            create: async (args: typeof createArgs) => {
+              createCalls += 1;
+              if (createCalls < 3) throw new Error(`transient failure ${createCalls}`);
+              createArgs = args;
+              return { data: {} };
+            },
+          },
+        },
+      };
+      const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+      const previousEnv = {
+        CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        FINGERPRINT: process.env.FINGERPRINT,
+      };
+      process.env.CANDIDATE_SHA = 'c'.repeat(40);
+      process.env.FINGERPRINT = 'deadbeef';
+      try {
+        const run = new Function(
+          'github',
+          'context',
+          `return (async () => {\n${script}\n})();`,
+        ) as (github: unknown, context: unknown) => Promise<void>;
+        const runPromise = run(github, context);
+        await vi.runAllTimersAsync();
+        await runPromise;
+      } finally {
+        vi.useRealTimers();
+        for (const [key, value] of Object.entries(previousEnv)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+      expect(createCalls).toBe(3);
+      expect(createArgs?.conclusion).toBe('cancelled');
+      expect(createArgs?.head_sha).toBe('c'.repeat(40));
+      expect(createArgs?.external_id).toBe('deadbeef');
     });
   });
 

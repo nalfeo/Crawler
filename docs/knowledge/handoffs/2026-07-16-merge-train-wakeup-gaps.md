@@ -55,6 +55,11 @@ requirements. This PR closes both:
    is what failed — closing the gap rather than just falling back to the
    40-minute staleness bound for that failure mode.
 
+   The terminal-check publication itself now retries transient Checks API
+   failures up to three times (immediately, then after 1 second and 2 seconds)
+   before failing closed. This prevents a momentary failure of the recovery
+   call from recreating the 40-minute stall the fallback is intended to avoid.
+
 2. **Scheduled-CI wake-up gap**: `merge-train.yml`'s `reconcile` job guard for
    `workflow_run` events named `'CI'` only allowed
    `event == 'push' && head_branch == default_branch`. But
@@ -92,7 +97,8 @@ main.
   token" step (`if: failure()`) and "Mark candidate check retryable if
   publishing failed" step (`if: failure()`, uses the independently-minted
   recovery token) that posts a `cancelled` conclusion for the fingerprinted
-  check before the wake dispatches, with explanatory comments throughout.
+  check before the wake dispatches, with bounded retry for transient Checks
+  API failures.
 - `.github/workflows/merge-train.yml` — added the schedule/`MERGE_TRAIN_ENABLED`
   carve-out to the `reconcile` job's `if:` guard, with an explanatory comment
   describing the `mainHealthReason()` race scenario it closes.
@@ -101,8 +107,9 @@ main.
   - an `if: always()` assertion on the wake step
   - a `describe` block covering the new retryable-check fallback step: its
     `if: failure()` condition and App-token wiring, its ordering (after
-    publish, before the wake dispatch), and that its script actually posts a
-    `cancelled` conclusion with the right `head_sha`/`external_id`
+    publish, before the wake dispatch), its bounded retry behavior, and that
+    its script actually posts a `cancelled` conclusion with the right
+    `head_sha`/`external_id`
 - `tests/unit/merge-train-workflow-wakeups.test.ts` — parameterized the
   existing `evaluatesReconcileCondition()` YAML-condition-evaluator helper with
   a `mergeTrainEnabled` substitution, and added:
@@ -116,7 +123,7 @@ main.
 
 - `npm run typecheck` — clean
 - `npm run lint` — clean
-- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **21/21 passed** (16 + 5)
+- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **22/22 passed** (17 + 5)
 - Both modified workflow YAML files parse cleanly via the `yaml` package (same
   parser the tests use) — confirmed no syntax breakage.
 - `npm run verify:fast` — passed (typecheck + lint + changed unit tests +
@@ -178,7 +185,8 @@ and fixed:
    ≥3🍎 session regardless of delta. Recorded:
    `docs/knowledge/metrics/apples/2026-07-16-merge-train-wakeup-gaps.json`.
 3. The stated test counts (8+9=17) were wrong; the actual counts were
-   12+5=17 (now 15+5=20 after the new fallback-step tests). Corrected above.
+   12+5=17 (now 17+5=22 after the fallback, recovery-token, and retry tests).
+   Corrected above.
 
 ## Second shepherd-round follow-up (recovery-token gap)
 
@@ -203,7 +211,7 @@ by the first shepherd round were validated and fixed:
 2. **PR description staleness**: updated to describe all three operational
    behaviors now shipped (fail-closed `if: always()` dispatch, retryable-check
    fallback with independently-minted recovery token, scheduled-CI wake-up
-   carve-out) and the corrected test count (21 = 16 + 5).
+   carve-out) and the corrected test count.
 
 **Note on a superseded alternative**: a separate autonomous commit
 (`b7c1fab7`) proposed gating the retryable-check step on
