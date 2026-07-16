@@ -1,27 +1,17 @@
 /**
- * Encumbrance — carried-mass bands relative to body weight and Strength.
+ * Encumbrance math.
  *
- * Pure, ECS-free math so it's trivially unit-testable. Total mass is body
- * weight (the ECS `Weight` component — body mass, used for knockback too)
- * plus equipped gear weight (unique multi-slot-deduped `EquipmentItemDef
- * .weightLb` sum — see `core/effective-stats.ts#computeEquippedWeightLb`).
- *
- * Thresholds are body-relative and widen with effective Strength: +5 lb per
- * effective point to EVERY threshold, so a stronger character can carry more
- * before slowing down. With today's all-zero `weightLb` catalog this is
- * intentionally inert (equipped weight is always 0), but the formula is fully
- * wired so future non-zero item weights take effect immediately.
- *
- * Bands (inclusive upper boundaries):
- *   <= unburdenedMaxLb  → unburdened (x1.00 move-speed multiplier)
- *   <= encumberedMaxLb  → encumbered (x0.85)
- *   <= heavyMaxLb       → heavy      (x0.70)
- *   above heavyMaxLb    → overloaded (x0.70)
+ * This module intentionally exposes two deterministic helper lanes:
+ * 1) Body+gear mass snapshots used by the ECS/runtime pipeline.
+ * 2) Gear-only threshold helpers used by Equipment UI/lab compatibility tests.
  */
+
+import type { EquipmentInstanceId, EquipmentState } from './equipment-types.js';
+import type { EquipmentSlotId } from './equipment-slots.js';
 
 export type EncumbranceBand = 'unburdened' | 'encumbered' | 'heavy' | 'overloaded';
 
-/** Flat lb offset (before the Strength bonus) for each threshold boundary. */
+/** Flat lb offset (before the Strength bonus) for each body-relative threshold boundary. */
 export const ENCUMBRANCE_THRESHOLD_BASE_LB: Readonly<{
   unburdened: number;
   encumbered: number;
@@ -32,10 +22,10 @@ export const ENCUMBRANCE_THRESHOLD_BASE_LB: Readonly<{
   heavy: 120,
 };
 
-/** Extra lb added to EVERY threshold per effective Strength point. */
+/** Extra lb added to every body-relative threshold per effective Strength point. */
 export const ENCUMBRANCE_STR_THRESHOLD_BONUS_LB_PER_POINT = 5;
 
-/** Move-speed multiplier applied for each band. */
+/** Move-speed multiplier applied for each band in the runtime pipeline. */
 export const ENCUMBRANCE_BAND_MULTIPLIER: Readonly<Record<EncumbranceBand, number>> = {
   unburdened: 1,
   encumbered: 0.85,
@@ -49,10 +39,7 @@ export interface EncumbranceThresholds {
   readonly heavyMaxLb: number;
 }
 
-/**
- * Compute the three body-relative threshold boundaries for an entity with the
- * given body weight and effective Strength.
- */
+/** Compute body-relative threshold boundaries from body mass + effective Strength. */
 export function computeEncumbranceThresholds(
   bodyWeightLb: number,
   effectiveStrength: number,
@@ -79,12 +66,12 @@ export function computeEncumbranceBand(
   return 'overloaded';
 }
 
-/** Move-speed multiplier for a given band. */
+/** Move-speed multiplier for a given runtime band. */
 export function computeEncumbranceMultiplier(band: EncumbranceBand): number {
   return ENCUMBRANCE_BAND_MULTIPLIER[band];
 }
 
-/** Convenience: total mass → band → multiplier, all in one call. */
+/** Convenience helper: total mass → band → multiplier. */
 export function computeEncumbranceMultiplierForMass(
   totalMassLb: number,
   bodyWeightLb: number,
@@ -92,4 +79,72 @@ export function computeEncumbranceMultiplierForMass(
 ): number {
   const thresholds = computeEncumbranceThresholds(bodyWeightLb, effectiveStrength);
   return computeEncumbranceMultiplier(computeEncumbranceBand(totalMassLb, thresholds));
+}
+
+/**
+ * Legacy/compat gear-only threshold anchors.
+ *
+ * These are still used by shared/UI tests and equipment labs.
+ */
+export const ENCUMBRANCE_BASE_LB = 10 as const;
+export const ENCUMBRANCE_PER_STR_LB = 5 as const;
+const ENCUMBRANCE_ENCUMBERED_FACTOR = 2 as const;
+export const ENCUMBRANCE_HEAVY_FACTOR = 3 as const;
+
+/** Additive move-speed penalty table for the gear-only helper lane. */
+export const ENCUMBRANCE_MOVE_PENALTIES: Readonly<Record<EncumbranceBand, number>> = {
+  unburdened: 0,
+  encumbered: -0.05,
+  heavy: -0.15,
+  overloaded: -0.3,
+} as const;
+
+export const ENCUMBRANCE_BAND_LABELS: Readonly<Record<EncumbranceBand, string>> = {
+  unburdened: 'UNBURDENED',
+  encumbered: 'ENCUMBERED',
+  heavy: 'HEAVY',
+  overloaded: 'OVERLOADED',
+} as const;
+
+export const ENCUMBRANCE_BAND_COLORS: Readonly<Record<EncumbranceBand, number>> = {
+  unburdened: 0x49d06f,
+  encumbered: 0xf2c14e,
+  heavy: 0xe8964a,
+  overloaded: 0xe8695b,
+} as const;
+
+/** Return the unburdened carry threshold in lb for the given Strength value. */
+export function getCarryThresholdLb(strength: number): number {
+  return ENCUMBRANCE_BASE_LB + ENCUMBRANCE_PER_STR_LB * Math.max(1, Math.floor(strength));
+}
+
+/** Map equipped gear weight + Strength to an encumbrance band. */
+export function getEncumbranceBand(equippedLb: number, strength: number): EncumbranceBand {
+  const cap = getCarryThresholdLb(strength);
+  if (equippedLb <= cap) return 'unburdened';
+  if (equippedLb <= cap * ENCUMBRANCE_ENCUMBERED_FACTOR) return 'encumbered';
+  if (equippedLb <= cap * ENCUMBRANCE_HEAVY_FACTOR) return 'heavy';
+  return 'overloaded';
+}
+
+/** Return the additive move-speed penalty for a gear-only band. */
+export function getEncumbranceMovePenalty(band: EncumbranceBand): number {
+  return ENCUMBRANCE_MOVE_PENALTIES[band];
+}
+
+/** Compute the total equipped gear weight (lb) with multi-slot instance deduplication. */
+export function computeEquippedWeightLb(equipmentState: EquipmentState | undefined): number {
+  if (!equipmentState) return 0;
+  const seen = new Set<EquipmentInstanceId>();
+  let total = 0;
+  for (const slotId of Object.keys(equipmentState.equipped) as EquipmentSlotId[]) {
+    const instId = equipmentState.equipped[slotId] ?? null;
+    if (instId === null || seen.has(instId)) continue;
+    seen.add(instId);
+    const inst = equipmentState.instances.get(instId);
+    if (!inst) continue;
+    const w = Number.isFinite(inst.def.weightLb) ? Math.max(0, inst.def.weightLb) : 0;
+    total += w;
+  }
+  return total;
 }

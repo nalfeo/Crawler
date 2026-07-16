@@ -171,10 +171,11 @@ function validateItemDef(itemDef: EquipmentItemDef): EquipFailureReason[] {
     }
   }
 
-  if (typeof itemDef.weightLb !== 'number' || !Number.isFinite(itemDef.weightLb)) {
-    reasons.push({ type: 'invalidDef', message: 'weightLb must be a finite number' });
-  } else if (itemDef.weightLb < 0) {
-    reasons.push({ type: 'invalidDef', message: 'weightLb must be non-negative' });
+  if (!Number.isFinite(itemDef.weightLb) || itemDef.weightLb < 0) {
+    reasons.push({
+      type: 'invalidDef',
+      message: `Invalid weightLb: must be a finite non-negative number, got ${itemDef.weightLb}`,
+    });
   }
 
   for (const spec of itemDef.grantsStatusEffects ?? []) {

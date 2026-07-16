@@ -310,6 +310,7 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
       statBonuses: {},
       weightLb: 0,
       rarity: 'common',
+      weightLb: 0,
       grantsStatusEffects: [
         {
           stat: 'hpRegen',
@@ -345,6 +346,7 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
       statBonuses: {},
       weightLb: 0,
       rarity: 'common',
+      weightLb: 0,
       grantsStatusEffects: [
         {
           stat: 'hpRegen',

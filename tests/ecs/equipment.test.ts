@@ -54,6 +54,7 @@ function makeItem(overrides: Partial<EquipmentItemDef> = {}): EquipmentItemDef {
     statBonuses: {},
     weightLb: 0,
     rarity: 'common',
+    weightLb: 0,
     ...overrides,
   };
 }
@@ -561,6 +562,7 @@ describe('equipFromBag', () => {
       statBonuses: {},
       weightLb: 0,
       rarity: 'rare',
+      weightLb: 0,
       requirements: [{ type: 'minStat', stat: 'strength', value: 30 }],
     });
     const girdle = makeItem({
@@ -605,6 +607,7 @@ describe('equipFromBag', () => {
       statBonuses: { damageBonus: 4 },
       weightLb: 0,
       rarity: 'rare',
+      weightLb: 0,
       requirements: [{ type: 'minStat', stat: 'strength', value: 10 }],
     });
     addItem(bag, 'warblade', 1, TEST_CATALOG);

@@ -517,6 +517,7 @@ describe('autoFloor1ProgressionSystem', () => {
       statBonuses: { intelligence: 2, cooldownReduction: 0.05 },
       weightLb: 0,
       rarity: 'rare',
+      weightLb: 0,
     };
     _registerEquipmentDefForTest(circlet);
 

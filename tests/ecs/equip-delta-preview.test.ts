@@ -191,6 +191,7 @@ describe('previewEquipDelta', () => {
       statBonuses: { strength: 5 },
       weightLb: 0,
       rarity: 'common',
+      weightLb: 0,
     };
     expect(equip(world, entity, band, { force: true }).ok).toBe(true);
     _registerEquipmentDefForTest({
@@ -200,6 +201,7 @@ describe('previewEquipDelta', () => {
       statBonuses: { armor: 3 },
       weightLb: 0,
       rarity: 'rare',
+      weightLb: 0,
       requirements: [{ type: 'minStat', stat: 'strength', value: 10 }],
     });
 
@@ -221,6 +223,7 @@ describe('previewEquipDelta', () => {
       statBonuses: { strength: 5 },
       weightLb: 0,
       rarity: 'common',
+      weightLb: 0,
     };
     expect(equip(world, entity, band, { force: true }).ok).toBe(true);
     _registerEquipmentDefForTest({
@@ -230,6 +233,7 @@ describe('previewEquipDelta', () => {
       statBonuses: { armor: 1 },
       weightLb: 0,
       rarity: 'common',
+      weightLb: 0,
       requirements: [{ type: 'minStat', stat: 'strength', value: 8 }],
     });
 

@@ -20,8 +20,8 @@ const TEST_ITEM: EquipmentItemDef = {
   name: 'Stat Test Ring',
   slots: ['ringLeft'],
   rarity: 'uncommon',
-  weightLb: 0,
   statBonuses: { strength: 5, armor: 3, critChance: 0.1 },
+  weightLb: 0.25,
 };
 
 function createStatLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {

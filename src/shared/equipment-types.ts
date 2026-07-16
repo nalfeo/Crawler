@@ -27,15 +27,6 @@ export interface EquipmentItemDef {
   readonly name: string;
   readonly slots: readonly EquipmentSlotId[];
   readonly statBonuses: Partial<Readonly<Record<StatId, number>>>;
-  /**
-   * Equipped weight in pounds — contributes to total carried mass (see
-   * `shared/encumbrance.ts`). REQUIRED so every item explicitly declares its
-   * weight rather than silently defaulting; every current definition sets
-   * this to exactly 0 (encumbrance is intentionally inert until real item
-   * weights are authored). Bag/inventory contents are excluded — only
-   * equipped instances count, deduped for multi-slot items.
-   */
-  readonly weightLb: number;
   readonly rarity: ItemRarity;
   readonly tags?: readonly string[];
   readonly requirements?: readonly EquipRequirement[];
@@ -56,6 +47,13 @@ export interface EquipmentItemDef {
    * ignore this field — only the player has an active weapon.
    */
   readonly weaponId?: string;
+  /**
+   * Physical weight of this item in pounds (lb). Consumed by the encumbrance
+   * system (`src/shared/encumbrance.ts`) to derive equipped load and band.
+   * Multi-slot items are counted once via unique-instance deduplication.
+   * Must be a finite, non-negative number.
+   */
+  readonly weightLb: number;
 }
 
 // --- Equipment Instance ---
