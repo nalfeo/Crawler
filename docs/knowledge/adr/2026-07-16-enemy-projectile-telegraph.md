@@ -113,8 +113,14 @@ telegraph window.
 6. **CLI** (`headless-runner-cli-lib.ts`, `headless-runner-cli.ts`,
    `headless-runner.ts`): new `--enemy-telegraph-ms <n>` flag, defaulting to
    `ENEMY_PROJECTILE.TELEGRAPH_MS` (250) end-to-end, threaded straight to
-   `world.enemyTelegraphMs` with a finite/non-negative validation. `0` is a
-   fully legal, explicit override (legacy parity), not treated as "unset."
+   `world.enemyTelegraphMs`. Validation rejects more than plain
+   finite/non-negative: `normalizeEnemyTelegraphMs` also rejects values that
+   overflow Float32 (e.g. `1e39`, which would round to `Infinity` and freeze
+   the enemy in a telegraph that never fires) and values that underflow to
+   exactly `0` (e.g. `1e-50`, which `Math.fround` collapses to the same
+   Float32 store value as an intentional legacy override, silently discarding
+   the requested nonzero delay). `0` itself is still a fully legal, explicit
+   override (legacy parity), not treated as "unset."
 7. **Test harness default** (`tests/helpers/world-factory.ts`): `createTestWorld()`
    sets `world.enemyTelegraphMs = 0` by default. Production leaves it unset (so
    it falls through to the 250ms constant); the headless CLI defaults to 250
