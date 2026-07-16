@@ -225,3 +225,52 @@ jobs:
           # synth + judge, which are the two calls the drain worker needs.
           SPRITES_ALLOW_CI_PIPELINE: 'true'
         run: npm run sprites:worker
+
+      - name: Export Floor 2 boss review runs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          SPRITES_AZURE_CACHE: 'off'
+        run: |
+          npx tsx - <<'TS'
+          import { mkdir, writeFile } from 'node:fs/promises';
+          import path from 'node:path';
+          import { createRunStore } from './scripts/sprites/store/index.ts';
+
+          const runs = [
+            ['batfolk-boss-v1', '2026-07-16T21-44-01-630c9ae4'],
+            ['cactusfolk-boss-v1', '2026-07-16T21-45-48-ab22fc16'],
+            ['beetlefolk-boss-v1', '2026-07-16T21-47-13-d84bf4c9'],
+            ['geese-boss-v2', '2026-07-16T21-48-53-dd98eefe'],
+            ['faerie-boss-v1', '2026-07-16T21-50-50-e48c978a'],
+          ];
+          const store = createRunStore({ repoRoot: process.cwd() });
+          const exportRoot = path.resolve('generated/boss-review-export');
+
+          for (const [briefId, runId] of runs) {
+            const prefix = `${briefId}/${runId}/`;
+            const keys = await store.list(prefix);
+            if (keys.length === 0) {
+              throw new Error(`No stored artifacts found under ${prefix}`);
+            }
+            for (const key of keys) {
+              const destination = path.join(exportRoot, key);
+              await mkdir(path.dirname(destination), { recursive: true });
+              await writeFile(destination, await store.get(key));
+            }
+            console.log(`Exported ${keys.length} artifacts from ${prefix}`);
+          }
+          TS
+
+      - name: Upload Floor 2 boss review packet
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor2-boss-review-${{ github.run_id }}
+          path: generated/boss-review-export/
+          if-no-files-found: error
+          retention-days: 1
