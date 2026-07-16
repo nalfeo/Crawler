@@ -4,7 +4,9 @@
 
 Accepted
 
-**Date:** 2026-07-12
+## Date
+
+2026-07-12
 
 ## Context
 
