@@ -156,6 +156,31 @@ export const KITE_RADIAL_STEP_FT = KITE_STEP_FT;
 export const KITE_STRAFE_FT = KITE_STEP_FT * 0.25;
 // Radius (ft) within which a non-primary enemy counts as a back threat.
 export const KITE_BACK_THREAT_RADIUS_FT = 20;
+// Radius (ft) used by ranged kiting's multi-threat radial defense: any OTHER
+// perceived enemy inside this radius of the player also drives the retreat/
+// advance (radialMag) correction, not just the nominal engagement target. In a
+// packed swarm a second/third enemy can close to body-contact range from a
+// different angle while the AI orbits away from whichever enemy is currently
+// its nominal target — the radial correction only reacted to that one target's
+// distance, so other closing enemies landed free contact-range chip damage
+// every frame until HP ground down to the retreat threshold. Set wider than
+// CONTACT_SAFE_ORBIT_FT + RANGED_APPROACH_BUFFER_FT (the orbit/contact bubble)
+// so an approaching threat triggers a retreat step before it actually reaches
+// contact range, matching KITE_BACK_THREAT_RADIUS_FT's existing back-threat
+// scan radius for consistency.
+export const RANGED_MULTI_THREAT_SCAN_FT = KITE_BACK_THREAT_RADIUS_FT;
+// Minimum distance (ft) to the nearest perceived enemy before a ranged-kiting
+// "safe loot detour" is considered. Deliberately wider than
+// RANGED_MULTI_THREAT_SCAN_FT so the AI only breaks off orbiting to grab loot
+// once every nearby enemy has actually cleared the multi-threat defense
+// radius — never while a threat could still be closing in.
+export const SAFE_LOOT_ENEMY_CLEARANCE_FT = RANGED_MULTI_THREAT_SCAN_FT * 1.5;
+// Max distance (ft) a ranged-kiting AI will detour off its orbit position to
+// grab loot. Kept short and well inside scanRadius (50ft) so the detour never
+// wanders toward new danger or turns into a long cross-room errand — this is
+// an opportunistic "grab it since I'm already clear" pickup, not a dedicated
+// loot run (that remains Collect's job once no threat is nearby at all).
+export const LOOT_DETOUR_MAX_FT = 15;
 // Frames between deterministic orbit-direction flips (~2.2s at 60fps). Periodic
 // reversal keeps the player juking and prevents it from grinding into one wall
 // forever; far longer than any oscillation so it reads as intentional kiting.

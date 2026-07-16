@@ -50,6 +50,8 @@ import {
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   PROJECTILE_DODGE_AOE_BUFFER_FT,
   PROJECTILE_DODGE_CLEARANCE_FT,
+  SAFE_LOOT_ENEMY_CLEARANCE_FT,
+  LOOT_DETOUR_MAX_FT,
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
@@ -2120,6 +2122,109 @@ describe('BehaviorTreeAI', () => {
     // Radial correction pushes the AI away from the enemy (negative X when enemy
     // is at +X), so the target must be to the left of the player's start.
     expect(decision.targetX!).toBeLessThan(0);
+  });
+
+  it('retreats from a second enemy closing from another angle while orbiting the primary ranged target', () => {
+    // Regression for the packed-swarm HP-crash root cause: computeRangedKiteTarget
+    // used to derive its escape motion purely from the nearest enemy's own axis,
+    // so a second enemy closing in from a different angle never bent the kite
+    // path away from it — only the nearest one ever influenced movement. The
+    // nearest enemy (B, at (0, 3)) is the engagement target; a second enemy (A,
+    // at (5, 0)) sits farther away but still inside the standoff ring, at a
+    // right angle to B. A's escape-push contribution is purely along -X (since
+    // A is directly on the +X axis from the player), so it shifts targetX
+    // without touching targetY — isolating the fix from the pre-existing
+    // radial/strafe motion (driven by B) and from hasThreatFromBehind's
+    // dot-product check (which stays false for both scenarios: A sits at 90°
+    // from B's axis, not behind).
+    const baselineWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(baselineWorld, 0, 0);
+    spawnEnemy(baselineWorld, 0, 3, 20);
+    setActiveWeapon(baselineWorld, getWeaponDef('bow')!);
+    const baselineAi = new BehaviorTreeAI({ seed: 7 });
+    baselineAi.poll(createInputState(), baselineWorld);
+    const baseline = baselineAi.getDecision();
+    expect(baseline.reason).toContain('Ranged orbit');
+
+    const multiThreatWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(multiThreatWorld, 0, 0);
+    spawnEnemy(multiThreatWorld, 0, 3, 20);
+    spawnEnemy(multiThreatWorld, 5, 0, 20);
+    setActiveWeapon(multiThreatWorld, getWeaponDef('bow')!);
+    const multiThreatAi = new BehaviorTreeAI({ seed: 7 });
+    multiThreatAi.poll(createInputState(), multiThreatWorld);
+    const withSecondThreat = multiThreatAi.getDecision();
+    expect(withSecondThreat.reason).toContain('Ranged orbit');
+
+    // The second enemy's escape push is purely along -X (before the shared
+    // fixed-length step renormalization couples both axes), so targetY only
+    // shifts a little while targetX shifts clearly negative relative to the
+    // baseline (nearest-only) case.
+    expect(Math.abs(withSecondThreat.targetY! - baseline.targetY!)).toBeLessThan(0.5);
+    expect(withSecondThreat.targetX!).toBeLessThan(baseline.targetX! - 0.5);
+  });
+
+  it('detours for nearby loot mid-kite once every enemy has cleared the safe-loot radius', () => {
+    // Maintainer-requested behavior: "if I have time (enemies pushed far enough
+    // away) and there's enough loot to be worth it, circle around to collect."
+    // No enemies within SAFE_LOOT_ENEMY_CLEARANCE_FT and gold within
+    // LOOT_DETOUR_MAX_FT — the AI must detour toward the gold while still in
+    // AIState.ENGAGE (no BT state-machine change) rather than orbit-kiting.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    // Primary target sits beyond SAFE_LOOT_ENEMY_CLEARANCE_FT (so the "no nearby
+    // threat" gate is satisfied) but still within the bow's ~44ft engage radius
+    // (so ENGAGE stays active and planRangedEngagement's "closing" phase, where
+    // the detour check now lives, actually runs instead of falling to Collect).
+    const farFt = SAFE_LOOT_ENEMY_CLEARANCE_FT + 8;
+    spawnEnemy(world, farFt, 0, 20);
+    spawnGold(world, 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.reason).toContain('Detouring for');
+    expect(decision.reason).toContain('loot mid-kite');
+    expect(decision.targetX!).toBeCloseTo(5, 0);
+    expect(decision.targetY!).toBeCloseTo(0, 0);
+  });
+
+  it('does not detour for loot while an enemy is still within the safe-loot clearance radius', () => {
+    // Same gold placement as above, but the enemy is close enough (inside
+    // SAFE_LOOT_ENEMY_CLEARANCE_FT) that the detour must NOT fire — normal
+    // ranged engagement (closing to standoff or orbiting) continues instead.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    const closeFt = SAFE_LOOT_ENEMY_CLEARANCE_FT - 5;
+    spawnEnemy(world, closeFt, 0, 20);
+    spawnGold(world, 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).not.toContain('Detouring for');
+  });
+
+  it('does not detour for loot farther away than LOOT_DETOUR_MAX_FT even when safe', () => {
+    // No enemy nearby (clear), but the gold sits beyond LOOT_DETOUR_MAX_FT — the
+    // detour must stay bounded and not wander toward it mid-kite.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    const farFt = SAFE_LOOT_ENEMY_CLEARANCE_FT + 8;
+    spawnEnemy(world, farFt, 0, 20);
+    spawnGold(world, LOOT_DETOUR_MAX_FT + 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).not.toContain('Detouring for');
   });
 
   it('preempts a farther quest target with a nearby threat while keeping the quest eid', () => {
