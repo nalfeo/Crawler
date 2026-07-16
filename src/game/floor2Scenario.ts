@@ -352,7 +352,8 @@ export function spawnFamilyBoss(
   // (GENERATED_BRIEF_BY_TYPE -> "goblin-boss") instead of its own family art.
   setEnemyAppearanceKey(world, eid, archetype.id);
   setComponent(world.ecs, eid, Size, {
-    radius: Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
+    radius:
+      archetype.collisionRadius ?? Math.max(archetype.spriteWidth, archetype.spriteHeight) * 0.5,
     halfWidth: 0,
     halfHeight: 0,
     shape: SHAPE_CIRCLE,
@@ -1423,7 +1424,9 @@ function spawnFloor2AmbientArchetype(
     height: selectedArchetype.spriteHeight,
   });
   setComponent(world.ecs, eid, Size, {
-    radius: Math.max(selectedArchetype.spriteWidth, selectedArchetype.spriteHeight) * 0.5,
+    radius:
+      selectedArchetype.collisionRadius ??
+      Math.max(selectedArchetype.spriteWidth, selectedArchetype.spriteHeight) * 0.5,
     halfWidth: 0,
     halfHeight: 0,
     shape: SHAPE_CIRCLE,
