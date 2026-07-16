@@ -16,6 +16,12 @@ import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
 import { computeEffectiveSpeed, getStatusEffects } from '../core/status-effects.js';
+import {
+  cancelEnemyProjectileTelegraph,
+  getEffectiveTelegraphMs,
+  isEnemyProjectileTelegraphReady,
+  startEnemyProjectileTelegraph,
+} from '../core/systems/enemyTelegraph.js';
 import { ENEMY_PROJECTILE, TeamId } from '../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
@@ -1192,31 +1198,31 @@ function applyLegacySwarm(
   setNavigatingVelocity(world, eid, steerX, steerY, speed);
 }
 
-function tryFireEnemyProjectile(
+/**
+ * Spawns the actual hostile projectile from a given (origin, direction) pair.
+ * Shared by the legacy zero-telegraph path (origin/direction = the enemy's
+ * CURRENT position/aim, computed fresh this frame — bit-identical to the
+ * pre-telegraph behavior) and the telegraph-fire path (origin/direction = the
+ * LOCKED values captured at telegraph start), so there is exactly one place
+ * that turns "an aim solution" into "a projectile" and both callers get
+ * identical accuracy-roll/spawn/cooldown semantics.
+ */
+function fireEnemyProjectileFrom(
   world: GameWorld,
   eid: number,
-  toPlayerX: number,
-  toPlayerY: number,
+  originX: number,
+  originY: number,
+  dirX: number,
+  dirY: number,
 ): void {
-  const { enemyBehavior, position } = world.stores;
-  const cooldown = enemyBehavior.fireCooldownMs[eid]!;
-  const effectiveCooldown = cooldown > 0 ? cooldown : ENEMY_PROJECTILE.FIRE_COOLDOWN_MS;
-  const lastFire = enemyBehavior.lastFireMs[eid]!;
-
-  if (lastFire > 0 && world.elapsedMs - lastFire < effectiveCooldown) {
-    return;
-  }
-
-  const direction = normalize(toPlayerX, toPlayerY);
-  if (direction.length <= EPSILON) {
-    return;
-  }
-
-  const enemyX = position.x[eid]!;
-  const enemyY = position.y[eid]!;
-  const spawnX = enemyX + direction.x * ENEMY_PROJECTILE.MUZZLE_OFFSET;
-  const spawnY = enemyY + direction.y * ENEMY_PROJECTILE.MUZZLE_OFFSET;
+  const { enemyBehavior } = world.stores;
+  const spawnX = originX + dirX * ENEMY_PROJECTILE.MUZZLE_OFFSET;
+  const spawnY = originY + dirY * ENEMY_PROJECTILE.MUZZLE_OFFSET;
   // rng.next() returns [0,1); if the roll exceeds ACCURACY, the shot misses.
+  // This roll intentionally stays at actual-fire-time (post-telegraph, if any)
+  // so the 0ms-telegraph path preserves the exact legacy RNG-draw timing; the
+  // accepted consequence is that a telegraph can occasionally show a locked
+  // trajectory that never spawns a projectile (a "miss" still consumes cooldown).
   if (world.rng.next() > ENEMY_PROJECTILE.ACCURACY) {
     enemyBehavior.lastFireMs[eid] = world.elapsedMs;
     return;
@@ -1227,8 +1233,8 @@ function tryFireEnemyProjectile(
       world,
       spawnX,
       spawnY,
-      direction.x * FIREBALL_DEF.projectileSpeed,
-      direction.y * FIREBALL_DEF.projectileSpeed,
+      dirX * FIREBALL_DEF.projectileSpeed,
+      dirY * FIREBALL_DEF.projectileSpeed,
       FIREBALL_DEF.baseDamage,
       FIREBALL_DEF.aoeRadius,
       FIREBALL_DEF.baseDamage,
@@ -1242,14 +1248,79 @@ function tryFireEnemyProjectile(
       world,
       spawnX,
       spawnY,
-      direction.x * ENEMY_PROJECTILE.SPEED,
-      direction.y * ENEMY_PROJECTILE.SPEED,
+      dirX * ENEMY_PROJECTILE.SPEED,
+      dirY * ENEMY_PROJECTILE.SPEED,
       ENEMY_PROJECTILE.DAMAGE,
       eid,
     );
   }
 
   enemyBehavior.lastFireMs[eid] = world.elapsedMs;
+}
+
+/**
+ * Telegraph-aware fire state machine. Called every frame the enemy is in
+ * attack range. Three paths:
+ *  - Already telegraphing: ignore the (fresh, current-frame) `toPlayerX/Y`
+ *    entirely — the aim is locked — and fire from the locked origin/direction
+ *    once the resolved delay has elapsed.
+ *  - Cooldown-ready, telegraph delay resolves to 0 (world/per-mob override):
+ *    fire immediately using the current position/aim, in the exact same
+ *    order of operations as the pre-telegraph implementation — bit-identical
+ *    legacy parity.
+ *  - Cooldown-ready, nonzero delay: lock the aim/origin now and start the
+ *    telegraph; the actual shot fires on a later frame once ready.
+ */
+function tryFireEnemyProjectile(
+  world: GameWorld,
+  eid: number,
+  toPlayerX: number,
+  toPlayerY: number,
+): void {
+  const { enemyBehavior, position } = world.stores;
+
+  if (enemyBehavior.telegraphActive[eid] === 1) {
+    if (!isEnemyProjectileTelegraphReady(world, eid)) {
+      return;
+    }
+    const dirX = enemyBehavior.telegraphDirX[eid]!;
+    const dirY = enemyBehavior.telegraphDirY[eid]!;
+    const originX = enemyBehavior.telegraphOriginX[eid]!;
+    const originY = enemyBehavior.telegraphOriginY[eid]!;
+    // Clear the active flag before firing so state is consistent even if the
+    // accuracy roll below results in a miss (no projectile spawned).
+    cancelEnemyProjectileTelegraph(world, eid);
+    fireEnemyProjectileFrom(world, eid, originX, originY, dirX, dirY);
+    return;
+  }
+
+  const cooldown = enemyBehavior.fireCooldownMs[eid]!;
+  const effectiveCooldown = cooldown > 0 ? cooldown : ENEMY_PROJECTILE.FIRE_COOLDOWN_MS;
+  const lastFire = enemyBehavior.lastFireMs[eid]!;
+
+  if (lastFire > 0 && world.elapsedMs - lastFire < effectiveCooldown) {
+    return;
+  }
+
+  const direction = normalize(toPlayerX, toPlayerY);
+  if (direction.length <= EPSILON) {
+    return;
+  }
+
+  const delayMs = getEffectiveTelegraphMs(world, eid);
+  if (delayMs <= 0) {
+    fireEnemyProjectileFrom(
+      world,
+      eid,
+      position.x[eid]!,
+      position.y[eid]!,
+      direction.x,
+      direction.y,
+    );
+    return;
+  }
+
+  startEnemyProjectileTelegraph(world, eid, direction.x, direction.y);
 }
 
 function applyLegacyRanged(
@@ -1559,10 +1630,18 @@ function applySeparation(
       }
 
       const force = penetration * SEPARATION_FORCE;
-      velocity.x[a] = (velocity.x[a] ?? 0) + nx * force;
-      velocity.y[a] = (velocity.y[a] ?? 0) + ny * force;
-      velocity.x[b] = (velocity.x[b] ?? 0) - nx * force;
-      velocity.y[b] = (velocity.y[b] ?? 0) - ny * force;
+      // A telegraphing enemy's aim/origin are locked to its position at
+      // telegraph-start (core/systems/enemyTelegraph.ts) and must stay put for
+      // the whole window — it still repels others as an obstacle, but must
+      // not itself receive a separation impulse.
+      if ((world.stores.enemyBehavior.telegraphActive[a] ?? 0) !== 1) {
+        velocity.x[a] = (velocity.x[a] ?? 0) + nx * force;
+        velocity.y[a] = (velocity.y[a] ?? 0) + ny * force;
+      }
+      if ((world.stores.enemyBehavior.telegraphActive[b] ?? 0) !== 1) {
+        velocity.x[b] = (velocity.x[b] ?? 0) - nx * force;
+        velocity.y[b] = (velocity.y[b] ?? 0) - ny * force;
+      }
     }
   }
 
@@ -1651,6 +1730,11 @@ export function enemyAISystem(world: GameWorld): void {
       setVelocity(world, eid, 0, 0);
       pathStates.delete(eid);
       slimeMap.delete(eid);
+      // No player to aim at or fire on — cancel any in-progress telegraph so
+      // its locked origin/direction can never survive into a state where the
+      // reason it was aimed no longer exists (see enemyTelegraph.ts's
+      // "cancel from every pre-fire early exit" contract).
+      cancelEnemyProjectileTelegraph(world, eid);
     }
     return;
   }
@@ -1690,6 +1774,7 @@ export function enemyAISystem(world: GameWorld): void {
     if (inactiveFloor2Bosses.has(eid)) {
       setVelocity(world, eid, 0, 0);
       pathStates.delete(eid);
+      cancelEnemyProjectileTelegraph(world, eid);
       continue;
     }
     // Corpses in their death-linger window keep Enemy/Velocity components until
@@ -1700,6 +1785,7 @@ export function enemyAISystem(world: GameWorld): void {
       setVelocity(world, eid, 0, 0);
       pathStates.delete(eid);
       getSlimeLeapStateMap(world).delete(eid);
+      cancelEnemyProjectileTelegraph(world, eid);
       continue;
     }
 
@@ -1748,6 +1834,7 @@ export function enemyAISystem(world: GameWorld): void {
       enemyBehavior.stuckFrames[eid] = 0;
       pathStates.delete(eid);
       getSlimeLeapStateMap(world).delete(eid);
+      cancelEnemyProjectileTelegraph(world, eid);
       continue;
     }
 
@@ -1781,6 +1868,13 @@ export function enemyAISystem(world: GameWorld): void {
     } else {
       enemyBehavior.stuckFrames[eid] = (enemyBehavior.stuckFrames[eid] ?? 0) + 1;
     }
+    // A telegraphing enemy is frozen (see below); it must never accumulate a
+    // stuck count while stationary-by-design, or it would immediately jiggle
+    // via tryUnstuckVelocity on the first post-telegraph frame.
+    const isTelegraphing = enemyBehavior.telegraphActive[eid] === 1;
+    if (isTelegraphing) {
+      enemyBehavior.stuckFrames[eid] = 0;
+    }
 
     if (!canDetectPlayer) {
       getSlimeLeapStateMap(world).delete(eid);
@@ -1794,12 +1888,23 @@ export function enemyAISystem(world: GameWorld): void {
         applyIdleWander(world, eid, speed);
       }
       pathStates.delete(eid);
+      cancelEnemyProjectileTelegraph(world, eid);
       continue;
     }
 
     const usePathing = floorMap !== null && persona !== PATH_PERSONA.STUPID;
 
-    if (
+    if (isTelegraphing) {
+      // "Stop and aim": freeze movement for the whole telegraph window so the
+      // locked origin/direction visually match a stationary shooter. This is
+      // a behavioral/visual choice, NOT the correctness mechanism — the real
+      // fire spawn and the AI's dodge math both read the LOCKED origin/dir
+      // fields (see core/systems/enemyTelegraph.ts), so trajectory correctness
+      // holds even if something else displaces this enemy mid-telegraph
+      // (separation is exempted below; knockback/other systems are not, and
+      // are intentionally out of scope).
+      setVelocity(world, eid, 0, 0);
+    } else if (
       behaviorType === AI_TYPE.LEAPER &&
       applySlimeLeapBehavior(world, eid, playerDx, playerDy, distanceToPlayer, speed)
     ) {
@@ -1874,6 +1979,22 @@ export function enemyAISystem(world: GameWorld): void {
 
     if (attackRange > EPSILON && distanceToPlayer <= attackRange) {
       tryFireEnemyProjectile(world, eid, playerDx, playerDy);
+      // A telegraph can start on THIS frame (tryFireEnemyProjectile just
+      // locked origin/direction to the enemy's current position). `isTelegraphing`
+      // was computed earlier in the loop — before this call — so the movement
+      // branch above already assigned this frame's velocity as if no telegraph
+      // were active. Without re-freezing here, the enemy takes one extra step
+      // after its origin is locked, visually drifting off the "stop and aim"
+      // cue for a frame even though fire/dodge correctness (which read the
+      // locked fields, not live position) is unaffected.
+      if (!isTelegraphing && enemyBehavior.telegraphActive[eid] === 1) {
+        setVelocity(world, eid, 0, 0);
+        enemyBehavior.stuckFrames[eid] = 0;
+      }
+    } else if (isTelegraphing) {
+      // Player left attack range while telegraphing — cancel rather than let
+      // a stale locked trajectory fire later from a now-meaningless origin.
+      cancelEnemyProjectileTelegraph(world, eid);
     }
 
     activeEnemies.push(eid);
@@ -1882,9 +2003,11 @@ export function enemyAISystem(world: GameWorld): void {
       tracked.lastTouchedFrame = world.frameCount;
     }
 
-    // Unstuck: if stuck for too long, try wider pathfinding or jiggle
+    // Unstuck: if stuck for too long, try wider pathfinding or jiggle. Gated
+    // off while telegraphing (stuckFrames is already forced to 0 above, but
+    // the explicit guard removes any doubt this can never fire mid-telegraph).
     const stuckFrames = enemyBehavior.stuckFrames[eid] ?? 0;
-    if (stuckFrames > STUCK_FRAMES_THRESHOLD && canDetectPlayer) {
+    if (stuckFrames > STUCK_FRAMES_THRESHOLD && canDetectPlayer && !isTelegraphing) {
       tryUnstuckVelocity(world, eid, playerDx, playerDy, speed, world.rng);
     }
   }
