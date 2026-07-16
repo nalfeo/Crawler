@@ -135,7 +135,7 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     armor: 5,
   };
   const invincibilitySettings: InvincibilitySettings = {
-    invincibilityMs: 250,
+    invincibilityMs: 350,
     contactDamage: 5,
   };
   const pierceSettings: PierceSettings = {

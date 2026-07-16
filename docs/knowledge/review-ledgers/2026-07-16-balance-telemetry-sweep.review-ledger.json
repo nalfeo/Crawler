@@ -14,8 +14,23 @@
       "notes": "Reviewer returned rejected. 6 concerns found and all resolved: (1) Ideas 2/3 targeted tuning.json which is NOT read by combat systems - fixed to change damageSystem.ts PLAYER_INVINCIBILITY_MS constant directly and target mob registry for Idea 3. (2) defaultContactDamage fallback in tuning.json does not affect real mobs - fixed Idea 3 to target RAT_BRUTE contactDamage in registry.ts (10->7). (3) minimumTargets affects gear scoring in auto-progression.ts - documented as intentional combined persona treatment. (4) constitution 8 too aggressive with 3pts/level - revised to 7 (bow/pistol 5->7, throwing-knife 6->7). (5) invincibilityMs/contactDamage are global changes in experimental mode - Idea 2 (invincibilityMs) benefits all modes; Idea 1 is persona-local; Idea 3 targets mob data. (6) success criteria too coarse - adopted: comparing AvgMinHP survivability metric alongside win rate. Plan_divergence=minor: implementation targets changed (damageSystem.ts + registry.ts instead of tuning.json) but overall direction unchanged."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     }
   }
 }
