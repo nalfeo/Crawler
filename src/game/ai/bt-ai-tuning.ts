@@ -156,18 +156,14 @@ export const KITE_RADIAL_STEP_FT = KITE_STEP_FT;
 export const KITE_STRAFE_FT = KITE_STEP_FT * 0.25;
 // Radius (ft) within which a non-primary enemy counts as a back threat.
 export const KITE_BACK_THREAT_RADIUS_FT = 20;
-// Radius (ft) used by ranged kiting's multi-threat radial defense: any OTHER
-// perceived enemy inside this radius of the player also drives the retreat/
-// advance (radialMag) correction, not just the nominal engagement target. In a
-// packed swarm a second/third enemy can close to body-contact range from a
-// different angle while the AI orbits away from whichever enemy is currently
-// its nominal target — the radial correction only reacted to that one target's
-// distance, so other closing enemies landed free contact-range chip damage
-// every frame until HP ground down to the retreat threshold. Set wider than
-// CONTACT_SAFE_ORBIT_FT + RANGED_APPROACH_BUFFER_FT (the orbit/contact bubble)
-// so an approaching threat triggers a retreat step before it actually reaches
-// contact range, matching KITE_BACK_THREAT_RADIUS_FT's existing back-threat
-// scan radius for consistency.
+// Radius (ft) used by ranged kiting's multi-threat scans: bounds how far
+// `computeOtherThreatEscapePush` and `findNearestOtherEnemyDistance` look
+// for other enemies. Note: the scan radius alone does NOT trigger an earlier
+// reaction — `computeOtherThreatEscapePush` only engages once a threat has
+// already breached the tighter `spacedOrbit` standoff ring (~4.5-7.2ft), so
+// the scan radius is non-binding for the escape-push. Its primary practical
+// effect is as the base for deriving SAFE_LOOT_ENEMY_CLEARANCE_FT below.
+// Matched to KITE_BACK_THREAT_RADIUS_FT for consistency across threat scans.
 export const RANGED_MULTI_THREAT_SCAN_FT = KITE_BACK_THREAT_RADIUS_FT;
 // Minimum distance (ft) to the nearest perceived enemy before a ranged-kiting
 // "safe loot detour" is considered. Deliberately wider than

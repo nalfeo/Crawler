@@ -7660,10 +7660,12 @@ export class BehaviorTreeAI implements AIInputProvider {
    * player relative to the primary target direction. Used to decide whether to
    * use full lateral orbit (back-threat dodge) or a mostly-radial advance/retreat.
    *
-   * Filters out dead (HP<=0) entities for the same reason as {@link
+   * Filters out dead (HP<=0) entities and combat-ineligible enemies (e.g.
+   * dormant Floor 2 bosses) for the same reason as {@link
    * findNearestOtherEnemyDistance} / {@link computeOtherThreatEscapePush} — a
-   * lingering corpse (see `DeathTimer` / `deathTimerSystem.ts`) sitting behind
-   * the player is not a threat and should not force full-lateral-orbit mode.
+   * lingering corpse (see `DeathTimer` / `deathTimerSystem.ts`) or a not-yet-
+   * active boss sitting behind the player is not a threat and should not force
+   * full-lateral-orbit mode.
    */
   private hasThreatFromBehind(
     world: GameWorld,
@@ -7682,6 +7684,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (eid === primaryTarget.eid) continue;
       const health = world.stores.health.current[eid] ?? 0;
       if (health <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -7705,13 +7708,13 @@ export class BehaviorTreeAI implements AIInputProvider {
    * escape vector itself, see {@link computeOtherThreatEscapePush}, which
    * needs each threat's position, not just the nearest distance.
    *
-   * Filters out dead (HP<=0) entities: a killed enemy lingers in the ECS with
-   * its `Enemy`+`Position` components intact for the duration of its
-   * `DeathTimer` (knockback/death-animation delay — see
-   * `deathTimerSystem.ts`), sitting at the exact spot it just dropped loot.
-   * Without this filter, that corpse would incorrectly count as a nearby
-   * threat and permanently block the loot detour for the very drop the AI
-   * just earned.
+   * Filters out dead (HP<=0) entities and combat-ineligible enemies (e.g.
+   * dormant Floor 2 bosses): a killed enemy lingers in the ECS with its
+   * `Enemy`+`Position` components intact for the duration of its `DeathTimer`
+   * (knockback/death-animation delay — see `deathTimerSystem.ts`), sitting at
+   * the exact spot it just dropped loot. Without this filter, that corpse
+   * (or a not-yet-active boss) would incorrectly count as a nearby threat and
+   * permanently block the loot detour for the very drop the AI just earned.
    */
   private findNearestOtherEnemyDistance(
     world: GameWorld,
@@ -7725,6 +7728,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (excludeEid !== undefined && eid === excludeEid) continue;
       const health = world.stores.health.current[eid] ?? 0;
       if (health <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -7751,10 +7755,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    * summed vector is clamped to KITE_RADIAL_STEP_FT so a large swarm can't
    * overwhelm the primary target's own orbit/strafe motion.
    *
-   * Filters out dead (HP<=0) entities for the same reason as {@link
+   * Filters out dead (HP<=0) entities and combat-ineligible enemies (e.g.
+   * dormant Floor 2 bosses) for the same reason as {@link
    * findNearestOtherEnemyDistance} — a lingering corpse (see `DeathTimer` /
-   * `deathTimerSystem.ts`) is not an active threat and should not bend the
-   * kite path away from where it's already sitting motionless.
+   * `deathTimerSystem.ts`) or a not-yet-active boss is not an active threat
+   * and should not bend the kite path.
    */
   private computeOtherThreatEscapePush(
     world: GameWorld,
@@ -7770,6 +7775,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (eid === excludeEid) continue;
       const health = world.stores.health.current[eid] ?? 0;
       if (health <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
