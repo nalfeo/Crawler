@@ -115,7 +115,8 @@ export function resolveNodeBin({
   const npmPath = npmBin ?? _which('npm');
   if (!npmPath) return '';
 
-  const npmDir = dirname(_realpathSync(npmPath) ?? npmPath);
+  const resolvedNpm = _realpathSync(npmPath);
+  const npmDir = dirname(resolvedNpm != null ? resolvedNpm : npmPath);
   for (const candidate of [join(npmDir, 'node'), join(npmDir, 'node.exe')]) {
     if (_existsSync(candidate)) return candidate;
   }

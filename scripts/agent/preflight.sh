@@ -49,11 +49,24 @@ _write_timing_artifact() {
 
   mkdir -p "$(dirname "$PREFLIGHT_TIMING_FILE")"
 
-  # Determine warmCache: every phase ran in ≤1s
+  # Determine warmCache: true only when the three infrastructure phases
+  # (deps, playwright, typecheck) were all skipped because their state was
+  # already satisfied.  The informational phases (memory_seed, persona_hint,
+  # handoff_digest) are always fast and do not affect this flag.
   local warm_cache="true"
   local i
   for (( i=0; i<${#_phase_names[@]}; i++ )); do
-    [ "${_phase_durs[$i]}" -gt 1 ] && warm_cache="false"
+    local _pname="${_phase_names[$i]}"
+    local _note="${_phase_notes[$i]}"
+    # Only the infrastructure phases count for warmCache.
+    case "$_pname" in
+      deps|playwright|typecheck)
+        case "$_note" in
+          *skip*|*cached*|*already*|*unchanged*) : ;;  # correctly skipped
+          *) warm_cache="false" ;;
+        esac
+        ;;
+    esac
   done
 
   local met_target="false"
@@ -68,9 +81,10 @@ _write_timing_artifact() {
     local dur="${_phase_durs[$i]}"
     local note="${_phase_notes[$i]}"
     local skipped="false"
-    # A phase is skipped when duration is 0 and note contains 'skip'/'cached'/'already'/'unchanged'
+    # A phase is skipped when its note contains canonical skip keywords.
+    # Deliberately excludes 'not found' (a failure) and 'completed' (a real run).
     case "$note" in
-      *skip*|*cached*|*already*|*unchanged*|*"not found"*) skipped="true" ;;
+      *skip*|*cached*|*already*|*unchanged*) skipped="true" ;;
     esac
 
     [ "$first" = "true" ] || phases_json+=","
