@@ -165,6 +165,67 @@ describe('parseAssetRequestIssueBody', () => {
     // Should reject entirely if form has a non-empty invalid type
     expect(parseAssetRequestIssueBody(body)).toBeNull();
   });
+
+  it('treats GitHub _No response_ sentinel in floor field as omitted (defaults to floor 1)', () => {
+    const body = [
+      '### Name',
+      'bone-dagger',
+      '',
+      '### Brief',
+      'A chipped bone dagger with twine-wrapped handle.',
+      '',
+      '### Floor (optional)',
+      '_No response_',
+    ].join('\n');
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.floor).toBeUndefined();
+    expect(parsed?.name).toBe('bone-dagger');
+  });
+
+  it('parses an explicit form-rendered floor when valid', () => {
+    const body = [
+      '### Name',
+      'bone-dagger',
+      '',
+      '### Brief',
+      'A chipped bone dagger with twine-wrapped handle.',
+      '',
+      '### Floor (optional)',
+      '5',
+    ].join('\n');
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.floor).toBe(5);
+  });
+
+  it('rejects form-rendered floor when out of range', () => {
+    const body = [
+      '### Name',
+      'bone-dagger',
+      '',
+      '### Brief',
+      'A chipped bone dagger with twine-wrapped handle.',
+      '',
+      '### Floor (optional)',
+      '21',
+    ].join('\n');
+    expect(parseAssetRequestIssueBody(body)).toBeNull();
+  });
+
+  it('rejects form-rendered floor when non-integer', () => {
+    const body = [
+      '### Name',
+      'bone-dagger',
+      '',
+      '### Brief',
+      'A chipped bone dagger with twine-wrapped handle.',
+      '',
+      '### Floor (optional)',
+      '1.5',
+    ].join('\n');
+    expect(parseAssetRequestIssueBody(body)).toBeNull();
+  });
 });
 
 describe('parseAssetRequestIssueBody — multi-sentence briefs', () => {

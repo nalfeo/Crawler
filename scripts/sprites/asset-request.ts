@@ -199,7 +199,7 @@ function parseIssueFormBody(body: string): {
   }
   const floorMatch = body.match(/(?:^|\n)###\s+Floor(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
   let floor: number | undefined;
-  if (floorMatch && floorMatch[1]!.trim() !== '') {
+  if (floorMatch && floorMatch[1]!.trim() !== '' && floorMatch[1]!.trim() !== '_No response_') {
     floor = Number(floorMatch[1]!.trim());
     if (!Number.isInteger(floor) || floor < 1 || floor > 20) return null;
   }

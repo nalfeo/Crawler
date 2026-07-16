@@ -11,6 +11,10 @@ The visual judge now scores Crawler design language and reference rendering styl
 separately, alongside brief match and readability. Legacy `style_match` payloads and
 stored summaries remain readable, and devtools exposes the expanded scorecard.
 
+## Systems touched
+
+sprite-pipeline, sprite-workflow, devtools
+
 ## Files Touched
 
 - Sprite prompt, synthesis, provider, judge, cache, schema, CLI, and request pipeline code under `scripts/sprites/`

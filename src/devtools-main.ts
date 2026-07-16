@@ -205,7 +205,7 @@ function toJudgeSummary(raw: RawGenerateCandidate['judgeScorecard']): WorkflowJu
   return {
     passed: raw.passed === true,
     minScore: typeof raw.minScore === 'number' ? raw.minScore : 0,
-    designLanguage: raw.designLanguage?.score ?? 0,
+    designLanguage: raw.designLanguage?.score ?? raw.styleMatch?.score ?? 0,
     referenceStyleMatch: raw.referenceStyleMatch?.score ?? raw.styleMatch?.score ?? 0,
     styleMatch: raw.styleMatch?.score ?? raw.referenceStyleMatch?.score ?? 0,
     briefMatch: raw.briefMatch?.score ?? 0,
@@ -3664,7 +3664,7 @@ function render(): void {
               ? {
                   passed: candidate.judge.passed,
                   minScore: candidate.judge.minScore,
-                  designLanguage: candidate.judge.designLanguage ?? 0,
+                  designLanguage: candidate.judge.designLanguage ?? candidate.judge.styleMatch,
                   referenceStyleMatch:
                     candidate.judge.referenceStyleMatch ?? candidate.judge.styleMatch,
                   styleMatch: candidate.judge.styleMatch,

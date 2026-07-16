@@ -314,7 +314,7 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
     const judgeTitle = page.getByText('Judge (advisory)');
     await judgeTitle.waitFor({ state: 'visible', timeout: 10_000 });
     expect(await judgeTitle.isVisible()).toBe(true);
-    for (const axis of ['Style match', 'Brief match', 'Readability']) {
+    for (const axis of ['Crawler design language', 'Reference style match', 'Brief match', 'Readability']) {
       const axisLabel = page.getByText(axis, { exact: true });
       await axisLabel.waitFor({ state: 'visible', timeout: 10_000 });
       expect(await axisLabel.isVisible()).toBe(true);

@@ -43,7 +43,7 @@ export interface IssueAssetRequest extends AssetRequestBase {
   readonly type?: string;
   /** Optional dungeon floor intensity. Defaults to 1 downstream. */
   readonly floor?: number;
-  /** Stable hash of normalized issue payload (`name + briefSentence`). */
+  /** Stable hash of normalized issue payload (`name + briefSentence`, plus `floor` when floor > 1). */
   readonly fingerprint: string;
   /** ISO-8601 timestamp when the ingester claimed/enqueued this issue payload. */
   readonly claimedAt: string;
