@@ -69,6 +69,12 @@ function loadMergeTrainWorkflow(): WorkflowDoc {
   return parse(raw) as WorkflowDoc;
 }
 
+function getReconcileJob(doc: WorkflowDoc): WorkflowJob {
+  const job = doc.jobs.reconcile;
+  if (!job) throw new Error('job "reconcile" not found in merge-train.yml');
+  return job;
+}
+
 /**
  * Literal re-transcription of `jobs.reconcile.if` in merge-train.yml. Kept
  * intentionally line-for-line with the real expression (see the exact-string
@@ -127,7 +133,7 @@ describe('merge-train.yml trigger wiring (dual post-completion wake-up)', () => 
 
   it('gates the reconcile job with the exact expected fail-closed condition', () => {
     const doc = loadMergeTrainWorkflow();
-    const condition = String(doc.jobs.reconcile.if).trim();
+    const condition = String(getReconcileJob(doc).if).trim();
     expect(condition).toBe(
       "(github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository) && " +
         "(github.event_name != 'workflow_run' || github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'push')",
