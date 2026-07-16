@@ -92,7 +92,11 @@ function resolveInventoryHolder(
   return players[0];
 }
 
-function evaluateCondition(world: GameWorld, condition: DoorLockCondition): boolean {
+function evaluateCondition(
+  world: GameWorld,
+  condition: DoorLockCondition,
+  goalOverrides?: ReadonlyMap<string, boolean> | null,
+): boolean {
   switch (condition.type) {
     case 'inventory': {
       const holder = resolveInventoryHolder(world, condition);
@@ -105,8 +109,11 @@ function evaluateCondition(world: GameWorld, condition: DoorLockCondition): bool
       }
       return getItemCount(bag, condition.itemId) >= condition.quantity;
     }
-    case 'goal':
+    case 'goal': {
+      const override = goalOverrides?.get(condition.goalId);
+      if (override !== undefined) return override;
       return world.goalFlags.get(condition.goalId) === true;
+    }
     case 'timer':
       return world.elapsedMs >= condition.elapsedMs;
     default: {
@@ -116,11 +123,25 @@ function evaluateCondition(world: GameWorld, condition: DoorLockCondition): bool
   }
 }
 
-export function evaluateDoorConditionGroup(world: GameWorld, group: DoorConditionGroup): boolean {
+/**
+ * Evaluate a door condition group against live world state, or against a
+ * hypothetical override for `'goal'` conditions when `goalOverrides` is
+ * supplied. Used by planning code that must ask "would this door be open IF
+ * goal X were already satisfied?" without mutating the real world — see
+ * `floor1-travel-oracle.ts`. Omitting `goalOverrides` (or passing `null`)
+ * preserves the exact live-world behavior every existing caller depends on.
+ */
+export function evaluateDoorConditionGroup(
+  world: GameWorld,
+  group: DoorConditionGroup,
+  goalOverrides?: ReadonlyMap<string, boolean> | null,
+): boolean {
   if (group.operator === 'all') {
-    return group.conditions.every((condition) => evaluateCondition(world, condition));
+    return group.conditions.every((condition) =>
+      evaluateCondition(world, condition, goalOverrides),
+    );
   }
-  return group.conditions.some((condition) => evaluateCondition(world, condition));
+  return group.conditions.some((condition) => evaluateCondition(world, condition, goalOverrides));
 }
 
 export function setDoorLockConfig(world: GameWorld, doorEid: number, config: DoorLockConfig): void {

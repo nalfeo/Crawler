@@ -95,7 +95,15 @@ export function updateMerchantWeaponIntent(
   const deficit = Math.max(0, intent.cost - world.playerGold);
   if (deficit === 0) {
     intent = { ...intent, status: 'returning' };
+  } else if (runPlan?.droppedOptionalBundleIds.includes('merchant-weapon-purchase')) {
+    intent = { ...intent, status: 'abandoned' };
+  } else if (runPlan?.includedOptionalBundleIds.includes('merchant-weapon-purchase')) {
+    intent = { ...intent, status: 'farming' };
   } else if (!canFarmOptionalMerchantPurchase(runPlan, deficit, goldFarmMs)) {
+    // The decision poll precedes the first graph containing this newly chosen
+    // bundle, so use required-only slack once. Subsequent polls consume the
+    // planner's explicit include/drop verdict above instead of double-counting
+    // the already-budgeted farm work.
     intent = { ...intent, status: 'abandoned' };
   } else {
     intent = { ...intent, status: 'farming' };

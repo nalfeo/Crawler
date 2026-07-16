@@ -159,6 +159,28 @@ function enterKillGrindStage(world: GameWorld): void {
   world.floorScenario!.objective.questCompleted = false;
 }
 
+/** Keep shop-navigation tests focused on the shop chain while preserving a
+ * coherent completed state for every independent Floor 1 objective chain. */
+function completeNonShopObjectives(world: GameWorld): void {
+  const scenario = world.floorScenario!;
+  world.goalFlags.set('floor1-leveling-quest-complete', true);
+  world.goalFlags.set('floor1-goon-quest-complete', true);
+  meetSpellQuestGiver(world);
+  const slimeRat = scenario.objective.bossBattles.get('slime-rat')!;
+  slimeRat.started = true;
+  slimeRat.defeated = true;
+  world.featureUnlocks.spells = true;
+  world.goalFlags.set('floor1-boss-battle-complete', true);
+  const staircase = scenario.objective.bossBattles.get('staircase')!;
+  staircase.started = true;
+  staircase.defeated = true;
+  scenario.objective = {
+    ...scenario.objective,
+    staircaseUnlocked: true,
+    staircaseDiscovered: true,
+  };
+}
+
 function setupNpcApproachThreat(weaponId: string): {
   world: GameWorld;
   player: number;
@@ -173,6 +195,7 @@ function setupNpcApproachThreat(weaponId: string): {
   meetTutorialGoon(world);
   world.playerLevel.level = 2;
   world.floorScenario!.objective.questCompleted = true;
+  completeNonShopObjectives(world);
   world.floorMap = makeOpenRoom(40, 20);
   world.stores.position.x[player] = 14;
   world.stores.position.y[player] = 14;
@@ -184,6 +207,7 @@ function setupNpcApproachThreat(weaponId: string): {
   world.floorScenario!.objective = {
     ...world.floorScenario!.objective,
     shopRoomPos: { x: 38, y: 14 },
+    questItemPos: { x: 50, y: 14 },
   };
 
   const enemies = [spawnEnemy(world, 22, 14, 20), spawnEnemy(world, 21, 15, 20)];
@@ -281,6 +305,7 @@ describe('BehaviorTreeAI', () => {
     meetTutorialGoon(world);
     world.playerLevel.level = 2;
     world.floorScenario!.objective.questCompleted = true;
+    completeNonShopObjectives(world);
 
     const ai = new BehaviorTreeAI({ seed: 42, scanRadius: 0 });
     const suppressionHarness = ai as unknown as {
@@ -1358,6 +1383,7 @@ describe('BehaviorTreeAI', () => {
     meetTutorialGoon(world);
     world.playerLevel.level = 2;
     world.floorScenario!.objective.questCompleted = true;
+    completeNonShopObjectives(world);
     world.floorMap = makeSealedRoom(24, 20, 10);
     const playerPos = world.floorMap.tileToWorld(6, 6);
     world.stores.position.x[player] = playerPos.x;
@@ -1378,7 +1404,8 @@ describe('BehaviorTreeAI', () => {
     // override them by reassigning the whole (mutable) objective with a spread.
     world.floorScenario!.objective = {
       ...world.floorScenario!.objective,
-      shopRoomPos: shopkeeperPos,
+      shopRoomPos: expectedAnchor,
+      questItemPos: world.floorMap.tileToWorld(8, 6),
       spellQuestGiverPos: spellBrokerPos,
     };
 
@@ -1397,6 +1424,69 @@ describe('BehaviorTreeAI', () => {
     expect(decision.targetX).toBe(expectedAnchor.x);
     expect(decision.targetY).toBe(expectedAnchor.y);
     expect(decision.targetX).not.toBe(shopkeeperPos.x);
+
+    const cacheHarness = ai as unknown as {
+      floor1MiddleChainCache: object | null;
+    };
+    const initialRoute = cacheHarness.floor1MiddleChainCache;
+    expect(initialRoute).not.toBeNull();
+
+    world.frameCount += 1_000;
+    world.elapsedMs += 100_000;
+    ai.poll(createInputState(), world);
+    expect(cacheHarness.floor1MiddleChainCache).toBe(initialRoute);
+
+    world.goalFlags.set('floor1-shop-prize-returned', true);
+    ai.poll(createInputState(), world);
+    expect(cacheHarness.floor1MiddleChainCache).not.toBe(initialRoute);
+  });
+
+  it('plumbs a committed quest-giver detour into run planning as its exact graph goal', () => {
+    const world = createTestWorld({ seed: 12 });
+    const player = spawnPlayer(world, 14, 14);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    world.floorScenario!.objective.questCompleted = true;
+    world.goalFlags.set('floor1-leveling-quest-complete', true);
+    world.goalFlags.set('floor1-goon-quest-complete', true);
+    world.floorMap = makeOpenRoom(40, 20);
+
+    const spellBrokerEid = world.floorScenario!.spellQuestGiverNpcEid;
+    expect(spellBrokerEid).toBeDefined();
+    world.stores.position.x[spellBrokerEid!] = 38;
+    world.stores.position.y[spellBrokerEid!] = 14;
+
+    const ai = new BehaviorTreeAI({ seed: 12 });
+    const harness = ai as unknown as {
+      committedDetourNpcEid: number | null;
+      merchantDecisionRunPlan: object | null;
+      merchantDecisionRunPlanFrame: number;
+      estimateCurrentRunPlan(
+        gameWorld: GameWorld,
+        playerEid: number,
+        playerX: number,
+        playerY: number,
+        playerSpeedFtPerFrame: number,
+      ): {
+        segments: readonly { id: string }[];
+      } | null;
+      releaseDetourCommitment(): void;
+    };
+    harness.committedDetourNpcEid = spellBrokerEid!;
+
+    const plan = harness.estimateCurrentRunPlan(world, player, 14, 14, 0.2);
+
+    expect(plan?.segments[0]?.id).toBe('current-detour');
+    expect(plan?.segments.map((segment) => segment.id)).not.toContain('accept-spell-quest');
+    expect(plan?.segments.map((segment) => segment.id)).toContain('kill-slime-rat');
+
+    harness.merchantDecisionRunPlan = plan;
+    harness.merchantDecisionRunPlanFrame = world.frameCount;
+    harness.releaseDetourCommitment();
+    expect(harness.merchantDecisionRunPlan).toBeNull();
+    expect(harness.merchantDecisionRunPlanFrame).toBe(Number.NEGATIVE_INFINITY);
   });
 
   it('does not poison the cached NPC anchor after a close-range first visit', () => {

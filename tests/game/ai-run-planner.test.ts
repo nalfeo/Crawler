@@ -43,6 +43,7 @@ function snapshot(overrides: Partial<Floor1RunPlannerSnapshot> = {}): Floor1RunP
     slimeRatStarted: false,
     slimeRatDefeated: false,
     spellsUnlocked: false,
+    bossBattleComplete: false,
     staircaseStarted: false,
     staircaseDefeated: false,
     staircaseUnlocked: false,
@@ -148,6 +149,135 @@ describe('estimateFloor1RunPlan', () => {
     expect(plan.segments[0]?.id).toBe('current-detour');
     expect(plan.segments[0]?.kind).toBe('detour');
     expect(plan.segments[0]?.criticalChainPhase).toBe('detour');
+  });
+
+  it('optimizes the remaining route from the committed detour endpoint', () => {
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        player: { x: 0, y: 0 },
+        activeQuestGiverDetour: true,
+        currentTarget: {
+          x: 100,
+          y: 0,
+          eid: 42,
+          reason: 'Detouring to Spell Broker',
+          kind: 'other',
+        },
+        tutorialAccepted: true,
+        playerLevel: 2,
+        questCompleted: true,
+        positions: {
+          welcomeOffice: { x: 0, y: 0 },
+          shop: { x: 0, y: 0 },
+          questItem: { x: 10, y: 0 },
+          spellQuestGiver: { x: 100, y: 0 },
+          slimeRatRoom: { x: 110, y: 0 },
+          staircase: { x: 50, y: 0 },
+        },
+      }),
+      PARAMS,
+    );
+
+    expect(plan.routeHeadId).toBe('accept-spell-quest');
+    expect(plan.segments[1]?.id).toBe('accept-spell-quest');
+  });
+
+  it('subtracts committed-detour cost from optional-bundle budget (a bundle that fits pre-detour is dropped)', () => {
+    // Scenario: the only remaining required work is taking the stairs (at x=0).
+    // There is an optional merchant-weapon purchase bundle with a gold-farm step.
+    // Budget is set to JUST accommodate the optional bundle if measured from
+    // the player position (x=0), but NOT enough if the detour cost is subtracted.
+    //
+    // Detour: player is at x=0, detour target is x=200 (travel = 200/0.12 ≈ 1667 ms + 1500 work = ~3167 ms).
+    // After the detour, the route starts from x=200 back to the stairs at x=60.
+    //
+    // We set the budget to just over the straight route (without detour deducted)
+    // but less than (route + detour cost), so the planner must drop the bundle.
+    const detourTarget = { x: 200, y: 0, eid: null, reason: 'Detour', kind: 'other' as const };
+    const detourTravelMs = Math.round(200 / PARAMS.moveSpeedFtPerMs);
+    const detourCostMs = detourTravelMs + PARAMS.interactionMs;
+
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        tutorialAccepted: true,
+        playerLevel: 2,
+        questCompleted: true,
+        shopStage: 'complete',
+        bossBattleAccepted: true,
+        slimeRatStarted: true,
+        slimeRatDefeated: true,
+        spellsUnlocked: true,
+        bossBattleComplete: true,
+        staircaseStarted: true,
+        staircaseDefeated: true,
+        player: { x: 0, y: 0 },
+        activeQuestGiverDetour: true,
+        currentTarget: detourTarget,
+        playerGold: 0,
+        merchantWeaponIntent: { status: 'farming', cost: 5 },
+        positions: {
+          welcomeOffice: { x: 0, y: 0 },
+          shop: { x: 0, y: 0 },
+          questItem: { x: 0, y: 0 },
+          spellQuestGiver: { x: 0, y: 0 },
+          slimeRatRoom: { x: 0, y: 0 },
+          staircase: { x: 0, y: 0 }, // staircase at same point as player
+        },
+        deadlineMs:
+          // Budget: detour cost + safety buffer + a tiny margin that fits only
+          // take-stairs but NOT the farm+buy bundle.
+          detourCostMs + PARAMS.safetyBufferMs + PARAMS.stairsInteractMs + 1,
+      }),
+      PARAMS,
+    );
+
+    // The optional merchant-weapon bundle must be dropped — budget was consumed by detour.
+    expect(plan.droppedOptionalBundleIds).toContain('merchant-weapon-purchase');
+  });
+
+  it('detour fulfilling a graph goal is not double-charged and its unlock effects are preserved', () => {
+    // Scenario: player is on a committed detour TO the spell quest giver
+    // (accept-spell-quest), with committedGoalId = 'accept-spell-quest'.
+    // The planner must NOT include accept-spell-quest in the route again, and
+    // floor1-slime-rat-quest-accepted must be in the effective initial effects
+    // so that kill-slime-rat is reachable without replanning the accept step.
+    const plan = estimateFloor1RunPlan(
+      snapshot({
+        player: { x: 0, y: 0 },
+        tutorialAccepted: true,
+        playerLevel: 2,
+        questCompleted: true,
+        shopStage: 'complete',
+        bossBattleAccepted: false, // accept not yet done — it IS the committed detour
+        activeQuestGiverDetour: true,
+        currentTarget: {
+          x: 40,
+          y: 0,
+          eid: null,
+          reason: 'Detouring to Spell Broker',
+          kind: 'other',
+          committedGoalId: 'accept-spell-quest',
+        },
+        positions: {
+          welcomeOffice: { x: 0, y: 0 },
+          shop: { x: 0, y: 0 },
+          questItem: { x: 0, y: 0 },
+          spellQuestGiver: { x: 40, y: 0 },
+          slimeRatRoom: { x: 50, y: 0 },
+          staircase: { x: 60, y: 0 },
+        },
+      }),
+      PARAMS,
+    );
+
+    const segmentIds = plan.segments.map((s) => s.id);
+
+    // accept-spell-quest must NOT appear twice (no double charge).
+    expect(segmentIds.filter((id) => id === 'accept-spell-quest')).toHaveLength(0);
+
+    // The route must include the steps that depend on accept-spell-quest's
+    // effect (floor1-slime-rat-quest-accepted), proving effects are propagated.
+    expect(segmentIds).toContain('kill-slime-rat');
   });
 
   it('tags every segment with a broad critical-chain phase along the canonical path', () => {
