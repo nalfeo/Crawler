@@ -856,7 +856,7 @@
     "id": "generated:geese-boss-var-0",
     "kind": "sprite",
     "label": "geese-boss-var-0",
-    "description": "Generated sprite from brief: geese-boss.",
+    "description": "Don Honkrado the Godgoose — mafia godfather goose, Floor 2 boss. Square compact body with tucked neck, pinstripe waistcoat from salvage straps, brass gear cufflinks, wide-brim fedora, cigar in beak, cold contempt expression. Placeholder pending full pipeline generation.",
     "tags": ["enemy", "generated", "pipeline-approved"],
     "spriteId": "geese-boss-var-0",
     "sheetKey": "generated-manifest",
