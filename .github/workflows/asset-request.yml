@@ -225,3 +225,48 @@ jobs:
           # synth + judge, which are the two calls the drain worker needs.
           SPRITES_ALLOW_CI_PIPELINE: 'true'
         run: npm run sprites:worker
+
+      - name: Export historical boss sheets
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          SPRITES_AZURE_CACHE: 'off'
+        run: |
+          npx tsx - <<'TS'
+          import { mkdir, writeFile } from 'node:fs/promises';
+          import path from 'node:path';
+          import { createRunStore } from './scripts/sprites/store/index.ts';
+
+          const runs = [
+            ['batfolk-boss', '2026-07-08T02-18-01-208c1100'],
+            ['beetlefolk-boss', '2026-07-08T02-32-57-379ab14a'],
+            ['cactusfolk-boss', '2026-07-08T02-14-48-5fde1528'],
+            ['faerie-boss', '2026-07-08T01-39-33-5bfe280b'],
+            ['geese-boss', '2026-07-08T02-42-19-28e76d2b'],
+          ];
+          const store = createRunStore({ repoRoot: process.cwd() });
+          const exportRoot = path.resolve('generated/old-boss-sheet-export');
+
+          for (const [briefId, runId] of runs) {
+            const prefix = `${briefId}/${runId}/`;
+            for (const filename of ['sheet-00.png', 'summary.json']) {
+              const destination = path.join(exportRoot, briefId, runId, filename);
+              await mkdir(path.dirname(destination), { recursive: true });
+              await writeFile(destination, await store.get(`${prefix}${filename}`));
+            }
+            console.log(`Exported old-prompt sheet from ${prefix}`);
+          }
+          TS
+
+      - name: Upload historical boss sheets
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: old-floor2-boss-sheets-${{ github.run_id }}
+          path: generated/old-boss-sheet-export/
+          if-no-files-found: error
+          retention-days: 1
