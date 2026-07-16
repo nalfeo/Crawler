@@ -268,15 +268,18 @@ jobs:
                   run.external_id === process.env.FINGERPRINT &&
                   Number(run.app?.id) === trustedAppId,
               );
-              const alreadyTerminal = matching.some(
-                (run) =>
-                  run.status === 'completed' &&
-                  (run.conclusion === 'success' || run.conclusion === 'failure'),
-              );
+              // Select the highest-ID (authoritative, per trainCheckState())
+              // match first, then derive alreadyTerminal from that SAME run
+              // -- not from "any matching run is terminal" -- so an older
+              // terminal run can never mask a newer in_progress run that
+              // still needs to be corrected.
               const existingRun = matching.reduce(
                 (latest, run) => (!latest || Number(run.id) > Number(latest.id) ? run : latest),
                 undefined,
               );
+              const alreadyTerminal =
+                existingRun?.status === 'completed' &&
+                (existingRun.conclusion === 'success' || existingRun.conclusion === 'failure');
               return { existingRun, alreadyTerminal };
             };
             let lastError;

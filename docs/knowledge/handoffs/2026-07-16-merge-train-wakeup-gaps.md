@@ -754,3 +754,39 @@ tests/unit/merge-train-workflow-wakeups.test.ts` -- 29/29 passed (test count
 unchanged; two existing tests gained assertions rather than new tests being
 added, since the same mock call site now covers both concerns). Re-ran
 `npm run verify:fast` -- passed.
+
+## Fourteenth round follow-up (alreadyTerminal masked by an older terminal run)
+
+`PRRT_kwDOSvo2Ms6RUUjK`: `findMatch()` picked the highest-ID matching run for
+`existingRun` (round 12's fix), but derived `alreadyTerminal` separately via
+`matching.some(...)` across **all** matching runs. If an older run had
+already gone terminal (e.g. a genuine prior `success`) while a newer run from
+a later retry was still `in_progress`, `alreadyTerminal` came back `true`
+from the old run alone -- causing the whole step to no-op and leave the
+authoritative (highest-ID) `in_progress` run stuck for up to the 40-minute
+stale timeout, even though `existingRun` correctly pointed at that newer run.
+
+Fixed by deriving `alreadyTerminal` from the same `existingRun` (the
+highest-ID match) rather than scanning all matches independently:
+
+```js
+const existingRun = matching.reduce(
+  (latest, run) => (!latest || Number(run.id) > Number(latest.id) ? run : latest),
+  undefined,
+);
+const alreadyTerminal =
+  existingRun?.status === 'completed' &&
+  (existingRun.conclusion === 'success' || existingRun.conclusion === 'failure');
+```
+
+Added a new regression test with an older terminal (`success`) run (ID 700)
+alongside a newer `in_progress` run (ID 900): asserts `checks.update` is
+called with `check_run_id: 900`, `conclusion: 'cancelled'`, and
+`checks.create` is never called. Verified the test fails against the old
+`matching.some(...)` implementation (reverted the fix locally, re-ran the
+new test in isolation -- it failed with `updateArgs` undefined, i.e. the
+no-op path) before restoring the fix and confirming green. Test count: 30
+(25 + 5, up from 29 = 24 + 5). Ran
+`npx vitest run tests/unit/merge-train-validate-publish.test.ts
+tests/unit/merge-train-workflow-wakeups.test.ts` -- 30/30 passed. Re-ran
+`npm run verify:fast` -- passed.

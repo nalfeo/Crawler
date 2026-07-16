@@ -122,6 +122,14 @@
           "resolved_count": 1,
           "clean": true,
           "models": ["claude-sonnet-5"]
+        },
+        {
+          "round": 14,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round 14: PRRT_kwDOSvo2Ms6RUUjK found that findMatch() selected the highest-ID matching run for existingRun (round 12's fix) but derived alreadyTerminal separately via matching.some(...) across all matching runs. If an older run had already gone terminal (e.g. a genuine prior success) while a newer run from a later retry was still in_progress, alreadyTerminal came back true from the old run alone, causing the whole step to no-op and leave the authoritative (highest-ID) in_progress run stuck for up to the 40-minute stale timeout even though existingRun correctly pointed at that newer run. Fixed by deriving alreadyTerminal from the same existingRun (the highest-ID match) instead of scanning all matches independently. Added a new regression test with an older terminal (success) run (ID 700) alongside a newer in_progress run (ID 900): asserts checks.update is called with check_run_id 900 and checks.create is never called. Verified the test fails against the old matching.some(...) implementation (reverted the fix locally, confirmed the new test fails with updateArgs undefined) before restoring the fix and confirming green. Test count: 30 (25 + 5, up from 29 = 24 + 5). Ran npx vitest run (both files) -- 30/30 passed; npm run verify:fast and npm run review:ledger -- validate both green. No remaining concerns."
         }
       ]
     }

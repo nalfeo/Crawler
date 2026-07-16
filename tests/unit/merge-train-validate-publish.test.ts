@@ -590,6 +590,86 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(Object.prototype.hasOwnProperty.call(updateArgs ?? {}, 'head_sha')).toBe(false);
     });
 
+    it('derives alreadyTerminal from the highest-ID matching run, not from "any matching run is terminal", so an older terminal run never masks a newer in_progress run that still needs correcting', async () => {
+      const doc = loadWorkflow();
+      const step = getFallbackStep(doc);
+      const script = step.with?.script;
+      expect(typeof script).toBe('string');
+
+      let createCalls = 0;
+      let updateArgs: { check_run_id: number; conclusion: string } | undefined;
+      const github = {
+        rest: {
+          checks: {
+            listForRef: async () => {
+              return {
+                data: {
+                  check_runs: [
+                    // Older run already terminal (a genuine prior success).
+                    {
+                      id: 700,
+                      external_id: 'cafef00d',
+                      app: { id: 12345 },
+                      status: 'completed',
+                      conclusion: 'success',
+                    },
+                    // Newer run from a subsequent retry, still in_progress --
+                    // this is the authoritative one per trainCheckState()'s
+                    // highest-ID rule, and it is NOT terminal.
+                    {
+                      id: 900,
+                      external_id: 'cafef00d',
+                      app: { id: 12345 },
+                      status: 'in_progress',
+                      conclusion: null,
+                    },
+                  ],
+                },
+              };
+            },
+            create: async () => {
+              createCalls += 1;
+              return { data: {} };
+            },
+            update: async (args: { check_run_id: number; conclusion: string }) => {
+              updateArgs = args;
+              return { data: {} };
+            },
+          },
+        },
+      };
+      const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+      const previousEnv = {
+        CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        FINGERPRINT: process.env.FINGERPRINT,
+        APP_ID: process.env.APP_ID,
+      };
+      process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.FINGERPRINT = 'cafef00d';
+      process.env.APP_ID = '12345';
+      try {
+        const run = new Function(
+          'github',
+          'context',
+          `return (async () => {\n${script}\n})();`,
+        ) as (github: unknown, context: unknown) => Promise<void>;
+        await run(github, context);
+      } finally {
+        for (const [key, value] of Object.entries(previousEnv)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+      // The old `matching.some(...)` implementation would have seen the
+      // older terminal (success) run and treated the whole lookup as
+      // already-terminal, no-oping and leaving check-run 900 stuck
+      // in_progress. The fix must instead update the highest-ID run (900).
+      expect(createCalls).toBe(0);
+      expect(updateArgs).toBeDefined();
+      expect(updateArgs?.check_run_id).toBe(900);
+      expect(updateArgs?.conclusion).toBe('cancelled');
+    });
+
     it('re-lists once after a short delay when no matching check is found on the first read, and updates in place if one appears (residual visibility-lag hardening)', async () => {
       vi.useFakeTimers();
       const doc = loadWorkflow();
