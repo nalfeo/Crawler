@@ -242,13 +242,6 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     // reconcile.mjs's own dispatchValidation catch block) BEFORE the wake
     // dispatches, so the woken reconciliation redispatches validation
     // immediately instead of waiting.
-    //
-    // Scope: this fallback reuses the App token minted above, so it can only
-    // authenticate its own checks.create call when that mint succeeded. It is
-    // gated on `steps.app-token.outcome == 'success'` so it never attempts a
-    // doomed call with an empty token if the mint itself failed; that rarer,
-    // config/secrets-shaped failure mode falls back to the pre-existing
-    // CANDIDATE_VALIDATION_STALE_MS (40-minute) stale bound instead.
     function getFallbackStep(doc: WorkflowDoc): WorkflowStep {
       const steps = doc.jobs.publish?.steps ?? [];
       const step = steps.find(
@@ -258,12 +251,34 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       return step;
     }
 
-    it('runs on failure() scoped to a successful app-token mint, and uses the App token', () => {
+    it('exists, runs on failure(), and uses a separately-minted recovery App token', () => {
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
-      expect(step.if).toBe("failure() && steps.app-token.outcome == 'success'");
+      expect(step.if).toBe('failure()');
       expect(step.uses).toMatch(/^actions\/github-script/);
-      expect(step.with?.['github-token']).toBe('${{ steps.app-token.outputs.token }}');
+      // Must NOT reuse steps.app-token.outputs.token: if the ORIGINAL
+      // "Generate repository app token" step is what failed, that output is
+      // empty, and checks.create needs a token from the trusted App identity
+      // (trainCheckState() filters by app.id). A separately-minted recovery
+      // token gets an independent chance to succeed even when the original
+      // mint step is the thing that failed.
+      expect(step.with?.['github-token']).toBe('${{ steps.recovery-app-token.outputs.token }}');
+    });
+
+    it('mints the recovery app token from a dedicated step that also runs on failure()', () => {
+      const doc = loadWorkflow();
+      const steps = doc.jobs.publish?.steps ?? [];
+      const recoveryTokenStep = steps.find((s) => s.name === 'Generate recovery app token');
+      expect(recoveryTokenStep).toBeDefined();
+      expect(recoveryTokenStep?.if).toBe('failure()');
+      expect(recoveryTokenStep?.uses).toMatch(/^actions\/create-github-app-token/);
+      const publishIndex = steps.findIndex((s) => s.name === 'Publish immutable candidate result');
+      const recoveryTokenIndex = steps.findIndex((s) => s.name === 'Generate recovery app token');
+      const fallbackIndex = steps.findIndex(
+        (s) => s.name === 'Mark candidate check retryable if publishing failed',
+      );
+      expect(recoveryTokenIndex).toBeGreaterThan(publishIndex);
+      expect(fallbackIndex).toBeGreaterThan(recoveryTokenIndex);
     });
 
     it('runs after the publish step and before the wake-up dispatch', () => {

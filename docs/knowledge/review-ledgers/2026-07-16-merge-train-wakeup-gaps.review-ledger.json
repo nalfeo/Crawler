@@ -25,6 +25,14 @@
           "resolved_count": 0,
           "clean": true,
           "summary": "No significant issues. Verified YAML precedence/semantics of the schedule carve-out, storm-guard non-regression, safety of if: always() on the wake step (permissions present, desirable behavior when publish job is malformed/cancelled), and correctness of the evaluatesReconcileCondition test-helper substitution approach."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "summary": "Round 2: reviewed a follow-up delta responding to a copilot-pull-request-reviewer bot finding on an autonomous agent-merge commit -- the retryable-check fallback step reused the original (possibly-failed) app-token output. Added a dedicated recovery-app-token mint step (if: failure()) and rewired the fallback step to use it. Verified if: failure() semantics are job-scoped (fires correctly even if the original app-token mint step is what failed), confirmed graceful degradation if the recovery mint also fails (wake dispatch still fires via if: always() with GITHUB_TOKEN, falling back to the pre-existing staleness bound), confirmed complete test coverage (token reference, step existence/ordering/condition), and found no permission/cost/syntax issues. No significant issues found."
         }
       ]
     }

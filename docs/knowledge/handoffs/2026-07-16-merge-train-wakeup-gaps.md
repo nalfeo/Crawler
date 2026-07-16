@@ -33,20 +33,27 @@ requirements. This PR closes both:
    `wait` action. So the immediate wake would just see `pending` and do
    nothing — no better than the unreliable schedule fallback it exists to
    replace. Added a new "Mark candidate check retryable if publishing failed"
-   step (runs after the publish step and before the wake dispatch) that posts
-   a `cancelled` conclusion for the fingerprinted check — mirroring
-   `reconcile.mjs`'s own `dispatchValidation` catch block — so the woken
-   reconciliation redispatches validation immediately instead of waiting on
-   staleness.
+   step (`if: failure()`, runs after the publish step and before the wake
+   dispatch) that posts a `cancelled` conclusion for the fingerprinted check —
+   mirroring `reconcile.mjs`'s own `dispatchValidation` catch block — so the
+   woken reconciliation redispatches validation immediately instead of waiting
+   on staleness.
 
-   **Second review-pass fix**: this fallback reuses the App token minted
-   above, so a second reviewer pass flagged that if the `app-token` mint step
-   itself fails, the fallback also has no valid token to authenticate its own
-   `checks.create` call — it would fail a second time and post nothing.
-   Rather than just documenting that gap, scoped the step's condition to
-   `if: failure() && steps.app-token.outcome == 'success'` so it never
-   attempts the doomed call; that rarer, config/secrets-shaped failure mode
-   falls back to the pre-existing 40-minute stale bound instead.
+   **Second follow-up fix**: the retryable-check step initially reused
+   `steps.app-token.outputs.token` (the original mint step's output). If the
+   ROOT failure was that original "Generate repository app token" step itself
+   (e.g. a transient GitHub Apps auth error), that output is empty, and
+   `checks.create` requires a token from the trusted App identity —
+   `trainCheckState()` filters check runs by `app.id`, so a
+   `GITHUB_TOKEN`-authored check would never be recognized as authoritative
+   anyway. Added a dedicated "Generate recovery app token" step
+   (`if: failure()`, mints independently via
+   `actions/create-github-app-token@v1`) between the publish step and the
+   retryable-check step, and rewired the retryable-check step to use this
+   recovery token instead. Since the recovery mint also runs on `failure()`,
+   it gets an independent chance to succeed even when the original mint step
+   is what failed — closing the gap rather than just falling back to the
+   40-minute staleness bound for that failure mode.
 
 2. **Scheduled-CI wake-up gap**: `merge-train.yml`'s `reconcile` job guard for
    `workflow_run` events named `'CI'` only allowed
@@ -81,10 +88,11 @@ main.
 ## Files touched
 
 - `.github/workflows/merge-train-validate.yml` — added `if: always()` to the
-  "Wake merge-train reconciliation" step, plus a new "Mark candidate check
-  retryable if publishing failed" step (`if: failure()`) that posts a
-  `cancelled` conclusion for the fingerprinted check before the wake
-  dispatches, with explanatory comments on both.
+  "Wake merge-train reconciliation" step, plus a new "Generate recovery app
+  token" step (`if: failure()`) and "Mark candidate check retryable if
+  publishing failed" step (`if: failure()`, uses the independently-minted
+  recovery token) that posts a `cancelled` conclusion for the fingerprinted
+  check before the wake dispatches, with explanatory comments throughout.
 - `.github/workflows/merge-train.yml` — added the schedule/`MERGE_TRAIN_ENABLED`
   carve-out to the `reconcile` job's `if:` guard, with an explanatory comment
   describing the `mainHealthReason()` race scenario it closes.
@@ -108,7 +116,7 @@ main.
 
 - `npm run typecheck` — clean
 - `npm run lint` — clean
-- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **20/20 passed** (15 + 5)
+- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **21/21 passed** (16 + 5)
 - Both modified workflow YAML files parse cleanly via the `yaml` package (same
   parser the tests use) — confirmed no syntax breakage.
 - `npm run verify:fast` — passed (typecheck + lint + changed unit tests +
@@ -171,3 +179,39 @@ and fixed:
    `docs/knowledge/metrics/apples/2026-07-16-merge-train-wakeup-gaps.json`.
 3. The stated test counts (8+9=17) were wrong; the actual counts were
    12+5=17 (now 15+5=20 after the new fallback-step tests). Corrected above.
+
+## Second shepherd-round follow-up (recovery-token gap)
+
+Two more `copilot-pull-request-reviewer` findings on the fallback step landed
+by the first shepherd round were validated and fixed:
+
+1. **Recovery step reused the possibly-failed original App token**: the "Mark
+   candidate check retryable if publishing failed" step used
+   `steps.app-token.outputs.token`. If the ROOT failure was the "Generate
+   repository app token" step itself (transient GitHub Apps auth error), that
+   output is empty/unusable, and the fallback's `checks.create` call would
+   fail before posting the `cancelled` conclusion — `trainCheckState()`
+   filters check runs by trusted `app.id`, so a `GITHUB_TOKEN`-authored check
+   is not a substitute. Fixed by adding a dedicated "Generate recovery app
+   token" step (`if: failure()`, mints independently via
+   `actions/create-github-app-token@v1`) and rewiring the fallback step to use
+   `steps.recovery-app-token.outputs.token` instead. Since this new mint step
+   also runs on `failure()`, it gets an independent chance to succeed even
+   when the original mint step is what failed. Added 2 new regression tests
+   asserting the fallback step's token wiring and the recovery-token step's
+   existence/ordering/condition.
+2. **PR description staleness**: updated to describe all three operational
+   behaviors now shipped (fail-closed `if: always()` dispatch, retryable-check
+   fallback with independently-minted recovery token, scheduled-CI wake-up
+   carve-out) and the corrected test count (21 = 16 + 5).
+
+**Note on a superseded alternative**: a separate autonomous commit
+(`b7c1fab7`) proposed gating the retryable-check step on
+`steps.app-token.outcome == 'success'` instead of adding a recovery mint —
+i.e., accepting the app-token-mint-failure gap and just not attempting a
+doomed call. That approach was superseded when reconciling this branch: the
+recovery-app-token fix above actually _closes_ the gap (the retryable-check
+step gets a real, independent chance to post its cancelled conclusion even
+when the original mint failed) rather than accepting it as a residual
+limitation, so the outcome-gating condition was removed in favor of the
+recovery-token wiring.
