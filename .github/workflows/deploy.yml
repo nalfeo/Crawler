@@ -216,12 +216,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBERS=$(gh pr list \
+          PR_NUMBERS=""
+          if ! PR_NUMBERS=$(gh pr list \
             --repo "${{ github.repository }}" \
             --state merged \
             --base main \
             --json number,labels \
-            --jq '[.[] | select(.labels | map(.name) | index("released") | not)] | .[].number' 2>/dev/null || true)
+            --jq '[.[] | select(.labels | map(.name) | index("released") | not)] | .[].number' 2>/dev/null); then
+            echo "::warning::Failed to select unreleased merged PRs for this deploy run; baseline-sweep fallback set will be empty."
+            PR_NUMBERS=""
+          fi
           {
             echo "pr_numbers<<EOF"
             echo "$PR_NUMBERS"
@@ -565,7 +569,7 @@ jobs:
           # 2. Use the exact PR set selected by this run's deploy job (plus the
           #    commit-resolved PR) to avoid cross-run overlap with other releases.
           #    The idempotency check below still safely skips already-commented PRs.
-          ALL_COMMENT_PRS=$(printf '%s\n' $SPECIFIC_PR $DEPLOY_PR_NUMBERS \
+          ALL_COMMENT_PRS=$(printf '%s\n%s\n' "$SPECIFIC_PR" "$DEPLOY_PR_NUMBERS" \
             | sort -n -u | grep -v '^[[:space:]]*$' || true)
 
           if [ -z "$ALL_COMMENT_PRS" ]; then
