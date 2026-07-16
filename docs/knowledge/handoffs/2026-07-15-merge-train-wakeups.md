@@ -22,10 +22,10 @@ workflow tests; no review-harness stages are required at this tier.
 - `Merge Train Validation` now dispatches `merge-train.yml` after its immutable
   candidate check is written. The dispatch uses the existing trusted Crawler CI
   App token and explicitly targets `context.payload.repository.default_branch`.
-- `Merge Train` now subscribes to completed `CI` workflows, but its reconcile
-  job runs for CI only when the originating event is a `push` to the repository
-  default branch. CI completions from pull requests, schedules, and other
-  branches skip reconciliation.
+- `Merge Train` now subscribes to completed default-branch `CI` workflows. Its
+  trigger-level `branches: [main]` filter prevents pull-request and
+  other-branch CI completions from creating workflow records; its reconcile job
+  retains a matching event/name guard as defense-in-depth.
 - Existing push, candidate `workflow_run`, schedule, and manual triggers remain
   as defense-in-depth. The existing `crawler-merge-train` concurrency queue
   serializes duplicate wake-ups.

@@ -8,6 +8,9 @@ on:
   workflow_run:
     workflows: ['Merge Train Validation', 'CI']
     types: [completed]
+    # Candidate validation is dispatched from main; reject PR and non-main CI
+    # completions before they create a Merge Train workflow run.
+    branches: [main]
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:

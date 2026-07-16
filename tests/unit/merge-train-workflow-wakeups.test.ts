@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 interface WorkflowDoc {
-  on: { workflow_run?: { workflows?: string[]; types?: string[] } };
+  on: { workflow_run?: { workflows?: string[]; types?: string[]; branches?: string[] } };
   jobs: { reconcile?: { if?: string } };
 }
 
@@ -33,12 +33,15 @@ function evaluatesReconcileCondition(
 }
 
 describe('merge-train workflow wake-ups', () => {
-  it('subscribes to completed candidate validation and CI workflows', () => {
+  it('subscribes to only default-branch candidate validation and CI completions', () => {
     const workflowRun = loadWorkflow().on.workflow_run;
     expect(workflowRun?.workflows).toEqual(
       expect.arrayContaining(['Merge Train Validation', 'CI']),
     );
     expect(workflowRun?.types).toEqual(['completed']);
+    // This rejects PR and other-branch CI before Actions creates a Merge Train
+    // workflow record; the job condition below remains defense-in-depth.
+    expect(workflowRun?.branches).toEqual(['main']);
   });
 
   it('reconciles a completed CI run only when it is a push to the default branch', () => {
