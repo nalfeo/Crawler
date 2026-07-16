@@ -140,8 +140,9 @@ describe('getEffectiveTelegraphMs resolver', () => {
     const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
       telegraphMs: -7,
     });
-    // perMob >= 0 is false for -7, same branch as the -1 unset sentinel, so
-    // this resolves the world-level default rather than -7 or the constant.
+    // isFloat32SafeNonNegativeTelegraphMs(-7) is false (negative), same
+    // branch as the -1 unset sentinel, so this resolves the world-level
+    // default rather than -7 or the constant.
     expect(getEffectiveTelegraphMs(world, enemy)).toBe(500);
   });
 

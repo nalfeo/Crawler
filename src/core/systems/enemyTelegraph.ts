@@ -60,11 +60,19 @@ export const TELEGRAPH_MS_UNSET = -1;
  * - **Underflow**: a tiny nonzero delay (e.g. `1e-50`) is finite and
  *   non-negative, but `Math.fround` rounds it to exactly `0` — the same
  *   Float32 store value used for an intentional, legitimate "legacy: no
- *   telegraph" override. Once that happens the two cases are
- *   indistinguishable, so a configured non-zero delay silently degrades into
- *   immediate-fire/no-telegraph behavior (regression:
- *   copilot-pull-request-reviewer finding). Reject any nonzero input that
- *   would round to `0`; an explicit, already-zero input still passes.
+ *   telegraph" override. The consequence differs by entry point: a per-mob
+ *   override written directly to the Float32Array-backed `telegraphMs` store
+ *   (bypassing `spawnBehaviorEnemy`'s spawn-time sanitizer, see
+ *   `combatants.ts`) collapses to a stored `0` before this function ever
+ *   runs, so it IS silently indistinguishable from an explicit legacy
+ *   override once read back. A world-level `world.enemyTelegraphMs`, by
+ *   contrast, is a plain JS number preserved at full precision until this
+ *   function resolves it — so an underflowing world-level value is caught
+ *   right here and falls back to the constant (a real, nonzero telegraph),
+ *   never silently firing immediately. Either way, the requested duration
+ *   cannot be preserved as configured, so both paths reject any nonzero
+ *   input that would round to `0` (regression: copilot-pull-request-reviewer
+ *   finding); an explicit, already-zero input still passes.
  */
 export function isFloat32SafeNonNegativeTelegraphMs(candidateMs: number): boolean {
   const rounded = Math.fround(candidateMs);
@@ -83,9 +91,9 @@ function clampToFloat32SafeTelegraphMs(candidateMs: number): number {
 /** Resolves `mob.telegraphMs ?? world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS`. */
 export function getEffectiveTelegraphMs(world: GameWorld, eid: number): number {
   const perMob = world.stores.enemyBehavior.telegraphMs[eid] ?? TELEGRAPH_MS_UNSET;
-  // An invalid per-mob override (Float32-overflow, non-finite, or negative)
-  // must be treated the same as "unset" and fall through to the
-  // world-level default rather than short-circuiting straight to the
+  // An invalid per-mob override (Float32-overflow, Float32-underflow-to-zero,
+  // non-finite, or negative) must be treated the same as "unset" and fall
+  // through to the world-level default rather than short-circuiting straight to the
   // hardcoded constant — otherwise a configured `world.enemyTelegraphMs`
   // never has a chance to apply, silently breaking the documented
   // `mob ?? world ?? constant` precedence (regression:

@@ -234,15 +234,23 @@ function normalizeEnemyTelegraphMs(configuredTelegraphMs: number | undefined): n
     );
   }
   // Mirror of the Float32-underflow-to-zero guard in
-  // core/systems/enemyTelegraph.ts's isFloat32SafeNonNegativeTelegraphMs: a
-  // tiny nonzero delay (e.g. 1e-50) survives the overflow check above but
-  // rounds to exactly 0 once written to the Float32Array telegraphDelayMs
-  // store, becoming indistinguishable from an intentional, legitimate
-  // "legacy: no telegraph" override (regression: copilot-pull-request-
-  // reviewer finding).
+  // core/systems/enemyTelegraph.ts's isFloat32SafeNonNegativeTelegraphMs.
+  // Unlike the per-mob store (a Float32Array, where a tiny nonzero override
+  // rounds to a stored 0 immediately on write, becoming indistinguishable
+  // from an intentional "legacy: no telegraph" override), world.enemyTelegraphMs
+  // is a plain JS number preserved at full precision until getEffectiveTelegraphMs
+  // resolves it — that resolver's own guard already catches an underflowing
+  // world-level value at read time and falls back to the constant (a real,
+  // nonzero telegraph), so it can never silently produce immediate-fire
+  // behavior. The reason to still reject it here, at config time, is
+  // simpler and more honest: the requested duration is too small to survive
+  // a round-trip through the Float32-backed telegraphDelayMs store once a
+  // telegraph actually starts, so it cannot be preserved as configured and
+  // would otherwise be silently replaced by the 250ms default instead of
+  // erroring (regression: copilot-pull-request-reviewer finding).
   if (configuredTelegraphMs !== 0 && Math.fround(configuredTelegraphMs) === 0) {
     throw new Error(
-      `Invalid enemyTelegraphMs "${String(configuredTelegraphMs)}" (too small to represent in the Float32 telegraphDelayMs store; rounds to 0, which would silently select immediate-fire/legacy behavior)`,
+      `Invalid enemyTelegraphMs "${String(configuredTelegraphMs)}" (too small to represent in the Float32 telegraphDelayMs store; the requested duration cannot be preserved and would be silently replaced by the default instead of the value you configured)`,
     );
   }
   return configuredTelegraphMs;
