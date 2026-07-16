@@ -2100,8 +2100,12 @@ describe('BehaviorTreeAI', () => {
     // (see enemyAISystem.ts's fireEnemyProjectileFrom), not at the raw locked
     // origin. If the AI's virtual-projectile dodge math ever regresses back to
     // using the raw origin, its impact-time estimate drifts by
-    // MUZZLE_OFFSET/projectileSpeed frames (1.5ft / 4.0ft-per-frame = 0.375
-    // frames for the fireball def used here) versus the real shot.
+    // MUZZLE_OFFSET/projectileSpeed frames. The runtime source of truth for
+    // `projectileSpeed` is `getWeaponDef('fireball')` (src/shared/weaponDefs.ts),
+    // which both the real fire path and this dodge math call — NOT the raw
+    // `src/shared/data/weapons.json` value, which is unused stale data here.
+    // getWeaponDef('fireball').projectileSpeed === 0.5 ft/frame, so the drift
+    // is 1.5ft / 0.5ft-per-frame = 3 frames for the fireball def used here.
     //
     // Geometry is tuned so that drift is the ONLY thing separating "candidate
     // accepted" from "candidate silently skipped" at the dodge horizon gate
@@ -2111,8 +2115,8 @@ describe('BehaviorTreeAI', () => {
     //     impactFramesAfterSpawn = 0, totalImpactFrames = remainingFrames.
     //   - remainingFrames = 89.8 (comfortably <= 90 with the fix).
     //   - WITHOUT the fix, the virtual shot spawns 1.5ft "behind" (at the raw
-    //     origin), adding exactly 0.375 impact frames -> totalImpactFrames =
-    //     90.175 (> 90) -> the candidate is skipped and dodgeY stays 0.
+    //     origin), adding exactly 3 impact frames -> totalImpactFrames =
+    //     92.8 (> 90) -> the candidate is skipped and dodgeY stays 0.
     const world = createTestWorld({ seed: 42 });
     world.elapsedMs = 0;
     spawnPlayer(world, 1.5, 1);

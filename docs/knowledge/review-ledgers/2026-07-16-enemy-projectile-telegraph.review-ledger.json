@@ -25,6 +25,30 @@
           "resolved_count": 0,
           "clean": true,
           "notes": "Single-model pass against the full branch diff. Explicitly verified all 9 contract-correctness points from the review brief (delay resolution, 0ms parity, cancellation coverage, actual-attack-range danger radius, virtual-projectile-vs-real-fire consistency, EID-recycling sentinel, CLI wiring, test genuineness, createTestWorld() 0ms masking risk). No concerns raised. The 2 real bugs below were caught only by the independent multi-model fan-out (see multi_model_review), which is why both stages are required at this apple tier."
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 10,
+          "resolved_count": 10,
+          "clean": true,
+          "notes": "Post-open shepherding: GitHub's automated PR-review pass re-ran on each push while driving PR #1196 to merge and surfaced 10 further genuine issues beyond the pre-merge stages above: telegraph movement-freeze timing, an FOV-gate bypass in the AI dodge path, dead-shooter dodge still firing, stale CLI help text, a PhaserBridge dead-shooter render-cue gap, stale doc test counts, an unbounded-range dodge case, a recycled-EID cleanup bug, an FOV-vs-live-position mismatch, and missing coordinate-pinned test coverage. Each was root-caused, fixed with a regression test, verified (typecheck/lint/verify:fast), committed, and the corresponding review thread replied-to + resolved before the next push."
+        },
+        {
+          "round": 3,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 5,
+          "resolved_count": 5,
+          "clean": true,
+          "notes": "Further post-open pass (after an update-branch merge with main): (1) bt-ai-provider.ts range-gate hard-rejected candidates the real fire pipeline actually lets land on the step it first exceeds maxRange — fixed by clamping to maxReachableFrames instead of rejecting, with 2 new regression tests; (2) the 250ms default telegraph delay required a broad (>10-run) GitHub-Actions win-rate sweep per AGENTS.md rule 15/rule 12 before it could be treated as balance-validated — dispatched weapon-sweep.yml on main (95.6% win rate) vs. this branch (92.2%), both comfortably above the 90% Floor-1 gate, documented in the handoff's new Balance validation section; (3)+(4) two stale ADR passages (visibility-gate description, 0ms-legacy-parity consequences); (5) stale PR-description test counts. All fixed, verified, committed, and threads replied-to + resolved."
+        },
+        {
+          "round": 4,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Further post-open pass after the round-3 push: (1) a round-1-era test comment and the handoff's retrospective wrongly cited the raw (unused) src/shared/data/weapons.json fireball projectileSpeed of 4.0 as the runtime value, when both the fire path and the AI dodge math actually call getWeaponDef('fireball') (src/shared/weaponDefs.ts), which hardcodes 0.5 — corrected the test-comment drift math (3 frames / 92.8 total, not 0.375/90.175) and rewrote the handoff's Mistakes Made / Opportunities sections to cite the true runtime source; (2) a PhaserBridge.ts comment claiming only the render cue is FOV-gated was stale since round 2 already gated the AI dodge path identically — corrected; (3) a real bug: the telegraph cue's urgency-pulse sine phase used the absolute renderElapsedMs while its frequency also depends on progress, causing a phase-discontinuity flicker in long-running sessions — fixed by phasing on the telegraph's own relative elapsedMs instead, with a new regression test (tests/unit/phaser-bridge.test.ts) asserting identical pulse alpha for two telegraphs at the same relative-elapsed-since-start but very different absolute render-clock values; (4) this ledger itself was flagged as stale (marking 'clean' after a single recorded round despite the PR/handoff documenting several further rounds of real bug-finding) — addressed by adding rounds 2-4 above so the ledger's account matches the actual multi-round review history. All fixed, verified (tsc/eslint/verify:fast/full affected-suite reruns), committed, and threads replied-to + resolved."
         }
       ]
     },

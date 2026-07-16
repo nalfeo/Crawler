@@ -167,16 +167,20 @@ None blocking. Follow-up ideas (not required by the approved spec):
 ### Mistakes Made
 
 - Initially trusted a stale, unverified assumption from an earlier segment
-  that the fireball's `projectileSpeed` used in the AI's dodge math was
-  `0.5` (ft/frame). When designing the muzzle-offset regression test I
-  grepped `weapons.json` directly and found it's actually `4.0` — a very
-  different per-frame speed. Recomputing the regression scenario's geometry
-  around the real value (and choosing a player x-position exactly equal to
-  `MUZZLE_OFFSET` to keep `impactFramesAfterSpawn` at a clean `0` in the
-  fixed case) avoided a test that would have been silently wrong. Lesson:
-  always re-derive numeric test fixtures from the actual constant/data-file
-  values at the point of writing the test, never from an earlier segment's
-  paraphrase, however confident it sounded.
+  that the fireball's `projectileSpeed` used in the AI's dodge math was `4`
+  (ft/frame), carried over from a quick grep of the raw
+  `src/shared/data/weapons.json` fixture. Neither the real fire path
+  (`enemyAISystem.ts`) nor the AI's dodge math actually reads that JSON file
+  at runtime — both call `getWeaponDef('fireball')` (`src/shared/weaponDefs.ts`),
+  whose hardcoded `WEAPON_DEFS` entry is the true runtime source of truth and
+  is `0.5` ft/frame, not `4`. This invalidated an entire round's worth of test
+  scaffolding built on the wrong number before it was caught (a debug script
+  that printed `fireballDef` directly from `getWeaponDef` settled it). Lesson:
+  always re-derive numeric test fixtures from the actual **runtime accessor**
+  a system calls (`getWeaponDef(...)`, not a raw JSON data file that may be
+  unused/stale), and verify by printing the value the production code path
+  actually reads, never from an earlier segment's paraphrase or a grep of a
+  data file whose contents aren't provably wired to that code path.
 - Spent time initially trying to fight the `npm run review:ledger -- stage
 <path> <stage> --json '{...}'` CLI through PowerShell's quote-stripping
   before remembering the ledger is just a plain JSON file — directly editing
@@ -190,14 +194,19 @@ None blocking. Follow-up ideas (not required by the approved spec):
 - Add the Windows Git-Bash `local-scope.sh`/`detect-art-only.sh` exit-127
   quirk to AGENTS.md's "Known Environment Quirks" section (docs-only,
   separate session) so it stops being independently rediscovered.
-- The muzzle-offset constant (`ENEMY_PROJECTILE.MUZZLE_OFFSET`) and the
-  fireball weapon def's `projectileSpeed` live in two different data files
-  (`tuning.json` vs `weapons.json`) and are combined only inside
-  `bt-ai-provider.ts`'s dodge math and `enemyAISystem.ts`'s fire logic
-  separately — a shared helper that computes "real fire-time spawn point
-  given locked origin/dir" (used by both call sites) would make a future
-  regression like this structurally impossible rather than relying on
-  review to catch a copy-pasted-but-diverged formula.
+- The muzzle-offset constant (`ENEMY_PROJECTILE.MUZZLE_OFFSET`, from
+  `tuning.json`) and the fireball weapon def's `projectileSpeed` (from the
+  runtime `getWeaponDef('fireball')` accessor in `src/shared/weaponDefs.ts`
+  — NOT the stale, unused `src/shared/data/weapons.json` raw fixture) are
+  combined only inside `bt-ai-provider.ts`'s dodge math and
+  `enemyAISystem.ts`'s fire logic separately — a shared helper that computes
+  "real fire-time spawn point given locked origin/dir" (used by both call
+  sites) would make a future regression like this structurally impossible
+  rather than relying on review to catch a copy-pasted-but-diverged formula.
+  Separately, `src/shared/data/weapons.json` appears to be dead/unused data
+  now that `weaponDefs.ts` hardcodes its own defs — worth a follow-up
+  investigation (out of scope here) into whether it should be deleted or
+  wired back up as the actual source of truth.
 
 ## Balance validation: 250ms telegraph default vs. pre-PR baseline
 

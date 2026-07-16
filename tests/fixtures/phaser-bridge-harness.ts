@@ -174,6 +174,7 @@ export class MockGraphics {
   moveToCalls: Array<{ x: number; y: number }> = [];
   lineToCalls: Array<{ x: number; y: number }> = [];
   fillCircleCalls: Array<{ x: number; y: number; r: number }> = [];
+  lineStyleCalls: Array<{ width: number; color: number; alpha: number }> = [];
 
   clear(): this {
     this.fillRects = [];
@@ -182,6 +183,7 @@ export class MockGraphics {
     this.moveToCalls = [];
     this.lineToCalls = [];
     this.fillCircleCalls = [];
+    this.lineStyleCalls = [];
     return this;
   }
 
@@ -200,7 +202,8 @@ export class MockGraphics {
     return this;
   }
 
-  lineStyle(_width: number, _color: number, _alpha = 1): this {
+  lineStyle(width: number, color: number, alpha = 1): this {
+    this.lineStyleCalls.push({ width, color, alpha });
     return this;
   }
 

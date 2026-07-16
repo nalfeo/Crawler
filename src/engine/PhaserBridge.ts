@@ -1333,8 +1333,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // live position — so what the player sees is exactly what will fire.
           // Gated on the same `isVisible` FOV check as the sprite/health bar:
           // an off-screen/fog-hidden shooter must not reveal its position or
-          // aim line through the telegraph cue (the AI's dodge reasoning still
-          // reads the locked fields directly — only the render cue is gated).
+          // aim line through the telegraph cue. The AI's dodge reasoning is
+          // gated the same way (via `canCurrentlyPerceiveWorldPosition()` at
+          // the shooter's live position, in bt-ai-provider.ts) so both paths
+          // share the same no-privileged-visibility contract.
           // Also gated on `!isDeadEnemy`: damage/drop/death processing runs
           // after enemy AI, and this render pass runs after that, so a
           // shooter killed earlier this same frame can still have
@@ -1358,8 +1360,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             const rangeFt = Math.max(1, enemyBehaviorStore.attackRange[eid] ?? 1);
             const length = ftToPx(rangeFt);
             // Pulses faster as the shot nears firing so the cue reads as an
-            // urgency ramp, not a static line.
-            const pulse = 0.55 + 0.45 * Math.sin(renderElapsedMs * (0.006 + progress * 0.02));
+            // urgency ramp, not a static line. Phased on this telegraph's own
+            // `elapsedMs` (not the absolute/global `renderElapsedMs`) so the
+            // pulse frequency change from `progress` doesn't cause the sine
+            // phase to jump — an absolute-time phase combined with a
+            // progress-dependent frequency produces a phase discontinuity
+            // every frame once the game has been running a while, which
+            // reads as random high-frequency flicker instead of a smooth
+            // urgency ramp.
+            const pulse = 0.55 + 0.45 * Math.sin(elapsedMs * (0.006 + progress * 0.02));
             const alpha = (0.35 + 0.5 * progress) * pulse;
 
             const tg = existingTelegraph ?? scene.add.graphics();

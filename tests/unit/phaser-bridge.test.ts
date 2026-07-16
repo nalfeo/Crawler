@@ -1845,5 +1845,44 @@ describe('createPhaserBridge', () => {
 
       expect(telegraphGfx?.destroyed).toBe(true);
     });
+
+    it("phases the urgency pulse on the telegraph's own elapsed time, not the absolute render clock (regression: copilot-pull-request-reviewer finding)", () => {
+      // The pulse's sine phase must depend only on how long THIS telegraph
+      // has been active (elapsedMs = renderElapsedMs - telegraphStartMs), not
+      // on the absolute `renderElapsedMs` the game has been running for.
+      // Because the pulse FREQUENCY also depends on `progress` (time-since-
+      // start / delay), phasing on the absolute clock makes the sine phase
+      // jump by an amount proportional to total run time — after the game
+      // has run a while, tiny per-frame progress changes would produce
+      // effectively random high-frequency flicker instead of a smooth
+      // urgency ramp. Prove this can't happen: two telegraphs at the same
+      // RELATIVE elapsed-since-start-of-telegraph time, but wildly different
+      // ABSOLUTE render clock values, must produce an identical stroke alpha.
+      const relativeElapsedMs = 5000;
+
+      const early = createSceneStub({ withGraphics: true });
+      const earlyBridge = createPhaserBridge(early.scene);
+      const earlyWorld = createTestWorld();
+      earlyWorld.elapsedMs = 0;
+      const earlyEid = spawnBehaviorEnemy(earlyWorld, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(earlyWorld, earlyEid, 1, 0);
+      earlyBridge.sync(earlyWorld, relativeElapsedMs);
+      const earlyGfx = early.graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      const earlyLine = earlyGfx?.lineStyleCalls.find((c) => c.color === 0xff2222);
+
+      const late = createSceneStub({ withGraphics: true });
+      const lateBridge = createPhaserBridge(late.scene);
+      const lateWorld = createTestWorld();
+      lateWorld.elapsedMs = 1_000_000; // long-running game session
+      const lateEid = spawnBehaviorEnemy(lateWorld, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(lateWorld, lateEid, 1, 0);
+      lateBridge.sync(lateWorld, 1_000_000 + relativeElapsedMs);
+      const lateGfx = late.graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      const lateLine = lateGfx?.lineStyleCalls.find((c) => c.color === 0xff2222);
+
+      expect(earlyLine).toBeDefined();
+      expect(lateLine).toBeDefined();
+      expect(lateLine?.alpha).toBeCloseTo(earlyLine!.alpha, 10);
+    });
   });
 });
