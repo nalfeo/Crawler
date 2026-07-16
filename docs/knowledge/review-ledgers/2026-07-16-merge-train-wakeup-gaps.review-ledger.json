@@ -113,6 +113,15 @@
           "resolved_count": 2,
           "clean": true,
           "summary": "Round 12: final review found that the recovery lookup still used GitHub's default 30-result page and returned matching[0], while trainCheckState() treats the highest matching check-run ID as authoritative. A matching run outside the first page could incorrectly trigger checks.create, and updating an older matching run could leave a newer in-progress run authoritative. Fixed by adding per_page: 100 to findMatch() and selecting the highest numeric check-run ID before checks.update. Extended the existing update-in-place test with older cancelled ID 700 followed by newer in-progress ID 777; it asserts ID 777 is updated and per_page is 100. The old implementation fails this regression. Separate-model review found no significant issues and confirmed terminal success/failure preservation and the no-match create fallback remain sound. Targeted count unchanged at 29 (24 + 5)."
+        },
+        {
+          "round": 13,
+          "reviewer": "copilot-pull-request-reviewer",
+          "summary": "Round 13: a further copilot-pull-request-reviewer pass (PRRT_kwDOSvo2Ms6RUK5b) found that the update-in-place fallback spreads the full create payload -- including head_sha -- into the checks.update() call. head_sha is a create-only field on the Checks API (not listed as an accepted body parameter for `PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}` per the GitHub REST API reference); sending it on an update risks a 422 that would make all three retries repeat the same invalid request, leaving the original check stuck in_progress until the stale timeout. Fix: destructure head_sha out of the shared payload before the update call (`const { head_sha, ...updatePayload } = payload`), so update sends only the fields the endpoint documents (name, external_id, status, conclusion, output, etc.), while create still receives the full payload including head_sha (which IS required there). Added explicit assertions to both existing update-path tests (the direct-match case and the visibility-lag re-list case) that updateArgs.head_sha is undefined and the key is absent from the object entirely (not just undefined-valued), so a future regression that re-introduces head_sha on the update payload fails deterministically.",
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "models": ["claude-sonnet-5"]
         }
       ]
     }

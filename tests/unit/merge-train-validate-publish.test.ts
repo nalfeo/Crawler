@@ -514,7 +514,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(typeof script).toBe('string');
 
       let createCalls = 0;
-      let updateArgs: { check_run_id: number; conclusion: string } | undefined;
+      let updateArgs: { check_run_id: number; conclusion: string; head_sha?: string } | undefined;
       let listArgs: { per_page?: number } | undefined;
       const github = {
         rest: {
@@ -546,7 +546,11 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
               createCalls += 1;
               return { data: {} };
             },
-            update: async (args: { check_run_id: number; conclusion: string }) => {
+            update: async (args: {
+              check_run_id: number;
+              conclusion: string;
+              head_sha?: string;
+            }) => {
               updateArgs = args;
               return { data: {} };
             },
@@ -580,6 +584,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(updateArgs?.check_run_id).toBe(777);
       expect(updateArgs?.conclusion).toBe('cancelled');
       expect(listArgs?.per_page).toBe(100);
+      // head_sha is create-only on the Checks API -- the update call must
+      // not send it (the PATCH endpoint does not accept it and could 422).
+      expect(updateArgs?.head_sha).toBeUndefined();
+      expect(Object.prototype.hasOwnProperty.call(updateArgs ?? {}, 'head_sha')).toBe(false);
     });
 
     it('re-lists once after a short delay when no matching check is found on the first read, and updates in place if one appears (residual visibility-lag hardening)', async () => {
@@ -591,7 +599,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
 
       let listCalls = 0;
       let createCalls = 0;
-      let updateArgs: { check_run_id: number; conclusion: string } | undefined;
+      let updateArgs: { check_run_id: number; conclusion: string; head_sha?: string } | undefined;
       const github = {
         rest: {
           checks: {
@@ -620,7 +628,11 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
               createCalls += 1;
               return { data: {} };
             },
-            update: async (args: { check_run_id: number; conclusion: string }) => {
+            update: async (args: {
+              check_run_id: number;
+              conclusion: string;
+              head_sha?: string;
+            }) => {
               updateArgs = args;
               return { data: {} };
             },
@@ -656,6 +668,9 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(createCalls).toBe(0);
       expect(updateArgs?.check_run_id).toBe(555);
       expect(updateArgs?.conclusion).toBe('cancelled');
+      // head_sha is create-only on the Checks API -- must not leak into update.
+      expect(updateArgs?.head_sha).toBeUndefined();
+      expect(Object.prototype.hasOwnProperty.call(updateArgs ?? {}, 'head_sha')).toBe(false);
     });
 
     it('re-lists once after a short delay and skips as a no-op if the genuine terminal check becomes visible on the second read', async () => {

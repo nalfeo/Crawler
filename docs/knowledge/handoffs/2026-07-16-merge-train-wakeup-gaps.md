@@ -720,3 +720,37 @@ in-progress ID 777, asserts ID 777 is updated, and asserts the lookup requests
 Separate-model review (`claude-sonnet-4.6`) found no significant issues and
 confirmed terminal success/failure preservation and the no-match create
 fallback remain sound. Targeted tests remain **29/29 passed (24 + 5)**.
+
+## Twelfth round follow-up (strip head_sha from the update call)
+
+`copilot-pull-request-reviewer` (`PRRT_kwDOSvo2Ms6RUK5b`) found that the
+update-in-place fallback still spread the _entire_ create-style `payload`
+into `checks.update()`, including `head_sha`. Per the GitHub REST API
+reference, `head_sha` is accepted only by `POST
+/repos/{owner}/{repo}/check-runs` (create) -- it is **not** a documented body
+parameter for `PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}`
+(update). Sending it risked a 422 on every retry, which would leave the
+original check stuck `in_progress` for the full stale-timeout window instead
+of being corrected immediately -- silently defeating the very race-hardening
+this step exists to provide.
+
+Fixed by destructuring `head_sha` out of the shared payload before the
+update call: `const { head_sha, ...updatePayload } = payload;` then
+`checks.update({ ...updatePayload, check_run_id })`. The `checks.create()`
+call in the `else` branch is untouched and still receives the full payload
+(where `head_sha` is required).
+
+Extended both existing update-path tests (direct-match and
+visibility-lag-re-list) with assertions that `updateArgs.head_sha` is
+`undefined` **and** that the key itself is absent from the update call's
+arguments object (`Object.prototype.hasOwnProperty.call(updateArgs,
+'head_sha')` is `false`) -- so a regression that re-adds `head_sha` to the
+update path (even as an explicit `undefined`-valued key, which Octokit could
+still serialize) fails deterministically rather than passing on a loose
+`toBeUndefined()`-only check.
+
+Ran `npx vitest run tests/unit/merge-train-validate-publish.test.ts
+tests/unit/merge-train-workflow-wakeups.test.ts` -- 29/29 passed (test count
+unchanged; two existing tests gained assertions rather than new tests being
+added, since the same mock call site now covers both concerns). Re-ran
+`npm run verify:fast` -- passed.

@@ -321,8 +321,13 @@ jobs:
                 // in place, preserving its original ID, over creating a
                 // brand-new one -- see the comment above this step for why.
                 if (existingRun) {
+                  // head_sha is create-only on the Checks API -- the
+                  // "Update a check run" endpoint does not accept it, so it
+                  // must be stripped from the shared payload before the
+                  // update call (sending it would risk a 422).
+                  const { head_sha: _headSha, ...updatePayload } = payload;
                   await github.rest.checks.update({
-                    ...payload,
+                    ...updatePayload,
                     check_run_id: existingRun.id,
                   });
                 } else {
