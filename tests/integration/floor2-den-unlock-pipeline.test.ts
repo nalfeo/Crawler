@@ -17,6 +17,7 @@ import {
 import { selectFloor2Roster } from '../../src/core/faction-relations.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { loadResources } from '../../src/shared/data/resources.js';
+import { loadDenUnlockArchetypes } from '../../src/shared/data/den-unlock-archetypes.js';
 import { acceptQuest, questSystem } from '../../src/core/systems/questSystem.js';
 import {
   FamilyMembership,
@@ -302,7 +303,7 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     expect(isFamilySpawnGated(world, target.familyId)).toBe(true);
   });
 
-  it('requires 100 player-attributed family kills and ignores non-player kills', () => {
+  it('requires the production player-attributed family kill target and ignores non-player kills', () => {
     const seed = 99;
     const gen = new CaveSystemGenerator({ presentCount: 3 });
     const floorMap = gen.generate(smallCaveConfig(seed), new SeededRandom(seed));
@@ -321,6 +322,13 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
     expect(floor2State).toBeDefined();
     const objectives = initializeFloor2Bosses(world, floorMap, floor2State!);
     const target = objectives[0]!;
+    const killTarget = loadDenUnlockArchetypes().find(
+      (archetype) => archetype.kind === 'killTargets',
+    )?.killTarget;
+    expect(killTarget).toBe(50);
+    if (killTarget === undefined) {
+      throw new Error('Expected a production Floor 2 kill-target archetype');
+    }
     expect(acceptQuest(world, target.questId)).toBeTruthy();
     const playerEid = spawnPlayer(world, 0, 0);
     const enemySourceEid = spawnEnemy(world, 0, 0, 10);
@@ -355,21 +363,21 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
 
     pushTrashDeath(enemySourceEid, 0);
     expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(0);
-    for (let i = 1; i <= 99; i += 1) {
+    for (let i = 1; i < killTarget; i += 1) {
       pushTrashDeath(playerEid, i);
     }
-    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(99);
+    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(killTarget - 1);
     expect(world.goalFlags.get(denUnlockGoalId(target.familyId))).toBe(false);
 
-    pushTrashDeath(playerEid, 100);
+    pushTrashDeath(playerEid, killTarget);
     questSystem(world);
     floor2ObjectiveTick(world);
-    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(100);
+    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(killTarget);
     expect(world.goalFlags.get(denUnlockGoalId(target.familyId))).toBe(true);
 
     world.combatEvents.length = 0;
-    pushTrashDeath(playerEid, 101);
-    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(101);
+    pushTrashDeath(playerEid, killTarget + 1);
+    expect(floor2State!.trashKillsByFamily?.get(target.familyId)).toBe(killTarget + 1);
 
     const retainedEvents = world.combatEvents;
     let numericEventReads = 0;

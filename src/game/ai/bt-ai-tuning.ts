@@ -115,13 +115,14 @@ export const MELEE_HOLD_FRACTION = 0.5;
 // and regressed previously-winning seeds.
 export const MELEE_RECOVER_HOLD_FRACTION = 0.7;
 // Below this health fraction the melee kite switches to DEFENSIVE spacing: it
-// expands the orbit out to the strike gate so it sits just beyond the enemy's own
-// attack range (poking from safety) instead of trading blows in the strike band.
+// expands the orbit toward the real blade reach so it sits beyond shorter enemy
+// attack ranges when possible without retreating outside guaranteed hit geometry.
 // With no passive regen, a wounded AI must still kill to level up and heal, so the
 // goal is "keep landing auto-fire hits without getting hit" rather than fleeing.
 export const MELEE_DEFENSIVE_HP_FRACTION = 0.4;
-// Matches weaponSystem's ATTACK_TARGET_GATE_MULTIPLIER: a melee swing connects out
-// to reach*1.5, so this is the outer radius at which kiting can still land hits.
+// Matches weaponSystem's permissive ATTACK_TARGET_GATE_MULTIPLIER. It starts a
+// melee swing early while the target is closing, but does not define the blade's
+// guaranteed hit radius and therefore must not be used as a stationary orbit.
 export const ATTACK_GATE_MULTIPLIER = 1.5;
 // Minimum center-to-center distance (ft) the melee kite holds so the player body
 // never overlaps a swarm enemy's body. Swarm enemies (rats/slimes) carry NO ranged
@@ -265,6 +266,19 @@ export const EXPLORE_DWELL_FRAMES = 180;
 // and the AI keeps fighting while the path is blocked. The goal re-evaluates once
 // the window expires, so it catches up when a door opens or the player moves closer.
 export const PROGRESS_SUPPRESS_FRAMES = 360;
+// Floor 2 family hunts stay inside the authored territory spawn zone and rotate
+// among deterministic interior patrol anchors when the selected family is absent.
+export const FLOOR2_HUNT_PATROL_ARRIVE_FT = 8;
+export const FLOOR2_HUNT_PATROL_RADIUS_FRACTION = 0.92;
+export const FLOOR2_HUNT_CHASE_RADIUS_FT = 120;
+export const FLOOR2_HUNT_NO_PROGRESS_FRAMES = 600;
+// Keep family hunts combat-forward without pinning the AI in ENGAGE for the
+// entire objective: 45 seconds of focused fighting, then 15 seconds of patrol.
+export const FLOOR2_HUNT_ENGAGE_FRAMES = 2700;
+export const FLOOR2_HUNT_RECOVERY_FRAMES = 900;
+// Inside the final six minutes of Floor 2's production collapse timer, stay on
+// the selected family instead of taking another patrol recovery.
+export const FLOOR2_HUNT_URGENCY_REMAINING_MS = 360_000;
 // EXPLORE reachability sampling: the dwell watchdog stops the AI wiggling against
 // a single unreachable frontier forever, but if pickExploreTarget keeps re-rolling
 // random passable tiles that happen to be unreachable from the player's current
@@ -433,6 +447,15 @@ export const DODGE_CLOSING_SPEED_FT_PER_FRAME = 0.15;
 // to produce smooth curves instead of sharp last-second veer corrections.
 export const DODGE_BLOCK_RADIUS_FT = 10;
 export const DODGE_BLOCK_AHEAD_DOT = 0.4;
+// Predict enemy-projectile trajectories far enough ahead to sidestep both direct
+// shots and fireball splash without abandoning the current combat target.
+export const PROJECTILE_DODGE_HORIZON_FRAMES = 90;
+export const PROJECTILE_DODGE_CLEARANCE_FT = 2.5;
+export const PROJECTILE_DODGE_AOE_BUFFER_FT = 1.5;
+// Track-B's default dodge weight is intentionally modest for moving enemies. A
+// collision-course projectile needs a decisive lateral step, so scale only that
+// dodge vector while preserving forward pressure on the engagement target.
+export const PROJECTILE_DODGE_VECTOR_SCALE = 3;
 // --- On-path loot detour (OpportunisticCollect) ---
 // Rule (player's words): "if there is loot within 5' of my path and I am not
 // actively fighting or dodging enemies, make the slight detour to grab it."
