@@ -1,5 +1,16 @@
 [
   {
+    "commit": "81b66eeb293a646134dc012a893a6e17f0745ca7",
+    "commitDate": "2026-07-16T00:25:40Z",
+    "commitSubject": "fix(ai): complete production Floor 2 hunt progression (#1163)",
+    "capturedAt": "2026-07-16T01:39:38.894Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29461821900",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/81b66eeb293a646134dc012a893a6e17f0745ca7.json"
+  },
+  {
     "commit": "b9668f046d7c8e6ba40b3b87a7eb44910349fdbd",
     "commitDate": "2026-07-16T00:15:20Z",
     "commitSubject": "fix(merge-train): resolve open preview PR heads (#1164)",
