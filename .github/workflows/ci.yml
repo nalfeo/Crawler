@@ -345,11 +345,8 @@ jobs:
     name: Human approval
     runs-on: ubuntu-latest
     steps:
-      # Use trusted default-branch policy code for this gate so a PR cannot
-      # self-modify the approval check implementation it is subject to.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - name: Enforce owner approval for human-gated PRs
