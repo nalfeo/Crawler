@@ -1,5 +1,16 @@
 [
   {
+    "commit": "411559e7208bf8ebd0d15c0ba0603c7ab79b66bb",
+    "commitDate": "2026-07-16T07:48:01Z",
+    "commitSubject": "feat: suppress quest direction arrows blocked by other active quests (#1188)",
+    "capturedAt": "2026-07-16T09:02:08.614Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29481698419",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/411559e7208bf8ebd0d15c0ba0603c7ab79b66bb.json"
+  },
+  {
     "commit": "a29156ecb054744db9401ce5bd136d6b653229c6",
     "commitDate": "2026-07-16T07:36:41Z",
     "commitSubject": "feat: transition to Floor 2 on Floor 1 completion (#1186)",
