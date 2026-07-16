@@ -54,7 +54,7 @@ export const ENCUMBRANCE_PER_STR_LB = 5 as const;
  *   - heavy      : cap × ENCUMBERED_FACTOR < gear_lb ≤ cap × HEAVY_FACTOR
  *   - overloaded : gear_lb > cap × HEAVY_FACTOR
  */
-export const ENCUMBRANCE_ENCUMBERED_FACTOR = 2 as const;
+const ENCUMBRANCE_ENCUMBERED_FACTOR = 2 as const;
 export const ENCUMBRANCE_HEAVY_FACTOR = 3 as const;
 
 // ---------------------------------------------------------------------------

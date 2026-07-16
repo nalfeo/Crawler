@@ -1094,7 +1094,7 @@ export function createEquipmentUI(
     // -----------------------------------------------------------------------
     const equipState = getEquipmentState(lastWorld, playerEid);
     const gearLb = computeEquippedWeightLb(equipState);
-    const strength = effective['strength'] ?? 1;
+    const strength = Math.max(1, Math.floor(effective['strength'] ?? 1));
     const capLb = getCarryThresholdLb(strength);
     const band = getEncumbranceBand(gearLb, strength);
     const bandLabel = ENCUMBRANCE_BAND_LABELS[band];
@@ -1102,7 +1102,7 @@ export function createEquipmentUI(
 
     // Single compact row between heading (dollY+26, h=30) and first stat (dollY+68).
     // Centre in the gap: dollY + 41 + (68-41)/2 ≈ dollY + 54
-    const loadY = dollY + 52;
+    const loadY = dollY + 50;
     const loadColW = colW;
 
     const loadBg = scene.add.rectangle(

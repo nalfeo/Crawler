@@ -285,7 +285,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       const slotFilter = this.inventoryUI?.getEquipmentSlotFilter() ?? 'none';
 
       const gearLb = computeEquippedWeightLb(state);
-      const str = effective.strength ?? 1;
+      const str = Math.max(1, Math.floor(effective.strength ?? 1));
       const capLb = getCarryThresholdLb(str);
       const band = getEncumbranceBand(gearLb, str);
       const bandLabel = ENCUMBRANCE_BAND_LABELS[band];
