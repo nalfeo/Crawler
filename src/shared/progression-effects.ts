@@ -3,7 +3,7 @@ import type { StatKey, ScalableOutput } from './stats.js';
 export type TimedBuffModifier = {
   stat: StatKey;
   op: 'add' | 'multiply';
-  value: number;
+  value: ScalableOutput;
 };
 
 /**

@@ -9,6 +9,7 @@
 import { addComponent, hasComponent, removeComponent, setComponent } from 'bitecs';
 import { Equipment, BaseStats, EffectiveStats, Health, Player } from '../components.js';
 import type { GameWorld } from '../world.js';
+import { syncHealthFromDerivedMaxHpDelta } from '../derived-max-hp.js';
 import { SLOT_REGISTRY, isValidSlotId } from '../../shared/equipment-slots.js';
 import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
 import {
@@ -116,6 +117,9 @@ function getOrCreateState(world: GameWorld, entity: number): EquipmentState {
 // --- Stat recomputation ---
 
 function recomputeEffectiveStats(world: GameWorld, entity: number): void {
+  const prevDerivedMaxHp = hasComponent(world.ecs, entity, Health)
+    ? (world.stores.effectiveStats.maxHp[entity] ?? 0)
+    : 0;
   // Fold currently-active (non-expired) modifiers so an eager equip/unequip
   // recompute matches what the next statSystem tick would produce — keeps the
   // two callers of applyEffectiveStats from ever disagreeing mid-frame.
@@ -123,6 +127,7 @@ function recomputeEffectiveStats(world: GameWorld, entity: number): void {
     (m) => m.expiresFrame === undefined || m.expiresFrame > world.frameCount,
   );
   applyEffectiveStats(world, entity, getEquipmentMap(world).get(entity), activeModifiers);
+  syncHealthFromDerivedMaxHpDelta(world, entity, prevDerivedMaxHp);
 }
 
 // --- Validation ---
@@ -157,12 +162,19 @@ function validateItemDef(itemDef: EquipmentItemDef): EquipFailureReason[] {
       reasons.push({ type: 'invalidDef', message: `Non-finite value for stat: ${stat}` });
       continue;
     }
+
     if ((PRIMARY_STATS as readonly string[]).includes(stat) && !Number.isInteger(value)) {
       reasons.push({
         type: 'invalidDef',
         message: `Primary stat ${stat} must be integer, got ${value}`,
       });
     }
+  }
+
+  if (typeof itemDef.weightLb !== 'number' || !Number.isFinite(itemDef.weightLb)) {
+    reasons.push({ type: 'invalidDef', message: 'weightLb must be a finite number' });
+  } else if (itemDef.weightLb < 0) {
+    reasons.push({ type: 'invalidDef', message: 'weightLb must be non-negative' });
   }
 
   for (const spec of itemDef.grantsStatusEffects ?? []) {

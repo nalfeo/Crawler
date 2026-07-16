@@ -99,11 +99,17 @@ const triggerConditionSchema = z.discriminatedUnion('kind', [
 ]);
 
 const statKeySchema = z.enum(STAT_KEYS);
+const finiteScalableOutputSchema: z.ZodType<ScalableOutput> = z
+  .object({
+    base: z.number().finite(),
+    scalesWithIntelligence: z.boolean(),
+  })
+  .strict();
 const timedBuffModifierSchema: z.ZodType<TimedBuffModifier> = z
   .object({
     stat: statKeySchema,
     op: z.enum(['add', 'multiply']),
-    value: z.number(),
+    value: finiteScalableOutputSchema,
   })
   .strict();
 

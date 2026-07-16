@@ -28,10 +28,11 @@
  * Pure function: (world: GameWorld) => void — idempotent and deterministic.
  */
 
-import { hasComponent, query } from 'bitecs';
-import { Equipment, BaseStats, EffectiveStats, Health } from '../components.js';
+import { query } from 'bitecs';
+import { Equipment, BaseStats, EffectiveStats } from '../components.js';
 import type { GameWorld } from '../world.js';
 import { applyEffectiveStats } from '../effective-stats.js';
+import { syncHealthFromDerivedMaxHpDelta } from '../derived-max-hp.js';
 import { getEquipmentState } from './equipmentSystem.js';
 
 /**
@@ -52,29 +53,13 @@ export function statSystem(world: GameWorld): void {
 
   const entities = query(world.ecs, [Equipment, BaseStats, EffectiveStats]);
   for (const entity of entities) {
-    const hasHealth = hasComponent(world.ecs, entity, Health);
     // Snapshot the PREVIOUSLY DERIVED max HP (from EffectiveStats, not from
     // health.max) so external/floor bonuses written directly to health.max are
     // never erased by a no-stat-change tick. Only the *change* in the derived
     // value propagates; external additive bonuses are preserved.
-    const prevDerivedMaxHp = hasHealth ? (world.stores.effectiveStats.maxHp[entity] ?? 0) : 0;
+    const prevDerivedMaxHp = world.stores.effectiveStats.maxHp[entity] ?? 0;
 
     applyEffectiveStats(world, entity, getEquipmentState(world, entity), activeModifiers);
-
-    if (hasHealth) {
-      const newDerivedMaxHp = world.stores.effectiveStats.maxHp[entity] ?? 0;
-      const delta = newDerivedMaxHp - prevDerivedMaxHp;
-      if (delta !== 0) {
-        const currentMax = world.stores.health.max[entity] ?? 0;
-        const nextMax = Math.max(1, currentMax + delta);
-        world.stores.health.max[entity] = nextMax;
-        const currentHp = world.stores.health.current[entity] ?? 0;
-        if (delta > 0) {
-          world.stores.health.current[entity] = currentHp + delta;
-        } else {
-          world.stores.health.current[entity] = Math.min(currentHp, nextMax);
-        }
-      }
-    }
+    syncHealthFromDerivedMaxHpDelta(world, entity, prevDerivedMaxHp);
   }
 }

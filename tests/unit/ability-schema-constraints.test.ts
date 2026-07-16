@@ -202,7 +202,7 @@ describe('ability schema — spell_timed_buff durationFrames constraints', () =>
   const validTimedBuff = {
     type: 'spell_timed_buff',
     durationFrames: { base: 900, scalesWithIntelligence: false },
-    modifiers: [{ stat: 'damage', op: 'add', value: 4 }],
+    modifiers: [{ stat: 'damage', op: 'add', value: { base: 4, scalesWithIntelligence: false } }],
   };
 
   it('accepts positive integer durationFrames', () => {
@@ -224,6 +224,17 @@ describe('ability schema — spell_timed_buff durationFrames constraints', () =>
   it('rejects negative durationFrames base', () => {
     expect(
       valid([{ ...validTimedBuff, durationFrames: { base: -60, scalesWithIntelligence: false } }]),
+    ).toBe(false);
+  });
+
+  it('rejects bare numeric timed-buff modifier values', () => {
+    expect(
+      valid([
+        {
+          ...validTimedBuff,
+          modifiers: [{ stat: 'damage', op: 'add', value: 4 }],
+        },
+      ]),
     ).toBe(false);
   });
 });

@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { addEntity } from 'bitecs';
+import { addComponent, addEntity, setComponent } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
+import { Health } from '../../src/core/components.js';
 import {
   initializeBaseStats,
   equip,
@@ -81,6 +82,30 @@ describe('Equipment System', () => {
     const state = getEquipmentState(world, entity)!;
     expect(state.equipped['head']).not.toBeNull();
     expect(getEffectiveStats(world, entity).armor).toBe(5);
+  });
+
+  it('applies maxHp delta to Health immediately on constitution equip/unequip', () => {
+    const hpEntity = addEntity(world.ecs);
+    addComponent(world.ecs, hpEntity, Health);
+    setComponent(world.ecs, hpEntity, Health, { max: 1, current: 1 });
+    initializeBaseStats(world, hpEntity);
+
+    const beforeMax = world.stores.health.max[hpEntity] ?? 0;
+    const beforeCurrent = world.stores.health.current[hpEntity] ?? 0;
+    const result = equip(
+      world,
+      hpEntity,
+      makeItem({ id: 'con-ring', slots: ['ringLeft'], statBonuses: { constitution: 1 } }),
+      { force: true },
+    );
+    expect(result.ok).toBe(true);
+    expect(world.stores.health.max[hpEntity]).toBe(beforeMax + 10);
+    expect(world.stores.health.current[hpEntity]).toBe(beforeCurrent + 10);
+
+    const unequipResult = unequip(world, hpEntity, 'ringLeft', { force: true });
+    expect(unequipResult.ok).toBe(true);
+    expect(world.stores.health.max[hpEntity]).toBe(beforeMax);
+    expect(world.stores.health.current[hpEntity]).toBe(beforeCurrent);
   });
 
   // 2. Equip multi-slot item
@@ -232,6 +257,24 @@ describe('Equipment System', () => {
   it('rejects item with duplicate slots', () => {
     const result = equip(world, entity, makeItem({ slots: ['head', 'head'] }), { force: true });
     expect(result.ok).toBe(false);
+  });
+
+  it('rejects non-finite or negative weightLb', () => {
+    const nanWeight = equip(world, entity, makeItem({ id: 'nan-weight', weightLb: Number.NaN }), {
+      force: true,
+    });
+    expect(nanWeight.ok).toBe(false);
+    if (!nanWeight.ok) {
+      expect(nanWeight.reasons.some((r) => r.type === 'invalidDef')).toBe(true);
+    }
+
+    const negativeWeight = equip(world, entity, makeItem({ id: 'negative-weight', weightLb: -1 }), {
+      force: true,
+    });
+    expect(negativeWeight.ok).toBe(false);
+    if (!negativeWeight.ok) {
+      expect(negativeWeight.reasons.some((r) => r.type === 'invalidDef')).toBe(true);
+    }
   });
 
   // 15. Entity cleanup

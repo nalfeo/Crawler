@@ -291,7 +291,7 @@ function applyTimedBuff(
       sourceId,
       stat: modifier.stat,
       op: modifier.op,
-      value: modifier.value,
+      value: resolveScalableOutput(modifier.value, effectiveIntelligence),
       expiresFrame: nextExpiresFrame,
     });
   }

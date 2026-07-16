@@ -97,9 +97,9 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
         durationFrames: { base: 900, scalesWithIntelligence: false },
         vfxColor: 0xfef3c7,
         modifiers: [
-          { stat: 'damage', op: 'add', value: 4 },
-          { stat: 'accuracy', op: 'add', value: 0.1 },
-          { stat: 'moveSpeed', op: 'add', value: 0.05 },
+          { stat: 'damage', op: 'add', value: { base: 4, scalesWithIntelligence: false } },
+          { stat: 'accuracy', op: 'add', value: { base: 0.1, scalesWithIntelligence: false } },
+          { stat: 'moveSpeed', op: 'add', value: { base: 0.05, scalesWithIntelligence: false } },
         ],
       },
     ],
@@ -118,7 +118,9 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
         type: 'spell_timed_buff',
         durationFrames: { base: 1_200, scalesWithIntelligence: false },
         vfxColor: 0x94a3b8,
-        modifiers: [{ stat: 'armor', op: 'add', value: 4 }],
+        modifiers: [
+          { stat: 'armor', op: 'add', value: { base: 4, scalesWithIntelligence: false } },
+        ],
       },
     ],
   },
@@ -182,8 +184,12 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
         durationFrames: { base: 780, scalesWithIntelligence: false },
         vfxColor: 0x67e8f9,
         modifiers: [
-          { stat: 'moveSpeed', op: 'add', value: 0.125 },
-          { stat: 'projectileSpeed', op: 'add', value: 50 },
+          { stat: 'moveSpeed', op: 'add', value: { base: 0.125, scalesWithIntelligence: false } },
+          {
+            stat: 'projectileSpeed',
+            op: 'add',
+            value: { base: 50, scalesWithIntelligence: false },
+          },
         ],
       },
     ],

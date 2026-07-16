@@ -105,7 +105,7 @@ EffectiveStats]` entity (in practice only ever the player), prunes expired
 
 | Stat                                                | Effect                                              | Base | Notes                                                                                                       |
 | --------------------------------------------------- | --------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------- |
-| `maxHp`                                             | Maximum health                                      | 90   | + 10 × effective Constitution                                                                               |
+| `maxHp`                                             | Maximum health                                      | 160  | + 10 × effective Constitution                                                                               |
 | `moveSpeed`                                         | Move-speed bonus fraction (0 = no bonus)            | 0    | + 0.0025 × effective Dexterity; folds before status/encumbrance                                             |
 | `armor`                                             | Flat damage reduction                               | 0    | Legacy-modifier target only (no primary derives it)                                                         |
 | `damageBonus`                                       | Flat additive damage                                | 0    | Legacy `damage`+`add` modifiers only                                                                        |
