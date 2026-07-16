@@ -186,10 +186,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     const steps = doc.jobs.publish?.steps ?? [];
     const wakeStep = steps.find((s) => s.name === 'Wake merge-train reconciliation');
     expect(wakeStep).toBeDefined();
-    // Must NOT use the App token — the App token receives 403 on workflow_dispatch.
-    // Accept any non-App-token expression (${{ secrets.GITHUB_TOKEN }}, ${{ github.token }}, etc.)
+    // Must be the default GITHUB_TOKEN — the App token receives 403 on
+    // workflow_dispatch. Accept either equivalent default-token expression,
+    // but reject anything else (App token, an unrelated PAT/secret, etc.).
     const tokenExpr = wakeStep?.with?.['github-token'] as string | undefined;
-    expect(tokenExpr).not.toContain('steps.app-token.outputs.token');
+    expect(tokenExpr).not.toBe('${{ steps.app-token.outputs.token }}');
+    expect(['${{ secrets.GITHUB_TOKEN }}', '${{ github.token }}']).toContain(tokenExpr);
   });
 
   it('reconciliation wake-up script dispatches to merge-train.yml on the default branch', () => {
