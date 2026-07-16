@@ -88,7 +88,7 @@ PhaserBridge & Rendering (1:1 pixel-to-screen mapping)
 
 ## Related
 
-- Handoff: docs/knowledge/handoffs/2026-06-26-pixels-to-feet-labs.md (nearest surviving handoff for the px-to-feet migration)
+- Handoff: `docs/knowledge/handoffs/archive/2026-06-08-px-to-feet.md`
 - Implementation PR: #86
 
 ## Decision Record
