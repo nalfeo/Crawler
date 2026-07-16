@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { toBashScriptPath } from '../helpers/bash-script-path.js';
 
 /**
  * Deterministic coverage for the LOCAL change-scope helper
@@ -22,9 +23,11 @@ import { afterEach, describe, expect, it } from 'vitest';
  *   - a clean tree fails safe to all-false (run everything)
  */
 
-const SCRIPT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../scripts/agent/ci/local-scope.sh',
+const SCRIPT = toBashScriptPath(
+  path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../scripts/agent/ci/local-scope.sh',
+  ),
 );
 
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
@@ -43,10 +46,35 @@ const F = (art_only: boolean, docs_only: boolean, gameplay_safe: boolean): Scope
 
 const tempDirs: string[] = [];
 
-afterEach(() => {
+/**
+ * Removes a directory tree, retrying on EBUSY/EPERM/ENOTEMPTY. On Windows, a
+ * just-exited WSL `bash.exe` interop child leaves the directory it ran in
+ * transiently locked (observed up to ~3s) even after `spawnSync` has
+ * returned — `rmSync`'s own `maxRetries`/`retryDelay` do NOT cover this: they
+ * only retry errors encountered while walking the tree, not a busy top-level
+ * `rmdir`, so a real async wait-and-retry loop is required. This is a no-op
+ * fast path (single attempt) on POSIX platforms and for any other bash.
+ */
+async function rmDirWithRetry(dir: string, attempts = 15, delayMs = 300): Promise<void> {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      const retryable = code === 'EBUSY' || code === 'EPERM' || code === 'ENOTEMPTY';
+      if (attempt === attempts || !retryable) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
+afterEach(async () => {
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
-    if (dir) rmSync(dir, { recursive: true, force: true });
+    if (dir) await rmDirWithRetry(dir);
   }
 });
 

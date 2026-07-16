@@ -1,0 +1,106 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "equipment-weight-encumbrance",
+  "task_title": "Author complete equipment weight values for encumbrance",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "",
+      "concerns": [
+        {
+          "id": 1,
+          "severity": "blocking",
+          "summary": "UI uses effective STR but tests document STR=1 as representative; steel-pauldrons +1 STR changes real in-game band",
+          "resolved": true,
+          "resolution": "Updated test header comment to clarify pure-function tests use explicit STR param; added note that real game uses effective STR (which is intentional design)"
+        },
+        {
+          "id": 2,
+          "severity": "non_blocking",
+          "summary": "Encumbrance band shown in UI but no gameplay movement penalty applied yet",
+          "resolved": true,
+          "resolution": "Module comment already documents this as intentional deferral; no change required"
+        },
+        {
+          "id": 3,
+          "severity": "non_blocking",
+          "summary": "weightLb not validated in validateItemDef",
+          "resolved": true,
+          "resolution": "Added finite/non-negative check to validateItemDef in equipmentSystem.ts"
+        },
+        {
+          "id": 4,
+          "severity": "non_blocking",
+          "summary": "Tests do not cover real catalog or live equip path",
+          "resolved": true,
+          "resolution": "Added catalog-validation describe block iterating all 26 real defs via getEquippableItemIds"
+        },
+        {
+          "id": 5,
+          "severity": "suggestion",
+          "summary": "computeEquippedWeightLb duplicates unique-instance traversal logic",
+          "resolved": false,
+          "resolution": "Not addressed — a shared helper would add complexity; both impls are short and well-tested. Deferred."
+        }
+      ],
+      "verdict": "approved_with_changes"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "concerns": [
+            {
+              "model": "gpt-5.3-codex",
+              "summary": "weightLb not validated — NaN/negative corrupts LOAD display",
+              "resolved": true
+            },
+            {
+              "model": "gemini-3.1-pro-preview",
+              "summary": "toFixed(1) rounds 0.25 lb to 0.3 lb in display",
+              "resolved": true
+            },
+            {
+              "model": "claude-sonnet-4.6",
+              "summary": "LOAD denominator shows unburdened cap — numerator exceeds it when encumbered",
+              "resolved": true
+            },
+            {
+              "model": "gpt-5.4",
+              "summary": "No security findings",
+              "resolved": true
+            }
+          ]
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "adjudication": "All three concerns were valid and independently surfaced: (1) Codex: weightLb validation gap — fixed in validateItemDef + defensive guard. (2) Gemini: toFixed(1) precision bug on 0.25 lb values — fixed with formatLb helper. (3) Sonnet: LOAD denominator was unburdened cap rather than max-before-overloaded threshold — fixed to ENCUMBRANCE_HEAVY_FACTOR x cap. No conflicts between reviewers. Suggestion to extract shared unique-instance traversal is valid but not blocking; deferred."
+        }
+      ]
+    }
+  }
+}

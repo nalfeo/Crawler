@@ -76,12 +76,7 @@ export {
 } from '../core/systems/questSystem.js';
 export type { QuestObjectiveView } from '../core/systems/questSystem.js';
 export { levelSystem } from './systems/levelSystem.js';
-export {
-  statsSystem,
-  spendPoints,
-  addStatModifier,
-  removeStatModifiers,
-} from './systems/statsSystem.js';
+export { spendPoints, addStatModifier, removeStatModifiers } from './systems/statsSystem.js';
 export { skillSystem } from './systems/skillSystem.js';
 export {
   abilitySystem,

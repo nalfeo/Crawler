@@ -41,7 +41,6 @@ function zeroCore(): Record<PrimaryStatId, number> {
     wisdom: 0,
     charisma: 0,
     luck: 0,
-    weight: 0,
   };
 }
 
@@ -72,15 +71,15 @@ describe('computeEffectiveStatsFromLoadout (pure)', () => {
   });
 
   it('adds a single item flat bonus', () => {
-    const items: StatBonusSource[] = [{ statBonuses: { armor: 5 } }];
+    const items: StatBonusSource[] = [{ statBonuses: { armor: 5 }, weightLb: 0 }];
     const eff = computeEffectiveStatsFromLoadout(baseMap(), zeroCore(), items);
     expect(eff.armor).toBe(DEFAULT_BASE_STATS.armor + 5);
   });
 
   it('sums bonuses across multiple items (caller supplies unique instances)', () => {
     const items: StatBonusSource[] = [
-      { statBonuses: { armor: 5 } },
-      { statBonuses: { armor: 3, strength: 2 } },
+      { statBonuses: { armor: 5 }, weightLb: 0 },
+      { statBonuses: { armor: 3, strength: 2 }, weightLb: 0 },
     ];
     const eff = computeEffectiveStatsFromLoadout(baseMap(), zeroCore(), items);
     expect(eff.armor).toBe(DEFAULT_BASE_STATS.armor + 8);
@@ -88,7 +87,7 @@ describe('computeEffectiveStatsFromLoadout (pure)', () => {
   });
 
   it('re-derives secondaries after a primary bonus (luck raises critChance)', () => {
-    const items: StatBonusSource[] = [{ statBonuses: { luck: 4, critChance: 0.02 } }];
+    const items: StatBonusSource[] = [{ statBonuses: { luck: 4, critChance: 0.02 }, weightLb: 0 }];
     const eff = computeEffectiveStatsFromLoadout(baseMap(), zeroCore(), items);
     // Flat crit bonus + secondary derived from the extra luck.
     const expected =
@@ -108,7 +107,9 @@ describe('computeEffectiveStatsFromLoadout (pure)', () => {
   it('does not mutate the base-stats input', () => {
     const base = baseMap();
     const snapshot = { ...base };
-    computeEffectiveStatsFromLoadout(base, zeroCore(), [{ statBonuses: { armor: 9 } }]);
+    computeEffectiveStatsFromLoadout(base, zeroCore(), [
+      { statBonuses: { armor: 9 }, weightLb: 0 },
+    ]);
     expect(base).toEqual(snapshot);
   });
 });
@@ -188,6 +189,7 @@ describe('previewEquipDelta', () => {
       name: 'Band of Might',
       slots: ['ringLeft'],
       statBonuses: { strength: 5 },
+      weightLb: 0,
       rarity: 'common',
     };
     expect(equip(world, entity, band, { force: true }).ok).toBe(true);
@@ -196,6 +198,7 @@ describe('previewEquipDelta', () => {
       name: 'Heavy Signet',
       slots: ['ringLeft'],
       statBonuses: { armor: 3 },
+      weightLb: 0,
       rarity: 'rare',
       requirements: [{ type: 'minStat', stat: 'strength', value: 10 }],
     });
@@ -216,6 +219,7 @@ describe('previewEquipDelta', () => {
       name: 'Band of Might',
       slots: ['ringLeft'],
       statBonuses: { strength: 5 },
+      weightLb: 0,
       rarity: 'common',
     };
     expect(equip(world, entity, band, { force: true }).ok).toBe(true);
@@ -224,6 +228,7 @@ describe('previewEquipDelta', () => {
       name: 'Light Signet',
       slots: ['ringLeft'],
       statBonuses: { armor: 1 },
+      weightLb: 0,
       rarity: 'common',
       requirements: [{ type: 'minStat', stat: 'strength', value: 8 }],
     });

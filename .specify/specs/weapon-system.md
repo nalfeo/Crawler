@@ -24,8 +24,13 @@ not code, and every outcome must be reproducible from a seed.
    from `world.rng` (`SeededRandom`). No `Math.random()`, no wall-clock — the
    cooldown gate uses `world.elapsedMs`.
 3. **Cooldown gating.** A weapon may fire only when
-   `world.elapsedMs - lastFireMs >= def.cooldownMs`; on a successful fire,
-   `lastFireMs` is set to `world.elapsedMs`.
+   `world.elapsedMs - lastFireMs >= effectiveCooldownMs`, where
+   `effectiveCooldownMs = applyAttackSpeedAndCooldownReduction(def.cooldownMs,
+attackSpeedBonus, cooldownReduction)` (`shared/stats.ts`) —
+   `def.cooldownMs / (1 + max(-0.9, attackSpeedBonus)) × (1 -
+cooldownReduction)`, rounded once at the end (no early rounding between
+   the two factors). On a successful fire, `lastFireMs` is set to
+   `world.elapsedMs`.
 4. **Targeting respects walls.** Auto-fire locks onto the nearest valid enemy
    that is within the weapon's gate range and either in the player's FOV or
    reachable by an unobstructed straight line (`world.floorMap.hasLineOfSight`).
@@ -62,7 +67,9 @@ gap:
 
 ### Per-frame firing pipeline (`weaponSystem`, single active weapon)
 
-1. **Cooldown gate** — bail unless `elapsedMs - lastFireMs >= cooldownMs`.
+1. **Cooldown gate** — bail unless
+   `elapsedMs - lastFireMs >= effectiveCooldownMs` (see Requirement 3 for the
+   attack-speed/cooldown-reduction formula).
 2. **Target selection** — `getWeaponGateRangeFt(def)` sets the search radius by
    type (melee → `max(aoeRadius, range)`; beam → `max(beamLength, range)`; trap →
    `max(trapTriggerRadius, trapExplosionRadius, range)`; thrown →
@@ -74,7 +81,7 @@ gap:
    intercept so fast projectiles lead a moving target (ADR 0020). Melee, beam,
    and trap fire straight at the target.
 4. **Accuracy roll** — `computeEffectiveAccuracy = TRAP ? 1.0 :
-clamp(0, 1, def.baseAccuracy + stats.accuracy[player])`. Miss when
+clamp(0, 1, def.baseAccuracy + effectiveStats.accuracy[player])`. Miss when
    `world.rng.next() > effectiveAccuracy` (a roll exactly at the threshold is a
    hit).
    - On a miss: emit a `miss` event; play a zero-damage cosmetic attack. Ranged/
@@ -86,7 +93,11 @@ clamp(0, 1, def.baseAccuracy + stats.accuracy[player])`. Miss when
    then spawn the attack entity and register that spawned EID in
    `world.attackWeaponSkillsByEntity`. Damage systems prefer the per-attack map
    so delayed hits keep the weapon that spawned them even after later weapon
-   switches.
+   switches. This is also the single choke point that tags the spawned attack
+   entity's `DamageMeta` (`origin: 'player'`, `affinity: def.weaponType ===
+WeaponType.MAGIC ? 'magic' : 'physical'`, `scaleWithPrimary: true`,
+   `canCrit: true`) — see `combat-damage.md` for how the collision system
+   consumes it.
 
 ### Spawn helpers (`src/core/helpers.ts`)
 
@@ -109,7 +120,8 @@ despawn at max range follows ADR 0009.
 
 `weaponSystem` drives the **one active player weapon** (`setActiveWeapon` /
 `getActiveWeapon`). A separate path handles entities that own multiple weapons.
-Both share the same `elapsedMs - lastFire >= cooldownMs` gate and accuracy model.
+Both share the same `elapsedMs - lastFire >= effectiveCooldownMs` gate and
+accuracy model.
 `emitWeaponSkillEvents` records a `weapon_fired` metric for telemetry.
 
 ## Test Plan

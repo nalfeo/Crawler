@@ -1,11 +1,10 @@
 /**
  * HudVitalsLayout — shared stacking geometry for the bottom-left vitals HUD
- * cluster (skill tracker → loot counter → XP bar → health bar → mana bar).
+ * cluster (skill tracker → loot counter → XP bar → health bar).
  *
  * Previously every widget hand-derived its own `GAME.HEIGHT - <magic offset>`
  * position, each one silently assuming its neighbors' heights and gaps without
- * a shared source of truth. The legacy mana bar sat directly against the canvas
- * edge and its label escaped below it; nothing enforced a safe lower stack.
+ * a shared source of truth.
  *
  * This module computes every panel's absolute Y bottom-up from a single
  * ordered list of row heights, a shared horizontal anchor, a fixed inter-panel
@@ -40,12 +39,11 @@ export const VITALS_ROW_HEIGHTS = {
   loot: 30,
   xp: 26,
   health: 32,
-  mana: 26,
 } as const;
 
 type VitalsRow = keyof typeof VITALS_ROW_HEIGHTS;
 
-const VITALS_ORDER: readonly VitalsRow[] = ['skill', 'loot', 'xp', 'health', 'mana'];
+const VITALS_ORDER: readonly VitalsRow[] = ['skill', 'loot', 'xp', 'health'];
 
 function computeStackYs(): Record<VitalsRow, number> {
   const ys = {} as Record<VitalsRow, number>;

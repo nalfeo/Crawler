@@ -1,15 +1,14 @@
 import { addComponent, hasComponent, query } from 'bitecs';
-import { Player, Stats, SkillHolder } from '../../core/components.js';
+import { Player, SkillHolder } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
 
 /**
  * Accumulates XP into world.playerLevel and grants stat points on level-up.
- * Does NOT render UI — just sets world.statsDirty and increments unspentPoints.
- * The level_up state is a flag for the UI layer (MainGameScene's LevelUpUI) to
- * pause and show the stat-allocation screen. Labs/tests/headless use
- * spendPoints() directly.
+ * Does NOT render UI — just increments unspentPoints. The level_up state is a
+ * flag for the UI layer (MainGameScene's LevelUpUI) to pause and show the
+ * stat-allocation screen. Labs/tests/headless use spendPoints() directly.
  */
 export function levelSystem(world: GameWorld): void {
   const players = query(world.ecs, [Player]);
@@ -28,15 +27,11 @@ export function levelSystem(world: GameWorld): void {
 
   if (leveled) {
     pl.level = currentLevel;
-    world.statsDirty = true;
     world.state = 'level_up';
 
-    // Add Stats and SkillHolder tags to player if not present
+    // Add SkillHolder tag to player if not present
     const player = players[0];
     if (player !== undefined) {
-      if (!hasComponent(world.ecs, player, Stats)) {
-        addComponent(world.ecs, player, Stats);
-      }
       if (!hasComponent(world.ecs, player, SkillHolder)) {
         addComponent(world.ecs, player, SkillHolder);
       }

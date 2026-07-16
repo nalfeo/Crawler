@@ -1,7 +1,7 @@
 import { addComponent, addEntity, hasComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Invincible, Npc, Position, Sprite } from '../../src/core/components.js';
-import { applyDamage } from '../../src/core/apply-damage.js';
+import { applyDamage, DEFAULT_DAMAGE_OPTIONS } from '../../src/core/apply-damage.js';
 import { spawnNpc, spawnPlayer, spawnEnemy } from '../../src/core/helpers.js';
 import { npcSystem } from '../../src/core/systems/npcSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -58,7 +58,7 @@ describe('Invincible component — applyDamage guard', () => {
     world.stores.health.current[eid] = 50;
     world.stores.health.max[eid] = 50;
 
-    const dealt = applyDamage(world, eid, 30, 0, 0);
+    const dealt = applyDamage(world, eid, 30, 0, 0, DEFAULT_DAMAGE_OPTIONS);
     expect(dealt).toBe(0);
     expect(world.stores.health.current[eid]).toBe(50);
   });
@@ -67,7 +67,7 @@ describe('Invincible component — applyDamage guard', () => {
     const world = createTestWorld();
     const eid = spawnEnemy(world, 0, 0, 50);
 
-    const dealt = applyDamage(world, eid, 20, 0, 0);
+    const dealt = applyDamage(world, eid, 20, 0, 0, DEFAULT_DAMAGE_OPTIONS);
     expect(dealt).toBe(20);
     expect(world.stores.health.current[eid]).toBe(30);
   });
@@ -77,7 +77,7 @@ describe('Invincible component — applyDamage guard', () => {
     const eid = spawnNpc(world, 0, 0, 'tutorial-goon');
     world.stores.health.current[eid] = 50;
 
-    applyDamage(world, eid, 10, 0, 0);
+    applyDamage(world, eid, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
     expect(world.combatEvents).toHaveLength(0);
   });
 });
