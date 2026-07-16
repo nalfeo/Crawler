@@ -397,6 +397,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const github = {
         rest: {
           checks: {
+            listForRef: async () => ({ data: { check_runs: [] } }),
             create: async (args: typeof createArgs) => {
               createCalls += 1;
               createArgs = args;
@@ -409,9 +410,11 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
+        APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
+      process.env.APP_ID = '12345';
       try {
         const run = new Function(
           'github',
@@ -432,6 +435,125 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(createCalls).toBe(1);
     });
 
+    it('does not overwrite an already-persisted terminal check (accepted-but-response-lost race)', async () => {
+      // "Publish immutable candidate result" can succeed server-side (the
+      // checks.create call is actually accepted and a terminal success/
+      // failure check is durably created) while the step itself still
+      // reports failure/cancelled to the runner (e.g. the HTTP response was
+      // lost to a transient network error, or the job was cancelled between
+      // the request completing and the step returning). Since
+      // trainCheckState() (state.mjs latestChecksByName) picks the
+      // HIGHEST-ID check run matching name/fingerprint/app, blindly creating
+      // a new `cancelled` check here would mask the already-persisted,
+      // genuinely correct terminal result. The fallback script must detect
+      // this and skip creating a new check.
+      const doc = loadWorkflow();
+      const step = getFallbackStep(doc);
+      const script = step.with?.script;
+      expect(typeof script).toBe('string');
+
+      let createCalls = 0;
+      const github = {
+        rest: {
+          checks: {
+            listForRef: async () => ({
+              data: {
+                check_runs: [
+                  {
+                    external_id: 'cafef00d',
+                    app: { id: 12345 },
+                    status: 'completed',
+                    conclusion: 'success',
+                  },
+                ],
+              },
+            }),
+            create: async () => {
+              createCalls += 1;
+              return { data: {} };
+            },
+          },
+        },
+      };
+      const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+      const previousEnv = {
+        CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        FINGERPRINT: process.env.FINGERPRINT,
+        APP_ID: process.env.APP_ID,
+      };
+      process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.FINGERPRINT = 'cafef00d';
+      process.env.APP_ID = '12345';
+      try {
+        const run = new Function(
+          'github',
+          'context',
+          `return (async () => {\n${script}\n})();`,
+        ) as (github: unknown, context: unknown) => Promise<void>;
+        await run(github, context);
+      } finally {
+        for (const [key, value] of Object.entries(previousEnv)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+      expect(createCalls).toBe(0);
+    });
+
+    it('does create the cancelled check when an existing check for the fingerprint is not yet terminal (still in_progress)', async () => {
+      const doc = loadWorkflow();
+      const step = getFallbackStep(doc);
+      const script = step.with?.script;
+      expect(typeof script).toBe('string');
+
+      let createCalls = 0;
+      const github = {
+        rest: {
+          checks: {
+            listForRef: async () => ({
+              data: {
+                check_runs: [
+                  {
+                    external_id: 'cafef00d',
+                    app: { id: 12345 },
+                    status: 'in_progress',
+                    conclusion: null,
+                  },
+                ],
+              },
+            }),
+            create: async () => {
+              createCalls += 1;
+              return { data: {} };
+            },
+          },
+        },
+      };
+      const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+      const previousEnv = {
+        CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        FINGERPRINT: process.env.FINGERPRINT,
+        APP_ID: process.env.APP_ID,
+      };
+      process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.FINGERPRINT = 'cafef00d';
+      process.env.APP_ID = '12345';
+      try {
+        const run = new Function(
+          'github',
+          'context',
+          `return (async () => {\n${script}\n})();`,
+        ) as (github: unknown, context: unknown) => Promise<void>;
+        await run(github, context);
+      } finally {
+        for (const [key, value] of Object.entries(previousEnv)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+      expect(createCalls).toBe(1);
+    });
+
     it('retries transient check publication failures twice before succeeding', async () => {
       vi.useFakeTimers();
       const doc = loadWorkflow();
@@ -445,6 +567,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const github = {
         rest: {
           checks: {
+            listForRef: async () => ({ data: { check_runs: [] } }),
             create: async (args: typeof createArgs) => {
               createCalls += 1;
               if (createCalls < 3) throw new Error(`transient failure ${createCalls}`);
@@ -458,9 +581,11 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
+        APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'c'.repeat(40);
       process.env.FINGERPRINT = 'deadbeef';
+      process.env.APP_ID = '12345';
       try {
         const run = new Function(
           'github',

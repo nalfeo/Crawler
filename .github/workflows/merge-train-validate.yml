@@ -187,6 +187,21 @@ jobs:
       # no valid App-authored token to call `checks.create` with, so attempting
       # the retryable-check step would just waste an attempt and produce a
       # confusing secondary failure instead of a clean, diagnosable no-op.
+      #
+      # Before creating the cancellation check, the script below also queries
+      # for an existing terminal (success/failure) check from the trusted App
+      # for this fingerprint and skips publishing if one is already there.
+      # This guards against an "accepted but response lost" race: "Publish
+      # immutable candidate result"'s checks.create call can succeed
+      # server-side while the step itself still reports `failure`/`cancelled`
+      # (e.g. a transient network error after GitHub already persisted the
+      # check, or the run being cancelled between the request completing and
+      # the step returning). trainCheckState() (state.mjs latestChecksByName)
+      # selects the HIGHEST-ID check run matching name/fingerprint/app-id, so
+      # blindly creating a new `cancelled` check here would mask that
+      # already-persisted, genuinely correct terminal result with a newer,
+      # wrong one -- causing reconcile to redispatch validation instead of
+      # correctly bisecting a real candidate failure.
       - name: Generate recovery app token
         id: recovery-app-token
         if: (failure() || cancelled()) && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
@@ -201,6 +216,7 @@ jobs:
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           FINGERPRINT: ${{ inputs.fingerprint }}
+          APP_ID: ${{ secrets.APP_ID }}
         with:
           github-token: ${{ steps.recovery-app-token.outputs.token }}
           script: |
@@ -210,6 +226,23 @@ jobs:
                 await new Promise((resolve) => setTimeout(resolve, delayMs));
               }
               try {
+                const { data: existing } = await github.rest.checks.listForRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: process.env.CANDIDATE_SHA,
+                  check_name: 'merge-train-candidate',
+                });
+                const trustedAppId = Number(process.env.APP_ID);
+                const alreadyTerminal = (existing.check_runs ?? []).some(
+                  (run) =>
+                    run.external_id === process.env.FINGERPRINT &&
+                    Number(run.app?.id) === trustedAppId &&
+                    run.status === 'completed' &&
+                    (run.conclusion === 'success' || run.conclusion === 'failure'),
+                );
+                if (alreadyTerminal) {
+                  return;
+                }
                 await github.rest.checks.create({
                   owner: context.repo.owner,
                   repo: context.repo.repo,

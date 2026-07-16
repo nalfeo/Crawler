@@ -468,3 +468,65 @@ below, arrived at across the third/fourth/fifth/sixth rounds. Treat this
 section, "Files touched", and the workflow's own inline comments as the
 authoritative current state; earlier round sections are a historical record
 of how the condition evolved, not the shipped behavior.
+
+## Seventh round follow-up (accepted-but-response-lost check-masking guard)
+
+A `copilot-pull-request-reviewer` finding on the retryable-check fallback:
+"Publish immutable candidate result"'s `checks.create` call can succeed
+server-side (a genuine terminal `success`/`failure` check is durably
+persisted) while the step itself still reports `failure`/`cancelled` to the
+runner — e.g. the HTTP response confirming the create was lost to a
+transient network error, or the job was cancelled in the narrow window
+between the request completing and the step returning. Since
+`trainCheckState()` (`.github/scripts/merge-train/state.mjs`,
+`latestChecksByName`) always selects the **highest-ID** check run matching
+name + `external_id` + trusted app id, the retryable-check fallback blindly
+creating a _second_, newer `cancelled` check with the same fingerprint would
+mask the already-persisted, genuinely correct terminal result — causing
+reconcile to redispatch validation on a candidate that had actually already
+finished (success or failure), instead of correctly bisecting a real
+failure.
+
+Fix: before creating the `cancelled` check, the fallback script now calls
+`github.rest.checks.listForRef` (filtered by `ref: CANDIDATE_SHA`,
+`check_name: 'merge-train-candidate'`) and checks whether any returned run
+already matches this fingerprint (`external_id === FINGERPRINT`), is from the
+trusted app (`Number(run.app?.id) === Number(APP_ID)`), and is
+`status: 'completed'` with a genuine terminal `conclusion` (`success` or
+`failure`). If so, the script returns early as a no-op instead of creating a
+new check — the real terminal result is left untouched. This check runs on
+every retry attempt (inside the existing `[0, 1000, 2000]`ms retry loop), not
+just once, so it also self-heals if the real check only becomes visible via
+the API on a later attempt. Added `APP_ID: ${{ secrets.APP_ID }}` to the
+step's `env:` so the trusted-app-id comparison has something to compare
+against (the same secret already used to mint both App tokens in this job).
+
+Updated `tests/unit/merge-train-validate-publish.test.ts`:
+
+- Both existing script-execution tests (`posts a cancelled conclusion...`,
+  `retries transient check publication failures...`) now mock
+  `github.rest.checks.listForRef` returning an empty `check_runs` array (no
+  existing check), and set `process.env.APP_ID` so the added lookup path
+  doesn't change their existing pass/fail behavior.
+- New test: **does not overwrite an already-persisted terminal check
+  (accepted-but-response-lost race)** — mocks `listForRef` returning a
+  `status: 'completed'`, `conclusion: 'success'` run matching the fingerprint
+  and app id, and asserts `checks.create` is never called.
+- New test: **does create the cancelled check when an existing check for the
+  fingerprint is not yet terminal (still in_progress)** — mocks `listForRef`
+  returning a `status: 'in_progress'` run for the same fingerprint, and
+  asserts `checks.create` **is** still called (an in-progress check is not a
+  reason to skip — only a genuine completed success/failure result is).
+
+Test counts: 26 (24 + 2 new `it()` blocks). Ran
+`npx vitest run tests/unit/merge-train-validate-publish.test.ts
+tests/unit/merge-train-workflow-wakeups.test.ts` — 26/26 passed.
+
+Also fixed a minor doc-accuracy nit flagged in the same review round: this
+handoff previously implied (in the "Third shepherd-round follow-up" and
+"Fourth round" sections' prose, before the sixth round's correction above)
+that both fallback steps require `steps.recovery-app-token.outcome ==
+'success'`. The sixth round's correction already clarifies this is only true
+of the "Mark candidate check retryable" step, not "Generate recovery app
+token" itself (which cannot gate on its own outcome) — no further edit
+needed here beyond confirming that correction is present and accurate.
