@@ -23,6 +23,14 @@
           "notes": "Reviewed the diff (merge-train-validate.yml + merge-train-validate-publish.test.ts). Confirmed YAML correctness (actions: write scoped to publish job only, step ordering, if: always() placement), confirmed github.rest.actions.createWorkflowDispatch is the correct Octokit REST method mapping to POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches, confirmed context.payload.repository.default_branch is a reliable field already relied on elsewhere in this repo (ci-recovery.yml, merge-train.yml, auto-rebase-prs.yml), confirmed actions:write on GITHUB_TOKEN is low-risk since this workflow only triggers via workflow_dispatch (no fork/PR triggers), and confirmed the new tests execute the real script against a stubbed dispatch call so they would fail against a broken/reverted implementation. No significant issues found.",
           "clean": true,
           "resolved_count": 0
+        },
+        {
+          "models": ["gpt-5.4-mini (code-review agent, separate model)"],
+          "round": 2,
+          "concerns_count": 0,
+          "notes": "Reviewed the second wake-up added in the same PR: merge-train.yml's `workflow_run` trigger now also lists 'CI' (branches: [main]), and the reconcile job's `if:` gains a storm guard requiring `workflow_run.event == 'push'` when `workflow_run.name == 'CI'`, mirroring the already-shipped deploy.yml pattern. Reviewer confirmed: no && / || precedence ambiguity (each clause independently parenthesized); CI's own triggers (push/schedule/pull_request, no workflow_dispatch) mean workflow_run.event for CI can only be push/schedule/pull_request, so the push-only guard correctly excludes PR-CI and hourly-schedule-CI completions while allowing push-to-main CI completions; Merge Train Validation's wake-up is left completely unrestricted (workflow_run.name != 'CI' clause) since Validation is only ever workflow_dispatch'd against ref=main; deliberately does NOT check workflow_run.conclusion (unlike deploy.yml) because reconcile must wake and re-evaluate on any CI completion (success/failure/cancelled) to preserve fail-closed semantics; pre-existing concurrency: { group: crawler-merge-train, queue: max } coalesces bursts safely since reconcile.mjs re-derives state from GitHub each run. New test file tests/unit/merge-train-workflow-triggers.test.ts (10 tests) parses the real YAML and re-transcribes+truth-tables the gate logic. No significant issues found.",
+          "clean": true,
+          "resolved_count": 0
         }
       ]
     }

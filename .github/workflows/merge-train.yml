@@ -5,9 +5,29 @@ on:
     branches: [main]
   pull_request_target:
     types: [labeled, unlabeled, synchronize, edited, closed, ready_for_review]
+  # Two independent post-completion wake-ups feed reconcile, in addition to the
+  # push/pull_request_target/schedule/workflow_dispatch triggers above:
+  #   1. 'Merge Train Validation' completing (any event) -- the validate-publish
+  #      job's `publish` step now ALSO explicitly workflow_dispatches this
+  #      workflow, so this entry is defense-in-depth, not the primary signal.
+  #   2. 'CI' completing -- covers the case where reconcile paused the train
+  #      because "full-CI run for current main is still in_progress" (see
+  #      reconcile.mjs); once that push's CI finishes we need a wake-up, since
+  #      the push event itself already fired-and-passed before CI resolved.
+  #      'CI' also runs on every PR and on an hourly schedule, so without a
+  #      branch/event filter this would re-run reconcile on every PR-CI
+  #      completion (storm) and on every scheduled CI run. `branches: [main]`
+  #      narrows the workflow_run to runs whose (base, for PR-triggered runs)
+  #      branch is main, but per GitHub's documented semantics that alone does
+  #      NOT exclude a PR whose base branch is main -- so the job-level `if:`
+  #      below additionally requires `event == 'push'` for 'CI' specifically.
+  #      This mirrors the proven-safe pattern already shipped in
+  #      `.github/workflows/deploy.yml` for the identical hourly-CI-storm class
+  #      of bug.
   workflow_run:
-    workflows: ['Merge Train Validation']
+    workflows: ['Merge Train Validation', 'CI']
     types: [completed]
+    branches: [main]
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
@@ -25,7 +45,19 @@ permissions:
 
 jobs:
   reconcile:
-    if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
+    # Fail-closed job gate:
+    #   - pull_request_target: only for PRs from this repo (not forks), as before.
+    #   - workflow_run named 'CI': only for a *push*-triggered CI completion (not
+    #     a PR's CI completion, and not CI's own hourly schedule run) -- this is
+    #     the storm guard described above. `github.event.workflow_run.name` is
+    #     checked (not just presence) so this clause does not accidentally
+    #     restrict the 'Merge Train Validation' workflow_run, which must keep
+    #     firing regardless of its `event` (it is always workflow_dispatch).
+    #   - Every other event (push, schedule, workflow_dispatch, and the
+    #     'Merge Train Validation' workflow_run) is unaffected.
+    if: >-
+      (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

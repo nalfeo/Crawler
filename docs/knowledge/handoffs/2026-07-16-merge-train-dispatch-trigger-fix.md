@@ -27,29 +27,68 @@ schedule was also observed arriving ~hourly in practice (GitHub throttles cron
 schedules under load), so neither trigger reliably promoted a validated candidate
 into the `reconcile` job. The only safe workaround was manual `workflow_dispatch`.
 
+A second, related production finding: manual reconcile run 29461261403 correctly
+**paused** PR #1163 with `paused merge train; full-CI run for current main
+b9668f... is still in_progress`. Once that push's CI run finishes, the train needs
+a reliable wake-up too — but the only trigger that had already fired (`push`) ran
+_before_ CI resolved, so nothing re-invoked `reconcile` once CI completed. The
+existing `workflow_run` entry only named `'Merge Train Validation'`, and (as above)
+schedules were arriving ~hourly, not every 5 minutes.
+
 ## What Was Done
 
-- `.github/workflows/merge-train-validate.yml`'s `publish` job now explicitly
-  dispatches `merge-train.yml` (`workflow_dispatch` on the default branch) right
-  after publishing the immutable `merge-train-candidate` check, for **every**
-  publish outcome (`if: always()` — success, failure, or cancelled), so
-  `reconcile` promptly consumes/retries/bisects instead of waiting on an
-  unreliable trigger. Publication of the check remains authoritative; the
-  dispatch is purely a completion signal.
-- Added `actions: write` to the `publish` job's `permissions:` block so the
-  job's built-in `GITHUB_TOKEN` can call the Actions dispatch endpoint.
+Two independent wake-ups were added, covering both gaps:
+
+1. `.github/workflows/merge-train-validate.yml`'s `publish` job now explicitly
+   dispatches `merge-train.yml` (`workflow_dispatch` on the default branch) right
+   after publishing the immutable `merge-train-candidate` check, for **every**
+   publish outcome (`if: always()` — success, failure, or cancelled), so
+   `reconcile` promptly consumes/retries/bisects instead of waiting on an
+   unreliable trigger. Publication of the check remains authoritative; the
+   dispatch is purely a completion signal.
+   - Added `actions: write` to the `publish` job's `permissions:` block so the
+     job's built-in `GITHUB_TOKEN` can call the Actions dispatch endpoint.
+2. `.github/workflows/merge-train.yml`'s `workflow_run` trigger now ALSO lists
+   `'CI'` (in addition to `'Merge Train Validation'`), with `branches: [main]`
+   added at the trigger level, so a completed push-to-main CI run wakes
+   `reconcile` once it resolves. `'CI'` also runs on every PR and on an hourly
+   schedule, so without a filter this would storm `reconcile` on every PR-CI
+   completion. `branches: [main]` alone is **not** sufficient (GitHub's
+   documented `workflow_run` branch filter matches a PR's _base_ branch too, not
+   just push branches), so the `reconcile` job's `if:` gained an additional
+   guard: `workflow_run.name != 'CI' || workflow_run.event == 'push'` — this
+   mirrors the identical, already-shipped storm guard in
+   `.github/workflows/deploy.yml` (see `tests/unit/deploy-workflow-gating.test.ts`
+   for the precedent). The guard deliberately does **not** check
+   `workflow_run.conclusion` (unlike `deploy.yml`), because `reconcile` must wake
+   and re-evaluate on **any** CI completion — success, failure, or cancelled — to
+   preserve fail-closed semantics (pause/retry/bisect decisions all happen inside
+   `reconcile.mjs`, not the trigger gate). The 'Merge Train Validation' wake-up is
+   left completely unrestricted by this new guard (`workflow_run.name != 'CI'`),
+   since Validation is only ever `workflow_dispatch`'d against `ref: main`.
+
+Common to both:
+
 - Kept `workflow_run` / `schedule` / `workflow_dispatch` / push /
-  `pull_request_target` triggers on `merge-train.yml` completely unchanged, as
-  defense-in-depth, per the task's own instruction — no evidence was gathered to
-  justify removing them, only that they aren't sufficient alone.
+  `pull_request_target` triggers on `merge-train.yml` as defense-in-depth, per the
+  task's own instruction — no evidence was gathered to justify removing them,
+  only that they aren't sufficient alone.
 - Did **not** touch `MERGE_TRAIN_ENABLED`, the ruleset, or branch protection.
 - Did **not** use GitHub's native merge queue.
-- Added deterministic tests (`tests/unit/merge-train-validate-publish.test.ts`)
-  that parse the real workflow YAML and execute the real dispatch step's script
-  (with `github.rest.actions.createWorkflowDispatch` stubbed) to assert: the step
-  exists and runs after the check-publish step, has `if: always()`, uses the
-  correct token, and dispatches `workflow_id: 'merge-train.yml'` with the
-  dynamic default-branch `ref` — not a hardcoded value.
+- Added deterministic tests:
+  - `tests/unit/merge-train-validate-publish.test.ts` parses the real workflow
+    YAML and executes the real dispatch step's script (with
+    `github.rest.actions.createWorkflowDispatch` stubbed) to assert: the step
+    exists and runs after the check-publish step, has `if: always()`, uses the
+    correct token, and dispatches `workflow_id: 'merge-train.yml'` with the
+    dynamic default-branch `ref` — not a hardcoded value.
+  - `tests/unit/merge-train-workflow-triggers.test.ts` (new, 10 tests) parses the
+    real `merge-train.yml` YAML to assert the `workflow_run` trigger lists both
+    workflows with `branches: [main]`, asserts the exact `reconcile` job `if:`
+    string, and re-transcribes the gate's boolean logic in JS to truth-table it
+    against representative payloads (ordinary push/schedule/dispatch; fork vs.
+    same-repo `pull_request_target`; CI workflow_run with `event` = push/
+    pull_request/schedule; Merge Train Validation workflow_run).
 
 ## Key Decision: deviated from "use the App token" to the built-in `GITHUB_TOKEN`
 
@@ -72,18 +111,26 @@ for this third call site.
 ## Validation
 
 - `npx vitest run tests/unit/merge-train-validate-publish.test.ts` — 11/11 passed.
+- `npx vitest run tests/unit/merge-train-workflow-triggers.test.ts` — 10/10 passed.
 - `npm run verify:fast` — passed (typecheck, lint, unit tests, physics-defs/size/
   weight coverage checks).
-- Parsed the real workflow YAML with the `yaml` npm package directly to confirm
-  it still parses correctly (permissions, step ordering, script content).
+- Parsed both real workflow YAMLs with the `yaml` npm package directly to confirm
+  they still parse correctly (permissions, step ordering, script content, trigger
+  wiring, job `if:` conditions).
 - Separate-model **plan review** (rubber-duck agent, `claude-opus-4.7`):
   confirmed the token deviation, the `GITHUB_TOKEN` workflow_dispatch recursion
   exception, and `queue: max` concurrency safety; flagged two refinements
   (hard-cancellation caveat below, live acceptance check) — both addressed.
-- Separate-model **code review** (code-review agent): no concerns.
+- Separate-model **code review** (code-review agent, 2 rounds): round 1 covered
+  the validation-dispatch wake-up (no concerns); round 2 covered the CI-completion
+  wake-up (no concerns) — confirmed expression precedence, that CI's own triggers
+  (push/schedule/pull_request, no workflow_dispatch) make the push-only guard
+  exhaustive and correct, that Validation's wake-up is unaffected, that omitting a
+  `conclusion` check is deliberate/correct here (unlike `deploy.yml`), and that the
+  pre-existing `queue: max` concurrency coalesces bursts safely.
 - Review ledger:
   `docs/knowledge/review-ledgers/2026-07-16-merge-train-dispatch-trigger-fix.review-ledger.json`
-  (3🍎, `plan_review` + `code_review`, both complete/clean).
+  (3🍎, `plan_review` + `code_review` with 2 clean rounds, both complete/clean).
 
 ## Known limitation (flagged by plan review, not fixed here)
 
