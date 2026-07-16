@@ -88,7 +88,7 @@ export function computeEncumbranceMultiplierForMass(
  */
 export const ENCUMBRANCE_BASE_LB = 10 as const;
 export const ENCUMBRANCE_PER_STR_LB = 5 as const;
-export const ENCUMBRANCE_ENCUMBERED_FACTOR = 2 as const;
+const ENCUMBRANCE_ENCUMBERED_FACTOR = 2 as const;
 export const ENCUMBRANCE_HEAVY_FACTOR = 3 as const;
 
 /** Additive move-speed penalty table for the gear-only helper lane. */
@@ -104,13 +104,6 @@ export const ENCUMBRANCE_BAND_LABELS: Readonly<Record<EncumbranceBand, string>> 
   encumbered: 'ENCUMBERED',
   heavy: 'HEAVY',
   overloaded: 'OVERLOADED',
-} as const;
-
-export const ENCUMBRANCE_BAND_COLORS: Readonly<Record<EncumbranceBand, number>> = {
-  unburdened: 0x49d06f,
-  encumbered: 0xf2c14e,
-  heavy: 0xe8964a,
-  overloaded: 0xe8695b,
 } as const;
 
 /** Return the unburdened carry threshold in lb for the given Strength value. */
