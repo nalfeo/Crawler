@@ -3,6 +3,7 @@ import {
   LANDED_LABEL,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
+  RECOVERY_PENDING_LABEL,
   candidateFingerprint,
   commitTimestamp,
   renderStatus,
@@ -804,7 +805,7 @@ export function planLandedRecovery({
     return { action: 'skip', reason: 'PR has no valid recorded merge commit sha' };
   }
   if (factsComplete !== true) {
-    return { action: 'skip', reason: 'could not reconstruct all landed-commit proof facts' };
+    return { action: 'retry', reason: 'could not reconstruct all landed-commit proof facts' };
   }
   if (trailerPrNumber !== prNumber) {
     return {
@@ -830,6 +831,32 @@ export function planLandedRecovery({
     };
   }
   return { action: 'finish', reason: 'proven interrupted landing' };
+}
+
+export async function applyLandedRecoveryDecision({
+  prNumber,
+  landedSha,
+  decision,
+  postLandedComment,
+  setLabel,
+  removeLabel,
+}) {
+  if (decision.action === 'finish') {
+    await postLandedComment(prNumber, landedSha, '', true);
+    await removeLabel(prNumber, QUEUE_LABEL);
+    await removeLabel(prNumber, BLOCKED_LABEL);
+    await removeLabel(prNumber, RECOVERY_PENDING_LABEL);
+    return;
+  }
+
+  if (decision.action === 'retry') {
+    await setLabel(prNumber, RECOVERY_PENDING_LABEL);
+    await removeLabel(prNumber, QUEUE_LABEL);
+    return;
+  }
+
+  await removeLabel(prNumber, QUEUE_LABEL);
+  await removeLabel(prNumber, RECOVERY_PENDING_LABEL);
 }
 
 /**

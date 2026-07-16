@@ -37,7 +37,10 @@ for the architectural rationale.
    [`0063-merge-train-real-squash-merge-promotion.md`](../knowledge/adr/0063-merge-train-real-squash-merge-promotion.md)).
    Reconciliation resumes a landed signal only after the durable
    `merge-train-landed` proof-complete marker exists; a crash after proof but
-   before that marker leaves the PR queued for human review.
+   before that marker never fabricates a landed signal. Closed PRs always lose
+   the transient `merge-train` queue label. If landed-proof APIs are temporarily
+   unavailable, reconciliation first adds `merge-train-recovery-pending`, clears
+   `merge-train`, and retries from that dedicated marker on a later run.
 5. Every cumulative prefix is validated (in parallel) before any merge, so no
    unvalidated intermediate tree is ever exposed on `main`. If a prefix fails,
    the train promotes the maximal fully-validated green prefix and returns the
@@ -308,6 +311,11 @@ repaired `main`.
 - **Failed:** every prefix is validated, so the train localizes the first
   failing PR directly, promotes the largest validated green prefix before it, and
   returns the failing addition with `merge-train-validation-failed`.
+- **Closed with stale queue state:** reconciliation removes `merge-train` from
+  every closed PR. A provable interrupted landing receives the truthful landed
+  comment before cleanup; an unprovable closure loses only transient queue/retry
+  labels. Indeterminate proof reads move to `merge-train-recovery-pending` so a
+  later run can retry without presenting the closed PR as queued.
 - **Stale:** a PR head/title or `main` changed. The candidate is abandoned and a
   new immutable generation is built.
 - **Promotion denied:** run `node .github/scripts/merge-train/protection.mjs

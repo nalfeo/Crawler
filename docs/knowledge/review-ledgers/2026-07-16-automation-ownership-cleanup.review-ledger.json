@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "automation-ownership-cleanup",
+  "task_title": "Clean stale train labels and intake Actions issues",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "1) Removed the workflow-level maintainer-only gate so the script is the single eligibility source. 2) Added a dedicated merge-train-recovery-pending retry label: indeterminate evidence reads set it before clearing merge-train; later reconciliation queries both labels. Terminal stale closures clear queue/retry labels without fabricating landed metadata. 3) Provable recovery posts the truthful comment, clears merge-train first, then secondary blocked/retry labels."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
