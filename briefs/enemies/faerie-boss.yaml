@@ -1,0 +1,58 @@
+type: enemy
+name: faerie-boss
+sizeVariant: tall
+description: |
+  Queen Mab Tarnish, the corroded faerie queen of Floor 2. She must read as a
+  single unbroken vertical queenly silhouette — crown at top, long floor-length
+  gown at bottom, with her folded wings held tightly flush against the sides of
+  her body forming part of the gown's silhouette rather than spreading outward.
+
+  Silhouette shape: tall and narrow, 1:2 aspect. Crown points extend upward
+  from her head. Gown flares slightly at the hem but stays within the cell
+  width. The full figure — crown tip to gown hem — should nearly fill the
+  height of the frame (touch allowed per edge override below). Wings are
+  visibly folded against the back/sides and entirely opaque with no
+  transparent holes or hollow regions; they must read as part of the body
+  mass, not separate appendages.
+
+  Surface character: tarnished-bronze fittings along the gown bodice; oxidized
+  green-black patina on the wing membranes; corroded iron rivets on the
+  crown; verdigris staining on her collar and cuffs. Dark-fantasy wear
+  underneath — deep indigo, charcoal, or midnight-violet silk with threadbare
+  edges and deliberate damage suggesting age and power. Occasional eerie
+  accents: pale bioluminescent glow from her eyes (small white-blue highlights),
+  faint spectral shimmer on the crown gemstones.
+
+  Expression and posture: regal, still, imperious — not in active combat stance.
+  Arms held loosely at her sides or hands folded at the waist. Front-facing
+  toward the viewer, slight three-quarter lean allowed. She is wonderful and
+  unsettling simultaneously.
+
+  STRICT CONSTRAINTS:
+  - Wings MUST be folded and pressed flush against the body. No spread wings,
+    no floating wing segments, no wand-like thin protrusions, no detached pieces.
+  - Wing interiors MUST be fully filled / opaque — no transparent holes inside
+    wing membranes.
+  - No staff, wand, or floating orb unless it is gripped in a hand and visually
+    attached to the figure. Prefer no held item at all.
+  - No loose sparkle or magic-circle elements floating independently of the figure.
+  - Silhouette must remain one contiguous connected shape.
+
+sensors:
+  edge:
+    # Tall silhouette naturally fills the vertical frame — crown and hem
+    # are expected to touch top/bottom edges.
+    allowMainTouch: true
+    # Strict: no wand-like detached edge-touching fragments.
+    allowDetachedEdgeComponents: false
+    maxDetachedEdgePixels: 0
+  enemy:
+    facing: front
+
+variations:
+  - Queen Mab Tarnish in regal stillness, tarnished bronze crown and midnight-indigo gown, wings folded flush
+  - Corroded faerie queen, verdigris-stained folded wings fully opaque against sides, oxidized iron crown with dim gemstones
+  - Queen Mab Tarnish with charcoal-silk gown, spectral pale-blue eye glow, corroded bronze bodice fittings, compact silhouette
+  - Dark faerie queen, deeply tarnished regalia, eerie bioluminescent crown accents, folded opaque wing membranes integrated into gown
+
+minVariations: 4
