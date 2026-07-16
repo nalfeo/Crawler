@@ -193,7 +193,9 @@ export function defineAiInvariantSuite(cases: readonly AIInvariantCase[]): void 
     for (const testCase of cases) {
       for (const axis of testCase.axes) {
         it(`${testCase.invariant} :: ${testCase.id} :: ${axis.decisionMode}/${axis.pathingMode}`, () => {
-          const canonicalAxis = SLICE_A_DECISION_AXES.find((candidate) => sameAxis(candidate, axis));
+          const canonicalAxis = SLICE_A_DECISION_AXES.find((candidate) =>
+            sameAxis(candidate, axis),
+          );
           expect(
             canonicalAxis,
             `Case ${testCase.id} uses an undeclared Slice A axis: ${axis.decisionMode}/${axis.pathingMode}`,
