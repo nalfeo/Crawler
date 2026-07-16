@@ -1963,6 +1963,159 @@ describe('BehaviorTreeAI', () => {
     expect(decision.targetX!).toBeCloseTo(43.75 - standoffFt, 0);
   });
 
+  it('expands wounded projectile spacing only when a nearby enemy creates pressure', () => {
+    const pistol = getWeaponDef('pistol')!;
+
+    const healthyWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(healthyWorld, 0, 0);
+    spawnEnemy(healthyWorld, 12, 0, 20);
+    setActiveWeapon(healthyWorld, pistol);
+    const healthyAi = new BehaviorTreeAI({ seed: 7 });
+    healthyAi.poll(createInputState(), healthyWorld);
+    const healthyDecision = healthyAi.getDecision();
+
+    const woundedWorld = createTestWorld({ seed: 7 });
+    const woundedPlayer = spawnPlayer(woundedWorld, 0, 0);
+    woundedWorld.stores.health.current[woundedPlayer] = 50;
+    woundedWorld.stores.health.max[woundedPlayer] = 100;
+    spawnEnemy(woundedWorld, 12, 0, 20);
+    setActiveWeapon(woundedWorld, pistol);
+    const woundedAi = new BehaviorTreeAI({ seed: 7 });
+    woundedAi.poll(createInputState(), woundedWorld);
+    const woundedDecision = woundedAi.getDecision();
+
+    expect(healthyDecision.reason).toContain('Closing to ranged standoff (6.0ft)');
+    expect(healthyDecision.targetX).toBeGreaterThan(0);
+    expect(woundedDecision.reason).toContain('Ranged orbit');
+    expect(woundedDecision.targetX).toBeLessThan(healthyDecision.targetX!);
+  });
+
+  it('holds wounded projectile spacing until the pressure bubble is fully clear', () => {
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.current[player] = 50;
+    world.stores.health.max[player] = 100;
+    const enemy = spawnEnemy(world, 12, 0, 20);
+    setActiveWeapon(world, getWeaponDef('pistol')!);
+    const ai = new BehaviorTreeAI({ seed: 7 });
+
+    ai.poll(createInputState(), world);
+    world.stores.position.x[enemy] = 20;
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().reason).toContain('ranged standoff (10.0ft)');
+
+    world.stores.position.x[enemy] = 31;
+    ai.poll(createInputState(), world);
+
+    expect(ai.getDecision().reason).toContain('ranged standoff (6.0ft)');
+  });
+
+  it('clears defensive spacing latch on hostile encounter revision', () => {
+    // Bug: rangedDefensiveSpacing was not cleared in
+    // invalidateTransientDecisionForHostileEncounter(), so a reused AI that
+    // had latched spacing (enemy at 12ft while wounded) would keep the 10ft
+    // orbit after a revision boundary even when the only remaining enemy is
+    // at 25ft — outside the 15ft pressure radius.
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.current[player] = 50;
+    world.stores.health.max[player] = 100;
+    const enemy = spawnEnemy(world, 12, 0, 20);
+    setActiveWeapon(world, getWeaponDef('pistol')!);
+    const ai = new BehaviorTreeAI({ seed: 7 });
+
+    // First poll: enemy at 12ft while wounded → latches defensive spacing.
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().reason).toContain('Ranged orbit');
+
+    // Simulate a hostile encounter revision (e.g. a boss encounter starts).
+    world.hostileEncounterRevision += 1;
+
+    // Move enemy to 25ft — outside the 15ft pressure radius but inside the
+    // 30ft release radius, so without the fix the latch would survive.
+    world.stores.position.x[enemy] = 25;
+    ai.poll(createInputState(), world);
+
+    // After the revision boundary the latch must be cleared; AI should use
+    // the healthy 6ft standoff, not the defensive 10ft standoff.
+    expect(ai.getDecision().reason).toContain('ranged standoff (6.0ft)');
+  });
+
+  it('keeps the healthy ranged baseline when wounded without nearby pressure', () => {
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.current[player] = 50;
+    world.stores.health.max[player] = 100;
+    spawnEnemy(world, 30, 0, 20);
+    setActiveWeapon(world, getWeaponDef('pistol')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).toContain('Closing to ranged standoff (6.0ft)');
+    expect(decision.targetX).toBeCloseTo(24, 0);
+  });
+
+  it('retreats a wounded projectile user from contact without changing healthy behavior', () => {
+    const pistol = getWeaponDef('pistol')!;
+
+    const healthyWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(healthyWorld, 0, 0);
+    spawnEnemy(healthyWorld, 4, 0, 20);
+    setActiveWeapon(healthyWorld, pistol);
+    const healthyAi = new BehaviorTreeAI({ seed: 7 });
+    healthyAi.poll(createInputState(), healthyWorld);
+
+    const woundedWorld = createTestWorld({ seed: 7 });
+    const woundedPlayer = spawnPlayer(woundedWorld, 0, 0);
+    woundedWorld.stores.health.current[woundedPlayer] = 50;
+    woundedWorld.stores.health.max[woundedPlayer] = 100;
+    const woundedEnemy = spawnEnemy(woundedWorld, 4, 0, 20);
+    setActiveWeapon(woundedWorld, pistol);
+    const woundedAi = new BehaviorTreeAI({ seed: 7 });
+    woundedAi.poll(createInputState(), woundedWorld);
+
+    expect(healthyAi.getDecision().state).toBe(AIState.ENGAGE);
+    expect(woundedAi.getDecision().state).toBe(AIState.RETREAT);
+    expect(woundedAi.getDecision().reason).toContain('contact pressure');
+
+    woundedWorld.stores.position.x[woundedEnemy] = 16;
+    woundedAi.poll(createInputState(), woundedWorld);
+
+    expect(woundedAi.getDecision().state).toBe(AIState.ENGAGE);
+  });
+
+  it('arms defensive spacing latch when contact retreat starts so wider orbit persists after release', () => {
+    // If the first threat is already within contact range (4.5ft), Retreat
+    // preempts planRangedEngagement, so rangedDefensiveSpacing is never set
+    // by the normal pressure-check path. The latch must be armed when the
+    // contact retreat is entered so that after retreat releases (enemy backs
+    // past rangedSafeDistance=15ft) the AI holds the 10ft defensive orbit
+    // instead of immediately snapping back to the 6ft healthy orbit.
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.current[player] = 50;
+    world.stores.health.max[player] = 100;
+    const enemy = spawnEnemy(world, 4, 0, 20);
+    setActiveWeapon(world, getWeaponDef('pistol')!);
+    const ai = new BehaviorTreeAI({ seed: 7 });
+
+    // First poll: enemy within contact range → emergency retreat (latch armed here).
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+    expect(ai.getDecision().reason).toContain('contact pressure');
+
+    // Enemy backs past the 15ft rangedSafeDistance release radius.
+    world.stores.position.x[enemy] = 16;
+    ai.poll(createInputState(), world);
+
+    // Latch armed → defensive orbit (10ft), not the healthy 6ft orbit.
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('ranged standoff (10.0ft)');
+  });
+
   it('expands to defensive orbit when player HP drops below 40%', () => {
     // bat reach = 5.5ft. innerOrbit=4.5, outerOrbit=6.25 (4.5+1.75),
     // fireGate=8.25 (5.5*1.5). Enemy attackRange=5 → safeOrbit=6.75 (5+1.75).
