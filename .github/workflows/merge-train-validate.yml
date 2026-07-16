@@ -94,3 +94,12 @@ jobs:
                 summary: `PR order: ${process.env.PR_NUMBERS}\nFingerprint: ${process.env.FINGERPRINT}`,
               },
             });
+
+            // `workflow_run` delivery is best-effort. Use the same trusted App
+            // token to wake reconciliation after the immutable result is durable.
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'merge-train.yml',
+              ref: context.payload.repository.default_branch,
+            });

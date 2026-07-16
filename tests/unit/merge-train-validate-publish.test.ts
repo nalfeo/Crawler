@@ -69,22 +69,42 @@ function getPublishScript(doc: WorkflowDoc): string {
 async function runPublishScript(verifyResult: string): Promise<{
   conclusion: string;
   title: string;
+  calls: string[];
+  dispatch: { owner: string; repo: string; workflow_id: string; ref: string } | undefined;
 }> {
   const doc = loadWorkflow();
   const script = getPublishScript(doc);
 
   let createArgs: { conclusion: string; output: { title: string } } | undefined;
+  let dispatchArgs: { owner: string; repo: string; workflow_id: string; ref: string } | undefined;
+  const calls: string[] = [];
   const github = {
     rest: {
       checks: {
         create: async (args: { conclusion: string; output: { title: string } }) => {
+          calls.push('check');
           createArgs = args;
+          return { data: {} };
+        },
+      },
+      actions: {
+        createWorkflowDispatch: async (args: {
+          owner: string;
+          repo: string;
+          workflow_id: string;
+          ref: string;
+        }) => {
+          calls.push('dispatch');
+          dispatchArgs = args;
           return { data: {} };
         },
       },
     },
   };
-  const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+  const context = {
+    repo: { owner: 'nalfeo', repo: 'Crawler' },
+    payload: { repository: { default_branch: 'main' } },
+  };
   const previousEnv = {
     VERIFY_RESULT: process.env.VERIFY_RESULT,
     CANDIDATE_SHA: process.env.CANDIDATE_SHA,
@@ -108,7 +128,12 @@ async function runPublishScript(verifyResult: string): Promise<{
     }
   }
   if (!createArgs) throw new Error('github.rest.checks.create was not called');
-  return { conclusion: createArgs.conclusion, title: createArgs.output.title };
+  return {
+    conclusion: createArgs.conclusion,
+    title: createArgs.output.title,
+    calls,
+    dispatch: dispatchArgs,
+  };
 }
 
 describe('merge-train-validate.yml publish step (verify result -> check conclusion mapping)', () => {
@@ -151,5 +176,16 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     const steps = doc.jobs.publish?.steps ?? [];
     const step = steps.find((candidate) => candidate.name === 'Publish immutable candidate result');
     expect(step?.with?.['github-token']).toBe('${{ steps.app-token.outputs.token }}');
+  });
+
+  it('wakes reconciliation with the trusted token only after publishing on the default branch', async () => {
+    const { calls, dispatch } = await runPublishScript('success');
+    expect(calls).toEqual(['check', 'dispatch']);
+    expect(dispatch).toEqual({
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      workflow_id: 'merge-train.yml',
+      ref: 'main',
+    });
   });
 });
