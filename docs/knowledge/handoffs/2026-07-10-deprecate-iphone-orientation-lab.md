@@ -8,7 +8,7 @@
 
 ## Systems touched
 
-labs
+docs-tooling
 
 ## What was done
 

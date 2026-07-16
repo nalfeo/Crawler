@@ -5,6 +5,10 @@
 **Branch:** nalfeo-merge-combat-into-weapon-lab
 **Apple estimate:** 🍎🍎 → actual 🍎🍎 (on-target)
 
+## Systems touched
+
+weapons
+
 ## What
 
 Consolidated the two redundant combat-related labs into a single `weapon-lab`:

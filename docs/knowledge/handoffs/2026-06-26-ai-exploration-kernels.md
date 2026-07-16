@@ -24,6 +24,10 @@ behaviour preserved on the first headless run.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+ai-pathfinding, inventory
+
 ## What Was Done
 
 Follow-up to PR #316 closing ITEM #3's _originally-scoped_ deliverable: the C1–C4

@@ -25,6 +25,10 @@ error handling, router kill switch) stayed within the 2-apple envelope.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+azure-infra
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-06-30-azure-openai-provider.review-ledger.json`

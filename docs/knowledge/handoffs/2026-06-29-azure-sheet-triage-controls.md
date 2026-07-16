@@ -4,6 +4,10 @@
 **Persona:** Producer  
 **Apples:** estimated 🍎🍎🍎 / actual 🍎🍎🍎
 
+## Systems touched
+
+azure-infra
+
 ## Goal
 
 Add end-to-end triage controls for Azure-backed sprite workflows:

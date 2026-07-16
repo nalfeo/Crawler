@@ -24,6 +24,10 @@ application across menus and HUD factories).
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+enemies, mobile-ux
+
 ## What Was Done
 
 Made the game UI responsive to viewport size so text and interactive controls

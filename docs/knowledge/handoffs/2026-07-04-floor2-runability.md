@@ -12,7 +12,7 @@ Wired Floor 2 so it can be launched, played through, and completed end-to-end in
 
 ## Systems touched
 
-floor2, main-game-scene, faction-relations, bootstrap
+mapgen, enemies
 
 ## What was done
 

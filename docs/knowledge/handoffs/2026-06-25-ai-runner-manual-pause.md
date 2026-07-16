@@ -4,6 +4,10 @@
 **Persona:** AI Content Engineer (recorder + AI runner lab)
 **Apples:** estimated 🍎🍎🍎 / actual 🍎🍎🍎 (🎯 exact)
 
+## Systems touched
+
+ai-combat-balance
+
 ## Task
 
 Add the ability to pause an AI runner session and play it manually, and make

@@ -1,5 +1,9 @@
 # Handoff - Template-driven sprite post-processing pipeline
 
+## Systems touched
+
+sprite-pipeline
+
 ## Summary
 
 - Replaced hardcoded sprite-type branching in sprite post-processing with a YAML template-driven pipeline system.

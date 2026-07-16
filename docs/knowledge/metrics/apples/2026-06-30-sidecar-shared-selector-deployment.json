@@ -3,8 +3,9 @@
   "date": "2026-06-30",
   "session": "sidecar-shared-selector-deployment",
   "task": "Unblock issue-to-asset workflow by allowing shared synth/selector deployment",
-  "estimatedApples": 1,
-  "actualApples": 1,
+  "estimated_apples": 1,
+  "actual_apples": 1,
+  "delta": 0,
   "verdict": "exact",
   "notes": "Small targeted provider factory behavior change plus unit-test update; included generated workflow assets and registry updates after live issue-pipeline run."
 }

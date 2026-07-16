@@ -24,6 +24,10 @@ viewer lab + tests + ADR landed as a single coherent Large slice, no surprises.
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+mapgen
+
 ## What Was Done
 
 Began the "set piece" themed-room system (Earth locales dropped into the

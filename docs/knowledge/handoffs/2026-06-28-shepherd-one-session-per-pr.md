@@ -4,6 +4,10 @@
 **Persona:** Producer
 **Apple estimate:** 🍎 (declared); actual 🍎 — docs-only edit, two files.
 
+## Systems touched
+
+ci-policy
+
 ## Summary
 
 Reinforced the **one-PR-per-child-session** rule in the `pr-shepherd` skill: the

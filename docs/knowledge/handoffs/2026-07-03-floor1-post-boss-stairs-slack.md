@@ -2,6 +2,10 @@
 
 Slice-1 follow-up to PR #707 (time-aware Floor 1 AI). Builds the shared perfect-world travel-time infrastructure the AI needs to feed player→objective travel estimates into the existing collapse-panic beeline threshold, and phase-gates a post-boss stairs beeline escalation on top of it.
 
+## Systems touched
+
+enemies
+
 ## Apple estimate
 
 - Declared: **3🍎**

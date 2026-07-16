@@ -20,6 +20,10 @@ Verdict: 🎯 Exact
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+enemies
+
 ## What Was Done
 
 Removed all hardcoded per-boss state fields from the Floor 1 data model and replaced them with a generic boss registry.

@@ -24,6 +24,10 @@ in the file (Generate's AbortController flow, `postApprove`'s error contract).
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+sprite-workflow
+
 ## What Was Done
 
 Two UX gaps the user hit in the sprite-generation gallery:

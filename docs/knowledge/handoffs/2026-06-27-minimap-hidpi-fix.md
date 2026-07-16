@@ -24,6 +24,10 @@ unrelated wall-time flake, not into code footprint (2 files changed).
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+hud-ux
+
 ## What Was Done
 
 Fixed two HiDPI-only HUD regressions introduced by PR #353 (render

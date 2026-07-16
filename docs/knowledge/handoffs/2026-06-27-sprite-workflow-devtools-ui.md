@@ -26,6 +26,10 @@ envelope; no scope surprises beyond test-fixture gotchas.
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+devtools, sprite-pipeline
+
 ## What Was Done
 
 Two bodies of work on this branch:

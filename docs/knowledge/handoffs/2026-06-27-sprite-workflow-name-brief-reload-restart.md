@@ -147,6 +147,10 @@ split, restart buttons, Azure reload picker) — but it **reused** the existing
 plumbing and required **no** backend change for reload, landing just under the
 Massive estimate.
 
+## Systems touched
+
+sprite-pipeline
+
 ## Agent-OS Telemetry
 
 Guard telemetry artifact: `files/guard-telemetry.jsonl`

@@ -27,6 +27,10 @@ confirmed.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+sprite-workflow
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-checkin-stale-sidecar-fallback.review-ledger.json`
