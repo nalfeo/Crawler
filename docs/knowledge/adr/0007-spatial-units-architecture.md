@@ -88,7 +88,7 @@ PhaserBridge & Rendering (1:1 pixel-to-screen mapping)
 
 ## Related
 
-- Handoff: not preserved (pre-handoff-policy implementation)
+- Handoff: `docs/knowledge/handoffs/archive/2026-06-08-px-to-feet.md`
 - Implementation PR: #86
 
 ## Decision Record
