@@ -222,6 +222,15 @@ interface CollisionFingerprint {
 //   seed  13:  4/215.00000381469727/20/2   →  5/215.00000381469727/20/2
 //   seed  42:  4/193.14999961853027/5/2    →  5/193.14999961853027/5/2
 //   seed 137:  4/225.55999952554703/8/2    →  6/225.55999952554703/8/2
+//
+// Re-baselined after telemetry-driven balance changes (PR #1191, 2026-07-16):
+//   PLAYER_INVINCIBILITY_MS 250→350ms and RAT_BRUTE contactDamage 10→7 reduce
+//   damageTaken and shift kill counts in this 1500-frame slice. Only seed 137 drifts.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  3/157.86999559402466/10/0     →  unchanged
+//   seed  13:  5/215.00000381469727/20/2     →  unchanged
+//   seed  42:  5/193.14999961853027/5/2      →  unchanged
+//   seed 137:  6/225.55999952554703/8/2      →  5/200.47999966144562/5/0
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
@@ -250,10 +259,10 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 225.55999952554703,
-    damageTaken: 8,
-    finalScore: 2,
+    kills: 5,
+    damageDealt: 200.47999966144562,
+    damageTaken: 5,
+    finalScore: 0,
   },
 };
 

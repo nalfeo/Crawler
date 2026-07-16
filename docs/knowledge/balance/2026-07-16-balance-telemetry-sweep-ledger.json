@@ -7,7 +7,8 @@
     "baselineSweep": {
       "runId": "29477221792",
       "date": "2026-07-16T06:36:35Z",
-      "commit": "2cca6f1037771f212add3f8b8669d9de66d8b7f0",
+      "commit": "7974d2ec998db69213ffee1b0ff18ae16bbd2922",
+      "note": "Workflow's actions/checkout@v4 checked out the default branch HEAD at dispatch time (7974d2ec); commit 2cca6f10 was merged to main later that morning",
       "mode": "weapon_personas=true (non-default experimental mode)",
       "seedCount": 100,
       "weaponsCount": 6,
@@ -16,25 +17,24 @@
     "limitations": [
       "No formal game releases — only headless AI runner data, not real player telemetry",
       "Baseline uses weapon_personas=true (experimental, not the shipped default)",
-      "Sample: 100 seeds per weapon (25/shard × 4 shards); shard-level data analyzed, not full 100-seed aggregates",
       "balance-baseline.json is empty — no prior recorded metrics to compare against"
     ]
   },
   "baselineResults": {
-    "sword": { "winRate": 1.0, "avgMinHp": 0.75, "sample": "25/25 (shard 0)" },
-    "baseball-bat": { "winRate": 0.92, "avgMinHp": 0.711, "sample": "23/25 (shard 0)" },
-    "fireball": { "winRate": 0.88, "avgMinHp": 0.574, "sample": "22/25 (shard 3)" },
-    "throwing-knife": { "winRate": 0.76, "avgMinHp": 0.453, "sample": "19/25 (shard 3)" },
-    "bow": { "winRate": 0.72, "avgMinHp": 0.464, "sample": "18/25 (shard 3)" },
-    "pistol": { "winRate": 0.72, "avgMinHp": 0.468, "sample": "18/25 (shard 3)" },
-    "note": "Per-shard data; 100-seed aggregates pending post-sweep collection"
+    "sword": { "winRate": 0.96, "avgMinHp": 0.696, "sample": "96/100 (aggregate)" },
+    "baseball-bat": { "winRate": 0.93, "avgMinHp": 0.731, "sample": "93/100 (aggregate)" },
+    "fireball": { "winRate": 0.9, "avgMinHp": 0.585, "sample": "90/100 (aggregate)" },
+    "pistol": { "winRate": 0.75, "avgMinHp": 0.481, "sample": "75/100 (aggregate)" },
+    "bow": { "winRate": 0.79, "avgMinHp": 0.488, "sample": "79/100 (aggregate)" },
+    "throwing-knife": { "winRate": 0.72, "avgMinHp": 0.441, "sample": "72/100 (aggregate)" },
+    "note": "100-seed aggregate artifacts (weapon-sweep-<weapon> from run 29477221792); artifact IDs: sword=8367162771, pistol=8367162635, fireball=8367161570, baseball-bat=8367160878, throwing-knife=8367160867, bow=8367160319"
   },
   "ideas": [
     {
       "rank": 1,
       "name": "Raise ranged weapon persona constitution minimums",
-      "hypothesis": "The AI stat allocator fills minimumTargets first. Ranged personas have constitution min 5-6 vs melee 6-7. AvgMinHP of 45-46% for ranged vs 71-75% for melee indicates HP starvation. Each constitution point adds 10 HP (base HP 100). Raising bow/pistol 5→7 and throwing-knife 6→7 adds 20 HP (+13%), closing the survivability gap. Side effect: also biases gear scoring toward constitution items (auto-progression.ts) — treated as intentional combined persona treatment.",
-      "telemetryEvidence": "Clear correlation: melee (con min 6-7) → 92-100% win rate; ranged (con min 5-6) → 72-76% win rate. All three ranged weapons show AvgMinHP ~45-47% vs melee 71-75%.",
+      "hypothesis": "The AI stat allocator fills minimumTargets first. Ranged personas have constitution min 5-6 vs melee 6-7. AvgMinHP of 44-49% for ranged vs 58-73% for melee indicates HP starvation. Each constitution point adds 10 HP (base HP 100). Raising bow/pistol 5→7 and throwing-knife 6→7 adds 20 HP (+13%), closing the survivability gap. Side effect: also biases gear scoring toward constitution items (auto-progression.ts) — treated as intentional combined persona treatment.",
+      "telemetryEvidence": "Clear correlation: melee (con min 6-7) → 93-96% win rate; ranged (con min 5-6) → 72-79% win rate. All three ranged weapons show AvgMinHP ~44-49% vs melee 58-73%.",
       "file": "src/game/ai/weapon-personas.ts",
       "change": "bow minimumTargets.constitution: 5→7; pistol minimumTargets.constitution: 5→7; throwing-knife minimumTargets.constitution: 6→7",
       "attempts": [
@@ -42,7 +42,7 @@
           "attempt": "1A",
           "status": "pending_sweep",
           "sweepRunId": null,
-          "baselineMetrics": { "bow": 0.72, "pistol": 0.72, "throwing-knife": 0.76 },
+          "baselineMetrics": { "bow": 0.79, "pistol": 0.75, "throwing-knife": 0.72 },
           "postChangeMetrics": null,
           "verdict": null,
           "rationale": null
@@ -61,7 +61,7 @@
           "attempt": "2A",
           "status": "pending_sweep",
           "sweepRunId": null,
-          "baselineMetrics": { "bow": 0.72, "pistol": 0.72, "throwing-knife": 0.76 },
+          "baselineMetrics": { "bow": 0.79, "pistol": 0.75, "throwing-knife": 0.72 },
           "postChangeMetrics": null,
           "verdict": null,
           "rationale": null
@@ -80,7 +80,7 @@
           "attempt": "3A",
           "status": "pending_sweep",
           "sweepRunId": null,
-          "baselineMetrics": { "bow": 0.72, "pistol": 0.72, "throwing-knife": 0.76 },
+          "baselineMetrics": { "bow": 0.79, "pistol": 0.75, "throwing-knife": 0.72 },
           "postChangeMetrics": null,
           "verdict": null,
           "rationale": null
@@ -89,7 +89,7 @@
     }
   ],
   "combinedSweep": {
-    "strategy": "All 3 ideas implemented cumulatively; each subsequent sweep includes all accepted prior changes. This allows marginal-contribution judgment for each idea while keeping the branch in a single shippable state.",
+    "strategy": "All 3 ideas are implemented together in this PR. The post-change sweep measures only the combined treatment; it CANNOT decompose marginal per-idea contributions. Independent judgment of each idea would require matched-seed one-change-at-a-time runs (or a documented sequential add-one design with a fresh baseline at every step). This constraint is documented here: verdicts will be issued on the combined treatment only, with qualitative reasoning for individual ideas.",
     "sweepArtifacts": [],
     "finalJudge": null
   },

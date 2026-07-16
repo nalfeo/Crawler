@@ -215,7 +215,7 @@ describe('enemy projectile damage', () => {
 
     const player = spawnPlayer(world, 50, 50);
 
-    // First hit
+    // First hit at t=100ms
     spawnEnemyProjectile(world, 50, 50, 1, 0, 10);
     let cr = collisionSystem(world);
     damageSystem(world, cr);
@@ -227,8 +227,16 @@ describe('enemy projectile damage', () => {
     damageSystem(world, cr);
     expect(world.stores.health.current[player]).toBe(90); // unchanged
 
-    // Advance past invincibility window (350ms)
-    world.elapsedMs = 500;
+    // At t=400ms (300ms after first hit) — still inside the 350ms window, must be blocked.
+    // With the old 250ms window this would have been accepted; with 350ms it must not be.
+    world.elapsedMs = 400;
+    spawnEnemyProjectile(world, 50, 50, 0, -1, 10);
+    cr = collisionSystem(world);
+    damageSystem(world, cr);
+    expect(world.stores.health.current[player]).toBe(90); // still blocked
+
+    // At t=450ms (exactly 350ms after first hit) — invincibility has expired, damage accepted.
+    world.elapsedMs = 450;
     spawnEnemyProjectile(world, 50, 50, 0, 1, 10);
     cr = collisionSystem(world);
     damageSystem(world, cr);
