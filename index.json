@@ -1,5 +1,16 @@
 [
   {
+    "commit": "de2e70f0f3b169f5bd1d87472124b093a452aef0",
+    "commitDate": "2026-07-16T07:07:22Z",
+    "commitSubject": "fix(docs): resolve security-review 2026-07-14 ADR and script-docs findings (#1174)",
+    "capturedAt": "2026-07-16T07:59:17.802Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29479028903",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/de2e70f0f3b169f5bd1d87472124b093a452aef0.json"
+  },
+  {
     "commit": "e9e26ffe83e8b729a8b6f68313b0b816d4d53824",
     "commitDate": "2026-07-16T06:53:21Z",
     "commitSubject": "fix: resolve nightly docs-check blocking errors (ADR stale paths, missing Status headings, handoff retrospective subsections) (#1171)",
