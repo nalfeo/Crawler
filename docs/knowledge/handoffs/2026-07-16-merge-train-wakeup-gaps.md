@@ -23,6 +23,22 @@ requirements. This PR closes both:
    bisect. Fixed by adding `if: always()` (matching the sibling `publish` job's
    own `if: always()`).
 
+   **Follow-up fix from code review**: `if: always()` alone made the wake
+   _dispatch_ fire on a failed publish step, but did not make the wake
+   _effective_. The fingerprinted check stayed whatever the original
+   `dispatchValidation()` (reconcile.mjs) posted — `in_progress` — and
+   `trainCheckState()` (state.mjs) only demotes a stuck in_progress check to
+   retryable (`missing`) after `CANDIDATE_VALIDATION_STALE_MS` (40 minutes);
+   before that it reports `pending`, which `planPrefixPromotion()` maps to the
+   `wait` action. So the immediate wake would just see `pending` and do
+   nothing — no better than the unreliable schedule fallback it exists to
+   replace. Added a new "Mark candidate check retryable if publishing failed"
+   step (`if: failure()`, runs after the publish step and before the wake
+   dispatch) that posts a `cancelled` conclusion for the fingerprinted check —
+   mirroring `reconcile.mjs`'s own `dispatchValidation` catch block — so the
+   woken reconciliation redispatches validation immediately instead of waiting
+   on staleness.
+
 2. **Scheduled-CI wake-up gap**: `merge-train.yml`'s `reconcile` job guard for
    `workflow_run` events named `'CI'` only allowed
    `event == 'push' && head_branch == default_branch`. But
@@ -56,13 +72,20 @@ main.
 ## Files touched
 
 - `.github/workflows/merge-train-validate.yml` — added `if: always()` to the
-  "Wake merge-train reconciliation" step, with an explanatory comment.
+  "Wake merge-train reconciliation" step, plus a new "Mark candidate check
+  retryable if publishing failed" step (`if: failure()`) that posts a
+  `cancelled` conclusion for the fingerprinted check before the wake
+  dispatches, with explanatory comments on both.
 - `.github/workflows/merge-train.yml` — added the schedule/`MERGE_TRAIN_ENABLED`
   carve-out to the `reconcile` job's `if:` guard, with an explanatory comment
   describing the `mainHealthReason()` race scenario it closes.
 - `tests/unit/merge-train-validate-publish.test.ts` — added:
   - a step-ordering assertion (wake step must run after the publish step)
   - an `if: always()` assertion on the wake step
+  - a `describe` block covering the new retryable-check fallback step: its
+    `if: failure()` condition and App-token wiring, its ordering (after
+    publish, before the wake dispatch), and that its script actually posts a
+    `cancelled` conclusion with the right `head_sha`/`external_id`
 - `tests/unit/merge-train-workflow-wakeups.test.ts` — parameterized the
   existing `evaluatesReconcileCondition()` YAML-condition-evaluator helper with
   a `mergeTrainEnabled` substitution, and added:
@@ -76,7 +99,7 @@ main.
 
 - `npm run typecheck` — clean
 - `npm run lint` — clean
-- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **17/17 passed** (8 + 9)
+- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **20/20 passed** (15 + 5)
 - Both modified workflow YAML files parse cleanly via the `yaml` package (same
   parser the tests use) — confirmed no syntax breakage.
 - `npm run verify:fast` — passed (typecheck + lint + changed unit tests +
@@ -103,8 +126,9 @@ main.
 
 3🍎 (production-critical merge automation change touching two workflow files
 plus their guard logic; consistent with the original task's criticality
-assessment). Not recorded via `apples:record` since actual == estimated and no
-scope change occurred mid-session.
+assessment). Recorded via `apples:record`:
+`docs/knowledge/metrics/apples/2026-07-16-merge-train-wakeup-gaps.json`
+(3🍎 estimated → 3🍎 actual, exact).
 
 ## Unresolved issues / recommended next steps
 
@@ -122,3 +146,19 @@ scope change occurred mid-session.
   bounded retry/backoff around the `actions.createWorkflowDispatch` call itself,
   in case the dispatch API call transiently fails. Left as a future
   enhancement since it wasn't part of the original task's explicit scope.
+
+## Shepherd-round follow-up (post-PR review)
+
+Three `copilot-pull-request-reviewer` findings on the opened PR were validated
+and fixed:
+
+1. The wake-dispatch-ineffective-on-publish-failure gap described above (added
+   the "Mark candidate check retryable if publishing failed" step + 3 new
+   regression tests).
+2. This handoff's apple-estimate section incorrectly claimed `apples:record`
+   was skipped because actual == estimated — the policy
+   (`docs/agent-os/policies/complexity-policy.md`) requires it for every
+   ≥3🍎 session regardless of delta. Recorded:
+   `docs/knowledge/metrics/apples/2026-07-16-merge-train-wakeup-gaps.json`.
+3. The stated test counts (8+9=17) were wrong; the actual counts were
+   12+5=17 (now 15+5=20 after the new fallback-step tests). Corrected above.
