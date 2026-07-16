@@ -18,7 +18,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import process from 'node:process';
 
 // ---------------------------------------------------------------------------
@@ -67,12 +67,13 @@ export function isPlaywrightChromiumCached({
   _existsSync = existsSync,
 }) {
   if (!revision) return false;
-  const base = join(cacheDir, `chromium-${revision}`);
+  const path = pathApiFor(cacheDir);
+  const base = path.join(cacheDir, `chromium-${revision}`);
   return (
-    _existsSync(join(base, 'chrome-linux64', 'chrome')) ||
-    _existsSync(join(base, 'chrome-win64', 'chrome.exe')) ||
-    _existsSync(join(base, 'chrome-mac-arm64', 'Chromium.app')) ||
-    _existsSync(join(base, 'chrome-mac-x64', 'Chromium.app'))
+    _existsSync(path.join(base, 'chrome-linux64', 'chrome')) ||
+    _existsSync(path.join(base, 'chrome-win64', 'chrome.exe')) ||
+    _existsSync(path.join(base, 'chrome-mac-arm64', 'Chromium.app')) ||
+    _existsSync(path.join(base, 'chrome-mac-x64', 'Chromium.app'))
   );
 }
 
@@ -119,8 +120,10 @@ export function resolveNodeBin({
   // `resolvedNpm || npmPath`: `defaultRealpathSync` always returns a non-empty
   // string (the original path on error), so the fallback only fires when a
   // test-injected `_realpathSync` returns null/undefined.
-  const npmDir = dirname(resolvedNpm || npmPath);
-  for (const candidate of [join(npmDir, 'node'), join(npmDir, 'node.exe')]) {
+  const resolvedPath = resolvedNpm || npmPath;
+  const path = pathApiFor(resolvedPath);
+  const npmDir = path.dirname(resolvedPath);
+  for (const candidate of [path.join(npmDir, 'node'), path.join(npmDir, 'node.exe')]) {
     if (_existsSync(candidate)) return candidate;
   }
   return '';
@@ -173,6 +176,10 @@ export function formatTimingArtifact(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+function pathApiFor(path) {
+  return path.includes('\\') ? win32 : posix;
+}
 
 function defaultWhich(cmd) {
   // Synchronous PATH search mirroring POSIX `which`/Windows `where`.

@@ -176,6 +176,16 @@ test('resolveNodeBin finds node.exe sibling when node is not on PATH (Windows Gi
   assert.equal(result, 'C:/Program Files/nodejs/node.exe');
 });
 
+test('resolveNodeBin preserves native Windows separators', () => {
+  const result = resolveNodeBin({
+    npmBin: String.raw`C:\Program Files\nodejs\npm.cmd`,
+    _which: () => null,
+    _existsSync: (p) => p === String.raw`C:\Program Files\nodejs\node.exe`,
+    _realpathSync: (p) => p,
+  });
+  assert.equal(result, String.raw`C:\Program Files\nodejs\node.exe`);
+});
+
 test('resolveNodeBin returns empty string when neither node nor npm is found', () => {
   const result = resolveNodeBin({
     _which: () => null,

@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "nightly-balance-issue-filer",
+  "task_title": "Add nightly telemetry balance issue filer",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted exact parsed-YAML workflow assertions and all required fields; benign 422 label-race handling plus post-create duplicate convergence; env/PR/case/cleanup-error/body-equality tests; canonical HUMAN_APPROVAL_LABEL reuse. Architecture remains dedicated injected ESM orchestrator plus existing GitHub/intake helpers."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
