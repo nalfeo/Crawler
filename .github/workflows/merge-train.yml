@@ -6,8 +6,11 @@ on:
   pull_request_target:
     types: [labeled, unlabeled, synchronize, edited, closed, ready_for_review]
   workflow_run:
-    workflows: ['Merge Train Validation']
+    workflows: ['Merge Train Validation', 'CI']
     types: [completed]
+    # Candidate validation is dispatched from main; reject PR and non-main CI
+    # completions before they create a Merge Train workflow run.
+    branches: [main]
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
@@ -25,7 +28,15 @@ permissions:
 
 jobs:
   reconcile:
-    if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
+    if: >-
+      ${{
+        (github.event_name != 'pull_request_target' ||
+        github.event.pull_request.head.repo.full_name == github.repository) &&
+        (github.event_name != 'workflow_run' ||
+        github.event.workflow_run.name != 'CI' ||
+        (github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == github.event.repository.default_branch))
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

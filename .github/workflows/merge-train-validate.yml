@@ -45,6 +45,7 @@ jobs:
     permissions:
       checks: write
       contents: read
+      actions: write
     steps:
       - name: Generate repository app token
         id: app-token
@@ -93,4 +94,20 @@ jobs:
                 title,
                 summary: `PR order: ${process.env.PR_NUMBERS}\nFingerprint: ${process.env.FINGERPRINT}`,
               },
+            });
+
+      # `workflow_run` delivery is best-effort; wake reconciliation after the
+      # immutable result is durable. Must use GITHUB_TOKEN, not the App token:
+      # the App token receives 403 on workflow_dispatch endpoints
+      # (reconcile-lib.mjs buildDispatchBindings uses GITHUB_TOKEN for the same reason).
+      - name: Wake merge-train reconciliation
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'merge-train.yml',
+              ref: context.payload.repository.default_branch,
             });
