@@ -33,6 +33,7 @@
 import { QueueServiceClient, StorageSharedKeyCredential } from '@azure/storage-queue';
 import type { QueueClient } from '@azure/storage-queue';
 import {
+  InvalidAssetRequestMessageError,
   normalizeAssetRequest,
   type AssetQueue,
   type AssetRequest,
@@ -115,8 +116,23 @@ export class AzureStorageQueue implements AssetQueue {
     let request: AssetRequest | null;
     try {
       request = normalizeAssetRequest(JSON.parse(msg.messageText));
-    } catch {
-      // Malformed message: ack it to avoid a poison-pill loop
+    } catch (error) {
+      if (error instanceof InvalidAssetRequestMessageError) {
+        process.stderr.write(
+          `azure-queue: dropping invalid-size queue message: ${error.message}\n`,
+        );
+        try {
+          await this.client.deleteMessage(msg.messageId, msg.popReceipt);
+        } catch (deleteError) {
+          throw new Error(
+            `azure-queue: failed to delete invalid-size message (${error.message}); ` +
+              `delete also failed: ${deleteError instanceof Error ? deleteError.message : String(deleteError)}`,
+            { cause: deleteError },
+          );
+        }
+        return null;
+      }
+      // Malformed JSON or other non-validation errors: ack to avoid poison-pill loop.
       await this.client.deleteMessage(msg.messageId, msg.popReceipt);
       return null;
     }

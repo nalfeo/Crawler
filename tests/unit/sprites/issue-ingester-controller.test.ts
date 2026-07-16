@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AssetRequest } from '../../../scripts/sprites/queue/types.js';
+import { normalizeAssetRequest, type AssetRequest } from '../../../scripts/sprites/queue/types.js';
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
 import {
   ISSUE_STATUS_KEY_PREFIX,
@@ -65,6 +65,40 @@ describe('issue ingester controller', () => {
     await controller.stop();
     expect(enqueued).toHaveLength(1);
     expect(enqueued[0]).toMatchObject({ kind: 'issue-request', issueNumber: 42 });
+  });
+
+  it('persists effective size in the queue message and claim state across controller reloads', async () => {
+    const enqueued: AssetRequest[] = [];
+    const queue = {
+      backend: 'azure-queue' as const,
+      enqueue: async (request: AssetRequest) => void enqueued.push(request),
+      dequeue: async () => null,
+      peek: async () => [],
+    };
+    const store = memStore();
+    const body = `<!-- ${ASSET_REQUEST_MARKER}
+{"version":1,"name":"cactusfolk-boss","briefSentence":"A towering saguaro crime boss.","type":"enemy","sizeVariant":"tall"}
+-->`;
+    const issues = issuesMock({ list: async () => [{ number: 43, body }] });
+    const options = {
+      queue,
+      store,
+      issues,
+      requestedBy: 'test',
+      now: () => new Date('2026-07-16T00:00:00.000Z'),
+    };
+
+    expect((await createIssueIngesterController(options).pollOnce()).enqueued).toBe(1);
+    expect(enqueued[0]).toMatchObject({ kind: 'issue-request', sizeVariant: 'tall' });
+    expect(normalizeAssetRequest(JSON.parse(JSON.stringify(enqueued[0])))).toMatchObject({
+      sizeVariant: 'tall',
+    });
+
+    const reloaded = createIssueIngesterController(options);
+    const status = await reloaded.pollOnce();
+    expect(status.enqueued).toBe(0);
+    expect(status.skippedDuplicate).toBe(1);
+    expect((await reloaded.listRequests('claimed'))[0]).toMatchObject({ sizeVariant: 'tall' });
   });
 
   it('supports permanent reject markers and exposes filtered manifest views', async () => {

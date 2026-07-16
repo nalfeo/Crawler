@@ -7,6 +7,7 @@ import { NoopAssetQueue } from '../../../scripts/sprites/queue/noop-queue.js';
 import { createAssetQueue } from '../../../scripts/sprites/queue/index.js';
 import { AzureStorageQueue } from '../../../scripts/sprites/queue/azure-queue.js';
 import {
+  InvalidAssetRequestMessageError,
   normalizeAssetRequest,
   type BriefPathAssetRequest,
 } from '../../../scripts/sprites/queue/types.js';
@@ -19,9 +20,10 @@ import {
 // ---------------------------------------------------------------------------
 const azureSdkMock = vi.hoisted(() => {
   const receiveMessages = vi.fn(async () => ({ receivedMessageItems: [] as unknown[] }));
-  const getQueueClient = vi.fn(() => ({ receiveMessages }));
+  const deleteMessage = vi.fn(async () => undefined);
+  const getQueueClient = vi.fn(() => ({ receiveMessages, deleteMessage }));
   const fromConnectionString = vi.fn(() => ({ getQueueClient }));
-  return { receiveMessages, getQueueClient, fromConnectionString };
+  return { receiveMessages, deleteMessage, getQueueClient, fromConnectionString };
 });
 
 vi.mock('@azure/storage-queue', () => {
@@ -175,6 +177,58 @@ describe('normalizeAssetRequest', () => {
     });
     expect(result).toMatchObject({ type: 'weapon' });
   });
+
+  it('round-trips an explicit size variant through queue JSON persistence', () => {
+    const persisted = JSON.stringify({
+      kind: 'issue-request',
+      issueNumber: 42,
+      name: 'beetlefolk-boss',
+      briefSentence: 'A broad low beetlefolk crime boss.',
+      sizeVariant: 'wide',
+      fingerprint: 'abc',
+      claimedAt: '2026-06-10T00:00:00.000Z',
+      requestedBy: 'test',
+      requestedAt: '2026-06-10T00:00:00.000Z',
+      priority: 'normal',
+    });
+    expect(normalizeAssetRequest(JSON.parse(persisted))).toMatchObject({
+      kind: 'issue-request',
+      sizeVariant: 'wide',
+    });
+  });
+
+  it('keeps legacy issue queue entries without size readable', () => {
+    const result = normalizeAssetRequest({
+      kind: 'issue-request',
+      issueNumber: 42,
+      name: 'batfolk-boss',
+      briefSentence: 'An aristocratic batfolk crime boss.',
+      fingerprint: 'legacy',
+      claimedAt: '2026-06-10T00:00:00.000Z',
+      requestedBy: 'test',
+      requestedAt: '2026-06-10T00:00:00.000Z',
+      priority: 'normal',
+    });
+    expect(result).toMatchObject({ kind: 'issue-request', fingerprint: 'legacy' });
+    if (result?.kind === 'issue-request') expect(result.sizeVariant).toBeUndefined();
+  });
+
+  it('throws a clear validation error for an invalid persisted size', () => {
+    expect(() =>
+      normalizeAssetRequest({
+        kind: 'issue-request',
+        issueNumber: 42,
+        name: 'batfolk-boss',
+        briefSentence: 'An aristocratic batfolk crime boss.',
+        sizeVariant: 'huge',
+        fingerprint: 'abc',
+        claimedAt: '2026-06-10T00:00:00.000Z',
+        requestedBy: 'test',
+        requestedAt: '2026-06-10T00:00:00.000Z',
+        priority: 'normal',
+      }),
+    ).toThrowError(InvalidAssetRequestMessageError);
+  });
 });
 
 describe('createAssetQueue factory', () => {
@@ -291,5 +345,96 @@ describe('AzureStorageQueue visibility timeout', () => {
     expect(azureSdkMock.receiveMessages).toHaveBeenCalledWith(
       expect.objectContaining({ visibilityTimeout: 450 }),
     );
+  });
+});
+
+describe('AzureStorageQueue dequeue — invalid-size message handling', () => {
+  const invalidSizeMessage = JSON.stringify({
+    kind: 'issue-request',
+    issueNumber: 42,
+    name: 'batfolk-boss',
+    briefSentence: 'An aristocratic batfolk crime boss.',
+    sizeVariant: 'huge',
+    fingerprint: 'abc',
+    claimedAt: '2026-06-10T00:00:00.000Z',
+    requestedBy: 'test',
+    requestedAt: '2026-06-10T00:00:00.000Z',
+    priority: 'normal',
+  });
+
+  beforeEach(() => {
+    azureSdkMock.receiveMessages.mockClear();
+    azureSdkMock.deleteMessage.mockClear();
+  });
+
+  it('writes a diagnostic to stderr, deletes the message, and returns null for InvalidAssetRequestMessageError', async () => {
+    const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    azureSdkMock.receiveMessages.mockResolvedValueOnce({
+      receivedMessageItems: [
+        {
+          messageId: 'msg-1',
+          popReceipt: 'pop-1',
+          messageText: invalidSizeMessage,
+          dequeueCount: 1,
+        },
+      ],
+    });
+
+    const q = AzureStorageQueue.fromOptions({
+      accountName: 'myaccount',
+      accountKey: 'dGVzdA==',
+    });
+    const result = await q.dequeue();
+
+    expect(result).toBeNull();
+    expect(azureSdkMock.deleteMessage).toHaveBeenCalledWith('msg-1', 'pop-1');
+    expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('invalid-size'));
+    expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('huge'));
+    stderrWrite.mockRestore();
+  });
+
+  it('throws a combined error when deleteMessage also fails after InvalidAssetRequestMessageError', async () => {
+    const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    azureSdkMock.receiveMessages.mockResolvedValueOnce({
+      receivedMessageItems: [
+        {
+          messageId: 'msg-2',
+          popReceipt: 'pop-2',
+          messageText: invalidSizeMessage,
+          dequeueCount: 1,
+        },
+      ],
+    });
+    azureSdkMock.deleteMessage.mockRejectedValueOnce(new Error('queue unavailable'));
+
+    const q = AzureStorageQueue.fromOptions({
+      accountName: 'myaccount',
+      accountKey: 'dGVzdA==',
+    });
+
+    await expect(q.dequeue()).rejects.toThrow(/queue unavailable/);
+    stderrWrite.mockRestore();
+  });
+
+  it('returns null and deletes the message for malformed JSON (preserves existing behavior)', async () => {
+    azureSdkMock.receiveMessages.mockResolvedValueOnce({
+      receivedMessageItems: [
+        {
+          messageId: 'msg-3',
+          popReceipt: 'pop-3',
+          messageText: '{not valid json',
+          dequeueCount: 1,
+        },
+      ],
+    });
+
+    const q = AzureStorageQueue.fromOptions({
+      accountName: 'myaccount',
+      accountKey: 'dGVzdA==',
+    });
+    const result = await q.dequeue();
+
+    expect(result).toBeNull();
+    expect(azureSdkMock.deleteMessage).toHaveBeenCalledWith('msg-3', 'pop-3');
   });
 });

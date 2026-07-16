@@ -1,5 +1,6 @@
-import { fingerprintAssetRequest, parseAssetRequestIssueBody } from '../asset-request.js';
+import { parseAssetRequestIssueBody } from '../asset-request.js';
 import type { AssetQueue, IssueAssetRequest } from '../queue/types.js';
+import { isSizeVariant, type SizeVariant } from '../size-variants.js';
 import type { RunStore } from '../store/types.js';
 import type { AssetRequestIssueApi, OpenAssetRequestIssue } from './asset-request-issue-api.js';
 
@@ -45,6 +46,7 @@ interface IngestState {
       claimedAt: string;
       name: string;
       briefSentence: string;
+      sizeVariant?: SizeVariant;
     }
   >;
   readonly rejected: Record<
@@ -56,6 +58,7 @@ interface IngestState {
       reason: string | null;
       name: string;
       briefSentence: string;
+      sizeVariant?: SizeVariant;
     }
   >;
 }
@@ -126,6 +129,7 @@ export interface AssetRequestManifestEntry {
   readonly fingerprint: string;
   readonly name: string;
   readonly briefSentence: string;
+  readonly sizeVariant?: SizeVariant;
   readonly state: 'pending' | 'claimed' | 'rejected';
   readonly claimedAt: string | null;
   readonly rejectedAt: string | null;
@@ -137,6 +141,7 @@ export interface EnqueueCommentContext {
   readonly issueNumber: number;
   readonly name: string;
   readonly briefSentence: string;
+  readonly sizeVariant?: SizeVariant;
   readonly fingerprint: string;
   readonly claimedAt: string;
   /** True iff a prior stale claim was dropped and this is a re-enqueue. */
@@ -287,6 +292,7 @@ export function createIssueIngesterController(
           claimedAt: row.claimedAt,
           name: typeof row.name === 'string' ? row.name : '',
           briefSentence: typeof row.briefSentence === 'string' ? row.briefSentence : '',
+          ...(isSizeVariant(row.sizeVariant) ? { sizeVariant: row.sizeVariant } : {}),
         };
       }
       const rejected: IngestState['rejected'] = {};
@@ -311,6 +317,7 @@ export function createIssueIngesterController(
             typeof row.reason === 'string' && row.reason.trim() !== '' ? row.reason.trim() : null,
           name: typeof row.name === 'string' ? row.name : '',
           briefSentence: typeof row.briefSentence === 'string' ? row.briefSentence : '',
+          ...(isSizeVariant(row.sizeVariant) ? { sizeVariant: row.sizeVariant } : {}),
         };
       }
       return { version: 2, claims, rejected };
@@ -408,11 +415,7 @@ export function createIssueIngesterController(
       for (const issue of issuesToProcess) {
         const payload = parseAssetRequestIssueBody(issue.body);
         if (!payload) continue;
-        const fingerprint = fingerprintAssetRequest(
-          payload.name,
-          payload.briefSentence,
-          payload.floor,
-        );
+        const fingerprint = payload.fingerprint;
         const key = claimKey(issue.number, fingerprint);
         if (state.rejected[key]) {
           skippedDuplicate += 1;
@@ -459,6 +462,7 @@ export function createIssueIngesterController(
           payload.floor <= 20
             ? { floor: payload.floor }
             : {}),
+          ...(payload.sizeVariant ? { sizeVariant: payload.sizeVariant } : {}),
           fingerprint,
           claimedAt,
           requestedBy: options.requestedBy,
@@ -472,6 +476,7 @@ export function createIssueIngesterController(
           claimedAt,
           name: payload.name,
           briefSentence: payload.briefSentence,
+          ...(payload.sizeVariant ? { sizeVariant: payload.sizeVariant } : {}),
         };
         enqueued += 1;
         // Persist immediately (not batched at loop end) so a committed enqueue
@@ -485,6 +490,7 @@ export function createIssueIngesterController(
             issueNumber: issue.number,
             name: payload.name,
             briefSentence: payload.briefSentence,
+            ...(payload.sizeVariant ? { sizeVariant: payload.sizeVariant } : {}),
             fingerprint,
             claimedAt,
             reclaimed,
@@ -577,6 +583,7 @@ export function createIssueIngesterController(
             fingerprint: payload.fingerprint,
             name: payload.name,
             briefSentence: payload.briefSentence,
+            ...(payload.sizeVariant ? { sizeVariant: payload.sizeVariant } : {}),
             state: rejected ? 'rejected' : claimed ? 'claimed' : 'pending',
             claimedAt: claimed?.claimedAt ?? null,
             rejectedAt: rejected?.rejectedAt ?? null,
@@ -593,6 +600,7 @@ export function createIssueIngesterController(
               fingerprint: rejected.fingerprint,
               name: rejected.name,
               briefSentence: rejected.briefSentence,
+              ...(rejected.sizeVariant ? { sizeVariant: rejected.sizeVariant } : {}),
               state: 'rejected',
               claimedAt: null,
               rejectedAt: rejected.rejectedAt,
@@ -627,6 +635,7 @@ export function createIssueIngesterController(
 
         let name = '';
         let briefSentence = '';
+        let sizeVariant: SizeVariant | undefined;
         const open = await options.issues.listOpenAssetRequestIssues();
         for (const issue of open) {
           if (issue.number !== issueNumber) continue;
@@ -634,6 +643,7 @@ export function createIssueIngesterController(
           if (!payload || payload.fingerprint !== fingerprint) continue;
           name = payload.name;
           briefSentence = payload.briefSentence;
+          sizeVariant = payload.sizeVariant;
           break;
         }
         const existingClaim = ingestState.claims[key];
@@ -644,6 +654,8 @@ export function createIssueIngesterController(
           briefSentence !== ''
             ? briefSentence
             : (existingRejected?.briefSentence ?? existingClaim?.briefSentence ?? '');
+        const resolvedSizeVariant =
+          sizeVariant ?? existingRejected?.sizeVariant ?? existingClaim?.sizeVariant;
         ingestState.rejected[key] = {
           issueNumber,
           fingerprint,
@@ -651,6 +663,7 @@ export function createIssueIngesterController(
           reason,
           name: resolvedName,
           briefSentence: resolvedBriefSentence,
+          ...(resolvedSizeVariant ? { sizeVariant: resolvedSizeVariant } : {}),
         };
         delete ingestState.claims[key];
         await saveState(ingestState);
@@ -660,6 +673,9 @@ export function createIssueIngesterController(
           fingerprint,
           name: ingestState.rejected[key]!.name,
           briefSentence: ingestState.rejected[key]!.briefSentence,
+          ...(ingestState.rejected[key]!.sizeVariant
+            ? { sizeVariant: ingestState.rejected[key]!.sizeVariant }
+            : {}),
           state: 'rejected',
           claimedAt: null,
           rejectedAt: ingestState.rejected[key]!.rejectedAt,

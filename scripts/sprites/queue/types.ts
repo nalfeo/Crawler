@@ -11,6 +11,7 @@
  */
 
 import { SPRITE_TYPES } from '../brief-schema.js';
+import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
 
 export interface AssetRequestBase {
   /** `brief.name` slug (e.g. `'iron-sword'`). */
@@ -43,7 +44,9 @@ export interface IssueAssetRequest extends AssetRequestBase {
   readonly type?: string;
   /** Optional dungeon floor intensity. Defaults to 1 downstream. */
   readonly floor?: number;
-  /** Stable hash of normalized issue payload (`name + briefSentence`, plus `floor` when floor > 1). */
+  /** Effective size variant. Missing legacy entries are resolved by the issue pipeline. */
+  readonly sizeVariant?: SizeVariant;
+  /** Stable hash of normalized issue payload, explicit size, and non-baseline floor. */
   readonly fingerprint: string;
   /** ISO-8601 timestamp when the ingester claimed/enqueued this issue payload. */
   readonly claimedAt: string;
@@ -51,6 +54,10 @@ export interface IssueAssetRequest extends AssetRequestBase {
 
 /** A request to generate sprites for a specific brief or issue-originated job. */
 export type AssetRequest = BriefPathAssetRequest | IssueAssetRequest;
+
+export class InvalidAssetRequestMessageError extends Error {
+  override readonly name = 'InvalidAssetRequestMessageError';
+}
 
 /**
  * Back-compat parser:
@@ -85,6 +92,11 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
     ) {
       return null;
     }
+    if ('sizeVariant' in v && v.sizeVariant !== undefined && !isSizeVariant(v.sizeVariant)) {
+      throw new InvalidAssetRequestMessageError(
+        `Invalid persisted asset-request size '${String(v.sizeVariant)}'. Expected one of ${SIZE_VARIANTS.join(', ')}.`,
+      );
+    }
     return {
       kind: 'issue-request',
       issueNumber: v.issueNumber,
@@ -98,6 +110,7 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
       ...(typeof v.floor === 'number' && Number.isInteger(v.floor) && v.floor >= 1 && v.floor <= 20
         ? { floor: v.floor }
         : {}),
+      ...(isSizeVariant(v.sizeVariant) ? { sizeVariant: v.sizeVariant } : {}),
       fingerprint: v.fingerprint,
       claimedAt: v.claimedAt,
       requestedBy: v.requestedBy,
