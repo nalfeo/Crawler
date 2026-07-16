@@ -117,7 +117,7 @@ _write_timing_artifact() {
 # ===========================================================================
 # Portable node binary resolution
 # On Git Bash for Windows, 'node' is often absent from the shell PATH even
-# though npm/npx work fine (they use .cmd wrappers). Look for node next to
+# though npm is available via a .cmd wrapper. Look for node next to
 # the npm binary as a fallback so the memory-seed step can run.
 # ===========================================================================
 _resolve_node_bin() {

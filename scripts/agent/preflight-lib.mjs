@@ -4,7 +4,7 @@
  *
  * Provides testable JS implementations of the cache-detection and
  * node-resolution logic that `preflight.sh` also implements in bash.
- * Kept as a pure utility module (no side-effects on import) so the
+ * Kept as a pure utility module (no side effects on import) so the
  * functions can be unit-tested without touching the filesystem.
  *
  * Exports
@@ -32,7 +32,7 @@ import process from 'node:process';
  * Returns the numeric revision string (e.g. `"1223"`) or `null` when the
  * manifest is absent or cannot be parsed.
  *
- * @param {string} repoRoot  — absolute path to the repository root
+ * @param {string} repoRoot - absolute path to the repository root
  * @returns {string | null}
  */
 export function getPlaywrightChromiumRevision(repoRoot) {
@@ -93,13 +93,13 @@ export function isPlaywrightChromiumCached({
  * processes.
  *
  * @param {{
- *   npmBin?: string | null;   explicit path to the npm binary (default: search PATH)
+ *   npmBin?: string | null; // explicit path to the npm binary (default: search PATH)
  *   _which?: (cmd:string) => string | null;
  *   _existsSync?: (p:string) => boolean;
  *   _realpathSync?: (p:string) => string;
  * }} opts
- * @returns {string}  the `node` command name when found on PATH; absolute path otherwise;
- *                    `""` when node cannot be located at all.
+ * @returns {string} The `node` command name when found on PATH, absolute path otherwise,
+ *                   or empty string when node cannot be located.
  */
 export function resolveNodeBin({
   npmBin = null,
@@ -116,10 +116,9 @@ export function resolveNodeBin({
   if (!npmPath) return '';
 
   const resolvedNpm = _realpathSync(npmPath);
-  // `|| npmPath` is a defensive fallback for test-injected `_realpathSync`
-  // implementations that might return null/undefined.  The production
-  // `defaultRealpathSync` always returns a non-empty string (the original
-  // path on error), so the fallback only fires in test scenarios.
+  // `resolvedNpm || npmPath`: `defaultRealpathSync` always returns a non-empty
+  // string (the original path on error), so the fallback only fires when a
+  // test-injected `_realpathSync` returns null/undefined.
   const npmDir = dirname(resolvedNpm || npmPath);
   for (const candidate of [join(npmDir, 'node'), join(npmDir, 'node.exe')]) {
     if (_existsSync(candidate)) return candidate;
