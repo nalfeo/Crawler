@@ -63,6 +63,8 @@ export interface ParsedAssetRequestIssue {
   /** Effective requested size. Omitted for ordinary default-sized requests. */
   readonly sizeVariant?: SizeVariant;
   readonly fingerprint: string;
+  /** Pre-type-aware identity retained only for legacy claim/rejection lookups. */
+  readonly legacyFingerprint?: string;
 }
 
 export class AssetRequestValidationError extends Error {
@@ -96,6 +98,19 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
           (isBossAssetRequest(parsed.name, parsed.briefSentence, parsed.type)
             ? 'large'
             : undefined);
+        const legacyFingerprint = fingerprintAssetRequest(
+          parsed.name,
+          parsed.briefSentence,
+          parsed.floor,
+          explicitSizeVariant,
+        );
+        const fingerprint = fingerprintParsedAssetRequest({
+          name: parsed.name,
+          briefSentence: parsed.briefSentence,
+          type: parsed.type,
+          floor: parsed.floor,
+          explicitSizeVariant,
+        });
         // Machine-authored marker payload: preserve `briefSentence` verbatim so
         // the machine contract stays byte-stable for the downstream prompt. The
         // fingerprint collapses whitespace internally, so a marker payload and
@@ -106,12 +121,8 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
           type: parsed.type && parsed.type.trim() !== '' ? parsed.type : undefined,
           floor: parsed.floor,
           ...(effectiveSizeVariant ? { sizeVariant: effectiveSizeVariant } : {}),
-          fingerprint: fingerprintAssetRequest(
-            parsed.name,
-            parsed.briefSentence,
-            parsed.floor,
-            explicitSizeVariant,
-          ),
+          fingerprint,
+          ...(fingerprint !== legacyFingerprint ? { legacyFingerprint } : {}),
         };
       }
     }
@@ -120,14 +131,23 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
   const fallback = parseIssueFormBody(normalizedBody);
   if (!fallback) return null;
   const { explicitSizeVariant, ...request } = fallback;
+  const legacyFingerprint = fingerprintAssetRequest(
+    fallback.name,
+    fallback.briefSentence,
+    fallback.floor,
+    explicitSizeVariant,
+  );
+  const fingerprint = fingerprintParsedAssetRequest({
+    name: fallback.name,
+    briefSentence: fallback.briefSentence,
+    type: fallback.type,
+    floor: fallback.floor,
+    explicitSizeVariant,
+  });
   return {
     ...request,
-    fingerprint: fingerprintAssetRequest(
-      fallback.name,
-      fallback.briefSentence,
-      fallback.floor,
-      explicitSizeVariant,
-    ),
+    fingerprint,
+    ...(fingerprint !== legacyFingerprint ? { legacyFingerprint } : {}),
   };
 }
 
@@ -142,6 +162,29 @@ export function fingerprintAssetRequest(
     (floor === 1 ? '' : `\nfloor:${floor}`) +
     (explicitSizeVariant === undefined ? '' : `\nsize:${explicitSizeVariant}`);
   return createHash('sha256').update(normalized).digest('hex');
+}
+
+function fingerprintParsedAssetRequest(input: {
+  readonly name: string;
+  readonly briefSentence: string;
+  readonly type?: string;
+  readonly floor?: number;
+  readonly explicitSizeVariant?: SizeVariant;
+}): string {
+  const legacyFingerprint = fingerprintAssetRequest(
+    input.name,
+    input.briefSentence,
+    input.floor,
+    input.explicitSizeVariant,
+  );
+  if (input.explicitSizeVariant !== undefined) return legacyFingerprint;
+  const normalizedType = input.type?.trim().toLowerCase();
+  if (!normalizedType) return legacyFingerprint;
+  const typeAffectsBossInference =
+    isBossAssetRequest(input.name, input.briefSentence, normalizedType) !==
+    isBossAssetRequest(input.name, input.briefSentence);
+  if (!typeAffectsBossInference) return legacyFingerprint;
+  return createHash('sha256').update(`${legacyFingerprint}\ntype:${normalizedType}`).digest('hex');
 }
 
 /**

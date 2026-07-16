@@ -285,6 +285,19 @@ describe('parseAssetRequestIssueBody', () => {
     expect(parsed?.fingerprint).toBe(fingerprintAssetRequest('batfolk-boss', brief, 2));
   });
 
+  it('changes fingerprint when explicit enemy type is the only boss-size signal', () => {
+    const brief = 'An aristocratic batfolk crime boss with folded cloak-like wings.';
+    const omitted = parseAssetRequestIssueBody(formBody({ name: 'countess-vesper', brief }));
+    const typed = parseAssetRequestIssueBody(
+      formBody({ name: 'countess-vesper', brief, type: 'enemy' }),
+    );
+
+    expect(omitted?.sizeVariant).toBeUndefined();
+    expect(typed?.sizeVariant).toBe('large');
+    expect(typed?.fingerprint).not.toBe(omitted?.fingerprint);
+    expect(typed?.legacyFingerprint).toBe(omitted?.fingerprint);
+  });
+
   it.each(['wide', 'tall', 'large', 'default'] as const)(
     'preserves an explicit %s size override for a boss request',
     (sizeVariant) => {

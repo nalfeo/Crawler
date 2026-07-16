@@ -5,7 +5,10 @@ import {
   ISSUE_STATUS_KEY_PREFIX,
   createIssueIngesterController,
 } from '../../../scripts/sprites/sidecar/issue-ingester-controller.js';
-import { ASSET_REQUEST_MARKER } from '../../../scripts/sprites/asset-request.js';
+import {
+  ASSET_REQUEST_MARKER,
+  fingerprintAssetRequest,
+} from '../../../scripts/sprites/asset-request.js';
 import type { OpenAssetRequestIssue } from '../../../scripts/sprites/sidecar/asset-request-issue-api.js';
 
 function memStore(): RunStore {
@@ -39,6 +42,19 @@ function issuesMock(
     getIssue: overrides.get ?? (async () => null),
     comment: overrides.comment ?? (async () => {}),
   };
+}
+
+async function seedIngestState(
+  store: RunStore,
+  state: {
+    readonly claims?: Record<string, unknown>;
+    readonly rejected?: Record<string, unknown>;
+  },
+): Promise<void> {
+  await store.put(
+    'workflow-state/asset-request-ingest.json',
+    Buffer.from(`${JSON.stringify({ version: 2, claims: {}, rejected: {}, ...state }, null, 2)}\n`),
+  );
 }
 
 describe('issue ingester controller', () => {
@@ -99,6 +115,95 @@ describe('issue ingester controller', () => {
     expect(status.enqueued).toBe(0);
     expect(status.skippedDuplicate).toBe(1);
     expect((await reloaded.listRequests('claimed'))[0]).toMatchObject({ sizeVariant: 'tall' });
+  });
+
+  it('treats a matching legacy claim as already claimed after the type-aware fingerprint upgrade', async () => {
+    const queue = {
+      backend: 'azure-queue' as const,
+      enqueue: async () => {
+        throw new Error('should not enqueue duplicate legacy claim');
+      },
+      dequeue: async () => null,
+      peek: async () => [],
+    };
+    const store = memStore();
+    const brief = 'An aristocratic batfolk crime boss with folded cloak-like wings.';
+    const legacyFingerprint = fingerprintAssetRequest('countess-vesper', brief);
+    await seedIngestState(store, {
+      claims: {
+        [`50:${legacyFingerprint}`]: {
+          issueNumber: 50,
+          fingerprint: legacyFingerprint,
+          claimedAt: '2026-07-16T00:00:00.000Z',
+          name: 'countess-vesper',
+          briefSentence: brief,
+          sizeVariant: 'large',
+        },
+      },
+    });
+    const body = `<!-- ${ASSET_REQUEST_MARKER}
+{"version":1,"name":"countess-vesper","briefSentence":"${brief}","type":"enemy"}
+-->`;
+    const controller = createIssueIngesterController({
+      queue,
+      store,
+      issues: issuesMock({ list: async () => [{ number: 50, body }] }),
+      requestedBy: 'test',
+      now: () => new Date('2026-07-16T01:00:00.000Z'),
+    });
+
+    const status = await controller.pollOnce();
+    expect(status.enqueued).toBe(0);
+    expect(status.skippedDuplicate).toBe(1);
+    expect((await controller.listRequests('claimed'))[0]).toMatchObject({
+      issueNumber: 50,
+      sizeVariant: 'large',
+    });
+    expect((await controller.listRequests('claimed'))[0]?.fingerprint).not.toBe(legacyFingerprint);
+  });
+
+  it('re-enqueues when a legacy claim no longer matches the request semantics', async () => {
+    const enqueued: AssetRequest[] = [];
+    const queue = {
+      backend: 'azure-queue' as const,
+      enqueue: async (request: AssetRequest) => void enqueued.push(request),
+      dequeue: async () => null,
+      peek: async () => [],
+    };
+    const store = memStore();
+    const brief = 'An aristocratic batfolk crime boss with folded cloak-like wings.';
+    const legacyFingerprint = fingerprintAssetRequest('countess-vesper', brief);
+    await seedIngestState(store, {
+      claims: {
+        [`51:${legacyFingerprint}`]: {
+          issueNumber: 51,
+          fingerprint: legacyFingerprint,
+          claimedAt: '2026-07-16T00:00:00.000Z',
+          name: 'countess-vesper',
+          briefSentence: brief,
+        },
+      },
+    });
+    const body = `<!-- ${ASSET_REQUEST_MARKER}
+{"version":1,"name":"countess-vesper","briefSentence":"${brief}","type":"enemy"}
+-->`;
+    const controller = createIssueIngesterController({
+      queue,
+      store,
+      issues: issuesMock({ list: async () => [{ number: 51, body }] }),
+      requestedBy: 'test',
+      now: () => new Date('2026-07-16T01:00:00.000Z'),
+    });
+
+    const status = await controller.pollOnce();
+    expect(status.enqueued).toBe(1);
+    expect(status.skippedDuplicate).toBe(0);
+    expect(enqueued[0]).toMatchObject({
+      kind: 'issue-request',
+      issueNumber: 51,
+      sizeVariant: 'large',
+    });
+    expect((enqueued[0] as { fingerprint: string }).fingerprint).not.toBe(legacyFingerprint);
   });
 
   it('supports permanent reject markers and exposes filtered manifest views', async () => {

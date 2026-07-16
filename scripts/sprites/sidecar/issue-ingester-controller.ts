@@ -1,4 +1,4 @@
-import { parseAssetRequestIssueBody } from '../asset-request.js';
+import { parseAssetRequestIssueBody, type ParsedAssetRequestIssue } from '../asset-request.js';
 import type { AssetQueue, IssueAssetRequest } from '../queue/types.js';
 import { isSizeVariant, type SizeVariant } from '../size-variants.js';
 import type { RunStore } from '../store/types.js';
@@ -255,6 +255,34 @@ export function createIssueIngesterController(
   const claimKey = (issueNumber: number, fingerprint: string): string =>
     `${issueNumber}:${fingerprint}`;
 
+  const sameRequestSemantics = (
+    row: IngestState['claims'][string] | IngestState['rejected'][string] | undefined,
+    payload: ParsedAssetRequestIssue,
+  ): boolean =>
+    row !== undefined &&
+    row.name === payload.name &&
+    row.briefSentence === payload.briefSentence &&
+    row.sizeVariant === payload.sizeVariant;
+
+  const matchingStateRow = <T extends IngestState['claims'] | IngestState['rejected']>(
+    table: T,
+    issueNumber: number,
+    payload: ParsedAssetRequestIssue,
+  ): { readonly key: string; readonly row: T[string] | undefined } => {
+    const key = claimKey(issueNumber, payload.fingerprint);
+    const current = table[key];
+    if (current) return { key, row: current };
+    if (
+      payload.legacyFingerprint &&
+      payload.legacyFingerprint !== payload.fingerprint &&
+      sameRequestSemantics(table[claimKey(issueNumber, payload.legacyFingerprint)], payload)
+    ) {
+      const legacyKey = claimKey(issueNumber, payload.legacyFingerprint);
+      return { key: legacyKey, row: table[legacyKey] };
+    }
+    return { key, row: undefined };
+  };
+
   async function loadState(): Promise<IngestState> {
     if (!(await options.store.has(INGEST_STATE_KEY))) {
       return { version: 2, claims: {}, rejected: {} };
@@ -417,12 +445,14 @@ export function createIssueIngesterController(
         if (!payload) continue;
         const fingerprint = payload.fingerprint;
         const key = claimKey(issue.number, fingerprint);
-        if (state.rejected[key]) {
+        const rejectedMatch = matchingStateRow(state.rejected, issue.number, payload);
+        if (rejectedMatch.row) {
           skippedDuplicate += 1;
           continue;
         }
         let reclaimed = false;
-        const existingClaim = state.claims[key];
+        const claimMatch = matchingStateRow(state.claims, issue.number, payload);
+        const existingClaim = claimMatch.row;
         if (existingClaim) {
           const shouldReclaim =
             typeof options.staleClaimTtlMs === 'number' &&
@@ -440,7 +470,7 @@ export function createIssueIngesterController(
             skippedDuplicate += 1;
             continue;
           }
-          delete state.claims[key];
+          delete state.claims[claimMatch.key];
           reclaimedStale += 1;
           reclaimed = true;
           // The in-memory delete is only persisted by the per-issue saveState
@@ -571,12 +601,15 @@ export function createIssueIngesterController(
         const ingestState = await loadState();
         const open = await options.issues.listOpenAssetRequestIssues();
         const out = new Map<string, AssetRequestManifestEntry>();
+        const matchedRejectedKeys = new Set<string>();
         for (const issue of open) {
           const payload = parseAssetRequestIssueBody(issue.body);
           if (!payload) continue;
           const key = claimKey(issue.number, payload.fingerprint);
-          const claimed = ingestState.claims[key];
-          const rejected = ingestState.rejected[key];
+          const claimed = matchingStateRow(ingestState.claims, issue.number, payload).row;
+          const rejectedMatch = matchingStateRow(ingestState.rejected, issue.number, payload);
+          const rejected = rejectedMatch.row;
+          if (rejected) matchedRejectedKeys.add(rejectedMatch.key);
           out.set(key, {
             key,
             issueNumber: issue.number,
@@ -593,7 +626,7 @@ export function createIssueIngesterController(
         }
         if (state === 'all' || state === 'rejected') {
           for (const [key, rejected] of Object.entries(ingestState.rejected)) {
-            if (out.has(key)) continue;
+            if (out.has(key) || matchedRejectedKeys.has(key)) continue;
             out.set(key, {
               key,
               issueNumber: rejected.issueNumber,
@@ -625,13 +658,12 @@ export function createIssueIngesterController(
     async rejectRequest(input) {
       return withStateLock(async () => {
         const issueNumber = input.issueNumber;
-        const fingerprint = input.fingerprint;
+        let fingerprint = input.fingerprint;
         const reason =
           typeof input.reason === 'string' && input.reason.trim() !== ''
             ? input.reason.trim()
             : null;
         const ingestState = await loadState();
-        const key = claimKey(issueNumber, fingerprint);
 
         let name = '';
         let briefSentence = '';
@@ -640,22 +672,41 @@ export function createIssueIngesterController(
         for (const issue of open) {
           if (issue.number !== issueNumber) continue;
           const payload = parseAssetRequestIssueBody(issue.body);
-          if (!payload || payload.fingerprint !== fingerprint) continue;
+          if (!payload) continue;
+          const matchedCurrent = payload.fingerprint === fingerprint;
+          const matchedLegacy = payload.legacyFingerprint === fingerprint;
+          if (!matchedCurrent && !matchedLegacy) continue;
           name = payload.name;
           briefSentence = payload.briefSentence;
           sizeVariant = payload.sizeVariant;
+          fingerprint = payload.fingerprint;
           break;
         }
-        const existingClaim = ingestState.claims[key];
-        const existingRejected = ingestState.rejected[key];
+        const key = claimKey(issueNumber, fingerprint);
+        const payloadForStateMatch =
+          name !== '' && briefSentence !== ''
+            ? ({ name, briefSentence, sizeVariant, fingerprint } as ParsedAssetRequestIssue)
+            : undefined;
+        const existingClaim = payloadForStateMatch
+          ? matchingStateRow(ingestState.claims, issueNumber, payloadForStateMatch)
+          : { key, row: ingestState.claims[key] };
+        const existingRejected = payloadForStateMatch
+          ? matchingStateRow(ingestState.rejected, issueNumber, payloadForStateMatch)
+          : { key, row: ingestState.rejected[key] };
         const resolvedName =
-          name !== '' ? name : (existingRejected?.name ?? existingClaim?.name ?? '');
+          name !== '' ? name : (existingRejected.row?.name ?? existingClaim.row?.name ?? '');
         const resolvedBriefSentence =
           briefSentence !== ''
             ? briefSentence
-            : (existingRejected?.briefSentence ?? existingClaim?.briefSentence ?? '');
+            : (existingRejected.row?.briefSentence ?? existingClaim.row?.briefSentence ?? '');
         const resolvedSizeVariant =
-          sizeVariant ?? existingRejected?.sizeVariant ?? existingClaim?.sizeVariant;
+          sizeVariant ?? existingRejected.row?.sizeVariant ?? existingClaim.row?.sizeVariant;
+        if (existingClaim.row && existingClaim.key !== key) {
+          delete ingestState.claims[existingClaim.key];
+        }
+        if (existingRejected.row && existingRejected.key !== key) {
+          delete ingestState.rejected[existingRejected.key];
+        }
         ingestState.rejected[key] = {
           issueNumber,
           fingerprint,
@@ -684,7 +735,9 @@ export function createIssueIngesterController(
             open.find((issue) => {
               if (issue.number !== issueNumber) return false;
               const payload = parseAssetRequestIssueBody(issue.body);
-              return payload?.fingerprint === fingerprint;
+              return (
+                payload?.fingerprint === fingerprint || payload?.legacyFingerprint === fingerprint
+              );
             }) !== undefined,
         };
       });
