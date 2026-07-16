@@ -513,7 +513,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     worldSeed: currentSeed,
     postSystems: [...base.postSystems, aiAutoDriverSystem],
     autoLevelUpAllocator: (world: GameWorld, playerEid: number, available: number) =>
-      manualControl ? null : computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas),
+      manualControl
+        ? null
+        : computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas),
     sessionRecorderFactory: recorderControls.factory,
   });
 
