@@ -29,6 +29,31 @@ describe('runHeadless enemyTelegraphMs validation', () => {
     ).rejects.toThrow(/enemyTelegraphMs/);
   });
 
+  it('rejects a tiny nonzero value that would underflow to 0 in the Float32 telegraphDelayMs store (regression: copilot-pull-request-reviewer finding)', async () => {
+    // `Math.fround(1e-50) === 0`: a delay this small survives the finite and
+    // overflow checks unchanged, but once written to the Float32Array store
+    // it becomes byte-identical to an intentional, legitimate "legacy: no
+    // telegraph" `0` override -- silently degrading a configured nonzero
+    // delay into immediate-fire/no-telegraph behavior. Must be rejected at
+    // config-validation time, same as overflow.
+    await expect(
+      runHeadless(new BehaviorTreeAI({ seed: 1 }), {
+        seed: 1,
+        enemyTelegraphMs: 1e-50,
+        maxFrames: 1,
+      }),
+    ).rejects.toThrow(/enemyTelegraphMs/);
+  });
+
+  it('accepts an explicit 0 (legitimate legacy parity, distinct from underflow)', async () => {
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 1 }), {
+      seed: 1,
+      enemyTelegraphMs: 0,
+      maxFrames: 1,
+    });
+    expect(stats).toBeDefined();
+  });
+
   it('accepts a normal, well within range telegraph delay', async () => {
     const stats = await runHeadless(new BehaviorTreeAI({ seed: 1 }), {
       seed: 1,
