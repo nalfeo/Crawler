@@ -27,10 +27,11 @@ review-harness stages required at this tier.
   to an explicit allowlist of the two equivalent default-token expressions
   (`${{ secrets.GITHUB_TOKEN }}` / `${{ github.token }}`), plus a retained
   explicit not-App-token assertion.
-- No workflow or handoff changes — `.github/workflows/merge-train-validate.yml`
-  already uses `secrets.GITHUB_TOKEN` for the wake-up step (unchanged) and
-  `docs/knowledge/handoffs/2026-07-15-merge-train-wakeups.md` from PR #1165
-  remains accurate.
+- No workflow changes — `.github/workflows/merge-train-validate.yml` already
+  uses `secrets.GITHUB_TOKEN` for the wake-up step (unchanged). The prior PR
+  #1165 handoff (`docs/knowledge/handoffs/2026-07-15-merge-train-wakeups.md`)
+  also remains accurate; this new handoff records the follow-up assertion
+  tightening.
 
 ## Validation
 
