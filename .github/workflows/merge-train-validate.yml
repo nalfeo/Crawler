@@ -216,11 +216,23 @@ jobs:
       # of creating a new one -- preserving its original (older, lower) ID.
       # If the in-flight original request then lands afterwards, its
       # `checks.create` call mints a genuinely new, higher-ID check, which
-      # correctly wins over this in-place cancelled update. Only when no
-      # matching check run exists yet at all does this step fall back to
-      # `checks.create` (there is nothing to update), which retains a
-      # narrower residual race window inherent to the Checks API having no
-      # atomic create-if-absent primitive.
+      # correctly wins over this in-place cancelled update, regardless of
+      # read-visibility timing, because check-run IDs are allocated at
+      # creation time and only ever increase.
+      #
+      # This closes the race for the common case, since the very first
+      # in_progress check for a candidate is always created by reconcile.mjs
+      # before this workflow is even dispatched -- so listForRef should
+      # essentially always find at least that check to update. The only way
+      # this step still falls through to `checks.create` is if that initial
+      # check is not yet visible in listForRef's result at all (a narrower
+      # read-after-write visibility-lag scenario, not the original in-flight
+      # race). To shrink that residual window further, this step treats a
+      # "no matching check found" result as provisional and re-lists once
+      # more after a short delay before finalizing the decision to create --
+      # this narrows, but for the same reason as above (no atomic
+      # create-if-absent primitive in the Checks API) cannot fully eliminate,
+      # that last, much narrower race.
       - name: Generate recovery app token
         id: recovery-app-token
         if: (failure() || cancelled()) && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
@@ -242,31 +254,49 @@ jobs:
         with:
           github-token: ${{ steps.recovery-app-token.outputs.token }}
           script: |
+            const findMatch = async () => {
+              const { data: existing } = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: process.env.CANDIDATE_SHA,
+                check_name: 'merge-train-candidate',
+              });
+              const trustedAppId = Number(process.env.APP_ID);
+              const matching = (existing.check_runs ?? []).filter(
+                (run) =>
+                  run.external_id === process.env.FINGERPRINT &&
+                  Number(run.app?.id) === trustedAppId,
+              );
+              const alreadyTerminal = matching.some(
+                (run) =>
+                  run.status === 'completed' &&
+                  (run.conclusion === 'success' || run.conclusion === 'failure'),
+              );
+              return { existingRun: matching[0], alreadyTerminal };
+            };
             let lastError;
             for (const delayMs of [0, 1000, 2000]) {
               if (delayMs > 0) {
                 await new Promise((resolve) => setTimeout(resolve, delayMs));
               }
               try {
-                const { data: existing } = await github.rest.checks.listForRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: process.env.CANDIDATE_SHA,
-                  check_name: 'merge-train-candidate',
-                });
-                const trustedAppId = Number(process.env.APP_ID);
-                const matching = (existing.check_runs ?? []).filter(
-                  (run) =>
-                    run.external_id === process.env.FINGERPRINT &&
-                    Number(run.app?.id) === trustedAppId,
-                );
-                const alreadyTerminal = matching.some(
-                  (run) =>
-                    run.status === 'completed' &&
-                    (run.conclusion === 'success' || run.conclusion === 'failure'),
-                );
+                let { existingRun, alreadyTerminal } = await findMatch();
                 if (alreadyTerminal) {
                   return;
+                }
+                if (!existingRun) {
+                  // No matching check run found at all yet -- treat this as
+                  // provisional (it may just be read-visibility lag on the
+                  // initial in_progress check reconcile.mjs already created)
+                  // and re-list once more before finalizing the decision to
+                  // fall back to checks.create. See the comment above this
+                  // step for why this narrows, but cannot fully eliminate,
+                  // the residual race.
+                  await new Promise((resolve) => setTimeout(resolve, 500));
+                  ({ existingRun, alreadyTerminal } = await findMatch());
+                  if (alreadyTerminal) {
+                    return;
+                  }
                 }
                 const payload = {
                   owner: context.repo.owner,
@@ -285,7 +315,6 @@ jobs:
                 // Prefer updating an existing (non-terminal) check run
                 // in place, preserving its original ID, over creating a
                 // brand-new one -- see the comment above this step for why.
-                const existingRun = matching[0];
                 if (existingRun) {
                   await github.rest.checks.update({
                     ...payload,

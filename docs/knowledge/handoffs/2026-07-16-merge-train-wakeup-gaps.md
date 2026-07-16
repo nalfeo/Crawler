@@ -137,7 +137,7 @@ main.
 
 - `npm run typecheck` — clean
 - `npm run lint` — clean
-- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **27/27 passed** (22 + 5) — this line is kept current at each round; treat a fresh test run as authoritative over any inline count in an older round section below
+- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **29/29 passed** (24 + 5) — this line is kept current at each round; treat a fresh test run as authoritative over any inline count in an older round section below
 - Both modified workflow YAML files parse cleanly via the `yaml` package (same
   parser the tests use) — confirmed no syntax breakage.
 - `npm run verify:fast` — passed (typecheck + lint + changed unit tests +
@@ -627,25 +627,72 @@ earlier round; updated to the current accurate "26/26 passed (21 + 5)". The
 PR description had the same stale numbers and round count; resynced
 separately alongside this handoff update.
 
-## Tenth round follow-up (missing coverage for the update-in-place fallback's own fallback branch)
+The ninth round's fix left one edge case of its own change untested, and a
+further `copilot-pull-request-reviewer` pass found two more issues on top of
+that:
 
-The ninth round's fix left one edge case of its own change untested: the
-`checks.update`-in-place logic only fires when the `listForRef` lookup finds
-an existing (non-terminal) matching check run; when it finds none at all,
-the step still falls back to `checks.create` (the should-be-unreachable
-defensive branch, since `reconcile.mjs`'s `dispatchValidation()` always
-creates the `in_progress` check before this workflow is even dispatched).
-That `create` fallback path had no test asserting it is actually exercised
-when `listForRef` returns an empty `check_runs` array — only the "existing
-non-terminal run" path was covered.
+1. **`PRRT_kwDOSvo2Ms6RUGDX`** (residual race in the terminal-result guard):
+   even with the ninth round's update-in-place fix, the narrow "no matching
+   check run found at all" branch still calls `checks.create` after only a
+   single `listForRef` read. If that read races a genuine terminal check that
+   has _just_ been persisted server-side but is not yet visible to this read
+   (a read-after-write visibility-lag scenario, distinct from the original
+   in-flight-request race the ninth round closed), this step could still fall
+   to `checks.create` unnecessarily. In practice this branch should be nearly
+   unreachable -- the very first `in_progress` check for a candidate is always
+   created by `reconcile.mjs` before this workflow is even dispatched, so
+   `listForRef` should essentially always find at least that check to update
+   -- but the reviewer's point that "no match on the first read" should be
+   treated as provisional, not conclusive, is valid hardening. Fixed by
+   factoring the lookup into a `findMatch()` helper and, when the first read
+   finds no matching check at all (not even a non-terminal one to update),
+   waiting 500ms and re-listing once more before finalizing the decision to
+   `create`. This shrinks (but, as documented in the workflow comment, cannot
+   fully eliminate -- the Checks API has no atomic create-if-absent primitive)
+   this last, much narrower residual window.
+2. **`PRRT_kwDOSvo2Ms6RUGDo`** (PR description Files list incomplete): the
+   description's Files section only listed the files this session directly
+   touched, omitting several files the coordinator's concurrent automation
+   had added to the same branch -- `docs/knowledge/handoffs/2026-07-16-tighten-wake-token-assert.md`,
+   `docs/knowledge/review-ledgers/2026-07-16-pr1168-final-thread-recovery.review-ledger.json`,
+   `docs/knowledge/review-ledgers/2026-07-16-tighten-wake-token-assert.review-ledger.json`,
+   and `docs/knowledge/metrics/guard-telemetry/2026-07-16-merge-train-wakeup-gaps.json`.
+   Resynced the PR description's Files list to the full `git diff --name-only`
+   output against the merge base, and added a short "Follow-up" bullet to the
+   Summary describing the concurrently-landed wake-token assertion tightening
+   so the description accurately represents the whole diff, not just this
+   session's edits.
+3. **Concurrent test-coverage gap** (found and fixed independently, before the
+   `findMatch()` re-list hardening above landed): the `checks.update`-in-place
+   logic added in the ninth round only fires when `listForRef` finds an
+   existing non-terminal matching check run; the "no match at all" `create`
+   fallback path itself had no test asserting it still fires when
+   `listForRef` returns an empty `check_runs` array on every read.
 
-Added `falls back to creating a new check only when no matching check-run
-exists at all yet` to `tests/unit/merge-train-validate-publish.test.ts`:
-mocks `listForRef` returning `{ check_runs: [] }` and asserts `checks.create`
-**is** called exactly once while `checks.update` is **not** called. No
-production code changes — this round is test-coverage-only.
+Also confirmed (`PRRT_kwDOSvo2Ms6RUBDO`, same diagnostic-wording complaint as
+the eighth round's `3sH` finding) that the reworded `output.title`/`summary`
+already landed in that round fully addresses this -- no further wording
+change needed.
 
-Test counts: **27 (26 + 1 new `it()` block) = 22 (publish) + 5 (wake-ups)**.
-Ran `npx vitest run tests/unit/merge-train-validate-publish.test.ts
-tests/unit/merge-train-workflow-wakeups.test.ts` — 27/27 passed. Re-ran
-`npm run verify:fast` — clean.
+Updated `tests/unit/merge-train-validate-publish.test.ts` with 3 new tests
+total (2 for the `findMatch()` re-list hardening, 1 for the always-empty
+create-fallback coverage gap):
+
+- **re-lists once after a short delay when no matching check is found on the
+  first read, and updates in place if one appears** -- mocks `listForRef` to
+  return an empty list on the first call and an `in_progress` match on the
+  second, asserts `checks.update` is called with the right `check_run_id` and
+  `checks.create` is not called.
+- **re-lists once after a short delay and skips as a no-op if the genuine
+  terminal check becomes visible on the second read** -- mocks `listForRef` to
+  return empty first, then a `completed`/`failure` match second, asserts
+  neither `checks.create` nor `checks.update` is called.
+- **falls back to creating a new check only when no matching check-run
+  exists at all yet, even after the residual-race re-list** -- mocks
+  `listForRef` to always return an empty list (both reads), asserts
+  `checks.create` is called exactly once and `checks.update` is not called.
+
+Test counts: **29 (24 + 5, up from 26 = 21 + 5)**. Ran
+`npx vitest run tests/unit/merge-train-validate-publish.test.ts
+tests/unit/merge-train-workflow-wakeups.test.ts` -- 29/29 passed. Re-ran
+`npm run verify:fast` -- passed.

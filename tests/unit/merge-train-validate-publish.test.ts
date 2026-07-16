@@ -570,7 +570,157 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(updateArgs?.conclusion).toBe('cancelled');
     });
 
-    it('falls back to creating a new check only when no matching check-run exists at all yet', async () => {
+    it('re-lists once after a short delay when no matching check is found on the first read, and updates in place if one appears (residual visibility-lag hardening)', async () => {
+      vi.useFakeTimers();
+      const doc = loadWorkflow();
+      const step = getFallbackStep(doc);
+      const script = step.with?.script;
+      expect(typeof script).toBe('string');
+
+      let listCalls = 0;
+      let createCalls = 0;
+      let updateArgs: { check_run_id: number; conclusion: string } | undefined;
+      const github = {
+        rest: {
+          checks: {
+            listForRef: async () => {
+              listCalls += 1;
+              if (listCalls === 1) {
+                // First read finds nothing -- simulates the initial
+                // in_progress check not yet being visible.
+                return { data: { check_runs: [] } };
+              }
+              return {
+                data: {
+                  check_runs: [
+                    {
+                      id: 555,
+                      external_id: 'cafef00d',
+                      app: { id: 12345 },
+                      status: 'in_progress',
+                      conclusion: null,
+                    },
+                  ],
+                },
+              };
+            },
+            create: async () => {
+              createCalls += 1;
+              return { data: {} };
+            },
+            update: async (args: { check_run_id: number; conclusion: string }) => {
+              updateArgs = args;
+              return { data: {} };
+            },
+          },
+        },
+      };
+      const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+      const previousEnv = {
+        CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        FINGERPRINT: process.env.FINGERPRINT,
+        APP_ID: process.env.APP_ID,
+      };
+      process.env.CANDIDATE_SHA = 'd'.repeat(40);
+      process.env.FINGERPRINT = 'cafef00d';
+      process.env.APP_ID = '12345';
+      try {
+        const run = new Function(
+          'github',
+          'context',
+          `return (async () => {\n${script}\n})();`,
+        ) as (github: unknown, context: unknown) => Promise<void>;
+        const runPromise = run(github, context);
+        await vi.runAllTimersAsync();
+        await runPromise;
+      } finally {
+        vi.useRealTimers();
+        for (const [key, value] of Object.entries(previousEnv)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+      expect(listCalls).toBe(2);
+      expect(createCalls).toBe(0);
+      expect(updateArgs?.check_run_id).toBe(555);
+      expect(updateArgs?.conclusion).toBe('cancelled');
+    });
+
+    it('re-lists once after a short delay and skips as a no-op if the genuine terminal check becomes visible on the second read', async () => {
+      vi.useFakeTimers();
+      const doc = loadWorkflow();
+      const step = getFallbackStep(doc);
+      const script = step.with?.script;
+      expect(typeof script).toBe('string');
+
+      let listCalls = 0;
+      let createCalls = 0;
+      let updateCalls = 0;
+      const github = {
+        rest: {
+          checks: {
+            listForRef: async () => {
+              listCalls += 1;
+              if (listCalls === 1) {
+                return { data: { check_runs: [] } };
+              }
+              return {
+                data: {
+                  check_runs: [
+                    {
+                      id: 556,
+                      external_id: 'cafef00d',
+                      app: { id: 12345 },
+                      status: 'completed',
+                      conclusion: 'failure',
+                    },
+                  ],
+                },
+              };
+            },
+            create: async () => {
+              createCalls += 1;
+              return { data: {} };
+            },
+            update: async () => {
+              updateCalls += 1;
+              return { data: {} };
+            },
+          },
+        },
+      };
+      const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+      const previousEnv = {
+        CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        FINGERPRINT: process.env.FINGERPRINT,
+        APP_ID: process.env.APP_ID,
+      };
+      process.env.CANDIDATE_SHA = 'e'.repeat(40);
+      process.env.FINGERPRINT = 'cafef00d';
+      process.env.APP_ID = '12345';
+      try {
+        const run = new Function(
+          'github',
+          'context',
+          `return (async () => {\n${script}\n})();`,
+        ) as (github: unknown, context: unknown) => Promise<void>;
+        const runPromise = run(github, context);
+        await vi.runAllTimersAsync();
+        await runPromise;
+      } finally {
+        vi.useRealTimers();
+        for (const [key, value] of Object.entries(previousEnv)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+      expect(listCalls).toBe(2);
+      expect(createCalls).toBe(0);
+      expect(updateCalls).toBe(0);
+    });
+
+    it('falls back to creating a new check only when no matching check-run exists at all yet, even after the residual-race re-list', async () => {
+      vi.useFakeTimers();
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
       const script = step.with?.script;
@@ -610,8 +760,11 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
           'context',
           `return (async () => {\n${script}\n})();`,
         ) as (github: unknown, context: unknown) => Promise<void>;
-        await run(github, context);
+        const runPromise = run(github, context);
+        await vi.runAllTimersAsync();
+        await runPromise;
       } finally {
+        vi.useRealTimers();
         for (const [key, value] of Object.entries(previousEnv)) {
           if (value === undefined) delete process.env[key];
           else process.env[key] = value;
