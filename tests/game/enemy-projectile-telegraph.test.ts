@@ -135,6 +135,33 @@ describe('enemy projectile telegraph — nonzero delay lifecycle', () => {
     expect(isEnemyProjectileTelegraphActive(world, enemy)).toBe(true);
   });
 
+  it('freezes velocity on the SAME frame a telegraph starts, not one frame later (regression: copilot-pull-request-reviewer finding)', () => {
+    // Before this fix, `isTelegraphing` was computed once at the top of the
+    // per-enemy loop — before tryFireEnemyProjectile() could start a NEW
+    // telegraph this frame — so the legacy-ranged tangent-strafe movement
+    // branch still ran and set a nonzero velocity for this frame. The origin
+    // is locked to the enemy's CURRENT position in that same call, so without
+    // re-freezing, the enemy would take one more step after the locked origin
+    // was captured: a visible one-frame drift off the "stop and aim" cue.
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 250;
+    world.elapsedMs = 100;
+
+    spawnPlayer(world, 0, 0);
+    // Distance 100 sits strictly between the attack range's retreat band
+    // (150 * 0.5 = 75) and the attack range (150), so applyLegacyRanged's
+    // tangent-strafe branch — not the "hold still" retreat/approach branches —
+    // is what would otherwise leave a nonzero velocity this frame.
+    const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+
+    enemyAISystem(world);
+
+    expect(isEnemyProjectileTelegraphActive(world, enemy)).toBe(true);
+    expect(world.stores.velocity.x[enemy] ?? 0).toBe(0);
+    expect(world.stores.velocity.y[enemy] ?? 0).toBe(0);
+    expect(world.stores.enemyBehavior.stuckFrames[enemy] ?? 0).toBe(0);
+  });
+
   it('fires once the resolved delay has elapsed, clearing telegraphActive', () => {
     const world = createTestWorld();
     world.enemyTelegraphMs = 250;

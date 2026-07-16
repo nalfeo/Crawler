@@ -1750,5 +1750,33 @@ describe('createPhaserBridge', () => {
       expect(graphics.length).toBe(countAfterFirstSync);
       expect(telegraphGfx?.visible).toBe(false);
     });
+
+    it('does not draw the cue for a telegraphing enemy hidden outside current FOV visibility', () => {
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const floorMap = createBridgeTestMap();
+      world.floorMap = floorMap;
+      floorMap.clearVisibility();
+      // Leave every tile dark — the shooter below sits at tile (8,8), which
+      // stays unlit, so it must be treated exactly like the sprite/health-bar
+      // FOV gate: never reveal position or aim line while hidden.
+      const eid = spawnBehaviorEnemy(
+        world,
+        8 * 32 + 16,
+        8 * 32 + 16,
+        10,
+        AI_TYPE.RANGED,
+        0,
+        20,
+        20,
+      );
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+
+      bridge.sync(world);
+
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeUndefined();
+    });
   });
 });

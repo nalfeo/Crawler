@@ -1979,6 +1979,18 @@ export function enemyAISystem(world: GameWorld): void {
 
     if (attackRange > EPSILON && distanceToPlayer <= attackRange) {
       tryFireEnemyProjectile(world, eid, playerDx, playerDy);
+      // A telegraph can start on THIS frame (tryFireEnemyProjectile just
+      // locked origin/direction to the enemy's current position). `isTelegraphing`
+      // was computed earlier in the loop — before this call — so the movement
+      // branch above already assigned this frame's velocity as if no telegraph
+      // were active. Without re-freezing here, the enemy takes one extra step
+      // after its origin is locked, visually drifting off the "stop and aim"
+      // cue for a frame even though fire/dodge correctness (which read the
+      // locked fields, not live position) is unaffected.
+      if (!isTelegraphing && enemyBehavior.telegraphActive[eid] === 1) {
+        setVelocity(world, eid, 0, 0);
+        enemyBehavior.stuckFrames[eid] = 0;
+      }
     } else if (isTelegraphing) {
       // Player left attack range while telegraphing — cancel rather than let
       // a stale locked trajectory fire later from a now-meaningless origin.

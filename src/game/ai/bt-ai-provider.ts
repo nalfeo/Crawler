@@ -2361,6 +2361,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       for (const eid of query(ctx.world.ecs, [Enemy, Position])) {
         if (eid === undefined) continue;
         if (enemyBehaviorStore.telegraphActive[eid] !== 1) continue;
+        // A shooter that died earlier this simulation step can still have
+        // `telegraphActive` set here (this pass runs before enemyAISystem's
+        // DeathTimer processing cancels it), which would make the player dodge
+        // a shot guaranteed to be cancelled. Filter non-positive health, same
+        // as the closing-speed danger scorer above.
+        if ((ctx.world.stores.health.current[eid] ?? 0) <= 0) continue;
 
         const originX = enemyBehaviorStore.telegraphOriginX[eid] ?? 0;
         const originY = enemyBehaviorStore.telegraphOriginY[eid] ?? 0;

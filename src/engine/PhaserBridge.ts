@@ -1331,7 +1331,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // Reads the SAME locked origin/direction fields the fire logic and
           // AI dodge reasoning use (core/systems/enemyTelegraph.ts) — never
           // live position — so what the player sees is exactly what will fire.
-          const isTelegraphing = world.stores.enemyBehavior.telegraphActive[eid] === 1;
+          // Gated on the same `isVisible` FOV check as the sprite/health bar:
+          // an off-screen/fog-hidden shooter must not reveal its position or
+          // aim line through the telegraph cue (the AI's dodge reasoning still
+          // reads the locked fields directly — only the render cue is gated).
+          const isTelegraphing = world.stores.enemyBehavior.telegraphActive[eid] === 1 && isVisible;
           const existingTelegraph = telegraphGraphics.get(eid);
           if (!isTelegraphing) {
             existingTelegraph?.setVisible(false);

@@ -2133,6 +2133,41 @@ describe('BehaviorTreeAI', () => {
     expect(dodge.dodgeY).toBeGreaterThan(2);
   });
 
+  it('ignores a telegraphed shot from a shooter that already died this simulation step (regression: copilot-pull-request-reviewer finding)', () => {
+    // The input-polling AI runs before enemyAISystem in the frame order, so a
+    // shooter killed earlier this step can still have `telegraphActive` set
+    // here — enemyAISystem only cancels it once its own DeathTimer branch
+    // runs. Without filtering non-positive health (the same filter the
+    // closing-speed danger scorer already applies), the player would dodge a
+    // shot that is guaranteed to be cancelled and never actually fire.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    spawnPlayer(world, 1.5, 1);
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const REMAINING_FRAMES = 89.8;
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = REMAINING_FRAMES * GAME.DELTA_MS;
+    enemyBehavior.telegraphOriginX[enemy] = 0;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+    // The shooter died earlier this step; DeathTimer hasn't cancelled the
+    // telegraph yet (that happens later, in enemyAISystem).
+    world.stores.health.current[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Same geometry that produces dodgeY > 2 in the live-shooter case above —
+    // here it must stay at 0 because the dead shooter's telegraph is ignored.
+    expect(dodge.dodgeY).toBe(0);
+  });
+
   it('triggers dodge for an AoE fireball that misses the direct-hit clearance but lands within splash radius+buffer, and ignores one just outside', () => {
     // PROJECTILE_DODGE_CLEARANCE_FT = 2.5 ft (direct projectile threshold)
     // PROJECTILE_DODGE_AOE_BUFFER_FT = 1.5 ft
