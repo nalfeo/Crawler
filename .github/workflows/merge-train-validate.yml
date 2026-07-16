@@ -177,7 +177,7 @@ jobs:
       # correctly. (The `cancelled()` extension above has not been
       # independently re-verified with a live probe the way `failure()`/
       # `success()` were -- it follows by documented design and by analogy
-      # with the same job-status-function category, but should be reverified
+      # with the same job-status-function category, but should be re-verified
       # empirically if this fallback's behavior is ever in question.)
       #
       # The retryable-check step additionally requires
@@ -211,6 +211,9 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Mark candidate check retryable if publishing failed
+        # Structure: (status-check failure/cancelled) &&
+        # (recovery token minted) &&
+        # (original app-token or publish step failed/cancelled)
         if: (failure() || cancelled()) && steps.recovery-app-token.outcome == 'success' && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
         uses: actions/github-script@v7
         env:
