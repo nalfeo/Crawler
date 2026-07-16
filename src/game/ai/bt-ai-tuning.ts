@@ -89,6 +89,23 @@ export const RANGED_STANDOFF_FRACTION = 0.5;
 // short enough that shots reliably connect, roughly tripling effective bow DPS.
 // Floored at CONTACT_SAFE_ORBIT_FT so it never parks inside body-contact range.
 export const RANGED_STANDOFF_ABS_FT = 6;
+// Once health falls below this fraction, a projectile user with an enemy already
+// inside its configured ranged-safe distance expands the orbit instead of
+// continuing to close toward the healthy 6ft damage-optimized ring. The healthy
+// baseline stays unchanged; this only arrests the deterministic contact-damage
+// spiral after the player is wounded.
+export const RANGED_DEFENSIVE_HP_FRACTION = 0.6;
+// A wounded projectile user expands only to a short, combat-effective ring.
+// Longer standoffs avoid contact but make un-led projectiles miss moving targets,
+// converting deaths into tutorial stalls. Ten feet keeps pistol/knife shots
+// reliable while creating substantially more reaction room than the healthy 6ft
+// ring.
+export const RANGED_DEFENSIVE_REACH_FRACTION = 0.5;
+export const RANGED_DEFENSIVE_ABS_FT = 10;
+// Once defensive spacing starts, keep it until the nearby-pressure bubble is
+// fully clear. Without this wider release radius the AI alternates every few
+// frames between closing to 6ft and retreating, losing both safety and DPS.
+export const RANGED_DEFENSIVE_RELEASE_MULTIPLIER = 2;
 // Ranged micro-spacing: fraction of the standoff radius the AI eases farther out
 // while a shot is on cooldown (then settles back to the standoff as the shot
 // readies), so all weapons stutter-step rather than holding a static distance.
@@ -623,6 +640,11 @@ export const NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES = 180;
 // same strike band. The value is chosen directly, not derived from
 // CONTACT_SAFE_ORBIT_FT.
 export const ARENA_LOCKIN_ADD_HYSTERESIS_FT = 3;
+// In a sealed boss room, a wounded player must clear an add that is already
+// inside this pressure radius even when the boss is equally close. The ordinary
+// relative-distance hysteresis still governs healthy play.
+export const ARENA_LOCKIN_DEFENSIVE_HP_FRACTION = 0.6;
+export const ARENA_LOCKIN_ADD_PRESSURE_FT = CONTACT_SAFE_ORBIT_FT * 2;
 
 // --- Predictive safe-gap travel steering (travel-steering.ts) ---
 // Replaces the additive single-closest-threat "dodge nudge" during travel with a

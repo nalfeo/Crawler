@@ -115,6 +115,10 @@ import {
   DIRECT_MOVE_EPSILON_FT,
   RANGED_STANDOFF_FRACTION,
   RANGED_STANDOFF_ABS_FT,
+  RANGED_DEFENSIVE_HP_FRACTION,
+  RANGED_DEFENSIVE_REACH_FRACTION,
+  RANGED_DEFENSIVE_ABS_FT,
+  RANGED_DEFENSIVE_RELEASE_MULTIPLIER,
   RANGED_RECOVER_EXTRA_FRACTION,
   RANGED_APPROACH_BUFFER_FT,
   MELEE_HOLD_FRACTION,
@@ -239,6 +243,8 @@ import {
   NPC_APPROACH_THREAT_RADIUS_FT,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
+  ARENA_LOCKIN_DEFENSIVE_HP_FRACTION,
+  ARENA_LOCKIN_ADD_PRESSURE_FT,
   TRAVEL_STEERING_ENABLED,
   TRAVEL_BODY_RADIUS_FT,
   TRAVEL_HARD_GAP_FT,
@@ -924,6 +930,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
   private retreatThreatEid: number | null = null;
+  private rangedEmergencyRetreating: boolean = false;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
@@ -932,6 +939,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private kiteOrbitSign: 1 | -1 = 1;
   private kiteSignFrame: number = 0;
+  private rangedDefensiveSpacing: boolean = false;
   private readonly ignoredLootUntilFrame = new Map<number, number>();
   private readonly ignoredEnemyUntilFrame = new Map<number, number>();
   private engageTargetEid: number | null = null;
@@ -1261,6 +1269,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
     this.retreating = false;
+    this.rangedEmergencyRetreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
@@ -1270,7 +1279,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
-        if (ctx.healthPercent >= this.config.retreatThreshold) {
+        const activeWeapon = getActiveWeapon(ctx.world);
+        const criticallyLow = ctx.healthPercent < this.config.retreatThreshold;
+        const rangedEmergency =
+          activeWeapon !== undefined &&
+          isProjectileWeaponType(activeWeapon.weaponType) &&
+          ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION &&
+          !criticallyLow;
+        if (!criticallyLow && !rangedEmergency) {
           this.endRetreat(ctx.world);
           return false;
         }
@@ -1302,21 +1318,30 @@ export class BehaviorTreeAI implements AIInputProvider {
         // retreatDangerRadius * RETREAT_HYSTERESIS_MULT. This stops the per-frame
         // RETREAT<->EXPLORE flip-flop seen when an enemy hovers at the boundary.
         const radius = this.retreating
-          ? this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT
-          : this.config.retreatDangerRadius;
+          ? this.rangedEmergencyRetreating && !criticallyLow
+            ? this.config.rangedSafeDistance
+            : this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT
+          : rangedEmergency
+            ? CONTACT_SAFE_ORBIT_FT
+            : this.config.retreatDangerRadius;
         if (!threat || threat.distance > radius) {
           this.endRetreat(ctx.world);
           return false;
         }
         this.retreating = true;
+        this.rangedEmergencyRetreating = rangedEmergency;
         this.retreatThreatEid = threat.eid;
         ctx.blackboard['retreatThreat'] = threat;
+        ctx.blackboard['rangedEmergencyRetreat'] = rangedEmergency;
         return true;
       }),
       action('Set Retreat State', (ctx) => {
         const threat = ctx.blackboard['retreatThreat'] as WorldTarget | undefined;
+        const rangedEmergency = ctx.blackboard['rangedEmergencyRetreat'] === true;
         this.decision.state = AIState.RETREAT;
-        this.decision.reason = `Low health (${(ctx.healthPercent * 100).toFixed(0)}%) near threat`;
+        this.decision.reason = rangedEmergency
+          ? `Wounded projectile user under contact pressure (${(ctx.healthPercent * 100).toFixed(0)}% health)`
+          : `Low health (${(ctx.healthPercent * 100).toFixed(0)}%) near threat`;
         this.decision.targetEid = null;
         if (!threat) {
           this.retreatTargetX = null;
@@ -1523,20 +1548,39 @@ export class BehaviorTreeAI implements AIInputProvider {
         // rats-nest.onDeath), which the surviving adds get killed
         // alongside once the fence lowers and normal Engage resumes.
         const engageRadius = this.getEngageRadius(ctx.world);
-        const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+        // Exclude the boss target so an exact-distance tie between boss and add
+        // always resolves to the add when defensive pressure applies. Without
+        // this exclusion, `findNearestEnemy` could return the boss itself (lower
+        // eid wins the tie-break sort), making `defensiveAddPressure` false and
+        // silently skipping the add override.
+        const nearestAdd =
+          target.kind === 'boss'
+            ? this.findNearestEnemy(
+                ctx.world,
+                ctx.playerX,
+                ctx.playerY,
+                this.config.scanRadius,
+                false,
+                target.eid,
+              )
+            : null;
+        const defensiveAddPressure =
+          ctx.healthPercent < ARENA_LOCKIN_DEFENSIVE_HP_FRACTION &&
+          nearestAdd !== null &&
+          nearestAdd.distance <= ARENA_LOCKIN_ADD_PRESSURE_FT;
         if (
           target.kind === 'boss' &&
-          nearestEnemy &&
-          nearestEnemy.eid !== target.eid &&
-          nearestEnemy.distance <= engageRadius &&
-          nearestEnemy.distance + ARENA_LOCKIN_ADD_HYSTERESIS_FT < targetDistance
+          nearestAdd !== null &&
+          nearestAdd.distance <= engageRadius &&
+          (defensiveAddPressure ||
+            nearestAdd.distance + ARENA_LOCKIN_ADD_HYSTERESIS_FT < targetDistance)
         ) {
-          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestAdd);
           this.decision.state = AIState.ENGAGE;
-          this.decision.targetEid = nearestEnemy.eid;
+          this.decision.targetEid = nearestAdd.eid;
           this.decision.targetX = plan.targetX;
           this.decision.targetY = plan.targetY;
-          this.decision.reason = `Boss-room lock-in — clearing add ${String(nearestEnemy.eid)} before boss`;
+          this.decision.reason = `Boss-room lock-in — clearing add ${String(nearestAdd.eid)} before boss`;
           return BTStatus.SUCCESS;
         }
 
@@ -3071,6 +3115,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.questProgressActive = false;
     this.questProgressStallFrames = 0;
     this.retreating = false;
+    this.rangedEmergencyRetreating = false;
+    this.rangedDefensiveSpacing = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
@@ -5338,12 +5384,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     maxRadius: number = this.config.scanRadius,
     includeIgnored: boolean = false,
+    excludeEid: number = -1,
   ): WorldTarget | null {
     const enemies = query(world.ecs, [Enemy, Position, Health]);
     const candidates: WorldTarget[] = [];
 
     for (const eid of enemies) {
       if (eid === undefined) continue;
+      if (eid === excludeEid) continue;
       if (!isEnemyCombatEligible(world, eid)) continue;
 
       const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
@@ -8007,10 +8055,22 @@ export class BehaviorTreeAI implements AIInputProvider {
     target: WorldTarget,
     reachFt: number,
   ): { targetX: number; targetY: number; reason: string } {
-    const desiredOrbit = Math.max(
+    const healthyOrbit = Math.max(
       CONTACT_SAFE_ORBIT_FT,
       Math.min(reachFt * RANGED_STANDOFF_FRACTION, RANGED_STANDOFF_ABS_FT),
     );
+    const wounded = this.getPlayerHealthFraction(world) < RANGED_DEFENSIVE_HP_FRACTION;
+    const pressureRadius = this.rangedDefensiveSpacing
+      ? this.config.rangedSafeDistance * RANGED_DEFENSIVE_RELEASE_MULTIPLIER
+      : this.config.rangedSafeDistance;
+    const pressureThreat = this.findNearestEnemy(world, playerX, playerY, pressureRadius);
+    this.rangedDefensiveSpacing = wounded && pressureThreat !== null;
+    const desiredOrbit = this.rangedDefensiveSpacing
+      ? Math.max(
+          healthyOrbit,
+          Math.min(reachFt * RANGED_DEFENSIVE_REACH_FRACTION, RANGED_DEFENSIVE_ABS_FT),
+        )
+      : healthyOrbit;
     const contactThreatRadius = desiredOrbit + RANGED_APPROACH_BUFFER_FT;
     let activeTarget = target;
 
@@ -8442,6 +8502,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.engageNoProgressFrames = 0;
     this.engageBestDistance = Number.POSITIVE_INFINITY;
     this.engageBestHp = Number.POSITIVE_INFINITY;
+    this.rangedDefensiveSpacing = false;
     this.collectDwellActive = false;
     this.collectDwellAnchorX = 0;
     this.collectDwellAnchorY = 0;
@@ -8487,6 +8548,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.hasPerceptionData = false;
     this.frontierBfsVisited = null;
     this.retreating = false;
+    this.rangedEmergencyRetreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
