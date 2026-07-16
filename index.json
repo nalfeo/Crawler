@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6c00f6e6e586d36d5b264d3532b881f9c55b2c48",
+    "commitDate": "2026-07-16T11:44:23Z",
+    "commitSubject": "feat(devtools): load cloud weapon-sweep results (#1194)",
+    "capturedAt": "2026-07-16T12:58:03.703Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29496086255",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/6c00f6e6e586d36d5b264d3532b881f9c55b2c48.json"
+  },
+  {
     "commit": "2cca6f1037771f212add3f8b8669d9de66d8b7f0",
     "commitDate": "2026-07-16T07:59:28Z",
     "commitSubject": "fix(automation): harden intake, review, and train cleanup (#1189)",
