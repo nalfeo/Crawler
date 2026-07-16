@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a29156ecb054744db9401ce5bd136d6b653229c6",
+    "commitDate": "2026-07-16T07:36:41Z",
+    "commitSubject": "feat: transition to Floor 2 on Floor 1 completion (#1186)",
+    "capturedAt": "2026-07-16T08:49:18.148Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29481143474",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/a29156ecb054744db9401ce5bd136d6b653229c6.json"
+  },
+  {
     "commit": "2f3ef6375357e412cc8bab545ad30e49e9c9a3b1",
     "commitDate": "2026-07-16T07:36:24Z",
     "commitSubject": "fix(welcome-room): remove broken auto-props causing goblin, rug floor, phantom walls, and broken door (#1182)",
