@@ -340,10 +340,18 @@ copy of the previous shot'` (`tests/game/enemy-projectile-telegraph.test.ts`)
   explicit spec constraint, this was observed and reported, not tuned around
   or special-cased). 250ms run: Floor 2, Level 5, 19 kills, dies at 98.3s
   game-time. 0ms run: Floor 2, Level 7, 76 kills, dies at 457.3s game-time —
-  the large survival-time difference across configs is expected (0ms removes
-  the player's only defensive signal against ranged fire) and is itself
-  evidence the telegraph is doing real work, not a no-op. Full run logs saved
-  as session artifacts (`seed42-floor2-baseballbat-250ms.log`,
+  the 0ms (no-telegraph) run survived over 4x longer than the 250ms
+  (telegraphed) run. That is the opposite of the naive expectation that
+  removing the player's dodge cue would shorten survival, so it is reported
+  here neutrally as an observed result, not as evidence either way that the
+  telegraph is "working" or "not a no-op": a single seed/floor/weapon
+  combination is not a controlled sample, other run-to-run variance (RNG
+  draw order, enemy spawn/positioning drift between configs) could easily
+  dominate a two-point comparison, and confirming a causal effect would need
+  a broader-sample sweep across seeds. No conclusion is drawn from this
+  smoke pair beyond "both configs complete a full run without crashing and
+  produce the expected telegraph state transitions." Full run logs saved as
+  session artifacts (`seed42-floor2-baseballbat-250ms.log`,
   `seed42-floor2-baseballbat-0ms.log`).
 - **Real screenshot-based visual observation remains blocked**: re-attempted
   via both the `chrome-devtools` skill and the `playwright-browser_*` tools
