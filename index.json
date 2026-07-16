@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2745ec9d42b4da0f1c1000d765e25d71974b437e",
+    "commitDate": "2026-07-16T18:55:15Z",
+    "commitSubject": "feat(stats): overhaul primary stats and remove mana (#1203)",
+    "capturedAt": "2026-07-16T20:09:28.013Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29526474623",
+    "winRate": 0.9533333333333334,
+    "totalWins": 572,
+    "totalRuns": 600,
+    "path": "by-sha/2745ec9d42b4da0f1c1000d765e25d71974b437e.json"
+  },
+  {
     "commit": "3c85fe84dc35dd34215bba8b5b8f25d7d00eacfd",
     "commitDate": "2026-07-16T18:09:18Z",
     "commitSubject": "feat(ci): file nightly balance improvement issues (#1207)",
