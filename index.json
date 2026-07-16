@@ -1,5 +1,16 @@
 [
   {
+    "commit": "18916e6923b298f8f33d6c25e451e2ae7181fa2b",
+    "commitDate": "2026-07-16T07:36:09Z",
+    "commitSubject": "fix(docs): resolve 2026-07-13 docs-update loop findings (#1176)",
+    "capturedAt": "2026-07-16T08:28:38.927Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29480525852",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/18916e6923b298f8f33d6c25e451e2ae7181fa2b.json"
+  },
+  {
     "commit": "de2e70f0f3b169f5bd1d87472124b093a452aef0",
     "commitDate": "2026-07-16T07:07:22Z",
     "commitSubject": "fix(docs): resolve security-review 2026-07-14 ADR and script-docs findings (#1174)",
