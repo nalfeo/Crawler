@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "sticky-telegraph-flag",
+  "task_title": "Fix rendering of short-lived visual cues during 16x playback",
+  "estimated_apples": 2,
+  "stages": {}
+}

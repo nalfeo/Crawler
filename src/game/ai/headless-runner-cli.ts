@@ -34,6 +34,7 @@ async function main(): Promise<void> {
     console.log(`Weapon: ${args.weapon} (forced)`);
   }
   console.log(`Enemy damage mult: ${args.enemyDamageMultiplier}x`);
+  console.log(`Enemy telegraph: ${args.enemyTelegraphMs}ms`);
   console.log(`Floor: ${args.floorId}`);
   if (args.startPlayerLevel > 1) {
     console.log(`Start player level: ${args.startPlayerLevel}`);
@@ -63,6 +64,7 @@ async function main(): Promise<void> {
     eventSampleInterval: args.sampleInterval,
     ...(args.weapon !== null ? { forceWeaponId: args.weapon } : {}),
     enemyDamageMultiplier: args.enemyDamageMultiplier,
+    enemyTelegraphMs: args.enemyTelegraphMs,
     floorId: args.floorId,
     startPlayerLevel: args.startPlayerLevel,
     recordWeaponTelemetry: args.weaponTelemetry,
