@@ -227,7 +227,7 @@ describe('enemy projectile damage', () => {
     damageSystem(world, cr);
     expect(world.stores.health.current[player]).toBe(90); // unchanged
 
-    // At t=400ms (300ms after first hit) — still inside the 350ms window, must be blocked.
+    // At t=400ms (300ms after first hit at t=100ms) — still inside the 350ms window, must be blocked.
     // With the old 250ms window this would have been accepted; with 350ms it must not be.
     world.elapsedMs = 400;
     spawnEnemyProjectile(world, 50, 50, 0, -1, 10);
