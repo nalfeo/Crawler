@@ -98,8 +98,8 @@ main.
   (both gated on `failure() && (steps.app-token.outcome == 'failure' ||
 steps.publish.outcome == 'failure')` — the `failure() &&` prefix is required
   to avoid an implicit-`success()` dead-code trap, verified empirically; see
-  the fourth-round follow-up below — the latter uses the independently-minted
-  recovery token) that posts a `cancelled` conclusion for the fingerprinted
+  the fourth-round follow-up below — the latter also requires the independently
+  minted recovery token step to succeed) that posts a `cancelled` conclusion for the fingerprinted
   check before the wake dispatches, with bounded retry for transient Checks
   API failures. "Publish immutable candidate result" has an explicit `id:
 publish` so the fallback conditions can check its own outcome.
@@ -325,6 +325,10 @@ currently redundant with bare `failure()` for this exact job. Rewrote the
 comment block above the fallback steps to document both run IDs and the
 rationale.
 
+The cancellation publisher additionally requires
+`steps.recovery-app-token.outcome == 'success'`, so a failed recovery mint
+cannot invoke the Checks API with an empty token.
+
 Updated `tests/unit/merge-train-validate-publish.test.ts`:
 
 - Both `if:` string assertions (recovery-app-token step, retryable-check
@@ -336,6 +340,8 @@ Updated `tests/unit/merge-train-validate-publish.test.ts`:
   fire (validates the outcome-check layer is independently load-bearing, not
   just `failure()`); app-token step itself failed → must fire; publish step
   itself failed → must fire.
+- The same evaluator proves a failed recovery-token mint suppresses the
+  cancellation publisher.
 
 Test counts unchanged (24 = 19 + 5) — this round modified existing test
 bodies/assertions rather than adding new tests, since the third round's tests

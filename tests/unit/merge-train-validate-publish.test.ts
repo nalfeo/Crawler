@@ -275,7 +275,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       //    with `cancelled`, which would make reconcile retry the same
       //    broken candidate forever instead of bisecting it.
       expect(step.if).toBe(
-        "failure() && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')",
+        "failure() && steps.recovery-app-token.outcome == 'success' && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')",
       );
       expect(step.uses).toMatch(/^actions\/github-script/);
       // Must NOT reuse steps.app-token.outputs.token: if the ORIGINAL
@@ -304,13 +304,20 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         failureValue: boolean,
         appTokenOutcome: string,
         publishOutcome: string,
+        recoveryTokenOutcome = 'success',
       ): boolean =>
         new Function(
           'steps',
           'failure',
-          `return (${condition.replaceAll('steps.app-token', "steps['app-token']")});`,
+          `return (${condition
+            .replaceAll('steps.app-token', "steps['app-token']")
+            .replaceAll('steps.recovery-app-token', "steps['recovery-app-token']")});`,
         )(
-          { 'app-token': { outcome: appTokenOutcome }, publish: { outcome: publishOutcome } },
+          {
+            'app-token': { outcome: appTokenOutcome },
+            'recovery-app-token': { outcome: recoveryTokenOutcome },
+            publish: { outcome: publishOutcome },
+          },
           () => failureValue,
         ) as boolean;
 
@@ -327,6 +334,8 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       // check are true, so the fallback must fire.
       expect(evaluate(true, 'failure', 'skipped')).toBe(true);
       expect(evaluate(true, 'success', 'failure')).toBe(true);
+      // A failed recovery mint leaves no valid App token for checks.create.
+      expect(evaluate(true, 'failure', 'skipped', 'failure')).toBe(false);
     });
 
     it('mints the recovery app token from a dedicated step gated the same way (failure() plus outcomes)', () => {
