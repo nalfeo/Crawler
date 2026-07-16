@@ -15,13 +15,13 @@ import {
   AoeOnImpact,
   FamilyMembership,
   Velocity,
-  Stats,
   XpGem,
   Gold,
   DroppedItem,
   Harvestable,
   Npc,
   HARVEST_RANGE_FT,
+  computeMoveSpeed,
   type FamilyId,
   type GameWorld,
 } from '../../core/index.js';
@@ -333,10 +333,10 @@ import {
 
 const logger = createLogger('game:bt-ai-provider');
 export const SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES = 30;
-const SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES = 45;
+export const SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES = 45;
 const SAFE_ROOM_EGRESS_PROGRESS_EPSILON_FT = 3;
 const SAFE_ROOM_EGRESS_MAX_ACTIVE_FRAMES = 300;
-const SAFE_ROOM_EGRESS_SUPPRESS_FRAMES = 120;
+export const SAFE_ROOM_EGRESS_SUPPRESS_FRAMES = 120;
 
 /**
  * Urgency (0..1) at/above which {@link AIDecisionMode.SLACK_AWARE} treats the
@@ -2090,6 +2090,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.safeRoomEgressBestDistanceFt = Number.POSITIVE_INFINITY;
     this.safeRoomEgressNoProgressFrames = 0;
     this.safeRoomEgressActiveFrames = 0;
+    this.safeRoomEgressSuppressFrames = 0;
   }
 
   private updateSafeRoomEgressWaypointLatch(
@@ -4292,9 +4293,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private getPlayerSpeedFtPerFrame(world: GameWorld, playerEid: number): number {
-    return hasComponent(world.ecs, playerEid, Stats)
-      ? (world.stores.stats.moveSpeed[playerEid] ?? PLAYER_SPEED)
-      : PLAYER_SPEED;
+    return computeMoveSpeed(world, playerEid, PLAYER_SPEED);
   }
 
   private getRunPlannerParams(playerSpeedFtPerFrame: number): RunPlannerParams {

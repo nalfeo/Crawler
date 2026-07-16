@@ -8,7 +8,6 @@ import {
   Owner,
   Player,
   Position,
-  Stats,
   Team,
   Weapon,
 } from '../core/components.js';
@@ -32,6 +31,7 @@ import {
 } from '../core/weapon-telemetry.js';
 import type { GameWorld } from '../core/world.js';
 import { getBodyRadius } from '../core/physics-body.js';
+import { tagDamageMeta } from '../core/damage-meta.js';
 import {
   setActiveWeaponDef,
   clearActiveWeaponDef,
@@ -39,7 +39,7 @@ import {
   getActiveWeaponGeneration,
 } from '../core/active-weapon.js';
 import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.js';
-import { applyCooldownReduction } from '../shared/stats.js';
+import { applyAttackSpeedAndCooldownReduction } from '../shared/stats.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
 import { normalize } from '../shared/vec.js';
@@ -204,8 +204,9 @@ function getEffectiveCooldownMs(world: GameWorld, player: number, baseCooldownMs
   if (!hasComponent(world.ecs, player, EffectiveStats)) {
     return baseCooldownMs;
   }
+  const attackSpeedBonus = world.stores.effectiveStats.attackSpeed[player] ?? 0;
   const reduction = world.stores.effectiveStats.cooldownReduction[player] ?? 0;
-  return applyCooldownReduction(baseCooldownMs, reduction);
+  return applyAttackSpeedAndCooldownReduction(baseCooldownMs, attackSpeedBonus, reduction);
 }
 
 function getPlayerEntity(world: GameWorld): number | undefined {
@@ -647,8 +648,8 @@ export function emitWeaponSkillEvents(world: GameWorld, player: number, def: Wea
  */
 export function computeEffectiveAccuracy(world: GameWorld, player: number, def: WeaponDef): number {
   if (def.weaponType === WeaponType.TRAP) return 1.0;
-  const bonus = hasComponent(world.ecs, player, Stats)
-    ? (world.stores.stats.accuracy[player] ?? 0)
+  const bonus = hasComponent(world.ecs, player, EffectiveStats)
+    ? (world.stores.effectiveStats.accuracy[player] ?? 0)
     : 0;
   return Math.min(1.0, Math.max(0, def.baseAccuracy + bonus));
 }
@@ -786,6 +787,19 @@ function dispatchAttackInner(
       break;
   }
   if (attackEid !== undefined) {
+    // Persist fail-closed damage-scaling metadata onto the spawned attack
+    // entity so the collision system that eventually calls applyDamage (or a
+    // later explosion/impact entity that propagates this tag — see
+    // trapSystem.ts / aoeOnImpactSystem.ts) knows this is player-sourced and
+    // whether it's physical (STR-scaled) or magic (INT-scaled) offense. Only
+    // WeaponType.MAGIC is magic affinity — every other weapon type (melee,
+    // ranged, thrown, beam, trap) is physical.
+    tagDamageMeta(world, attackEid, {
+      origin: 'player',
+      affinity: def.weaponType === WeaponType.MAGIC ? 'magic' : 'physical',
+      scaleWithPrimary: true,
+      canCrit: true,
+    });
     world.attackWeaponSkillsByEntity.set(attackEid, {
       classSkillId: def.weaponClassSkillId,
       typeSkillId: def.weaponTypeSkillId,
@@ -1057,16 +1071,27 @@ export function weaponEntitySystem(world: GameWorld): void {
       projSpeed,
     );
 
+    // Snapshot the weapon type at attack creation time — affinity is fixed to the
+    // weapon that spawned the attack and must not change if the owner later
+    // switches loadouts (this variable is already captured before the switch).
+    let attackEid: number;
     switch (weaponType) {
       case WeaponType.RANGED:
-        spawnProjectile(world, px, py, projDir.x * projSpeed, projDir.y * projSpeed, baseDamage);
+        attackEid = spawnProjectile(
+          world,
+          px,
+          py,
+          projDir.x * projSpeed,
+          projDir.y * projSpeed,
+          baseDamage,
+        );
         break;
       case WeaponType.MELEE: {
         const range = weapon.range[weid]!;
         const ownerTeam = hasComponent(world.ecs, ownerEid, Team)
           ? team.id[ownerEid]!
           : TeamId.PLAYER;
-        spawnAreaAttack(
+        attackEid = spawnAreaAttack(
           world,
           px,
           py,
@@ -1079,9 +1104,22 @@ export function weaponEntitySystem(world: GameWorld): void {
         break;
       }
       default:
-        spawnProjectile(world, px, py, projDir.x * projSpeed, projDir.y * projSpeed, baseDamage);
+        attackEid = spawnProjectile(
+          world,
+          px,
+          py,
+          projDir.x * projSpeed,
+          projDir.y * projSpeed,
+          baseDamage,
+        );
         break;
     }
+    tagDamageMeta(world, attackEid, {
+      origin: 'player',
+      affinity: weaponType === WeaponType.MAGIC ? 'magic' : 'physical',
+      scaleWithPrimary: true,
+      canCrit: true,
+    });
 
     weapon.lastFireMs[weid] = world.elapsedMs;
   }

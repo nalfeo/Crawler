@@ -211,81 +211,52 @@ interface CollisionFingerprint {
  *   seed  42:  4/193.14999961853027/5/2    →  unchanged
  *   seed 137:  4/216.71999943256378/8/0    →  4/225.55999952554703/8/2
  */
-// Re-baselined after merging feat(hud): combined navigation, family, and encounter HUD UX
-// batch (#1131) onto main (2026-07-15): the batch added Floor 1 flagged starter weapon
-// classes, an ability system, and associated gameplay changes that shift early combat
-// interactions in this 1500-frame slice. Seeds 13/42/137 now record one–two additional
-// kills while damageDealt/damageTaken/finalScore remain unchanged. Verified stable across
-// two back-to-back invocations (the determinism test below).
+// Re-baselined for the 2026-07-16 primary-stat-overhaul branch: Strength/Constitution/
+// cooldown/mana-removal combat semantics changed expected early-combat interactions in
+// this 1500-frame slice. Verified stable across two back-to-back invocations (the
+// determinism test below).
 // Before → after (kills / damageDealt / damageTaken / score):
-//   seed   7:  3/157.86999559402466/10/0   →  unchanged
-//   seed  13:  4/215.00000381469727/20/2   →  5/215.00000381469727/20/2
-//   seed  42:  4/193.14999961853027/5/2    →  5/193.14999961853027/5/2
-//   seed 137:  4/225.55999952554703/8/2    →  6/225.55999952554703/8/2
+//   seed   7:  3/157.86999559402466/10/0   →  3/145.74999713897705/10/0
+//   seed  13:  5/215.00000381469727/20/2   →  7/194.30000114440918/15/1
+//   seed  42:  5/193.14999961853027/5/2    →  7/243.30000019073486/10/8
+//   seed 137:  6/225.55999952554703/8/2    →  8/298.67000061273575/10/0
 //
-// Re-baselined after feat(ai): multi-threat escape push + safe loot detour (PR #1198,
-// 2026-07-16): improved ranged AI kills one additional enemy in the 1500-frame slice for
-// seed 42 (damageDealt and damageTaken both increase because the AI now pushes into a
-// second enemy that was flanking). finalScore drops from 2 to 0 because the extra kill
-// occurs in the same "encounter window" that was previously left unfinished — the
-// additional kill clears the encounter but score bucketing now resolves differently with
-// the changed damage totals. Seeds 7/13/137 unchanged. Verified stable across two
-// back-to-back invocations.
-// Before → after (kills / damageDealt / damageTaken / score):
-//   seed   7:  unchanged
-//   seed  13:  unchanged
-//   seed  42:  5/193.14999961853027/5/2   →  6/223.44999933242798/5/0
-//   seed 137:  unchanged
-//
-// Re-baselined after fix: safe-room doorway livelock (PR #1212, 2026-07-16):
-// `buildLeaveSafeRoomBehavior` no longer instantly cedes control to Hunt on a
-// single-frame `world.playerInSafeRoom` flicker once an egress waypoint is
-// already committed — it now defers to the existing bounded egress-exit
-// hysteresis/no-progress watchdog instead of re-arming every frame the coarse
-// doorway-boundary flag toggles. That resolved a frame-perfect Floor-1 timeout
-// livelock (canonical repro: sword@14) at the safe-room exit for several
-// seed/weapon starting conditions. The corrected suppress-cooldown bookkeeping
-// exposed by the fix also lets the AI commit to and finish an extra kill within
-// this 1500-frame slice for seeds 13 and 42 instead of stalling mid-approach.
-// Seeds 7/137 unchanged. Verified deterministic across two back-to-back
-// invocations for every rebaselined seed.
-// Before → after (kills / damageDealt / damageTaken / score):
-//   seed   7:  unchanged
-//   seed  13:  5/215.00000381469727/20/2   →  5/225.100004196167/20/2
-//   seed  42:  6/223.44999933242798/5/0    →  7/229.14999961853027/5/0
-//   seed 137:  unchanged
+// 2026-07-16 merge-from-main drift: after merging latest main into this branch,
+// only seed 42 deterministically shifted again while 7/13/137 remained unchanged.
+// Verified stable across two back-to-back invocations on the merged branch.
+//   seed  42:  8/267.30000019073486/10/6   →  6/246.44999980926514/10/8
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 229.14999961853027,
-    damageTaken: 5,
-    finalScore: 0,
+    kills: 6,
+    damageDealt: 246.44999980926514,
+    damageTaken: 10,
+    finalScore: 8,
   },
   7: {
     totalFrames: 1500,
     outcome: 'timeout',
     kills: 3,
-    damageDealt: 157.86999559402466,
+    damageDealt: 145.74999713897705,
     damageTaken: 10,
     finalScore: 0,
   },
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 225.100004196167,
-    damageTaken: 20,
-    finalScore: 2,
+    kills: 7,
+    damageDealt: 194.30000114440918,
+    damageTaken: 15,
+    finalScore: 1,
   },
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 6,
-    damageDealt: 225.55999952554703,
-    damageTaken: 8,
-    finalScore: 2,
+    kills: 8,
+    damageDealt: 298.67000061273575,
+    damageTaken: 10,
+    finalScore: 0,
   },
 };
 

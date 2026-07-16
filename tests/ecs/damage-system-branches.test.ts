@@ -1,6 +1,6 @@
 import { addComponent, entityExists } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Stats } from '../../src/core/components.js';
+import { EffectiveStats } from '../../src/core/components.js';
 import {
   spawnEnemy,
   spawnEnemyProjectile,
@@ -83,9 +83,9 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
   it('reduces contact damage by the player armor stat (min 1)', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    // Stats component gates armor mitigation; the armor value lives in the stats store.
-    addComponent(world.ecs, player, Stats);
-    world.stores.stats.armor[player] = 100;
+    // EffectiveStats gates armor mitigation; the armor value lives in the effectiveStats store.
+    addComponent(world.ecs, player, EffectiveStats);
+    world.stores.effectiveStats.armor[player] = 100;
     spawnEnemy(world, 1, 0, 25);
 
     damageSystem(world, collisionSystem(world));

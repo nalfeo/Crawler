@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-16  
 **Issue**: #1199 — Enemy telegraph cue not rendered at 16× AI-runner lab speed  
-**Apple estimate**: 2🍎  
+**Apple estimate**: 2🍎
 
 ## Systems touched
 
@@ -23,11 +23,11 @@ rendering. This guarantees the cue is visible for at least one rendered frame ev
 
 Three advisory-checks CI failures were also fixed:
 
-| Failure | Root cause | Fix |
-|---------|------------|-----|
-| TypeScript error: `ENEMY_PROJECTILE.TELEGRAPH_MS` missing | `tuning.json` lacked `telegraphMs` field | Added `"telegraphMs": 250` to tuning.json's `enemyProjectile` section |
-| knip dead export: `isEnemyProjectileTelegraphActive` | Exported from `enemyTelegraph.ts` but not used in production code | Imported and used in `PhaserBridge.ts` (replaces direct `eb.telegraphActive[eid] === 1` access) |
-| Ranged-shooting tests broke | New 250ms default delay means `enemyAISystem()` starts a telegraph instead of immediately firing | Updated 3 tests to pass `{ telegraphMs: 0 }` for legacy immediate-fire behavior |
+| Failure                                                   | Root cause                                                                                       | Fix                                                                                             |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| TypeScript error: `ENEMY_PROJECTILE.TELEGRAPH_MS` missing | `tuning.json` lacked `telegraphMs` field                                                         | Added `"telegraphMs": 250` to tuning.json's `enemyProjectile` section                           |
+| knip dead export: `isEnemyProjectileTelegraphActive`      | Exported from `enemyTelegraph.ts` but not used in production code                                | Imported and used in `PhaserBridge.ts` (replaces direct `eb.telegraphActive[eid] === 1` access) |
+| Ranged-shooting tests broke                               | New 250ms default delay means `enemyAISystem()` starts a telegraph instead of immediately firing | Updated 3 tests to pass `{ telegraphMs: 0 }` for legacy immediate-fire behavior                 |
 
 ## Files touched
 

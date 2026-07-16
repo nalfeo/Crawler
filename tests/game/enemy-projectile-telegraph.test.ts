@@ -64,6 +64,122 @@ describe('getEffectiveTelegraphMs resolver', () => {
     const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
     expect(world.stores.enemyBehavior.telegraphMs[enemy]).toBe(TELEGRAPH_MS_UNSET);
   });
+
+  // Regression: copilot-pull-request-reviewer finding — a Float32-overflowing
+  // world.enemyTelegraphMs (e.g. via a direct assignment, bypassing
+  // headless-runner.ts's normalizeEnemyTelegraphMs config-time guard) used to
+  // round to Infinity once stored in the Float32Array-backed
+  // telegraphDelayMs, making isEnemyProjectileTelegraphReady's fire check
+  // never trip. getEffectiveTelegraphMs is the single resolver both the
+  // per-mob and world-level paths flow through, so it must clamp both.
+  it('falls back to the default when the world-level override would overflow Float32', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 1e39;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
+
+  it('falls through to the world-level default (not the hardcoded constant) when a per-mob override would overflow Float32', () => {
+    // Regression: copilot-pull-request-reviewer finding — an invalid per-mob
+    // override used to short-circuit straight to ENEMY_PROJECTILE.TELEGRAPH_MS,
+    // skipping a validly-configured world.enemyTelegraphMs entirely and
+    // silently breaking the documented `mob ?? world ?? constant` precedence.
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 500;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 1e39,
+    });
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(500);
+  });
+
+  it('falls all the way back to the hardcoded constant when both a per-mob override overflows Float32 AND no world default is configured', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = undefined;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 1e39,
+    });
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
+
+  it('falls back to the default for a non-finite world-level override (Infinity/NaN)', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = Number.POSITIVE_INFINITY;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
+
+  // Regression: copilot-pull-request-reviewer finding — clampToFloat32SafeTelegraphMs
+  // only rejected values that overflow Float32 on `Math.fround`, but a
+  // negative finite value (e.g. `world.enemyTelegraphMs = -5`) survives
+  // `Math.fround` unchanged and is NOT an overflow, so it used to pass
+  // through untouched. isEnemyProjectileTelegraphReady's `elapsed >=
+  // delayMs` check then trips immediately (elapsed starts at 0, and
+  // `0 >= -5` is true), producing an effectively-instant fire with no
+  // visible telegraph window — silently violating the "every hostile
+  // projectile telegraphs" contract. A negative delay must fall back to
+  // the default, same as a Float32-overflowing or non-finite one.
+  it('falls back to the default for a negative world-level override', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = -5;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
+
+  it('an explicit per-mob 0 still overrides a negative world default (0 stays legitimate legacy parity)', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = -5;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 0,
+    });
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(0);
+  });
+
+  it('a negative per-mob override (not the -1 unset sentinel) falls through to the world default, not the negative value', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 500;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: -7,
+    });
+    // isFloat32SafeNonNegativeTelegraphMs(-7) is false (negative), same
+    // branch as the -1 unset sentinel, so this resolves the world-level
+    // default rather than -7 or the constant.
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(500);
+  });
+
+  // Regression: copilot-pull-request-reviewer finding — a tiny nonzero delay
+  // (e.g. `1e-50`) is finite and non-negative, so it used to survive the
+  // overflow/negative guards unchanged, but `Math.fround(1e-50) === 0`: once
+  // that value is written to the Float32Array-backed telegraphDelayMs store
+  // it becomes byte-identical to an intentional, legitimate "legacy: no
+  // telegraph" override. A world-level delay this small must fall back to
+  // the default rather than silently degrading into immediate-fire.
+  it('falls back to the default for a world-level override that would underflow to 0 in Float32', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 1e-50;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
+
+  it('falls through to the world-level default (not 0) when a per-mob override would underflow to 0 in Float32', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 500;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 1e-50,
+    });
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(500);
+  });
+
+  it('spawnBehaviorEnemy stores the unset sentinel (not a rounded 0) for a per-mob override that would underflow Float32', () => {
+    // Sanitizing must happen BEFORE the value ever reaches the
+    // Float32Array-backed telegraphMs store — otherwise 1e-50 rounds to 0 on
+    // assignment and becomes indistinguishable from an explicit, legitimate
+    // `telegraphMs: 0` legacy override once stored.
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 1e-50,
+    });
+    expect(world.stores.enemyBehavior.telegraphMs[enemy]).toBe(TELEGRAPH_MS_UNSET);
+  });
 });
 
 describe('enemy projectile telegraph — 0ms legacy parity', () => {

@@ -43,7 +43,6 @@ import {
   Player,
   Position,
   Size,
-  Stats,
   Sprite,
   type GameWorld,
 } from '../core/index.js';
@@ -89,12 +88,8 @@ import { initializeFloor2Settlement } from './floor2Settlement.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { equip, initializeBaseStats, unequip } from '../core/systems/equipmentSystem.js';
-import {
-  addStatModifier,
-  removeStatModifiers,
-  spendPoints,
-  statsSystem,
-} from './systems/statsSystem.js';
+import { statSystem } from '../core/systems/index.js';
+import { addStatModifier, removeStatModifiers, spendPoints } from './systems/statsSystem.js';
 import {
   installQuestPacks,
   type QuestPackDef,
@@ -1059,16 +1054,13 @@ function applyFloor2DirectStartPlayerState(world: GameWorld, playerEid: number):
   if (!hasComponent(world.ecs, playerEid, BaseStats)) {
     initializeBaseStats(world, playerEid);
   }
-  if (!hasComponent(world.ecs, playerEid, Stats)) {
-    addComponent(world.ecs, playerEid, Stats);
-  }
 
   applyStartPlayerLevel(world, FLOOR2_DIRECT_START_LEVEL);
   const allocations = computeAutoStatAllocation(world, playerEid, world.playerLevel.unspentPoints);
   if (Object.keys(allocations).length > 0) {
     spendPoints(world, allocations);
   }
-  statsSystem(world);
+  statSystem(world);
 
   unequip(world, playerEid, 'neck', { force: true });
   equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });

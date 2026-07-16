@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query, removeEntity } from 'bitecs';
 import { Enemy, Health, Owner, Player, Position, Team, Trap } from '../components.js';
 import { clearEntityStores, spawnAreaAttack } from '../helpers.js';
+import { propagateDamageMeta } from '../damage-meta.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
@@ -78,6 +79,10 @@ export function trapSystem(world: GameWorld, collisionResult: CollisionResult): 
         50,
         explosionTeam,
       );
+      // Propagate the trap's own damage-scaling metadata (tagged at spawn by
+      // weaponSystem's dispatch choke point) onto its explosion so it keeps
+      // the same origin/affinity/scaling/crit eligibility.
+      propagateDamageMeta(world, eid, explosionEid);
       const trapSkillIds =
         world.attackWeaponSkillsByEntity.get(eid) ??
         (ownerEid >= 0 ? world.attackerWeaponSkills.get(ownerEid) : undefined);

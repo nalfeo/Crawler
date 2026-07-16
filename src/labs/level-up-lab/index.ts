@@ -5,17 +5,18 @@
  * Spins up a real Phaser scene with a synthetic GameWorld + player, grants
  * unspent points, and opens the actual LevelUpUI so the real render/keyboard/
  * pointer code paths run. Confirming applies the allocation via `spendPoints`
- * and recomputes stats via `statsSystem`, then prints the result.
+ * and recomputes EffectiveStats via the core `statSystem`, then prints the result.
  */
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { GAME } from '../../shared/constants.js';
 import { addComponent } from 'bitecs';
-import { Stats, SkillHolder } from '../../core/components.js';
+import { SkillHolder } from '../../core/components.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
-import { spawnPlayer } from '../../core/index.js';
+import { spawnPlayer, statSystem } from '../../core/index.js';
+import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import { createLevelUpUI } from '../../engine/LevelUpUI.js';
-import { spendPoints, statsSystem } from '../../game/systems/statsSystem.js';
+import { spendPoints } from '../../game/systems/statsSystem.js';
 import { PRIMARY_STATS } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
 import { pxToFt } from '../../shared/units.js';
@@ -50,7 +51,7 @@ function createLevelUpLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   const hint = document.createElement('p');
   hint.textContent =
     'Level-up lab: grant points, then ↑/↓ select a stat, ←/→ adjust, Enter confirm. ' +
-    'Confirming spends the points through the real statsSystem.';
+    'Confirming calls spendPoints, then the core statSystem recomputes EffectiveStats.';
   hint.style.cssText = 'margin-top:16px;color:#c9d4ff;line-height:1.6;';
   controls.append(hint);
 
@@ -84,11 +85,11 @@ function createLevelUpLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     create(): void {
       world = createGameWorld({ seed: 1337 });
       playerEid = spawnPlayer(world, pxToFt(GAME.WIDTH) / 2, pxToFt(GAME.HEIGHT) / 2);
-      addComponent(world.ecs, playerEid, Stats);
+      initializeBaseStats(world, playerEid);
       addComponent(world.ecs, playerEid, SkillHolder);
       world.playerLevel.unspentPoints = settings.pointsToGrant;
       world.playerLevel.level = 1;
-      statsSystem(world);
+      statSystem(world);
 
       this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x05070f).setOrigin(0, 0);
       this.add
@@ -104,7 +105,7 @@ function createLevelUpLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           if (!world) return;
           try {
             spendPoints(world, allocations);
-            statsSystem(world);
+            statSystem(world);
             logger.info('Allocation confirmed', {
               allocations,
               unspent: world.playerLevel.unspentPoints,

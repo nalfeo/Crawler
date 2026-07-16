@@ -6,7 +6,7 @@
  * can be equipped/granted via toggles and exercised against configurable
  * enemy scenarios that trip each authored trigger (cluster / low-HP / skill
  * usage / boss). A debug hotbar overlay lets you click any equipped ability
- * slot to force-fire it, bypassing cooldown + mana cost.
+ * slot to force-fire it, bypassing cooldown.
  *
  * Replaces the previous naked-Phaser sandbox: the same shipped simulation
  * pipeline (runSimulationStep) and world are used, so what you see in the
@@ -19,12 +19,7 @@ import { createFloorGameConfig } from '../../bootstrap/floor-game-config.js';
 import { ArenaGenerator } from '../../core/map/generators/ArenaGenerator.js';
 import { Enemy, type GameWorld } from '../../core/index.js';
 import { spawnEnemy } from '../../core/helpers.js';
-import {
-  familyRelationshipSystem,
-  manaSystem,
-  statSystem,
-  statusEffectSystem,
-} from '../../core/index.js';
+import { familyRelationshipSystem, statSystem, statusEffectSystem } from '../../core/index.js';
 import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import type { MainGameSceneOptions } from '../../engine/scenes/MainGameScene.js';
 import type { AbilityLoadoutConfig, AbilityLoadoutEntry } from '../../engine/AbilityLoadoutUI.js';
@@ -43,7 +38,6 @@ import {
   setActiveWeapon,
   skillSystem,
   spawnerSystem,
-  statsSystem,
   unequipActiveAbility,
   weaponSystem,
   weaponPrerequisiteMet,
@@ -183,7 +177,6 @@ interface AbilitiesLabSettings {
   scenario: ScenarioId;
   activeWeapon: string;
   invulnerable: boolean;
-  infiniteMana: boolean;
 }
 
 interface AbilitiesLabSnapshot {
@@ -197,7 +190,6 @@ function loadSnapshot(): AbilitiesLabSnapshot {
     scenario: 'cluster',
     activeWeapon: 'pistol',
     invulnerable: true,
-    infiniteMana: true,
     ...(saved?.settings ?? {}),
   };
   const equipped: Record<string, boolean> = {};
@@ -454,7 +446,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = def.name;
-      btn.title = `${def.description}\n\nClick to force-fire (bypasses cooldown + MP).`;
+      btn.title = `${def.description}\n\nClick to force-fire (bypasses cooldown).`;
       btn.style.padding = '10px 12px';
       btn.style.minWidth = '80px';
       btn.style.background = def.kind === 'spell' ? '#1e3a8a' : '#166534';
@@ -553,16 +545,13 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   }
 
   // Per-frame preSystem that (a) reruns the recurring enemy spawner with the
-  // active scenario's config and (b) enforces the Invulnerable / Infinite Mana
-  // debug toggles. Kept as a preSystem so it slots into the shipped
-  // runSimulationStep pipeline in the exact same order every frame.
+  // active scenario's config and (b) enforces the Invulnerable debug toggle.
+  // Kept as a preSystem so it slots into the shipped runSimulationStep
+  // pipeline in the exact same order every frame.
   function labPreSystem(world: GameWorld): void {
     const eid = runtime.playerEid ?? -1;
     if (eid < 0) return;
 
-    if (settings.infiniteMana) {
-      world.playerMp = world.playerMaxMp;
-    }
     if (settings.invulnerable) {
       const max = world.stores.health.max[eid] ?? 100;
       world.stores.health.current[eid] = max;
@@ -586,9 +575,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     worldSeed: LAB_SEED,
     configureWorld,
     preSystems: [
-      statsSystem,
       statSystem,
-      manaSystem,
       familyRelationshipSystem,
       weaponSystem,
       enemyAISystem,
@@ -648,9 +635,7 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
           shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
           description: presentation?.description ?? 'Configured auto ability.',
           category: presentation?.category ?? 'utility',
-          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${
-            presentation?.mpCost ?? 0
-          } MP  •  ${cooldownSeconds}s CD`,
+          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${cooldownSeconds}s CD`,
           equipped: state.equippedActiveAbilityIds.includes(abilityId),
         };
       });
@@ -795,7 +780,6 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       `Weapon: ${currentWeapon?.id ?? '(none)'}`,
       `Scenario: ${getScenario(settings.scenario).label}`,
       `HP: ${hp.toFixed(0)} / ${hpMax.toFixed(0)}`,
-      `MP: ${world.playerMp.toFixed(0)} / ${world.playerMaxMp.toFixed(0)}`,
       `Enemies: ${enemyCount}`,
       `Equipped: ${equippedCount} active/spell   ${passiveIds.length} passive`,
       passiveIds.length > 0 ? `Passives:\n${passiveLines.filter(Boolean).join('\n')}` : '',
@@ -875,7 +859,6 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       if (!world || eid < 0) return;
       const max = world.stores.health.max[eid] ?? 100;
       world.stores.health.current[eid] = max;
-      world.playerMp = world.playerMaxMp;
     },
     'Reset Arena': () => restartScene(),
   };
@@ -886,7 +869,6 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   helperFolder.add(helpers, 'Reset Arena');
 
   const arenaFolder = gui.addFolder('Debug Toggles');
-  arenaFolder.add(settings, 'infiniteMana').name('Infinite Mana');
   arenaFolder.add(settings, 'invulnerable').name('Invulnerable');
 
   gui.onChange(persistState);
@@ -908,6 +890,6 @@ registerLab(LAB_ID, {
   description:
     'Boot MainGameScene onto an Arena floor. Pick a scenario (solo, target dummy, cluster, ' +
     'low-HP, boss horde, skill-trigger), equip any spells/actives/passives, and click the ' +
-    'debug hotbar overlay to force-fire abilities bypassing cooldown + MP.',
+    'debug hotbar overlay to force-fire abilities bypassing cooldown.',
   create: createAbilitiesLab,
 });

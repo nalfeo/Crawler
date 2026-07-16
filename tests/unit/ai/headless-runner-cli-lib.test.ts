@@ -95,4 +95,22 @@ describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {
     // malformed CLI input. Number('250ms') is NaN, correctly rejecting it.
     expect(() => cli('--enemy-telegraph-ms', '250ms')).toThrow(/Invalid --enemy-telegraph-ms/);
   });
+
+  it('throws when the flag is the final token with no value (regression: copilot-pull-request-reviewer finding)', () => {
+    // The previous `arg === '--enemy-telegraph-ms' && next` guard silently
+    // skipped this whole branch when `next` was undefined, letting the flag
+    // fall through unconsumed and the run silently use the 250ms default
+    // instead of failing on the malformed invocation.
+    expect(() => cli('--enemy-telegraph-ms')).toThrow(/--enemy-telegraph-ms requires a value/);
+  });
+
+  it('throws on a whitespace-only value instead of silently disabling telegraphs (regression: copilot-pull-request-reviewer finding)', () => {
+    // Number('   ') === 0, so a naive `next === ''` check let a whitespace-only
+    // token slip past the missing-value guard and silently resolve to
+    // enemyTelegraphMs: 0 (instant-fire, telegraph disabled) instead of
+    // failing fast on the malformed invocation.
+    expect(() => cli('--enemy-telegraph-ms', '   ')).toThrow(
+      /--enemy-telegraph-ms requires a value/,
+    );
+  });
 });

@@ -16,6 +16,8 @@ import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
   BehaviorTreeAI,
   SAFE_ROOM_EGRESS_EXIT_HYSTERESIS_FRAMES,
+  SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES,
+  SAFE_ROOM_EGRESS_SUPPRESS_FRAMES,
 } from '../../src/game/ai/bt-ai-provider.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
@@ -1087,6 +1089,76 @@ describe('BehaviorTreeAI', () => {
       expect(decision.targetX).toBeCloseTo(targetX, 6);
       expect(decision.targetY).toBeCloseTo(targetY, 6);
     }
+  });
+
+  it('preserves the safe-room egress suppress cooldown across an outside poll', () => {
+    const world = createTestWorld({ seed: 32 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 0;
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 10;
+    world.playerInSafeRoom = true;
+
+    spawnEnemy(world, 84, 10, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 32 });
+    const input = createInputState();
+    ai.poll(input, world);
+    expect(ai.getDecision().reason).toContain('Leaving safe room');
+
+    for (let i = 0; i < SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES + 1; i += 1) {
+      ai.poll(input, world);
+    }
+
+    world.playerInSafeRoom = false;
+    ai.poll(input, world);
+    expect(ai.getDecision().reason).not.toContain('Leaving safe room');
+
+    world.playerInSafeRoom = true;
+    for (let i = 0; i < SAFE_ROOM_EGRESS_SUPPRESS_FRAMES; i += 1) {
+      ai.poll(input, world);
+      expect(ai.getDecision().reason).not.toContain('Leaving safe room');
+    }
+
+    ai.poll(input, world);
+    expect(ai.getDecision().reason).toContain('Leaving safe room');
+  });
+
+  it('clears the safe-room egress suppress cooldown on reset', () => {
+    const world = createTestWorld({ seed: 33 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 0;
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 10;
+    world.playerInSafeRoom = true;
+
+    spawnEnemy(world, 84, 10, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 33 });
+    const input = createInputState();
+    ai.poll(input, world);
+    expect(ai.getDecision().reason).toContain('Leaving safe room');
+
+    for (let i = 0; i < SAFE_ROOM_EGRESS_NO_PROGRESS_FRAMES + 1; i += 1) {
+      ai.poll(input, world);
+    }
+
+    world.playerInSafeRoom = false;
+    ai.poll(input, world);
+    world.playerInSafeRoom = true;
+
+    ai.reset();
+    ai.poll(input, world);
+
+    expect(ai.getDecision().reason).toContain('Leaving safe room');
   });
 
   it('prioritizes the broker while floor2 reputation is locked, then drops broker targeting after intro completion', () => {

@@ -26,6 +26,7 @@ import {
 } from '../core/systems/equipmentSystem.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { PRIMARY_STATS, SECONDARY_STATS, ALL_STAT_IDS, type StatId } from '../shared/stats.js';
+import { getEntityEncumbranceSnapshot } from '../core/encumbrance.js';
 import { addItem, filterByEquipmentSlot, filterEquippable } from '../shared/inventory.js';
 import type { InventoryBag, InventorySlot } from '../shared/inventory.js';
 import { getItemById, RARITY_COLORS, type ItemDef } from '../shared/items.js';
@@ -84,6 +85,14 @@ function formatStatLabel(statId: StatId): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toUpperCase();
+}
+
+function formatWeightLb(value: number): string {
+  return `${formatStatValue(value)} lb`;
+}
+
+function formatEncumbranceBandLabel(band: string): string {
+  return band.toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -994,8 +1003,9 @@ export function createEquipmentUI(
 
     let rowY = dollY + 68;
     const colW = STATS_W - 14;
-    const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length;
-    const reservedSectionSpace = 18 * 2 + 4;
+    const ENCUMBRANCE_ROW_COUNT = 3; // equipped weight, total mass, band status
+    const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length + ENCUMBRANCE_ROW_COUNT;
+    const reservedSectionSpace = 18 * 3 + 4; // PRIMARY + SECONDARY + MASS section headers
     const rowsEndY = dollY + dollH - 12;
     const rowStep = Math.max(
       20,
@@ -1058,6 +1068,42 @@ export function createEquipmentUI(
       rowY += rowStep;
     };
 
+    // Encumbrance rows share the same row chrome as `drawStat` but display
+    // pre-formatted label/value text instead of resolving a StatId — equipped
+    // weight/total mass/band aren't EffectiveStats fields (encumbrance is
+    // computed from Weight + equipped gear + effective Strength, see
+    // core/encumbrance.ts), yet the plan requires them UI-visible even while
+    // fully inert (the shipped catalog's weightLb is all 0).
+    const drawInfoRow = (label: string, valueText: string, highlighted: boolean): void => {
+      const rowBg = scene.add.rectangle(
+        statsX + colW / 2 + 6,
+        rowY + Math.floor(rowStep / 2),
+        colW - 8,
+        Math.max(20, rowStep - 2),
+        rowY % 48 === 0 ? 0x2f4369 : 0x38507d,
+        0.92,
+      );
+      rowBg.setStrokeStyle(1, 0x5f7db0, 0.7);
+      const name = crispText(statsX + 10, rowY + 6, label, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '8px',
+        color: hex(COLORS.textPrimary),
+      });
+      name.setOrigin(0, 0);
+      const val = crispText(statsX + colW, rowY + 6, valueText, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '8px',
+        color: highlighted ? hex(COLORS.statNerf) : hex(COLORS.textPrimary),
+        fontStyle: highlighted ? 'bold' : 'normal',
+      });
+      val.setOrigin(1, 0);
+      container.add(rowBg);
+      container.add(name);
+      container.add(val);
+      statObjects.push(rowBg, name, val);
+      rowY += rowStep;
+    };
+
     drawSection('PRIMARY');
     for (const statId of PRIMARY_STATS) {
       drawStat(statId);
@@ -1067,6 +1113,16 @@ export function createEquipmentUI(
     for (const statId of SECONDARY_STATS) {
       drawStat(statId);
     }
+    rowY += 4;
+    drawSection('MASS');
+    const encumbrance = getEntityEncumbranceSnapshot(lastWorld, playerEid);
+    drawInfoRow('EQUIPPED', formatWeightLb(encumbrance.equippedWeightLb), false);
+    drawInfoRow('TOTAL MASS', formatWeightLb(encumbrance.totalMassLb), false);
+    drawInfoRow(
+      'STATUS',
+      formatEncumbranceBandLabel(encumbrance.band),
+      encumbrance.band !== 'unburdened',
+    );
   }
 
   function render(): void {

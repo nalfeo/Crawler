@@ -1,8 +1,10 @@
 import GUI from 'lil-gui';
 import { addComponent } from 'bitecs';
-import { Stats, SkillHolder } from '../../core/components.js';
+import { SkillHolder } from '../../core/components.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/helpers.js';
+import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
+import { statSystem } from '../../core/systems/index.js';
 import {
   getAllAbilityDefinitions,
   SKILL_LEVEL5_ABILITY_GRANTS,
@@ -17,7 +19,6 @@ import {
   memorizeSpell,
   queueAbilityTrigger,
   skillSystem,
-  statsSystem,
   weaponPrerequisiteMet,
 } from '../../game/systems/index.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -45,9 +46,9 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   function reset() {
     world = createGameWorld({ seed: 777 });
     player = spawnPlayer(world, 0, 0);
-    addComponent(world.ecs, player, Stats);
+    initializeBaseStats(world, player);
     addComponent(world.ecs, player, SkillHolder);
-    statsSystem(world);
+    statSystem(world);
 
     const skillStateById = new Map<string, SkillState>();
     for (const skill of allSkills) {
@@ -205,7 +206,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
           world.frameCount += 1;
           skillSystem(world);
           abilitySystem(world);
-          statsSystem(world);
+          statSystem(world);
           render();
         },
       },
@@ -265,7 +266,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
           grantPassive: () => {
             grantPassiveAbility(world, player, params.selectedPassiveAbility);
             abilitySystem(world);
-            statsSystem(world);
+            statSystem(world);
             render();
           },
         },
@@ -289,7 +290,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
           });
           world.frameCount += 1;
           abilitySystem(world);
-          statsSystem(world);
+          statSystem(world);
           render();
         },
       },

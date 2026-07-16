@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "advisory-checks-encumbrance-export-cleanup",
+  "task_title": "Fix advisory dead-code failure in encumbrance exports",
+  "estimated_apples": 1,
+  "stages": {}
+}

@@ -4,6 +4,7 @@ import { spawnAreaAttack } from '../helpers.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { getActivationForEntity, withActivationId } from '../weapon-telemetry.js';
+import { readDamageMeta, tagDamageMeta, type PersistedDamageMeta } from '../damage-meta.js';
 
 interface AoeSnapshot {
   eid: number;
@@ -21,6 +22,13 @@ interface AoeSnapshot {
    */
   activationId: number | undefined;
   skillIds: { classSkillId: string; typeSkillId: string } | undefined;
+  /**
+   * The source projectile's persisted damage-scaling metadata, captured
+   * before it's destroyed (`clearEntityStores` zeroes its store slot) so the
+   * spawned explosion can propagate the SAME origin/affinity/scaling/crit
+   * eligibility (e.g. a magic weapon's AoE-on-impact splash stays magic).
+   */
+  damageMeta: PersistedDamageMeta;
 }
 
 const trackedSnapshots = new WeakMap<GameWorld, AoeSnapshot[]>();
@@ -58,6 +66,7 @@ export function aoeOnImpactPreDamage(world: GameWorld): void {
       skillIds:
         world.attackWeaponSkillsByEntity.get(eid) ??
         (ownerEid >= 0 ? world.attackerWeaponSkills.get(ownerEid) : undefined),
+      damageMeta: readDamageMeta(world, eid),
     });
   }
 }
@@ -88,6 +97,7 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
           50,
           snap.teamId,
         );
+        tagDamageMeta(world, explosionEid, snap.damageMeta);
         if (snap.skillIds !== undefined) {
           world.attackWeaponSkillsByEntity.set(explosionEid, snap.skillIds);
         }

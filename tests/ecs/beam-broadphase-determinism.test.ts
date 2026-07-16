@@ -12,6 +12,7 @@ import { spawnBeam, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { beamSystem } from '../../src/core/systems/beamSystem.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
+import { tagDamageMeta } from '../../src/core/damage-meta.js';
 import { TeamId } from '../../src/shared/constants.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -123,7 +124,30 @@ function buildBeamScene(seed: number): BeamScene {
   }
 
   // Player beam: origin → +x, covers the whole cluster. tickMs 0 ⇒ hits every frame.
-  spawnBeam(world, ORIGIN_X, ORIGIN_Y, 1, 0, BEAM_LENGTH, 3, 1_000_000, 0, player, TeamId.PLAYER);
+  const playerBeam = spawnBeam(
+    world,
+    ORIGIN_X,
+    ORIGIN_Y,
+    1,
+    0,
+    BEAM_LENGTH,
+    3,
+    1_000_000,
+    0,
+    player,
+    TeamId.PLAYER,
+  );
+  // Player-sourced beams must be explicitly tagged for the generic
+  // offense/crit branch to trigger — `spawnBeam` is a dumb ECS constructor
+  // (the real game tags via weaponSystem.dispatchAttackInner's single choke
+  // point after firing). Tag it here so this determinism suite observes the
+  // SAME crit-eligible RNG draw sequence a real player beam weapon would.
+  tagDamageMeta(world, playerBeam, {
+    origin: 'player',
+    affinity: 'physical',
+    scaleWithPrimary: true,
+    canCrit: true,
+  });
   // Enemy beam: fires from beyond the cluster back toward the player, drawing dodge.
   spawnBeam(
     world,

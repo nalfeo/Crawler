@@ -114,7 +114,7 @@ describe('Fireball auto-triggers in the shipped visual pipeline', () => {
     // Fireball's trigger is enemy_cluster (withinFeet=6, minEnemies=1) with no
     // cooldown history yet, so it should latch on the very first frame the
     // abilitySystem sees the dummy. Give it a small budget in case some other
-    // preSystem needs a frame to initialize (statsSystem, manaSystem).
+    // preSystem needs a frame to initialize (statSystem).
     stepVisualPipeline(world, options, 5);
 
     const cooldownFrame = state?.cooldownByAbilityId.get('fireball');
@@ -186,13 +186,12 @@ describe('Fireball kill attribution', () => {
     const dummyEid = spawnStationaryEnemyNearPlayer(world, playerEid, 5);
     setComponent(world.ecs, dummyEid, Health, { current: 1, max: 500 });
 
-    // statsSystem only writes stores.stats.damage when the player has the Stats
-    // component (added by levelSystem on first level-up). In a fresh Floor 1
-    // scenario the player hasn't levelled, so stats.damage stays 0, which makes
-    // castFireball use baseDamage=0 (0 ?? 10 === 0 for a Float32Array slot) and
-    // applyDamage short-circuits on amount<=0. Seed the damage stat directly so
-    // the blast is lethal against the HP=1 dummy.
-    world.stores.stats.damage[playerEid] = 10;
+    // Fireball's damage is now an authored, always-available base (15,
+    // scalesWithIntelligence — see game/abilities/registry.ts) resolved
+    // against the player's effective Intelligence, so it no longer depends on
+    // any level-gated stat store. A fresh Floor 1 player's effective INT is 1
+    // (base, no allocation/gear yet), which resolves to round(15 * 1.01) = 15
+    // — comfortably lethal against the HP=1 dummy with no seeding needed.
 
     // Frame N: dropSystem runs before abilitySystem, so the fireball kills in
     // postSystems after this frame's death pass.
