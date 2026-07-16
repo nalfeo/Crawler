@@ -60,16 +60,34 @@ export const TELEGRAPH_MS_UNSET = -1;
  * Float32-safe contract), a per-mob `spawnBehaviorEnemy({ telegraphMs })`
  * override, and a direct `world.enemyTelegraphMs` assignment.
  */
+/**
+ * True when `candidateMs` is both finite after Float32 rounding and
+ * non-negative — the two invariants `clampToFloat32SafeTelegraphMs` and
+ * `getEffectiveTelegraphMs`'s per-mob branch both need to decide whether a
+ * candidate value is safe to use as-is.
+ */
+function isFloat32SafeNonNegativeTelegraphMs(candidateMs: number): boolean {
+  return Number.isFinite(Math.fround(candidateMs)) && candidateMs >= 0;
+}
+
 function clampToFloat32SafeTelegraphMs(candidateMs: number): number {
-  const isFloat32SafeNonNegative = Number.isFinite(Math.fround(candidateMs)) && candidateMs >= 0;
-  return isFloat32SafeNonNegative ? candidateMs : ENEMY_PROJECTILE.TELEGRAPH_MS;
+  return isFloat32SafeNonNegativeTelegraphMs(candidateMs)
+    ? candidateMs
+    : ENEMY_PROJECTILE.TELEGRAPH_MS;
 }
 
 /** Resolves `mob.telegraphMs ?? world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS`. */
 export function getEffectiveTelegraphMs(world: GameWorld, eid: number): number {
   const perMob = world.stores.enemyBehavior.telegraphMs[eid] ?? TELEGRAPH_MS_UNSET;
-  if (perMob >= 0) {
-    return clampToFloat32SafeTelegraphMs(perMob);
+  // An invalid per-mob override (Float32-overflow, non-finite, or negative)
+  // must be treated the same as "unset" and fall through to the
+  // world-level default rather than short-circuiting straight to the
+  // hardcoded constant — otherwise a configured `world.enemyTelegraphMs`
+  // never has a chance to apply, silently breaking the documented
+  // `mob ?? world ?? constant` precedence (regression:
+  // copilot-pull-request-reviewer finding).
+  if (isFloat32SafeNonNegativeTelegraphMs(perMob)) {
+    return perMob;
   }
   return clampToFloat32SafeTelegraphMs(world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS);
 }

@@ -79,9 +79,22 @@ describe('getEffectiveTelegraphMs resolver', () => {
     expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
   });
 
-  it('falls back to the default when a per-mob override would overflow Float32', () => {
+  it('falls through to the world-level default (not the hardcoded constant) when a per-mob override would overflow Float32', () => {
+    // Regression: copilot-pull-request-reviewer finding — an invalid per-mob
+    // override used to short-circuit straight to ENEMY_PROJECTILE.TELEGRAPH_MS,
+    // skipping a validly-configured world.enemyTelegraphMs entirely and
+    // silently breaking the documented `mob ?? world ?? constant` precedence.
     const world = createTestWorld();
     world.enemyTelegraphMs = 500;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 1e39,
+    });
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(500);
+  });
+
+  it('falls all the way back to the hardcoded constant when both a per-mob override overflows Float32 AND no world default is configured', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = undefined;
     const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
       telegraphMs: 1e39,
     });
