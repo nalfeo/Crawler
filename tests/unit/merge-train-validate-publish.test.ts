@@ -38,6 +38,7 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  permissions?: Record<string, string>;
   steps?: WorkflowStep[];
 }
 
@@ -160,6 +161,15 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     const steps = doc.jobs.publish?.steps ?? [];
     const step = steps.find((candidate) => candidate.name === 'Publish immutable candidate result');
     expect(step?.with?.['github-token']).toBe('${{ steps.app-token.outputs.token }}');
+  });
+
+  it('grants the publish job actions: write so the GITHUB_TOKEN wake-up dispatch does not 403', () => {
+    const raw = readFileSync(
+      path.join(REPO_ROOT, '.github/workflows/merge-train-validate.yml'),
+      'utf8',
+    );
+    const doc = parse(raw) as WorkflowDoc;
+    expect(doc.jobs.publish?.permissions?.actions).toBe('write');
   });
 
   it('publish script only calls checks.create (no dispatch — dispatch is a separate GITHUB_TOKEN step)', async () => {
