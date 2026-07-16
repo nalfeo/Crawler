@@ -94,20 +94,24 @@ main.
 
 - `.github/workflows/merge-train-validate.yml` — added `if: always()` to the
   "Wake merge-train reconciliation" step, plus a new "Generate recovery app
-  token" step and "Mark candidate check retryable if publishing failed" step
-  (both gated on `(failure() || cancelled()) && steps.recovery-app-token.outcome
-== 'success' && (steps.app-token.outcome == 'failure' || steps.app-token.outcome
-== 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome
-== 'cancelled')` — the `failure() || cancelled()` prefix is required to avoid
-  an implicit-`success()` dead-code trap, verified empirically for
-  `failure()`/`success()`; see the fourth- and fifth-round follow-ups below — the
-  `steps.recovery-app-token.outcome == 'success'` clause additionally requires the
-  independently-minted recovery token to have actually succeeded, so a failed
-  recovery mint doesn't waste an attempt calling `checks.create` with no valid
-  App token) that posts a `cancelled` conclusion for the fingerprinted check
-  before the wake dispatches, with bounded retry for transient Checks API
-  failures. "Publish immutable candidate result" has an explicit `id: publish`
-  so the fallback conditions can check its own outcome.
+  token" step and "Mark candidate check retryable if publishing failed" step.
+  Both are gated on `(failure() || cancelled()) && (steps.app-token.outcome ==
+'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome
+== 'failure' || steps.publish.outcome == 'cancelled')` — the
+  `failure() || cancelled()` prefix is required to avoid an implicit-`success()`
+  dead-code trap, verified empirically for `failure()`/`success()`; see the
+  fourth- and fifth-round follow-ups below. The downstream "Mark candidate
+  check retryable" step **additionally** requires
+  `steps.recovery-app-token.outcome == 'success'` (the recovery-mint step
+  itself cannot gate on its own outcome), so a failed recovery mint doesn't
+  waste an attempt calling `checks.create` with no valid App token. It also
+  queries existing checks via `checks.listForRef` before creating the
+  cancellation, skipping as a no-op if a genuine terminal success/failure
+  check already exists for the fingerprint (see the seventh-round follow-up
+  below). It posts a `cancelled` conclusion for the fingerprinted check before
+  the wake dispatches, with bounded retry for transient Checks API failures.
+  "Publish immutable candidate result" has an explicit `id: publish` so the
+  fallback conditions can check its own outcome.
 - `.github/workflows/merge-train.yml` — added the schedule/`MERGE_TRAIN_ENABLED`
   carve-out to the `reconcile` job's `if:` guard, with an explanatory comment
   describing the `mainHealthReason()` race scenario it closes.
@@ -432,7 +436,10 @@ retryable-check step would just waste an attempt and produce a confusing
 secondary failure instead of a clean, diagnosable no-op.
 
 Reconciled this with the fifth round's `cancelled()` work (the two changes
-had landed on divergent commits). **Final condition on both fallback steps**:
+had landed on divergent commits). **Final condition on the downstream
+"Mark candidate check retryable" step** (the recovery-mint step's own
+condition, shown further down, omits the self-referential
+`recovery-app-token.outcome` clause since it cannot check its own outcome):
 
 ```
 (failure() || cancelled()) && steps.recovery-app-token.outcome == 'success'
@@ -460,12 +467,16 @@ as the fifth round — one existing test body extended, no new `it()` blocks.
 first shepherd round) and the "Second shepherd-round follow-up" section both
 describe the retryable-check and recovery-token-mint steps as gated on plain
 `if: failure()`. That was accurate for the commit each section documents at
-the time, but is now stale relative to the shipped workflow — the actual,
-final condition on both steps is the combined
-`(failure() || cancelled()) && steps.recovery-app-token.outcome == 'success'
-&& (...)` expression documented in this section and in "Files touched"
-below, arrived at across the third/fourth/fifth/sixth rounds. Treat this
-section, "Files touched", and the workflow's own inline comments as the
+the time, but is now stale relative to the shipped workflow. The actual,
+final conditions are: "Generate recovery app token" (the recovery-mint step)
+uses `(failure() || cancelled()) && (steps.app-token.outcome == 'failure' ||
+steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure'
+|| steps.publish.outcome == 'cancelled')`; the downstream "Mark candidate
+check retryable" step uses that **same** expression **plus** an additional
+`steps.recovery-app-token.outcome == 'success'` clause (it cannot self-gate,
+so only the downstream step adds it), arrived at across the
+third/fourth/fifth/sixth rounds. Treat this section, "Files touched", and the
+workflow's own inline comments as the
 authoritative current state; earlier round sections are a historical record
 of how the condition evolved, not the shipped behavior.
 
@@ -530,3 +541,36 @@ that both fallback steps require `steps.recovery-app-token.outcome ==
 of the "Mark candidate check retryable" step, not "Generate recovery app
 token" itself (which cannot gate on its own outcome) — no further edit
 needed here beyond confirming that correction is present and accurate.
+
+## Eighth round follow-up (diagnostic wording + repeated "both steps" phrasing)
+
+A further `copilot-pull-request-reviewer` pass on the seventh-round push
+caught two more accuracy issues, both fixed here:
+
+1. **Workflow diagnostic wording** (`merge-train-validate.yml`, the
+   `checks.create` call in "Mark candidate check retryable"): the posted
+   check's `output.title`/`summary` said "publish step failed", but when the
+   original App-token mint itself fails/is cancelled, the `publish` step is
+   **skipped** (via its `needs`/`if` chain), not failed — so that wording
+   misdescribes the actual trigger in the token-mint-failure path. Reworded
+   to "token mint or result publication failed" / "Either the App-token mint
+   or the 'Publish immutable candidate result' step failed/was cancelled…" to
+   cover both real trigger paths accurately. No test asserted the exact
+   previous string, so no test changes were needed.
+2. **Repeated "both fallback steps" phrasing**: three more spots (the
+   "Files touched" entry for `merge-train-validate.yml`, the sixth round's
+   "Final condition on both fallback steps" heading, and its "Correcting
+   earlier round narratives" closing paragraph) all stated or implied that
+   the combined `(failure() || cancelled()) && steps.recovery-app-token.outcome
+== 'success' && (...)` expression applies to **both** the recovery-mint
+   step and the downstream retryable-check step. As already established in
+   the sixth round's own correction (just not consistently carried through
+   to these three other spots), only the downstream "Mark candidate check
+   retryable" step has the `recovery-app-token.outcome == 'success'` clause —
+   the recovery-mint step itself cannot self-gate. Reworded all three spots
+   to state the two steps' conditions separately rather than imply a single
+   shared combined condition.
+
+No code/test changes for finding 2 (doc-only). Re-ran
+`npm run review:ledger -- validate` and `npm run verify:fast` after both
+fixes — both green.

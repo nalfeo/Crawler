@@ -255,9 +255,9 @@ jobs:
                   conclusion: 'cancelled',
                   external_id: process.env.FINGERPRINT,
                   output: {
-                    title: 'Merge-train candidate validation was not completed (publish step failed)',
+                    title: 'Merge-train candidate validation was not completed (token mint or result publication failed)',
                     summary:
-                      'The "Publish immutable candidate result" step failed before it could post a terminal check. Marked cancelled so the next reconciliation retries validation immediately instead of waiting for the stale in_progress check to expire.',
+                      'Either the App-token mint or the "Publish immutable candidate result" step failed/was cancelled before a terminal check could be posted. Marked cancelled so the next reconciliation retries validation immediately instead of waiting for the stale in_progress check to expire.',
                   },
                 });
                 return;
