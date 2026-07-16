@@ -1,7 +1,8 @@
 name: ZZ Scratch Failure Semantics Probe
 
 on:
-  workflow_dispatch: {}
+  push:
+    branches: [nalfeo-merge-train-wakeup-gaps]
 
 jobs:
   upstream:
