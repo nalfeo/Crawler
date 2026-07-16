@@ -65,18 +65,15 @@ function getPublishScript(doc: WorkflowDoc): string {
   return script;
 }
 
-/** Runs the real, unmodified publish script against a fake `github` client. */
 async function runPublishScript(verifyResult: string): Promise<{
   conclusion: string;
   title: string;
   calls: string[];
-  dispatch: { owner: string; repo: string; workflow_id: string; ref: string } | undefined;
 }> {
   const doc = loadWorkflow();
   const script = getPublishScript(doc);
 
   let createArgs: { conclusion: string; output: { title: string } } | undefined;
-  let dispatchArgs: { owner: string; repo: string; workflow_id: string; ref: string } | undefined;
   const calls: string[] = [];
   const github = {
     rest: {
@@ -84,18 +81,6 @@ async function runPublishScript(verifyResult: string): Promise<{
         create: async (args: { conclusion: string; output: { title: string } }) => {
           calls.push('check');
           createArgs = args;
-          return { data: {} };
-        },
-      },
-      actions: {
-        createWorkflowDispatch: async (args: {
-          owner: string;
-          repo: string;
-          workflow_id: string;
-          ref: string;
-        }) => {
-          calls.push('dispatch');
-          dispatchArgs = args;
           return { data: {} };
         },
       },
@@ -132,7 +117,6 @@ async function runPublishScript(verifyResult: string): Promise<{
     conclusion: createArgs.conclusion,
     title: createArgs.output.title,
     calls,
-    dispatch: dispatchArgs,
   };
 }
 
@@ -178,14 +162,35 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     expect(step?.with?.['github-token']).toBe('${{ steps.app-token.outputs.token }}');
   });
 
-  it('wakes reconciliation with the trusted token only after publishing on the default branch', async () => {
-    const { calls, dispatch } = await runPublishScript('success');
-    expect(calls).toEqual(['check', 'dispatch']);
-    expect(dispatch).toEqual({
-      owner: 'nalfeo',
-      repo: 'Crawler',
-      workflow_id: 'merge-train.yml',
-      ref: 'main',
-    });
+  it('publish script only calls checks.create (no dispatch — dispatch is a separate GITHUB_TOKEN step)', async () => {
+    const { calls } = await runPublishScript('success');
+    expect(calls).toEqual(['check']);
+  });
+
+  it('reconciliation wake-up step uses GITHUB_TOKEN, not the App token', () => {
+    const raw = readFileSync(
+      path.join(REPO_ROOT, '.github/workflows/merge-train-validate.yml'),
+      'utf8',
+    );
+    const doc = parse(raw) as WorkflowDoc;
+    const steps = doc.jobs.publish?.steps ?? [];
+    const wakeStep = steps.find((s) => s.name === 'Wake merge-train reconciliation');
+    expect(wakeStep).toBeDefined();
+    // Must NOT use the App token — must rely on the default GITHUB_TOKEN
+    expect(wakeStep?.with?.['github-token']).toBe('${{ secrets.GITHUB_TOKEN }}');
+  });
+
+  it('reconciliation wake-up script dispatches to merge-train.yml on the default branch', () => {
+    const raw = readFileSync(
+      path.join(REPO_ROOT, '.github/workflows/merge-train-validate.yml'),
+      'utf8',
+    );
+    const doc = parse(raw) as WorkflowDoc;
+    const steps = doc.jobs.publish?.steps ?? [];
+    const wakeStep = steps.find((s) => s.name === 'Wake merge-train reconciliation');
+    const script = wakeStep?.with?.script as string | undefined;
+    expect(script).toBeDefined();
+    expect(script).toContain('merge-train.yml');
+    expect(script).toContain('default_branch');
   });
 });
