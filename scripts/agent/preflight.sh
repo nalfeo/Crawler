@@ -7,7 +7,15 @@ set -euo pipefail
 # and the machine-readable artifact (files/preflight-timing.json) both report
 # where time was actually spent.
 # ===========================================================================
+
+# Target for a warm (all-cached) preflight run. Override via environment.
+PREFLIGHT_TARGET_S="${PREFLIGHT_TARGET_S:-30}"
 PREFLIGHT_TIMING_FILE="${PREFLIGHT_TIMING_FILE:-files/preflight-timing.json}"
+
+# _clock: seconds since epoch. Falls back to 0 on ancient/broken systems;
+# when it does, all timing values in the artifact will be 0 (degraded but
+# non-fatal — the artifact will carry a warmCache/metTarget30s of true
+# regardless of actual wall time).
 _clock() { date +%s 2>/dev/null || echo 0; }
 PREFLIGHT_START_S="$(_clock)"
 PREFLIGHT_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")"
@@ -70,7 +78,7 @@ _write_timing_artifact() {
   done
 
   local met_target="false"
-  [ "$total_s" -le 30 ] && met_target="true"
+  [ "$total_s" -le "$PREFLIGHT_TARGET_S" ] && met_target="true"
 
   # Build JSON phases array
   local phases_json="["
@@ -94,12 +102,12 @@ _write_timing_artifact() {
   done
   phases_json+=$'\n  ]'
 
-  printf '{\n  "schema": "agent-os-preflight-timing/v1",\n  "timestamp": "%s",\n  "phases": %s,\n  "totalS": %d,\n  "warmCache": %s,\n  "metTarget30s": %s\n}\n' \
-    "$PREFLIGHT_ISO" "$phases_json" "$total_s" "$warm_cache" "$met_target" \
+  printf '{\n  "schema": "agent-os-preflight-timing/v1",\n  "timestamp": "%s",\n  "phases": %s,\n  "totalS": %d,\n  "targetS": %d,\n  "warmCache": %s,\n  "metTarget30s": %s\n}\n' \
+    "$PREFLIGHT_ISO" "$phases_json" "$total_s" "$PREFLIGHT_TARGET_S" "$warm_cache" "$met_target" \
     > "$PREFLIGHT_TIMING_FILE"
 
   if [ "$met_target" = "false" ]; then
-    printf '⚠️  Preflight took %ds — exceeded 30s warm-cache target.\n' "$total_s"
+    printf '⚠️  Preflight took %ds — exceeded %ds warm-cache target.\n' "$total_s" "$PREFLIGHT_TARGET_S"
     printf '   Active phases:\n'
     for (( i=0; i<${#_phase_names[@]}; i++ )); do
       local d="${_phase_durs[$i]}"
@@ -107,7 +115,7 @@ _write_timing_artifact() {
     done
     printf '   Timing artifact: %s\n' "$PREFLIGHT_TIMING_FILE"
   else
-    printf '✅ Preflight complete in %ds — within 30s warm-cache target.\n' "$total_s"
+    printf '✅ Preflight complete in %ds — within %ds warm-cache target.\n' "$total_s" "$PREFLIGHT_TARGET_S"
     printf '   Timing artifact: %s\n' "$PREFLIGHT_TIMING_FILE"
   fi
 }
@@ -184,6 +192,11 @@ _ts_input_state() {
   fi
   # Index object hashes for all tracked .ts and tsconfig files, plus any
   # working-tree diffs.  Intentionally includes tsconfig.*.json variants.
+  # If git commands output nothing (e.g. no tracked .ts files or empty repo)
+  # sha256sum hashes the empty string, which still produces a stable, non-empty
+  # fingerprint — typecheck skips correctly.  If the whole pipeline fails (no
+  # sha256sum), the `|| echo ""` returns an empty string, the sentinel check
+  # [ -n "$_ts_state" ] fails, and typecheck re-runs safely.
   { git ls-files -s '*.ts' 'tsconfig.json' 'tsconfig.*.json' 2>/dev/null; \
     git diff HEAD -- '*.ts' 'tsconfig.json' 'tsconfig.*.json' 2>/dev/null; } \
     | sha256sum 2>/dev/null | cut -d' ' -f1 || echo ""

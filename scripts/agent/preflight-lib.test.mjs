@@ -24,9 +24,10 @@ function withPlaywrightManifest(revision, fn) {
       join(pkgDir, 'browsers.json'),
       JSON.stringify({
         browsers: [
-          { name: 'chromium', revision, installByDefault: true, browserVersion: '148.0' },
+          { name: 'chromium', revision, installByDefault: true },
+          // Extra entries are present to verify the function selects the correct one.
           { name: 'chromium-headless-shell', revision, installByDefault: false },
-          { name: 'firefox', revision: '1522', installByDefault: true },
+          { name: 'chromium', revision: '9999', installByDefault: false },
         ],
       }),
     );
@@ -216,6 +217,7 @@ test('formatTimingArtifact produces valid JSON with correct schema', () => {
   const parsed = JSON.parse(json);
   assert.equal(parsed.schema, 'agent-os-preflight-timing/v1');
   assert.equal(parsed.phases.length, 3);
+  assert.equal(parsed.targetS, 30);
 });
 
 test('formatTimingArtifact sets metTarget30s=true when total is within 30s', () => {

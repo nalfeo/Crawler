@@ -143,18 +143,22 @@ export function resolveNodeBin({
  * ```
  *
  * @param {Array<{name:string;startS:number;durationS:number;skipped:boolean;note:string}>} phases
- * @param {{ timestamp?: string; warmCache?: boolean }} opts
+ * @param {{ timestamp?: string; warmCache?: boolean; targetS?: number }} opts
  * @returns {string}
  */
-export function formatTimingArtifact(phases, { timestamp = '', warmCache = true } = {}) {
+export function formatTimingArtifact(
+  phases,
+  { timestamp = '', warmCache = true, targetS = 30 } = {},
+) {
   const totalS = phases.reduce((acc, p) => Math.max(acc, p.startS + p.durationS), 0);
-  const metTarget = totalS <= 30;
+  const metTarget = totalS <= targetS;
   return JSON.stringify(
     {
       schema: 'agent-os-preflight-timing/v1',
       timestamp,
       phases,
       totalS,
+      targetS,
       warmCache,
       metTarget30s: metTarget,
     },
