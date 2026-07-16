@@ -88,7 +88,7 @@ PhaserBridge & Rendering (1:1 pixel-to-screen mapping)
 
 ## Related
 
-- Handoff: `docs/knowledge/handoffs/2026-06-08-px-to-feet.md`
+- Handoff: no session handoff was written for this change (predates handoff convention).
 - Implementation PR: #86
 
 ## Decision Record
