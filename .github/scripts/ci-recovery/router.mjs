@@ -143,16 +143,16 @@ export function collectPrNumbers({
     return scheduledPulls
       .filter((pullRequest) => {
         const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
+        const labels = pullRequest.labels || [];
+        const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
+        const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
+        const shouldExcludeByLabels = hasQueueLabel || (!directlyTriggered && hasOptOutLabel);
         return (
           pullRequest.state === 'open' &&
           !pullRequest.draft &&
           pullRequest.base?.ref === 'main' &&
           pullRequest.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
-          !(pullRequest.labels || []).some(
-            (label) =>
-              label.name === QUEUE_LABEL ||
-              (label.name === 'ci-recovery-opt-out' && !directlyTriggered),
-          )
+          !shouldExcludeByLabels
         );
       })
       .sort(

@@ -478,6 +478,8 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /blocked pr=#42 reason=human-approval-required/);
   assert.match(stdout, /disabled auto-merge pr=#42 reason=human-approval-required/);
+  // TODO(ci-recovery): remove required-checks fallback once all branches emit admission=.
+  // Accept both log formats while train admission wording converges across branches.
   assert.match(stdout, /wait pr=#42 (required-checks|admission)=ci/);
   assert.doesNotMatch(stdout, /removed temporary approval opt-out/);
   assert.ok(

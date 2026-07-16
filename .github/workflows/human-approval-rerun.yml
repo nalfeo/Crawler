@@ -32,7 +32,8 @@ jobs:
             const NIGHTLY_BALANCE_BRANCH_PREFIX = 'copilot/balance-telemetry-driven-improvement-sweep';
 
             function hasLabel(labels, wanted) {
-              return (labels || []).some((label) => String(label.name || '') === wanted);
+              const entries = Array.isArray(labels) ? labels : labels?.nodes || [];
+              return entries.some((label) => String(label.name || '') === wanted);
             }
 
             async function listClosingIssues(pullNumber) {
@@ -65,9 +66,13 @@ jobs:
               return issues;
             }
 
-            function requiresHumanApproval(pull, closingIssues) {
-              if (hasLabel(pull.labels, HUMAN_APPROVAL_LABEL)) return true;
-              if (String(pull.head?.ref || '').startsWith(NIGHTLY_BALANCE_BRANCH_PREFIX)) return true;
+            function requiresHumanApproval(pullRequest, closingIssues) {
+              if (hasLabel(pullRequest?.labels, HUMAN_APPROVAL_LABEL)) return true;
+              if (
+                String(pullRequest?.head?.ref || '').startsWith(NIGHTLY_BALANCE_BRANCH_PREFIX)
+              ) {
+                return true;
+              }
               return (closingIssues || []).some((issue) =>
                 hasLabel(issue.labels?.nodes, HUMAN_APPROVAL_LABEL),
               );
@@ -91,18 +96,18 @@ jobs:
                 per_page: 100,
               });
               return runs
-                .filter(run => run.name === 'CI')
+                .filter(run => String(run.name || '') === 'CI')
                 .sort((left, right) => new Date(right.created_at) - new Date(left.created_at))[0];
             }
 
             async function humanApprovalJobConclusion(runId) {
-              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              const response = await github.rest.actions.listJobsForWorkflowRun({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 run_id: runId,
                 per_page: 100,
               });
-              const humanJob = jobs.find((job) => job.name === 'Human approval');
+              const humanJob = (response.data.jobs || []).find((job) => job.name === 'Human approval');
               return humanJob?.conclusion || null;
             }
 
@@ -140,7 +145,8 @@ jobs:
               const approvalPresent = hasOwnerApproval(comments);
 
               const latestCi =
-                workflowRun && workflowRun.head_sha === pull.data.head.sha
+                workflowRun &&
+                String(workflowRun.head_sha || '') === String(pull.data.head.sha || '')
                   ? workflowRun
                   : await latestCiRunForHead(pull.data.head.sha);
               if (!latestCi) {
@@ -180,7 +186,7 @@ jobs:
 
             if (context.eventName === 'workflow_run') {
               const linkedPrs = (context.payload.workflow_run?.pull_requests || [])
-                .map((entry) => Number.parseInt(String(entry.number || ''), 10))
+                .map((entry) => Number(entry.number))
                 .filter((number) => Number.isInteger(number) && number > 0);
               if (linkedPrs.length === 0) {
                 core.info('No pull requests linked to this workflow_run');
