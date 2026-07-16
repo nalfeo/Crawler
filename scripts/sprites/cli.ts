@@ -285,6 +285,8 @@ function printSummary(
     judgeScorecard: {
       readonly passed: boolean;
       readonly minScore: number;
+      readonly designLanguage?: { readonly score: number };
+      readonly referenceStyleMatch?: { readonly score: number };
       readonly styleMatch: { readonly score: number };
       readonly briefMatch: { readonly score: number };
       readonly readability: { readonly score: number };
@@ -337,7 +339,7 @@ function printSummary(
   );
   if (judgeEnabled) {
     process.stdout.write(
-      `judge   : enabled (style_match / brief_match / readability, < 3 rejects)\n`,
+      `judge   : enabled (design_language / reference_style_match / brief_match / readability, < 3 rejects)\n`,
     );
   }
   if (chosen) {
@@ -363,7 +365,7 @@ function printSummary(
       if (c.judgeScorecard) {
         const j = c.judgeScorecard;
         const verdict = j.passed ? 'PASS' : `FAIL[${j.rejectedBy.join(',')}]`;
-        judgeCol = `${j.styleMatch.score}/${j.briefMatch.score}/${j.readability.score} ${verdict}`;
+        judgeCol = `${(j.designLanguage ?? j.styleMatch).score}/${(j.referenceStyleMatch ?? j.styleMatch).score}/${j.briefMatch.score}/${j.readability.score} ${verdict}`;
       } else {
         judgeCol =
           c.judgeSkipReason === 'sensor-failed'

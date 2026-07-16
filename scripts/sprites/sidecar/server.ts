@@ -194,6 +194,7 @@ interface WorkflowSynthesizeBody {
   readonly type?: unknown;
   readonly candidates?: unknown;
   readonly sizeVariant?: unknown;
+  readonly floor?: unknown;
 }
 
 interface WorkflowPromoteBody {
@@ -1507,6 +1508,22 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
       candidates = body.candidates;
     }
+    let floor = 1;
+    if (body.floor !== undefined) {
+      if (
+        typeof body.floor !== 'number' ||
+        !Number.isInteger(body.floor) ||
+        body.floor < 1 ||
+        body.floor > 20
+      ) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: 'body.floor must be an integer in [1, 20]',
+        };
+      }
+      floor = body.floor;
+    }
     let sizeVariant: SizeVariant | undefined;
     if (body.sizeVariant !== undefined && body.sizeVariant !== null) {
       if (!isSizeVariant(body.sizeVariant)) {
@@ -1528,6 +1545,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         ...(type ? { type } : {}),
         ...(sizeVariant ? { sizeVariant } : {}),
         candidates,
+        floor,
         partial: true,
         provider,
         repoRoot: deps.repoRoot,

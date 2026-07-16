@@ -27,6 +27,7 @@
 
 import type { ExpandVariationsRequest, TextProvider, TextProviderErrorKind } from './text-types.js';
 import { TextProviderError } from './text-types.js';
+import { contentDirectionBlock } from '../content-direction.js';
 import {
   DEFAULT_PROVIDER_TIMEOUT_MS,
   isTimeoutAbortError,
@@ -89,7 +90,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
 
     const body = {
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: buildSystemPrompt(request.brief.floor) },
         { role: 'user', content: buildUserPrompt(request) },
       ],
       temperature: this.temperature,
@@ -169,18 +170,22 @@ export class AzureOpenAIChatProvider implements TextProvider {
   }
 }
 
-const SYSTEM_PROMPT = [
-  'You design visual variations for 64x64-frame pixel-art sprites in the grungy indie style of Crawler — bold colors, 3-5 shading stops per material, and worn dungeon-crawling character.',
-  "Each variation is a discrete, on-theme embellishment that keeps the subject's identity intact.",
-  'Variations must be visually distinct from each other, free of detail that collapses when scaled down in-game, and described concisely (4-12 words).',
-  'Output STRICT JSON only: an object with a single key "variations" whose value is an array of strings. No prose, no markdown.',
-].join(' ');
+function buildSystemPrompt(floor: number): string {
+  return [
+    'You design visual variations for 256x256-source pixel-art sprites that resolve cleanly at game scale.',
+    contentDirectionBlock(floor),
+    "Each variation is one discrete, on-theme embellishment that preserves the subject's identity, gameplay role, orientation, and inanimate/animate category.",
+    'Variations must be visually distinct, appropriate to the supplied floor, free of detail that collapses when scaled down, and described concisely (4-25 words). Never anthropomorphize an item unless the brief explicitly requests it.',
+    'Output STRICT JSON only: an object with a single key "variations" whose value is an array of strings. No prose, no markdown.',
+  ].join('\n\n');
+}
 
 function buildUserPrompt(request: ExpandVariationsRequest): string {
   const { brief, existing, count } = request;
   const lines: string[] = [];
   lines.push(`SUBJECT: ${brief.prompt}`);
   lines.push(`SPRITE TYPE: ${brief.type}`);
+  lines.push(`FLOOR: ${brief.floor} of 20`);
   if (brief.tags.length > 0) lines.push(`TAGS: ${brief.tags.join(', ')}`);
   if (existing.length > 0) {
     lines.push('');
@@ -191,14 +196,15 @@ function buildUserPrompt(request: ExpandVariationsRequest): string {
   lines.push(
     `Propose exactly ${count} additional on-theme embellishment(s) following these rules:`,
   );
-  lines.push(`- Keep the subject's silhouette family and role unchanged.`);
+  lines.push(`- Preserve the subject's silhouette family, role, and orientation.`);
   lines.push(`- Each entry stands alone — do not combine multiple ideas with "and".`);
   lines.push(
     `- Stay readable after downscaling in-engine: avoid fine text, complex gradients, and tiny secondary objects.`,
   );
   lines.push(
-    `- Be evocative, not prescriptive (e.g. "wolf skull replacing the human skull" not "use color #abc").`,
+    `- Prefer a specific material, subculture, contraption, social role, or anatomical twist over a generic adjective.`,
   );
+  lines.push(`- Keep the weirdness coherent and at the requested floor intensity.`);
   lines.push('');
   lines.push(`Return JSON: {"variations": ["...", "..."]}`);
   return lines.join('\n');

@@ -234,6 +234,31 @@ describe('judgeVariant — Constitutional §3 CI guard', () => {
 });
 
 describe('judgeVariant — happy path', () => {
+  it('scores design language separately from reference rendering style', async () => {
+    const { provider } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'unmistakably Crawler' },
+        reference_style_match: { score: 4, rationale: 'matches rendering finish' },
+        brief_match: { score: 4, rationale: 'on target' },
+        readability: { score: 5, rationale: 'silhouette pops' },
+      },
+    });
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [makeRefPng()],
+      brief: makeBrief(),
+      styleGuide: 'style',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+    expect(scorecard.designLanguage?.score).toBe(5);
+    expect(scorecard.referenceStyleMatch?.score).toBe(4);
+    expect(scorecard.styleMatch.score).toBe(4);
+    expect(scorecard.minScore).toBe(4);
+  });
+
   it('returns passed=true when every evaluator scores >= 3', async () => {
     const { provider, calls } = stubProvider({
       responseJson: {
@@ -415,7 +440,11 @@ describe('judgeVariant — threshold rejection', () => {
       env: {},
     });
     expect(scorecard.passed).toBe(false);
-    expect(scorecard.rejectedBy).toEqual(['style_match', 'readability']);
+    expect(scorecard.rejectedBy).toEqual([
+      'design_language',
+      'reference_style_match',
+      'readability',
+    ]);
     expect(scorecard.minScore).toBe(1);
   });
 

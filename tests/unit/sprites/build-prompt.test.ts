@@ -75,6 +75,28 @@ describe('buildPrompt (single)', () => {
     expect(out.startsWith(FAKE_STYLE_GUIDE)).toBe(true);
     expect(out).toContain('FAKE_PREAMBLE_MARKER');
     expect(out).toContain('An iron sword');
+    expect(out).toContain('FLOOR: 1 of 20');
+  });
+
+  it('adds the shocking/wonderful apex guidance for floor 20', () => {
+    const out = buildPrompt(makeBrief({ floor: 20 }), FAKE_STYLE_GUIDE);
+    expect(out).toContain('FLOOR: 20 of 20');
+    expect(out).toMatch(/shocking\/wonderful apex/i);
+  });
+
+  it('keeps item briefs explicitly inanimate', () => {
+    const out = buildPrompt(makeBrief({ type: 'item' }), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Keep the item inanimate/i);
+    expect(out).toMatch(/Do not invent eyes, faces, mouths, limbs/i);
+  });
+
+  it('frames weapon orientation as a default that explicit briefs can override', () => {
+    const out = buildPrompt(
+      makeBrief({ prompt: 'A horizontal double-ended wrench weapon.' }),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toMatch(/vertically by default/i);
+    expect(out).toMatch(/unless the brief explicitly requires another orientation/i);
   });
 
   it('adds mob rules for enemy briefs', () => {
@@ -95,15 +117,15 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/no spell effects/i);
   });
 
-  it('defaults enemy briefs to profile facing right when facing is omitted', () => {
+  it('defaults enemy briefs to profile facing left when facing is omitted', () => {
     const enemy = makeBrief({
       type: 'enemy',
       anchor: { x: 8, y: 8 },
       sensors: { anchor: { mode: 'center-of-mass' } } as Brief['sensors'],
     });
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
-    expect(out).toMatch(/profile facing right/i);
-    expect(out).not.toMatch(/profile facing left/i);
+    expect(out).toMatch(/profile facing left/i);
+    expect(out).not.toMatch(/profile facing right/i);
   });
 
   it('honors an explicit left-facing enemy brief', () => {
