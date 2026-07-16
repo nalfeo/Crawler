@@ -167,8 +167,8 @@ moveSpeedBonus) × statusMultiplier × encumbranceMultiplier` — status
     (×1) band today — inert by data, not by code path (synthetic nonzero
     `weightLb` boundary/dedupe tests exercise every band).
 11. **Default AI allocator branches only on offense stat, sharing everything
-    else.** New sequence: Constitution → 8, offense (Strength for a physical weapon,
-    Intelligence for `WeaponType.MAGIC`) → 5, Dexterity → 5,
+    else.** New sequence: Constitution → 8, Dexterity → 5, offense (Strength for a
+    physical weapon, Intelligence for `WeaponType.MAGIC`) → 5,
     Wisdom → 5, offense → 11, Constitution for the remainder. Weapon personas
     (`game/ai/weapon-personas.ts`) stay disabled by default; only their
     compatibility with the new stat schema was verified, no new persona

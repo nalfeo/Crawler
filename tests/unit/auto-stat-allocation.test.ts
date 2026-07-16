@@ -11,9 +11,9 @@ import { createTestWorld } from '../helpers/world-factory.js';
  * (`LevelUpUI.autoResolve`). Per the stat-system overhaul (plan resolution
  * #11), the shared survival-tiered spend order is:
  *   1. Constitution → 8 (maxHp heals on spend, see core/systems/statSystem.ts)
- *   2. Offense (Strength for a physical weapon, Intelligence for a magic one
+ *   2. Dexterity → 5
+ *   3. Offense (Strength for a physical weapon, Intelligence for a magic one
  *      — e.g. the starter fireball wand) → 5
- *   3. Dexterity → 5
  *   4. Wisdom → 5
  *   5. Offense → 11
  *   6. Constitution for the remainder
@@ -44,26 +44,26 @@ describe('computeAutoStatAllocation', () => {
     expect(computeAutoStatAllocation(world, playerEid, 8)).toEqual({ constitution: 8 });
   });
 
-  it('builds offense after the shared constitution survival target', () => {
+  it('builds shared dexterity after the constitution survival target', () => {
     const { world, playerEid } = setup();
     expect(computeAutoStatAllocation(world, playerEid, 11)).toEqual({
       constitution: 8,
-      strength: 3,
+      dexterity: 3,
     });
   });
 
-  it('spends dexterity then wisdom (5 each) after the constitution cushion', () => {
+  it('spends offense then wisdom after the shared survival stats', () => {
     const { world, playerEid } = setup();
-    // 8 (con) + 4 into offense
+    // 8 (con) + 4 into dexterity
     expect(computeAutoStatAllocation(world, playerEid, 12)).toEqual({
       constitution: 8,
-      strength: 4,
+      dexterity: 4,
     });
-    // 8 + 5 (offense) + 5 (dex full) + 2 into wisdom
+    // 8 + 5 (dex full) + 5 (offense) + 2 into wisdom
     expect(computeAutoStatAllocation(world, playerEid, 20)).toEqual({
       constitution: 8,
-      strength: 5,
       dexterity: 5,
+      strength: 5,
       wisdom: 2,
     });
   });
@@ -73,15 +73,15 @@ describe('computeAutoStatAllocation', () => {
     // 8 (con) + 5 (offense) + 5 (dex) + 5 (wis) + 6 more offense = 11 total offense.
     expect(computeAutoStatAllocation(world, playerEid, 29)).toEqual({
       constitution: 8,
-      strength: 11,
       dexterity: 5,
+      strength: 11,
       wisdom: 5,
     });
     // Beyond 29, every extra point dumps into constitution.
     expect(computeAutoStatAllocation(world, playerEid, 30)).toEqual({
       constitution: 9,
-      strength: 11,
       dexterity: 5,
+      strength: 11,
       wisdom: 5,
     });
   });
@@ -92,8 +92,8 @@ describe('computeAutoStatAllocation', () => {
     expect(computeAutoStatAllocation(world, playerEid, 3)).toEqual({ constitution: 3 });
     expect(computeAutoStatAllocation(world, playerEid, 29)).toEqual({
       constitution: 8,
-      intelligence: 11,
       dexterity: 5,
+      intelligence: 11,
       wisdom: 5,
     });
   });
@@ -103,7 +103,7 @@ describe('computeAutoStatAllocation', () => {
     setActiveWeaponDef(world, WEAPON_DEFS.get('bow')!);
     expect(computeAutoStatAllocation(world, playerEid, 9)).toEqual({
       constitution: 8,
-      strength: 1,
+      dexterity: 1,
     });
   });
 

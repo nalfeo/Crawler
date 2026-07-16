@@ -11,8 +11,8 @@ import type { PrimaryStatId } from '../../shared/stats.js';
  * "offense" spends into — Strength for a physical weapon, Intelligence for a
  * magic one (`WeaponType.MAGIC`, e.g. the starter fireball wand):
  *   1. Constitution -> 8
- *   2. Offense -> 5
- *   3. Dexterity -> 5
+ *   2. Dexterity -> 5
+ *   3. Offense -> 5
  *   4. Wisdom -> 5
  *   5. Offense -> 11
  *   6. Constitution for the remainder
@@ -56,8 +56,8 @@ export function computeAutoStatAllocation(
   };
 
   spendUpTo('constitution', CON_SURVIVAL_TARGET);
-  spendUpTo(offenseStat, OFFENSE_FLOOR_TARGET);
   spendUpTo('dexterity', DEX_TARGET);
+  spendUpTo(offenseStat, OFFENSE_FLOOR_TARGET);
   spendUpTo('wisdom', WIS_TARGET);
   spendUpTo(offenseStat, OFFENSE_BOSS_TARGET);
   if (remaining > 0) {
