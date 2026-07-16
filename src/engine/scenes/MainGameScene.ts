@@ -212,7 +212,7 @@ export interface MainGameSceneOptions {
     world: GameWorld,
     playerEid: number,
     available: number,
-  ) => Partial<Record<PrimaryStatId, number>>;
+  ) => Partial<Record<PrimaryStatId, number>> | null;
   /**
    * Optional factory for a human player session recorder (dev/debug only).
    *
@@ -2877,12 +2877,18 @@ export class MainGameScene extends Phaser.Scene {
       this.levelUpAutoHoldFrames = 0;
       return;
     }
+    const available = this.world.playerLevel.unspentPoints;
+    const allocations = allocator(this.world, this.playerEid, available);
+    if (allocations === null) {
+      // Allocator opted out (e.g. manual control is active) — keep the modal
+      // open and reset the hold timer so the human can allocate freely.
+      this.levelUpAutoHoldFrames = 0;
+      return;
+    }
     this.levelUpAutoHoldFrames += 1;
     if (this.levelUpAutoHoldFrames < LEVEL_UP_AUTO_HOLD_FRAMES) {
       return;
     }
-    const available = this.world.playerLevel.unspentPoints;
-    const allocations = allocator(this.world, this.playerEid, available);
     this.levelUpUI.autoResolve(allocations);
     this.levelUpAutoHoldFrames = 0;
   }
