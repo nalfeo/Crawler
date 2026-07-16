@@ -45,6 +45,7 @@ jobs:
     permissions:
       checks: write
       contents: read
+      actions: write
     steps:
       - name: Generate repository app token
         id: app-token

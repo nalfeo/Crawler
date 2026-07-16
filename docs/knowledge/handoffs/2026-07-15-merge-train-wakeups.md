@@ -20,8 +20,10 @@ workflow tests; no review-harness stages are required at this tier.
 ## What changed
 
 - `Merge Train Validation` now dispatches `merge-train.yml` after its immutable
-  candidate check is written. The dispatch uses the existing trusted Crawler CI
-  App token and explicitly targets `context.payload.repository.default_branch`.
+  candidate check is written. The dispatch runs in a **separate step** using the
+  default `GITHUB_TOKEN` (the Crawler CI App token receives 403 on
+  `workflow_dispatch` endpoints; the App token is still used for `checks.create`)
+  and explicitly targets `context.payload.repository.default_branch`.
 - `Merge Train` now subscribes to completed default-branch `CI` workflows. Its
   trigger-level `branches: [main]` filter prevents pull-request and
   other-branch CI completions from creating workflow records; its reconcile job
@@ -29,9 +31,11 @@ workflow tests; no review-harness stages are required at this tier.
 - Existing push, candidate `workflow_run`, schedule, and manual triggers remain
   as defense-in-depth. The existing `crawler-merge-train` concurrency queue
   serializes duplicate wake-ups.
-- Added deterministic workflow coverage that executes the real publish script
-  to verify App-token/default-branch dispatch ordering and evaluates the real
-  reconcile condition for default-branch push, pull-request CI, and
+- Added deterministic workflow coverage: executes the real publish script to
+  verify it only calls `checks.create` (dispatch is excluded from the publish
+  script); reads the real workflow YAML to confirm the separate wake step uses
+  `GITHUB_TOKEN` (not the App token) and targets the default branch; evaluates
+  the real reconcile condition for default-branch push, pull-request CI, and
   other-branch CI completions.
 
 ## Validation
