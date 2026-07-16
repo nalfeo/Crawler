@@ -43,6 +43,7 @@ jobs:
     needs: [verify]
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       checks: write
       contents: read
     steps:
@@ -93,4 +94,36 @@ jobs:
                 title,
                 summary: `PR order: ${process.env.PR_NUMBERS}\nFingerprint: ${process.env.FINGERPRINT}`,
               },
+            });
+
+      - name: Dispatch Merge Train
+        # `merge-train.yml`'s `workflow_run` trigger on this workflow has never
+        # fired in production (zero observed runs after real successful
+        # validations), and its `*/5` schedule arrives ~hourly in practice, so
+        # neither is a reliable post-validation completion signal on its own.
+        # Explicitly dispatch the trusted reconcile workflow here instead, so
+        # `reconcile` promptly consumes/retries/bisects off the just-published
+        # `merge-train-candidate` check for every publish outcome
+        # (success/failure/cancelled) -- `if: always()` so this fires even when
+        # the publish step above failed or `verify` did not succeed.
+        #
+        # IMPORTANT: use the built-in `GITHUB_TOKEN`, not the repository App
+        # token from the step above. `.github/scripts/merge-train/reconcile-lib.mjs`
+        # (`buildDispatchBindings`) documents that the App token returns 403 on
+        # Actions `workflow_dispatch` endpoints in this repository; both
+        # existing dispatch call sites (`ci-recovery.yml`, this workflow's own
+        # trigger from `reconcile.mjs`) already had to move off the App token
+        # for the same reason (PR #1144). `workflow_run`/`schedule` remain in
+        # `merge-train.yml` as defense-in-depth; this step is the primary,
+        # reliable trigger.
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'merge-train.yml',
+              ref: context.payload.repository.default_branch,
             });

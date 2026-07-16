@@ -33,12 +33,14 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 interface WorkflowStep {
   name?: string;
   uses?: string;
+  if?: string;
   env?: Record<string, string>;
   with?: { script?: string; [key: string]: unknown };
 }
 
 interface WorkflowJob {
   steps?: WorkflowStep[];
+  permissions?: Record<string, string>;
 }
 
 interface WorkflowDoc {
@@ -151,5 +153,109 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     const steps = doc.jobs.publish?.steps ?? [];
     const step = steps.find((candidate) => candidate.name === 'Publish immutable candidate result');
     expect(step?.with?.['github-token']).toBe('${{ steps.app-token.outputs.token }}');
+  });
+});
+
+/**
+ * Regression coverage for the missing post-validation promotion trigger:
+ * `merge-train.yml`'s `workflow_run` trigger on this workflow never fired in
+ * production, and its declared 5-minute cron schedule arrived ~hourly in
+ * practice, so neither was a reliable completion signal. The `publish` job
+ * now explicitly
+ * dispatches `merge-train.yml` after publishing the immutable
+ * `merge-train-candidate` check, for every verify outcome
+ * (success/failure/cancelled), so `reconcile` promptly
+ * consumes/retries/bisects instead of waiting on an unreliable trigger.
+ *
+ * These tests parse the REAL workflow YAML and execute the REAL dispatch
+ * step's `with.script` (with `github.rest.actions.createWorkflowDispatch`
+ * stubbed) so a regression is caught even if wording/formatting changes.
+ */
+describe('merge-train-validate.yml publish step (explicit Merge Train dispatch)', () => {
+  function getDispatchStep(doc: WorkflowDoc): WorkflowStep {
+    const steps = doc.jobs.publish?.steps ?? [];
+    const step = steps.find((candidate) => candidate.name === 'Dispatch Merge Train');
+    if (!step) throw new Error('"Dispatch Merge Train" step not found');
+    return step;
+  }
+
+  it('runs unconditionally (always()), independent of the publish/verify outcome', () => {
+    const doc = loadWorkflow();
+    const step = getDispatchStep(doc);
+    expect(step.if).toBe('always()');
+  });
+
+  it('runs after the immutable candidate check is published', () => {
+    const doc = loadWorkflow();
+    const steps = doc.jobs.publish?.steps ?? [];
+    const publishIndex = steps.findIndex(
+      (candidate) => candidate.name === 'Publish immutable candidate result',
+    );
+    const dispatchIndex = steps.findIndex((candidate) => candidate.name === 'Dispatch Merge Train');
+    expect(publishIndex).toBeGreaterThanOrEqual(0);
+    expect(dispatchIndex).toBeGreaterThan(publishIndex);
+  });
+
+  it('uses the built-in GITHUB_TOKEN, NOT the repository App token', () => {
+    // Regression guard: .github/scripts/merge-train/reconcile-lib.mjs
+    // (buildDispatchBindings) documents that the App token 403s on Actions
+    // workflow_dispatch endpoints in this repo (PR #1144). Both existing
+    // dispatch call sites already moved off the App token for this reason;
+    // this step must not reintroduce it.
+    const doc = loadWorkflow();
+    const step = getDispatchStep(doc);
+    expect(step.with?.['github-token']).toBe('${{ secrets.GITHUB_TOKEN }}');
+    expect(step.with?.['github-token']).not.toBe('${{ steps.app-token.outputs.token }}');
+  });
+
+  it('grants the publish job actions:write so GITHUB_TOKEN can dispatch workflows', () => {
+    const doc = loadWorkflow();
+    expect(doc.jobs.publish?.permissions?.actions).toBe('write');
+  });
+
+  it('dispatches merge-train.yml on the default branch with the real script, regardless of verify outcome', async () => {
+    const doc = loadWorkflow();
+    const step = getDispatchStep(doc);
+    if (!step.uses?.startsWith('actions/github-script')) {
+      throw new Error('expected the dispatch step to use actions/github-script');
+    }
+    const script = step.with?.script;
+    if (typeof script !== 'string') throw new Error('expected step.with.script to be a string');
+
+    for (const defaultBranch of ['main', 'trunk']) {
+      const calls: Array<{ owner: string; repo: string; workflow_id: string; ref: string }> = [];
+      const github = {
+        rest: {
+          actions: {
+            createWorkflowDispatch: async (args: {
+              owner: string;
+              repo: string;
+              workflow_id: string;
+              ref: string;
+            }) => {
+              calls.push(args);
+              return { data: {} };
+            },
+          },
+        },
+      };
+      const context = {
+        repo: { owner: 'nalfeo', repo: 'Crawler' },
+        payload: { repository: { default_branch: defaultBranch } },
+      };
+      const run = new Function('github', 'context', `return (async () => {\n${script}\n})();`) as (
+        github: unknown,
+        context: unknown,
+      ) => Promise<void>;
+      await run(github, context);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual({
+        owner: 'nalfeo',
+        repo: 'Crawler',
+        workflow_id: 'merge-train.yml',
+        ref: defaultBranch,
+      });
+    }
   });
 });

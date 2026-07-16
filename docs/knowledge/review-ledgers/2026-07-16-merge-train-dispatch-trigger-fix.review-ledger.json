@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "merge-train-dispatch-trigger-fix",
+  "task_title": "Fix merge-train post-validation promotion trigger",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.7 (rubber-duck agent, separate model)",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "convergent",
+      "notes": "Reviewed the plan to dispatch merge-train.yml from the merge-train-validate.yml publish job using the built-in GITHUB_TOKEN instead of the coordinator-requested App token. Reviewer confirmed the deviation is justified by existing repo evidence (buildDispatchBindings / reconcile-lib.mjs, PR #1144), confirmed the GITHUB_TOKEN workflow_dispatch recursion exception applies, confirmed queue:max concurrency is safe against duplicate triggers, and asked for (1) a documented caveat that if: always() does not guarantee dispatch after a hard manual job cancellation (only after cancelled/failure/skipped verify results), and (2) a live post-merge acceptance check. Both incorporated: caveat documented in the handoff, live check to be performed post-merge. No alternative dispatch design was proposed (convergent)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "models": ["gpt-5.4-mini (code-review agent, separate model)"],
+          "round": 1,
+          "concerns_count": 0,
+          "notes": "Reviewed the diff (merge-train-validate.yml + merge-train-validate-publish.test.ts). Confirmed YAML correctness (actions: write scoped to publish job only, step ordering, if: always() placement), confirmed github.rest.actions.createWorkflowDispatch is the correct Octokit REST method mapping to POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches, confirmed context.payload.repository.default_branch is a reliable field already relied on elsewhere in this repo (ci-recovery.yml, merge-train.yml, auto-rebase-prs.yml), confirmed actions:write on GITHUB_TOKEN is low-risk since this workflow only triggers via workflow_dispatch (no fork/PR triggers), and confirmed the new tests execute the real script against a stubbed dispatch call so they would fail against a broken/reverted implementation. No significant issues found.",
+          "clean": true,
+          "resolved_count": 0
+        }
+      ]
+    }
+  }
+}
