@@ -45,12 +45,14 @@ export interface AssetRequestPayload {
   readonly name: string;
   readonly briefSentence: string;
   readonly type?: string;
+  readonly floor?: number;
 }
 
 export interface ParsedAssetRequestIssue {
   readonly name: string;
   readonly briefSentence: string;
   readonly type?: string;
+  readonly floor?: number;
   readonly fingerprint: string;
 }
 
@@ -79,7 +81,8 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
           name: parsed.name,
           briefSentence: parsed.briefSentence,
           type: parsed.type && parsed.type.trim() !== '' ? parsed.type : undefined,
-          fingerprint: fingerprintAssetRequest(parsed.name, parsed.briefSentence),
+          floor: parsed.floor,
+          fingerprint: fingerprintAssetRequest(parsed.name, parsed.briefSentence, parsed.floor),
         };
       }
     }
@@ -89,12 +92,14 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
   if (!fallback) return null;
   return {
     ...fallback,
-    fingerprint: fingerprintAssetRequest(fallback.name, fallback.briefSentence),
+    fingerprint: fingerprintAssetRequest(fallback.name, fallback.briefSentence, fallback.floor),
   };
 }
 
-export function fingerprintAssetRequest(name: string, briefSentence: string): string {
-  const normalized = `${name.trim().toLowerCase()}\n${briefSentence.trim().replace(/\s+/g, ' ')}`;
+export function fingerprintAssetRequest(name: string, briefSentence: string, floor = 1): string {
+  const normalized =
+    `${name.trim().toLowerCase()}\n${briefSentence.trim().replace(/\s+/g, ' ')}` +
+    (floor === 1 ? '' : `\nfloor:${floor}`);
   return createHash('sha256').update(normalized).digest('hex');
 }
 
@@ -116,6 +121,12 @@ function isAssetRequestPayload(value: unknown): value is AssetRequestPayload {
     if (!(SPRITE_TYPES as readonly string[]).includes(v.type.trim().toLowerCase())) {
       return false;
     }
+  }
+  if (
+    v.floor !== undefined &&
+    (typeof v.floor !== 'number' || !Number.isInteger(v.floor) || v.floor < 1 || v.floor > 20)
+  ) {
+    return false;
   }
   return true;
 }
@@ -154,9 +165,12 @@ function isValidBriefText(value: unknown): value is string {
   return normalized.length >= BRIEF_MIN_LENGTH && normalized.length <= BRIEF_MAX_NORMALIZED_LENGTH;
 }
 
-function parseIssueFormBody(
-  body: string,
-): { readonly name: string; readonly briefSentence: string; readonly type?: string } | null {
+function parseIssueFormBody(body: string): {
+  readonly name: string;
+  readonly briefSentence: string;
+  readonly type?: string;
+  readonly floor?: number;
+} | null {
   const nameMatch = body.match(/(?:^|\n)###\s+Name\s*\n+([^\n]+)/i);
   // Capture the FULL Brief section — every line after the heading up to the next
   // "### " form heading (e.g. "### Type"), a trailing "<!-- asset-request:v1 -->"
@@ -183,5 +197,11 @@ function parseIssueFormBody(
       return null;
     }
   }
-  return { name, briefSentence, type };
+  const floorMatch = body.match(/(?:^|\n)###\s+Floor(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
+  let floor: number | undefined;
+  if (floorMatch && floorMatch[1]!.trim() !== '') {
+    floor = Number(floorMatch[1]!.trim());
+    if (!Number.isInteger(floor) || floor < 1 || floor > 20) return null;
+  }
+  return { name, briefSentence, type, floor };
 }

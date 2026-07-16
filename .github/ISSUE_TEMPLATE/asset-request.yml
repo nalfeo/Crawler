@@ -34,3 +34,11 @@ body:
         - character
     validations:
       required: false
+  - type: input
+    id: floor
+    attributes:
+      label: Floor (optional)
+      description: Dungeon floor intensity from 1 through 20. Defaults to 1.
+      placeholder: '1'
+    validations:
+      required: false

@@ -15,6 +15,7 @@ const validBrief: Brief = {
   anchor: { x: 16, y: 28 },
   tags: ['blade', 'melee'],
   prompt: 'A pixel-art iron sword on a transparent background, blade pointing up.',
+  floor: 1,
   references: [
     { path: 'docs/refs/sword-1.png', note: 'silhouette inspiration' },
     { path: 'docs/refs/sword-2.png', note: 'palette anchor' },
@@ -98,6 +99,16 @@ describe('briefSchema', () => {
     expect(briefSchema.safeParse({ ...validBrief, minVariations: -1 }).success).toBe(false);
     expect(briefSchema.safeParse({ ...validBrief, minVariations: 21 }).success).toBe(false);
     expect(briefSchema.safeParse({ ...validBrief, minVariations: 4.5 }).success).toBe(false);
+  });
+
+  it('defaults floor to 1 and accepts only integers from 1 through 20', () => {
+    const { floor: _omit, ...withoutFloor } = validBrief;
+    void _omit;
+    expect(briefSchema.parse(withoutFloor).floor).toBe(1);
+    expect(briefSchema.safeParse({ ...validBrief, floor: 20 }).success).toBe(true);
+    expect(briefSchema.safeParse({ ...validBrief, floor: 0 }).success).toBe(false);
+    expect(briefSchema.safeParse({ ...validBrief, floor: 21 }).success).toBe(false);
+    expect(briefSchema.safeParse({ ...validBrief, floor: 2.5 }).success).toBe(false);
   });
 
   it('accepts every documented sprite type', () => {

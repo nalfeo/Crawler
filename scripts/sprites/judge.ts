@@ -1,10 +1,10 @@
 /**
  * VLM judge for the sprite generation pipeline (spec §F4).
  *
- * Three evaluators, one vision call per variant:
+ * Four evaluators, one vision call per variant:
  *
- *   - `style_match`   — does the candidate read as same-family as the
- *                       brief's reference sprites?
+ *   - `design_language` — does the concept feel specifically like Crawler?
+ *   - `reference_style_match` — does rendering match approved references?
  *   - `brief_match`   — does the candidate match `brief.prompt`?
  *   - `readability`   — does the candidate read at game scale on a dark
  *                       floor tile? (composited preview attached)
@@ -38,6 +38,7 @@ import type { Brief } from './brief-schema.js';
 import { isCiPipelineBypassed } from './ci-bypass.js';
 import { JudgeCache } from './judge-cache.js';
 import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js';
+import { contentDirectionBlock } from './content-direction.js';
 
 /**
  * Version of the system prompt + user prompt structure built below.
@@ -49,9 +50,9 @@ import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v2';
+const PROMPT_TEMPLATE_VERSION = 'v3';
 
-export type Evaluator = 'style_match' | 'brief_match' | 'readability';
+export type Evaluator = 'design_language' | 'reference_style_match' | 'brief_match' | 'readability';
 
 /** Per-evaluator result on the 1-5 ordinal scale. */
 export interface EvaluatorResult {
@@ -72,6 +73,9 @@ export interface JudgeScorecard {
   readonly variantIndex: number;
   readonly modelDeployment: string;
   readonly judgedAt: string;
+  readonly designLanguage?: EvaluatorResult;
+  readonly referenceStyleMatch?: EvaluatorResult;
+  /** Backward-compatible rendering-style alias for existing run consumers. */
   readonly styleMatch: EvaluatorResult;
   readonly briefMatch: EvaluatorResult;
   readonly readability: EvaluatorResult;
@@ -142,7 +146,8 @@ const evaluatorPayloadSchema = z
 
 const judgeResponseSchema = z
   .object({
-    style_match: evaluatorPayloadSchema,
+    design_language: evaluatorPayloadSchema,
+    reference_style_match: evaluatorPayloadSchema,
     brief_match: evaluatorPayloadSchema,
     readability: evaluatorPayloadSchema,
   })
@@ -201,6 +206,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
         variantPng: options.processed,
         referencePngs: options.referencePngs,
         briefMatchInstructions: options.brief.prompt,
+        floor: options.brief.floor,
       })
     : null;
   if (options.cache && cacheKey) {
@@ -229,7 +235,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     .map((png) => ({ png, label: 'reference' as const }));
 
   const request: EvaluateRequest = {
-    systemInstructions: buildSystemInstructions(options.styleGuide),
+    systemInstructions: buildSystemInstructions(options.styleGuide, options.brief.floor),
     userPrompt: buildUserPrompt(options.brief, referencePreviews.length),
     images: [
       { png: candidatePreview, label: 'candidate' },
@@ -240,7 +246,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
 
   const response = await options.provider.evaluate(request);
 
-  const parsed = judgeResponseSchema.safeParse(response.json);
+  const parsed = judgeResponseSchema.safeParse(normalizeLegacyJudgeResponse(response.json));
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
@@ -249,6 +255,24 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
       'malformed',
       `Judge response failed schema validation:\n${issues}\nRaw: ${JSON.stringify(response.json).slice(0, 300)}`,
     );
+  }
+
+  function normalizeLegacyJudgeResponse(value: unknown): unknown {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const obj = value as Record<string, unknown>;
+    if (
+      obj.style_match !== undefined &&
+      obj.design_language === undefined &&
+      obj.reference_style_match === undefined
+    ) {
+      const { style_match, ...rest } = obj;
+      return {
+        ...rest,
+        design_language: style_match,
+        reference_style_match: style_match,
+      };
+    }
+    return value;
   }
 
   const scorecard = buildScorecard({
@@ -290,7 +314,8 @@ function buildScorecard(args: {
   now: Date;
 }): JudgeScorecard {
   const evaluators: ReadonlyArray<readonly [Evaluator, EvaluatorResult]> = [
-    ['style_match', args.payload.style_match],
+    ['design_language', args.payload.design_language],
+    ['reference_style_match', args.payload.reference_style_match],
     ['brief_match', args.payload.brief_match],
     ['readability', args.payload.readability],
   ];
@@ -300,7 +325,9 @@ function buildScorecard(args: {
     variantIndex: args.variantIndex,
     modelDeployment: args.modelDeployment,
     judgedAt: args.now.toISOString(),
-    styleMatch: args.payload.style_match,
+    designLanguage: args.payload.design_language,
+    referenceStyleMatch: args.payload.reference_style_match,
+    styleMatch: args.payload.reference_style_match,
     briefMatch: args.payload.brief_match,
     readability: args.payload.readability,
     passed: rejectedBy.length === 0,
@@ -310,7 +337,7 @@ function buildScorecard(args: {
   };
 }
 
-function buildSystemInstructions(styleGuide: string): string {
+function buildSystemInstructions(styleGuide: string, floor: number): string {
   return [
     'You are a strict quality judge for pixel-art sprites generated for a top-down roguelike game.',
     '',
@@ -320,19 +347,24 @@ function buildSystemInstructions(styleGuide: string): string {
     'the canonical Crawler art style, not off-style stock art — so the candidate should look',
     'like it belongs in the same shipped set.',
     '',
-    'Score the candidate on three independent 1-5 ordinal axes:',
+    contentDirectionBlock(floor),
     '',
-    '  1. style_match  — Does the candidate read as same-family as the references (our',
-    '                    canonical approved Crawler sprites)? Match: outline thickness, palette,',
-    '                    shading stops, anti-aliasing, silhouette weight. 5 = indistinguishable',
-    '                    from references. 1 = generic AI pixel art that obviously does not belong',
-    '                    with them.',
+    'Score the candidate on four independent 1-5 ordinal axes:',
     '',
-    '  2. brief_match  — Does the candidate depict the subject described in the brief',
+    '  1. design_language — Does the concept feel specifically like Crawler: one readable',
+    '                       identity plus one authored contradiction, darkly funny rather than',
+    '                       generic grim fantasy, and appropriately strange for the supplied floor?',
+    '',
+    '  2. reference_style_match — Does the rendering belong beside the approved references?',
+    '                              Compare outline weight, palette depth, shading stops, dithering,',
+    '                              edge treatment, scale, and production finish. Do not require the',
+    '                              same subject matter or palette.',
+    '',
+    '  3. brief_match  — Does the candidate depict the subject described in the brief',
     '                    (provided in the user prompt)? 5 = unambiguously the requested',
-    '                    subject. 1 = a different subject entirely.',
+    '                    subject. Accidental faces or limbs on an inanimate item score <= 2.',
     '',
-    '  3. readability  — Inspect the READABILITY-COMPOSITE. Does the silhouette read clearly',
+    '  4. readability  — Inspect the READABILITY-COMPOSITE. Does the silhouette read clearly',
     '                    at game scale on a dark floor tile? 5 = silhouette pops; the subject',
     '                    is obvious in one glance. 1 = the sprite blends into the floor or',
     '                    the silhouette is illegible.',
@@ -347,13 +379,13 @@ function buildSystemInstructions(styleGuide: string): string {
     'Rationale per axis: 1-2 sentences max. Be specific (e.g. "outline too thin compared',
     'to references" not "looks wrong"). No prose outside the JSON.',
     '',
-    'Style ground truth (the reference sprites are approved in-game art and take precedence',
-    'over this prose when they conflict):',
+    'Rendering reference (references provide evidence but do not override Crawler design language):',
     truncate(styleGuide, 1500),
     '',
     'Respond with STRICT JSON only — no prose, no markdown — matching this shape:',
     '{',
-    '  "style_match": { "score": 1-5, "rationale": "..." },',
+    '  "design_language": { "score": 1-5, "rationale": "..." },',
+    '  "reference_style_match": { "score": 1-5, "rationale": "..." },',
     '  "brief_match": { "score": 1-5, "rationale": "..." },',
     '  "readability": { "score": 1-5, "rationale": "..." }',
     '}',
@@ -369,6 +401,7 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
     `BRIEF NAME: ${brief.name}`,
     `BRIEF TYPE: ${brief.type}`,
     `BRIEF PROMPT: ${brief.prompt}`,
+    `FLOOR: ${brief.floor} of 20`,
     brief.tags.length > 0 ? `BRIEF TAGS: ${brief.tags.join(', ')}` : '',
     '',
     'Attached images, in order:',
@@ -381,12 +414,7 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
       '                               The candidate must read as same-family with them.',
     );
   }
-  lines.push(
-    '',
-    refSummary,
-    '',
-    'Return your three scores and rationales as a strict JSON object.',
-  );
+  lines.push('', refSummary, '', 'Return your four scores and rationales as a strict JSON object.');
   return lines.filter((s) => s !== '').join('\n');
 }
 

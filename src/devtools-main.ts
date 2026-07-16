@@ -145,6 +145,8 @@ interface WorkflowSynthCandidate {
 interface WorkflowJudgeSummary {
   passed: boolean;
   minScore: number;
+  designLanguage: number;
+  referenceStyleMatch: number;
   styleMatch: number;
   briefMatch: number;
   readability: number;
@@ -178,6 +180,8 @@ interface RawGenerateCandidate {
   judgeScorecard: {
     passed: boolean;
     minScore: number;
+    designLanguage?: { score: number };
+    referenceStyleMatch?: { score: number };
     styleMatch?: { score: number };
     briefMatch?: { score: number };
     readability?: { score: number };
@@ -201,7 +205,9 @@ function toJudgeSummary(raw: RawGenerateCandidate['judgeScorecard']): WorkflowJu
   return {
     passed: raw.passed === true,
     minScore: typeof raw.minScore === 'number' ? raw.minScore : 0,
-    styleMatch: raw.styleMatch?.score ?? 0,
+    designLanguage: raw.designLanguage?.score ?? 0,
+    referenceStyleMatch: raw.referenceStyleMatch?.score ?? raw.styleMatch?.score ?? 0,
+    styleMatch: raw.styleMatch?.score ?? raw.referenceStyleMatch?.score ?? 0,
     briefMatch: raw.briefMatch?.score ?? 0,
     readability: raw.readability?.score ?? 0,
     rejectedBy: Array.isArray(raw.rejectedBy) ? raw.rejectedBy : [],
@@ -3658,6 +3664,9 @@ function render(): void {
               ? {
                   passed: candidate.judge.passed,
                   minScore: candidate.judge.minScore,
+                  designLanguage: candidate.judge.designLanguage ?? 0,
+                  referenceStyleMatch:
+                    candidate.judge.referenceStyleMatch ?? candidate.judge.styleMatch,
                   styleMatch: candidate.judge.styleMatch,
                   briefMatch: candidate.judge.briefMatch,
                   readability: candidate.judge.readability,
@@ -4117,7 +4126,8 @@ function render(): void {
     unjudged: '#94a3b8',
   };
   const JUDGE_AXES = [
-    { key: 'styleMatch', label: 'Style match' },
+    { key: 'designLanguage', label: 'Crawler design language' },
+    { key: 'referenceStyleMatch', label: 'Reference style match' },
     { key: 'briefMatch', label: 'Brief match' },
     { key: 'readability', label: 'Readability' },
   ] as const;
@@ -4161,7 +4171,7 @@ function render(): void {
 
   const parseSummaryCandidate = (raw: Record<string, unknown>): SummaryCandidateDetail => {
     const scorecard = asRecord(raw.judgeScorecard);
-    const axisRationale = (key: JudgeAxisKey): string | null => {
+    const axisRationale = (key: string): string | null => {
       const axis = scorecard ? asRecord(scorecard[key]) : null;
       return axis && typeof axis.rationale === 'string' ? axis.rationale : null;
     };
@@ -4173,7 +4183,9 @@ function render(): void {
             ? scorecard.rejectedBy.filter((r): r is string => typeof r === 'string')
             : [],
           rationale: {
-            styleMatch: axisRationale('styleMatch'),
+            designLanguage: axisRationale('designLanguage'),
+            referenceStyleMatch:
+              axisRationale('referenceStyleMatch') ?? axisRationale('styleMatch'),
             briefMatch: axisRationale('briefMatch'),
             readability: axisRationale('readability'),
           },
@@ -4262,7 +4274,8 @@ function render(): void {
     judgeSection.append(detailSectionTitle('Judge (advisory)'));
     if (candidate.judge) {
       const scores: Record<JudgeAxisKey, number> = {
-        styleMatch: candidate.judge.styleMatch,
+        designLanguage: candidate.judge.designLanguage,
+        referenceStyleMatch: candidate.judge.referenceStyleMatch,
         briefMatch: candidate.judge.briefMatch,
         readability: candidate.judge.readability,
       };
@@ -4631,7 +4644,8 @@ function render(): void {
           style: { display: 'flex', gap: '3px', flexWrap: 'wrap', marginBottom: '5px' },
         });
         chips.append(
-          judgeAxisChip('S', candidate.judge.styleMatch, 'Style match'),
+          judgeAxisChip('D', candidate.judge.designLanguage, 'Crawler design language'),
+          judgeAxisChip('S', candidate.judge.referenceStyleMatch, 'Reference style match'),
           judgeAxisChip('B', candidate.judge.briefMatch, 'Brief match'),
           judgeAxisChip('R', candidate.judge.readability, 'Readability'),
         );

@@ -40,6 +40,7 @@ const SWORD_BRIEF: Brief = {
   anchor: { x: 16, y: 16 },
   tags: ['blade'],
   prompt: 'integration test diagonal sword',
+  floor: 1,
   // Two synthetic references to keep the fixture brief schema-valid (F2.3).
   // The integration test never reads these — it constructs raw PNGs directly.
   references: [

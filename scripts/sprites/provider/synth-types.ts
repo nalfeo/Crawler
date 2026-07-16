@@ -21,6 +21,8 @@ export interface SynthesizeBriefRequest {
   readonly briefHint?: string;
   /** Caller-supplied type, or null when the model must classify. */
   readonly type: (typeof SPRITE_TYPES)[number] | null;
+  /** Dungeon floor intensity, 1..20. */
+  readonly floor: number;
   /** Number of distinct candidates to return (1..5). */
   readonly candidates: number;
   /**

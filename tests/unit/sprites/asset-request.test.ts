@@ -124,6 +124,17 @@ describe('parseAssetRequestIssueBody', () => {
     expect(parsed?.type).toBeUndefined();
   });
 
+  it('rejects invalid marker floors even when type is omitted', () => {
+    for (const floor of ['21', '"12"']) {
+      const body = [
+        `<!-- ${ASSET_REQUEST_MARKER}`,
+        `{"version":1,"name":"bone-dagger","briefSentence":"A chipped bone dagger with twine-wrapped handle.","floor":${floor}}`,
+        '-->',
+      ].join('\n');
+      expect(parseAssetRequestIssueBody(body)).toBeNull();
+    }
+  });
+
   it('parses form-rendered type field when valid', () => {
     const body = [
       '### Name',

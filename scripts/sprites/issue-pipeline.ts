@@ -113,6 +113,7 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
     name: request.name,
     briefHint: request.briefSentence,
     type: spriteType as Brief['type'],
+    floor: request.floor ?? 1,
     candidates: 3,
     partial: true,
     provider: options.synthProvider,
@@ -127,6 +128,7 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   const selected = await options.briefSelectorProvider.selectBrief({
     name: request.name,
     briefSentence: request.briefSentence,
+    floor: request.floor ?? 1,
     candidates: synth.written.map((c, idx) => ({ index: idx, description: c.description })),
   });
   const winner = synth.written[selected.index];
