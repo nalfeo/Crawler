@@ -35,7 +35,7 @@ function formBody(parts: {
   const lines: string[] = [];
   if (parts.name !== undefined) lines.push('### Name', parts.name, '');
   if (parts.brief !== undefined) lines.push('### Brief', parts.brief, '');
-  if (parts.type !== undefined) lines.push('### Type', parts.type, '');
+  if (parts.type !== undefined) lines.push('### Type (optional)', parts.type, '');
   if (parts.floor !== undefined) lines.push('### Floor (optional)', parts.floor, '');
   if (parts.size !== undefined) lines.push('### Size (optional)', parts.size, '');
   return lines.join('\n');
@@ -153,12 +153,35 @@ describe('parseAssetRequestIssueBody', () => {
       '### Brief',
       'A chipped bone dagger with twine-wrapped handle.',
       '',
-      '### Type',
+      '### Type (optional)',
       'weapon',
     ].join('\n');
     const parsed = parseAssetRequestIssueBody(body);
     expect(parsed?.name).toBe('bone-dagger');
     expect(parsed?.type).toBe('weapon');
+  });
+
+  it('applies brief-only boss cues when "### Type (optional)" heading supplies enemy type', () => {
+    const body = formBody({
+      name: 'countess-vesper',
+      brief: 'An aristocratic batfolk crime boss with folded cloak-like wings.',
+      type: 'enemy',
+    });
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.type).toBe('enemy');
+    expect(parsed?.sizeVariant).toBe('large');
+  });
+
+  it('suppresses boss-name inference when "### Type (optional)" heading supplies non-enemy type', () => {
+    const body = formBody({
+      name: 'tile-boss-arena-floor',
+      brief: 'The floor of the boss arena. Worn stone, subtle hazard markings.',
+      type: 'tile',
+    });
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.type).toBe('tile');
+    expect(parsed?.sizeVariant).toBeUndefined();
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
   });
 
   it('rejects form-rendered type field when invalid', () => {
@@ -169,7 +192,7 @@ describe('parseAssetRequestIssueBody', () => {
       '### Brief',
       'A chipped bone dagger with twine-wrapped handle.',
       '',
-      '### Type',
+      '### Type (optional)',
       'invalid-type',
     ].join('\n');
     // Should reject entirely if form has a non-empty invalid type

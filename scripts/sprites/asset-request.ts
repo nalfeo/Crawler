@@ -301,7 +301,7 @@ function parseIssueFormBody(body: string): {
   const name = nameMatch[1]!.trim();
   const briefSentence = normalizeBriefText(briefMatch[1]!);
   if (name === '' || !isValidBriefText(briefSentence)) return null;
-  const typeMatch = body.match(/(?:^|\n)###\s+Type\s*\n+([^\n]+)/i);
+  const typeMatch = body.match(/(?:^|\n)###\s+Type(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
   let type: string | undefined;
   if (typeMatch) {
     const candidate = typeMatch[1]!.trim().toLowerCase();
