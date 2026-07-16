@@ -25,6 +25,6 @@ variations:
   - Countess Vesper with midnight-blue wrapped wings, glittering bone-and-scrap brooch, regal stern expression
 judge:
   enabled: true
-  # Boss brief — require at least 4 high-quality variants before approving.
+  # Boss brief — cap judge calls at 4 variants maximum (2×2 large-size sheet).
   maxVariants: 4
 minVariations: 4

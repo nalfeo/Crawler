@@ -44,7 +44,7 @@ Handled issue #1218 for the `batfolk-boss` (Countess Vesper) sprite asset:
 
 6. **verify:fast passed**: 1254 tests pass, all guards green.
 
-Sprite-judge verdict: **ACCEPT** — Layer 1 (7/7 sensors), Layer 2 (judge 5/5),
+Sprite-judge verdict: **ACCEPT** — Layer 1 (7/7 sensors), Layer 2 (judge score 5),
 Layer 3 (eyeball — approved by maintainer 2026-07-08, CI environment lacks PIL
 for pixel rendering but all pipeline gates pass). Brief wired to correct mob.
 
