@@ -88,4 +88,11 @@ describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {
   it('throws on a non-numeric --enemy-telegraph-ms', () => {
     expect(() => cli('--enemy-telegraph-ms', 'bogus')).toThrow(/Invalid --enemy-telegraph-ms/);
   });
+
+  it('throws on a malformed value with a numeric prefix (regression: copilot-pull-request-reviewer finding)', () => {
+    // Number.parseFloat('250ms') === 250 -- it stops at the first non-numeric
+    // character instead of rejecting the whole token, silently accepting
+    // malformed CLI input. Number('250ms') is NaN, correctly rejecting it.
+    expect(() => cli('--enemy-telegraph-ms', '250ms')).toThrow(/Invalid --enemy-telegraph-ms/);
+  });
 });

@@ -2385,7 +2385,22 @@ export class BehaviorTreeAI implements AIInputProvider {
         const startMs = enemyBehaviorStore.telegraphStartMs[eid] ?? 0;
         const delayMs = enemyBehaviorStore.telegraphDelayMs[eid] ?? 0;
         const remainingMs = Math.max(0, delayMs - (ctx.world.elapsedMs - startMs));
-        const remainingFrames = remainingMs / GAME.DELTA_MS;
+        // This AI's poll() runs BEFORE runSimulationStep() advances
+        // world.elapsedMs and runs preSystems for the CURRENT step (see
+        // headless-runner.ts's main loop and simulation-step.ts), while
+        // isEnemyProjectileTelegraphReady's fire check runs AFTER that same
+        // increment but BEFORE that step's movementSystem
+        // (simulation-core-step.ts's preSystems -> movementSystem order). So
+        // from any poll, the raw fractional quotient
+        // (remainingMs / DELTA_MS) is exactly one step too many: the step on
+        // which the shot fires still advances elapsedMs and triggers the fire
+        // check, but the PLAYER's movement for that same step happens after
+        // the fire (movementSystem runs after preSystems), so it never
+        // occurs before the shot spawns. The number of player-movement steps
+        // that will actually happen before the fire is
+        // ceil(remainingMs / DELTA_MS) - 1, clamped at 0 (regression:
+        // copilot-pull-request-reviewer finding).
+        const remainingFrames = Math.max(0, Math.ceil(remainingMs / GAME.DELTA_MS) - 1);
 
         // The enemy is pinned at the locked origin for the whole telegraph
         // (see enemyAISystem.ts's movement freeze), so only the player needs

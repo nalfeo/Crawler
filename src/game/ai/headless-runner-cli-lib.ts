@@ -116,7 +116,7 @@ export function parseArgs(
       args.enemyDamageMultiplier = parsed;
       i++;
     } else if (arg === '--enemy-telegraph-ms' && next) {
-      const parsed = Number.parseFloat(next);
+      const parsed = Number(next);
       if (!Number.isFinite(parsed) || parsed < 0) {
         throw new Error(`Invalid --enemy-telegraph-ms "${next}" (must be a finite number >= 0)`);
       }

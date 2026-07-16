@@ -60,7 +60,7 @@ the "0 = exact legacy parity" requirement holds in the real pipeline, not
 just in unit tests. Render-cue behavior (create-once/show/hide, never
 recreated, hidden while outside FOV, hidden for a shooter killed this
 same frame, and destroyed if its EID is recycled mid-simulation) is
-additionally covered by 5 new deterministic
+additionally covered by 6 new deterministic
 `tests/unit/phaser-bridge.test.ts` assertions, since this sandboxed
 environment's Playwright/chrome-devtools tools had no screenshot capability
 for Phaser canvas content — the repo's documented deterministic-check
@@ -138,12 +138,13 @@ None blocking. Follow-up ideas (not required by the approved spec):
   "the code path looks like it does nothing" — it proves byte-for-byte
   output identity on the real pipeline.
 - **No screenshot capability for Phaser canvas in this sandboxed
-  environment's Playwright/chrome-devtools tools**: pivoted to writing 5
+  environment's Playwright/chrome-devtools tools**: pivoted to writing 6
   deterministic `tests/unit/phaser-bridge.test.ts` assertions (cue created +
   visible while telegraphing, pinned to the locked origin even after the
   shooter drifts; same object hidden, not recreated, once cleared; hidden
   outside FOV; hidden for a shooter killed this frame; destroyed if its EID
-  is recycled mid-simulation)
+  is recycled mid-simulation; urgency-pulse phased on the telegraph's own
+  elapsed time rather than the absolute render clock)
   instead of a manual visual pass. This matches the repo's own
   stated preference (rule #9) for deterministic checks over ad hoc visual
   QA, so treat "no screenshot tool" as a nudge toward the better default,
@@ -241,9 +242,11 @@ not to retune damage/cadence/spawn-rate/player-stat values or bend gameplay
 to chase a higher rate on this sweep. The largest per-weapon deltas
 (throwing-knife -13.3pp, sword -6.7pp) are consistent with those being the
 two weapons with the least reach/mobility against a ranged attacker that now
-gets a fair 250ms telegraph window to re-aim/adjust before firing (rather
-than firing instantly on detection) — i.e. the enemy is timing its shot
-better post-telegraph, which is the intended effect of the feature, not a
-bug. Recorded here as the sweep artifact this thread requested; raw JSON
+telegraphs for 250ms before firing (rather than firing instantly on
+detection): melee weapons must still close the distance during that window,
+so they carry the exposure a beat longer than before. This is the observed
+effect of adding the telegraph delay itself (not a change to the enemy's aim
+or damage), which is the intended effect of the feature, not a bug. Recorded
+here as the sweep artifact this thread requested; raw JSON
 available via the two workflow run's uploaded artifacts (`weapon-sweep-<weapon>.json`,
 30-day retention).

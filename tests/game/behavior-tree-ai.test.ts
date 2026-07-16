@@ -2143,6 +2143,120 @@ describe('BehaviorTreeAI', () => {
     expect(dodge.dodgeY).toBeGreaterThan(2);
   });
 
+  it('counts the discrete pre-fire movement steps for the telegraphed-shot dodge horizon, not the raw fractional quotient (regression: copilot-pull-request-reviewer finding)', () => {
+    // The AI's poll() runs BEFORE runSimulationStep() advances world.elapsedMs
+    // and runs preSystems for the CURRENT step (see headless-runner.ts's main
+    // loop), while isEnemyProjectileTelegraphReady's fire check runs AFTER
+    // that increment but BEFORE that step's movementSystem
+    // (simulation-core-step.ts's preSystems -> movementSystem order). So the
+    // step on which the shot fires still advances elapsedMs and trips the
+    // fire check, but that step's OWN player movement happens after the fire
+    // (never before the shot spawns). The raw fractional quotient
+    // (remainingMs / DELTA_MS) overcounts the pre-fire player movements by
+    // exactly one step; the correct count is
+    // ceil(remainingMs / DELTA_MS) - 1.
+    //
+    // Geometry mirrors the muzzle-offset test above: the player sits exactly
+    // at the virtual shot's spawn point (origin + dir * MUZZLE_OFFSET) with
+    // zero velocity, so impactFramesAfterSpawn = 0 and
+    // totalImpactFrames = remainingFrames exactly — isolating the horizon
+    // gate (PROJECTILE_DODGE_HORIZON_FRAMES = 90) to the remainingFrames
+    // formula alone, independent of projected player position.
+    //   - delayMs = 91 whole frames.
+    //   - Raw fractional quotient: remainingFrames = 91 -> totalImpactFrames
+    //     = 91 > 90 -> candidate skipped -> dodgeY stays 0 (a real dodge is
+    //     missed one frame early).
+    //   - Correct discrete count: remainingFrames = ceil(91) - 1 = 90 ->
+    //     totalImpactFrames = 90 (not > 90) -> candidate accepted -> dodgeY
+    //     > 0.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    spawnPlayer(world, 1.5, 1);
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const DELAY_FRAMES = 91;
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = DELAY_FRAMES * GAME.DELTA_MS;
+    enemyBehavior.telegraphOriginX[enemy] = 0;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Only reachable with the discrete pre-fire movement count: the raw
+    // fractional quotient would put this candidate one frame beyond the
+    // dodge horizon, silently skipping a shot the player can genuinely still
+    // react to.
+    expect(dodge.dodgeY).toBeGreaterThan(2);
+  });
+
+  it("dodges a telegraphed shot only once the shooter's tile is in LIVE FOV, not merely discovered/remembered tile memory (regression: copilot-pull-request-reviewer finding)", () => {
+    // canCurrentlyPerceiveWorldPosition (used solely for this telegraph-dodge
+    // gate) is a STRICT sibling of canPerceiveWorldPosition: it requires the
+    // shooter's LIVE tile to be in current FOV, not merely discovered/
+    // remembered — matching PhaserBridge's render-cue gate exactly, so the AI
+    // never reacts to a threat the player cannot currently see rendered.
+    // This distinguishes it from every OTHER perception check in this file
+    // (which use the looser canPerceiveWorldPosition and accept discovered-
+    // but-not-currently-visible tiles).
+    const world = createTestWorld({ seed: 42 });
+    world.floorMap = makeOpenRoom(24, 24);
+    world.enemyTelegraphMs = 250;
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 0, 0);
+    // 20ft away, and makeOpenRoom's tileSizeFt = 4 -> a distinct tile from
+    // the player's (tile x = 5 vs 0), so marking the player's tile visible
+    // does not incidentally also mark the shooter's tile visible.
+    const enemy = spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const floorMap = world.floorMap;
+    const playerTile = floorMap.worldToTile(0, 0);
+    const enemyTile = floorMap.worldToTile(20, 0);
+    expect(enemyTile.x).not.toBe(playerTile.x);
+    // Player tile visible+discovered triggers hasPerceptionData = true
+    // (restrictive mode) — matching the established pattern above.
+    floorMap.setVisible(playerTile.x * 2, playerTile.y * 2);
+    floorMap.setDiscovered(playerTile.x * 2, playerTile.y * 2);
+    // Shooter's tile: discovered (remembered from an earlier visit) but NOT
+    // currently visible.
+    floorMap.setDiscovered(enemyTile.x * 2, enemyTile.y * 2);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const input = createInputState();
+    // Priming poll (before the telegraph even starts): `hasPerceptionData` is
+    // only refreshed from `floorMap.hasVisibleTiles()` near the END of
+    // poll() (see bt-ai-provider.ts's `this.hasPerceptionData ||= ...`),
+    // textually AFTER the telegraph-dodge section — so any poll() call uses
+    // the PREVIOUS call's hasPerceptionData value for this gate. One no-op
+    // poll flips it to true for every poll after this one.
+    ai.poll(input, world);
+
+    // Drive the real fire logic to start (but not resolve) a telegraph aimed
+    // at the player, exactly as the real game loop would.
+    enemyAISystem(world);
+    expect(isEnemyProjectileTelegraphActive(world, enemy)).toBe(true);
+
+    ai.poll(input, world);
+    let dodge = ai.getOpportunisticDebug();
+    // Discovered-but-not-currently-visible: the strict gate must reject this
+    // candidate even though the looser discovered-tile memory would allow it.
+    expect(dodge.dodgeY).toBe(0);
+
+    // Once the shooter's tile also enters LIVE FOV, the same telegraph must
+    // be dodged.
+    floorMap.setVisible(enemyTile.x * 2, enemyTile.y * 2);
+    ai.poll(input, world);
+    dodge = ai.getOpportunisticDebug();
+    expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
+  });
+
   it('ignores a telegraphed shot from a shooter that already died this simulation step (regression: copilot-pull-request-reviewer finding)', () => {
     // The input-polling AI runs before enemyAISystem in the frame order, so a
     // shooter killed earlier this step can still have `telegraphActive` set
