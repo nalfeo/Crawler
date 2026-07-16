@@ -785,8 +785,9 @@ export async function landedCommitProofError({
  *     not evidence that the postcondition check is absent.
  *
  * Only when ALL hold does recovery finish the interrupted cleanup; otherwise it
- * skips (never asserting an unproven or known-divergent landing). Returns
- * `{ action: 'finish' | 'skip', reason }`.
+ * skips (never asserting an unproven or known-divergent landing), or retries
+ * when the proof facts could not be fetched (transient API outage). Returns
+ * `{ action: 'finish' | 'skip' | 'retry', reason }`.
  */
 export function planLandedRecovery({
   merged,

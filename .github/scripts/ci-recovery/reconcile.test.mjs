@@ -411,7 +411,7 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 required-checks=)/);
+  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
   assert.doesNotMatch(stdout, /dry-run would-assign copilot/);
   assert.doesNotMatch(stdout, /merge-conflict/);
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
@@ -1226,7 +1226,7 @@ test('reconcile ignores same-repository action-required runs without approval or
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, new RegExp(`skip action_required run=${runId} .* reason=same-repository`));
-  assert.match(stdout, /wait pr=#42 required-checks=required-check/);
+  assert.match(stdout, /wait pr=#42 admission=required-check/);
   assert.doesNotMatch(stdout, /workflow-approval|approved workflow|would-approve/);
   assert.equal(
     mutatingCalls.filter(
