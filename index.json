@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b61c1bc7feb494cc195efabeee894ff328d5b3bc",
+    "commitDate": "2026-07-16T13:36:01Z",
+    "commitSubject": "fix(ai): prevent legacy Floor 1 deaths (#1197)",
+    "capturedAt": "2026-07-16T14:51:37.361Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29503649374",
+    "winRate": 0.9883333333333333,
+    "totalWins": 593,
+    "totalRuns": 600,
+    "path": "by-sha/b61c1bc7feb494cc195efabeee894ff328d5b3bc.json"
+  },
+  {
     "commit": "6c4ab45e448dc42f97115c717a607b1854f20a78",
     "commitDate": "2026-07-16T12:34:05Z",
     "commitSubject": "feat(ai): multi-threat escape push + safe loot detour for legacy ranged kiting (#1198)",
