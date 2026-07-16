@@ -1,5 +1,16 @@
 [
   {
+    "commit": "799ac4cbf6060757399d36aa24ff69c8256e06d9",
+    "commitDate": "2026-07-16T20:17:57Z",
+    "commitSubject": "Fix Floor 1 safe-room doorway livelock (timeout bucket) (#1212)",
+    "capturedAt": "2026-07-16T21:37:03.226Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29532226164",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/799ac4cbf6060757399d36aa24ff69c8256e06d9.json"
+  },
+  {
     "commit": "51d5347f77d7fb00c20691f9307bfc93205aa412",
     "commitDate": "2026-07-16T19:35:57Z",
     "commitSubject": "fix(enemies): harden enemy telegraph delay validation; document telegraph design (#1196)",
