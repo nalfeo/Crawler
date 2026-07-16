@@ -18,7 +18,7 @@ export const CRAWLER_DESIGN_LANGUAGE = [
   'wonderful without becoming less readable.',
 ].join('\n');
 
-export function floorIntensityGuidance(floor: number): string {
+function floorIntensityGuidance(floor: number): string {
   if (floor <= 1) {
     return 'Grounded baseline: use a recognizable dark-fantasy subject, practical salvage, and at most one strong absurd contradiction.';
   }
