@@ -25,16 +25,19 @@ feature (PR #1200) and its delay-validation-hardening/docs slice (PR #1196)
 had already squash-merged to `main`. No production behavior was changed; this
 closes four specific verification asks:
 
-1. **Burst-follow-up independent locking, made explicit as a regression
-   test**: added `'gives every burst follow-up shot its OWN independently
+1. **Subsequent-shot independent locking, made explicit as a regression
+   test**: added `'gives every subsequent shot its OWN independently
 locked aim vector, not a stale copy of the previous shot'` to
    `tests/game/enemy-projectile-telegraph.test.ts`. It fires a first shot,
    moves the player to a very different angle, then asserts the second
    shot's telegraph lock tracks the player's new position (not the first
    shot's stale lock) and that the fired projectile matches the second lock.
-   This was already guaranteed by construction
+   This test uses the enemy's default fire cooldown (1200ms), not a
+   rapid-fire/burst cadence — it is a back-to-back ordinary-shot scenario.
+   The independent-locking guarantee was already true by construction
    (`startEnemyProjectileTelegraph` unconditionally overwrites every locked
-   field on each call) but previously untested directly.
+   field on each call, regardless of cadence) but previously untested
+   directly.
 2. **0ms legacy parity reconfirmed on current `main`**: on this branch, atop
    current `main`, all 174 tests across the three telegraph/dodge/render-cue
    suites pass — 173 are pre-existing assertions, unmodified from `main`,
@@ -59,7 +62,7 @@ locked aim vector, not a stale copy of the previous shot'` to
    `PhaserBridge` — the correct place to observe the cue live). Every
    browser-tool call timed out (`MCP error -32001`); no `chrome-devtools`-
    prefixed tools were exposed in this session despite the skill loading
-   successfully. This reconfirms — not newly discovers — the environment
+   successfully. This reconfirms, rather than newly discovers, the environment
    limitation already documented in the original feature handoff
    (`docs/knowledge/handoffs/2026-07-16-enemy-projectile-telegraph.md`). The
    7 deterministic `phaser-bridge.test.ts` cue-lifecycle assertions remain

@@ -435,7 +435,7 @@ describe('enemy projectile telegraph — nonzero delay lifecycle', () => {
     expect(query(world.ecs, [EnemyProjectile]).length).toBe(2);
   });
 
-  it('gives every burst follow-up shot its OWN independently locked aim vector, not a stale copy of the previous shot', () => {
+  it('gives every subsequent shot its OWN independently locked aim vector, not a stale copy of the previous shot', () => {
     const world = createTestWorld();
     world.enemyTelegraphMs = 250;
     world.elapsedMs = 100;

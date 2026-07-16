@@ -312,22 +312,25 @@ telegraph feature and #1203's unrelated stats/mana overhaul), a follow-up
 verification pass confirmed the requirements still hold on the current `main`
 tip and closed two remaining observability gaps:
 
-- **Burst-follow-up independent locking, made explicit**: the existing
+- **Subsequent-shot independent locking, made explicit**: the existing
   "telegraphs every subsequent shot" test only proved the second shot
   re-enters `telegraphActive`. Added a new regression test on this branch —
-  `'gives every burst follow-up shot its OWN independently locked aim
-vector, not a stale copy of the previous shot'`
+  `'gives every subsequent shot its OWN independently locked aim vector,
+not a stale copy of the previous shot'`
   (`tests/game/enemy-projectile-telegraph.test.ts`) — that moves the player
   to a very different angle between the first shot's fire and the second
   shot's telegraph start, then asserts the second shot's `telegraphDirX/Y`
   point toward the player's _new_ position (not a stale copy of the first
   shot's lock), and that the fired projectile's velocity matches the second
-  lock. This is guaranteed by construction (`startEnemyProjectileTelegraph`
-  unconditionally overwrites all four locked fields on every call, including
-  every burst/rapid-fire follow-up), but is now also directly
-  regression-tested. With this new test added, the file has 29/29 tests
-  passing on this branch, built atop the current `main` tip (the 29th test
-  did not exist on `main` prior to this branch).
+  lock. This test uses the enemy's default `FIRE_COOLDOWN_MS` (1200ms)
+  between shots, same as the existing "telegraphs every subsequent shot"
+  test — it is not a rapid-fire/burst-cadence scenario, just back-to-back
+  ordinary shots. The guarantee is by construction
+  (`startEnemyProjectileTelegraph` unconditionally overwrites all four
+  locked fields on every call, for every shot regardless of cadence), but is
+  now also directly regression-tested. With this new test added, the file
+  has 29/29 tests passing on this branch, built atop the current `main` tip
+  (the 29th test did not exist on `main` prior to this branch).
 - **0ms legacy parity reconfirmed on current `main`**: on this branch, atop
   the current `main` tip, all 174 tests across
   `enemy-projectile-telegraph.test.ts` / `behavior-tree-ai.test.ts` /
