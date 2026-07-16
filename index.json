@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d63ee18866249824cafc02130e236886c6173116",
+    "commitDate": "2026-07-16T01:52:59Z",
+    "commitSubject": "test(merge-train): tighten wake-up token assertion to enumerated allowlist (#1167)",
+    "capturedAt": "2026-07-16T03:06:01.863Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29465607521",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/d63ee18866249824cafc02130e236886c6173116.json"
+  },
+  {
     "commit": "037f3babddcef41ff693bbe7ec5235109c0d9dfd",
     "commitDate": "2026-07-16T01:27:49Z",
     "commitSubject": "fix(merge-train): add reliable reconciliation wake-ups (#1165)",
