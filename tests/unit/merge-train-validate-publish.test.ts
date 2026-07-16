@@ -453,6 +453,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(typeof script).toBe('string');
 
       let createCalls = 0;
+      let updateCalls = 0;
       const github = {
         rest: {
           checks: {
@@ -460,6 +461,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
               data: {
                 check_runs: [
                   {
+                    id: 999,
                     external_id: 'cafef00d',
                     app: { id: 12345 },
                     status: 'completed',
@@ -470,6 +472,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
             }),
             create: async () => {
               createCalls += 1;
+              return { data: {} };
+            },
+            update: async () => {
+              updateCalls += 1;
               return { data: {} };
             },
           },
@@ -498,15 +504,17 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         }
       }
       expect(createCalls).toBe(0);
+      expect(updateCalls).toBe(0);
     });
 
-    it('does create the cancelled check when an existing check for the fingerprint is not yet terminal (still in_progress)', async () => {
+    it('updates the existing in_progress check run in place (preserving its ID) instead of creating a new one, to avoid a TOCTOU window where an in-flight publish could land with a fresher, higher ID after the lookup but before this write', async () => {
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
       const script = step.with?.script;
       expect(typeof script).toBe('string');
 
       let createCalls = 0;
+      let updateArgs: { check_run_id: number; conclusion: string } | undefined;
       const github = {
         rest: {
           checks: {
@@ -514,6 +522,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
               data: {
                 check_runs: [
                   {
+                    id: 777,
                     external_id: 'cafef00d',
                     app: { id: 12345 },
                     status: 'in_progress',
@@ -524,6 +533,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
             }),
             create: async () => {
               createCalls += 1;
+              return { data: {} };
+            },
+            update: async (args: { check_run_id: number; conclusion: string }) => {
+              updateArgs = args;
               return { data: {} };
             },
           },
@@ -551,7 +564,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
           else process.env[key] = value;
         }
       }
-      expect(createCalls).toBe(1);
+      expect(createCalls).toBe(0);
+      expect(updateArgs).toBeDefined();
+      expect(updateArgs?.check_run_id).toBe(777);
+      expect(updateArgs?.conclusion).toBe('cancelled');
     });
 
     it('retries transient check publication failures twice before succeeding', async () => {

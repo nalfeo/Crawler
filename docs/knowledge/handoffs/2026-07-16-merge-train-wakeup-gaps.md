@@ -137,7 +137,7 @@ main.
 
 - `npm run typecheck` — clean
 - `npm run lint` — clean
-- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **24/24 passed** (19 + 5)
+- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **26/26 passed** (21 + 5)
 - Both modified workflow YAML files parse cleanly via the `yaml` package (same
   parser the tests use) — confirmed no syntax breakage.
 - `npm run verify:fast` — passed (typecheck + lint + changed unit tests +
@@ -574,3 +574,55 @@ caught two more accuracy issues, both fixed here:
 No code/test changes for finding 2 (doc-only). Re-ran
 `npm run review:ledger -- validate` and `npm run verify:fast` after both
 fixes — both green.
+
+## Ninth round follow-up (TOCTOU race in the seventh round's check-masking guard)
+
+A further `copilot-pull-request-reviewer` pass on the eighth-round push found
+a genuine remaining race in the seventh round's `listForRef`-based
+check-masking guard: the lookup only narrows the window, it does not close
+it. The original "Publish immutable candidate result" `checks.create` request
+can still be in flight when the lookup runs (finding no terminal check yet),
+and can land — persisting its genuine terminal result — _after_ the lookup
+returns but _before_ this fallback step's own write. If that write were
+another `checks.create` call (as the seventh round's fix used), it would
+always mint a fresher/higher-ID check than whatever the in-flight request
+persists next, so `trainCheckState()`'s highest-ID-wins selection would still
+pick the wrong (fallback) check and mask the real result — exactly the bug
+the seventh round set out to fix, just via a narrower path.
+
+Fix (matching the reviewer's suggested design): when the `listForRef` lookup
+finds an existing (non-terminal) check run matching this fingerprint + app,
+the fallback step now **updates that same check run in place**
+(`github.rest.checks.update({ check_run_id: existingRun.id, ... })`) instead
+of creating a new one — preserving its original, older ID. If the in-flight
+original request then lands afterwards, its `checks.create` call mints a
+genuinely new, higher-ID check, which correctly wins over this in-place
+`cancelled` update under `trainCheckState()`'s selection rule. Only when no
+matching check run exists at all (the very first check for this candidate
+somehow hasn't been created yet) does the step fall back to `checks.create`
+— there is nothing to update in that edge case, and this narrower residual
+window is called out honestly in the workflow comment rather than claimed as
+fully closed, since the Checks API has no atomic create-if-absent primitive.
+
+Updated `tests/unit/merge-train-validate-publish.test.ts`:
+
+- The existing "does not overwrite an already-persisted terminal check" test
+  now also mocks `checks.update` and asserts it is **not** called (in
+  addition to `checks.create` not being called) when a terminal check already
+  exists.
+- Renamed/rewrote the in-progress-check test to **updates the existing
+  in_progress check run in place (preserving its ID) instead of creating a
+  new one** — mocks `listForRef` returning an `in_progress` run with `id:
+777`, and asserts `checks.update` is called with `check_run_id: 777` and
+  `conclusion: 'cancelled'`, while `checks.create` is **not** called.
+
+Test counts unchanged at 26 (21 + 5) — this round changed existing test
+bodies/assertions to match the update-in-place behavior; no new `it()` blocks
+were added. Ran `npx vitest run tests/unit/merge-train-validate-publish.test.ts
+tests/unit/merge-train-workflow-wakeups.test.ts` — 26/26 passed.
+
+Also corrected a separate stale-metadata finding from the same review round:
+this "Verification" section previously said "24/24 passed (19 + 5)" from an
+earlier round; updated to the current accurate "26/26 passed (21 + 5)". The
+PR description had the same stale numbers and round count; resynced
+separately alongside this handoff update.

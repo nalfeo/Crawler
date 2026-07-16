@@ -202,6 +202,25 @@ jobs:
       # already-persisted, genuinely correct terminal result with a newer,
       # wrong one -- causing reconcile to redispatch validation instead of
       # correctly bisecting a real candidate failure.
+      #
+      # The listForRef lookup above narrows but does not fully close this
+      # race: the original publish request can still be in flight when the
+      # lookup runs (finding no terminal check yet), and can persist its
+      # genuine terminal result *after* the lookup but *before* this step's
+      # own write. If that write were another `checks.create` call, it would
+      # always get a fresher/higher ID than whatever the in-flight request
+      # persists next, masking the real result again regardless of the
+      # lookup. To close this, when the lookup finds an existing (non-
+      # terminal) check run for this fingerprint, this step *updates that
+      # same check run in place* (`checks.update`, same check_run_id) instead
+      # of creating a new one -- preserving its original (older, lower) ID.
+      # If the in-flight original request then lands afterwards, its
+      # `checks.create` call mints a genuinely new, higher-ID check, which
+      # correctly wins over this in-place cancelled update. Only when no
+      # matching check run exists yet at all does this step fall back to
+      # `checks.create` (there is nothing to update), which retains a
+      # narrower residual race window inherent to the Checks API having no
+      # atomic create-if-absent primitive.
       - name: Generate recovery app token
         id: recovery-app-token
         if: (failure() || cancelled()) && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
@@ -236,17 +255,20 @@ jobs:
                   check_name: 'merge-train-candidate',
                 });
                 const trustedAppId = Number(process.env.APP_ID);
-                const alreadyTerminal = (existing.check_runs ?? []).some(
+                const matching = (existing.check_runs ?? []).filter(
                   (run) =>
                     run.external_id === process.env.FINGERPRINT &&
-                    Number(run.app?.id) === trustedAppId &&
+                    Number(run.app?.id) === trustedAppId,
+                );
+                const alreadyTerminal = matching.some(
+                  (run) =>
                     run.status === 'completed' &&
                     (run.conclusion === 'success' || run.conclusion === 'failure'),
                 );
                 if (alreadyTerminal) {
                   return;
                 }
-                await github.rest.checks.create({
+                const payload = {
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   name: 'merge-train-candidate',
@@ -259,7 +281,19 @@ jobs:
                     summary:
                       'Either the App-token mint or the "Publish immutable candidate result" step failed/was cancelled before a terminal check could be posted. Marked cancelled so the next reconciliation retries validation immediately instead of waiting for the stale in_progress check to expire.',
                   },
-                });
+                };
+                // Prefer updating an existing (non-terminal) check run
+                // in place, preserving its original ID, over creating a
+                // brand-new one -- see the comment above this step for why.
+                const existingRun = matching[0];
+                if (existingRun) {
+                  await github.rest.checks.update({
+                    ...payload,
+                    check_run_id: existingRun.id,
+                  });
+                } else {
+                  await github.rest.checks.create(payload);
+                }
                 return;
               } catch (error) {
                 lastError = error;
