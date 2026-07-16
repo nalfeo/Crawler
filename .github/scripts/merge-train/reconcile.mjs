@@ -1,6 +1,12 @@
 import { execFileSync } from 'node:child_process';
 
-import { listReviewThreads, paginate, request, graphql } from '../ci-recovery/github.mjs';
+import {
+  listClosingIssues,
+  listReviewThreads,
+  paginate,
+  request,
+  graphql,
+} from '../ci-recovery/github.mjs';
 import {
   isTrainFastPathPushRun,
   parseStateComment,
@@ -45,6 +51,7 @@ import {
   trainCheckState,
   VALIDATION_FAILED_LABEL,
 } from './state.mjs';
+import { humanApprovalRejection } from './human-approval.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -145,6 +152,16 @@ async function eligible(pr) {
     return { ok: false, reason: 'unresolved review threads' };
   }
   const comments = await paginate(token, `/repos/${owner}/${repo}/issues/${pr.number}/comments`);
+  const closingIssues = await listClosingIssues(token, owner, repo, pr.number);
+  const approvalRejection = humanApprovalRejection({
+    pullRequest: pr,
+    closingIssues,
+    comments,
+    ownerLogin: owner,
+  });
+  if (approvalRejection) {
+    return { ok: false, reason: approvalRejection };
+  }
   const stateComments = comments.filter((comment) =>
     hasLeadingMarker(comment.body, RECOVERY_STATE_MARKER),
   );

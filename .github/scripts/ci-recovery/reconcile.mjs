@@ -16,7 +16,7 @@ import {
   STATE_MARKER,
 } from './state.mjs';
 import { workflowApprovalRejection, REQUIRED_CHECK_WORKFLOW_PATHS } from './approval.mjs';
-import { graphql, listReviewThreads, paginate, request } from './github.mjs';
+import { graphql, listClosingIssues, listReviewThreads, paginate, request } from './github.mjs';
 import {
   admissionFingerprint,
   BLOCKED_LABEL,
@@ -28,6 +28,7 @@ import {
   unsatisfiedChecks,
   VALIDATION_FAILED_LABEL,
 } from '../merge-train/state.mjs';
+import { HUMAN_APPROVAL_LABEL, humanApprovalRejection } from '../merge-train/human-approval.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -89,12 +90,9 @@ if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
   process.stdout.write(`skip pr=#${prNumber} reason=opt-out\n`);
   process.exit(0);
 }
-if (mergeTrainEnabled && (pr.labels || []).some((label) => label.name === QUEUE_LABEL)) {
-  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
-  process.exit(0);
-}
-
 const comments = await paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
+let approvalRejection = null;
+let pendingHumanApproval = false;
 const stateComments = comments.filter((comment) => hasLeadingMarker(comment.body, STATE_MARKER));
 if (stateComments.length > 1) {
   throw new Error(`PR #${prNumber} has ${stateComments.length} CI recovery state comments`);
@@ -178,6 +176,51 @@ async function removePrLabel(name) {
   } catch (error) {
     if (error.status !== 404) throw error;
   }
+}
+
+async function ensurePrLabel(name, color, description) {
+  if ((pr.labels || []).some((label) => label.name === name)) return;
+  if (!shouldMutate) {
+    process.stdout.write(`dry-run would-add-label pr=#${prNumber} label=${name}\n`);
+    return;
+  }
+  try {
+    await request(pat, `/repos/${owner}/${repo}/labels`, {
+      method: 'POST',
+      body: { name, color, description },
+    });
+  } catch (error) {
+    if (error.status !== 422) throw error;
+  }
+  await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
+    method: 'POST',
+    body: { labels: [name] },
+  });
+  pr.labels = [...(pr.labels || []), { name }];
+}
+
+async function disableAutoMergeForHumanGate() {
+  if (!pr.auto_merge) return;
+  if (!live) {
+    process.stdout.write(`dry-run would-disable-auto-merge pr=#${prNumber}\n`);
+    return;
+  }
+  await graphql(
+    pat,
+    `
+      mutation ($pullRequestId: ID!) {
+        disablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId }) {
+          pullRequest {
+            autoMergeRequest {
+              enabledAt
+            }
+          }
+        }
+      }
+    `,
+    { pullRequestId: pr.node_id },
+  );
+  process.stdout.write(`disabled auto-merge pr=#${prNumber} reason=human-approval-required\n`);
 }
 
 async function dispatchWorkflow(workflow, inputs) {
@@ -265,9 +308,40 @@ if (operation.startsWith('lease-')) {
   process.exit(0);
 }
 
+const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
+approvalRejection = humanApprovalRejection({
+  pullRequest: pr,
+  closingIssues,
+  comments,
+  ownerLogin: owner,
+});
+pendingHumanApproval = Boolean(approvalRejection);
+
+if (pendingHumanApproval) {
+  await ensurePrLabel(
+    HUMAN_APPROVAL_LABEL,
+    'b60205',
+    'Requires explicit repository-owner approval before merge automation',
+  );
+  await ensurePrLabel(BLOCKED_LABEL, 'd1242f', 'Merge-train candidate needs intervention');
+  await removePrLabel(QUEUE_LABEL);
+  await disableAutoMergeForHumanGate();
+  process.stdout.write(`blocked pr=#${prNumber} reason=human-approval-required\n`);
+}
+
+if (
+  mergeTrainEnabled &&
+  !pendingHumanApproval &&
+  (pr.labels || []).some((label) => label.name === QUEUE_LABEL)
+) {
+  process.stdout.write(`skip pr=#${prNumber} reason=merge-train-owned\n`);
+  process.exit(0);
+}
+
 if (!mergeTrainEnabled) {
   const existingLabels = new Set((pr.labels || []).map((label) => label.name));
   for (const trainLabel of [QUEUE_LABEL, BLOCKED_LABEL, NOOP_LABEL, VALIDATION_FAILED_LABEL]) {
+    if (pendingHumanApproval && trainLabel === BLOCKED_LABEL) continue;
     if (existingLabels.has(trainLabel)) {
       await removePrLabel(trainLabel);
     }
@@ -359,6 +433,7 @@ const conflictPredecessor = Number.parseInt(
 );
 if (
   mergeTrainEnabled &&
+  !pendingHumanApproval &&
   trainBlocked &&
   !trainNoop &&
   !validationFailed &&
@@ -403,6 +478,7 @@ if (
 const headMovedSinceState = Boolean(state?.headSha) && state.headSha !== pr.head.sha;
 if (
   mergeTrainEnabled &&
+  !pendingHumanApproval &&
   trainBlocked &&
   (trigger.endsWith(':synchronize') || headMovedSinceState)
 ) {
@@ -528,12 +604,14 @@ const rawCheckRuns =
 // Collapse to the latest attempt per logical name so a successful rerun
 // replaces a previously failed run before any blocker classification.
 const checkRuns = collapseCheckRunsByName(rawCheckRuns);
+const humanApprovalDerivedChecks = new Set(['human approval', 'merge gate', 'ci']);
 for (const check of checkRuns) {
   const checkName = String(check.name || '').toLowerCase();
   if (
     check.status === 'completed' &&
     ['failure', 'timed_out', 'startup_failure', 'stale'].includes(check.conclusion) &&
-    !checkName.includes('ci recovery')
+    !checkName.includes('ci recovery') &&
+    !(pendingHumanApproval && humanApprovalDerivedChecks.has(checkName))
   ) {
     blockers.push({
       kind: 'ci-failure',
@@ -655,6 +733,10 @@ if (normalized.length === 0) {
     process.stdout.write(
       `wait pr=#${prNumber} required-checks=${waitingRequiredChecks.join(',')}\n`,
     );
+    process.exit(0);
+  }
+  if (pendingHumanApproval) {
+    process.stdout.write(`wait pr=#${prNumber} reason=${approvalRejection}\n`);
     process.exit(0);
   }
   // Required checks are satisfied. If this PR never went through recovery (no

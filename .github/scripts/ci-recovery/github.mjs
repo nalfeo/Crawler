@@ -112,3 +112,30 @@ export async function listReviewThreads(token, owner, repo, number) {
     threads,
   };
 }
+
+export async function listClosingIssues(token, owner, repo, number) {
+  const query = `
+    query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $number) {
+          closingIssuesReferences(first: 100, after: $cursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              number
+              title
+              labels(first: 100) { nodes { name } }
+            }
+          }
+        }
+      }
+    }`;
+  const issues = [];
+  let cursor = null;
+  do {
+    const data = await graphql(token, query, { owner, repo, number, cursor });
+    const references = data.repository?.pullRequest?.closingIssuesReferences;
+    issues.push(...(references?.nodes || []));
+    cursor = references?.pageInfo?.hasNextPage ? references.pageInfo.endCursor : null;
+  } while (cursor);
+  return issues;
+}
