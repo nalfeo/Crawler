@@ -1,6 +1,19 @@
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './state.mjs';
 
 export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
+const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
+const COPILOT_OPENER_LOGINS = new Set([
+  'copilot',
+  'copilot[bot]',
+  'app/copilot',
+  'copilot-swe-agent',
+  'copilot-swe-agent[bot]',
+  'app/copilot-swe-agent',
+]);
+
+function isCopilotLogin(login) {
+  return COPILOT_OPENER_LOGINS.has(String(login || '').toLowerCase());
+}
 
 export const ISSUE_INTAKE_BODY = [
   ISSUE_INTAKE_MARKER,
@@ -19,6 +32,31 @@ export const ISSUE_INTAKE_BODY = [
   'Post this plan comment on the issue itself so the maintainer can review it before you open a PR.',
   'Then, when you open the PR, include the same high-level summary in the PR description.',
 ].join('\n');
+
+export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
+  if (!issue || issue.pull_request) {
+    return { eligible: false, reason: 'event has no eligible issue payload' };
+  }
+
+  const opener = String(issue.user?.login || '').toLowerCase();
+  const maintainer = String(maintainerLogin || '').toLowerCase();
+  const trustedOpener =
+    opener === maintainer || opener === GITHUB_ACTIONS_LOGIN || isCopilotLogin(opener);
+
+  if (!trustedOpener) {
+    return { eligible: false, reason: `opener @${opener || 'unknown'} is not trusted` };
+  }
+
+  const labels = (issue.labels || []).map((label) => String(label.name || '').toLowerCase());
+  if (labels.includes('automation') && opener !== GITHUB_ACTIONS_LOGIN) {
+    return {
+      eligible: false,
+      reason: `issue #${issue.number} has automation label and was not opened by GitHub Actions`,
+    };
+  }
+
+  return { eligible: true, reason: 'trusted issue opener' };
+}
 
 function isTrustedMarkerComment(comment) {
   return (
@@ -71,8 +109,7 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
   );
 
   const copilot = (actors.repository?.suggestedActors?.nodes || []).find((actor) => {
-    const login = String(actor.login || '').toLowerCase();
-    return login === 'copilot-swe-agent' || login === 'copilot';
+    return isCopilotLogin(actor.login);
   });
 
   if (!copilot?.id) {
@@ -96,10 +133,14 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
       });
     }
   } else {
-    const created = await request(token, `/repos/${owner}/${repo}/issues/${issue.number}/comments`, {
-      method: 'POST',
-      body: { body: ISSUE_INTAKE_BODY },
-    });
+    const created = await request(
+      token,
+      `/repos/${owner}/${repo}/issues/${issue.number}/comments`,
+      {
+        method: 'POST',
+        body: { body: ISSUE_INTAKE_BODY },
+      },
+    );
     newCommentId = typeof created?.data?.id === 'number' ? created.data.id : null;
   }
 
@@ -133,7 +174,7 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
     assignment.replaceActorsForAssignable?.assignable?.assignees?.nodes?.map((assignee) =>
       String(assignee.login || '').toLowerCase(),
     ) || [];
-  if (!assignedLogins.includes(String(copilot.login).toLowerCase())) {
+  if (!assignedLogins.some(isCopilotLogin)) {
     await deleteCommentIfCreated(request, token, owner, repo, newCommentId);
     throw new Error(`Copilot assignment did not persist on issue #${issue.number}`);
   }

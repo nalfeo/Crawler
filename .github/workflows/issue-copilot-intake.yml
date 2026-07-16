@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   intake:
-    if: ${{ !github.event.issue.pull_request && github.event.issue.user.login == 'nalfeo' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

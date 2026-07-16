@@ -1,5 +1,6 @@
 import {
   assertOwnershipInvariant,
+  admissionWaitReasons,
   blockerFingerprint,
   collapseCheckRunsByName,
   isDuplicateDispatch,
@@ -651,10 +652,9 @@ if (normalized.length === 0) {
     // router re-invokes reconcile.
     await updateState(convergedState);
   }
-  if (waitingRequiredChecks.length > 0) {
-    process.stdout.write(
-      `wait pr=#${prNumber} required-checks=${waitingRequiredChecks.join(',')}\n`,
-    );
+  const waiting = admissionWaitReasons(waitingRequiredChecks, review.reviews);
+  if (waiting.length > 0) {
+    process.stdout.write(`wait pr=#${prNumber} admission=${waiting.join(',')}\n`);
     process.exit(0);
   }
   // Required checks are satisfied. If this PR never went through recovery (no
