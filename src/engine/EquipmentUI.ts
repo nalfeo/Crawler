@@ -44,6 +44,7 @@ import {
   getEncumbranceBand,
   ENCUMBRANCE_BAND_LABELS,
   ENCUMBRANCE_BAND_COLORS,
+  ENCUMBRANCE_HEAVY_FACTOR,
 } from '../shared/encumbrance.js';
 
 // ---------------------------------------------------------------------------
@@ -83,6 +84,16 @@ const COLORS = {
 
 function formatStatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+/**
+ * Format a gear-weight value (lb) for the LOAD readout.
+ * Uses the minimum decimal places needed: integers show no decimal point,
+ * fractions show up to 2 decimal places with trailing zeros removed.
+ * Avoids `toFixed(1)` which incorrectly rounds 0.25 → "0.3" in JS.
+ */
+function formatLb(lb: number): string {
+  return parseFloat(lb.toFixed(2)).toString();
 }
 
 function formatStatLabel(statId: StatId): string {
@@ -1125,7 +1136,7 @@ export function createEquipmentUI(
     container.add(loadBand);
     statObjects.push(loadBand);
 
-    const gearStr = `${gearLb % 1 === 0 ? gearLb.toFixed(0) : gearLb.toFixed(1)}/${capLb}lb`;
+    const gearStr = `${formatLb(gearLb)}/${formatLb(capLb * ENCUMBRANCE_HEAVY_FACTOR)}lb`;
     const loadVal = crispText(statsX + loadColW, loadY + 2, gearStr, {
       fontFamily: FONT_FAMILY,
       fontSize: '7px',

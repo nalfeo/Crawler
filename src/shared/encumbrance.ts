@@ -148,7 +148,11 @@ export function computeEquippedWeightLb(equipmentState: EquipmentState | undefin
     seen.add(instId);
     const inst = equipmentState.instances.get(instId);
     if (!inst) continue;
-    total += inst.def.weightLb;
+    // Defensive guard: skip weights that are NaN, Infinity, or negative so a
+    // bad def cannot corrupt the total. validateItemDef rejects these at equip
+    // time, but we remain safe even if validation is bypassed.
+    const w = Number.isFinite(inst.def.weightLb) ? Math.max(0, inst.def.weightLb) : 0;
+    total += w;
   }
   return total;
 }

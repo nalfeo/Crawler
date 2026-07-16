@@ -3,15 +3,19 @@
  *
  * Covers:
  *   - `getCarryThresholdLb` — STR-adjusted capacity
- *   - `getEncumbranceBand` — all four bands with representative authored values
+ *   - `getEncumbranceBand` — all four bands (pure function, explicit STR param)
  *   - `getEncumbranceMovePenalty` — penalty lookup per band
  *   - `computeEquippedWeightLb` — gear load accumulation + multi-slot dedup
+ *   - catalog validation — every authored def has a finite non-negative weightLb
  *
- * Representative authored loadouts (STR 1, threshold = 15 lb):
- *   Light    — iron-sword only (3 lb)               → unburdened
- *   Encumbered — iron-breastplate + iron-sword        → 18 lb → encumbered
- *   Heavy    — chest+legs+helm+pauldrons+sword        → 37 lb → heavy
- *   Overloaded — full plate + frost-bow (2H, counted once) → ~52 lb → overloaded
+ * NOTE on "representative loadout" tests:
+ *   The `getEncumbranceBand` tests below call the *pure function* with an explicit
+ *   `str = 1` parameter.  In a live game session, carry capacity uses the player's
+ *   **effective** Strength (including equipment bonuses), so items like
+ *   `steel-pauldrons` (+1 STR) would raise the threshold from 15 lb to 20 lb,
+ *   changing which band applies.  The UI (`EquipmentUI.ts`) correctly queries
+ *   effective STR; these unit tests verify the math in isolation with the exact
+ *   STR value passed.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -24,6 +28,7 @@ import {
   getEncumbranceMovePenalty,
   ENCUMBRANCE_MOVE_PENALTIES,
 } from '../../../src/shared/encumbrance.js';
+import { getEquipmentDefForItem, getEquippableItemIds } from '../../../src/shared/equipmentDefs.js';
 import type { EquipmentState } from '../../../src/shared/equipment-types.js';
 import type { EquipmentSlotId } from '../../../src/shared/equipment-slots.js';
 
@@ -269,5 +274,59 @@ describe('computeEquippedWeightLb', () => {
     // Multi-slot dedup: bow counted once → 45.5 + 5 = 50.5 lb
     expect(gearWeight).toBeCloseTo(50.5, 5);
     expect(getEncumbranceBand(gearWeight, 1)).toBe('overloaded');
+  });
+
+  describe('defensive guard for invalid weightLb values', () => {
+    it('treats NaN weightLb as 0 lb (no contribution)', () => {
+      const state = makeState([
+        { slotId: 'mainHand', instanceId: 1, weightLb: NaN },
+        { slotId: 'feet', instanceId: 2, weightLb: 2 },
+      ]);
+      expect(computeEquippedWeightLb(state)).toBe(2);
+    });
+
+    it('treats Infinity weightLb as 0 lb (no contribution)', () => {
+      const state = makeState([
+        { slotId: 'mainHand', instanceId: 1, weightLb: Infinity },
+        { slotId: 'feet', instanceId: 2, weightLb: 3 },
+      ]);
+      expect(computeEquippedWeightLb(state)).toBe(3);
+    });
+
+    it('clamps negative weightLb to 0 lb (no negative contribution)', () => {
+      const state = makeState([
+        { slotId: 'mainHand', instanceId: 1, weightLb: -5 },
+        { slotId: 'feet', instanceId: 2, weightLb: 2 },
+      ]);
+      expect(computeEquippedWeightLb(state)).toBe(2);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Catalog validation — every authored EquipmentItemDef has a valid weightLb
+// ---------------------------------------------------------------------------
+
+describe('catalog: all equipment defs have intentional weightLb values', () => {
+  it('every equippable item def has a finite, non-negative weightLb', () => {
+    const ids = getEquippableItemIds();
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      const def = getEquipmentDefForItem(id);
+      if (!def) continue;
+      expect(Number.isFinite(def.weightLb), `${id}: weightLb=${def.weightLb} must be finite`).toBe(
+        true,
+      );
+      expect(def.weightLb >= 0, `${id}: weightLb=${def.weightLb} must be non-negative`).toBe(true);
+    }
+  });
+
+  it('every equippable item def has a non-zero weightLb (no placeholder zeros)', () => {
+    const ids = getEquippableItemIds();
+    for (const id of ids) {
+      const def = getEquipmentDefForItem(id);
+      if (!def) continue;
+      expect(def.weightLb, `${id}: weightLb must be > 0 (non-placeholder)`).toBeGreaterThan(0);
+    }
   });
 });

@@ -25,6 +25,7 @@ import {
   getCarryThresholdLb,
   getEncumbranceBand,
   ENCUMBRANCE_BAND_LABELS,
+  ENCUMBRANCE_HEAVY_FACTOR,
 } from '../../shared/encumbrance.js';
 import { addItem, type InventoryBag } from '../../shared/inventory.js';
 import { getItemById } from '../../shared/items.js';
@@ -288,7 +289,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       const capLb = getCarryThresholdLb(str);
       const band = getEncumbranceBand(gearLb, str);
       const bandLabel = ENCUMBRANCE_BAND_LABELS[band];
-      const gearStr = `${gearLb % 1 === 0 ? gearLb.toFixed(0) : gearLb.toFixed(1)} lb / ${capLb} lb cap (STR ${str})`;
+      const gearStr = `${parseFloat(gearLb.toFixed(2))} lb / ${parseFloat((capLb * ENCUMBRANCE_HEAVY_FACTOR).toFixed(2))} lb max (STR ${str})`;
 
       hud.textContent = [
         `Safe context: ${isInSafeContext(this.world) ? 'yes' : 'no'} (state=${this.world.state})`,
