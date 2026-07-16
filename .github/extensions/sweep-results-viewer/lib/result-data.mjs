@@ -6,6 +6,14 @@ function isPositiveInteger(value) {
   return Number.isInteger(value) && value > 0;
 }
 
+function isNonNegativeInteger(value) {
+  return Number.isInteger(value) && value >= 0;
+}
+
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 export function normalizeFloors(value) {
   if (value === undefined) {
     return undefined;
@@ -44,6 +52,64 @@ export function normalizeSweepResult(value) {
   }
   if (!Array.isArray(value.summaries) || !Array.isArray(value.allRecords)) {
     throw new Error('summaries and allRecords must be arrays');
+  }
+
+  const weaponSet = new Set(value.weapons);
+  const seedSet = new Set(value.seeds);
+
+  for (let i = 0; i < value.summaries.length; i++) {
+    const s = value.summaries[i];
+    if (!isPlainObject(s)) {
+      throw new Error(`summaries[${i}] must be a plain object`);
+    }
+    if (typeof s.weapon !== 'string' || s.weapon.length === 0 || !weaponSet.has(s.weapon)) {
+      throw new Error(`summaries[${i}].weapon must be a known weapon identifier`);
+    }
+    if (!isNonNegativeInteger(s.runs)) {
+      throw new Error(`summaries[${i}].runs must be a non-negative integer`);
+    }
+    if (!isNonNegativeInteger(s.victories)) {
+      throw new Error(`summaries[${i}].victories must be a non-negative integer`);
+    }
+    for (const field of [
+      'winRate',
+      'meanScore',
+      'meanGameTimeSec',
+      'meanLevel',
+      'meanKills',
+      'meanMinHealthPct',
+    ]) {
+      if (!isFiniteNumber(s[field])) {
+        throw new Error(`summaries[${i}].${field} must be a finite number`);
+      }
+    }
+  }
+
+  for (let i = 0; i < value.allRecords.length; i++) {
+    const r = value.allRecords[i];
+    if (!isPlainObject(r)) {
+      throw new Error(`allRecords[${i}] must be a plain object`);
+    }
+    if (typeof r.weapon !== 'string' || r.weapon.length === 0 || !weaponSet.has(r.weapon)) {
+      throw new Error(`allRecords[${i}].weapon must be a known weapon identifier`);
+    }
+    if (!isPositiveInteger(r.seed) || !seedSet.has(r.seed)) {
+      throw new Error(`allRecords[${i}].seed must be a known seed`);
+    }
+    if (typeof r.outcome !== 'string' || r.outcome.length === 0) {
+      throw new Error(`allRecords[${i}].outcome must be a non-empty string`);
+    }
+    if (!isNonNegativeInteger(r.finalLevel)) {
+      throw new Error(`allRecords[${i}].finalLevel must be a non-negative integer`);
+    }
+    if (!isNonNegativeInteger(r.totalKills)) {
+      throw new Error(`allRecords[${i}].totalKills must be a non-negative integer`);
+    }
+    for (const field of ['gameTimeSec', 'score', 'minHealthPct']) {
+      if (!isFiniteNumber(r[field])) {
+        throw new Error(`allRecords[${i}].${field} must be a finite number`);
+      }
+    }
   }
 
   const floors = normalizeFloors(value.floors);

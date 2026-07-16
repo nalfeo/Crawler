@@ -99,6 +99,96 @@ test('explicit file loading shares catalog validation and preserves legacy Unkno
   });
 });
 
+function validRecord(weapon, seed) {
+  return {
+    weapon,
+    seed,
+    outcome: 'victory',
+    gameTimeSec: 10,
+    finalLevel: 2,
+    totalKills: 3,
+    score: 100,
+    minHealthPct: 0.5,
+  };
+}
+
+function validSummary(weapon) {
+  return {
+    weapon,
+    runs: 1,
+    victories: 1,
+    winRate: 1,
+    meanScore: 100,
+    meanGameTimeSec: 10,
+    meanLevel: 2,
+    meanKills: 3,
+    meanMinHealthPct: 0.5,
+  };
+}
+
+test('rejects null summary items and surfaces them as catalog errors', async () => {
+  await withWorkspace(async ({ workspace, directory }) => {
+    const data = { ...result('2026-07-16T10:00:00Z'), summaries: [null], allRecords: [] };
+    await writeFile(join(directory, 'bad.json'), JSON.stringify(data));
+    const discovered = await listLocalSweepResults(workspace);
+    assert.deepEqual(discovered.runs, []);
+    assert.equal(discovered.errors.length, 1);
+    assert.match(discovered.errors[0].message, /summaries\[0\] must be a plain object/);
+  });
+});
+
+test('rejects null record items and surfaces them as catalog errors', async () => {
+  await withWorkspace(async ({ workspace, directory }) => {
+    const data = {
+      ...result('2026-07-16T10:00:00Z'),
+      summaries: [validSummary('sword')],
+      allRecords: [null],
+    };
+    await writeFile(join(directory, 'bad.json'), JSON.stringify(data));
+    const discovered = await listLocalSweepResults(workspace);
+    assert.deepEqual(discovered.runs, []);
+    assert.equal(discovered.errors.length, 1);
+    assert.match(discovered.errors[0].message, /allRecords\[0\] must be a plain object/);
+  });
+});
+
+test('rejects summaries and records with unknown weapon or seed references', async () => {
+  await withWorkspace(async ({ workspace, directory }) => {
+    const unknownWeapon = {
+      ...result('2026-07-16T10:00:00Z'),
+      summaries: [validSummary('axe')],
+      allRecords: [],
+    };
+    await writeFile(join(directory, 'unknown-weapon.json'), JSON.stringify(unknownWeapon));
+
+    const unknownSeed = {
+      ...result('2026-07-16T10:00:00Z'),
+      summaries: [validSummary('sword')],
+      allRecords: [validRecord('sword', 99)],
+    };
+    await writeFile(join(directory, 'unknown-seed.json'), JSON.stringify(unknownSeed));
+
+    const valid = {
+      ...result('2026-07-16T10:00:00Z'),
+      summaries: [validSummary('sword')],
+      allRecords: [validRecord('sword', 1)],
+    };
+    await writeFile(join(directory, 'valid.json'), JSON.stringify(valid));
+
+    const discovered = await listLocalSweepResults(workspace);
+    assert.deepEqual(
+      discovered.runs.map(({ name }) => name),
+      ['valid.json'],
+    );
+    assert.deepEqual(
+      discovered.errors.map(({ name }) => name),
+      ['unknown-seed.json', 'unknown-weapon.json'],
+    );
+    assert.match(discovered.errors[0].message, /allRecords\[0\]\.seed must be a known seed/);
+    assert.match(discovered.errors[1].message, /summaries\[0\]\.weapon must be a known weapon/);
+  });
+});
+
 test('missing canonical directory is an empty catalog, not an error', async () => {
   const workspace = await mkdtemp(join(tmpdir(), 'crawler-local-sweeps-missing-'));
   try {
