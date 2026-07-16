@@ -35,6 +35,9 @@ for the architectural rationale.
    of the expected base (linear `main`), and carry the exact tree of the
    validated candidate prefix, or the run fails closed (see
    [`0063-merge-train-real-squash-merge-promotion.md`](../knowledge/adr/0063-merge-train-real-squash-merge-promotion.md)).
+   Reconciliation resumes a landed signal only after the durable
+   `merge-train-landed` proof-complete marker exists; a crash after proof but
+   before that marker leaves the PR queued for human review.
 5. Every cumulative prefix is validated (in parallel) before any merge, so no
    unvalidated intermediate tree is ever exposed on `main`. If a prefix fails,
    the train promotes the maximal fully-validated green prefix and returns the
