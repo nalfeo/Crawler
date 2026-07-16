@@ -1,5 +1,16 @@
 [
   {
+    "commit": "605b62450e1c3ceff0ccf6654532110b8180fbd2",
+    "commitDate": "2026-07-16T20:59:33Z",
+    "commitSubject": "feat(devtools): redesign the AI Runner side panel (#1211)",
+    "capturedAt": "2026-07-16T22:12:10.462Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29534951357",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/605b62450e1c3ceff0ccf6654532110b8180fbd2.json"
+  },
+  {
     "commit": "799ac4cbf6060757399d36aa24ff69c8256e06d9",
     "commitDate": "2026-07-16T20:17:57Z",
     "commitSubject": "Fix Floor 1 safe-room doorway livelock (timeout bucket) (#1212)",
