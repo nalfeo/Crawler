@@ -124,13 +124,14 @@ _resolve_node_bin() {
     return 0
   fi
   # Fallback: node lives in the same prefix directory as npm.
+  # Uses dirname directly (no readlink) for portability across Linux, macOS,
+  # and Git Bash on Windows.  On Windows — the primary use case — npm.cmd is
+  # not a symlink, so dirname is always correct.
   local _npm_bin
   _npm_bin="$(command -v npm 2>/dev/null || true)"
   if [ -n "$_npm_bin" ]; then
-    local _npm_real
-    _npm_real="$(readlink -f "$_npm_bin" 2>/dev/null || echo "$_npm_bin")"
     local _npm_dir
-    _npm_dir="$(dirname "$_npm_real")"
+    _npm_dir="$(dirname "$_npm_bin")"
     for _candidate in "$_npm_dir/node" "$_npm_dir/node.exe"; do
       [ -f "$_candidate" ] && { echo "$_candidate"; return 0; }
     done
