@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7974d2ec998db69213ffee1b0ff18ae16bbd2922",
+    "commitDate": "2026-07-16T04:23:20Z",
+    "commitSubject": "fix(merge-train): fail-closed dispatch + scheduled-CI reconcile wake-up (#1168)",
+    "capturedAt": "2026-07-16T05:34:45.726Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29471631302",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/7974d2ec998db69213ffee1b0ff18ae16bbd2922.json"
+  },
+  {
     "commit": "d63ee18866249824cafc02130e236886c6173116",
     "commitDate": "2026-07-16T01:52:59Z",
     "commitSubject": "test(merge-train): tighten wake-up token assertion to enumerated allowlist (#1167)",
