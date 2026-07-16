@@ -88,6 +88,7 @@ _…and 30 older, see `archive/`._
 
 ## sprite-pipeline
 
+- [2026-07-16-floor2-boss-regeneration](2026-07-16-floor2-boss-regeneration.md) — Floor 2 Boss Regeneration
 - [2026-07-16-revise-content-prompts](2026-07-16-revise-content-prompts.md) — Revise Content Prompts
 - [2026-07-14-issue-pipeline-brief-mirror](2026-07-14-issue-pipeline-brief-mirror.md) — Issue Pipeline Brief Mirror Fix
 - [2026-07-13-shepherd-session-sprite-approvals](2026-07-13-shepherd-session-sprite-approvals.md) — Shepherd Session Sprite Approvals
@@ -107,12 +108,12 @@ _…and 30 older, see `archive/`._
 - [2026-07-08-welcome-room-no-stretch-art-defects](2026-07-08-welcome-room-no-stretch-art-defects.md) — Follow-up to the merged welcome-room set-piece arc (#853 → #905 → #907 → #916)
 - [2026-07-08-welcome-room-npcs](2026-07-08-welcome-room-npcs.md) — Generated, judged, approved, and shipped \*\*3 distinct Floor-1 welcome-room NPC
 - [2026-07-08-welcome-room-sprite-reprocess](2026-07-08-welcome-room-sprite-reprocess.md) — Handoff: Reprocess welcome-room generated sprites with fixed slicer
-- [2026-07-07-asset-ingestion-wiring](2026-07-07-asset-ingestion-wiring.md) — Handoff: Asset ingestion wiring (rat nest + slime pool)
 
-_…and 43 older, see `archive/`._
+_…and 44 older, see `archive/`._
 
 ## sprite-workflow
 
+- [2026-07-16-floor2-boss-regeneration](2026-07-16-floor2-boss-regeneration.md) — Floor 2 Boss Regeneration
 - [2026-07-16-revise-content-prompts](2026-07-16-revise-content-prompts.md) — Revise Content Prompts
 - [2026-07-13-floor1-missing-starter-classes](2026-07-13-floor1-missing-starter-classes.md) — Add flagged Floor 1 starter options for missing weapon classes
 - [2026-07-11-47-mask-terrain-packs](2026-07-11-47-mask-terrain-packs.md) — Handoff: Deterministic 47-mask terrain packs
@@ -132,9 +133,8 @@ _…and 43 older, see `archive/`._
 - [2026-07-08-welcome-room-sprite-reprocess](2026-07-08-welcome-room-sprite-reprocess.md) — Handoff: Reprocess welcome-room generated sprites with fixed slicer
 - [2026-07-07-clean-triage-fixes-pr](2026-07-07-clean-triage-fixes-pr.md) — clean-triage-fixes-pr
 - [2026-07-07-slicer-variance-select-grid](2026-07-07-slicer-variance-select-grid.md) — Handoff: Slicer variance-select grid reconciliation + F1 asset burndown
-- [2026-07-06-postprocess-facing-anchor-workflow](2026-07-06-postprocess-facing-anchor-workflow.md) — Converted the postprocess override path from image mirroring to explicit facing direction metadata and completed the wiring through debugge…
 
-_…and 16 older, see `archive/`._
+_…and 17 older, see `archive/`._
 
 ## mapgen
 

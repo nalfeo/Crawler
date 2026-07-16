@@ -223,7 +223,10 @@ interface CollisionFingerprint {
 //
 // 2026-07-16 merge-from-main drift: after merging latest main into this branch,
 // only seed 42 deterministically shifted again while 7/13/137 remained unchanged.
-// Verified stable across two back-to-back invocations on the merged branch.
+// This parity fixture is a determinism guard, not a gameplay-balance approval:
+// the merged branch now stably produces the fingerprint below across two
+// back-to-back invocations, so we re-baseline to the new deterministic value and
+// track any gameplay significance separately from this test.
 //   seed  42:  8/267.30000019073486/10/6   →  6/246.44999980926514/10/8
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
