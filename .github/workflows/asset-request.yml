@@ -41,6 +41,26 @@ on:
     # (c) issues whose body was edited to fix a validation error.
     types: [labeled, edited, reopened]
   workflow_dispatch:
+    inputs:
+      # TEMPORARY (remove after the Floor 2 cactusfolk-boss regen retries —
+      # see docs/knowledge/handoffs/2026-07-16-floor2-boss-regeneration.md).
+      # Lets a maintainer manually regenerate an EXISTING brief (already
+      # mirrored in the Azure run store from a prior asset-request run)
+      # without re-synthesizing it, by enqueuing a `brief-path` queue message
+      # (scripts/sprites/queue-cli.ts) ahead of the normal drain step. No-op
+      # unless both `regen_brief_id` and `regen_brief_path` are provided.
+      regen_brief_id:
+        description: '[TEMP] briefId to regenerate (brief-path job, e.g. cactusfolk-boss). Leave empty for a normal dispatch.'
+        required: false
+        default: ''
+      regen_brief_path:
+        description: '[TEMP] repo-relative brief YAML path mirrored in the store (e.g. briefs/draft/enemies/cactusfolk-boss.yaml)'
+        required: false
+        default: ''
+      regen_exclude_runs:
+        description: '[TEMP] comma-separated known prior run IDs to exclude when exporting the new run artifacts'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -95,6 +115,31 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-node
+
+      # TEMPORARY (remove after the Floor 2 cactusfolk-boss regen retries).
+      # Manual re-run path for a brief ALREADY mirrored in the Azure run
+      # store from a prior asset-request run: enqueues a `brief-path` queue
+      # message (no synthesize step) that the "Drain worker" step below
+      # picks up exactly like any other job. No-op unless both dispatch
+      # inputs are set, so normal issue-triggered runs are unaffected.
+      - name: '[TEMP] Enqueue existing brief for regeneration'
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.regen_brief_id != '' &&
+          inputs.regen_brief_path != ''
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_QUEUE_NAME: ${{ secrets.AZURE_STORAGE_QUEUE_NAME }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
+        run: |
+          npm run sprites:enqueue -- \
+            --brief "${{ inputs.regen_brief_id }}" \
+            --path "${{ inputs.regen_brief_path }}" \
+            --by "asset-forge-regen" \
+            --priority high
 
       # Step 1: scan open `asset-request` issues, enqueue any new ones into the
       # Azure queue (deduped by issueNumber+fingerprint via the blob state file).
@@ -225,3 +270,45 @@ jobs:
           # synth + judge, which are the two calls the drain worker needs.
           SPRITES_ALLOW_CI_PIPELINE: 'true'
         run: npm run sprites:worker
+
+      # TEMPORARY (remove after the Floor 2 cactusfolk-boss regen retries).
+      # Read-only export of the freshly-generated run's artifacts (sheet,
+      # processed variants, scorecards, judge verdicts, summary.json) out of
+      # the Azure run store into a workspace directory so they can be
+      # uploaded as a GitHub Actions artifact for local download/review.
+      # Never approves, checks in, or mutates the store. No-op unless
+      # `regen_brief_id` is set.
+      - name: '[TEMP] Export regenerated run artifacts'
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.regen_brief_id != ''
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+        run: |
+          EXCLUDE_ARGS=""
+          IFS=',' read -ra RUNS <<< "${{ inputs.regen_exclude_runs }}"
+          for r in "${RUNS[@]}"; do
+            if [ -n "$r" ]; then
+              EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude-run $r"
+            fi
+          done
+          npx tsx scripts/sprites/ci-export-run.ts \
+            --brief-id "${{ inputs.regen_brief_id }}" \
+            --out-dir ci-artifact-export \
+            $EXCLUDE_ARGS
+
+      # TEMPORARY (remove after the Floor 2 cactusfolk-boss regen retries).
+      - name: '[TEMP] Upload regenerated run artifacts'
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.regen_brief_id != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: regen-${{ inputs.regen_brief_id }}-${{ github.run_id }}
+          path: ci-artifact-export/**
+          if-no-files-found: error
+          retention-days: 14
