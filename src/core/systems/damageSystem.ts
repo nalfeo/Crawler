@@ -21,7 +21,7 @@ import { recordWeaponEnemyHit, pruneAttackEntity } from '../weapon-telemetry.js'
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
-const PLAYER_INVINCIBILITY_MS = 250;
+const PLAYER_INVINCIBILITY_MS = 350;
 const MAX_TRACKED_ENTITIES = 10_000;
 
 /** Throttle: emit at most one 'blocked' event per invincibility window. */

@@ -1,0 +1,102 @@
+{
+  "schema": "balance-idea-ledger/v1",
+  "createdAt": "2026-07-16",
+  "sessionSlug": "balance-telemetry-sweep",
+  "telemetrySources": {
+    "releases": "No formal GitHub releases or tags exist",
+    "baselineSweep": {
+      "runId": "29477221792",
+      "date": "2026-07-16T06:36:35Z",
+      "commit": "2cca6f1037771f212add3f8b8669d9de66d8b7f0",
+      "mode": "weapon_personas=true (non-default experimental mode)",
+      "seedCount": 100,
+      "weaponsCount": 6,
+      "shardsPerWeapon": 4
+    },
+    "limitations": [
+      "No formal game releases — only headless AI runner data, not real player telemetry",
+      "Baseline uses weapon_personas=true (experimental, not the shipped default)",
+      "Sample: 100 seeds per weapon (25/shard × 4 shards); shard-level data analyzed, not full 100-seed aggregates",
+      "balance-baseline.json is empty — no prior recorded metrics to compare against"
+    ]
+  },
+  "baselineResults": {
+    "sword": { "winRate": 1.0, "avgMinHp": 0.75, "sample": "25/25 (shard 0)" },
+    "baseball-bat": { "winRate": 0.92, "avgMinHp": 0.711, "sample": "23/25 (shard 0)" },
+    "fireball": { "winRate": 0.88, "avgMinHp": 0.574, "sample": "22/25 (shard 3)" },
+    "throwing-knife": { "winRate": 0.76, "avgMinHp": 0.453, "sample": "19/25 (shard 3)" },
+    "bow": { "winRate": 0.72, "avgMinHp": 0.464, "sample": "18/25 (shard 3)" },
+    "pistol": { "winRate": 0.72, "avgMinHp": 0.468, "sample": "18/25 (shard 3)" },
+    "note": "Per-shard data; 100-seed aggregates pending post-sweep collection"
+  },
+  "ideas": [
+    {
+      "rank": 1,
+      "name": "Raise ranged weapon persona constitution minimums",
+      "hypothesis": "The AI stat allocator fills minimumTargets first. Ranged personas have constitution min 5-6 vs melee 6-7. AvgMinHP of 45-46% for ranged vs 71-75% for melee indicates HP starvation. Each constitution point adds 10 HP (base HP 100). Raising bow/pistol 5→7 and throwing-knife 6→7 adds 20 HP (+13%), closing the survivability gap. Side effect: also biases gear scoring toward constitution items (auto-progression.ts) — treated as intentional combined persona treatment.",
+      "telemetryEvidence": "Clear correlation: melee (con min 6-7) → 92-100% win rate; ranged (con min 5-6) → 72-76% win rate. All three ranged weapons show AvgMinHP ~45-47% vs melee 71-75%.",
+      "file": "src/game/ai/weapon-personas.ts",
+      "change": "bow minimumTargets.constitution: 5→7; pistol minimumTargets.constitution: 5→7; throwing-knife minimumTargets.constitution: 6→7",
+      "attempts": [
+        {
+          "attempt": "1A",
+          "status": "pending_sweep",
+          "sweepRunId": null,
+          "baselineMetrics": { "bow": 0.72, "pistol": 0.72, "throwing-knife": 0.76 },
+          "postChangeMetrics": null,
+          "verdict": null,
+          "rationale": null
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "name": "Increase player invincibility frames (250ms→350ms)",
+      "hypothesis": "Player invincibility window prevents stacking damage from multiple hits. Deaths at lv3-4 (120-153s) occur during dense early enemy packs. Extending iframes from 250→350ms (40% increase) breaks damage-stacking chains from rats/slimes. Applies to all weapons but benefits ranged more (lower HP from lower constitution makes each hit more lethal relative to HP pool). Change is in damageSystem.ts PLAYER_INVINCIBILITY_MS constant (NOT tuning.json, which is not read by combat systems).",
+      "telemetryEvidence": "Early deaths at seeds 12/48/52 at lv3-4, 120-153s — timing consistent with dense early-game mob packs before HP pool is built up.",
+      "file": "src/core/systems/damageSystem.ts",
+      "change": "PLAYER_INVINCIBILITY_MS: 250→350 (constant in damageSystem.ts)",
+      "attempts": [
+        {
+          "attempt": "2A",
+          "status": "pending_sweep",
+          "sweepRunId": null,
+          "baselineMetrics": { "bow": 0.72, "pistol": 0.72, "throwing-knife": 0.76 },
+          "postChangeMetrics": null,
+          "verdict": null,
+          "rationale": null
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "name": "Reduce Rat Brute contact damage (10→7)",
+      "hypothesis": "Rat Brutes appear 15% of passive spawns and 40% of defensive spawns from Rats Nest. Their contact damage of 10 (2.5× regular rat) causes spiky damage events during early-game clearing. Reducing from 10→7 (30% reduction) makes them still notably dangerous but less likely to cause one-two-punch kills. This targets an actual Floor 1 mob rather than the DEFAULT_CONTACT_DAMAGE fallback (which only applies to enemies without an explicit Damage component — not any real Floor 1 mob).",
+      "telemetryEvidence": "Early deaths at lv3-4 in Rats Nest encounters. Regular rat (4 contact) is manageable; brute (10) is 2.5× per-hit. With con 5 player (150 HP), a brute hit is 6.7% HP — very punishing in swarms.",
+      "file": "src/game/spawners/registry.ts",
+      "change": "RAT_BRUTE contactDamage: 10→7",
+      "attempts": [
+        {
+          "attempt": "3A",
+          "status": "pending_sweep",
+          "sweepRunId": null,
+          "baselineMetrics": { "bow": 0.72, "pistol": 0.72, "throwing-knife": 0.76 },
+          "postChangeMetrics": null,
+          "verdict": null,
+          "rationale": null
+        }
+      ]
+    }
+  ],
+  "combinedSweep": {
+    "strategy": "All 3 ideas implemented cumulatively; each subsequent sweep includes all accepted prior changes. This allows marginal-contribution judgment for each idea while keeping the branch in a single shippable state.",
+    "sweepArtifacts": [],
+    "finalJudge": null
+  },
+  "humanApprovalGate": {
+    "status": "pending",
+    "requiredComment": "APPROVED FOR CHECK-IN",
+    "requiredFrom": "nalfeo",
+    "mergeTrainBlocked": true
+  }
+}

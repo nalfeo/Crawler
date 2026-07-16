@@ -227,8 +227,8 @@ describe('enemy projectile damage', () => {
     damageSystem(world, cr);
     expect(world.stores.health.current[player]).toBe(90); // unchanged
 
-    // Advance past invincibility window (250ms)
-    world.elapsedMs = 400;
+    // Advance past invincibility window (350ms)
+    world.elapsedMs = 500;
     spawnEnemyProjectile(world, 50, 50, 0, 1, 10);
     cr = collisionSystem(world);
     damageSystem(world, cr);

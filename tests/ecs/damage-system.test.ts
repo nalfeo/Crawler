@@ -141,7 +141,7 @@ describe('damageSystem', () => {
     world.combatEvents.length = 0;
 
     // Second hit within invincibility window should be blocked
-    world.elapsedMs += 100; // less than 250ms invincibility
+    world.elapsedMs += 100; // less than 350ms invincibility
     damageSystem(world, collisionSystem(world));
 
     expect(world.combatEvents).toHaveLength(1);

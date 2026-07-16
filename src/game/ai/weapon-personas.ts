@@ -31,7 +31,7 @@ export const WEAPON_PERSONAS: Readonly<Partial<Record<string, WeaponPersona>>> =
   },
   bow: {
     name: 'Kite Archer',
-    minimumTargets: { constitution: 5, dexterity: 5 },
+    minimumTargets: { constitution: 7, dexterity: 5 },
     statWeights: {
       dexterity: 5,
       constitution: 4,
@@ -48,7 +48,7 @@ export const WEAPON_PERSONAS: Readonly<Partial<Record<string, WeaponPersona>>> =
   },
   pistol: {
     name: 'Gunslinger',
-    minimumTargets: { constitution: 5, dexterity: 4, luck: 3 },
+    minimumTargets: { constitution: 7, dexterity: 4, luck: 3 },
     statWeights: {
       luck: 5,
       dexterity: 4,
@@ -60,7 +60,7 @@ export const WEAPON_PERSONAS: Readonly<Partial<Record<string, WeaponPersona>>> =
   },
   'throwing-knife': {
     name: 'Skirmisher',
-    minimumTargets: { constitution: 6, dexterity: 4 },
+    minimumTargets: { constitution: 7, dexterity: 4 },
     statWeights: {
       dexterity: 5,
       constitution: 4,

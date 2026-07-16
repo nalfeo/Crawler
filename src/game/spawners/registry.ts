@@ -48,7 +48,7 @@ const RAT_BRUTE: MobTemplate = {
   speed: 0.15,
   aggroRange: 42.5,
   attackRange: 0,
-  contactDamage: 10,
+  contactDamage: 7,
   weight: 30,
   bloodColor: BLOOD_RAT,
   textureId: RAT_TEXTURE_ID,
