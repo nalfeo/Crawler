@@ -10,7 +10,11 @@
       "width": 10,
       "height": 8,
       "description": "A cramped New York slice joint lifted straight off the corner, grease stains and all.",
-      "tags": ["nyc", "restaurant", "named"],
+      "tags": [
+        "nyc",
+        "restaurant",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -1403,7 +1407,10 @@
                 "requestId": "brick-pizza-oven",
                 "label": "Brick pizza oven",
                 "prompt": "A wood-fired brick pizza oven with a glowing arched mouth, 16x16 pixel art top-down.",
-                "tags": ["food", "appliance"],
+                "tags": [
+                  "food",
+                  "appliance"
+                ],
                 "placeholder": {
                   "source": "sheet",
                   "sheetKey": "kenney-tiny-town",
@@ -1431,7 +1438,10 @@
                 "prompt": "Hot pink and cyan neon sign reading JIMMY'S in a retro cursive script, glowing, pixel art.",
                 "widthTiles": 4,
                 "heightTiles": 1,
-                "tags": ["neon", "signage"]
+                "tags": [
+                  "neon",
+                  "signage"
+                ]
               }
             }
           ],
@@ -1514,7 +1524,11 @@
       "width": 9,
       "height": 7,
       "description": "A 24-hour bodega with a bulletproof counter, lottery tickets, and a very judgmental cat.",
-      "tags": ["nyc", "shop", "named"],
+      "tags": [
+        "nyc",
+        "shop",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -2628,7 +2642,9 @@
                 "requestId": "cash-register",
                 "label": "Cash register",
                 "prompt": "A chunky retro cash register, beige with green buttons, 16x16 pixel art.",
-                "tags": ["retail"]
+                "tags": [
+                  "retail"
+                ]
               },
               "offsetX": 2,
               "offsetY": -4
@@ -2704,7 +2720,11 @@
       "width": 12,
       "height": 6,
       "description": "An express platform ripped from underground, complete with flickering lights and one stalled train.",
-      "tags": ["nyc", "transit", "named"],
+      "tags": [
+        "nyc",
+        "transit",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -3962,7 +3982,9 @@
                 "requestId": "subway-turnstile",
                 "label": "Subway turnstile",
                 "prompt": "A metal subway turnstile with rotating arms, top-down 16x16 pixel art.",
-                "tags": ["transit"]
+                "tags": [
+                  "transit"
+                ]
               }
             }
           ],
@@ -4038,7 +4060,10 @@
       "width": 10,
       "height": 7,
       "description": "A chrome-and-vinyl diner booth set, bottomless coffee not guaranteed.",
-      "tags": ["diner", "named"],
+      "tags": [
+        "diner",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -5271,7 +5296,10 @@
                 "requestId": "coffee-mug",
                 "label": "Coffee mug",
                 "prompt": "A small white diner coffee mug with steam, 16x16 pixel art.",
-                "tags": ["food", "prop"]
+                "tags": [
+                  "food",
+                  "prop"
+                ]
               },
               "offsetX": 5,
               "offsetY": -2,
@@ -5350,7 +5378,11 @@
       "width": 9,
       "height": 8,
       "description": "A highway mini-mart with roller-grill hot dogs and a wall of energy drinks.",
-      "tags": ["roadside", "shop", "named"],
+      "tags": [
+        "roadside",
+        "shop",
+        "named"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -6591,7 +6623,10 @@
                 "label": "Glass-door drink cooler",
                 "prompt": "A tall glass-door refrigerator full of colorful drink bottles, top-down 16x16 pixel art tileable vertically.",
                 "heightTiles": 4,
-                "tags": ["retail", "appliance"]
+                "tags": [
+                  "retail",
+                  "appliance"
+                ]
               }
             }
           ],
@@ -6686,7 +6721,10 @@
       "maxWidth": 11,
       "maxHeight": 9,
       "description": "An exam room kit: paper-covered table, eye chart, and the lingering smell of antiseptic.",
-      "tags": ["medical", "themed"],
+      "tags": [
+        "medical",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -7655,7 +7693,10 @@
                 "label": "Medical exam table",
                 "prompt": "A padded medical exam table with paper roll, light blue, top-down 16x16 pixel art.",
                 "widthTiles": 2,
-                "tags": ["medical", "furniture"]
+                "tags": [
+                  "medical",
+                  "furniture"
+                ]
               }
             }
           ],
@@ -7690,7 +7731,10 @@
                 "requestId": "eye-chart",
                 "label": "Snellen eye chart",
                 "prompt": "A wall-mounted Snellen eye chart poster, big E at top, 16x16 pixel art.",
-                "tags": ["medical", "signage"]
+                "tags": [
+                  "medical",
+                  "signage"
+                ]
               }
             }
           ],
@@ -7749,7 +7793,10 @@
       "maxWidth": 11,
       "maxHeight": 8,
       "description": "A waiting room of stiff chairs, a fish tank, and ten-year-old magazines.",
-      "tags": ["medical", "themed"],
+      "tags": [
+        "medical",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -8606,7 +8653,9 @@
                 "requestId": "magazine-stack",
                 "label": "Magazine stack",
                 "prompt": "A small stack of dog-eared magazines, top-down 16x16 pixel art.",
-                "tags": ["prop"]
+                "tags": [
+                  "prop"
+                ]
               },
               "offsetX": 3,
               "offsetY": -2,
@@ -8627,7 +8676,9 @@
                 "requestId": "waiting-room-fish-tank",
                 "label": "Fish tank",
                 "prompt": "A glowing aquarium with a few orange fish and bubbles, top-down 16x16 pixel art.",
-                "tags": ["decoration"]
+                "tags": [
+                  "decoration"
+                ]
               }
             }
           ],
@@ -8671,7 +8722,11 @@
       "maxWidth": 10,
       "maxHeight": 8,
       "description": "Folding tables, a temperamental vending machine, and a microwave with a history.",
-      "tags": ["office", "industrial", "themed"],
+      "tags": [
+        "office",
+        "industrial",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -9420,7 +9475,9 @@
                 "label": "Snack vending machine",
                 "prompt": "A red snack vending machine with a glass front and glowing buttons, top-down 16x16 pixel art.",
                 "heightTiles": 2,
-                "tags": ["appliance"]
+                "tags": [
+                  "appliance"
+                ]
               }
             }
           ],
@@ -9496,7 +9553,11 @@
       "maxWidth": 12,
       "maxHeight": 10,
       "description": "A maze of grey cubicles, dying potted plants, and a single motivational poster.",
-      "tags": ["office", "corporate", "themed"],
+      "tags": [
+        "office",
+        "corporate",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -10470,7 +10531,10 @@
                 "requestId": "desktop-computer",
                 "label": "Desktop computer",
                 "prompt": "A beige CRT desktop computer and monitor, top-down 16x16 pixel art.",
-                "tags": ["office", "prop"]
+                "tags": [
+                  "office",
+                  "prop"
+                ]
               },
               "offsetX": 2,
               "offsetY": -3,
@@ -10579,7 +10643,10 @@
       "maxWidth": 10,
       "maxHeight": 9,
       "description": "A cozy living room kit: couch, coffee table, and a TV permanently tuned to the reality show.",
-      "tags": ["home", "themed"],
+      "tags": [
+        "home",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -11572,7 +11639,9 @@
                 "requestId": "tv-remote",
                 "label": "TV remote",
                 "prompt": "A small black TV remote control, top-down 16x16 pixel art.",
-                "tags": ["prop"]
+                "tags": [
+                  "prop"
+                ]
               },
               "offsetX": 5,
               "offsetY": -1,
@@ -11596,7 +11665,9 @@
                 "label": "CRT television",
                 "prompt": "A boxy CRT television showing a glowing reality-show broadcast, top-down 16x16 pixel art.",
                 "widthTiles": 2,
-                "tags": ["appliance"]
+                "tags": [
+                  "appliance"
+                ]
               }
             }
           ],
@@ -11655,7 +11726,10 @@
       "maxWidth": 10,
       "maxHeight": 9,
       "description": "Rows of humming machines, a wall of detergent, and one sock that never makes it home.",
-      "tags": ["services", "themed"],
+      "tags": [
+        "services",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -12505,7 +12579,9 @@
                 "label": "Washing machine",
                 "prompt": "A front-loading washing machine with a round glass door, top-down 16x16 pixel art tileable horizontally.",
                 "widthTiles": 4,
-                "tags": ["appliance"]
+                "tags": [
+                  "appliance"
+                ]
               }
             }
           ],
@@ -12585,7 +12661,10 @@
       "maxWidth": 12,
       "maxHeight": 9,
       "description": "Tiny desks, a chalkboard of half-erased equations, and a cubby of forgotten lunches.",
-      "tags": ["school", "themed"],
+      "tags": [
+        "school",
+        "themed"
+      ],
       "props": [
         {
           "id": "__auto-floor-1-1",
@@ -13673,7 +13752,10 @@
                 "label": "Chalkboard",
                 "prompt": "A green chalkboard with faint white equations and a wooden frame, 16x16 pixel art tileable horizontally.",
                 "widthTiles": 4,
-                "tags": ["education", "signage"]
+                "tags": [
+                  "education",
+                  "signage"
+                ]
               }
             }
           ],
@@ -13716,7 +13798,9 @@
                 "requestId": "apple-on-desk",
                 "label": "Apple",
                 "prompt": "A shiny red apple, top-down 16x16 pixel art.",
-                "tags": ["prop"]
+                "tags": [
+                  "prop"
+                ]
               },
               "offsetX": 5,
               "offsetY": -2,
@@ -13794,1507 +13878,16 @@
       "width": 10,
       "height": 9,
       "description": "The dungeon's threadbare reception, dressed up for the cameras season after season: a moth-eaten red carpet, a sagging WELCOME banner, and three lifers who never got voted off — the Goon behind his welcome desk, the merchant hawking his table of wares, and the spell broker cornered by his overstuffed bookcase.",
-      "tags": ["reality-show", "welcome", "floor1", "named"],
+      "tags": [
+        "reality-show",
+        "welcome",
+        "floor1",
+        "named"
+      ],
       "placement": {
         "verticalAlign": "top"
       },
       "props": [
-        {
-          "id": "__auto-floor-1-1",
-          "kind": "floor",
-          "x": 1,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-2-1",
-          "kind": "floor",
-          "x": 2,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-3-1",
-          "kind": "floor",
-          "x": 3,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-4-1",
-          "kind": "floor",
-          "x": 4,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-5-1",
-          "kind": "floor",
-          "x": 5,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-6-1",
-          "kind": "floor",
-          "x": 6,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-7-1",
-          "kind": "floor",
-          "x": 7,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-8-1",
-          "kind": "floor",
-          "x": 8,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-1-2",
-          "kind": "floor",
-          "x": 1,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-2-2",
-          "kind": "floor",
-          "x": 2,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-3-2",
-          "kind": "floor",
-          "x": 3,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-4-2",
-          "kind": "floor",
-          "x": 4,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-5-2",
-          "kind": "floor",
-          "x": 5,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-6-2",
-          "kind": "floor",
-          "x": 6,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-7-2",
-          "kind": "floor",
-          "x": 7,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-8-2",
-          "kind": "floor",
-          "x": 8,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-1-3",
-          "kind": "floor",
-          "x": 1,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-2-3",
-          "kind": "floor",
-          "x": 2,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-3-3",
-          "kind": "floor",
-          "x": 3,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-4-3",
-          "kind": "floor",
-          "x": 4,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-5-3",
-          "kind": "floor",
-          "x": 5,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-6-3",
-          "kind": "floor",
-          "x": 6,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-7-3",
-          "kind": "floor",
-          "x": 7,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-8-3",
-          "kind": "floor",
-          "x": 8,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-1-4",
-          "kind": "floor",
-          "x": 1,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-2-4",
-          "kind": "floor",
-          "x": 2,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-3-4",
-          "kind": "floor",
-          "x": 3,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-4-4",
-          "kind": "floor",
-          "x": 4,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-5-4",
-          "kind": "floor",
-          "x": 5,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-6-4",
-          "kind": "floor",
-          "x": 6,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-7-4",
-          "kind": "floor",
-          "x": 7,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-8-4",
-          "kind": "floor",
-          "x": 8,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-1-5",
-          "kind": "floor",
-          "x": 1,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-2-5",
-          "kind": "floor",
-          "x": 2,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-3-5",
-          "kind": "floor",
-          "x": 3,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-4-5",
-          "kind": "floor",
-          "x": 4,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-5-5",
-          "kind": "floor",
-          "x": 5,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-6-5",
-          "kind": "floor",
-          "x": 6,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-7-5",
-          "kind": "floor",
-          "x": 7,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-8-5",
-          "kind": "floor",
-          "x": 8,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-1-6",
-          "kind": "floor",
-          "x": 1,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-2-6",
-          "kind": "floor",
-          "x": 2,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-3-6",
-          "kind": "floor",
-          "x": 3,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-4-6",
-          "kind": "floor",
-          "x": 4,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-5-6",
-          "kind": "floor",
-          "x": 5,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-6-6",
-          "kind": "floor",
-          "x": 6,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-7-6",
-          "kind": "floor",
-          "x": 7,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-8-6",
-          "kind": "floor",
-          "x": 8,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-1-7",
-          "kind": "floor",
-          "x": 1,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-2-7",
-          "kind": "floor",
-          "x": 2,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-3-7",
-          "kind": "floor",
-          "x": 3,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-4-7",
-          "kind": "floor",
-          "x": 4,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-5-7",
-          "kind": "floor",
-          "x": 5,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-6-7",
-          "kind": "floor",
-          "x": 6,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-7-7",
-          "kind": "floor",
-          "x": 7,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-floor-8-7",
-          "kind": "floor",
-          "x": 8,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-roguelike-rpg-pack",
-                "col": 11,
-                "row": 20
-              }
-            }
-          ],
-          "sceneLayer": "floor"
-        },
-        {
-          "id": "__auto-wall-0-0",
-          "kind": "wall",
-          "x": 0,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-0-8",
-          "kind": "wall",
-          "x": 0,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-1-0",
-          "kind": "wall",
-          "x": 1,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-1-8",
-          "kind": "wall",
-          "x": 1,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-2-0",
-          "kind": "wall",
-          "x": 2,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-2-8",
-          "kind": "wall",
-          "x": 2,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-3-0",
-          "kind": "wall",
-          "x": 3,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-3-8",
-          "kind": "wall",
-          "x": 3,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-4-0",
-          "kind": "wall",
-          "x": 4,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-5-0",
-          "kind": "wall",
-          "x": 5,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-6-0",
-          "kind": "wall",
-          "x": 6,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-6-8",
-          "kind": "wall",
-          "x": 6,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-7-0",
-          "kind": "wall",
-          "x": 7,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-7-8",
-          "kind": "wall",
-          "x": 7,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-8-0",
-          "kind": "wall",
-          "x": 8,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-8-8",
-          "kind": "wall",
-          "x": 8,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-9-0",
-          "kind": "wall",
-          "x": 9,
-          "y": 0,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-9-8",
-          "kind": "wall",
-          "x": 9,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-0-1",
-          "kind": "wall",
-          "x": 0,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-9-1",
-          "kind": "wall",
-          "x": 9,
-          "y": 1,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-0-2",
-          "kind": "wall",
-          "x": 0,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-9-2",
-          "kind": "wall",
-          "x": 9,
-          "y": 2,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-0-3",
-          "kind": "wall",
-          "x": 0,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-9-3",
-          "kind": "wall",
-          "x": 9,
-          "y": 3,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-0-4",
-          "kind": "wall",
-          "x": 0,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-9-4",
-          "kind": "wall",
-          "x": 9,
-          "y": 4,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-0-5",
-          "kind": "wall",
-          "x": 0,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-9-5",
-          "kind": "wall",
-          "x": 9,
-          "y": 5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-0-6",
-          "kind": "wall",
-          "x": 0,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-9-6",
-          "kind": "wall",
-          "x": 9,
-          "y": 6,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-0-7",
-          "kind": "wall",
-          "x": 0,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
-        {
-          "id": "__auto-wall-9-7",
-          "kind": "wall",
-          "x": 9,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 4,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "walls"
-        },
         {
           "id": "welcome-rug",
           "kind": "floor",
@@ -15436,7 +14029,13 @@
                 "prompt": "A small potted houseplant in a chipped terracotta pot — a few broad, slightly wilted green leaves gone dusty from seasons in a windowless dungeon reception. Warm desaturated pixel-art palette, clear low silhouette readable at about 2.5 feet tall. Cozy scene-dressing decoration for the reality-show welcome room.",
                 "widthTiles": 1,
                 "heightTiles": 1,
-                "tags": ["decoration", "plant", "welcome-room", "cozy", "pixel-dungeon"]
+                "tags": [
+                  "decoration",
+                  "plant",
+                  "welcome-room",
+                  "cozy",
+                  "pixel-dungeon"
+                ]
               },
               "widthFt": 2.5,
               "heightFt": 2.5
@@ -15459,7 +14058,13 @@
                 "prompt": "A small weathered dark-wood side table, waist-high — the kind a spell broker keeps a potion and a guttering candle on. Warm desaturated dungeon palette, pixel-art, about a 2.5-foot footprint with a clean readable silhouette. Cozy scene-dressing furniture for the reality-show welcome room.",
                 "widthTiles": 1,
                 "heightTiles": 1,
-                "tags": ["furniture", "table", "welcome-room", "cozy", "pixel-dungeon"]
+                "tags": [
+                  "furniture",
+                  "table",
+                  "welcome-room",
+                  "cozy",
+                  "pixel-dungeon"
+                ]
               },
               "widthFt": 2.5,
               "heightFt": 2.5
@@ -15491,53 +14096,19 @@
                 "prompt": "A short round wooden stool with a faded, sat-flat cushion — a contestant's waiting-room stool worn down season after season. Warm desaturated dungeon palette, pixel-art, about 2.5 feet tall with a clear silhouette. Cozy scene-dressing furniture for the reality-show welcome room.",
                 "widthTiles": 1,
                 "heightTiles": 1,
-                "tags": ["furniture", "stool", "welcome-room", "cozy", "pixel-dungeon"]
+                "tags": [
+                  "furniture",
+                  "stool",
+                  "welcome-room",
+                  "cozy",
+                  "pixel-dungeon"
+                ]
               },
               "widthFt": 2.5,
               "heightFt": 2.5
             }
           ],
           "z": 30,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "junk-pile-left",
-          "kind": "decoration",
-          "x": 1,
-          "y": 7.5,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-junk-pile-v1-var-0"
-              },
-              "widthFt": 2.5,
-              "heightFt": 2.5
-            }
-          ],
-          "width": 0.5,
-          "height": 0.5,
-          "z": 40,
-          "sceneLayer": "default"
-        },
-        {
-          "id": "junk-pile-right",
-          "kind": "decoration",
-          "x": 8,
-          "y": 7,
-          "layers": [
-            {
-              "sprite": {
-                "source": "catalog",
-                "spriteId": "prop-junk-pile-v1-var-3"
-              },
-              "widthFt": 2.5,
-              "heightFt": 2.5
-            }
-          ],
-          "width": 0.5,
-          "height": 0.5,
-          "z": 40,
           "sceneLayer": "default"
         },
         {
@@ -15560,41 +14131,6 @@
           ],
           "z": 40,
           "sceneLayer": "default"
-        },
-        {
-          "id": "door-1783623968560",
-          "kind": "door",
-          "x": 4,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 10,
-                "row": 3
-              }
-            }
-          ],
-          "sceneLayer": "doors"
-        },
-        {
-          "id": "copy-door-1783623968560-1783661827403-0",
-          "kind": "door",
-          "x": 5,
-          "y": 8,
-          "layers": [
-            {
-              "sprite": {
-                "source": "sheet",
-                "sheetKey": "kenney-tiny-dungeon",
-                "col": 10,
-                "row": 3
-              },
-              "flipX": true
-            }
-          ],
-          "sceneLayer": "doors"
         },
         {
           "id": "copy-velvet-rope-1783661837863-0",
