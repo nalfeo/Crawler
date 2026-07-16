@@ -38,6 +38,8 @@ helper/CLI, deterministic tests, and review/operational documentation.
   reachability and causal attribution, up-to-three including zero, isolated
   canonical sweeps, no-evidence/no-PR behavior, a durable evidence ledger, and the
   mandatory owner-approval gate for any future gameplay PR.
+- Every terminal no-PR outcome must post its rationale/ledger evidence and close the
+  issue so a later nightly run can evaluate newly available telemetry.
 
 ## Key decisions
 
@@ -56,13 +58,15 @@ helper/CLI, deterministic tests, and review/operational documentation.
 - Separate-model plan review: `claude-sonnet-5`, five concerns resolved,
   `plan_divergence=minor`.
 - Code review: `claude-sonnet-4.6`, round 1 clean with no concerns.
+- PR review validation: `claude-sonnet-5` with independent `gpt-5.3-codex`
+  adjudication, two valid concerns resolved in round 2.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-16-nightly-balance-issue-filer.review-ledger.json`.
 
 ## Validation and observation
 
 - `node --test .github/scripts/nightly-balance-issue/nightly-balance-issue.test.mjs`
-  - 7/7 passing.
+  - 8/8 passing, including intake-plus-rollback double-failure coverage.
 - `npm run verify:fast` - passing.
 - `npm run scope` - `gameplay_safe=true`.
 - Before implementation there was no repository-owned scheduled filer on `main`.

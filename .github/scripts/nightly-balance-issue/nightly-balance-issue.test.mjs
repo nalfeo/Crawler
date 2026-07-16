@@ -14,7 +14,12 @@ const repository = 'nalfeo/Crawler';
 const githubToken = 'github-token';
 const intakeToken = 'intake-token';
 
-function createHarness({ labelExists = true, intakeError = null, initialIssues = [] } = {}) {
+function createHarness({
+  labelExists = true,
+  intakeError = null,
+  closeError = null,
+  initialIssues = [],
+} = {}) {
   const calls = [];
   const openIssues = [...initialIssues];
   let nextIssueNumber = 1203;
@@ -42,6 +47,7 @@ function createHarness({ labelExists = true, intakeError = null, initialIssues =
       return { data: issue };
     }
     if (options.method === 'PATCH' && options.body?.state === 'closed') {
+      if (closeError) throw closeError;
       const issueNumber = Number(path.split('/').at(-1));
       const index = openIssues.findIndex((issue) => issue.number === issueNumber);
       if (index >= 0) openIssues.splice(index, 1);
@@ -90,6 +96,8 @@ test('hardened prompt encodes every evidence and approval gate', () => {
     /Gameplay PR contains `Closes #<this issue number>`/,
     /labels `human-approval-required` \+ `merge-train-blocked`/,
     /Only exact standalone trimmed owner `nalfeo` comment `APPROVED FOR CHECK-IN` unlocks/,
+    /Every terminal outcome that produces no implementation PR .* is not complete until you post a final rationale\/ledger comment .* then close this issue/,
+    /closure is mandatory, not optional, for every no-PR path/,
     /@copilot Please execute this issue end-to-end/,
   ];
   for (const invariant of required) assert.match(ISSUE_BODY, invariant);
@@ -179,6 +187,30 @@ test('closes a newly created issue and preserves the intake error', async () => 
   assert.equal(close.path, '/repos/nalfeo/Crawler/issues/1203');
   assert.deepEqual(close.options.body, { state: 'closed', state_reason: 'not_planned' });
   assert.equal(harness.openIssues.length, 0);
+});
+
+test('wraps both errors in an AggregateError when the rollback close also fails', async () => {
+  const intakeError = new Error('Copilot assignment failed');
+  const closeError = new Error('GitHub API unavailable');
+  const harness = createHarness({ intakeError, closeError });
+
+  await assert.rejects(runWithHarness(harness), (error) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors, [intakeError, closeError]);
+    assert.equal(error.cause, intakeError);
+    assert.equal(
+      error.message,
+      'Issue intake failed for #1203: Copilot assignment failed; ' +
+        'closing the issue also failed: GitHub API unavailable',
+    );
+    return true;
+  });
+
+  const close = harness.calls.find(
+    (call) => call.kind === 'request' && call.options.body?.state === 'closed',
+  );
+  assert.equal(close.path, '/repos/nalfeo/Crawler/issues/1203');
+  assert.equal(harness.openIssues.length, 1);
 });
 
 test('validates every required environment value before GitHub access', async () => {

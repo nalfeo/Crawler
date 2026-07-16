@@ -39,6 +39,9 @@ Gameplay PR contains \`Closes #<this issue number>\`, labels \`human-approval-re
 ## Acceptance evidence
 Up to 3 eligible ideas (zero allowed/no PR), <=3 attempts each, complete ledger, comparable aggregate baseline/post artifacts, final judge, explicit approval status, normal verification/review/harness/handoff/determinism.
 
+## Terminal no-PR closure — hard gate
+This issue stays open only while work is in progress; a later nightly run no-ops while it is open. Every terminal outcome that produces no implementation PR — zero eligible candidates, stale/duplicate baseline, missing/unavailable artifacts, failed evaluation contract, or any other stop condition above — is not complete until you post a final rationale/ledger comment summarizing the decision and evidence, then close this issue. Leaving this issue open after a no-PR conclusion blocks every future nightly run from filing a fresh issue against newer telemetry, so closure is mandatory, not optional, for every no-PR path.
+
 @copilot Please execute this issue end-to-end, but obey every hard evidence gate and the mandatory human approval gate above.`;
 
 function parseRepository(repository) {
