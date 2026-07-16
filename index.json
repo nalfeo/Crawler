@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ea82efd17b5f58f6c34fb090ccad4bdb29e7a2b1",
+    "commitDate": "2026-07-16T11:58:46Z",
+    "commitSubject": "ci: enforce owner approval for nightly balance PRs (#1195)",
+    "capturedAt": "2026-07-16T13:12:58.814Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29497036096",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/ea82efd17b5f58f6c34fb090ccad4bdb29e7a2b1.json"
+  },
+  {
     "commit": "6c00f6e6e586d36d5b264d3532b881f9c55b2c48",
     "commitDate": "2026-07-16T11:44:23Z",
     "commitSubject": "feat(devtools): load cloud weapon-sweep results (#1194)",
