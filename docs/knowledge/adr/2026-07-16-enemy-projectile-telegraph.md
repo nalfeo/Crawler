@@ -50,15 +50,25 @@ telegraph window.
 1. **Core data model** (`src/core/components.ts`, `src/core/world.ts`): add
    `enemyBehavior` store fields — `telegraphMs` (per-mob override, `-1`
    sentinel for "unset"), `telegraphActive`, `telegraphStartMs`,
-   `telegraphDelayMs`, `telegraphDirX/Y`, `telegraphOriginX/Y` — plus a
-   world-level `enemyTelegraphMs?: number` for the configured default.
+   `telegraphDelayMs`, `telegraphDirX/Y`, `telegraphOriginX/Y`, and
+   `telegraphWasActiveThisFrame` (a sticky render-frame flag consumed by the
+   renderer, see item 4 below) — plus a world-level `enemyTelegraphMs?: number`
+   for the configured default.
 2. **Resolver module** (`src/core/systems/enemyTelegraph.ts`, new): a single
    shared helper — `getEffectiveTelegraphMs`, `isEnemyProjectileTelegraphActive`,
    `isEnemyProjectileTelegraphReady`, `startEnemyProjectileTelegraph`,
    `cancelEnemyProjectileTelegraph` — living in `src/core/` so game, engine,
    and game/ai layers can all depend on it without violating layer-import
-   rules. `getEffectiveTelegraphMs` implements
-   `mob.telegraphMs ?? world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS`.
+   rules. `getEffectiveTelegraphMs` implements a **validating** fallback chain
+   — `mob.telegraphMs ?? world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS`
+   — not literal nullish coalescing: any candidate that is negative,
+   non-finite, would overflow the Float32-backed `telegraphDelayMs` store, or
+   would silently underflow to exactly `0` there (e.g. `1e-50`, which would
+   become indistinguishable from an intentional legacy `0` override) is
+   treated as absent and falls through to the next level, all the way to the
+   hardcoded constant if every level is invalid or unset. An explicit,
+   already-`0` value at any level is always legitimate and never falls
+   through.
 3. **Fire logic** (`src/game/enemyAISystem.ts`): `tryFireEnemyProjectile()`
    becomes a 3-path state machine — already-telegraphing (wait/fire when
    ready), zero-effective-delay (fire immediately, byte-for-byte the old
@@ -75,8 +85,15 @@ telegraph window.
    position.
 4. **Render cue** (`src/engine/PhaserBridge.ts`): a per-enemy `Graphics`
    entry draws a pulsing line from the locked origin out to the enemy's
-   attack range along the locked direction whenever `telegraphActive`, giving
-   players the same locked trajectory the AI dodge logic uses.
+   attack range along the locked direction whenever `telegraphActive` **or**
+   the sticky `telegraphWasActiveThisFrame` flag is set, giving players the
+   same locked trajectory the AI dodge logic uses. The sticky flag (set by
+   `startEnemyProjectileTelegraph`, cleared once per rendered frame by
+   `PhaserBridge.sync()`) ensures a telegraph that both starts and completes
+   entirely within one multi-step catch-up batch — e.g. the AI-runner's 16×
+   playback mode — still draws its cue for one rendered frame, rather than
+   the cue being invisibly skipped because `telegraphActive` already
+   returned to `0` by the time the frame is drawn.
 5. **Production AI** (`src/game/ai/bt-ai-provider.ts`): `buildOpportunisticDodge()`
    gains a second threat loop over telegraphing enemies (`telegraphActive === 1`),
    computing a **virtual projectile's** future impact using the exact same

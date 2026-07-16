@@ -144,6 +144,41 @@ describe('getEffectiveTelegraphMs resolver', () => {
     // this resolves the world-level default rather than -7 or the constant.
     expect(getEffectiveTelegraphMs(world, enemy)).toBe(500);
   });
+
+  // Regression: copilot-pull-request-reviewer finding — a tiny nonzero delay
+  // (e.g. `1e-50`) is finite and non-negative, so it used to survive the
+  // overflow/negative guards unchanged, but `Math.fround(1e-50) === 0`: once
+  // that value is written to the Float32Array-backed telegraphDelayMs store
+  // it becomes byte-identical to an intentional, legitimate "legacy: no
+  // telegraph" override. A world-level delay this small must fall back to
+  // the default rather than silently degrading into immediate-fire.
+  it('falls back to the default for a world-level override that would underflow to 0 in Float32', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 1e-50;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
+
+  it('falls through to the world-level default (not 0) when a per-mob override would underflow to 0 in Float32', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 500;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 1e-50,
+    });
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(500);
+  });
+
+  it('spawnBehaviorEnemy stores the unset sentinel (not a rounded 0) for a per-mob override that would underflow Float32', () => {
+    // Sanitizing must happen BEFORE the value ever reaches the
+    // Float32Array-backed telegraphMs store — otherwise 1e-50 rounds to 0 on
+    // assignment and becomes indistinguishable from an explicit, legitimate
+    // `telegraphMs: 0` legacy override once stored.
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 1e-50,
+    });
+    expect(world.stores.enemyBehavior.telegraphMs[enemy]).toBe(TELEGRAPH_MS_UNSET);
+  });
 });
 
 describe('enemy projectile telegraph — 0ms legacy parity', () => {

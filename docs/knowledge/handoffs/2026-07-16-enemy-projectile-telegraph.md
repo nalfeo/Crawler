@@ -27,8 +27,12 @@ spawn — the same locked state feeds the render cue, the real fire logic, and
 the AI's dodge reasoning, so none of the three can diverge.
 
 - New `src/core/systems/enemyTelegraph.ts`: single source of truth —
-  `getEffectiveTelegraphMs` (`mob.telegraphMs ?? world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS`,
-  250ms production/headless default), `startEnemyProjectileTelegraph`,
+  `getEffectiveTelegraphMs` (a **validating** fallback chain —
+  `mob.telegraphMs ?? world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS`,
+  250ms production/headless default — where any candidate that is negative,
+  non-finite, Float32-overflowing, or would silently underflow to `0` in the
+  Float32-backed store is treated as absent and falls through to the next
+  level rather than being used verbatim), `startEnemyProjectileTelegraph`,
   `cancelEnemyProjectileTelegraph`, `isEnemyProjectileTelegraphActive/Ready`.
 - `enemyAISystem.ts`: fire logic now goes through a telegraph state machine —
   start telegraph → hold (movement frozen, aim locked) → fire from the locked
@@ -37,7 +41,12 @@ the AI's dodge reasoning, so none of the three can diverge.
   branch — see review-found fix below).
 - `PhaserBridge.ts`: renders a visible cue (red fill, drawn from the locked
   origin/direction) while a telegraph is active; hidden (not destroyed) once
-  it clears.
+  it clears. Also draws for one rendered frame via the sticky
+  `telegraphWasActiveThisFrame` flag (added post-merge with PR #1200) when a
+  telegraph starts and completes entirely within a single multi-step
+  catch-up batch (e.g. the AI-runner's 16× playback), so the cue is never
+  invisibly skipped just because `telegraphActive` already cleared before
+  the next rendered frame.
 - `bt-ai-provider.ts`: BehaviorTreeAI reads the same public `EnemyBehavior`
   store fields (no privileged prediction) to (a) evaluate ranged danger using
   the enemy's _actual_ attack range and (b) dodge the locked trajectory of a
@@ -60,8 +69,10 @@ the "0 = exact legacy parity" requirement holds in the real pipeline, not
 just in unit tests. Render-cue behavior (create-once/show/hide, never
 recreated, hidden while outside FOV, hidden for a shooter killed this
 same frame, and destroyed if its EID is recycled mid-simulation) is
-additionally covered by 6 new deterministic
-`tests/unit/phaser-bridge.test.ts` assertions, since this sandboxed
+additionally covered by 7 new deterministic
+`tests/unit/phaser-bridge.test.ts` assertions (including a sticky-flag
+16×-catch-up-batch render regression added post-merge with PR #1200),
+since this sandboxed
 environment's Playwright/chrome-devtools tools had no screenshot capability
 for Phaser canvas content — the repo's documented deterministic-check
 convention (rule #9) was used instead of a manual visual pass.
@@ -138,13 +149,16 @@ None blocking. Follow-up ideas (not required by the approved spec):
   "the code path looks like it does nothing" — it proves byte-for-byte
   output identity on the real pipeline.
 - **No screenshot capability for Phaser canvas in this sandboxed
-  environment's Playwright/chrome-devtools tools**: pivoted to writing 6
+  environment's Playwright/chrome-devtools tools**: pivoted to writing 7
   deterministic `tests/unit/phaser-bridge.test.ts` assertions (cue created +
   visible while telegraphing, pinned to the locked origin even after the
   shooter drifts; same object hidden, not recreated, once cleared; hidden
   outside FOV; hidden for a shooter killed this frame; destroyed if its EID
   is recycled mid-simulation; urgency-pulse phased on the telegraph's own
-  elapsed time rather than the absolute render clock)
+  elapsed time rather than the absolute render clock; and — added post-merge
+  with PR #1200 — a sticky-flag render regression covering a telegraph that
+  starts and completes entirely within one 16×-speed AI-runner catch-up
+  batch)
   instead of a manual visual pass. This matches the repo's own
   stated preference (rule #9) for deterministic checks over ad hoc visual
   QA, so treat "no screenshot tool" as a nudge toward the better default,

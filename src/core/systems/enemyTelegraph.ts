@@ -61,13 +61,26 @@ export const TELEGRAPH_MS_UNSET = -1;
  * override, and a direct `world.enemyTelegraphMs` assignment.
  */
 /**
- * True when `candidateMs` is both finite after Float32 rounding and
- * non-negative — the two invariants `clampToFloat32SafeTelegraphMs` and
- * `getEffectiveTelegraphMs`'s per-mob branch both need to decide whether a
- * candidate value is safe to use as-is.
+ * True when `candidateMs` is finite after Float32 rounding, non-negative, AND
+ * does not silently underflow to exactly `0` — the invariants
+ * `clampToFloat32SafeTelegraphMs`, `getEffectiveTelegraphMs`'s per-mob
+ * branch, and `spawnBehaviorEnemy`'s per-mob override sanitizer all need to
+ * decide whether a candidate value is safe to store/use as-is.
+ *
+ * A tiny nonzero delay (e.g. `1e-50`) is finite and non-negative, but
+ * `Math.fround` rounds it to exactly `0` — the same Float32 store value used
+ * for an intentional, legitimate "legacy: no telegraph" override. Once that
+ * happens the two cases are indistinguishable, so a configured non-zero delay
+ * silently degrades into immediate-fire/no-telegraph behavior (regression:
+ * copilot-pull-request-reviewer finding). Reject any nonzero input that would
+ * round to `0`; an explicit, already-zero input still passes.
  */
-function isFloat32SafeNonNegativeTelegraphMs(candidateMs: number): boolean {
-  return Number.isFinite(Math.fround(candidateMs)) && candidateMs >= 0;
+export function isFloat32SafeNonNegativeTelegraphMs(candidateMs: number): boolean {
+  const rounded = Math.fround(candidateMs);
+  if (!Number.isFinite(rounded) || candidateMs < 0) {
+    return false;
+  }
+  return !(candidateMs !== 0 && rounded === 0);
 }
 
 function clampToFloat32SafeTelegraphMs(candidateMs: number): number {

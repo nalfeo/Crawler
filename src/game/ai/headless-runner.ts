@@ -233,6 +233,18 @@ function normalizeEnemyTelegraphMs(configuredTelegraphMs: number | undefined): n
       `Invalid enemyTelegraphMs "${String(configuredTelegraphMs)}" (exceeds the largest value representable in the Float32 telegraphDelayMs store)`,
     );
   }
+  // Mirror of the Float32-underflow-to-zero guard in
+  // core/systems/enemyTelegraph.ts's isFloat32SafeNonNegativeTelegraphMs: a
+  // tiny nonzero delay (e.g. 1e-50) survives the overflow check above but
+  // rounds to exactly 0 once written to the Float32Array telegraphDelayMs
+  // store, becoming indistinguishable from an intentional, legitimate
+  // "legacy: no telegraph" override (regression: copilot-pull-request-
+  // reviewer finding).
+  if (configuredTelegraphMs !== 0 && Math.fround(configuredTelegraphMs) === 0) {
+    throw new Error(
+      `Invalid enemyTelegraphMs "${String(configuredTelegraphMs)}" (too small to represent in the Float32 telegraphDelayMs store; rounds to 0, which would silently select immediate-fire/legacy behavior)`,
+    );
+  }
   return configuredTelegraphMs;
 }
 
