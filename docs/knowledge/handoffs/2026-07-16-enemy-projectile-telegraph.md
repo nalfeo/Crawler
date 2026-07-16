@@ -119,28 +119,55 @@ None blocking. Follow-up ideas (not required by the approved spec):
 - Consider surfacing telegraph state in the ai-runner-lab overlay's debug HUD
   more prominently (it's wired but minimal) if a future session wants richer
   lab-side visualization.
-- The Windows Git-Bash `local-scope.sh`/`detect-art-only.sh` quirk (see
-  Lessons Learned) would benefit from a real fix in a dedicated
-  infra/tooling session — out of scope here since it's pre-existing and
-  unrelated to this feature.
 
 ## Retrospective
 
 ### Lessons Learned
 
-- **`VERIFY_FULL=1 npm run verify` cannot complete locally on this Windows
-  Git-Bash environment**: it aborts (via `set -e`) at the unit-test step on
-  45 pre-existing exit-127 ("command not found") failures in
-  `tests/unit/detect-change-scope.test.ts` / `tests/unit/local-scope.test.ts`
-  — the scripts they shell out to (`detect-art-only.sh`, `local-scope.sh`)
-  aren't resolving under Windows Git-Bash. Confirmed via `git stash` these
-  failures are pre-existing on clean `main`, unrelated to this feature. This
-  is the same family as the already-documented `lab-gate-check.sh` slowness
-  quirk in AGENTS.md's "Known Environment Quirks" — worth adding this one
-  alongside it in a future docs-only session. Because full local `verify`
-  never reaches the headless Floor-1 (`VERIFY_FULL`) steps here, the direct
-  seed42 headless CLI repro (run manually, both at 250ms and 0ms, plus the
-  git-stash byte-for-byte comparison) is what actually validated the
+- \*\*`tests/unit/local-scope.test.ts` / `tests/unit/detect-change-scope.test.ts`
+  failed (45 tests) under this sandbox's `bash` — root-caused and fixed as a
+  drive-by per AGENTS.md rule #7 (no "pre-existing/out of scope" deferral)
+  when a review thread correctly flagged an earlier draft of this handoff for
+  documenting the failures as out-of-scope instead of fixing them. Two
+  distinct real bugs, not one:
+  1. Both tests build `SCRIPT` via `path.resolve(...)` (a Windows-style
+     `C:\Users\...` absolute path) and pass it as a `spawnSync('bash', [SCRIPT])`
+     argv element — no shell, so none of bash's usual path-translation magic
+     fires. This sandbox's `bash` on `PATH` is actually the WSL interop shim
+     (`C:\Windows\System32\bash.exe`, genuine `x86_64-pc-linux-gnu`), which
+     cannot resolve a raw drive-letter path at all. Fixed with a new
+     `tests/helpers/bash-script-path.ts::toBashScriptPath()` that converts to
+     the WSL-mount form (`/mnt/c/Users/...`) when needed, detected once via a
+     `/mnt/c` probe, and is a no-op on non-Windows/non-WSL bash.
+  2. Separately, WSL's interop layer does **not** forward the parent Windows
+     process's environment variables into the Linux session unless they're
+     named in the `WSLENV` allow-list — so `detect-change-scope.test.ts`'s
+     `SCOPE_FILES_OVERRIDE`/`GITHUB_OUTPUT`/`PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE`
+     env overrides were silently dropped, degrading every case to the
+     empty-changeset fail-safe. Fixed with `bash-script-path.ts::bashEnv()`,
+     which extends `WSLENV` with the names of whatever custom env vars a
+     caller passes (preserving any pre-existing `WSLENV`); inert on non-WSL
+     bash.
+  3. A related but independent third issue in `local-scope.test.ts`: a
+     just-exited WSL `bash.exe` child leaves its working directory
+     transiently locked from Windows' point of view (observed up to ~3s),
+     racing the test's `afterEach` cleanup into `EBUSY`. `fs.rmSync`'s own
+     `maxRetries`/`retryDelay` do **not** cover this — they only retry errors
+     hit while walking the tree, not a busy top-level `rmdir` — so fixed with
+     a real async wait-and-retry loop (`rmDirWithRetry`, 15 attempts / 300ms).
+     All 45 previously-failing tests pass now; confirmed via a full
+     `npx vitest run --project unit` pass (330 files, 4035 tests) with no
+     regressions elsewhere.
+- **`VERIFY_FULL=1 npm run verify` was not re-run to completion locally** in
+  this sandbox (the headless Floor-1 step alone takes ~10 minutes real-world,
+  and this session already validated the sim behavior directly — see below).
+  The specific blocker that previously stopped local `verify` from reaching
+  that step at all — the 45 `local-scope.test.ts`/`detect-change-scope.test.ts`
+  failures aborting the unit-test step under `set -e` — is fixed (see above),
+  so a future session attempting `VERIFY_FULL` here should no longer hit it.
+  Because this session didn't run the headless Floor-1 step through `verify`,
+  the direct seed42 headless CLI repro (run manually, both at 250ms and 0ms,
+  plus the git-stash byte-for-byte comparison) is what actually validated the
   real-pipeline behavior for this change.
 - **Git-stash legacy-parity proof is a strong, reusable technique**: for any
   "value X must reproduce exact legacy behavior" requirement, `git stash push
@@ -206,9 +233,6 @@ None blocking. Follow-up ideas (not required by the approved spec):
 
 ### Opportunities for Future Improvement
 
-- Add the Windows Git-Bash `local-scope.sh`/`detect-art-only.sh` exit-127
-  quirk to AGENTS.md's "Known Environment Quirks" section (docs-only,
-  separate session) so it stops being independently rediscovered.
 - The muzzle-offset constant (`ENEMY_PROJECTILE.MUZZLE_OFFSET`, from
   `tuning.json`) and the fireball weapon def's `projectileSpeed` (from the
   runtime `getWeaponDef('fireball')` accessor in `src/shared/weaponDefs.ts`
