@@ -10,9 +10,9 @@ import { createTestWorld } from '../helpers/world-factory.js';
  * BOTH the headless runner (`spendPoints`) and the in-browser level-up modal
  * (`LevelUpUI.autoResolve`). Per the stat-system overhaul (plan resolution
  * #11), the shared survival-tiered spend order is:
- *   1. Offense (Strength for a physical weapon, Intelligence for a magic one
+ *   1. Constitution → 8 (maxHp heals on spend, see core/systems/statSystem.ts)
+ *   2. Offense (Strength for a physical weapon, Intelligence for a magic one
  *      — e.g. the starter fireball wand) → 5
- *   2. Constitution → 6 (maxHp heals on spend, see core/systems/statSystem.ts)
  *   3. Dexterity → 5
  *   4. Wisdom → 5
  *   5. Offense → 11
@@ -38,50 +38,49 @@ describe('computeAutoStatAllocation', () => {
     expect(computeAutoStatAllocation(world, playerEid, Number.NaN)).toEqual({});
   });
 
-  it('front-loads strength (offense, no weapon set) up to the floor (5) for a fresh player', () => {
+  it('front-loads constitution to replace the survivability lost with Strength armor', () => {
     const { world, playerEid } = setup();
-    expect(computeAutoStatAllocation(world, playerEid, 3)).toEqual({ strength: 3 });
-    expect(computeAutoStatAllocation(world, playerEid, 5)).toEqual({ strength: 5 });
+    expect(computeAutoStatAllocation(world, playerEid, 3)).toEqual({ constitution: 3 });
+    expect(computeAutoStatAllocation(world, playerEid, 8)).toEqual({ constitution: 8 });
   });
 
-  it('banks constitution cushion (6) after the offense floor', () => {
+  it('builds offense after the shared constitution survival target', () => {
     const { world, playerEid } = setup();
     expect(computeAutoStatAllocation(world, playerEid, 11)).toEqual({
-      strength: 5,
-      constitution: 6,
+      constitution: 8,
+      strength: 3,
     });
   });
 
   it('spends dexterity then wisdom (5 each) after the constitution cushion', () => {
     const { world, playerEid } = setup();
-    // 5 (offense) + 6 (con) + 1 into dexterity
+    // 8 (con) + 4 into offense
     expect(computeAutoStatAllocation(world, playerEid, 12)).toEqual({
-      strength: 5,
-      constitution: 6,
-      dexterity: 1,
+      constitution: 8,
+      strength: 4,
     });
-    // 5 + 6 + 5 (dex full) + 4 into wisdom
+    // 8 + 5 (offense) + 5 (dex full) + 2 into wisdom
     expect(computeAutoStatAllocation(world, playerEid, 20)).toEqual({
+      constitution: 8,
       strength: 5,
-      constitution: 6,
       dexterity: 5,
-      wisdom: 4,
+      wisdom: 2,
     });
   });
 
   it('tops offense toward the boss target (11) then dumps the rest into constitution', () => {
     const { world, playerEid } = setup();
-    // 5 (offense) + 6 (con) + 5 (dex) + 5 (wis) + 6 more offense = 11 total offense, sums to 27.
-    expect(computeAutoStatAllocation(world, playerEid, 27)).toEqual({
+    // 8 (con) + 5 (offense) + 5 (dex) + 5 (wis) + 6 more offense = 11 total offense.
+    expect(computeAutoStatAllocation(world, playerEid, 29)).toEqual({
+      constitution: 8,
       strength: 11,
-      constitution: 6,
       dexterity: 5,
       wisdom: 5,
     });
-    // Beyond 27, every extra point dumps into constitution.
+    // Beyond 29, every extra point dumps into constitution.
     expect(computeAutoStatAllocation(world, playerEid, 30)).toEqual({
-      strength: 11,
       constitution: 9,
+      strength: 11,
       dexterity: 5,
       wisdom: 5,
     });
@@ -90,10 +89,10 @@ describe('computeAutoStatAllocation', () => {
   it('spends offense into Intelligence instead of Strength when a magic weapon is active', () => {
     const { world, playerEid } = setup();
     setActiveWeaponDef(world, WEAPON_DEFS.get('fireball')!);
-    expect(computeAutoStatAllocation(world, playerEid, 3)).toEqual({ intelligence: 3 });
-    expect(computeAutoStatAllocation(world, playerEid, 27)).toEqual({
+    expect(computeAutoStatAllocation(world, playerEid, 3)).toEqual({ constitution: 3 });
+    expect(computeAutoStatAllocation(world, playerEid, 29)).toEqual({
+      constitution: 8,
       intelligence: 11,
-      constitution: 6,
       dexterity: 5,
       wisdom: 5,
     });
@@ -102,7 +101,10 @@ describe('computeAutoStatAllocation', () => {
   it('spends offense into Strength for a non-magic (ranged) weapon', () => {
     const { world, playerEid } = setup();
     setActiveWeaponDef(world, WEAPON_DEFS.get('bow')!);
-    expect(computeAutoStatAllocation(world, playerEid, 3)).toEqual({ strength: 3 });
+    expect(computeAutoStatAllocation(world, playerEid, 9)).toEqual({
+      constitution: 8,
+      strength: 1,
+    });
   });
 
   it('accounts for core stat points already spent', () => {

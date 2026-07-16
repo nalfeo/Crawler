@@ -10,8 +10,8 @@ import type { PrimaryStatId } from '../../shared/stats.js';
  * CON/DEX/WIS logic regardless of weapon and ONLY changes which primary stat
  * "offense" spends into — Strength for a physical weapon, Intelligence for a
  * magic one (`WeaponType.MAGIC`, e.g. the starter fireball wand):
- *   1. Offense -> 5
- *   2. Constitution -> 6
+ *   1. Constitution -> 8
+ *   2. Offense -> 5
  *   3. Dexterity -> 5
  *   4. Wisdom -> 5
  *   5. Offense -> 11
@@ -21,8 +21,8 @@ import type { PrimaryStatId } from '../../shared/stats.js';
  * and take over via `computeAiStatAllocation`'s branch — this function is the
  * shared/default path exercised whenever personas are off.
  */
+const CON_SURVIVAL_TARGET = 8;
 const OFFENSE_FLOOR_TARGET = 5;
-const CON_CUSHION_TARGET = 6;
 const DEX_TARGET = 5;
 const WIS_TARGET = 5;
 const OFFENSE_BOSS_TARGET = 11;
@@ -55,8 +55,8 @@ export function computeAutoStatAllocation(
     }
   };
 
+  spendUpTo('constitution', CON_SURVIVAL_TARGET);
   spendUpTo(offenseStat, OFFENSE_FLOOR_TARGET);
-  spendUpTo('constitution', CON_CUSHION_TARGET);
   spendUpTo('dexterity', DEX_TARGET);
   spendUpTo('wisdom', WIS_TARGET);
   spendUpTo(offenseStat, OFFENSE_BOSS_TARGET);
