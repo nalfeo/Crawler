@@ -1330,6 +1330,13 @@ export class BehaviorTreeAI implements AIInputProvider {
         }
         this.retreating = true;
         this.rangedEmergencyRetreating = rangedEmergency;
+        // Arm the defensive-spacing latch so that when this emergency retreat
+        // releases (enemy backs past rangedSafeDistance) planRangedEngagement
+        // immediately holds the wider 10-ft orbit rather than closing back to
+        // the 6-ft healthy orbit until a pressure threat re-enters the window.
+        if (rangedEmergency) {
+          this.rangedDefensiveSpacing = true;
+        }
         this.retreatThreatEid = threat.eid;
         ctx.blackboard['retreatThreat'] = threat;
         ctx.blackboard['rangedEmergencyRetreat'] = rangedEmergency;
@@ -8063,7 +8070,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     const pressureRadius = this.rangedDefensiveSpacing
       ? this.config.rangedSafeDistance * RANGED_DEFENSIVE_RELEASE_MULTIPLIER
       : this.config.rangedSafeDistance;
-    const pressureThreat = this.findNearestEnemy(world, playerX, playerY, pressureRadius);
+    const pressureThreat = wounded
+      ? this.findNearestEnemy(world, playerX, playerY, pressureRadius)
+      : null;
     this.rangedDefensiveSpacing = wounded && pressureThreat !== null;
     const desiredOrbit = this.rangedDefensiveSpacing
       ? Math.max(

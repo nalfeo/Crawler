@@ -2077,6 +2077,35 @@ describe('BehaviorTreeAI', () => {
     expect(woundedAi.getDecision().state).toBe(AIState.ENGAGE);
   });
 
+  it('arms defensive spacing latch when contact retreat starts so wider orbit persists after release', () => {
+    // If the first threat is already within contact range (4.5ft), Retreat
+    // preempts planRangedEngagement, so rangedDefensiveSpacing is never set
+    // by the normal pressure-check path. The latch must be armed when the
+    // contact retreat is entered so that after retreat releases (enemy backs
+    // past rangedSafeDistance=15ft) the AI holds the 10ft defensive orbit
+    // instead of immediately snapping back to the 6ft healthy orbit.
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.health.current[player] = 50;
+    world.stores.health.max[player] = 100;
+    const enemy = spawnEnemy(world, 4, 0, 20);
+    setActiveWeapon(world, getWeaponDef('pistol')!);
+    const ai = new BehaviorTreeAI({ seed: 7 });
+
+    // First poll: enemy within contact range → emergency retreat (latch armed here).
+    ai.poll(createInputState(), world);
+    expect(ai.getDecision().state).toBe(AIState.RETREAT);
+    expect(ai.getDecision().reason).toContain('contact pressure');
+
+    // Enemy backs past the 15ft rangedSafeDistance release radius.
+    world.stores.position.x[enemy] = 16;
+    ai.poll(createInputState(), world);
+
+    // Latch armed → defensive orbit (10ft), not the healthy 6ft orbit.
+    expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+    expect(ai.getDecision().reason).toContain('ranged standoff (10.0ft)');
+  });
+
   it('expands to defensive orbit when player HP drops below 40%', () => {
     // bat reach = 5.5ft. innerOrbit=4.5, outerOrbit=6.25 (4.5+1.75),
     // fireGate=8.25 (5.5*1.5). Enemy attackRange=5 → safeOrbit=6.75 (5+1.75).
