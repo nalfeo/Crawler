@@ -1854,40 +1854,6 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
-    "faerie-boss-var-1": {
-      "briefId": "faerie-boss",
-      "spriteName": "faerie-boss-var-1",
-      "assetPath": "generated/faerie-boss-var-1.png",
-      "approvedAt": "2026-07-08T01:43:59.339Z",
-      "sourceRun": "generated/runs/faerie-boss/2026-07-08T01-39-33-5bfe280b",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 32,
-        "y": 34,
-        "source": "manual"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 34,
-          "source": "manual"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 34,
-          "source": "manual"
-        }
-      },
-      "sensorScore": "7/7",
-      "judgeScore": "4",
-      "type": "enemy",
-      "contentHash": "9af10b765d55d1af1ab5b6e7b7ee03aa08f66d38b81b5473af489c222d680b30",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-boss\\2026-07-08T01-39-33-5bfe280b\\postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "manual",
-      "facingDirection": "right"
-    },
     "feathersteel-placeholder": {
       "briefId": "feathersteel",
       "spriteName": "feathersteel",
@@ -7582,6 +7548,40 @@
       "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "faerie-boss-var-0": {
+      "briefId": "faerie-boss",
+      "spriteName": "faerie-boss-var-0",
+      "assetPath": "generated/faerie-boss-var-0.png",
+      "approvedAt": "2026-07-16T22:15:00.000Z",
+      "sourceRun": "generated/runs/faerie-boss-v1/2026-07-16T21-50-50-e48c978a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 71,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 71,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 71,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": null,
+      "type": "enemy",
+      "contentHash": "a1b54fa041f94f9dae1ed0bceae5303f172c6098fce8728eb8fce6a67c1a8cce",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     }

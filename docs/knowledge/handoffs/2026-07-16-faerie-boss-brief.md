@@ -46,24 +46,25 @@ Existing art (64×64, sensor 7/7, judge 4/5) was **rejected** against the new br
 
 The existing art must be **superseded** by a new tall variant generated from this brief.
 
-### Issue pipeline run (informational — NOT the canonical generation)
+### Issue pipeline run — variant recovered and approved
 
-The issue-based asset-request pipeline already ran for issue #1216
-(workflow run 29537089539, completed success). It generated sprites with
-brief name `faerie-boss-v1` → stored as `faerie-boss-v1-var-N` in Azure blob
-(`crawlersprites.blob.core.windows.net/generated-runs/faerie-boss-v1/2026-07-16T21-50-50-e48c978a/`).
-These sprites are **orphaned** — the name `faerie-boss-v1` doesn't match the engine's
-texture key `faerie-boss`, so they would not auto-wire. They should NOT be approved.
+The asset-request workflow ran for issue #1216 (run `faerie-boss-v1/2026-07-16T21-50-50-e48c978a`,
+126 artifacts, 8 processed variants). Variant 00 scored **7/7 sensors** (all checks pass including
+`interior-transparency-holes` and `opaque-bbox-fits`). The sprite was downloaded from the GitHub
+Actions artifact and manually approved with the correct `briefId: 'faerie-boss'`:
 
-The correct generation uses the committed brief `briefs/enemies/faerie-boss.yaml`
-(name: faerie-boss) which produces `faerie-boss-var-N` sprites that wire correctly.
+- PNG: `public/assets/generated/faerie-boss-var-0.png` (68×128)
+- Manifest entry: `faerie-boss-var-0` — `briefId: 'faerie-boss'`, anchor x=33 y=71 (derived CoM),
+  sensorScore: 7/7, type: enemy
+- Sprite catalog entry: `generated:faerie-boss-var-0`
+- Old wrong entry `faerie-boss-var-1` (64×64, wand present) removed from manifest and catalog
 
 ### Observe step
 
-Not yet completed — art generation is pending. The wiring is already in place:
-`src/engine/phaser-bridge/sprite-kind.ts` line 300 has `'faerie-boss': 'faerie-boss'`.
-Once new tall art is approved and checked in, the existing `faerie-boss-var-1` (64×64)
-will be superseded and the enemy will render at the correct tall aspect ratio.
+Engine wiring verified: `src/engine/phaser-bridge/sprite-kind.ts` line 300 has
+`'faerie-boss': 'faerie-boss'`. The `floor2-boss-render-art` test (the real-pipeline render guard)
+passes with the new manifest entry. The `pickGeneratedVariant` resolver now returns `faerie-boss-var-0`
+(the 68×128 tall variant) for the faerie-boss enemy.
 
 ## Key Decisions Made
 
