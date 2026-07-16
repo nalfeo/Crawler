@@ -1,0 +1,179 @@
+const AGGREGATE_ARTIFACT_PATTERN = /^weapon-sweep-(?!shard-)([a-z0-9][a-z0-9-]*)$/;
+const SWEEP_JOB_PATTERN = /^(?:weapon-sweep|aggregate) \(([a-z0-9][a-z0-9-]*)/;
+
+function asString(value) {
+  return typeof value === 'string' ? value : '';
+}
+
+function asRunId(value) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid workflow run id: ${value}`);
+  }
+  return parsed;
+}
+
+export function normalizeRun(raw) {
+  return {
+    id: asRunId(raw.id ?? raw.databaseId),
+    status: asString(raw.status) || 'unknown',
+    conclusion: raw.conclusion == null ? null : asString(raw.conclusion),
+    headBranch: asString(raw.head_branch ?? raw.headBranch) || null,
+    headSha: asString(raw.head_sha ?? raw.headSha) || null,
+    createdAt: asString(raw.created_at ?? raw.createdAt) || null,
+    updatedAt: asString(raw.updated_at ?? raw.updatedAt) || null,
+    url: asString(raw.html_url ?? raw.url) || null,
+    event: asString(raw.event) || null,
+    attempt: Number(raw.run_attempt ?? raw.attempt) || 1,
+  };
+}
+
+export function sortRunsNewestFirst(runs) {
+  return [...runs].sort((left, right) => {
+    const leftTime = Date.parse(left.createdAt ?? '') || 0;
+    const rightTime = Date.parse(right.createdAt ?? '') || 0;
+    return rightTime - leftTime || right.id - left.id;
+  });
+}
+
+export function isTerminalRun(run) {
+  return run?.status === 'completed';
+}
+
+export function shouldPollRun(run) {
+  return Boolean(run) && !isTerminalRun(run);
+}
+
+export function selectDefaultRun(runs, branch) {
+  const ordered = sortRunsNewestFirst(runs);
+  if (branch) {
+    const activeBranchRun = ordered.find((run) => run.headBranch === branch && !isTerminalRun(run));
+    if (activeBranchRun) {
+      return { run: activeBranchRun, reason: 'active-session-branch' };
+    }
+    const branchRun = ordered.find((run) => run.headBranch === branch);
+    if (branchRun) {
+      return { run: branchRun, reason: 'latest-session-branch' };
+    }
+  }
+  return {
+    run: ordered[0] ?? null,
+    reason: ordered.length > 0 ? 'latest-repository' : 'no-runs',
+  };
+}
+
+export function aggregateArtifactWeapon(artifact) {
+  if (!artifact || artifact.expired === true) {
+    return null;
+  }
+  return AGGREGATE_ARTIFACT_PATTERN.exec(asString(artifact.name))?.[1] ?? null;
+}
+
+export function expectedWeaponsFromJobs(jobs) {
+  const weapons = [];
+  const seen = new Set();
+  for (const job of jobs ?? []) {
+    const weapon = SWEEP_JOB_PATTERN.exec(asString(job?.name))?.[1];
+    if (weapon && !seen.has(weapon)) {
+      seen.add(weapon);
+      weapons.push(weapon);
+    }
+  }
+  return weapons;
+}
+
+function sameArray(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function assertAggregateShape(weapon, data) {
+  if (
+    !data ||
+    !Array.isArray(data.seeds) ||
+    !Array.isArray(data.weapons) ||
+    data.weapons.length !== 1 ||
+    data.weapons[0] !== weapon ||
+    !Number.isInteger(data.maxFrames) ||
+    data.maxFrames <= 0 ||
+    typeof data.weaponPersonas !== 'boolean' ||
+    !Array.isArray(data.summaries) ||
+    data.summaries.length !== 1 ||
+    data.summaries[0]?.weapon !== weapon ||
+    !Array.isArray(data.allRecords)
+  ) {
+    throw new Error(`Malformed aggregate payload for weapon "${weapon}"`);
+  }
+  if (
+    data.allRecords.length !== data.seeds.length ||
+    data.summaries[0]?.records?.length !== data.seeds.length
+  ) {
+    throw new Error(`Incomplete aggregate payload for weapon "${weapon}"`);
+  }
+}
+
+export function mergeAggregateOutputs(entries, options = {}) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return null;
+  }
+
+  const byWeapon = new Map();
+  for (const entry of entries) {
+    const weapon = asString(entry?.weapon);
+    assertAggregateShape(weapon, entry?.data);
+    if (byWeapon.has(weapon)) {
+      throw new Error(`Duplicate aggregate payload for weapon "${weapon}"`);
+    }
+    byWeapon.set(weapon, entry.data);
+  }
+
+  const requestedOrder = options.expectedWeapons ?? [];
+  const orderedWeapons = [
+    ...requestedOrder.filter((weapon) => byWeapon.has(weapon)),
+    ...[...byWeapon.keys()].filter((weapon) => !requestedOrder.includes(weapon)).sort(),
+  ];
+  const first = byWeapon.get(orderedWeapons[0]);
+
+  for (const weapon of orderedWeapons.slice(1)) {
+    const data = byWeapon.get(weapon);
+    if (!sameArray(data.seeds, first.seeds)) {
+      throw new Error(`Seed-set mismatch between "${orderedWeapons[0]}" and "${weapon}"`);
+    }
+    if (data.maxFrames !== first.maxFrames) {
+      throw new Error(`Frame-budget mismatch between "${orderedWeapons[0]}" and "${weapon}"`);
+    }
+    if (data.weaponPersonas !== first.weaponPersonas) {
+      throw new Error(`Persona-mode mismatch between "${orderedWeapons[0]}" and "${weapon}"`);
+    }
+  }
+
+  return {
+    runAt: options.runCreatedAt ?? first.runAt,
+    seeds: [...first.seeds],
+    weapons: orderedWeapons,
+    maxFrames: first.maxFrames,
+    weaponPersonas: first.weaponPersonas,
+    budgetSec: first.budgetSec,
+    summaries: orderedWeapons.map((weapon) => byWeapon.get(weapon).summaries[0]),
+    allRecords: orderedWeapons.flatMap((weapon) => byWeapon.get(weapon).allRecords),
+  };
+}
+
+export function cloudResultWarning({ run, expectedWeapons, availableWeapons, expiredCount }) {
+  if (expiredCount > 0 && availableWeapons.length === 0) {
+    return 'This run no longer has downloadable aggregate artifacts.';
+  }
+  if (!isTerminalRun(run) && availableWeapons.length === 0) {
+    return 'No aggregate weapon results are available yet. This active run will refresh automatically.';
+  }
+  if (expectedWeapons.length > availableWeapons.length) {
+    const missing = expectedWeapons.filter((weapon) => !availableWeapons.includes(weapon));
+    if (isTerminalRun(run)) {
+      return `Run finished with partial results. Missing: ${missing.join(', ')}.`;
+    }
+    return `Partial results available. Waiting for: ${missing.join(', ')}.`;
+  }
+  if (isTerminalRun(run) && run.conclusion && run.conclusion !== 'success') {
+    return `Run concluded ${run.conclusion}; showing every available aggregate result.`;
+  }
+  return null;
+}
