@@ -307,9 +307,8 @@ describe('weaponSystem', () => {
     // eligibility by verifying the projectile fires +Y when trash is removed.
     const activeWorld = makeWorld();
     activeWorld.goalFlags.set(denUnlockGoalId(familyId), true);
-    const activeBossEncounter = activeWorld.floorExtendedState!.familyState!.bossEncounters!.get(
-      familyId,
-    )!;
+    const activeBossEncounter =
+      activeWorld.floorExtendedState!.familyState!.bossEncounters!.get(familyId)!;
     activeBossEncounter.started = true;
     // Remove the trash enemy so the boss is the only target.
     const trashEids = query(activeWorld.ecs, [Position]);

@@ -2009,7 +2009,9 @@ describe('BehaviorTreeAI', () => {
 
     // Confirm the tested clearance is strictly above the direct-projectile
     // threshold so the two paths are actually distinct.
-    expect(AOE_RADIUS + PROJECTILE_DODGE_AOE_BUFFER_FT).toBeGreaterThan(PROJECTILE_DODGE_CLEARANCE_FT);
+    expect(AOE_RADIUS + PROJECTILE_DODGE_AOE_BUFFER_FT).toBeGreaterThan(
+      PROJECTILE_DODGE_CLEARANCE_FT,
+    );
   });
 
   it('orbits away from enemies that are closer than ranged standoff distance', () => {
