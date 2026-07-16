@@ -33,47 +33,38 @@ import type { GameWorld } from '../world.js';
 export const TELEGRAPH_MS_UNSET = -1;
 
 /**
- * Guards a resolved delay against the Float32Array `telegraphDelayMs` store
- * and against negative/non-finite delays that would violate "telegraph every
- * hostile projectile":
+ * True when `candidateMs` is safe to use as-is: finite after Float32
+ * rounding, non-negative, and does not silently underflow to exactly `0`.
+ * Guards every telegraph-delay entry point — the per-mob override
+ * (`spawnBehaviorEnemy({ telegraphMs })`, sanitized before it ever reaches
+ * the Float32Array-backed `telegraphMs` store), the world-level default
+ * (`world.enemyTelegraphMs`, also validated at config time by
+ * `runHeadless`'s `normalizeEnemyTelegraphMs`), and `clampToFloat32SafeTelegraphMs`
+ * / `getEffectiveTelegraphMs`'s fallback chain below — against three ways a
+ * configured delay can silently corrupt "telegraph every hostile projectile":
  *
- * - A finite JS number outside Float32's representable range (e.g. `1e39`)
- *   silently rounds to `Infinity` on assignment, and
+ * - **Overflow**: a finite JS number outside Float32's representable range
+ *   (e.g. `1e39`) silently rounds to `Infinity` on assignment, and
  *   `isEnemyProjectileTelegraphReady`'s `elapsed >= delayMs` fire check then
  *   never trips — the enemy telegraphs forever and never fires. `Math.fround`
  *   performs the exact same rounding Float32Array does, so it is the correct
  *   generic overflow detector (this also catches `NaN`, since
  *   `Math.fround(NaN)` is `NaN`).
- * - A negative delay (e.g. `world.enemyTelegraphMs = -5`) is finite and
- *   survives `Math.fround` unchanged, but makes `isEnemyProjectileTelegraphReady`
- *   trip immediately (`elapsed >= negativeDelay` is true from frame one),
- *   i.e. an effectively-zero-delay instant fire with no visible cue window —
- *   silently violating the "every hostile projectile telegraphs" contract
- *   (regression: copilot-pull-request-reviewer finding).
- *
- * This is the single point both the per-mob override and the world-level
- * default flow through (see `getEffectiveTelegraphMs` below and
- * `startEnemyProjectileTelegraph`'s write to `telegraphDelayMs`), so it
- * catches every configuration path uniformly — `runHeadless`'s CLI/API
- * config (which additionally fails fast at config time via
- * `normalizeEnemyTelegraphMs`, matching this same finite/non-negative/
- * Float32-safe contract), a per-mob `spawnBehaviorEnemy({ telegraphMs })`
- * override, and a direct `world.enemyTelegraphMs` assignment.
- */
-/**
- * True when `candidateMs` is finite after Float32 rounding, non-negative, AND
- * does not silently underflow to exactly `0` — the invariants
- * `clampToFloat32SafeTelegraphMs`, `getEffectiveTelegraphMs`'s per-mob
- * branch, and `spawnBehaviorEnemy`'s per-mob override sanitizer all need to
- * decide whether a candidate value is safe to store/use as-is.
- *
- * A tiny nonzero delay (e.g. `1e-50`) is finite and non-negative, but
- * `Math.fround` rounds it to exactly `0` — the same Float32 store value used
- * for an intentional, legitimate "legacy: no telegraph" override. Once that
- * happens the two cases are indistinguishable, so a configured non-zero delay
- * silently degrades into immediate-fire/no-telegraph behavior (regression:
- * copilot-pull-request-reviewer finding). Reject any nonzero input that would
- * round to `0`; an explicit, already-zero input still passes.
+ * - **Negative**: a negative delay (e.g. `world.enemyTelegraphMs = -5`) is
+ *   finite and survives `Math.fround` unchanged, but makes
+ *   `isEnemyProjectileTelegraphReady` trip immediately (`elapsed >=
+ *   negativeDelay` is true from frame one), i.e. an effectively-zero-delay
+ *   instant fire with no visible cue window — silently violating the
+ *   "every hostile projectile telegraphs" contract (regression:
+ *   copilot-pull-request-reviewer finding).
+ * - **Underflow**: a tiny nonzero delay (e.g. `1e-50`) is finite and
+ *   non-negative, but `Math.fround` rounds it to exactly `0` — the same
+ *   Float32 store value used for an intentional, legitimate "legacy: no
+ *   telegraph" override. Once that happens the two cases are
+ *   indistinguishable, so a configured non-zero delay silently degrades into
+ *   immediate-fire/no-telegraph behavior (regression:
+ *   copilot-pull-request-reviewer finding). Reject any nonzero input that
+ *   would round to `0`; an explicit, already-zero input still passes.
  */
 export function isFloat32SafeNonNegativeTelegraphMs(candidateMs: number): boolean {
   const rounded = Math.fround(candidateMs);
