@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3c85fe84dc35dd34215bba8b5b8f25d7d00eacfd",
+    "commitDate": "2026-07-16T18:09:18Z",
+    "commitSubject": "feat(ci): file nightly balance improvement issues (#1207)",
+    "capturedAt": "2026-07-16T19:25:51.739Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29523516647",
+    "winRate": 0.9833333333333333,
+    "totalWins": 590,
+    "totalRuns": 600,
+    "path": "by-sha/3c85fe84dc35dd34215bba8b5b8f25d7d00eacfd.json"
+  },
+  {
     "commit": "52372b3bbf5556686b81765cd00e0ac4f5fd3d05",
     "commitDate": "2026-07-16T17:39:22Z",
     "commitSubject": "test(ai): add deterministic invariant harness (#1206)",
