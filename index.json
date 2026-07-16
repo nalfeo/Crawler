@@ -1,5 +1,16 @@
 [
   {
+    "commit": "037f3babddcef41ff693bbe7ec5235109c0d9dfd",
+    "commitDate": "2026-07-16T01:27:49Z",
+    "commitSubject": "fix(merge-train): add reliable reconciliation wake-ups (#1165)",
+    "capturedAt": "2026-07-16T02:41:14.289Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29464558763",
+    "winRate": 0.9766666666666667,
+    "totalWins": 586,
+    "totalRuns": 600,
+    "path": "by-sha/037f3babddcef41ff693bbe7ec5235109c0d9dfd.json"
+  },
+  {
     "commit": "81b66eeb293a646134dc012a893a6e17f0745ca7",
     "commitDate": "2026-07-16T00:25:40Z",
     "commitSubject": "fix(ai): complete production Floor 2 hunt progression (#1163)",
