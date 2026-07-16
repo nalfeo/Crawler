@@ -69,6 +69,14 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
     selectLoadoutOption: scenario.selectLoadoutOption,
     director: scenario.director,
     onStairDescend: floor1Callbacks ? confirmFloor1StairDescend : confirmFloor2StairDescend,
+    onFloor1Cleared: floor1Callbacks
+      ? () => {
+          const url = new URL(window.location.href);
+          url.searchParams.set('floor', 'floor2');
+          url.searchParams.delete('seed');
+          window.location.replace(url.toString());
+        }
+      : undefined,
     selectSpellFromBossBattle: (world: GameWorld, playerEid: number, spellId: string) => {
       selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
     },
