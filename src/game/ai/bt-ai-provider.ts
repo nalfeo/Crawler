@@ -7659,6 +7659,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    * KITE_BACK_THREAT_RADIUS_FT AND is positioned behind or to the side of the
    * player relative to the primary target direction. Used to decide whether to
    * use full lateral orbit (back-threat dodge) or a mostly-radial advance/retreat.
+   *
+   * Filters out dead (HP<=0) entities for the same reason as {@link
+   * findNearestOtherEnemyDistance} / {@link computeOtherThreatEscapePush} — a
+   * lingering corpse (see `DeathTimer` / `deathTimerSystem.ts`) sitting behind
+   * the player is not a threat and should not force full-lateral-orbit mode.
    */
   private hasThreatFromBehind(
     world: GameWorld,
@@ -7673,8 +7678,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     const fwdNx = fwdX / fwdLen;
     const fwdNy = fwdY / fwdLen;
 
-    for (const eid of query(world.ecs, [Enemy, Position])) {
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === primaryTarget.eid) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -7766,13 +7773,23 @@ export class BehaviorTreeAI implements AIInputProvider {
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
-      const dx = playerX - ex;
-      const dy = playerY - ey;
-      const dist = Math.hypot(dx, dy);
+      let dx = playerX - ex;
+      let dy = playerY - ey;
+      let dist = Math.hypot(dx, dy);
       if (dist > radiusFt) continue;
       const breach = spacedOrbit - dist;
       if (breach <= 0) continue;
-      const invLen = dist < 0.125 ? 0 : 1 / dist;
+      if (dist < 0.125) {
+        // Enemy is on top of us — same arbitrary outward axis the primary
+        // target's dead-zone uses (see computeRangedKiteTarget), so a
+        // coincident secondary threat still contributes a directional push
+        // instead of silently vanishing at the exact moment it has breached
+        // the ring the most.
+        dx = 0.125;
+        dy = 0;
+        dist = 0.125;
+      }
+      const invLen = 1 / dist;
       pushX += dx * invLen * breach;
       pushY += dy * invLen * breach;
     }
