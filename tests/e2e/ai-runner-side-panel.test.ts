@@ -116,10 +116,39 @@ describe('AI Runner expert side panel', () => {
     await expect.poll(() => page.locator('#ai-speed-4').getAttribute('aria-pressed')).toBe('true');
     await page.locator('#ai-manual-toggle').click();
     await expect.poll(() => page.locator('#ai-manual-toggle').textContent()).toBe('◆ Return AI');
+
+    // Open Run Setup disclosure to expose the staged seed/target inputs before restarting
+    await page.locator('#ai-run-setup').evaluate((el) => {
+      (el as HTMLDetailsElement).open = true;
+    });
+
+    // Record the initially applied seed and stage a clearly different value
+    const initialAppliedSeed = await page.locator('#ai-seed-input').inputValue();
+    const stagedSeed = String(parseInt(initialAppliedSeed, 10) + 9999);
+    await page.locator('#ai-seed-input').fill(stagedSeed);
+
+    // Stage a different run target (scenario vs. the applied floor:floor1)
+    await page.locator('#ai-run-target-select').selectOption('scenario:spawner-sealable-room');
+
+    // Restart replays the currently applied run — staged values must not be consumed
     await page.locator('#ai-restart-current').click();
     await expect
       .poll(() => page.locator('#ai-run-settings-note').textContent())
       .toContain('Restarted the currently applied run.');
+
+    // Staged seed must remain in the input (not reverted to the originally applied seed)
+    await expect.poll(() => page.locator('#ai-seed-input').inputValue()).toBe(stagedSeed);
+
+    // Staged run target must remain selected (not cleared back to the applied floor:floor1)
+    await expect
+      .poll(() => page.locator('#ai-run-target-select').inputValue())
+      .toBe('scenario:spawner-sealable-room');
+
+    // Debug snapshot must reflect the originally applied scenario (floor1-default),
+    // confirming the restart did not silently apply the staged scenario target
+    await expect
+      .poll(() => page.evaluate(() => window.__aiRunnerDebug?.()?.scenarioPreset ?? null))
+      .toBe('floor1-default');
 
     await page.locator('.runner-content details').evaluateAll((details) => {
       for (const detail of details) {

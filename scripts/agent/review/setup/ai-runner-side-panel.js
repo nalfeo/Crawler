@@ -60,7 +60,7 @@
   const required = [
     ['take-control', '#ai-manual-toggle', 'primary-actions'],
     ['pause-resume', '#ai-toggle-run', 'primary-actions'],
-    ['restart', '#ai-restart-current, #ai-run-apply', 'primary-actions'],
+    ['restart', '#ai-restart-current', 'primary-actions'],
     ['speed-1x', '#ai-speed-1', 'speed-presets'],
     ['speed-4x', '#ai-speed-4', 'speed-presets'],
     ['speed-16x', '#ai-speed-16', 'speed-presets'],
