@@ -8,16 +8,23 @@
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.4",
-      "concerns_count": 3,
-      "resolved_count": 3,
+      "concerns_count": 7,
+      "resolved_count": 7,
       "plan_divergence": "minor",
-      "notes": "1) Removed the workflow-level maintainer-only gate so the script is the single eligibility source. 2) Added a dedicated merge-train-recovery-pending retry label: indeterminate evidence reads set it before clearing merge-train; later reconciliation queries both labels. Terminal stale closures clear queue/retry labels without fabricating landed metadata. 3) Provable recovery posts the truthful comment, clears merge-train first, then secondary blocked/retry labels."
+      "notes": "Two plan reviews covered the holistic branch. Initial automation-ownership review resolved workflow eligibility drift, durable closed-PR recovery retry state, and cleanup ordering. Review-lifecycle extension resolved four concerns: submitted terminal Copilot reviews count when either body or an inline review comment is substantive; DISMISSED/PENDING reviews do not count; review history paginates independently and fails closed; missing review is an admission wait rather than a recovery blocker. Fresh synchronize changed-files reads use bounded retry before leaving a draft unpublished."
     },
     "code_review": {
       "clean": true,
       "rounds": [
         {
           "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
           "models": ["claude-sonnet-4.6"],
           "concerns_count": 0,
           "resolved_count": 0,

@@ -57,13 +57,33 @@ function shepherdStateComment(id = 777) {
 /**
  * GraphQL response body for listReviewThreads (no threads, no assignees).
  */
-function gqlNoThreads() {
+function substantiveCopilotReview(overrides = {}) {
+  return {
+    id: 'REVIEW_copilot',
+    body: 'Reviewed the pull request and found no blocking issues.',
+    state: 'COMMENTED',
+    submittedAt: '2026-07-16T00:00:00Z',
+    author: { login: 'copilot-pull-request-reviewer' },
+    comments: { nodes: [] },
+    ...overrides,
+  };
+}
+
+function reviewConnection(nodes = [substantiveCopilotReview()]) {
+  return {
+    pageInfo: { hasNextPage: false, endCursor: null },
+    nodes,
+  };
+}
+
+function gqlNoThreads(reviews = [substantiveCopilotReview()]) {
   return {
     data: {
       repository: {
         pullRequest: {
           id: 'PR_test_id',
           assignees: { nodes: [] },
+          reviews: reviewConnection(reviews),
           reviewThreads: {
             pageInfo: { hasNextPage: false, endCursor: null },
             nodes: [],
@@ -523,6 +543,55 @@ test('train mode persists a converged state comment before queuing a clean PR wi
   assert.ok(
     commentPostIndex < queueLabelIndex,
     'the state comment must be persisted before the queue label is attached',
+  );
+});
+
+test('train mode waits when Copilot produced only a no-files review', async (t) => {
+  const noFilesReview = substantiveCopilotReview({
+    body: "Copilot wasn't able to review any files in this pull request.",
+  });
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads([noFilesReview]) }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'success',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /admission=substantive-copilot-review/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+    ),
+    false,
+    'a no-files review must not admit the PR to the merge train',
   );
 });
 
@@ -1335,6 +1404,7 @@ function gqlCopilotAssigned() {
           assignees: {
             nodes: [{ id: 'U_copilot', login: 'copilot' }],
           },
+          reviews: reviewConnection(),
           reviewThreads: {
             pageInfo: { hasNextPage: false, endCursor: null },
             nodes: [],
@@ -1345,13 +1415,14 @@ function gqlCopilotAssigned() {
   };
 }
 
-function gqlReviewThreads(threads) {
+function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   return {
     data: {
       repository: {
         pullRequest: {
           id: 'PR_test_id',
           assignees: { nodes: [] },
+          reviews: reviewConnection(reviews),
           reviewThreads: {
             pageInfo: { hasNextPage: false, endCursor: null },
             nodes: threads,

@@ -15,7 +15,11 @@ for the architectural rationale.
 ## How it works
 
 1. CI recovery works the six oldest non-ready PRs and adds `merge-train` after
-   the PR head's admission checks pass and all review threads resolve.
+   the PR head's admission checks pass, all review threads resolve, and the PR
+   has at least one substantive Copilot code review in its history. Blank and
+   explicit no-files review responses do not count. This admission proof is not
+   tied to the current head; significant-change re-review policy is enforced
+   separately to avoid review churn for trivial updates.
    Once labeled, CI recovery and broad auto-rebase both leave the PR unchanged;
    the train exclusively owns freshness and promotion.
 2. `.github/workflows/merge-train.yml` serializes reconciliation with
