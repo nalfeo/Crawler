@@ -15,9 +15,8 @@
  * Output
  * ------
  * A per-weapon summary table (win rate, mean game time, mean level, kills)
- * and a raw JSON file written to --out (default: /tmp/weapon-sweep.json).
+ * and a raw JSON file written under artifacts/weapon-sweeps by default.
  */
-import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { scoreRun, type ScoreBreakdown } from '../../../src/game/ai/scoring.js';
@@ -26,6 +25,7 @@ import {
   type WeaponSweepRecord as RunRecord,
   type WeaponSweepSummary as WeaponSummary,
 } from './weapon-sweep-results.js';
+import { writeWeaponSweepOutput } from './weapon-sweep-output.js';
 
 // ---------------------------------------------------------------------------
 // CLI arg parsing
@@ -35,7 +35,7 @@ interface CLIArgs {
   seeds: number[];
   weapons: string[];
   maxFrames: number;
-  out: string;
+  out?: string;
   weaponPersonas: boolean;
 }
 
@@ -48,7 +48,6 @@ function parseArgs(): CLIArgs {
     seeds: [2, 4, 7],
     weapons: DEFAULT_FLOOR1_WEAPONS,
     maxFrames: 19_800, // ~330 s at 60 fps — same budget as the hill-climb baseline
-    out: '/tmp/weapon-sweep.json',
     weaponPersonas: false,
   };
 
@@ -64,7 +63,7 @@ function parseArgs(): CLIArgs {
     } else if (arg === '--max-frames' && next) {
       args.maxFrames = parseInt(next, 10);
       i++;
-    } else if (arg === '--out' && next) {
+    } else if ((arg === '--out' || arg === '--output') && next) {
       args.out = next;
       i++;
     } else if (arg === '--weapon-personas') {
@@ -202,8 +201,10 @@ async function sweep(args: CLIArgs): Promise<void> {
   // ---------------------------------------------------------------------------
   // Write JSON output
   // ---------------------------------------------------------------------------
+  const outputRunAt = new Date().toISOString();
   const output = {
-    runAt: new Date().toISOString(),
+    runAt: outputRunAt,
+    floors: [1],
     seeds: args.seeds,
     weapons: args.weapons,
     maxFrames: args.maxFrames,
@@ -212,8 +213,8 @@ async function sweep(args: CLIArgs): Promise<void> {
     summaries,
     allRecords,
   };
-  writeFileSync(args.out, JSON.stringify(output, null, 2));
-  console.log(`\n💾 Raw data written to: ${args.out}`);
+  const outputPath = writeWeaponSweepOutput(output, args.out);
+  console.log(`\n💾 Raw data written to: ${outputPath}`);
 }
 
 // ---------------------------------------------------------------------------

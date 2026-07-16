@@ -54,7 +54,7 @@ export function renderHtml(instanceId) {
     }
     .controls {
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) auto;
+      grid-template-columns: minmax(120px, .35fr) minmax(220px, 1fr) auto;
       gap: 8px;
       margin-bottom: 12px;
       padding: 10px;
@@ -110,6 +110,7 @@ export function renderHtml(instanceId) {
       border: 1px solid var(--border-color-default, #30363d);
       border-radius: 5px;
       background: var(--subtle);
+      white-space: pre-wrap;
     }
     .message.error { border-color: var(--loss); color: var(--loss); }
     .message.warning { border-color: var(--timeout); color: var(--timeout); }
@@ -216,6 +217,10 @@ export function renderHtml(instanceId) {
     </div>
   </header>
   <div class="controls">
+    <select id="source-select" aria-label="Sweep result source">
+      <option value="cloud">Cloud runs</option>
+      <option value="local">Local session</option>
+    </select>
     <select id="run-select" aria-label="Cloud weapon-sweep run">
       <option>Loading cloud runs…</option>
     </select>
@@ -224,6 +229,7 @@ export function renderHtml(instanceId) {
   <div id="status" class="status-row"></div>
   <div id="connection-error" class="message error" hidden></div>
   <div id="error" class="message error" hidden></div>
+  <div id="local-errors" class="message error" hidden></div>
   <div id="warning" class="message warning" hidden></div>
   <main id="content"></main>
 
@@ -253,17 +259,39 @@ export function renderHtml(instanceId) {
     return '#' + run.id + ' · ' + created + ' · ' + (run.headBranch || 'detached') + ' · ' + result;
   }
 
+  function localRunLabel(run) {
+    const created = run.runAt ? new Date(run.runAt).toLocaleString() : 'unknown time';
+    const floors = Array.isArray(run.floors) ? run.floors.join(', ') : 'Unknown';
+    return created + ' · Floors ' + floors + ' · ' + run.name;
+  }
+
   function renderRunSelector(state) {
     const select = document.getElementById('run-select');
-    const runs = state.runs || [];
+    const cloud = state.source === 'cloud';
+    const runs = cloud ? (state.runs || []) : (state.localRuns || []);
+    select.setAttribute('aria-label', cloud ? 'Cloud weapon-sweep run' : 'Local weapon-sweep result');
     if (!runs.length) {
-      select.innerHTML = '<option value="">No cloud weapon-sweep runs found</option>';
+      if (!cloud && state.path) {
+        select.innerHTML = '<option value="' + esc(state.path) + '" selected>Explicit path · ' + esc(state.path) + '</option>';
+        select.disabled = state.refreshing;
+        return;
+      }
+      select.innerHTML = '<option value="">No ' + (cloud ? 'cloud weapon-sweep runs' : 'local session results') + ' found</option>';
       select.disabled = true;
       return;
     }
-    select.innerHTML = runs.map((run) =>
-      '<option value="' + run.id + '"' + (run.id === state.selectedRun?.id ? ' selected' : '') + '>' + esc(runLabel(run)) + '</option>'
-    ).join('');
+    if (cloud) {
+      select.innerHTML = runs.map((run) =>
+        '<option value="' + run.id + '"' + (run.id === state.selectedRun?.id ? ' selected' : '') + '>' + esc(runLabel(run)) + '</option>'
+      ).join('');
+    } else {
+      const explicitOption = state.path && !runs.some((run) => run.path === state.path)
+        ? '<option value="' + esc(state.path) + '" selected>Explicit path · ' + esc(state.path) + '</option>'
+        : '';
+      select.innerHTML = explicitOption + runs.map((run) =>
+        '<option value="' + esc(run.path) + '"' + (run.path === state.selectedLocalPath ? ' selected' : '') + '>' + esc(localRunLabel(run)) + '</option>'
+      ).join('');
+    }
     select.disabled = state.refreshing;
   }
 
@@ -273,14 +301,20 @@ export function renderHtml(instanceId) {
       element.hidden = !message;
       element.textContent = message || '';
     }
+    const localErrors = document.getElementById('local-errors');
+    const invalidResults = state.source === 'local' ? (state.localErrors || []) : [];
+    localErrors.hidden = invalidResults.length === 0;
+    localErrors.textContent = invalidResults.length
+      ? 'Invalid local result files:\\n' + invalidResults.map((entry) => entry.name + ': ' + entry.message).join('\\n')
+      : '';
   }
 
   function renderStatus(state) {
     const status = document.getElementById('status');
     const run = state.selectedRun;
     const pieces = [];
-    pieces.push('<span class="pill">' + esc(state.source === 'cloud' ? 'GitHub Actions' : 'Local file') + '</span>');
-    if (run) {
+    pieces.push('<span class="pill">' + esc(state.source === 'cloud' ? 'GitHub Actions' : 'Local session') + '</span>');
+    if (state.source === 'cloud' && run) {
       const statusClass = run.status === 'completed' ? esc(run.conclusion || 'completed') : 'active';
       pieces.push('<span class="pill ' + statusClass + '">' + esc(run.status === 'completed' ? (run.conclusion || 'completed') : run.status) + '</span>');
       if (state.expectedWeapons?.length) {
@@ -291,6 +325,14 @@ export function renderHtml(instanceId) {
       if (state.polling) pieces.push('<span class="pill active">auto-refresh 30s</span>');
       if (run.url) pieces.push('<a href="' + esc(run.url) + '" target="_blank" rel="noreferrer">Open workflow run</a>');
     }
+    if (state.source === 'local') {
+      const localCount = state.localRuns?.length || 0;
+      pieces.push('<span class="pill">' + localCount + ' discovered local run' + (localCount === 1 ? '' : 's') + '</span>');
+    }
+    if (state.data) {
+      const floors = Array.isArray(state.data.floors) ? state.data.floors.join(', ') : 'Unknown';
+      pieces.push('<span class="pill">Floors: ' + esc(floors) + '</span>');
+    }
     if (state.refreshing) pieces.push('<span class="pill active">refreshing…</span>');
     if (state.lastRefreshedAt) pieces.push('<span>Updated ' + esc(new Date(state.lastRefreshedAt).toLocaleTimeString()) + '</span>');
     status.innerHTML = pieces.join('');
@@ -300,7 +342,7 @@ export function renderHtml(instanceId) {
     const content = document.getElementById('content');
     if (!state.data) {
       const detail = state.source === 'local'
-        ? 'No local sweep data loaded. Use the <code>load_file</code> canvas action with an absolute JSON path.'
+        ? 'No local sweep data loaded from <code>' + esc(state.localDirectory || 'artifacts/weapon-sweeps') + '</code>.'
         : (state.refreshing ? 'Loading cloud sweep results…' : 'No aggregate cloud results are available for this run.');
       content.innerHTML = '<div class="empty-state">' + detail + '</div>';
       return;
@@ -357,10 +399,12 @@ export function renderHtml(instanceId) {
 
   function render(state) {
     currentState = state;
+    document.getElementById('source-select').value = state.source;
+    document.getElementById('source-select').disabled = state.refreshing;
     const meta = document.getElementById('meta');
     meta.textContent = state.source === 'cloud'
       ? (state.repository || 'Unknown repository') + ' · attached branch ' + (state.branch || 'detached')
-      : (state.path || 'No local path');
+      : (state.path || state.localDirectory || 'No local path');
     document.getElementById('reload').disabled = state.refreshing;
     renderRunSelector(state);
     renderMessages(state);
@@ -387,12 +431,34 @@ export function renderHtml(instanceId) {
     }
   });
 
-  document.getElementById('run-select').addEventListener('change', async (event) => {
-    const runId = Number(event.target.value);
-    if (!Number.isSafeInteger(runId)) return;
+  document.getElementById('source-select').addEventListener('change', async (event) => {
     event.target.disabled = true;
     try {
-      render(await request('/api/select-run', { method: 'POST', body: JSON.stringify({ runId }) }));
+      render(await request('/api/select-source', {
+        method: 'POST',
+        body: JSON.stringify({ source: event.target.value }),
+      }));
+    } catch (error) {
+      const element = document.getElementById('connection-error');
+      element.hidden = false;
+      element.textContent = 'Source switch failed: ' + error.message;
+      if (currentState) render(currentState);
+    }
+  });
+
+  document.getElementById('run-select').addEventListener('change', async (event) => {
+    event.target.disabled = true;
+    try {
+      if (currentState?.source === 'local') {
+        render(await request('/api/select-local', {
+          method: 'POST',
+          body: JSON.stringify({ path: event.target.value }),
+        }));
+      } else {
+        const runId = Number(event.target.value);
+        if (!Number.isSafeInteger(runId)) return;
+        render(await request('/api/select-run', { method: 'POST', body: JSON.stringify({ runId }) }));
+      }
     } catch (error) {
       const element = document.getElementById('connection-error');
       element.hidden = false;
