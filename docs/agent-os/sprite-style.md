@@ -96,6 +96,12 @@ Use `--floor 1..20` to set the creative-intensity context. Omitted floors
 default to Floor 1; generated briefs only write `floor:` when the value is above
 the baseline.
 
+GitHub `asset-request` issues expose the same variants through the optional
+**Size** field. An explicit value always wins. When Size is omitted, canonical
+boss requests (a terminal `-boss` asset name, or an explicitly enemy-typed brief
+with a standalone boss/godfather cue) default to `large`; ordinary enemies and
+all other assets remain `default`.
+
 | `--size`  | Width | Height |
 | --------- | ----- | ------ |
 | `default` | 1×    | 1×     |
