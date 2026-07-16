@@ -53,6 +53,8 @@ import {
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   PROJECTILE_DODGE_AOE_BUFFER_FT,
   PROJECTILE_DODGE_CLEARANCE_FT,
+  SAFE_LOOT_ENEMY_CLEARANCE_FT,
+  LOOT_DETOUR_MAX_FT,
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
@@ -2490,6 +2492,195 @@ describe('BehaviorTreeAI', () => {
     // Radial correction pushes the AI away from the enemy (negative X when enemy
     // is at +X), so the target must be to the left of the player's start.
     expect(decision.targetX!).toBeLessThan(0);
+  });
+
+  it('retreats from a second enemy closing from another angle while orbiting the primary ranged target', () => {
+    // Regression for the packed-swarm HP-crash root cause: computeRangedKiteTarget
+    // used to derive its escape motion purely from the nearest enemy's own axis,
+    // so a second enemy closing in from a different angle never bent the kite
+    // path away from it — only the nearest one ever influenced movement. The
+    // nearest enemy (B, at (0, 3)) is the engagement target; a second enemy (A,
+    // at (5, 0)) sits farther away but still inside the standoff ring, at a
+    // right angle to B. A's escape-push contribution is purely along -X (since
+    // A is directly on the +X axis from the player), so it shifts targetX
+    // without touching targetY — isolating the fix from the pre-existing
+    // radial/strafe motion (driven by B) and from hasThreatFromBehind's
+    // dot-product check (which stays false for both scenarios: A sits at 90°
+    // from B's axis, not behind).
+    const baselineWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(baselineWorld, 0, 0);
+    spawnEnemy(baselineWorld, 0, 3, 20);
+    setActiveWeapon(baselineWorld, getWeaponDef('bow')!);
+    const baselineAi = new BehaviorTreeAI({ seed: 7 });
+    baselineAi.poll(createInputState(), baselineWorld);
+    const baseline = baselineAi.getDecision();
+    expect(baseline.reason).toContain('Ranged orbit');
+
+    const multiThreatWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(multiThreatWorld, 0, 0);
+    spawnEnemy(multiThreatWorld, 0, 3, 20);
+    spawnEnemy(multiThreatWorld, 5, 0, 20);
+    setActiveWeapon(multiThreatWorld, getWeaponDef('bow')!);
+    const multiThreatAi = new BehaviorTreeAI({ seed: 7 });
+    multiThreatAi.poll(createInputState(), multiThreatWorld);
+    const withSecondThreat = multiThreatAi.getDecision();
+    expect(withSecondThreat.reason).toContain('Ranged orbit');
+
+    // The second enemy's escape push is purely along -X (before the shared
+    // fixed-length step renormalization couples both axes), so targetY only
+    // shifts a little while targetX shifts clearly negative relative to the
+    // baseline (nearest-only) case.
+    expect(Math.abs(withSecondThreat.targetY! - baseline.targetY!)).toBeLessThan(0.5);
+    expect(withSecondThreat.targetX!).toBeLessThan(baseline.targetX! - 0.5);
+  });
+
+  it('detours for nearby loot mid-kite once every enemy has cleared the safe-loot radius', () => {
+    // Maintainer-requested behavior: "if I have time (enemies pushed far enough
+    // away) and there's enough loot to be worth it, circle around to collect."
+    // No enemies within SAFE_LOOT_ENEMY_CLEARANCE_FT and gold within
+    // LOOT_DETOUR_MAX_FT — the AI must detour toward the gold while still in
+    // AIState.ENGAGE (no BT state-machine change) rather than orbit-kiting.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    // Primary target sits beyond SAFE_LOOT_ENEMY_CLEARANCE_FT (so the "no nearby
+    // threat" gate is satisfied) but still within the bow's ~44ft engage radius
+    // (so ENGAGE stays active and planRangedEngagement's "closing" phase, where
+    // the detour check now lives, actually runs instead of falling to Collect).
+    const farFt = SAFE_LOOT_ENEMY_CLEARANCE_FT + 8;
+    spawnEnemy(world, farFt, 0, 20);
+    spawnGold(world, 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.reason).toContain('Detouring for');
+    expect(decision.reason).toContain('loot mid-kite');
+    expect(decision.targetX!).toBeCloseTo(5, 0);
+    expect(decision.targetY!).toBeCloseTo(0, 0);
+  });
+
+  it('does not detour for loot while a secondary (flanking) enemy is within the safe-loot clearance radius', () => {
+    // The loot detour fires when the ACTIVE target is in the closing phase and
+    // no OTHER (secondary) enemy is nearby. This test verifies that a secondary
+    // threat within SAFE_LOOT_ENEMY_CLEARANCE_FT correctly blocks the detour
+    // even though the active target itself is in the closing phase.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    // Nearest enemy becomes the active target (15ft — closing phase for bow,
+    // since contactThreatRadius ~= 9ft). The detour alone would fire, but a
+    // second live enemy within SAFE_LOOT_ENEMY_CLEARANCE_FT (at ~25ft) should
+    // block it.
+    spawnEnemy(world, 15, 0, 20); // active target, closing phase
+    spawnEnemy(world, 0, 25, 20); // secondary flanker — blocks detour
+    spawnGold(world, 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).not.toContain('Detouring for');
+  });
+
+  it('detours for loot mid-kite with a short-range weapon (throwing-knife) during the closing phase', () => {
+    // Regression for the short-range-weapon reachability bug: throwing-knife
+    // has engage radius ~30ft and contactThreatRadius ~9ft. Previously the
+    // detour was unreachable because the all-enemy clearance scan (30ft) always
+    // found the active target itself (also ≤30ft by definition). With the fix,
+    // only OTHER enemies are scanned; the active target's distance is checked
+    // separately against contactThreatRadius (~9ft), so a TK user at 15ft
+    // (closing phase: 15 > 9) with no secondary enemies in range can detour.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    // TK engage radius = max(19, 30) = 30ft; contactThreatRadius ~= 9ft.
+    // At 15ft the enemy is in the closing phase (15 > 9) — previously blocked.
+    spawnEnemy(world, 15, 0, 20);
+    spawnGold(world, 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('throwing-knife')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.reason).toContain('Detouring for');
+    expect(decision.reason).toContain('loot mid-kite');
+    expect(decision.targetX!).toBeCloseTo(5, 0);
+    expect(decision.targetY!).toBeCloseTo(0, 0);
+  });
+
+  it('does not detour for loot farther away than LOOT_DETOUR_MAX_FT even when safe', () => {
+    // No enemy nearby (clear), but the gold sits beyond LOOT_DETOUR_MAX_FT — the
+    // detour must stay bounded and not wander toward it mid-kite.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    const farFt = SAFE_LOOT_ENEMY_CLEARANCE_FT + 8;
+    spawnEnemy(world, farFt, 0, 20);
+    spawnGold(world, LOOT_DETOUR_MAX_FT + 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).not.toContain('Detouring for');
+  });
+
+  it('does not let a dead (lingering-corpse) enemy block the safe-loot detour', () => {
+    // Regression: findNearestOtherEnemyDistance/computeOtherThreatEscapePush must
+    // exclude dead (HP<=0) entities. A killed enemy lingers in the ECS with its
+    // Enemy+Position intact for its DeathTimer duration (see deathTimerSystem.ts),
+    // sitting at the exact spot it just dropped loot. Without a health filter, that
+    // corpse would count as "a nearby threat" and permanently block the detour for
+    // the very drop the AI just earned.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    const farFt = SAFE_LOOT_ENEMY_CLEARANCE_FT + 8;
+    spawnEnemy(world, farFt, 0, 20);
+    // A corpse (hp=0) sitting right next to the gold, well inside
+    // SAFE_LOOT_ENEMY_CLEARANCE_FT — must NOT block the detour.
+    spawnEnemy(world, 5, 0.5, 0);
+    spawnGold(world, 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).toContain('Detouring for');
+  });
+
+  it('does not let a dead (lingering-corpse) enemy bend the multi-threat kiting escape push', () => {
+    // Same corpse-exclusion fix, but for computeOtherThreatEscapePush: a dead
+    // second enemy inside the standoff ring must contribute zero escape push,
+    // so the decision should match the single-live-enemy baseline exactly.
+    const baselineWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(baselineWorld, 0, 0);
+    spawnEnemy(baselineWorld, 0, 3, 20);
+    setActiveWeapon(baselineWorld, getWeaponDef('bow')!);
+    const baselineAi = new BehaviorTreeAI({ seed: 7 });
+    baselineAi.poll(createInputState(), baselineWorld);
+    const baseline = baselineAi.getDecision();
+    expect(baseline.reason).toContain('Ranged orbit');
+
+    const corpseWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(corpseWorld, 0, 0);
+    spawnEnemy(corpseWorld, 0, 3, 20);
+    // Dead (hp=0) "enemy" at the same spot the live second threat used in the
+    // sibling multi-threat test (5,0) — well inside the standoff ring — must be
+    // fully ignored by the escape-push scan.
+    spawnEnemy(corpseWorld, 5, 0, 0);
+    setActiveWeapon(corpseWorld, getWeaponDef('bow')!);
+    const corpseAi = new BehaviorTreeAI({ seed: 7 });
+    corpseAi.poll(createInputState(), corpseWorld);
+    const withCorpse = corpseAi.getDecision();
+    expect(withCorpse.reason).toContain('Ranged orbit');
+
+    expect(withCorpse.targetX!).toBeCloseTo(baseline.targetX!, 5);
+    expect(withCorpse.targetY!).toBeCloseTo(baseline.targetY!, 5);
   });
 
   it('preempts a farther quest target with a nearby threat while keeping the quest eid', () => {

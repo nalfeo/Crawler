@@ -135,6 +135,9 @@ import {
   KITE_RADIAL_STEP_FT,
   KITE_STRAFE_FT,
   KITE_BACK_THREAT_RADIUS_FT,
+  RANGED_MULTI_THREAT_SCAN_FT,
+  SAFE_LOOT_ENEMY_CLEARANCE_FT,
+  LOOT_DETOUR_MAX_FT,
   KITE_FLIP_FRAMES,
   NAVIGATION_LOOKAHEAD_FT,
   MOVE_SMOOTH_FACTOR,
@@ -7833,6 +7836,13 @@ export class BehaviorTreeAI implements AIInputProvider {
    * KITE_BACK_THREAT_RADIUS_FT AND is positioned behind or to the side of the
    * player relative to the primary target direction. Used to decide whether to
    * use full lateral orbit (back-threat dodge) or a mostly-radial advance/retreat.
+   *
+   * Filters out dead (HP<=0) entities and combat-ineligible enemies (e.g.
+   * dormant Floor 2 bosses) for the same reason as {@link
+   * findNearestOtherEnemyDistance} / {@link computeOtherThreatEscapePush} — a
+   * lingering corpse (see `DeathTimer` / `deathTimerSystem.ts`) or a not-yet-
+   * active boss sitting behind the player is not a threat and should not force
+   * full-lateral-orbit mode.
    */
   private hasThreatFromBehind(
     world: GameWorld,
@@ -7847,8 +7857,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     const fwdNx = fwdX / fwdLen;
     const fwdNy = fwdY / fwdLen;
 
-    for (const eid of query(world.ecs, [Enemy, Position])) {
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === primaryTarget.eid) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -7861,6 +7874,115 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (dot < 0) return true;
     }
     return false;
+  }
+
+  /**
+   * Distance (ft) to the nearest perceived, LIVING enemy within `radiusFt`,
+   * optionally excluding `excludeEid` (e.g. the current engagement target),
+   * or `null` if none. Used by the safe-loot detour ({@link
+   * maybeDetourForLoot}) as a simple "is anything nearby at all" safety gate
+   * — magnitude only, no direction needed there. For the ranged-kiting
+   * escape vector itself, see {@link computeOtherThreatEscapePush}, which
+   * needs each threat's position, not just the nearest distance.
+   *
+   * Filters out dead (HP<=0) entities and combat-ineligible enemies (e.g.
+   * dormant Floor 2 bosses): a killed enemy lingers in the ECS with its
+   * `Enemy`+`Position` components intact for the duration of its `DeathTimer`
+   * (knockback/death-animation delay — see `deathTimerSystem.ts`), sitting at
+   * the exact spot it just dropped loot. Without this filter, that corpse
+   * (or a not-yet-active boss) would incorrectly count as a nearby threat and
+   * permanently block the loot detour for the very drop the AI just earned.
+   */
+  private findNearestOtherEnemyDistance(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    radiusFt: number,
+    excludeEid?: number,
+  ): number | null {
+    let nearest: number | null = null;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (excludeEid !== undefined && eid === excludeEid) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      const dist = Math.hypot(ex - playerX, ey - playerY);
+      if (dist > radiusFt) continue;
+      if (nearest === null || dist < nearest) {
+        nearest = dist;
+      }
+    }
+    return nearest;
+  }
+
+  /**
+   * Accumulates an escape-push vector (raw ft, not unit length) away from
+   * every perceived, LIVING enemy other than `excludeEid` that has breached
+   * the `spacedOrbit` standoff ring, within `radiusFt`. `target` (the
+   * globally nearest enemy — see {@link buildEngageBehavior}) is always
+   * excluded here because its contribution is already handled by the primary
+   * radial/strafe step; this only adds the DIRECTIONAL correction for other
+   * threats a plain nearest-distance comparison could never see (since no
+   * other enemy can be closer than the one already chosen as target). Each
+   * contributing enemy pushes away from itself with a magnitude proportional
+   * to how far it has breached the ring (`spacedOrbit - dist`), and the
+   * summed vector is clamped to KITE_RADIAL_STEP_FT so a large swarm can't
+   * overwhelm the primary target's own orbit/strafe motion.
+   *
+   * Filters out dead (HP<=0) entities and combat-ineligible enemies (e.g.
+   * dormant Floor 2 bosses) for the same reason as {@link
+   * findNearestOtherEnemyDistance} — a lingering corpse (see `DeathTimer` /
+   * `deathTimerSystem.ts`) or a not-yet-active boss is not an active threat
+   * and should not bend the kite path.
+   */
+  private computeOtherThreatEscapePush(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    radiusFt: number,
+    spacedOrbit: number,
+    excludeEid: number,
+  ): { x: number; y: number } {
+    let pushX = 0;
+    let pushY = 0;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === excludeEid) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      let dx = playerX - ex;
+      let dy = playerY - ey;
+      let dist = Math.hypot(dx, dy);
+      if (dist > radiusFt) continue;
+      const breach = spacedOrbit - dist;
+      if (breach <= 0) continue;
+      if (dist < 0.125) {
+        // Enemy is on top of us — same arbitrary outward axis the primary
+        // target's dead-zone uses (see computeRangedKiteTarget), so a
+        // coincident secondary threat still contributes a directional push
+        // instead of silently vanishing at the exact moment it has breached
+        // the ring the most.
+        dx = 0.125;
+        dy = 0;
+        dist = 0.125;
+      }
+      const invLen = 1 / dist;
+      pushX += dx * invLen * breach;
+      pushY += dy * invLen * breach;
+    }
+    const pushLen = Math.hypot(pushX, pushY);
+    if (pushLen > KITE_RADIAL_STEP_FT) {
+      const scale = KITE_RADIAL_STEP_FT / pushLen;
+      pushX *= scale;
+      pushY *= scale;
+    }
+    return { x: pushX, y: pushY };
   }
 
   /**
@@ -8201,6 +8323,24 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
 
+    // Safe loot detour: fires only when activeTarget is in the "closing"
+    // phase (beyond contactThreatRadius — not yet in orbit), AND no OTHER
+    // perceived threat is within SAFE_LOOT_ENEMY_CLEARANCE_FT. Passing
+    // activeTarget separately from the OTHER-enemies scan means short-range
+    // projectile weapons (e.g. throwing-knife, contactThreatRadius ~9ft,
+    // engage radius ~30ft) have a valid window: enemy at 10-30ft qualifies
+    // as "closing-phase clear" even though they're within engage range.
+    const lootDetour = this.maybeDetourForLoot(
+      world,
+      playerX,
+      playerY,
+      activeTarget,
+      contactThreatRadius,
+    );
+    if (lootDetour) {
+      return lootDetour;
+    }
+
     if (activeTarget.distance > contactThreatRadius) {
       // Too far to orbit: navigate toward a point at the desired standoff distance
       // from the enemy so A* can plan the full route.
@@ -8214,10 +8354,59 @@ export class BehaviorTreeAI implements AIInputProvider {
       };
     }
 
-    // At or inside the standoff band: orbit laterally while the radial correction
-    // keeps the distance near desiredOrbit (pushing away if too close, nudging in
-    // if slightly too far).
+    // At or inside the standoff band: fall back to the orbit-kite step. The
+    // radial correction keeps the distance near desiredOrbit while orbiting
+    // (pushing away if too close, nudging in if slightly too far).
     return this.computeRangedKiteTarget(world, playerX, playerY, activeTarget, desiredOrbit);
+  }
+
+  /**
+   * Opportunistic "safe loot detour" for ranged kiting. Only fires when the
+   * maintainer's stated condition holds:
+   * 1. `activeTarget` is in the **closing** phase (distance > `contactThreatRadius`) —
+   *    once orbiting, it's too close to safely break off.
+   * 2. No OTHER perceived, living enemy is within {@link SAFE_LOOT_ENEMY_CLEARANCE_FT}.
+   * 3. Loot exists within {@link LOOT_DETOUR_MAX_FT}.
+   *
+   * Splitting the active-target check from the secondary-scan lets short-range
+   * projectile weapons (e.g. throwing-knife, engage radius ~30 ft, orbit ~6 ft)
+   * reach the loot branch during their closing phase (enemy 10–30 ft away, no
+   * flankers) — previously unreachable because the all-enemy 30 ft scan always
+   * found the active target itself. Deliberately returns a plain movement target
+   * rather than switching `AIState` to COLLECT — normal orbit-kiting resumes the
+   * instant this returns null again (loot collected, or a threat re-closes).
+   */
+  private maybeDetourForLoot(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    activeTarget: WorldTarget,
+    contactThreatRadius: number,
+  ): { targetX: number; targetY: number; reason: string } | null {
+    // Active target must be in the closing phase (not yet in orbit range).
+    if (activeTarget.distance <= contactThreatRadius) {
+      return null;
+    }
+    // No OTHER living enemy may be within the clearance radius.
+    const nearestOtherThreatDist = this.findNearestOtherEnemyDistance(
+      world,
+      playerX,
+      playerY,
+      SAFE_LOOT_ENEMY_CLEARANCE_FT,
+      activeTarget.eid,
+    );
+    if (nearestOtherThreatDist !== null) {
+      return null;
+    }
+    const loot = this.findNearestLoot(world, playerX, playerY);
+    if (!loot || loot.distance > LOOT_DETOUR_MAX_FT) {
+      return null;
+    }
+    return {
+      targetX: loot.x,
+      targetY: loot.y,
+      reason: `Detouring for ${loot.kind} loot mid-kite (${loot.distance.toFixed(1)}ft, active threat ${activeTarget.distance.toFixed(1)}ft away, no flanker within ${SAFE_LOOT_ENEMY_CLEARANCE_FT.toFixed(0)}ft)`,
+    };
   }
 
   /**
@@ -8225,7 +8414,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    * retreat when enemy pushes in) with a small lateral juke, using the same
    * orbit-sign flip infrastructure as melee kiting. Full lateral orbit activates
    * when an enemy is approaching from behind. The radial correction component
-   * automatically retreats when the enemy closes in.
+   * automatically retreats when `target` closes in — and, via
+   * {@link computeOtherThreatEscapePush}, the escape vector is also bent away
+   * from any OTHER nearby enemy that has breached the standoff ring, not just
+   * `target`, so a packed swarm can't land free contact-range hits from an
+   * angle the AI isn't currently retreating toward.
    */
   private computeRangedKiteTarget(
     world: GameWorld,
@@ -8268,6 +8461,27 @@ export class BehaviorTreeAI implements AIInputProvider {
       Math.min(KITE_RADIAL_STEP_FT, spacedOrbit - dist),
     );
 
+    // Multi-threat radial defense: `target` is always whichever enemy is
+    // globally nearest (recomputed fresh every poll — see buildEngageBehavior),
+    // so a plain min-distance comparison against other enemies can never fire
+    // (no other enemy can be closer than the one already chosen as nearest).
+    // The real gap is DIRECTIONAL: retreating straight away from `target`'s
+    // axis can walk the player straight into a second/third enemy closing in
+    // from a different angle in a packed swarm, since that enemy's position
+    // never contributes to the escape vector at all. Fix: accumulate an
+    // explicit escape push away from every OTHER perceived enemy that has
+    // breached the standoff ring, and add it to the primary radial/strafe step
+    // below — so closing threats from any angle bend the kite path away from
+    // them, not just from the nominal target.
+    const otherThreatPush = this.computeOtherThreatEscapePush(
+      world,
+      playerX,
+      playerY,
+      RANGED_MULTI_THREAT_SCAN_FT,
+      spacedOrbit,
+      target.eid,
+    );
+
     // Prefer radial (forward/backward) motion; orbit fully only when flanked.
     const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
     const strafeFt = backThreat ? KITE_STEP_FT : KITE_STRAFE_FT;
@@ -8275,8 +8489,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * strafeFt;
-      let sy = uy * radialMag + ty * strafeFt;
+      let sx = ux * radialMag + tx * strafeFt + otherThreatPush.x;
+      let sy = uy * radialMag + ty * strafeFt + otherThreatPush.y;
       const slen = Math.hypot(sx, sy) || 1;
       sx = (sx / slen) * KITE_STEP_FT;
       sy = (sy / slen) * KITE_STEP_FT;
