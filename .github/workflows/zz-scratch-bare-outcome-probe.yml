@@ -1,0 +1,21 @@
+name: ZZ Scratch Bare Outcome Condition Probe
+
+on:
+  push:
+    branches: [nalfeo-merge-train-wakeup-gaps]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Failing step
+        id: fail_step
+        run: exit 1
+
+      - name: Bare outcome check (no success/failure/always wrapper)
+        if: steps.fail_step.outcome == 'failure'
+        run: echo "bare-outcome step ran"
+
+      - name: Explicit failure() plus outcome check
+        if: failure() && steps.fail_step.outcome == 'failure'
+        run: echo "failure()-guarded step ran"
