@@ -94,11 +94,13 @@ main.
 
 - `.github/workflows/merge-train-validate.yml` — added `if: always()` to the
   "Wake merge-train reconciliation" step, plus a new "Generate recovery app
-  token" step (`if: failure()`) and "Mark candidate check retryable if
-  publishing failed" step (`if: failure()`, uses the independently-minted
+  token" step and "Mark candidate check retryable if publishing failed" step
+  (both gated on `steps.app-token.outcome == 'failure' || steps.publish.outcome
+== 'failure'`, not bare `failure()`; the latter uses the independently-minted
   recovery token) that posts a `cancelled` conclusion for the fingerprinted
   check before the wake dispatches, with bounded retry for transient Checks
-  API failures.
+  API failures. "Publish immutable candidate result" has an explicit `id:
+publish` so the fallback conditions can check its own outcome.
 - `.github/workflows/merge-train.yml` — added the schedule/`MERGE_TRAIN_ENABLED`
   carve-out to the `reconcile` job's `if:` guard, with an explanatory comment
   describing the `mainHealthReason()` race scenario it closes.
@@ -123,7 +125,7 @@ main.
 
 - `npm run typecheck` — clean
 - `npm run lint` — clean
-- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **22/22 passed** (17 + 5)
+- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **24/24 passed** (19 + 5)
 - Both modified workflow YAML files parse cleanly via the `yaml` package (same
   parser the tests use) — confirmed no syntax breakage.
 - `npm run verify:fast` — passed (typecheck + lint + changed unit tests +
@@ -223,3 +225,45 @@ step gets a real, independent chance to post its cancelled conclusion even
 when the original mint failed) rather than accepting it as a residual
 limitation, so the outcome-gating condition was removed in favor of the
 recovery-token wiring.
+
+## Third shepherd-round follow-up (ancestor-job `failure()` correctness bug)
+
+One more `copilot-pull-request-reviewer` finding — the highest-severity of the
+shepherd rounds — was validated and fixed on top of the recovery-token and
+bounded-retry fixes above:
+
+1. **Bare `failure()` also fires on an ancestor job's failure, not just this
+   job's own steps**: both the "Generate recovery app token" and "Mark
+   candidate check retryable if publishing failed" steps were gated on bare
+   `if: failure()`. Per GitHub Actions semantics, step-level `failure()`
+   returns true whenever **any job it `needs:`** fails — not only when a
+   preceding step in the _same_ job fails. The `publish` job has
+   `if: always()` and `needs: [verify]`. So when `verify` fails because of a
+   genuine candidate defect, `publish`'s own steps ("Generate repository app
+   token", "Publish immutable candidate result") both still run and succeed —
+   "Publish immutable candidate result" correctly posts a `failure`
+   conclusion for the fingerprinted check. But because the _ancestor_ `verify`
+   job failed, `failure()` still evaluated `true` for every later step in
+   `publish`, so the two fallback steps fired anyway and **overwrote the
+   correct `failure` conclusion with `cancelled`** — causing `reconcile` to
+   treat a genuinely broken candidate as merely retryable forever instead of
+   bisecting the queue, silently masking real regressions.
+
+   Fixed by giving "Publish immutable candidate result" an explicit
+   `id: publish` and changing both fallback steps' conditions from bare
+   `failure()` to
+   `steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'`
+   — scoped to those two steps' own outcomes rather than the job-wide/ancestor
+   -aggregate `failure()` function. This still fires for a genuine app-token
+   -mint failure or a publish-step failure, but no longer fires merely because
+   an upstream `verify` job failed while this job's own steps succeeded.
+   Updated the large explanatory comment block above these steps to document
+   the pitfall. Added 3 new regression tests: a real-condition-string
+   assertion, an `id: publish` assertion, and a semantic test that evaluates
+   the actual `if:` expression (via the same `new Function()` substitution
+   technique used in `merge-train-workflow-wakeups.test.ts`) against
+   `{app-token: success, publish: success}` (must NOT fire — this is exactly
+   the ancestor-failure scenario) vs. `{app-token: failure}` /
+   `{publish: failure}` (must fire).
+
+Test counts after this round: **24 = 19 + 5** (was 22 = 17 + 5).

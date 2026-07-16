@@ -32,6 +32,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 interface WorkflowStep {
   name?: string;
+  id?: string;
   uses?: string;
   if?: string;
   env?: Record<string, string>;
@@ -251,10 +252,23 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       return step;
     }
 
-    it('exists, runs on failure(), and uses a separately-minted recovery App token', () => {
+    it("exists, is gated on the app-token/publish steps' own outcomes (not the job-wide failure()), and uses a separately-minted recovery App token", () => {
       const doc = loadWorkflow();
       const step = getFallbackStep(doc);
-      expect(step.if).toBe('failure()');
+      // Regression coverage for a real review finding: bare `failure()` at
+      // step level also returns true when an ANCESTOR job (here `verify`, via
+      // `needs:`) fails -- even if every step in *this* job succeeded. A
+      // genuine candidate defect fails `verify`, but "Publish immutable
+      // candidate result" still runs and correctly posts a `failure`
+      // conclusion; under bare `failure()` this fallback would immediately
+      // overwrite that correct `failure` with `cancelled`, making reconcile
+      // retry the same broken candidate forever instead of bisecting it.
+      // Gating on the two step-local `outcome`s means this only fires for a
+      // genuine app-token-mint or publish-step failure, never for an
+      // upstream `verify` failure that publish already handled correctly.
+      expect(step.if).toBe(
+        "steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'",
+      );
       expect(step.uses).toMatch(/^actions\/github-script/);
       // Must NOT reuse steps.app-token.outputs.token: if the ORIGINAL
       // "Generate repository app token" step is what failed, that output is
@@ -265,12 +279,42 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(step.with?.['github-token']).toBe('${{ steps.recovery-app-token.outputs.token }}');
     });
 
-    it('mints the recovery app token from a dedicated step that also runs on failure()', () => {
+    it('gives the publish step an explicit id so later steps can check its own outcome', () => {
+      const doc = loadWorkflow();
+      const steps = doc.jobs.publish?.steps ?? [];
+      const step = steps.find((s) => s.name === 'Publish immutable candidate result');
+      expect(step?.id).toBe('publish');
+    });
+
+    it("does NOT fire when only an ancestor job (verify) failed and this job's own steps succeeded", () => {
+      // Simulates the exact bug the review finding described: verify fails
+      // (genuine candidate defect), but app-token and publish both succeed in
+      // this job (publish already posted the correct `failure` conclusion).
+      const doc = loadWorkflow();
+      const step = getFallbackStep(doc);
+      const condition = step.if ?? '';
+      const evaluate = (appTokenOutcome: string, publishOutcome: string): boolean =>
+        new Function(
+          'steps',
+          `return (${condition.replaceAll('steps.app-token', "steps['app-token']")});`,
+        )({
+          'app-token': { outcome: appTokenOutcome },
+          publish: { outcome: publishOutcome },
+        }) as boolean;
+
+      expect(evaluate('success', 'success')).toBe(false);
+      expect(evaluate('failure', 'skipped')).toBe(true);
+      expect(evaluate('success', 'failure')).toBe(true);
+    });
+
+    it('mints the recovery app token from a dedicated step gated the same way, not bare failure()', () => {
       const doc = loadWorkflow();
       const steps = doc.jobs.publish?.steps ?? [];
       const recoveryTokenStep = steps.find((s) => s.name === 'Generate recovery app token');
       expect(recoveryTokenStep).toBeDefined();
-      expect(recoveryTokenStep?.if).toBe('failure()');
+      expect(recoveryTokenStep?.if).toBe(
+        "steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'",
+      );
       expect(recoveryTokenStep?.uses).toMatch(/^actions\/create-github-app-token/);
       const publishIndex = steps.findIndex((s) => s.name === 'Publish immutable candidate result');
       const recoveryTokenIndex = steps.findIndex((s) => s.name === 'Generate recovery app token');

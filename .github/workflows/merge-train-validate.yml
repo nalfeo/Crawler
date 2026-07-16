@@ -55,6 +55,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Publish immutable candidate result
+        id: publish
         uses: actions/github-script@v7
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
@@ -119,22 +120,31 @@ jobs:
       # trusted App identity -- trainCheckState() filters check runs by
       # `app.id`, so a `GITHUB_TOKEN`-authored check would never be seen. This
       # covers the app-token-mint-failure case too (not just post-mint publish
-      # failures): `if: failure()` still runs this step even though the
-      # original mint step is what failed, so a fresh mint attempt gets a real
-      # chance to succeed. Because of this independent recovery mint, the
-      # retryable-check step below does NOT need to be gated on
-      # `steps.app-token.outcome == 'success'` -- it has its own token
-      # regardless of whether the original mint succeeded.
+      # failures): a fresh mint attempt gets a real chance to succeed.
+      #
+      # Both this step and the retryable-check step below are gated on
+      # `steps.app-token.outcome == 'failure' || steps.publish.outcome ==
+      # 'failure'` -- NOT the bare `failure()` function. `failure()` at step
+      # level also returns true when an ANCESTOR job (`verify`, via `needs:`)
+      # fails, even if every step in THIS job succeeded. A genuine candidate
+      # defect makes `verify` fail, but "Publish immutable candidate result"
+      # still runs and successfully posts the correct `failure` conclusion --
+      # under bare `failure()` this fallback would then immediately overwrite
+      # that correct `failure` with `cancelled`, making reconcile retry the
+      # same broken candidate forever instead of bisecting it. Scoping to the
+      # two step-local `outcome`s (not the job-wide `failure()`) means this
+      # only fires for a genuine app-token-mint or publish-step failure, never
+      # for an upstream `verify` failure that publish already handled.
       - name: Generate recovery app token
         id: recovery-app-token
-        if: failure()
+        if: steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Mark candidate check retryable if publishing failed
-        if: failure()
+        if: steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'
         uses: actions/github-script@v7
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}

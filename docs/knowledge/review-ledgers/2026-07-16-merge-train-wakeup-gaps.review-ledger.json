@@ -41,6 +41,14 @@
           "resolved_count": 0,
           "clean": true,
           "summary": "Round 3: reviewed the bounded retry added to the recovery check publication. Verified exactly three attempts, immediate first attempt, 1-second and 2-second waits, early return on success, final-error propagation after exhaustion, and executable parsed-workflow coverage proving third-attempt success. No significant issues found."
+        },
+        {
+          "round": 4,
+          "models": ["copilot-pull-request-reviewer", "claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round 4: copilot-pull-request-reviewer flagged that bare `if: failure()` on the recovery-app-token and retryable-check fallback steps also evaluates true when an ANCESTOR job (`verify`, via `needs:`) fails, not just when a step in this job (`publish`) fails. Since `publish` has `if: always()` and `needs: [verify]`, a genuine candidate defect (verify fails) still lets `Publish immutable candidate result` run and correctly post a `failure` conclusion -- but the fallback steps would then fire anyway (ancestor failure(), not this job's own failure) and overwrite that correct `failure` with `cancelled`, causing reconcile to retry a genuinely broken candidate forever instead of bisecting it. Fixed by adding `id: publish` to that step and re-scoping both fallback conditions to `steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'` (step-local outcomes, not the job-wide/ancestor-aggregate failure()). Verified via a new semantic test that evaluates the real `if:` expression against simulated step outcomes, proving the ancestor-only-failure case (app-token/publish both success) does not fire while genuine app-token-mint or publish-step failures still do. 3 new regression tests added (24 = 19 + 5 total). No remaining concerns."
         }
       ]
     }
