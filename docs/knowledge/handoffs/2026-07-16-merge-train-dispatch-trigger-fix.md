@@ -146,6 +146,25 @@ external, wall-clock-based watchdog. The retained `schedule` trigger is the
 existing (if currently unreliable) mitigation for this specific edge case; not
 addressed further in this PR.
 
+## Concurrent automation on this branch (informational)
+
+While this session was in progress, the repo's own review-comment-reconciliation
+automation (`copilot-swe-agent[bot]`, per `.github/workflows/ci-recovery.yml`)
+pushed a commit directly to this PR's branch responding to a review thread:
+"fix(ci): recover failed check publication to unblock reconcile immediately". It
+adds a `publish` job fallback step (`if: failure() && steps.app-token.outcome ==
+'success'`) to `merge-train-validate.yml` that force-completes a stale
+`in_progress` `merge-train-candidate` check as `cancelled` if `checks.create`
+itself fails, so `trainCheckState()` returns `'missing'` (immediately retryable)
+instead of `'pending'` (blocking `reconcile` for up to 40 minutes). It shipped
+with its own tests in `tests/unit/merge-train-validate-publish.test.ts`. This
+session rebased cleanly on top of it (`git pull --rebase`) and fixed one
+strict-null typecheck error (`TS2532`) in its new test assertions
+(`calls[0].status` → `expect(calls[0]).toEqual(expect.objectContaining(...))`,
+matching an existing pattern already used elsewhere in the same file). The
+recovery step is complementary to — not overlapping with — the two wake-ups
+this session added, and is included in this PR's final diff.
+
 ## Follow-ups (not blocking, recommended)
 
 - **Live rollout acceptance check** (per plan review): after this PR merges, run
