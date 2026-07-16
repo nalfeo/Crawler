@@ -64,6 +64,8 @@ export interface JudgeCacheKeyInputs {
   readonly referencePngs: ReadonlyArray<Buffer>;
   /** `brief.prompt` — drives the `brief_match` evaluator. */
   readonly briefMatchInstructions: string;
+  /** Dungeon depth changes the expected design-language intensity. */
+  readonly floor: number;
 }
 
 export interface JudgeCacheOptions {
@@ -123,6 +125,8 @@ export class JudgeCache {
     hash.update(inputs.promptTemplateVersion);
     hash.update('\nbrief-prompt:');
     hash.update(inputs.briefMatchInstructions);
+    hash.update('\nfloor:');
+    hash.update(String(inputs.floor));
     hash.update('\nvariant-png:');
     hash.update(inputs.variantPng);
     hash.update('\nreferences:');

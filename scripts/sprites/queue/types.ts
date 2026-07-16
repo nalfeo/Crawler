@@ -41,7 +41,9 @@ export interface IssueAssetRequest extends AssetRequestBase {
   readonly briefSentence: string;
   /** Optional sprite type from the issue contract (weapon/enemy/item/tile/vfx/character). */
   readonly type?: string;
-  /** Stable hash of normalized issue payload (`name + briefSentence`). */
+  /** Optional dungeon floor intensity. Defaults to 1 downstream. */
+  readonly floor?: number;
+  /** Stable hash of normalized issue payload (`name + briefSentence`, plus `floor` when floor > 1). */
   readonly fingerprint: string;
   /** ISO-8601 timestamp when the ingester claimed/enqueued this issue payload. */
   readonly claimedAt: string;
@@ -77,6 +79,12 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
     ) {
       return null;
     }
+    if (
+      'floor' in v &&
+      (typeof v.floor !== 'number' || !Number.isInteger(v.floor) || v.floor < 1 || v.floor > 20)
+    ) {
+      return null;
+    }
     return {
       kind: 'issue-request',
       issueNumber: v.issueNumber,
@@ -86,6 +94,9 @@ export function normalizeAssetRequest(value: unknown): AssetRequest | null {
       v.type.trim() !== '' &&
       (SPRITE_TYPES as readonly string[]).includes(v.type.trim().toLowerCase())
         ? { type: v.type.trim().toLowerCase() }
+        : {}),
+      ...(typeof v.floor === 'number' && Number.isInteger(v.floor) && v.floor >= 1 && v.floor <= 20
+        ? { floor: v.floor }
         : {}),
       fingerprint: v.fingerprint,
       claimedAt: v.claimedAt,

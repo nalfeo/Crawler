@@ -169,6 +169,40 @@ test('train mode schedules only the oldest six non-ready repair candidates', () 
   );
 });
 
+test('train mode keeps directly triggered opt-out PRs in scope for cleanup', () => {
+  const pulls = [
+    {
+      number: 42,
+      state: 'open',
+      draft: false,
+      created_at: '2026-07-01T00:00:00Z',
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [{ name: 'ci-recovery-opt-out' }],
+    },
+    {
+      number: 43,
+      state: 'open',
+      draft: false,
+      created_at: '2026-07-02T00:00:00Z',
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [{ name: 'ci-recovery-opt-out' }],
+    },
+  ];
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: { issue: { number: 42, pull_request: {} } },
+      eventName: 'issue_comment',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [42],
+  );
+});
+
 test('train schedule rechecks owned slots for expiry without widening the window', () => {
   const pulls = Array.from({ length: 7 }, (_, index) => ({
     number: index + 1,

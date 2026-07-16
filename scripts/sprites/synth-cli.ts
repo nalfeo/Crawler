@@ -35,6 +35,7 @@ interface SynthCliArgs {
   readonly candidates: number;
   readonly allowPartial: boolean;
   readonly size: SizeVariant;
+  readonly floor: number;
 }
 
 export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
@@ -43,6 +44,7 @@ export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
   let candidates = 3;
   let allowPartial = false;
   let size: SizeVariant = 'default';
+  let floor = 1;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--type') {
@@ -69,6 +71,13 @@ export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
         );
       }
       candidates = n;
+    } else if (arg === '--floor') {
+      const v = argv[++i];
+      if (!v) throw new Error('--floor requires a value');
+      floor = Number(v);
+      if (!Number.isInteger(floor) || floor < 1 || floor > 20) {
+        throw new Error(`--floor must be an integer in [1, 20], got '${v}'`);
+      }
     } else if (arg === '--allow-partial') {
       allowPartial = true;
     } else if (arg === '--help' || arg === '-h') {
@@ -88,7 +97,7 @@ export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
       'Missing subject name. Usage: sprites:synth <name> [--type ...] [--candidates N]',
     );
   }
-  return { name, type, candidates, allowPartial, size };
+  return { name, type, candidates, allowPartial, size, floor };
 }
 
 function printHelp(): void {
@@ -107,6 +116,7 @@ function printHelp(): void {
       `  --type <type>      One of ${SPRITE_TYPES.join('|')}. Required unless the model is >=0.9 confident.`,
       `  --size <variant>   One of ${SIZE_VARIANTS.join('|')}. Scales the per-type size (wide=2x w, tall=2x h, large=2x both). Default default.`,
       `  --candidates <N>   Number of candidates to generate (${MIN_CANDIDATES}-${MAX_CANDIDATES}). Default 3.`,
+      '  --floor <N>        Dungeon floor intensity (1-20). Default 1.',
       '  --allow-partial    Write the candidates that pass validation instead of aborting when any fail.',
       '  --help, -h         Show this help.',
       '',
@@ -154,6 +164,7 @@ async function main(): Promise<number> {
       candidates: args.candidates,
       partial: args.allowPartial,
       sizeVariant: args.size,
+      floor: args.floor,
       provider,
       repoRoot: process.cwd(),
     });
