@@ -2156,6 +2156,131 @@ describe('BehaviorTreeAI', () => {
     expect(woundedDist).toBeLessThanOrEqual(bat.aoeRadius);
   });
 
+  it('bends the wounded melee kite path away from a second enemy closing from another angle (regression: melee lacked the ranged multi-threat escape push)', () => {
+    // Sibling regression to the ranged "retreats from a second enemy closing
+    // from another angle" test above (`computeOtherThreatEscapePush`). The
+    // ranged-kiting-strategy fix explicitly scoped melee OUT ("Melee kiting is
+    // untouched — ranged-only per scope"), leaving computeMeleeKiteTarget's
+    // radial correction driven purely by distance to the current melee target
+    // (B). A second enemy (A) closing from a different angle — realistic when
+    // arena-lockin's wounded add-priority has switched the melee target to one
+    // add while the boss (or another add) closes from elsewhere — could land
+    // free contact damage the radial correction never saw.
+    //
+    // Gated to the wounded branch only (a real regression run confirmed an
+    // UNCONDITIONAL push measurably hurts healthy melee hit-connection rate —
+    // see this function's doc comment), so the player is wounded here (29%
+    // HP, crossing MELEE_DEFENSIVE_HP_FRACTION=0.4), matching the sibling
+    // "expands to defensive orbit" test's HP setup. B (0,3, dist 3) is the
+    // nearest enemy and becomes the ENGAGE target; A (4,0, dist 4) sits
+    // farther away but still inside the bat's wounded desiredOrbit ring
+    // (5.5ft — real blade reach, per the wounded-orbit test's derivation), at
+    // a right angle to B so its escape-push contribution is purely along -X,
+    // isolating the fix from B's own radial/strafe motion and from
+    // hasThreatFromBehind (A sits at 90° from B's axis, not behind).
+    const bat = getWeaponDef('baseball-bat')!;
+
+    const baselineWorld = createTestWorld({ seed: 7 });
+    const baselinePlayer = spawnPlayer(baselineWorld, 0, 0);
+    baselineWorld.stores.health.current[baselinePlayer] = 29;
+    spawnBehaviorEnemy(baselineWorld, 0, 3, 40, AI_TYPE.CHASE, 5, 25, 5);
+    baselineWorld.elapsedMs = 5000;
+    setActiveWeapon(baselineWorld, bat);
+    const baselineAi = new BehaviorTreeAI({ seed: 7 });
+    baselineAi.poll(createInputState(), baselineWorld);
+    const baseline = baselineAi.getDecision();
+    expect(baseline.reason).toContain('Kiting');
+
+    const multiThreatWorld = createTestWorld({ seed: 7 });
+    const multiThreatPlayer = spawnPlayer(multiThreatWorld, 0, 0);
+    multiThreatWorld.stores.health.current[multiThreatPlayer] = 29;
+    spawnBehaviorEnemy(multiThreatWorld, 0, 3, 40, AI_TYPE.CHASE, 5, 25, 5);
+    spawnBehaviorEnemy(multiThreatWorld, 4, 0, 40, AI_TYPE.CHASE, 5, 25, 5);
+    multiThreatWorld.elapsedMs = 5000;
+    setActiveWeapon(multiThreatWorld, bat);
+    const multiThreatAi = new BehaviorTreeAI({ seed: 7 });
+    multiThreatAi.poll(createInputState(), multiThreatWorld);
+    const withSecondThreat = multiThreatAi.getDecision();
+    expect(withSecondThreat.reason).toContain('Kiting');
+
+    // The second enemy's escape push is purely along -X (before the shared
+    // fixed-length step renormalization couples both axes), so targetY only
+    // shifts a little while targetX shifts clearly negative relative to the
+    // baseline (nearest-only) case.
+    expect(Math.abs(withSecondThreat.targetY! - baseline.targetY!)).toBeLessThan(0.5);
+    expect(withSecondThreat.targetX!).toBeLessThan(baseline.targetX! - 0.3);
+  });
+
+  it('does not apply the multi-threat escape push to melee kiting at healthy HP (regression: an unconditional push hurt healthy hit-connection rate)', () => {
+    // Real regression found during implementation: an always-on escape push
+    // (matching ranged's unconditional wiring) changed healthy melee
+    // positioning enough to flip a real headless victory (seed 12 sword) into
+    // a death in an unrelated later encounter. Confirms the push is fully
+    // inert below MELEE_DEFENSIVE_HP_FRACTION: at full HP, the multi-threat
+    // geometry from the wounded test above must produce the exact same
+    // decision as the single-enemy case.
+    const bat = getWeaponDef('baseball-bat')!;
+
+    const singleWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(singleWorld, 0, 0);
+    spawnBehaviorEnemy(singleWorld, 0, 3, 40, AI_TYPE.CHASE, 5, 25, 5);
+    singleWorld.elapsedMs = 5000;
+    setActiveWeapon(singleWorld, bat);
+    const singleAi = new BehaviorTreeAI({ seed: 7 });
+    singleAi.poll(createInputState(), singleWorld);
+    const single = singleAi.getDecision();
+    expect(single.reason).toContain('Kiting');
+
+    const multiThreatWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(multiThreatWorld, 0, 0);
+    spawnBehaviorEnemy(multiThreatWorld, 0, 3, 40, AI_TYPE.CHASE, 5, 25, 5);
+    spawnBehaviorEnemy(multiThreatWorld, 4, 0, 40, AI_TYPE.CHASE, 5, 25, 5);
+    multiThreatWorld.elapsedMs = 5000;
+    setActiveWeapon(multiThreatWorld, bat);
+    const multiThreatAi = new BehaviorTreeAI({ seed: 7 });
+    multiThreatAi.poll(createInputState(), multiThreatWorld);
+    const withSecondThreat = multiThreatAi.getDecision();
+    expect(withSecondThreat.reason).toContain('Kiting');
+
+    expect(withSecondThreat.targetX!).toBeCloseTo(single.targetX!, 5);
+    expect(withSecondThreat.targetY!).toBeCloseTo(single.targetY!, 5);
+  });
+
+  it('does not let a dead (lingering-corpse) enemy bend the wounded melee multi-threat kiting escape push', () => {
+    // Same corpse-exclusion guarantee as the ranged sibling test: a dead second
+    // enemy inside the standoff ring must contribute zero escape push to melee
+    // kiting, so the decision matches the single-live-enemy baseline exactly.
+    const bat = getWeaponDef('baseball-bat')!;
+
+    const baselineWorld = createTestWorld({ seed: 7 });
+    const baselinePlayer = spawnPlayer(baselineWorld, 0, 0);
+    baselineWorld.stores.health.current[baselinePlayer] = 29;
+    spawnBehaviorEnemy(baselineWorld, 0, 3, 40, AI_TYPE.CHASE, 5, 25, 5);
+    baselineWorld.elapsedMs = 5000;
+    setActiveWeapon(baselineWorld, bat);
+    const baselineAi = new BehaviorTreeAI({ seed: 7 });
+    baselineAi.poll(createInputState(), baselineWorld);
+    const baseline = baselineAi.getDecision();
+    expect(baseline.reason).toContain('Kiting');
+
+    const corpseWorld = createTestWorld({ seed: 7 });
+    const corpsePlayer = spawnPlayer(corpseWorld, 0, 0);
+    corpseWorld.stores.health.current[corpsePlayer] = 29;
+    spawnBehaviorEnemy(corpseWorld, 0, 3, 40, AI_TYPE.CHASE, 5, 25, 5);
+    // Dead (hp=0) "enemy" at the same spot the live second threat used above
+    // (4,0) — well inside the standoff ring — must be fully ignored.
+    spawnBehaviorEnemy(corpseWorld, 4, 0, 0, AI_TYPE.CHASE, 5, 25, 5);
+    corpseWorld.elapsedMs = 5000;
+    setActiveWeapon(corpseWorld, bat);
+    const corpseAi = new BehaviorTreeAI({ seed: 7 });
+    corpseAi.poll(createInputState(), corpseWorld);
+    const withCorpse = corpseAi.getDecision();
+    expect(withCorpse.reason).toContain('Kiting');
+
+    expect(withCorpse.targetX!).toBeCloseTo(baseline.targetX!, 5);
+    expect(withCorpse.targetY!).toBeCloseTo(baseline.targetY!, 5);
+  });
+
   it('does not orbit a ranged enemy outside guaranteed melee hit reach when wounded', () => {
     const sword = getWeaponDef('sword')!;
     const world = createTestWorld({ seed: 7 });

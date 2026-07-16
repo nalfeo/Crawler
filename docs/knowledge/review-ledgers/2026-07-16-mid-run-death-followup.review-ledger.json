@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "mid-run-death-followup",
+  "task_title": "Extend multi-threat kiting escape push to melee + add RETREAT no-progress watchdog",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "adversarial": false,
+      "alternatives_considered": 1,
+      "plan_divergence": "minor",
+      "notes": "Reviewer approved the melee multi-threat escape-push plan with two non-blocking concerns: (1) confirm bat@25's death actually occurs during melee-kiting/ENGAGE rather than closing/lock-in target-selection before assuming the orbit fix is the right lever (resolved via decisionStateCounts evidence: ENGAGE dominant during the death window); (2) treat any deeper ranged RETREAT-thrash-loop investigation as diagnosis-only within the 3-apple budget rather than auto-committing a second implementation (resolved: implementation was scoped to a second, cleanly-precedented decision-logic fix (RETREAT no-progress watchdog, mirroring 4 existing analogous watchdogs) once real evidence — an event-log capture showing zero net displacement while boxed in by a dense swarm — made the root cause concretely localizable; the deeper ranged thrash-loop and the residual baseball-bat@25 death were NOT chased further once evidence pointed at weapon-personas' documented 'intentionally unbalanced' stat allocations rather than a runner bug, per the reviewer's stop condition). Reviewer's alternative considered: pivoting to a melee near-threat preemption / lock-in targeting fix instead of orbit-vector bending, if evidence showed the death occurring during closing/lock-in rather than kiting — not needed, evidence supported the orbit-vector approach."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

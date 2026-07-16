@@ -450,6 +450,23 @@ export const RETREAT_MAX_PATH_VERIFICATIONS = 6;
 // calls to roughly three re-picks per second instead of one per frame.
 export const RETREAT_REPICK_INTERVAL_FRAMES = 18;
 export const RETREAT_REPICK_ARRIVE_FT = 10;
+// Net-displacement watchdog for RETREAT (mirrors EXPLORE_DWELL_ESCAPE_FT /
+// EXPLORE_DWELL_FRAMES's DwellTracker pattern for the identical failure
+// class): pickRetreatTarget's arc scan only proves a candidate tile is
+// A*-reachable IN PRINCIPLE — in a dense swarm (e.g. a packed boss-room add
+// wave) every candidate can fail verification, or the destination itself can
+// be blocked by enemy colliders once picked, so retreat commits to a target
+// the player never actually travels to and stands still taking free damage.
+// Tighter and much shorter than Explore's (3ft / 45 frames vs 8ft / 180
+// frames): a wandering Explore goal can wait; a health-critical retreat
+// cannot — every frame stuck here is frames of unavoidable chip damage.
+export const RETREAT_DWELL_ESCAPE_FT = 3;
+export const RETREAT_DWELL_FRAMES = 45;
+// Once the dwell watchdog fires, suppress re-entering RETREAT for this many
+// frames so the AI actually commits to the fallback (Engage's direct
+// vector-based kiting, which needs no A* reachability at all) instead of
+// instantly re-arming retreat next tick against the same still-nearby swarm.
+export const RETREAT_GIVEUP_SUPPRESS_FRAMES = 90;
 
 // When the player still owes gold for the merchant charm, the AI actively farms
 // the ambient swarm instead of wandering. These scan radii are deliberately

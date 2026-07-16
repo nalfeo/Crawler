@@ -193,6 +193,9 @@ import {
   RETREAT_MAX_PATH_VERIFICATIONS,
   RETREAT_REPICK_INTERVAL_FRAMES,
   RETREAT_REPICK_ARRIVE_FT,
+  RETREAT_DWELL_ESCAPE_FT,
+  RETREAT_DWELL_FRAMES,
+  RETREAT_GIVEUP_SUPPRESS_FRAMES,
   GOLD_FARM_ENEMY_SCAN_RADIUS_FT,
   GOLD_FARM_GOLD_SCAN_RADIUS_FT,
   GOLD_FARM_COLLECT_RADIUS_FT,
@@ -953,6 +956,15 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatThreatEid: number | null = null;
   private rangedEmergencyRetreating: boolean = false;
   /**
+   * Net-displacement watchdog for a boxed-in retreat (see
+   * {@link updateRetreatWatchdog}): when a dense swarm leaves no tile
+   * pickRetreatTarget can actually deliver the player to, this fires and
+   * {@link retreatSuppressedUntilFrame} forces a temporary fallback to Engage
+   * instead of re-arming the same futile retreat next tick.
+   */
+  private readonly retreatDwell = new DwellTracker(RETREAT_DWELL_ESCAPE_FT, RETREAT_DWELL_FRAMES);
+  private retreatSuppressedUntilFrame: number = 0;
+  /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
    * of jittering; reversed every {@link KITE_FLIP_FRAMES} frames so it juke-dodges
@@ -1300,6 +1312,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
+        // Boxed-in cooldown: updateRetreatWatchdog just gave up on a retreat
+        // that was making zero real progress (dense swarm, no A*-reachable
+        // escape tile). Force the fallback to Engage's direct vector kiting
+        // for the suppression window instead of instantly re-arming the same
+        // futile retreat against the same still-nearby swarm this tick.
+        if (ctx.world.frameCount < this.retreatSuppressedUntilFrame) {
+          return false;
+        }
         const activeWeapon = getActiveWeapon(ctx.world);
         const criticallyLow = ctx.healthPercent < this.config.retreatThreshold;
         const rangedEmergency =
@@ -2993,6 +3013,46 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
+   * Net-displacement watchdog for RETREAT: pickRetreatTarget only proves a
+   * candidate tile is A*-reachable IN PRINCIPLE against the floor map's static
+   * geometry — it cannot prove the player will actually get there once a dense
+   * swarm's enemy colliders occupy the path. When boxed in, the flee target
+   * keeps re-picking (or re-arming the same one) every {@link
+   * RETREAT_REPICK_INTERVAL_FRAMES} while the player's real world position
+   * never moves, taking continuous chip/contact damage in place until death.
+   *
+   * Deliberately does NOT look at kills or nearby-enemy HP the way {@link
+   * updateGlobalDwellWatchdog} does — auto-fire can keep landing hits (and
+   * even kills) on adjacent swarm members while the player is otherwise
+   * completely boxed in, which would incorrectly read as "progress" to a
+   * damage-based signal. Retreat's whole purpose is to create distance; only
+   * real net displacement counts here.
+   */
+  private updateRetreatWatchdog(world: GameWorld, playerX: number, playerY: number): void {
+    if (this.decision.state !== AIState.RETREAT) {
+      this.retreatDwell.reset();
+      return;
+    }
+
+    if (this.retreatDwell.update(playerX, playerY) !== 'fired') {
+      return;
+    }
+
+    // Genuinely boxed in for the full window: give up on this retreat and
+    // suppress re-entering it so Engage's direct vector kiting (immune to A*
+    // reachability — it moves along a continuous radial/strafe/escape-push
+    // vector, not toward a discrete tile) gets a real chance to create
+    // separation instead of the player standing still until death.
+    this.endRetreat(world);
+    this.retreatSuppressedUntilFrame = world.frameCount + RETREAT_GIVEUP_SUPPRESS_FRAMES;
+    if (this.config.debug) {
+      logger.debug(
+        `AI retreat watchdog fired: boxed in, suppressing retreat for ${String(RETREAT_GIVEUP_SUPPRESS_FRAMES)}f`,
+      );
+    }
+  }
+
+  /**
    * State-agnostic watchdog: break ANY parked-in-place deadlock, including the
    * cross-state thrash the per-state dwell watchdogs structurally cannot catch.
    *
@@ -3281,6 +3341,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
+    this.retreatDwell.reset();
+    this.retreatSuppressedUntilFrame = 0;
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
     this.opportunisticPullX = 0;
@@ -3385,6 +3447,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     // unpathable gap). Without this the AI wiggles against the obstacle forever,
     // never re-picking because it never closes within 50px of the target.
     this.updateExploreWatchdog(world, playerX, playerY, world.frameCount);
+
+    // Abandon a RETREAT that is making zero real progress (boxed in by a dense
+    // swarm with no A*-reachable escape tile). Without this the player stands
+    // still, health-critical, taking free damage until death — see
+    // updateRetreatWatchdog's doc comment for why the damage-based global
+    // watchdog below cannot catch this case.
+    this.updateRetreatWatchdog(world, playerX, playerY);
 
     // State-agnostic backstop: break cross-state thrash (ENGAGE<->COLLECT every
     // frame at a navigation choke) that none of the per-state watchdogs above can
@@ -8218,6 +8287,19 @@ export class BehaviorTreeAI implements AIInputProvider {
    * - Orbit direction is persistent and reverses periodically (or immediately when
    *   the strafe direction is walled), producing steady juking — distinct from the
    *   walk-away/walk-back pickup wiggle.
+   * - Multi-threat radial defense (mirrors `computeRangedKiteTarget`): the radial
+   *   correction above is driven only by distance to the current melee `target`,
+   *   so a second enemy (e.g. the boss itself, when arena-lockin's wounded
+   *   add-priority has switched `target` to a nearby add) can close from an
+   *   unwatched angle and land free contact damage. Once wounded (`defensive`,
+   *   same threshold as the orbit-widening above), {@link
+   *   computeOtherThreatEscapePush} adds a directional escape push away from
+   *   every OTHER perceived, living, combat-eligible enemy that has breached the
+   *   desired orbit ring, so the kite path bends away from any closing threat,
+   *   not just the nominal target. Gated to the wounded branch only: unlike
+   *   ranged standoff kiting, melee's strike band sits right on the enemy, so
+   *   nudging off-axis during ordinary healthy fights measurably hurts hit
+   *   connection rate and net exposure time instead of helping it.
    */
   private computeMeleeKiteTarget(
     world: GameWorld,
@@ -8307,11 +8389,42 @@ export class BehaviorTreeAI implements AIInputProvider {
     const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
     const strafeFt = backThreat ? KITE_STEP_FT : KITE_STRAFE_FT;
 
+    // Multi-threat radial defense (mirrors computeRangedKiteTarget): `target`
+    // here is whichever enemy melee is currently focused on — often forced by
+    // arena-lockin's wounded add-priority override to a specific add, which
+    // means a DIFFERENT enemy (e.g. the boss itself) can close from an
+    // unwatched angle and land free contact damage that the radial correction
+    // above (driven only by distance-to-target) can never see. Reuses the
+    // same shared helper and scan radius as ranged kiting — no new tuning.
+    //
+    // Gated on `defensive` (already computed above): unlike ranged kiting,
+    // melee's strike band sits right on top of the enemy, so nudging off-axis
+    // during ordinary, healthy fights measurably hurts hit-connection rate and
+    // prolongs (rather than shortens) net exposure — confirmed by a real
+    // regression (seed 12 sword: an unconditional push flipped a clean victory
+    // into a death in the post-boss overworld swarm, nowhere near the boss
+    // room this fix targets). Restricting it to the wounded branch keeps
+    // healthy melee combat byte-identical to before this change and only adds
+    // defensive awareness once the player is already at risk — the same
+    // threshold philosophy as this function's own `safeOrbitCap` widening and
+    // the sibling `ARENA_LOCKIN_DEFENSIVE_HP_FRACTION` / `RANGED_DEFENSIVE_HP_FRACTION`
+    // wounded-gated mechanisms.
+    const otherThreatPush = defensive
+      ? this.computeOtherThreatEscapePush(
+          world,
+          playerX,
+          playerY,
+          RANGED_MULTI_THREAT_SCAN_FT,
+          desiredOrbit,
+          target.eid,
+        )
+      : { x: 0, y: 0 };
+
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * strafeFt;
-      let sy = uy * radialMag + ty * strafeFt;
+      let sx = ux * radialMag + tx * strafeFt + otherThreatPush.x;
+      let sy = uy * radialMag + ty * strafeFt + otherThreatPush.y;
       const slen = Math.hypot(sx, sy) || 1;
       sx = (sx / slen) * KITE_STEP_FT;
       sy = (sy / slen) * KITE_STEP_FT;
@@ -8953,6 +9066,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
     this.retreatThreatEid = null;
+    this.retreatDwell.reset();
+    this.retreatSuppressedUntilFrame = 0;
     this.lastArenaLockinEid = null;
     this.lastArenaLockinKind = null;
     this.opportunisticPullX = 0;
