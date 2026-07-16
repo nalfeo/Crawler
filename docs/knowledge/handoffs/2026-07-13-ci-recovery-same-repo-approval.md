@@ -54,8 +54,21 @@ ci-policy
 
 ## Retrospective
 
+### Lessons Learned
+
 GitHub's workflow-run approval endpoint is fork-only, but CI recovery
-intentionally excludes fork PRs. Treating a same-repository `action_required`
-conclusion as approval-capable inverted those two boundaries. Keeping the
-security checks ahead of the benign same-repository disposition preserves
-forensic rejection reasons without dispatching recovery for an unfixable 403.
+intentionally excludes fork PRs. Security checks must run ahead of any benign
+same-repository disposition so forensic rejection reasons are preserved and
+recovery is never dispatched for an unfixable 403.
+
+### Mistakes Made
+
+Treating a same-repository `action_required` conclusion as approval-capable
+inverted the fork/same-repo security boundary, allowing a path that would have
+dispatched recovery for a non-recoverable workflow failure.
+
+### Opportunities for Future Improvement
+
+Add explicit coverage for each GitHub event category (fork vs. same-repo) against
+the security precondition checks so future changes to the recovery logic cannot
+accidentally re-invert the boundary.

@@ -4,7 +4,10 @@
 
 Accepted
 
-**Date:** 2026-07-13  
+## Date
+
+2026-07-13
+
 **Deciders:** @nalfeo (maintainer)
 
 ## Context
