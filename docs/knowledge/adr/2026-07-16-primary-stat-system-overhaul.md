@@ -81,8 +81,8 @@ considered, 19 concerns resolved — see
 2. **Player Health seeds to derived max HP at spawn.**
    `equipmentSystem.initializeBaseStats` now calls `recomputeEffectiveStats`
    then sets `Health.max/current` to the freshly-derived `effectiveStats.
-maxHp`, so a base-CON(1) character starts at exactly 150 HP
-   (`BASE_MAX_HP_FLOOR = 140` chosen so `140 + 10×1 === 150`) and `statSystem`'s
+maxHp`, so a base-CON(1) character starts at exactly 170 HP
+   (`BASE_MAX_HP_FLOOR = 160` chosen so `160 + 10×1 === 170`) and `statSystem`'s
    delta-sync sees `prevMaxHp === newMaxHp` on the first tick — no creep.
 3. **Legacy modifier semantics are preserved through an explicit fold table**
    (`foldLegacyStatModifier`, `shared/stats.ts`): additive `damage` → flat

@@ -338,7 +338,7 @@ export function initializeBaseStats(
   recomputeEffectiveStats(world, entity);
 
   // Seed Health.max/current to the freshly derived max HP (e.g. base CON = 1,
-  // no allocation/gear yet, starts full at 140 + 10*1 = 150 — see
+  // no allocation/gear yet, starts full at 160 + 10*1 = 170 — see
   // shared/stats.ts#BASE_MAX_HP_FLOOR). This is spawn-time seeding, not a
   // per-frame sync — statSystem's delta-based sync (capture-before-overwrite)
   // takes over every frame after this and can never creep max HP because the

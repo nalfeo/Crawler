@@ -91,8 +91,8 @@ EffectiveStats]` entity (in practice only ever the player), prunes expired
   Constitution change heals/damages by exactly the HP delta (never resets
   current HP to full, never lets repeated ticks creep max HP).
 - `equipmentSystem.initializeBaseStats` seeds `Health.max/current` to the
-  freshly-derived `effectiveStats.maxHp` at spawn (base CON=1 → 140 + 10×1 =
-  150 HP, replacing survivability removed with Strength armor).
+  freshly-derived `effectiveStats.maxHp` at spawn (base CON=1 → 160 + 10×1 =
+  170 HP, replacing survivability removed with Strength armor).
 - There is **no separate `Stats` component/store** — `stores.stats` does not
   exist. Legacy `StatModifier`/`CatalogEffect` targets (`StatKey` —
   `maxHp`/`moveSpeed`/`damage`/`armor`/`attackSpeed`/`pickupRange`/
