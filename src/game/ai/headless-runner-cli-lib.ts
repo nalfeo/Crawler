@@ -115,7 +115,16 @@ export function parseArgs(
       }
       args.enemyDamageMultiplier = parsed;
       i++;
-    } else if (arg === '--enemy-telegraph-ms' && next) {
+    } else if (arg === '--enemy-telegraph-ms') {
+      // Regression: copilot-pull-request-reviewer finding — the previous
+      // `arg === '--enemy-telegraph-ms' && next` guard silently skipped this
+      // whole branch (falling through with no error) when the flag was the
+      // final token, letting a malformed invocation run with the 250ms
+      // default instead of failing fast. Handle the flag unconditionally and
+      // reject a missing/blank value explicitly.
+      if (next === undefined || next === '') {
+        throw new Error('--enemy-telegraph-ms requires a value (e.g. --enemy-telegraph-ms 250)');
+      }
       const parsed = Number(next);
       if (!Number.isFinite(parsed) || parsed < 0) {
         throw new Error(`Invalid --enemy-telegraph-ms "${next}" (must be a finite number >= 0)`);

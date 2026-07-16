@@ -32,13 +32,34 @@ import type { GameWorld } from '../world.js';
  */
 export const TELEGRAPH_MS_UNSET = -1;
 
+/**
+ * Guards a resolved delay against the Float32Array `telegraphDelayMs` store:
+ * a finite JS number outside Float32's representable range (e.g. `1e39`)
+ * silently rounds to `Infinity` on assignment, and
+ * `isEnemyProjectileTelegraphReady`'s `elapsed >= delayMs` fire check then
+ * never trips — the enemy telegraphs forever and never fires. `Math.fround`
+ * performs the exact same rounding Float32Array does, so it is the correct
+ * generic overflow detector. This is the single point both the per-mob
+ * override and the world-level default flow through (see
+ * `getEffectiveTelegraphMs` below and `startEnemyProjectileTelegraph`'s write
+ * to `telegraphDelayMs`), so it catches every configuration path uniformly —
+ * `runHeadless`'s CLI/API config (which additionally fails fast at config
+ * time via `normalizeEnemyTelegraphMs`), a per-mob `spawnBehaviorEnemy({
+ * telegraphMs })` override, and a direct `world.enemyTelegraphMs` assignment
+ * (regression: copilot-pull-request-reviewer finding — the headless-only
+ * guard was bypassed by these other two documented paths).
+ */
+function clampToFloat32SafeTelegraphMs(candidateMs: number): number {
+  return Number.isFinite(Math.fround(candidateMs)) ? candidateMs : ENEMY_PROJECTILE.TELEGRAPH_MS;
+}
+
 /** Resolves `mob.telegraphMs ?? world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS`. */
 export function getEffectiveTelegraphMs(world: GameWorld, eid: number): number {
   const perMob = world.stores.enemyBehavior.telegraphMs[eid] ?? TELEGRAPH_MS_UNSET;
   if (perMob >= 0) {
-    return perMob;
+    return clampToFloat32SafeTelegraphMs(perMob);
   }
-  return world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS;
+  return clampToFloat32SafeTelegraphMs(world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS);
 }
 
 /** True while `eid` is in an active telegraph (aim locked, waiting to fire). */

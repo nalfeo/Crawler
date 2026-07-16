@@ -63,6 +63,36 @@ describe('getEffectiveTelegraphMs resolver', () => {
     const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
     expect(world.stores.enemyBehavior.telegraphMs[enemy]).toBe(TELEGRAPH_MS_UNSET);
   });
+
+  // Regression: copilot-pull-request-reviewer finding — a Float32-overflowing
+  // world.enemyTelegraphMs (e.g. via a direct assignment, bypassing
+  // headless-runner.ts's normalizeEnemyTelegraphMs config-time guard) used to
+  // round to Infinity once stored in the Float32Array-backed
+  // telegraphDelayMs, making isEnemyProjectileTelegraphReady's fire check
+  // never trip. getEffectiveTelegraphMs is the single resolver both the
+  // per-mob and world-level paths flow through, so it must clamp both.
+  it('falls back to the default when the world-level override would overflow Float32', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 1e39;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
+
+  it('falls back to the default when a per-mob override would overflow Float32', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 500;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
+      telegraphMs: 1e39,
+    });
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
+
+  it('falls back to the default for a non-finite world-level override (Infinity/NaN)', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = Number.POSITIVE_INFINITY;
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150);
+    expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
+  });
 });
 
 describe('enemy projectile telegraph — 0ms legacy parity', () => {
