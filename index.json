@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b6bca40f7059ed7665bbb3f36d44365966fea17f",
+    "commitDate": "2026-07-16T15:18:30Z",
+    "commitSubject": "fix(engine): sticky telegraph flag so 16× AI-runner lab batches don't swallow short-lived cues (#1200)",
+    "capturedAt": "2026-07-16T16:13:45.128Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29511347356",
+    "winRate": 0.9833333333333333,
+    "totalWins": 590,
+    "totalRuns": 600,
+    "path": "by-sha/b6bca40f7059ed7665bbb3f36d44365966fea17f.json"
+  },
+  {
     "commit": "b61c1bc7feb494cc195efabeee894ff328d5b3bc",
     "commitDate": "2026-07-16T13:36:01Z",
     "commitSubject": "fix(ai): prevent legacy Floor 1 deaths (#1197)",
