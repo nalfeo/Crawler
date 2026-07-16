@@ -52,7 +52,13 @@ import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
-import { GAME, WeaponType, PLAYER_SPEED, type WeaponTypeValue } from '../../shared/constants.js';
+import {
+  GAME,
+  WeaponType,
+  PLAYER_SPEED,
+  ENEMY_PROJECTILE,
+  type WeaponTypeValue,
+} from '../../shared/constants.js';
 import { floor1Config } from '../../shared/floor-config.js';
 import { getFloorManifest } from '../../shared/floor-registry.js';
 import {
@@ -108,6 +114,7 @@ import {
   getActiveWeaponReadiness,
   setPreferredWeaponTarget,
 } from '../weaponSystem.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 // AI tuning constants (pure values; identical runtime behavior) live in
 // ./bt-ai-tuning.ts. Imported here so every reference in this file is unchanged.
 import {
@@ -115,6 +122,10 @@ import {
   DIRECT_MOVE_EPSILON_FT,
   RANGED_STANDOFF_FRACTION,
   RANGED_STANDOFF_ABS_FT,
+  RANGED_DEFENSIVE_HP_FRACTION,
+  RANGED_DEFENSIVE_REACH_FRACTION,
+  RANGED_DEFENSIVE_ABS_FT,
+  RANGED_DEFENSIVE_RELEASE_MULTIPLIER,
   RANGED_RECOVER_EXTRA_FRACTION,
   RANGED_APPROACH_BUFFER_FT,
   MELEE_HOLD_FRACTION,
@@ -128,6 +139,9 @@ import {
   KITE_RADIAL_STEP_FT,
   KITE_STRAFE_FT,
   KITE_BACK_THREAT_RADIUS_FT,
+  RANGED_MULTI_THREAT_SCAN_FT,
+  SAFE_LOOT_ENEMY_CLEARANCE_FT,
+  LOOT_DETOUR_MAX_FT,
   KITE_FLIP_FRAMES,
   NAVIGATION_LOOKAHEAD_FT,
   MOVE_SMOOTH_FACTOR,
@@ -239,6 +253,8 @@ import {
   NPC_APPROACH_THREAT_RADIUS_FT,
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   ARENA_LOCKIN_ADD_HYSTERESIS_FT,
+  ARENA_LOCKIN_DEFENSIVE_HP_FRACTION,
+  ARENA_LOCKIN_ADD_PRESSURE_FT,
   TRAVEL_STEERING_ENABLED,
   TRAVEL_BODY_RADIUS_FT,
   TRAVEL_HARD_GAP_FT,
@@ -356,6 +372,12 @@ const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [
 ] as const;
 const RISK_REWARD_DANGER_LOOKAHEAD_FT = 8;
 const RISK_REWARD_DANGER_RADIUS_FT = 9; // retuned for spawner-free Floor 1: a following near-player danger bubble means a wide halo is high in EVERY forward direction → progress paralysis; tighten to genuinely-imminent overlap only
+
+// Enemy hostile-fireball weapon def, shared with enemyAISystem.ts's real fire
+// logic (see fireEnemyProjectileFrom) — kept here too so the telegraph-threat
+// dodge math below uses the SAME projectile speed/AOE radius the real shot
+// will actually use, rather than guessing at ENEMY_PROJECTILE defaults.
+const TELEGRAPH_FIREBALL_DEF = getWeaponDef('fireball');
 const RISK_REWARD_W_PROGRESS = 1.0; // baseline — danger must reliably beat this
 const RISK_REWARD_W_REWARD = 0.95;
 const RISK_REWARD_W_DANGER = 1.0; // retuned 1.8→1.0: on a director map danger is a local deflection nudge, not a progress-dominating force (was tuned for a static swarm)
@@ -485,8 +507,13 @@ export interface FusedHeadingDebug {
   /** Ray length the scorer samples danger at, feet (for drawing candidate rays). */
   lookaheadFt: number;
   dangerRadiusFt: number;
-  /** Velocity-projected enemy threat points the scorer actually scored against. */
-  threats: { x: number; y: number }[];
+  /**
+   * Velocity-projected enemy threat points the scorer actually scored
+   * against. `radiusFt` is per-threat (Math.max(base danger radius, that
+   * enemy's actual ranged attackRange) — a long-range shooter's danger
+   * bubble extends to its real reach, not just the generic near-body radius.
+   */
+  threats: { x: number; y: number; radiusFt: number }[];
   candidates: FusedCandidateDebug[];
   /** Slice 4b seam-term internals; null/absent when the seam block did not run. */
   seam?: FusedSeamDebug | null;
@@ -924,6 +951,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
   private retreatThreatEid: number | null = null;
+  private rangedEmergencyRetreating: boolean = false;
   /**
    * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
    * flipped. Held across polls so the player circles the enemy steadily instead
@@ -932,6 +960,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private kiteOrbitSign: 1 | -1 = 1;
   private kiteSignFrame: number = 0;
+  private rangedDefensiveSpacing: boolean = false;
   private readonly ignoredLootUntilFrame = new Map<number, number>();
   private readonly ignoredEnemyUntilFrame = new Map<number, number>();
   private engageTargetEid: number | null = null;
@@ -1261,6 +1290,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
     this.retreating = false;
+    this.rangedEmergencyRetreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
@@ -1270,7 +1300,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     return sequence(
       'Retreat',
       condition('Low Health Under Threat', (ctx) => {
-        if (ctx.healthPercent >= this.config.retreatThreshold) {
+        const activeWeapon = getActiveWeapon(ctx.world);
+        const criticallyLow = ctx.healthPercent < this.config.retreatThreshold;
+        const rangedEmergency =
+          activeWeapon !== undefined &&
+          isProjectileWeaponType(activeWeapon.weaponType) &&
+          ctx.healthPercent < RANGED_DEFENSIVE_HP_FRACTION &&
+          !criticallyLow;
+        if (!criticallyLow && !rangedEmergency) {
           this.endRetreat(ctx.world);
           return false;
         }
@@ -1302,21 +1339,37 @@ export class BehaviorTreeAI implements AIInputProvider {
         // retreatDangerRadius * RETREAT_HYSTERESIS_MULT. This stops the per-frame
         // RETREAT<->EXPLORE flip-flop seen when an enemy hovers at the boundary.
         const radius = this.retreating
-          ? this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT
-          : this.config.retreatDangerRadius;
+          ? this.rangedEmergencyRetreating && !criticallyLow
+            ? this.config.rangedSafeDistance
+            : this.config.retreatDangerRadius * RETREAT_HYSTERESIS_MULT
+          : rangedEmergency
+            ? CONTACT_SAFE_ORBIT_FT
+            : this.config.retreatDangerRadius;
         if (!threat || threat.distance > radius) {
           this.endRetreat(ctx.world);
           return false;
         }
         this.retreating = true;
+        this.rangedEmergencyRetreating = rangedEmergency;
+        // Arm the defensive-spacing latch so that when this emergency retreat
+        // releases (enemy backs past rangedSafeDistance) planRangedEngagement
+        // immediately holds the wider 10-ft orbit rather than closing back to
+        // the 6-ft healthy orbit until a pressure threat re-enters the window.
+        if (rangedEmergency) {
+          this.rangedDefensiveSpacing = true;
+        }
         this.retreatThreatEid = threat.eid;
         ctx.blackboard['retreatThreat'] = threat;
+        ctx.blackboard['rangedEmergencyRetreat'] = rangedEmergency;
         return true;
       }),
       action('Set Retreat State', (ctx) => {
         const threat = ctx.blackboard['retreatThreat'] as WorldTarget | undefined;
+        const rangedEmergency = ctx.blackboard['rangedEmergencyRetreat'] === true;
         this.decision.state = AIState.RETREAT;
-        this.decision.reason = `Low health (${(ctx.healthPercent * 100).toFixed(0)}%) near threat`;
+        this.decision.reason = rangedEmergency
+          ? `Wounded projectile user under contact pressure (${(ctx.healthPercent * 100).toFixed(0)}% health)`
+          : `Low health (${(ctx.healthPercent * 100).toFixed(0)}%) near threat`;
         this.decision.targetEid = null;
         if (!threat) {
           this.retreatTargetX = null;
@@ -1523,20 +1576,39 @@ export class BehaviorTreeAI implements AIInputProvider {
         // rats-nest.onDeath), which the surviving adds get killed
         // alongside once the fence lowers and normal Engage resumes.
         const engageRadius = this.getEngageRadius(ctx.world);
-        const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+        // Exclude the boss target so an exact-distance tie between boss and add
+        // always resolves to the add when defensive pressure applies. Without
+        // this exclusion, `findNearestEnemy` could return the boss itself (lower
+        // eid wins the tie-break sort), making `defensiveAddPressure` false and
+        // silently skipping the add override.
+        const nearestAdd =
+          target.kind === 'boss'
+            ? this.findNearestEnemy(
+                ctx.world,
+                ctx.playerX,
+                ctx.playerY,
+                this.config.scanRadius,
+                false,
+                target.eid,
+              )
+            : null;
+        const defensiveAddPressure =
+          ctx.healthPercent < ARENA_LOCKIN_DEFENSIVE_HP_FRACTION &&
+          nearestAdd !== null &&
+          nearestAdd.distance <= ARENA_LOCKIN_ADD_PRESSURE_FT;
         if (
           target.kind === 'boss' &&
-          nearestEnemy &&
-          nearestEnemy.eid !== target.eid &&
-          nearestEnemy.distance <= engageRadius &&
-          nearestEnemy.distance + ARENA_LOCKIN_ADD_HYSTERESIS_FT < targetDistance
+          nearestAdd !== null &&
+          nearestAdd.distance <= engageRadius &&
+          (defensiveAddPressure ||
+            nearestAdd.distance + ARENA_LOCKIN_ADD_HYSTERESIS_FT < targetDistance)
         ) {
-          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestAdd);
           this.decision.state = AIState.ENGAGE;
-          this.decision.targetEid = nearestEnemy.eid;
+          this.decision.targetEid = nearestAdd.eid;
           this.decision.targetX = plan.targetX;
           this.decision.targetY = plan.targetY;
-          this.decision.reason = `Boss-room lock-in — clearing add ${String(nearestEnemy.eid)} before boss`;
+          this.decision.reason = `Boss-room lock-in — clearing add ${String(nearestAdd.eid)} before boss`;
           return BTStatus.SUCCESS;
         }
 
@@ -2332,6 +2404,139 @@ export class BehaviorTreeAI implements AIInputProvider {
         earliestImpactFrames = impactFrames;
       }
 
+      // Telegraphed-but-not-yet-fired shots: the aim/origin are already
+      // LOCKED (see core/systems/enemyTelegraph.ts), so a virtual projectile
+      // can be dodged before it even spawns — reading the same public,
+      // deterministic EnemyBehavior store fields the render cue and the real
+      // fire logic use (no privileged prediction). Competes uniformly with
+      // real in-flight projectiles above for "closest threat first" priority
+      // via the shared earliestImpactFrames/projectileDodgeX/Y race.
+      const enemyBehaviorStore = ctx.world.stores.enemyBehavior;
+      for (const eid of query(ctx.world.ecs, [Enemy, Position])) {
+        if (eid === undefined) continue;
+        if (enemyBehaviorStore.telegraphActive[eid] !== 1) continue;
+        // A shooter that died earlier this simulation step can still have
+        // `telegraphActive` set here (this pass runs before enemyAISystem's
+        // DeathTimer processing cancels it), which would make the player dodge
+        // a shot guaranteed to be cancelled. Filter non-positive health, same
+        // as the closing-speed danger scorer above.
+        if ((ctx.world.stores.health.current[eid] ?? 0) <= 0) continue;
+
+        const originX = enemyBehaviorStore.telegraphOriginX[eid] ?? 0;
+        const originY = enemyBehaviorStore.telegraphOriginY[eid] ?? 0;
+        // Gate on the shooter's LIVE position (not the locked telegraph
+        // origin) using STRICT current FOV (matching PhaserBridge's cue gate
+        // at PhaserBridge.ts's isVisible computation exactly) — knockback can
+        // displace a shooter after its telegraph origin is locked, and
+        // canPerceiveWorldPosition's discovered-tile memory would otherwise
+        // let the AI dodge a threat the render cue is not currently showing.
+        const liveX = ctx.world.stores.position.x[eid] ?? originX;
+        const liveY = ctx.world.stores.position.y[eid] ?? originY;
+        if (!this.canCurrentlyPerceiveWorldPosition(ctx.world, liveX, liveY)) continue;
+
+        const dirX = enemyBehaviorStore.telegraphDirX[eid] ?? 0;
+        const dirY = enemyBehaviorStore.telegraphDirY[eid] ?? 0;
+        const startMs = enemyBehaviorStore.telegraphStartMs[eid] ?? 0;
+        const delayMs = enemyBehaviorStore.telegraphDelayMs[eid] ?? 0;
+        const remainingMs = Math.max(0, delayMs - (ctx.world.elapsedMs - startMs));
+        // This AI's poll() runs BEFORE runSimulationStep() advances
+        // world.elapsedMs and runs preSystems for the CURRENT step (see
+        // headless-runner.ts's main loop and simulation-step.ts), while
+        // isEnemyProjectileTelegraphReady's fire check runs AFTER that same
+        // increment but BEFORE that step's movementSystem
+        // (simulation-core-step.ts's preSystems -> movementSystem order). So
+        // from any poll, the raw fractional quotient
+        // (remainingMs / DELTA_MS) is exactly one step too many: the step on
+        // which the shot fires still advances elapsedMs and triggers the fire
+        // check, but the PLAYER's movement for that same step happens after
+        // the fire (movementSystem runs after preSystems), so it never
+        // occurs before the shot spawns. The number of player-movement steps
+        // that will actually happen before the fire is
+        // ceil(remainingMs / DELTA_MS) - 1, clamped at 0 (regression:
+        // copilot-pull-request-reviewer finding).
+        const remainingFrames = Math.max(0, Math.ceil(remainingMs / GAME.DELTA_MS) - 1);
+
+        // The enemy is pinned at the locked origin for the whole telegraph
+        // (see enemyAISystem.ts's movement freeze), so only the player needs
+        // to be projected forward to the instant the virtual shot spawns.
+        // The virtual projectile must start from the SAME point the real one
+        // will — fireEnemyProjectileFrom() spawns at origin + dir *
+        // MUZZLE_OFFSET, not the raw locked origin — otherwise this dodge
+        // math models a shot ~MUZZLE_OFFSET/projectileSpeed frames further
+        // away than it will actually be, drifting from the real threat.
+        const spawnX = originX + dirX * ENEMY_PROJECTILE.MUZZLE_OFFSET;
+        const spawnY = originY + dirY * ENEMY_PROJECTILE.MUZZLE_OFFSET;
+        const projectedPlayerX = ctx.playerX + playerVx * remainingFrames;
+        const projectedPlayerY = ctx.playerY + playerVy * remainingFrames;
+        const relativeX = spawnX - projectedPlayerX;
+        const relativeY = spawnY - projectedPlayerY;
+
+        const projectileSpeed = TELEGRAPH_FIREBALL_DEF?.projectileSpeed ?? ENEMY_PROJECTILE.SPEED;
+        const relativeVx = dirX * projectileSpeed - playerVx;
+        const relativeVy = dirY * projectileSpeed - playerVy;
+        const speedSq = relativeVx * relativeVx + relativeVy * relativeVy;
+        if (speedSq <= Number.EPSILON) continue;
+
+        let impactFramesAfterSpawn = -(relativeX * relativeVx + relativeY * relativeVy) / speedSq;
+        if (impactFramesAfterSpawn < 0) continue;
+        // The real fire path spawns via spawnAoeProjectile(..., FIREBALL_DEF.range)
+        // (see enemyAISystem.ts's fireEnemyProjectileFrom), and
+        // projectileCleanupSystem despawns a projectile once it has traveled
+        // that far from its spawn point — but that check runs AFTER
+        // movement + collision + damage each step (simulation-core-step.ts:
+        // movementSystem, collisionSystem, damageSystem, ..., then
+        // projectileCleanupSystem last), so the real shot can still land on
+        // the exact step where it first exceeds maxRange, one whole step
+        // beyond the nominal boundary. Rejecting every candidate whose
+        // analytic closest-approach point lies beyond rangeFt (rather than
+        // this true last-reachable step) makes the AI ignore a threat that
+        // can genuinely still hit. `dirX`/`dirY` are a unit vector (see
+        // enemyAISystem's `normalize()` call before
+        // `startEnemyProjectileTelegraph`), so distance traveled after N
+        // whole steps is simply `projectileSpeed * N`; the last step at
+        // which the projectile is still alive to collide is the smallest
+        // integer step whose traveled distance first exceeds rangeFt, i.e.
+        // `floor(rangeFt / projectileSpeed) + 1`. Relative distance to the
+        // player is convex in time for constant relative velocity, so when
+        // the unconstrained analytic minimum lies beyond that last
+        // reachable step, clamping to the step itself still yields the true
+        // closest reachable point (rather than skipping the threat outright).
+        const rangeFt = TELEGRAPH_FIREBALL_DEF?.range ?? 0;
+        if (rangeFt > 0) {
+          const maxReachableFrames = Math.floor(rangeFt / projectileSpeed) + 1;
+          if (impactFramesAfterSpawn > maxReachableFrames) {
+            impactFramesAfterSpawn = maxReachableFrames;
+          }
+        }
+        const totalImpactFrames = remainingFrames + impactFramesAfterSpawn;
+        if (
+          totalImpactFrames > PROJECTILE_DODGE_HORIZON_FRAMES ||
+          totalImpactFrames >= earliestImpactFrames
+        ) {
+          continue;
+        }
+
+        const closestX = relativeX + relativeVx * impactFramesAfterSpawn;
+        const closestY = relativeY + relativeVy * impactFramesAfterSpawn;
+        const closestDistance = Math.hypot(closestX, closestY);
+        const aoeRadius = TELEGRAPH_FIREBALL_DEF?.aoeRadius ?? 0;
+        const requiredClearance =
+          aoeRadius > 0
+            ? aoeRadius + PROJECTILE_DODGE_AOE_BUFFER_FT
+            : PROJECTILE_DODGE_CLEARANCE_FT;
+        if (closestDistance > requiredClearance) continue;
+
+        if (closestDistance > Number.EPSILON) {
+          projectileDodgeX = -closestX / closestDistance;
+          projectileDodgeY = -closestY / closestDistance;
+        } else {
+          const speed = Math.sqrt(speedSq);
+          projectileDodgeX = (-relativeVy / speed) * this.kiteOrbitSign;
+          projectileDodgeY = (relativeVx / speed) * this.kiteOrbitSign;
+        }
+        earliestImpactFrames = totalImpactFrames;
+      }
+
       if (earliestImpactFrames < Number.POSITIVE_INFINITY) {
         this.dodgeVecX = projectileDodgeX * PROJECTILE_DODGE_VECTOR_SCALE;
         this.dodgeVecY = projectileDodgeY * PROJECTILE_DODGE_VECTOR_SCALE;
@@ -3071,6 +3276,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.questProgressActive = false;
     this.questProgressStallFrames = 0;
     this.retreating = false;
+    this.rangedEmergencyRetreating = false;
+    this.rangedDefensiveSpacing = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatThreatEid = null;
@@ -3742,7 +3949,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const rewardDirX = rewardLen > TRAVEL_HEADING_EPSILON ? rewardX / rewardLen : 0;
     const rewardDirY = rewardLen > TRAVEL_HEADING_EPSILON ? rewardY / rewardLen : 0;
 
-    const threatPoints: { x: number; y: number }[] = [];
+    const threatPoints: { x: number; y: number; radiusFt: number }[] = [];
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === undefined) continue;
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
@@ -3753,9 +3960,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       // position is always at least as dangerous as current. Use it directly.
       const vx = world.stores.velocity.x[eid] ?? 0;
       const vy = world.stores.velocity.y[eid] ?? 0;
+      // A ranged enemy's danger bubble must reach as far as it can actually
+      // hit, not just the generic near-body radius — otherwise the fused
+      // heading scorer would only "see" ranged threats once the player is
+      // already melee-close to them.
+      const attackRangeFt = world.stores.enemyBehavior.attackRange[eid] ?? 0;
+      const radiusFt = Math.max(RISK_REWARD_DANGER_RADIUS_FT, attackRangeFt);
       threatPoints.push({
         x: ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
         y: ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
+        radiusFt,
       });
     }
 
@@ -3794,11 +4008,14 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
         }
 
-        // Enemy threat accumulation against projected positions.
+        // Enemy threat accumulation against projected positions. Each threat
+        // uses its OWN radius (Math.max(base, actual ranged attackRange) —
+        // see threatPoints construction above), so a long-range shooter's
+        // danger bubble extends to its real reach.
         for (const threat of threatPoints) {
           const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
-          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
-          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          if (dist >= threat.radiusFt) continue;
+          const norm = 1 - dist / threat.radiusFt;
           danger += norm * norm;
         }
 
@@ -3848,8 +4065,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         // No floor map: enemy-only danger.
         for (const threat of threatPoints) {
           const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
-          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
-          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          if (dist >= threat.radiusFt) continue;
+          const norm = 1 - dist / threat.radiusFt;
           danger += norm * norm;
         }
       }
@@ -4021,7 +4238,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         bestScore,
         lookaheadFt: RISK_REWARD_DANGER_LOOKAHEAD_FT,
         dangerRadiusFt: RISK_REWARD_DANGER_RADIUS_FT,
-        threats: threatPoints.map((t) => ({ x: t.x, y: t.y })),
+        threats: threatPoints.map((t) => ({ x: t.x, y: t.y, radiusFt: t.radiusFt })),
         candidates: captured,
         seam: seamDebug,
       };
@@ -5336,12 +5553,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     maxRadius: number = this.config.scanRadius,
     includeIgnored: boolean = false,
+    excludeEid: number = -1,
   ): WorldTarget | null {
     const enemies = query(world.ecs, [Enemy, Position, Health]);
     const candidates: WorldTarget[] = [];
 
     for (const eid of enemies) {
       if (eid === undefined) continue;
+      if (eid === excludeEid) continue;
       if (!isEnemyCombatEligible(world, eid)) continue;
 
       const ignoredUntil = this.ignoredEnemyUntilFrame.get(eid);
@@ -7383,6 +7602,22 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
+   * Stricter sibling of {@link canPerceiveWorldPosition}: matches the render
+   * cue's exact visibility gate (PhaserBridge only draws the telegraph cue
+   * when the shooter's current tile is in LIVE FOV — not merely
+   * discovered/remembered). Used solely for the telegraphed-shot dodge gate
+   * so the AI cannot react to a threat the player cannot currently see
+   * rendered. Falls back to permissive (true) with no floorMap/perception
+   * data yet, matching canPerceiveWorldPosition's isolated-unit-test fallback.
+   */
+  private canCurrentlyPerceiveWorldPosition(world: GameWorld, x: number, y: number): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap || !this.hasPerceptionData) return true;
+    const tile = floorMap.worldToTile(x, y);
+    return floorMap.isVisible(tile.x, tile.y);
+  }
+
+  /**
    * Breadth-first search outward from the player through SEEN, reachable ground
    * for the nearest frontier — a seen, door-aware-passable tile that borders an
    * unseen tile. Walking to a frontier (often a doorway into an unentered room)
@@ -7654,6 +7889,13 @@ export class BehaviorTreeAI implements AIInputProvider {
    * KITE_BACK_THREAT_RADIUS_FT AND is positioned behind or to the side of the
    * player relative to the primary target direction. Used to decide whether to
    * use full lateral orbit (back-threat dodge) or a mostly-radial advance/retreat.
+   *
+   * Filters out dead (HP<=0) entities and combat-ineligible enemies (e.g.
+   * dormant Floor 2 bosses) for the same reason as {@link
+   * findNearestOtherEnemyDistance} / {@link computeOtherThreatEscapePush} — a
+   * lingering corpse (see `DeathTimer` / `deathTimerSystem.ts`) or a not-yet-
+   * active boss sitting behind the player is not a threat and should not force
+   * full-lateral-orbit mode.
    */
   private hasThreatFromBehind(
     world: GameWorld,
@@ -7668,8 +7910,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     const fwdNx = fwdX / fwdLen;
     const fwdNy = fwdY / fwdLen;
 
-    for (const eid of query(world.ecs, [Enemy, Position])) {
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === primaryTarget.eid) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -7682,6 +7927,115 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (dot < 0) return true;
     }
     return false;
+  }
+
+  /**
+   * Distance (ft) to the nearest perceived, LIVING enemy within `radiusFt`,
+   * optionally excluding `excludeEid` (e.g. the current engagement target),
+   * or `null` if none. Used by the safe-loot detour ({@link
+   * maybeDetourForLoot}) as a simple "is anything nearby at all" safety gate
+   * — magnitude only, no direction needed there. For the ranged-kiting
+   * escape vector itself, see {@link computeOtherThreatEscapePush}, which
+   * needs each threat's position, not just the nearest distance.
+   *
+   * Filters out dead (HP<=0) entities and combat-ineligible enemies (e.g.
+   * dormant Floor 2 bosses): a killed enemy lingers in the ECS with its
+   * `Enemy`+`Position` components intact for the duration of its `DeathTimer`
+   * (knockback/death-animation delay — see `deathTimerSystem.ts`), sitting at
+   * the exact spot it just dropped loot. Without this filter, that corpse
+   * (or a not-yet-active boss) would incorrectly count as a nearby threat and
+   * permanently block the loot detour for the very drop the AI just earned.
+   */
+  private findNearestOtherEnemyDistance(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    radiusFt: number,
+    excludeEid?: number,
+  ): number | null {
+    let nearest: number | null = null;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (excludeEid !== undefined && eid === excludeEid) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      const dist = Math.hypot(ex - playerX, ey - playerY);
+      if (dist > radiusFt) continue;
+      if (nearest === null || dist < nearest) {
+        nearest = dist;
+      }
+    }
+    return nearest;
+  }
+
+  /**
+   * Accumulates an escape-push vector (raw ft, not unit length) away from
+   * every perceived, LIVING enemy other than `excludeEid` that has breached
+   * the `spacedOrbit` standoff ring, within `radiusFt`. `target` (the
+   * globally nearest enemy — see {@link buildEngageBehavior}) is always
+   * excluded here because its contribution is already handled by the primary
+   * radial/strafe step; this only adds the DIRECTIONAL correction for other
+   * threats a plain nearest-distance comparison could never see (since no
+   * other enemy can be closer than the one already chosen as target). Each
+   * contributing enemy pushes away from itself with a magnitude proportional
+   * to how far it has breached the ring (`spacedOrbit - dist`), and the
+   * summed vector is clamped to KITE_RADIAL_STEP_FT so a large swarm can't
+   * overwhelm the primary target's own orbit/strafe motion.
+   *
+   * Filters out dead (HP<=0) entities and combat-ineligible enemies (e.g.
+   * dormant Floor 2 bosses) for the same reason as {@link
+   * findNearestOtherEnemyDistance} — a lingering corpse (see `DeathTimer` /
+   * `deathTimerSystem.ts`) or a not-yet-active boss is not an active threat
+   * and should not bend the kite path.
+   */
+  private computeOtherThreatEscapePush(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    radiusFt: number,
+    spacedOrbit: number,
+    excludeEid: number,
+  ): { x: number; y: number } {
+    let pushX = 0;
+    let pushY = 0;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === excludeEid) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
+      if (!isEnemyCombatEligible(world, eid)) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
+      let dx = playerX - ex;
+      let dy = playerY - ey;
+      let dist = Math.hypot(dx, dy);
+      if (dist > radiusFt) continue;
+      const breach = spacedOrbit - dist;
+      if (breach <= 0) continue;
+      if (dist < 0.125) {
+        // Enemy is on top of us — same arbitrary outward axis the primary
+        // target's dead-zone uses (see computeRangedKiteTarget), so a
+        // coincident secondary threat still contributes a directional push
+        // instead of silently vanishing at the exact moment it has breached
+        // the ring the most.
+        dx = 0.125;
+        dy = 0;
+        dist = 0.125;
+      }
+      const invLen = 1 / dist;
+      pushX += dx * invLen * breach;
+      pushY += dy * invLen * breach;
+    }
+    const pushLen = Math.hypot(pushX, pushY);
+    if (pushLen > KITE_RADIAL_STEP_FT) {
+      const scale = KITE_RADIAL_STEP_FT / pushLen;
+      pushX *= scale;
+      pushY *= scale;
+    }
+    return { x: pushX, y: pushY };
   }
 
   /**
@@ -8005,10 +8359,24 @@ export class BehaviorTreeAI implements AIInputProvider {
     target: WorldTarget,
     reachFt: number,
   ): { targetX: number; targetY: number; reason: string } {
-    const desiredOrbit = Math.max(
+    const healthyOrbit = Math.max(
       CONTACT_SAFE_ORBIT_FT,
       Math.min(reachFt * RANGED_STANDOFF_FRACTION, RANGED_STANDOFF_ABS_FT),
     );
+    const wounded = this.getPlayerHealthFraction(world) < RANGED_DEFENSIVE_HP_FRACTION;
+    const pressureRadius = this.rangedDefensiveSpacing
+      ? this.config.rangedSafeDistance * RANGED_DEFENSIVE_RELEASE_MULTIPLIER
+      : this.config.rangedSafeDistance;
+    const pressureThreat = wounded
+      ? this.findNearestEnemy(world, playerX, playerY, pressureRadius)
+      : null;
+    this.rangedDefensiveSpacing = wounded && pressureThreat !== null;
+    const desiredOrbit = this.rangedDefensiveSpacing
+      ? Math.max(
+          healthyOrbit,
+          Math.min(reachFt * RANGED_DEFENSIVE_REACH_FRACTION, RANGED_DEFENSIVE_ABS_FT),
+        )
+      : healthyOrbit;
     const contactThreatRadius = desiredOrbit + RANGED_APPROACH_BUFFER_FT;
     let activeTarget = target;
 
@@ -8020,6 +8388,24 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (nearbyThreat && nearbyThreat.eid !== target.eid) {
         activeTarget = nearbyThreat;
       }
+    }
+
+    // Safe loot detour: fires only when activeTarget is in the "closing"
+    // phase (beyond contactThreatRadius — not yet in orbit), AND no OTHER
+    // perceived threat is within SAFE_LOOT_ENEMY_CLEARANCE_FT. Passing
+    // activeTarget separately from the OTHER-enemies scan means short-range
+    // projectile weapons (e.g. throwing-knife, contactThreatRadius ~9ft,
+    // engage radius ~30ft) have a valid window: enemy at 10-30ft qualifies
+    // as "closing-phase clear" even though they're within engage range.
+    const lootDetour = this.maybeDetourForLoot(
+      world,
+      playerX,
+      playerY,
+      activeTarget,
+      contactThreatRadius,
+    );
+    if (lootDetour) {
+      return lootDetour;
     }
 
     if (activeTarget.distance > contactThreatRadius) {
@@ -8035,10 +8421,59 @@ export class BehaviorTreeAI implements AIInputProvider {
       };
     }
 
-    // At or inside the standoff band: orbit laterally while the radial correction
-    // keeps the distance near desiredOrbit (pushing away if too close, nudging in
-    // if slightly too far).
+    // At or inside the standoff band: fall back to the orbit-kite step. The
+    // radial correction keeps the distance near desiredOrbit while orbiting
+    // (pushing away if too close, nudging in if slightly too far).
     return this.computeRangedKiteTarget(world, playerX, playerY, activeTarget, desiredOrbit);
+  }
+
+  /**
+   * Opportunistic "safe loot detour" for ranged kiting. Only fires when the
+   * maintainer's stated condition holds:
+   * 1. `activeTarget` is in the **closing** phase (distance > `contactThreatRadius`) —
+   *    once orbiting, it's too close to safely break off.
+   * 2. No OTHER perceived, living enemy is within {@link SAFE_LOOT_ENEMY_CLEARANCE_FT}.
+   * 3. Loot exists within {@link LOOT_DETOUR_MAX_FT}.
+   *
+   * Splitting the active-target check from the secondary-scan lets short-range
+   * projectile weapons (e.g. throwing-knife, engage radius ~30 ft, orbit ~6 ft)
+   * reach the loot branch during their closing phase (enemy 10–30 ft away, no
+   * flankers) — previously unreachable because the all-enemy 30 ft scan always
+   * found the active target itself. Deliberately returns a plain movement target
+   * rather than switching `AIState` to COLLECT — normal orbit-kiting resumes the
+   * instant this returns null again (loot collected, or a threat re-closes).
+   */
+  private maybeDetourForLoot(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    activeTarget: WorldTarget,
+    contactThreatRadius: number,
+  ): { targetX: number; targetY: number; reason: string } | null {
+    // Active target must be in the closing phase (not yet in orbit range).
+    if (activeTarget.distance <= contactThreatRadius) {
+      return null;
+    }
+    // No OTHER living enemy may be within the clearance radius.
+    const nearestOtherThreatDist = this.findNearestOtherEnemyDistance(
+      world,
+      playerX,
+      playerY,
+      SAFE_LOOT_ENEMY_CLEARANCE_FT,
+      activeTarget.eid,
+    );
+    if (nearestOtherThreatDist !== null) {
+      return null;
+    }
+    const loot = this.findNearestLoot(world, playerX, playerY);
+    if (!loot || loot.distance > LOOT_DETOUR_MAX_FT) {
+      return null;
+    }
+    return {
+      targetX: loot.x,
+      targetY: loot.y,
+      reason: `Detouring for ${loot.kind} loot mid-kite (${loot.distance.toFixed(1)}ft, active threat ${activeTarget.distance.toFixed(1)}ft away, no flanker within ${SAFE_LOOT_ENEMY_CLEARANCE_FT.toFixed(0)}ft)`,
+    };
   }
 
   /**
@@ -8046,7 +8481,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    * retreat when enemy pushes in) with a small lateral juke, using the same
    * orbit-sign flip infrastructure as melee kiting. Full lateral orbit activates
    * when an enemy is approaching from behind. The radial correction component
-   * automatically retreats when the enemy closes in.
+   * automatically retreats when `target` closes in — and, via
+   * {@link computeOtherThreatEscapePush}, the escape vector is also bent away
+   * from any OTHER nearby enemy that has breached the standoff ring, not just
+   * `target`, so a packed swarm can't land free contact-range hits from an
+   * angle the AI isn't currently retreating toward.
    */
   private computeRangedKiteTarget(
     world: GameWorld,
@@ -8089,6 +8528,27 @@ export class BehaviorTreeAI implements AIInputProvider {
       Math.min(KITE_RADIAL_STEP_FT, spacedOrbit - dist),
     );
 
+    // Multi-threat radial defense: `target` is always whichever enemy is
+    // globally nearest (recomputed fresh every poll — see buildEngageBehavior),
+    // so a plain min-distance comparison against other enemies can never fire
+    // (no other enemy can be closer than the one already chosen as nearest).
+    // The real gap is DIRECTIONAL: retreating straight away from `target`'s
+    // axis can walk the player straight into a second/third enemy closing in
+    // from a different angle in a packed swarm, since that enemy's position
+    // never contributes to the escape vector at all. Fix: accumulate an
+    // explicit escape push away from every OTHER perceived enemy that has
+    // breached the standoff ring, and add it to the primary radial/strafe step
+    // below — so closing threats from any angle bend the kite path away from
+    // them, not just from the nominal target.
+    const otherThreatPush = this.computeOtherThreatEscapePush(
+      world,
+      playerX,
+      playerY,
+      RANGED_MULTI_THREAT_SCAN_FT,
+      spacedOrbit,
+      target.eid,
+    );
+
     // Prefer radial (forward/backward) motion; orbit fully only when flanked.
     const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
     const strafeFt = backThreat ? KITE_STEP_FT : KITE_STRAFE_FT;
@@ -8096,8 +8556,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * strafeFt;
-      let sy = uy * radialMag + ty * strafeFt;
+      let sx = ux * radialMag + tx * strafeFt + otherThreatPush.x;
+      let sy = uy * radialMag + ty * strafeFt + otherThreatPush.y;
       const slen = Math.hypot(sx, sy) || 1;
       sx = (sx / slen) * KITE_STEP_FT;
       sy = (sy / slen) * KITE_STEP_FT;
@@ -8440,6 +8900,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.engageNoProgressFrames = 0;
     this.engageBestDistance = Number.POSITIVE_INFINITY;
     this.engageBestHp = Number.POSITIVE_INFINITY;
+    this.rangedDefensiveSpacing = false;
     this.collectDwellActive = false;
     this.collectDwellAnchorX = 0;
     this.collectDwellAnchorY = 0;
@@ -8485,6 +8946,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.hasPerceptionData = false;
     this.frontierBfsVisited = null;
     this.retreating = false;
+    this.rangedEmergencyRetreating = false;
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;

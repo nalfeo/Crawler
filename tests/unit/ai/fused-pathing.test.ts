@@ -20,7 +20,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
-import { spawnPlayer, spawnEnemy } from '../../../src/core/spawners/combatants.js';
+import {
+  spawnPlayer,
+  spawnEnemy,
+  spawnBehaviorEnemy,
+} from '../../../src/core/spawners/combatants.js';
+import { AI_TYPE } from '../../../src/game/enemyAISystem.js';
 import {
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
@@ -173,5 +178,87 @@ describe('RISK_REWARD_FUSED — danger-aware deflection', () => {
     expect(result.moveX).toBeCloseTo(chosen.dirX, 10);
     expect(result.moveY).toBeCloseTo(chosen.dirY, 10);
     expect(result.moveX).toBeLessThan(1); // no longer pure +x
+  });
+});
+
+describe('RISK_REWARD_FUSED — ranged danger radius extends to actual attack range', () => {
+  it('uses attackRange (not just the base danger radius) for a ranged enemy standing OUTSIDE the base radius', () => {
+    // Base RISK_REWARD_DANGER_RADIUS_FT is 9ft. Place a ranged enemy with a
+    // much longer attackRange 15ft away from the straight-ahead sample point
+    // (SAMPLE_LOOKAHEAD_FT=8, so world position (8, 15)) — outside the base
+    // radius but within the enemy's real ranged attack reach, so danger
+    // evaluation must account for the enemy's actual threat range, not just
+    // the fixed melee-scale base radius.
+    const ATTACK_RANGE_FT = 20;
+    const THREAT_DISTANCE_FT = 15;
+
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    spawnBehaviorEnemy(
+      world,
+      SAMPLE_LOOKAHEAD_FT,
+      THREAT_DISTANCE_FT,
+      40,
+      AI_TYPE.RANGED,
+      5,
+      200,
+      ATTACK_RANGE_FT,
+    );
+
+    const ai = new BehaviorTreeAI({ seed: 7, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const internals = ai as unknown as FusedScorerInternals;
+    internals.fusedDebugCapture = true;
+
+    internals.computeRiskRewardFusedHeading(world, 0, 0, 1, 0, {
+      dodgeWeight: 0,
+      collectPullWeight: 0,
+      farmPullWeight: 0,
+    });
+
+    const debug = ai.getFusedDebug();
+    expect(debug).not.toBeNull();
+    if (!debug) return;
+
+    expect(debug.threats).toHaveLength(1);
+    // The threat's recorded radius is extended to the ranged enemy's real
+    // attack range, not clamped to the base danger radius.
+    expect(debug.threats[0]!.radiusFt).toBe(ATTACK_RANGE_FT);
+    expect(debug.threats[0]!.radiusFt).toBeGreaterThan(debug.dangerRadiusFt);
+
+    // With the extended radius, the straight-ahead sample point (distance
+    // THREAT_DISTANCE_FT=15 from the threat) is within the danger bubble
+    // (15 < 20) and must register nonzero danger.
+    const straight = debug.candidates.find((c) => c.angleDeg === 0)!;
+    expect(straight.danger).toBeGreaterThan(0);
+  });
+
+  it('a melee/non-ranged enemy at the same distance stays clamped to the base danger radius (no danger)', () => {
+    // Control case: same 15ft distance, but a plain enemy with no attackRange
+    // override — the base 9ft radius must NOT reach it, proving the extension
+    // above is genuinely attackRange-driven and not a general radius bump.
+    const THREAT_DISTANCE_FT = 15;
+
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, SAMPLE_LOOKAHEAD_FT, THREAT_DISTANCE_FT, 100);
+
+    const ai = new BehaviorTreeAI({ seed: 7, pathingMode: AIPathingMode.RISK_REWARD_FUSED });
+    const internals = ai as unknown as FusedScorerInternals;
+    internals.fusedDebugCapture = true;
+
+    internals.computeRiskRewardFusedHeading(world, 0, 0, 1, 0, {
+      dodgeWeight: 0,
+      collectPullWeight: 0,
+      farmPullWeight: 0,
+    });
+
+    const debug = ai.getFusedDebug();
+    expect(debug).not.toBeNull();
+    if (!debug) return;
+
+    expect(debug.threats).toHaveLength(1);
+    expect(debug.threats[0]!.radiusFt).toBe(debug.dangerRadiusFt); // base radius, not extended
+    const straight = debug.candidates.find((c) => c.angleDeg === 0)!;
+    expect(straight.danger).toBe(0);
   });
 });

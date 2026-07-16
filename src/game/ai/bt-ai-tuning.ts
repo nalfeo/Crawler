@@ -89,6 +89,23 @@ export const RANGED_STANDOFF_FRACTION = 0.5;
 // short enough that shots reliably connect, roughly tripling effective bow DPS.
 // Floored at CONTACT_SAFE_ORBIT_FT so it never parks inside body-contact range.
 export const RANGED_STANDOFF_ABS_FT = 6;
+// Once health falls below this fraction, a projectile user with an enemy already
+// inside its configured ranged-safe distance expands the orbit instead of
+// continuing to close toward the healthy 6ft damage-optimized ring. The healthy
+// baseline stays unchanged; this only arrests the deterministic contact-damage
+// spiral after the player is wounded.
+export const RANGED_DEFENSIVE_HP_FRACTION = 0.6;
+// A wounded projectile user expands only to a short, combat-effective ring.
+// Longer standoffs avoid contact but make un-led projectiles miss moving targets,
+// converting deaths into tutorial stalls. Ten feet keeps pistol/knife shots
+// reliable while creating substantially more reaction room than the healthy 6ft
+// ring.
+export const RANGED_DEFENSIVE_REACH_FRACTION = 0.5;
+export const RANGED_DEFENSIVE_ABS_FT = 10;
+// Once defensive spacing starts, keep it until the nearby-pressure bubble is
+// fully clear. Without this wider release radius the AI alternates every few
+// frames between closing to 6ft and retreating, losing both safety and DPS.
+export const RANGED_DEFENSIVE_RELEASE_MULTIPLIER = 2;
 // Ranged micro-spacing: fraction of the standoff radius the AI eases farther out
 // while a shot is on cooldown (then settles back to the standoff as the shot
 // readies), so all weapons stutter-step rather than holding a static distance.
@@ -156,6 +173,27 @@ export const KITE_RADIAL_STEP_FT = KITE_STEP_FT;
 export const KITE_STRAFE_FT = KITE_STEP_FT * 0.25;
 // Radius (ft) within which a non-primary enemy counts as a back threat.
 export const KITE_BACK_THREAT_RADIUS_FT = 20;
+// Radius (ft) used by ranged kiting's multi-threat scans: bounds how far
+// `computeOtherThreatEscapePush` and `findNearestOtherEnemyDistance` look
+// for other enemies. Note: the scan radius alone does NOT trigger an earlier
+// reaction — `computeOtherThreatEscapePush` only engages once a threat has
+// already breached the tighter `spacedOrbit` standoff ring (~4.5-7.2ft), so
+// the scan radius is non-binding for the escape-push. Its primary practical
+// effect is as the base for deriving SAFE_LOOT_ENEMY_CLEARANCE_FT below.
+// Matched to KITE_BACK_THREAT_RADIUS_FT for consistency across threat scans.
+export const RANGED_MULTI_THREAT_SCAN_FT = KITE_BACK_THREAT_RADIUS_FT;
+// Minimum distance (ft) to the nearest perceived enemy before a ranged-kiting
+// "safe loot detour" is considered. Deliberately wider than
+// RANGED_MULTI_THREAT_SCAN_FT so the AI only breaks off orbiting to grab loot
+// once every nearby enemy has actually cleared the multi-threat defense
+// radius — never while a threat could still be closing in.
+export const SAFE_LOOT_ENEMY_CLEARANCE_FT = RANGED_MULTI_THREAT_SCAN_FT * 1.5;
+// Max distance (ft) a ranged-kiting AI will detour off its orbit position to
+// grab loot. Kept short and well inside scanRadius (50ft) so the detour never
+// wanders toward new danger or turns into a long cross-room errand — this is
+// an opportunistic "grab it since I'm already clear" pickup, not a dedicated
+// loot run (that remains Collect's job once no threat is nearby at all).
+export const LOOT_DETOUR_MAX_FT = 15;
 // Frames between deterministic orbit-direction flips (~2.2s at 60fps). Periodic
 // reversal keeps the player juking and prevents it from grinding into one wall
 // forever; far longer than any oscillation so it reads as intentional kiting.
@@ -623,6 +661,11 @@ export const NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES = 180;
 // same strike band. The value is chosen directly, not derived from
 // CONTACT_SAFE_ORBIT_FT.
 export const ARENA_LOCKIN_ADD_HYSTERESIS_FT = 3;
+// In a sealed boss room, a wounded player must clear an add that is already
+// inside this pressure radius even when the boss is equally close. The ordinary
+// relative-distance hysteresis still governs healthy play.
+export const ARENA_LOCKIN_DEFENSIVE_HP_FRACTION = 0.6;
+export const ARENA_LOCKIN_ADD_PRESSURE_FT = CONTACT_SAFE_ORBIT_FT * 2;
 
 // --- Predictive safe-gap travel steering (travel-steering.ts) ---
 // Replaces the additive single-closest-threat "dodge nudge" during travel with a

@@ -1210,9 +1210,6 @@ export class MainGameScene extends Phaser.Scene {
       : Math.max(MAX_STEPS_PER_FRAME, Math.ceil(MAX_STEPS_PER_FRAME * this.simulationSpeed));
 
     while (this.accumulator >= GAME.DELTA_MS && steps < maxStepsThisFrame) {
-      this.world.frameCount += 1;
-      this.world.elapsedMs += GAME.DELTA_MS;
-
       // The input override (headless-parity AI) is polled once per rendered frame
       // above, but at high simulation speeds this loop runs many sim steps per
       // frame. Replaying a single stale move vector for N steps makes the AI
@@ -1220,9 +1217,24 @@ export class MainGameScene extends Phaser.Scene {
       // override every sim step (after the first, which used the poll above) so
       // in-browser AI runs share the headless runner's strict 1:1 poll:step
       // cadence. Human input keeps its once-per-frame poll.
+      //
+      // This re-poll MUST happen BEFORE this iteration's frameCount/elapsedMs
+      // increment below, exactly like headless-runner.ts's poll-then-step
+      // ordering (poll(); runSimulationStep()) and the once-per-frame poll
+      // above (which also runs before this loop's first increment). The
+      // telegraphed-shot dodge math in bt-ai-provider.ts reads world.elapsedMs
+      // live at poll time and assumes it always observes the value from BEFORE
+      // the current step's own increment; polling after the increment here
+      // would make the AI see one step less telegraph time remaining than it
+      // does in headless, shifting the dodge-horizon boundary by a frame
+      // between the two AI-driving contexts (copilot-pull-request-reviewer
+      // finding).
       if (this.options.inputCaptureOverride && steps > 0) {
         this.inputCapture.poll(this.inputState);
       }
+
+      this.world.frameCount += 1;
+      this.world.elapsedMs += GAME.DELTA_MS;
 
       // The ordered ECS system pipeline lives in `runSimulationStep` (one
       // src/engine module). Call order + arguments are identical to the former

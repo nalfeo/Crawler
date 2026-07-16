@@ -220,14 +220,18 @@ interface CollisionFingerprint {
 //   seed  13:  5/215.00000381469727/20/2   →  7/194.30000114440918/15/1
 //   seed  42:  5/193.14999961853027/5/2    →  7/243.30000019073486/10/8
 //   seed 137:  6/225.55999952554703/8/2    →  8/298.67000061273575/10/0
+//
+// 2026-07-16 merge-from-main drift: after merging main into this branch, seed 42
+// deterministically shifted again while 7/13/137 remained unchanged.
+//   seed  42:  7/243.30000019073486/10/8   →  8/267.30000019073486/10/6
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 7,
-    damageDealt: 243.30000019073486,
+    kills: 8,
+    damageDealt: 267.30000019073486,
     damageTaken: 10,
-    finalScore: 8,
+    finalScore: 6,
   },
   7: {
     totalFrames: 1500,

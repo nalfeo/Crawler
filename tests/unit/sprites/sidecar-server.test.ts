@@ -635,6 +635,55 @@ describe('buildServer routes (inject)', () => {
     expect(res.json().message).toBe('body.sizeVariant must be one of default, wide, tall, large');
   });
 
+  it('POST /api/workflow/synthesize accepts omitted floor and defaults to 1', async () => {
+    // No floor in body — should fall through to name validation (not a floor error)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/synthesize',
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    // Missing name → bad-request for name, not floor
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toContain('body.name');
+  });
+
+  it('POST /api/workflow/synthesize rejects a non-integer floor', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/synthesize',
+      headers: { 'content-type': 'application/json' },
+      payload: { name: 'iron-sword', floor: 1.5 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+    expect(res.json().message).toContain('floor');
+  });
+
+  it('POST /api/workflow/synthesize rejects an out-of-range floor (> 20)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/synthesize',
+      headers: { 'content-type': 'application/json' },
+      payload: { name: 'iron-sword', floor: 21 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+    expect(res.json().message).toContain('floor');
+  });
+
+  it('POST /api/workflow/synthesize rejects floor 0', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/synthesize',
+      headers: { 'content-type': 'application/json' },
+      payload: { name: 'iron-sword', floor: 0 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+    expect(res.json().message).toContain('floor');
+  });
+
   it('POST /api/workflow/promote-brief validates required fields', async () => {
     const res = await app.inject({
       method: 'POST',

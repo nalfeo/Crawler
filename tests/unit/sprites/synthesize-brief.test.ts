@@ -266,6 +266,43 @@ describe('synthesizeBrief — size variants', () => {
     expect(sidecar.sizeVariant).toBe('default');
   });
 
+  it('omits baseline floor 1 from YAML and writes explicit deeper floors', async () => {
+    const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));
+
+    const baselineFs = makeFsWrites();
+    const baseline = await synthesizeBrief({
+      name: 'baseline',
+      type: 'weapon',
+      candidates: 1,
+      provider,
+      repoRoot: REPO_ROOT,
+      env: {},
+      fsWrites: baselineFs.hooks,
+    });
+    const baselineYaml = parseYaml(baselineFs.files.get(baseline.written[0]!.yamlPath)!) as Record<
+      string,
+      unknown
+    >;
+    expect('floor' in baselineYaml).toBe(false);
+
+    const deeperFs = makeFsWrites();
+    const deeper = await synthesizeBrief({
+      name: 'deeper',
+      type: 'weapon',
+      floor: 12,
+      candidates: 1,
+      provider,
+      repoRoot: REPO_ROOT,
+      env: {},
+      fsWrites: deeperFs.hooks,
+    });
+    const deeperYaml = parseYaml(deeperFs.files.get(deeper.written[0]!.yamlPath)!) as Record<
+      string,
+      unknown
+    >;
+    expect(deeperYaml.floor).toBe(12);
+  });
+
   it('rejects an unknown size variant', async () => {
     const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));
     await expect(

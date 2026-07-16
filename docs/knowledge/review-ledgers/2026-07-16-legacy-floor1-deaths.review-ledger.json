@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "legacy-floor1-deaths",
+  "task_title": "Fix legacy Floor 1 death policies",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alternatives: tactical-only wounded spacing/add handling (too narrow for bad boss admission); shared boss-admission plus tactical follow-through (adopted); planner/SLACK_AWARE architecture (rejected because legacy/legacy is the gate and planner is time-oriented). Resolved all concerns by preserving the healthy 6-ft ranged baseline, scoping outward bias to wounded contact pressure with hysteresis, using combat readiness as boss-entry signal with slack only as bounded override, adding deterministic add-vs-boss switching, sharing entry logic across legacy/planner paths, bypassing active battles, and strengthening unit/control coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 4,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

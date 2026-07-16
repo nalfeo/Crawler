@@ -4,7 +4,7 @@
 
 ## The style in one paragraph
 
-Crawler sprites are **64px-shortest-edge grungy indie pixel art** — the expressive quirkiness of Earthbound characters mixed with worn, industrial Mad Max textures, grounded in dark dungeon-fantasy. Hard 1-pixel outlines on silhouettes, 3–5 color stops per material (base, shadow, deep shadow, optional highlight and accent), pixel dithering for cloth and stone texture, bold color pops that make subjects memorable over a dark floor tile. Equipment looks used; characters have personality. The whole frame is a **single subject** centered on a transparent background. Silhouettes-first: if the shape doesn't read at 1× over a dark floor tile, the sprite is wrong regardless of how nice the interior detail looks.
+Crawler sprites turn a dark-fantasy dungeon into deranged reality-show spectacle: expressive offbeat characters, retro-futurist salvage and corporate decay, and brutal improvised machinery. Concepts combine one readable identity with one authored contradiction, becoming stranger, more grotesque, frightening, shocking, and wonderful on deeper floors without becoming less legible. Hard 1-pixel outlines, 3–5 color stops per material, readable texture, and bold color separation keep every single-subject silhouette clear at game scale.
 
 ## Hard constraints (these are non-negotiable)
 
@@ -42,11 +42,15 @@ Default sheet-mode generation asks for a **4×4 grid of 16 distinct variants** o
 
 ## The prompt preamble
 
-The exact text below is what `scripts/sprites/build-prompt.ts` concatenates at the top of every prompt. Editing this section is the supported way to change generator behavior across all briefs at once. Keep it short — the model has a finite attention budget and the brief-specific subject description is what we want it to spend it on.
+The preamble below is the authoritative structure that `scripts/sprites/build-prompt.ts` concatenates at the top of every prompt. At runtime, `{{CRAWLER_DESIGN_LANGUAGE}}` expands from `scripts/sprites/content-direction.ts`, the canonical shared design-language source. Keep it short — the model has a finite attention budget and the brief-specific subject description is what we want it to spend it on.
 
 > --- STYLE PREAMBLE (do not deviate) ---
 >
-> You are generating pixel art in a **grungy indie** style for the dungeon-crawling game _Crawler_. The aesthetic blends the expressive, colorful quirkiness of Earthbound sprites with the worn industrial grit of Mad Max, set in a dark fantasy dungeon. Every output must follow these rules:
+> You are generating pixel art for _Crawler_.
+>
+> {{CRAWLER_DESIGN_LANGUAGE}}
+>
+> Every output must follow these rules:
 >
 > 1. Hard 1-pixel outlines on silhouettes. No anti-aliasing. No partial transparency. Edges are crisp 1-pixel transitions between solid colors.
 > 2. Use 3–5 distinct color stops per material — base mid-tone, shadow, deep shadow, optional highlight, optional accent. Keep readable contrast between stops (avoid clusters of near-identical mid-tones), but do not flatten materials to only 2 tones. Pixel dithering is allowed for fabric/stone/metal texture where it adds detail; avoid heavy checkerboard noise. No airbrush blending.
@@ -54,9 +58,9 @@ The exact text below is what `scripts/sprites/build-prompt.ts` concatenates at t
 > 4. **Scale granularity:** the full sheet is 1024×1024 with each cell rendered at 256×256 source pixels. The post-processor nearest-neighbor resamples to 64×64. This means **4 source pixels = 1 output pixel**. Draw using 4-pixel strokes for 1-pixel outlines, 8-pixel strokes for 2-pixel features. A character face needs individually readable eyes, nose, and mouth each rendered across 4–8 source pixels. Chunky 32-pixel blocks produce sprites that look like 16×16 scaled up — avoid this.
 > 5. **Single subject per cell**, fully inside its cell. Subject must not be clipped at any edge.
 > 6. **Transparent or flat high-contrast background** that is clearly distinct from the sprite palette (prefer bright magenta `#ff00ff`, electric cyan `#00ffff`, neon lime `#39ff14`, or vivid yellow `#fff200`). Do not use black backgrounds. No decorative backgrounds, no shadows under the subject, no scene props.
-> 7. **No text, numbers, digits, labels, captions, watermarks, signatures, or UI chrome anywhere in the image.** This is the single most common failure mode and it makes the output unusable.
+> 7. **No text, numbers, digits, labels, captions, watermarks, signatures, or UI chrome** unless the brief explicitly identifies a sign or text-bearing object and makes lettering essential. Never invent incidental text.
 > 8. Silhouette-first composition: the shape must read clearly even with all interior detail removed.
-> 9. Reference images attached to this request are our own approved Crawler sprites, chosen to favor the same `type` as this brief. Treat them as the style ground truth: **match** their outline weight, palette depth, shading stops (3–5), textural dithering, and bold colors so the candidate reads as same-family. Use them for subject-matter context too — how the subject type fills a 64px cell, orientation, scale conventions.
+> 9. Reference images attached to this request are approved Crawler sprites. Match their outline weight, palette depth, shading stops, dithering, scale, and production finish, but do not let references override the Crawler design language, requested subject, or floor context.
 >
 > --- END STYLE PREAMBLE ---
 
@@ -87,6 +91,10 @@ its geometry:
 # A banner-style weapon: default height, twice as wide.
 npm run sprites:synth -- battle-standard --type weapon --size wide
 ```
+
+Use `--floor 1..20` to set the creative-intensity context. Omitted floors
+default to Floor 1; generated briefs only write `floor:` when the value is above
+the baseline.
 
 | `--size`  | Width | Height |
 | --------- | ----- | ------ |
@@ -158,11 +166,12 @@ Verify any non-trivial prompt change with a **real round-trip** against the depl
 
 ## VLM judge (spec §F4, local-only)
 
-After the deterministic sensors (palette/silhouette/edges/bbox) pass, an **optional** VLM judge can score each sensor-passing variant on three axes that pixel-level sensors can't measure:
+After the deterministic sensors (palette/silhouette/edges/bbox) pass, an **optional** VLM judge can score each sensor-passing variant on four axes that pixel-level sensors can't measure:
 
-1. **`style_match`** (1–5) — does the variant read as same-family with the reference PNGs (our approved same-`type` sprites selected at generate time)? Catches "technically on-palette but the wrong silhouette language".
-2. **`brief_match`** (1–5) — does the variant depict what the brief's `prompt` asks for? Catches "valid sword sprite, wrong sword".
-3. **`readability`** (1–5) — at 1× over a dark floor tile, is the subject still legible? Catches subjects that disappear into the background or read as noise once downscaled.
+1. **`design_language`** (1–5) — does the concept feel specifically like Crawler, with one readable identity and one authored contradiction at the requested floor intensity?
+2. **`reference_style_match`** (1–5) — does the rendering read as same-family with approved same-`type` reference sprites?
+3. **`brief_match`** (1–5) — does the variant depict what the brief asks for, including orientation and animate/inanimate category?
+4. **`readability`** (1–5) — at 1× over a dark floor tile, is the subject still legible?
 
 Any score `< 3` on **any** evaluator auto-rejects the variant (`combinedPassed = false`). Within the passing set, the chosen variant is the one with the highest minimum judge score; sensor score breaks ties.
 
@@ -176,7 +185,7 @@ judge:
   maxVariants: 16 # optional; caps how many sensor-passing variants get judged per run
 ```
 
-When enabled, `generate-one` issues **one** vision call per judged variant — all three evaluators in a single structured-JSON response, by design (cost discipline). Each call hits the deployment in `AZURE_OPENAI_VISION_DEPLOYMENT` from `.env`.
+When enabled, `generate-one` issues **one** vision call per judged variant — all four evaluators in a single structured-JSON response, by design (cost discipline). Each call hits the deployment in `AZURE_OPENAI_VISION_DEPLOYMENT` from `.env`.
 
 > **Env alias.** Synth and variation expansion read `AZURE_OPENAI_CHAT_DEPLOYMENT`, but the provider factory falls back to `AZURE_OPENAI_VISION_DEPLOYMENT` (with a one-shot warning) when the chat var is missing. The deployments we provision today are the same gpt-4o-class model serving both endpoints, so this fallback is safe. To silence the warning, mirror your vision deployment value into `AZURE_OPENAI_CHAT_DEPLOYMENT` in the env file.
 
