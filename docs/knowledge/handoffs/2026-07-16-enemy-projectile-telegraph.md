@@ -329,9 +329,9 @@ vector, not a stale copy of the previous shot'`
   passing on this branch, built atop the current `main` tip (the 29th test
   did not exist on `main` prior to this branch).
 - **0ms legacy parity reconfirmed on current `main`**: on this branch, atop
-  the current `main` tip, all 170 tests across
+  the current `main` tip, all 174 tests across
   `enemy-projectile-telegraph.test.ts` / `behavior-tree-ai.test.ts` /
-  `phaser-bridge.test.ts` pass — 169 of them are pre-existing assertions
+  `phaser-bridge.test.ts` pass — 173 of them are pre-existing assertions
   (including the explicit byte-identical-RNG-draw and 0ms-fires-immediately
   checks) that are unmodified from `main` and still pass unchanged on top of
   #1203's stats/mana overhaul, plus the 1 new regression test added above.
@@ -354,10 +354,11 @@ vector, not a stale copy of the previous shot'`
   combination is not a controlled sample, other run-to-run variance (RNG
   draw order, enemy spawn/positioning drift between configs) could easily
   dominate a two-point comparison, and confirming a causal effect would need
-  a broader-sample sweep across seeds. No conclusion is drawn from this
-  smoke pair beyond "both configs complete a full run without crashing and
-  produce the expected telegraph state transitions." Full run logs saved as
-  session artifacts (`seed42-floor2-baseballbat-250ms.log`,
+  a broader-sample sweep across seeds. The headless CLI does not log
+  telegraph lifecycle transitions (it prints only the configured delay and
+  ordinary run statistics), so no conclusion is drawn from this smoke pair
+  beyond "both configs complete a full run without crashing." Full run logs
+  saved as session artifacts (`seed42-floor2-baseballbat-250ms.log`,
   `seed42-floor2-baseballbat-0ms.log`).
 - **Real screenshot-based visual observation remains blocked**: re-attempted
   via both the `chrome-devtools` skill and the `playwright-browser_*` tools
