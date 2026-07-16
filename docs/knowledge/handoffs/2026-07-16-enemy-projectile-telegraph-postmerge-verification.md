@@ -35,10 +35,13 @@ locked aim vector, not a stale copy of the previous shot'` to
    This was already guaranteed by construction
    (`startEnemyProjectileTelegraph` unconditionally overwrites every locked
    field on each call) but previously untested directly.
-2. **0ms legacy parity reconfirmed on current `main`**: all 170 tests across
-   the three telegraph/dodge/render-cue suites still pass unmodified on top
-   of the since-merged stats/mana overhaul (PR #1203) — the telegraph gating
-   logic is independent of stat values.
+2. **0ms legacy parity reconfirmed on current `main`**: on this branch, atop
+   current `main`, all 170 tests across the three telegraph/dodge/render-cue
+   suites pass — 169 are pre-existing assertions, unmodified from `main`,
+   that still pass unchanged on top of the since-merged stats/mana overhaul
+   (PR #1203), plus the 1 new regression test from item 1 above. The
+   telegraph gating logic is independent of stat values, so the parity claim
+   holds for the pre-existing assertions.
 3. **Real seed42 Floor 2 baseball-bat headless smoke run, executed (not just
    described)**: `npx tsx src/game/ai/headless-runner-cli.ts --seed 42
 --floor floor2 --weapon baseball-bat --max-frames 60000` at both the 250ms

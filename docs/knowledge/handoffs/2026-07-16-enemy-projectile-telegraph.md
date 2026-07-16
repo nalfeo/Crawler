@@ -314,24 +314,30 @@ tip and closed two remaining observability gaps:
 
 - **Burst-follow-up independent locking, made explicit**: the existing
   "telegraphs every subsequent shot" test only proved the second shot
-  re-enters `telegraphActive`. Added a new regression test — `'gives every
-burst follow-up shot its OWN independently locked aim vector, not a stale
-copy of the previous shot'` (`tests/game/enemy-projectile-telegraph.test.ts`)
-  — that moves the player to a very different angle between the first shot's
-  fire and the second shot's telegraph start, then asserts the second shot's
-  `telegraphDirX/Y` point toward the player's _new_ position (not a stale
-  copy of the first shot's lock), and that the fired projectile's velocity
-  matches the second lock. This is guaranteed by construction
-  (`startEnemyProjectileTelegraph` unconditionally overwrites all four locked
-  fields on every call, including every burst/rapid-fire follow-up), but is
-  now also directly regression-tested. 29/29 tests pass in that file on the
-  current `main` tip.
-- **0ms legacy parity reconfirmed on current `main`**: all 170 tests across
+  re-enters `telegraphActive`. Added a new regression test on this branch —
+  `'gives every burst follow-up shot its OWN independently locked aim
+vector, not a stale copy of the previous shot'`
+  (`tests/game/enemy-projectile-telegraph.test.ts`) — that moves the player
+  to a very different angle between the first shot's fire and the second
+  shot's telegraph start, then asserts the second shot's `telegraphDirX/Y`
+  point toward the player's _new_ position (not a stale copy of the first
+  shot's lock), and that the fired projectile's velocity matches the second
+  lock. This is guaranteed by construction (`startEnemyProjectileTelegraph`
+  unconditionally overwrites all four locked fields on every call, including
+  every burst/rapid-fire follow-up), but is now also directly
+  regression-tested. With this new test added, the file has 29/29 tests
+  passing on this branch, built atop the current `main` tip (the 29th test
+  did not exist on `main` prior to this branch).
+- **0ms legacy parity reconfirmed on current `main`**: on this branch, atop
+  the current `main` tip, all 170 tests across
   `enemy-projectile-telegraph.test.ts` / `behavior-tree-ai.test.ts` /
-  `phaser-bridge.test.ts` (including the explicit byte-identical-RNG-draw and
-  0ms-fires-immediately assertions) still pass unmodified on top of #1203's
-  stats/mana overhaul — the telegraph gating logic is independent of stat
-  values, so the original git-stash byte-for-byte parity proof still holds.
+  `phaser-bridge.test.ts` pass — 169 of them are pre-existing assertions
+  (including the explicit byte-identical-RNG-draw and 0ms-fires-immediately
+  checks) that are unmodified from `main` and still pass unchanged on top of
+  #1203's stats/mana overhaul, plus the 1 new regression test added above.
+  The telegraph gating logic is independent of stat values, so the original
+  git-stash byte-for-byte parity proof for the pre-existing assertions still
+  holds.
 - **seed42 Floor 2 baseball-bat smoke artifacts, captured for real**: ran
   `npx tsx src/game/ai/headless-runner-cli.ts --seed 42 --floor floor2
 --weapon baseball-bat --max-frames 60000` at both the 250ms production
