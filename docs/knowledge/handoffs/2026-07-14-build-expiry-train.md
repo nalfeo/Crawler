@@ -381,6 +381,7 @@ wave of 5 unresolved Copilot review threads:
 - A commit-message footer is useful provenance for humans but is not a security
   attestation. Post-promotion suppression now requires a successful exact-SHA
   check run with an external fingerprint.
+<<<<<<< HEAD
 - Build-expiry savings remain safe when heavy PR evidence is immutable and the
   combined candidate receives a small integration plus security gate.
 
@@ -396,3 +397,18 @@ validation publication flow.
 Add a corpus-level invariant test that verifies no workflow script contains
 inner-function declarations; the hoisting ambiguity silently survived syntax
 checks and was only caught by branch-specific execution tests.
+=======
+
+### Mistakes Made
+
+A helper function was accidentally nested inside an outer function, bypassing
+static analysis while silently breaking on a state-machine path that was not
+covered by the existing test suite.
+
+### Opportunities for Future Improvement
+
+Build-expiry savings remain safe when heavy PR evidence is immutable and the
+combined candidate receives a small integration plus security gate. Future
+work should add branch-coverage tests for every state-machine path in merge
+train workflow scripts to catch similar misplacements earlier.
+>>>>>>> origin/main

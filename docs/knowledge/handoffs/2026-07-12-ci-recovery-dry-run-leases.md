@@ -40,6 +40,7 @@ automation and shepherds from racing.
 
 ### Mistakes Made
 
+<<<<<<< HEAD
 Dry-run mode was narrowly interpreted as "no repair mutations" without considering
 that lease acquire/heartbeat/release operations are shepherd-coordination primitives,
 not repair actions. The distinction was not explicit in the rollout spec.
@@ -48,3 +49,14 @@ not repair actions. The distinction was not explicit in the rollout spec.
 
 Document the lease ownership API as a required-always primitive in the CI recovery
 design doc so future dry-run or shadow mode expansions cannot inadvertently disable it.
+=======
+The dry-run mode accidentally blocked lease persist operations, causing heartbeat
+failures for leases that were never successfully acquired under dry-run, because
+the ownership primitive was gated on the same rollout flag as automated repair.
+
+### Opportunities for Future Improvement
+
+Add explicit rollout-mode matrix tests verifying each lease operation (acquire,
+heartbeat, release) independently across all three modes (off / dry-run / on) to
+catch similar regressions before they reach production.
+>>>>>>> origin/main
