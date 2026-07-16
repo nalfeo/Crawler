@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b9668f046d7c8e6ba40b3b87a7eb44910349fdbd",
+    "commitDate": "2026-07-16T00:15:20Z",
+    "commitSubject": "fix(merge-train): resolve open preview PR heads (#1164)",
+    "capturedAt": "2026-07-16T01:13:00.381Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29461369851",
+    "winRate": 0.975,
+    "totalWins": 585,
+    "totalRuns": 600,
+    "path": "by-sha/b9668f046d7c8e6ba40b3b87a7eb44910349fdbd.json"
+  },
+  {
     "commit": "726ca639fbd525aacc89af25ff18e3612ff1a12e",
     "commitDate": "2026-07-15T23:19:23Z",
     "commitSubject": "fix(merge-train): real GitHub squash-merge promotion for MERGED completion semantics (#1162)",
