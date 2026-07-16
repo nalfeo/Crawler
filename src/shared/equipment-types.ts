@@ -49,12 +49,9 @@ export interface EquipmentItemDef {
   readonly weaponId?: string;
   /**
    * Physical weight of this item in pounds (lb). Consumed by the encumbrance
-   * system (`src/shared/encumbrance.ts`) to derive the equipped gear load and
-   * the resulting encumbrance band. Multi-slot items are counted once via
-   * unique-instance deduplication (`uniqueEquippedDefs`). Bag contents are
-   * excluded — only equipped instances contribute. Must be a non-negative
-   * number; `0` is a valid placeholder but every shipped item should carry an
-   * intentionally authored value.
+   * system (`src/shared/encumbrance.ts`) to derive equipped load and band.
+   * Multi-slot items are counted once via unique-instance deduplication.
+   * Must be a finite, non-negative number.
    */
   readonly weightLb: number;
 }

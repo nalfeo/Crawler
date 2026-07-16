@@ -7,8 +7,9 @@
  */
 
 import { addComponent, hasComponent, removeComponent, setComponent } from 'bitecs';
-import { Equipment, BaseStats, EffectiveStats, Player } from '../components.js';
+import { Equipment, BaseStats, EffectiveStats, Health, Player } from '../components.js';
 import type { GameWorld } from '../world.js';
+import { syncHealthFromDerivedMaxHpDelta } from '../derived-max-hp.js';
 import { SLOT_REGISTRY, isValidSlotId } from '../../shared/equipment-slots.js';
 import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
 import {
@@ -116,7 +117,17 @@ function getOrCreateState(world: GameWorld, entity: number): EquipmentState {
 // --- Stat recomputation ---
 
 function recomputeEffectiveStats(world: GameWorld, entity: number): void {
-  applyEffectiveStats(world, entity, getEquipmentMap(world).get(entity));
+  const prevDerivedMaxHp = hasComponent(world.ecs, entity, Health)
+    ? (world.stores.effectiveStats.maxHp[entity] ?? 0)
+    : 0;
+  // Fold currently-active (non-expired) modifiers so an eager equip/unequip
+  // recompute matches what the next statSystem tick would produce — keeps the
+  // two callers of applyEffectiveStats from ever disagreeing mid-frame.
+  const activeModifiers = world.statModifiers.filter(
+    (m) => m.expiresFrame === undefined || m.expiresFrame > world.frameCount,
+  );
+  applyEffectiveStats(world, entity, getEquipmentMap(world).get(entity), activeModifiers);
+  syncHealthFromDerivedMaxHpDelta(world, entity, prevDerivedMaxHp);
 }
 
 // --- Validation ---
@@ -151,6 +162,7 @@ function validateItemDef(itemDef: EquipmentItemDef): EquipFailureReason[] {
       reasons.push({ type: 'invalidDef', message: `Non-finite value for stat: ${stat}` });
       continue;
     }
+
     if ((PRIMARY_STATS as readonly string[]).includes(stat) && !Number.isInteger(value)) {
       reasons.push({
         type: 'invalidDef',
@@ -304,7 +316,7 @@ function swapEquipFailureReasons(
   }
   const postUnequipSources: StatBonusSource[] = uniqueEquippedDefs(state)
     .filter((d) => !swappedInstanceIds.has(d.instanceId))
-    .map((d) => ({ statBonuses: d.statBonuses }));
+    .map((d) => ({ statBonuses: d.statBonuses, weightLb: d.weightLb }));
   const postUnequipStats = computeEffectiveStatsFromLoadout(base, core, postUnequipSources);
 
   return [...validateItemDef(def), ...evaluateRequirements(world, entity, def, postUnequipStats)];
@@ -337,6 +349,19 @@ export function initializeBaseStats(
   getOrCreateState(world, entity);
 
   recomputeEffectiveStats(world, entity);
+
+  // Seed Health.max/current to the freshly derived max HP (e.g. base CON = 1,
+  // no allocation/gear yet, starts full at 160 + 10*1 = 170 — see
+  // shared/stats.ts#BASE_MAX_HP_FLOOR). This is spawn-time seeding, not a
+  // per-frame sync — statSystem's delta-based sync (capture-before-overwrite)
+  // takes over every frame after this and can never creep max HP because the
+  // very first tick sees prevMaxHp === newMaxHp.
+  if (hasComponent(world.ecs, entity, Health)) {
+    const derivedMaxHp = world.stores.effectiveStats.maxHp[entity] ?? 0;
+    if (derivedMaxHp > 0) {
+      setComponent(world.ecs, entity, Health, { max: derivedMaxHp, current: derivedMaxHp });
+    }
+  }
 }
 
 /** Set entity tags (for hasTag/notTag requirements). */
@@ -661,10 +686,10 @@ export function previewEquipDelta(
   // Hypothetical loadout: keep everything not displaced, add the new item.
   const retainedSources: StatBonusSource[] = currentDefs
     .filter((d) => !swappedInstanceIds.has(d.instanceId))
-    .map((d) => ({ statBonuses: d.statBonuses }));
+    .map((d) => ({ statBonuses: d.statBonuses, weightLb: d.weightLb }));
   const hypotheticalStats = computeEffectiveStatsFromLoadout(base, core, [
     ...retainedSources,
-    { statBonuses: def.statBonuses },
+    { statBonuses: def.statBonuses, weightLb: def.weightLb },
   ]);
 
   const deltas = {} as Record<StatId, number>;

@@ -26,6 +26,7 @@ import {
 } from '../core/systems/equipmentSystem.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { PRIMARY_STATS, SECONDARY_STATS, ALL_STAT_IDS, type StatId } from '../shared/stats.js';
+import { getEntityEncumbranceSnapshot } from '../core/encumbrance.js';
 import { addItem, filterByEquipmentSlot, filterEquippable } from '../shared/inventory.js';
 import type { InventoryBag, InventorySlot } from '../shared/inventory.js';
 import { getItemById, RARITY_COLORS, type ItemDef } from '../shared/items.js';
@@ -38,14 +39,6 @@ import { resolveItemSprite } from '../shared/item-sprites.js';
 import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import { BLUE_STEEL, hex, MIN_TEXT_RESOLUTION } from './ui-theme.js';
-import {
-  computeEquippedWeightLb,
-  getCarryThresholdLb,
-  getEncumbranceBand,
-  ENCUMBRANCE_BAND_LABELS,
-  ENCUMBRANCE_BAND_COLORS,
-  ENCUMBRANCE_HEAVY_FACTOR,
-} from '../shared/encumbrance.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -86,22 +79,20 @@ function formatStatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
-/**
- * Format a gear-weight value (lb) for the LOAD readout.
- * Uses the minimum decimal places needed: integers show no decimal point,
- * fractions show up to 2 decimal places with trailing zeros removed.
- * Avoids `toFixed(1)` which incorrectly rounds 0.25 → "0.3" in JS.
- */
-function formatLb(lb: number): string {
-  return parseFloat(lb.toFixed(2)).toString();
-}
-
 function formatStatLabel(statId: StatId): string {
   return statId
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
     .toUpperCase();
+}
+
+function formatWeightLb(value: number): string {
+  return `${formatStatValue(value)} lb`;
+}
+
+function formatEncumbranceBandLabel(band: string): string {
+  return band.toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -1012,8 +1003,9 @@ export function createEquipmentUI(
 
     let rowY = dollY + 68;
     const colW = STATS_W - 14;
-    const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length;
-    const reservedSectionSpace = 18 * 2 + 4;
+    const ENCUMBRANCE_ROW_COUNT = 3; // equipped weight, total mass, band status
+    const totalStatRows = PRIMARY_STATS.length + SECONDARY_STATS.length + ENCUMBRANCE_ROW_COUNT;
+    const reservedSectionSpace = 18 * 3 + 4; // PRIMARY + SECONDARY + MASS section headers
     const rowsEndY = dollY + dollH - 12;
     const rowStep = Math.max(
       20,
@@ -1076,6 +1068,42 @@ export function createEquipmentUI(
       rowY += rowStep;
     };
 
+    // Encumbrance rows share the same row chrome as `drawStat` but display
+    // pre-formatted label/value text instead of resolving a StatId — equipped
+    // weight/total mass/band aren't EffectiveStats fields (encumbrance is
+    // computed from Weight + equipped gear + effective Strength, see
+    // core/encumbrance.ts), yet the plan requires them UI-visible even while
+    // fully inert (the shipped catalog's weightLb is all 0).
+    const drawInfoRow = (label: string, valueText: string, highlighted: boolean): void => {
+      const rowBg = scene.add.rectangle(
+        statsX + colW / 2 + 6,
+        rowY + Math.floor(rowStep / 2),
+        colW - 8,
+        Math.max(20, rowStep - 2),
+        rowY % 48 === 0 ? 0x2f4369 : 0x38507d,
+        0.92,
+      );
+      rowBg.setStrokeStyle(1, 0x5f7db0, 0.7);
+      const name = crispText(statsX + 10, rowY + 6, label, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '8px',
+        color: hex(COLORS.textPrimary),
+      });
+      name.setOrigin(0, 0);
+      const val = crispText(statsX + colW, rowY + 6, valueText, {
+        fontFamily: FONT_FAMILY,
+        fontSize: '8px',
+        color: highlighted ? hex(COLORS.statNerf) : hex(COLORS.textPrimary),
+        fontStyle: highlighted ? 'bold' : 'normal',
+      });
+      val.setOrigin(1, 0);
+      container.add(rowBg);
+      container.add(name);
+      container.add(val);
+      statObjects.push(rowBg, name, val);
+      rowY += rowStep;
+    };
+
     drawSection('PRIMARY');
     for (const statId of PRIMARY_STATS) {
       drawStat(statId);
@@ -1085,66 +1113,16 @@ export function createEquipmentUI(
     for (const statId of SECONDARY_STATS) {
       drawStat(statId);
     }
-
-    // -----------------------------------------------------------------------
-    // Encumbrance / load readout — compact rows just below the STATS heading.
-    // Placed in the ~26px gap between the heading frame bottom and the first
-    // stat row so it does not shift the existing stat-row layout.
-    // Shows: gear weight (lb), carry capacity, and the encumbrance band.
-    // -----------------------------------------------------------------------
-    const equipState = getEquipmentState(lastWorld, playerEid);
-    const gearLb = computeEquippedWeightLb(equipState);
-    const strength = Math.max(1, Math.floor(effective['strength'] ?? 1));
-    const capLb = getCarryThresholdLb(strength);
-    const band = getEncumbranceBand(gearLb, strength);
-    const bandLabel = ENCUMBRANCE_BAND_LABELS[band];
-    const bandColor = ENCUMBRANCE_BAND_COLORS[band];
-
-    // Single compact row between heading (dollY+26, h=30) and first stat (dollY+68).
-    // Centre in the gap: dollY + 41 + (68-41)/2 ≈ dollY + 54
-    const loadY = dollY + 50;
-    const loadColW = colW;
-
-    const loadBg = scene.add.rectangle(
-      statsX + loadColW / 2 + 6,
-      loadY + 8,
-      loadColW - 8,
-      18,
-      0x1a2d4a,
-      0.97,
+    rowY += 4;
+    drawSection('MASS');
+    const encumbrance = getEntityEncumbranceSnapshot(lastWorld, playerEid);
+    drawInfoRow('EQUIPPED', formatWeightLb(encumbrance.equippedWeightLb), false);
+    drawInfoRow('TOTAL MASS', formatWeightLb(encumbrance.totalMassLb), false);
+    drawInfoRow(
+      'STATUS',
+      formatEncumbranceBandLabel(encumbrance.band),
+      encumbrance.band !== 'unburdened',
     );
-    loadBg.setStrokeStyle(1, bandColor, 0.8);
-    container.add(loadBg);
-    statObjects.push(loadBg);
-
-    const loadLabel = crispText(statsX + 10, loadY + 2, 'LOAD', {
-      fontFamily: FONT_FAMILY,
-      fontSize: '7px',
-      color: hex(COLORS.textSecondary),
-    });
-    loadLabel.setOrigin(0, 0);
-    container.add(loadLabel);
-    statObjects.push(loadLabel);
-
-    const loadBand = crispText(statsX + 52, loadY + 2, bandLabel, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '7px',
-      color: hex(bandColor),
-      fontStyle: 'bold',
-    });
-    loadBand.setOrigin(0, 0);
-    container.add(loadBand);
-    statObjects.push(loadBand);
-
-    const gearStr = `${formatLb(gearLb)}/${formatLb(capLb * ENCUMBRANCE_HEAVY_FACTOR)}lb`;
-    const loadVal = crispText(statsX + loadColW, loadY + 2, gearStr, {
-      fontFamily: FONT_FAMILY,
-      fontSize: '7px',
-      color: hex(COLORS.textSecondary),
-    });
-    loadVal.setOrigin(1, 0);
-    container.add(loadVal);
-    statObjects.push(loadVal);
   }
 
   function render(): void {
