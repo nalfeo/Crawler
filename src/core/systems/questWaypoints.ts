@@ -142,8 +142,23 @@ function objectiveTarget(
  */
 export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWaypoint[] {
   const objective = world.floorScenario?.objective;
+  const activeQuests = getActiveQuests(world);
+
+  // Build a map from completion-goal-flag → questId for every currently-active
+  // quest.  A quest's `goal` objective is "blocked" when another active quest
+  // owns the same flag (i.e. that other quest must finish first to set it).
+  // Blocked objectives are navigated via the blocker's own arrow, so showing
+  // a second arrow for the dependent quest is redundant and confusing.
+  const completionFlagOwner = new Map<string, string>();
+  for (const q of activeQuests) {
+    const d = getQuestDef(q.questId);
+    if (d?.onCompleteGoalFlag) {
+      completionFlagOwner.set(d.onCompleteGoalFlag, q.questId);
+    }
+  }
+
   const waypoints: QuestWaypoint[] = [];
-  for (const quest of getActiveQuests(world)) {
+  for (const quest of activeQuests) {
     const def = getQuestDef(quest.questId);
     if (!def || def.hidden) {
       continue;
@@ -153,6 +168,16 @@ export function getQuestWaypoints(world: GameWorld, playerEid?: number): QuestWa
       continue;
     }
     const { def: objDef } = activeView;
+
+    // Skip quests whose current objective is blocked on another active quest's
+    // completion.  The blocker already has its own direction arrow.
+    if (objDef.kind === 'goal' && objDef.goalId) {
+      const flagOwner = completionFlagOwner.get(objDef.goalId);
+      if (flagOwner !== undefined && flagOwner !== quest.questId) {
+        continue;
+      }
+    }
+
     const target = objectiveTarget(
       world,
       objective,

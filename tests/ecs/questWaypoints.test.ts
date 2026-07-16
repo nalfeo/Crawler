@@ -120,6 +120,60 @@ describe('getQuestWaypoints', () => {
     expect(wps[0]).toMatchObject({ x: POS.shop.x, y: POS.shop.y });
   });
 
+  it('suppresses the meet-npcs waypoint when its blocking shopkeeper quest is still active', () => {
+    const world = withFloor1(createTestWorld());
+    spawnPlayer(world, 0, 0);
+    // The shopkeeper errand owns the 'floor1-shop-quest-complete' flag that
+    // meet-npcs's first objective is waiting on. While the errand is active,
+    // meet-npcs has no independent waypoint — the errand's arrow serves both.
+    acceptQuest(world, FLOOR1_MEET_NPCS_QUEST_ID);
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+
+    const ids = getQuestWaypoints(world).map((wp) => wp.questId);
+    expect(ids).not.toContain(FLOOR1_MEET_NPCS_QUEST_ID);
+    expect(ids).toContain(FLOOR1_SHOP_QUEST_ID);
+  });
+
+  it('restores the meet-npcs waypoint once the blocking shopkeeper quest completes', () => {
+    const world = withFloor1(createTestWorld());
+    spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_MEET_NPCS_QUEST_ID);
+    const shopQuest = acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    if (!shopQuest) throw new Error('shopQuest should be accepted');
+
+    // Simulate the shopkeeper errand completing: mark it done and set its flag.
+    shopQuest.status = 'complete';
+    world.goalFlags.set('floor1-shop-quest-complete', true);
+
+    // Now meet-npcs's first objective is satisfied and the second one
+    // (floor1-boss-battle-complete) becomes active. Without floor1-boss-battle
+    // in the log, no blocker exists and meet-npcs gets a waypoint.
+    const ids = getQuestWaypoints(world).map((wp) => wp.questId);
+    // The shop quest is no longer active, so no shop waypoint.
+    // The boss-battle quest is not yet active so floor1-boss-battle-complete
+    // has no owner — meet-npcs shows an arrow for its second objective.
+    expect(ids).toContain(FLOOR1_MEET_NPCS_QUEST_ID);
+  });
+
+  it('suppresses meet-npcs when boss-battle quest is active and blocks its second objective', () => {
+    const world = withFloor1(createTestWorld());
+    spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_MEET_NPCS_QUEST_ID);
+    const shopQuest = acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    if (!shopQuest) throw new Error('shopQuest should be accepted');
+
+    // Complete the shopkeeper errand so meet-npcs advances to its second
+    // objective (floor1-boss-battle-complete). Then activate the boss-battle
+    // quest — it will own that flag, blocking meet-npcs again.
+    shopQuest.status = 'complete';
+    world.goalFlags.set('floor1-shop-quest-complete', true);
+    acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+
+    const ids = getQuestWaypoints(world).map((wp) => wp.questId);
+    expect(ids).not.toContain(FLOOR1_MEET_NPCS_QUEST_ID);
+    expect(ids).toContain(FLOOR1_BOSS_BATTLE_QUEST_ID);
+  });
+
   it('points at the staircase as a stairs waypoint for leave-floor', () => {
     const world = withFloor1(createTestWorld());
     spawnPlayer(world, 0, 0);
