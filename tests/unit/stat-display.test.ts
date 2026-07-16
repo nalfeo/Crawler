@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   STAT_DISPLAY,
   PRIMARY_STAT_DISPLAY,
-  formatStatIncrement,
   formatStatValue,
   formatCoreStatGains,
 } from '../../src/shared/stat-display.js';
-import { STAT_KEYS, STAT_POINT_INCREMENT, PRIMARY_STATS } from '../../src/shared/stats.js';
+import { STAT_KEYS, PRIMARY_STATS } from '../../src/shared/stats.js';
 
 describe('stat display metadata', () => {
   it('provides display info for every gameplay stat key', () => {
@@ -23,12 +22,6 @@ describe('stat display metadata', () => {
     expect(formatStatValue('moveSpeed', 3)).toBe('3.0000');
     expect(formatStatValue('attackSpeed', 1)).toBe('1.00');
   });
-
-  it('formats per-point increments with a leading plus', () => {
-    expect(formatStatIncrement('maxHp')).toBe(`+${STAT_POINT_INCREMENT.maxHp.toFixed(0)}`);
-    expect(formatStatIncrement('moveSpeed')).toBe('+0.0125');
-    expect(formatStatIncrement('attackSpeed')).toBe('+0.05');
-  });
 });
 
 describe('primary stat display metadata', () => {
@@ -41,41 +34,40 @@ describe('primary stat display metadata', () => {
     }
   });
 
-  it('formatCoreStatGains returns a non-empty string for stats with gains', () => {
-    // Strength → damage + armor
-    const strengthGains = formatCoreStatGains('strength');
-    expect(strengthGains).toContain('Damage');
-    expect(strengthGains).toContain('Armor');
-    // Constitution → maxHp
-    expect(formatCoreStatGains('constitution')).toContain('Max HP');
+  it('does not include weight in the primary stat set', () => {
+    expect(PRIMARY_STATS).not.toContain('weight');
+    expect((PRIMARY_STAT_DISPLAY as Record<string, unknown>).weight).toBeUndefined();
   });
 
-  it('formatCoreStatGains appends derived secondary stats as percentages', () => {
-    // Strength → damagePercent (0.01 → "+1.0% Damage")
-    const strGains = formatCoreStatGains('strength');
-    expect(strGains).toContain('Damage');
-    expect(strGains).toContain('1.0%');
-    // Luck → critChance (0.005 → "+0.5% Crit Chance")
-    const luckGains = formatCoreStatGains('luck');
-    expect(luckGains).toContain('Crit Chance');
-    expect(luckGains).toContain('0.5%');
-    // Dexterity → dodgeChance (0.003 → "+0.3% Dodge Chance")
+  it('formatCoreStatGains reports the typed-primary rates for Strength and Intelligence', () => {
+    // Strength → +1.0% physical damage only (no armor, no flat damage — see
+    // shared/stats.ts#STR_PHYSICAL_DAMAGE_RATE and CORE_STAT_TO_SECONDARY.strength).
+    expect(formatCoreStatGains('strength')).toBe('+1.0% Physical Damage');
+    // Intelligence → +1.0% magic strength only.
+    expect(formatCoreStatGains('intelligence')).toBe('+1.0% Magic Strength');
+  });
+
+  it('formatCoreStatGains reports Constitution max HP and Wisdom cooldown reduction', () => {
+    // Constitution → +10 Max HP per effective point.
+    expect(formatCoreStatGains('constitution')).toBe('+10 Max HP');
+    // Wisdom → +0.5pp cooldown reduction per effective point.
+    expect(formatCoreStatGains('wisdom')).toBe('+0.50% Cooldown Reduction');
+  });
+
+  it('formatCoreStatGains reports Luck crit chance and Dexterity multi-stat spread', () => {
+    // Luck → +0.25pp crit chance per effective point.
+    expect(formatCoreStatGains('luck')).toBe('+0.25% Crit Chance');
+    // Dexterity → attack speed, move speed, accuracy, and dodge chance (exact
+    // 1/300 ≈ 0.33pp) all per effective point.
     const dexGains = formatCoreStatGains('dexterity');
-    expect(dexGains).toContain('Dodge Chance');
-    expect(dexGains).toContain('0.3%');
-    // Wisdom → cooldownReduction (0.005 → "+0.5% Cooldown Reduction")
-    const wisdomGains = formatCoreStatGains('wisdom');
-    expect(wisdomGains).toContain('Cooldown Reduction');
-    expect(wisdomGains).toContain('0.5%');
+    expect(dexGains).toContain('+1.00% Attack Speed');
+    expect(dexGains).toContain('+0.25% Move Speed');
+    expect(dexGains).toContain('+0.25% Accuracy');
+    expect(dexGains).toContain('+0.33% Dodge Chance');
   });
 
-  it('formatCoreStatGains surfaces the Wisdom→mana payoff and the Charisma placeholder', () => {
-    // Wisdom now feeds the MP pool (see shared/mana.ts), so it must no longer
-    // read "(no effect yet)" — it reports its Max Mana per-point gain.
-    const wisdomGains = formatCoreStatGains('wisdom');
-    expect(wisdomGains).toContain('Max Mana');
-    expect(wisdomGains).not.toBe('(no effect yet)');
-    // Charisma stays reserved until its payoff lands.
+  it('formatCoreStatGains reports the Charisma placeholder', () => {
+    // Charisma stays visible with zero gameplay effect and is non-allocatable.
     expect(formatCoreStatGains('charisma')).toBe('(no effect yet)');
   });
 });

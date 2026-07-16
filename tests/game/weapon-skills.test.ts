@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { addComponent } from 'bitecs';
-import { SkillHolder, Stats } from '../../src/core/components.js';
+import { SkillHolder } from '../../src/core/components.js';
 import { spawnEnemy, spawnMeleeSwing, spawnPlayer } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { skillSystem } from '../../src/game/systems/skillSystem.js';
-import { statsSystem } from '../../src/game/systems/statsSystem.js';
+import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
+import { statSystem } from '../../src/core/systems/index.js';
 import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
 import {
   WEAPON_CLASS_SKILL_IDS,
@@ -30,9 +31,9 @@ import { TeamId } from '../../src/shared/constants.js';
 function setupPlayerWithWeaponSkills() {
   const world = createTestWorld();
   const player = spawnPlayer(world, 0, 0);
-  addComponent(world.ecs, player, Stats);
+  initializeBaseStats(world, player);
   addComponent(world.ecs, player, SkillHolder);
-  statsSystem(world);
+  statSystem(world);
 
   const skillMap = new Map<string, SkillState>();
   for (const skill of getAllSkillDefinitions()) {
@@ -197,7 +198,7 @@ describe('computeEffectiveAccuracy', () => {
       op: 'add',
       value: 5.0,
     });
-    statsSystem(world);
+    statSystem(world);
     const def = WEAPON_DEFS.get('bow')!;
     const eff = computeEffectiveAccuracy(world, player, def);
     expect(eff).toBeLessThanOrEqual(1.0);
@@ -213,7 +214,7 @@ describe('computeEffectiveAccuracy', () => {
       op: 'add',
       value: -10,
     });
-    statsSystem(world);
+    statSystem(world);
     const def = WEAPON_DEFS.get('landmine')!;
     const eff = computeEffectiveAccuracy(world, player, def);
     expect(eff).toBe(1.0);
@@ -221,14 +222,13 @@ describe('computeEffectiveAccuracy', () => {
 
   it('accuracy stat bonus from dexterity is applied', () => {
     const { world, player } = setupPlayerWithWeaponSkills();
-    // Add dexterity points — each gives 0.01 accuracy
+    // Add dexterity points — each effective point gives 0.25pp accuracy.
     world.stores.coreStatPoints.dexterity[player] = 10;
-    world.statsDirty = true;
-    statsSystem(world);
+    statSystem(world);
     const def = WEAPON_DEFS.get('pistol')!;
     const eff = computeEffectiveAccuracy(world, player, def);
-    // pistol base 0.8 + 10 dex * 0.01 = 0.9
-    expect(eff).toBeCloseTo(0.9, 5);
+    // pistol base 0.8 + effective dex (base 1 + 10 allocated = 11) * 0.0025 = 0.8275
+    expect(eff).toBeCloseTo(0.8275, 5);
   });
 });
 
@@ -293,32 +293,32 @@ describe('emitWeaponSkillEvents', () => {
     // Fire once more (now at threshold) → level 1
     emitWeaponSkillEvents(world, player, def);
     skillSystem(world);
-    statsSystem(world);
+    statSystem(world);
 
     const pistolState = world.playerSkills.get('pistol');
     expect(pistolState?.level).toBeGreaterThanOrEqual(1);
 
     // accuracy should now be > 0 (base = 0, +0.03/level)
-    const accuracyStat = world.stores.stats.accuracy[player] ?? 0;
+    const accuracyStat = world.stores.effectiveStats.accuracy[player] ?? 0;
     expect(accuracyStat).toBeGreaterThan(0);
   });
 
   it('class skill gives damage bonus on level-up', () => {
     const { world, player } = setupPlayerWithWeaponSkills();
     const def = WEAPON_DEFS.get('sword')!;
-    const initialDamage = world.stores.stats.damage[player] ?? 0;
+    const initialDamage = world.stores.effectiveStats.damageBonus[player] ?? 0;
 
     // Fire enough to level slashing class skill to level 1 (threshold = 30)
     for (let i = 0; i < 30; i++) {
       emitWeaponSkillEvents(world, player, def);
       skillSystem(world);
     }
-    statsSystem(world);
+    statSystem(world);
 
     const slashingState = world.playerSkills.get('slashing');
     expect(slashingState?.level).toBeGreaterThanOrEqual(1);
 
-    const newDamage = world.stores.stats.damage[player] ?? 0;
+    const newDamage = world.stores.effectiveStats.damageBonus[player] ?? 0;
     expect(newDamage).toBeGreaterThan(initialDamage);
   });
 

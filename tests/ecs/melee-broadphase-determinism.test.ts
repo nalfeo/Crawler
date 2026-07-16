@@ -13,6 +13,7 @@ import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { spawnMeleeSwing } from '../../src/core/spawners/melee.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { clearMeleeSwingHits, meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
+import { tagDamageMeta } from '../../src/core/damage-meta.js';
 import { MeleeStyle } from '../../src/shared/constants.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -134,6 +135,18 @@ function buildCombatScene(seed: number): CombatScene {
     1, // shaftDamageMult
     0, // knockback
   );
+  // Player-sourced swings must be explicitly tagged for the generic
+  // offense/crit branch to trigger — `spawnMeleeSwing` is a dumb ECS
+  // constructor (the real game tags via weaponSystem.dispatchAttackInner's
+  // single choke point after firing). Tag it here so this determinism suite
+  // observes the SAME crit-eligible RNG draw sequence a real player weapon
+  // swing would.
+  tagDamageMeta(world, playerSwing, {
+    origin: 'player',
+    affinity: 'physical',
+    scaleWithPrimary: true,
+    canCrit: true,
+  });
 
   const enemySwing = spawnMeleeSwing(
     world,
@@ -255,8 +268,8 @@ function buildKnockbackCombatScene(seed: number): KnockbackScene {
     spawnEnemy(world, CENTER_X + dx, CENTER_Y + dy, 200);
   }
 
-  const mkSwing = (damage: number): number =>
-    spawnMeleeSwing(
+  const mkSwing = (damage: number): number => {
+    const swingEid = spawnMeleeSwing(
       world,
       CENTER_X,
       CENTER_Y,
@@ -273,6 +286,17 @@ function buildKnockbackCombatScene(seed: number): KnockbackScene {
       1, // shaftDamageMult
       6, // knockback > 0 ⇒ addComponent(Knockback) in the hit branch
     );
+    // Player-sourced swings must be explicitly tagged for the generic
+    // offense/crit branch to trigger — see the matching comment in
+    // buildCombatScene above.
+    tagDamageMeta(world, swingEid, {
+      origin: 'player',
+      affinity: 'physical',
+      scaleWithPrimary: true,
+      canCrit: true,
+    });
+    return swingEid;
+  };
 
   // Two simultaneous player swings sharing targets; the lower-eid swing runs first
   // and seeds Knockback on every enemy before the second swing re-scans.

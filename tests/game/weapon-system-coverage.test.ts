@@ -10,6 +10,7 @@ import {
   Trap,
   Weapon,
 } from '../../src/core/components.js';
+import { readDamageMeta } from '../../src/core/damage-meta.js';
 import { createEntity, spawnEnemy, spawnPlayer, spawnWeapon } from '../../src/core/helpers.js';
 import {
   clearActiveWeapon,
@@ -200,6 +201,91 @@ describe('weaponEntitySystem coverage paths', () => {
 
     expect(query(world.ecs, [Projectile]).length).toBe(0);
     expect(world.stores.weapon.lastFireMs[weapon]).toBe(-50);
+  });
+});
+
+describe('weaponEntitySystem DamageMeta tagging', () => {
+  it('tags a RANGED-spawned projectile with player origin, physical affinity, scaleWithPrimary=true, canCrit=true', () => {
+    const world = createTestWorld();
+    const owner = spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 12.5, 0, 50);
+    spawnWeapon(world, owner, WeaponType.RANGED, 10, 50, 0, 200, TeamId.PLAYER);
+    world.elapsedMs = 50;
+
+    weaponEntitySystem(world);
+
+    const projectile = query(world.ecs, [Projectile])[0];
+    expect(projectile).toBeDefined();
+    expect(readDamageMeta(world, projectile!)).toEqual({
+      origin: 'player',
+      affinity: 'physical',
+      scaleWithPrimary: true,
+      canCrit: true,
+    });
+  });
+
+  it('tags a MELEE-spawned area attack with player origin, physical affinity, scaleWithPrimary=true, canCrit=true', () => {
+    const world = createTestWorld();
+    const owner = spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 5, 0, 50);
+    spawnWeapon(world, owner, WeaponType.MELEE, 10, 10, 33, 0, TeamId.PLAYER);
+    world.elapsedMs = 10;
+
+    weaponEntitySystem(world);
+
+    const area = query(world.ecs, [AreaDamage])[0];
+    expect(area).toBeDefined();
+    expect(readDamageMeta(world, area!)).toEqual({
+      origin: 'player',
+      affinity: 'physical',
+      scaleWithPrimary: true,
+      canCrit: true,
+    });
+  });
+
+  it('tags a MAGIC weapon entity (default-fallback projectile path) with magic affinity', () => {
+    const world = createTestWorld();
+    const owner = spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 12.5, 0, 50);
+    // WeaponType.MAGIC falls through to the default projectile branch;
+    // affinity must still be 'magic' because weaponType is snapshotted at creation.
+    spawnWeapon(world, owner, WeaponType.MAGIC, 20, 50, 0, 200, TeamId.PLAYER);
+    world.elapsedMs = 50;
+
+    weaponEntitySystem(world);
+
+    const projectile = query(world.ecs, [Projectile])[0];
+    expect(projectile).toBeDefined();
+    const meta = readDamageMeta(world, projectile!);
+    expect(meta.affinity).toBe('magic');
+    expect(meta.origin).toBe('player');
+    expect(meta.scaleWithPrimary).toBe(true);
+    expect(meta.canCrit).toBe(true);
+  });
+
+  it('metadata on the spawned attack entity is stable after mutating the weapon entity type', () => {
+    const world = createTestWorld();
+    const owner = spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 12.5, 0, 50);
+    const weid = spawnWeapon(world, owner, WeaponType.RANGED, 10, 50, 0, 200, TeamId.PLAYER);
+    world.elapsedMs = 50;
+
+    weaponEntitySystem(world);
+
+    const projectile = query(world.ecs, [Projectile])[0];
+    expect(projectile).toBeDefined();
+    // Metadata snapshotted at attack creation — physical for a RANGED weapon.
+    const metaAtCreation = readDamageMeta(world, projectile!);
+    expect(metaAtCreation.affinity).toBe('physical');
+
+    // Mutate the weapon entity's stored type to MAGIC after the attack has already
+    // been spawned.  The spawned attack entity must retain the physical metadata
+    // that was written at creation time.
+    world.stores.weapon.weaponType[weid] = WeaponType.MAGIC;
+
+    const metaAfterMutation = readDamageMeta(world, projectile!);
+    expect(metaAfterMutation).toEqual(metaAtCreation);
+    expect(metaAfterMutation.affinity).toBe('physical');
   });
 });
 

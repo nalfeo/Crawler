@@ -2,38 +2,9 @@
   "description": "100-run local sweep (seeds 1-25, 4 weapons, 19800 frames) at 9c75fc1 to validate no win-rate regression from the legacy-death fix (caafc71)",
   "runAt": "2026-07-16T13:09:43.595Z",
   "seeds": [
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
-    24,
-    25
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25
   ],
-  "weapons": [
-    "sword",
-    "pistol",
-    "baseball-bat",
-    "throwing-knife"
-  ],
+  "weapons": ["sword", "pistol", "baseball-bat", "throwing-knife"],
   "maxFrames": 19800,
   "branchRef": "nalfeo-fix-legacy-floor1-deaths",
   "branchSHA": "9c75fc1",
@@ -64,36 +35,15 @@
   "preexistingTimeouts": {
     "note": "All timeout seeds on branch were verified to also timeout on pre-fix main (2cca6f1)",
     "seeds": {
-      "sword": [
-        14
-      ],
-      "pistol": [
-        14
-      ],
-      "baseball-bat": [
-        16,
-        17
-      ],
-      "throwing-knife": [
-        2,
-        10,
-        16
-      ]
+      "sword": [14],
+      "pistol": [14],
+      "baseball-bat": [16, 17],
+      "throwing-knife": [2, 10, 16]
     }
   },
   "mainSubsetVerification": {
-    "seeds": [
-      10,
-      14,
-      16,
-      17
-    ],
-    "weapons": [
-      "sword",
-      "pistol",
-      "baseball-bat",
-      "throwing-knife"
-    ],
+    "seeds": [10, 14, 16, 17],
+    "weapons": ["sword", "pistol", "baseball-bat", "throwing-knife"],
     "summary": {
       "sword": {
         "wins": 3,

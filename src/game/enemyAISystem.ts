@@ -28,6 +28,7 @@ import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom } from '../shared/random.js';
 import { normalize } from '../shared/vec.js';
 import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
+import { tagDamageMeta } from '../core/damage-meta.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
 export { PATH_PERSONA, TRAVERSAL_MODE };
@@ -1243,6 +1244,14 @@ function fireEnemyProjectileFrom(
       FIREBALL_DEF.range,
     );
     addComponent(world.ecs, projectile, EnemyProjectile);
+    // Tag enemy origin so the delayed AoE explosion snapshots the correct
+    // source when it propagates metadata (see aoeOnImpactSystem).
+    tagDamageMeta(world, projectile, {
+      origin: 'enemy',
+      affinity: 'unscaled',
+      scaleWithPrimary: false,
+      canCrit: false,
+    });
   } else {
     spawnEnemyProjectile(
       world,

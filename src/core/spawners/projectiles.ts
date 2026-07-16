@@ -19,6 +19,7 @@ import {
 import { PHYSICS_BODIES, SHAPE_BOX, SHAPE_CIRCLE } from '../physics-defs.js';
 import type { GameWorld } from '../world.js';
 import { tagAttackEntity } from '../weapon-telemetry.js';
+import { tagDamageMeta } from '../damage-meta.js';
 import { createEntity } from './entity-core.js';
 
 export function spawnProjectile(
@@ -77,6 +78,15 @@ export function spawnEnemyProjectile(
   // the attacker — Floor 2 Slice 3 ally-defend retaliation targets the shooter.
   const eid = spawnProjectile(world, x, y, vx, vy, damage, 0, 0, 1, ownerEid);
   addComponent(world.ecs, eid, EnemyProjectile);
+  // Enemy-sourced damage never scales/crits (see apply-damage.ts) — tagged
+  // explicitly (rather than left fail-closed/environment) so it stays correct
+  // if this ever needs enemy-specific scaling down the line.
+  tagDamageMeta(world, eid, {
+    origin: 'enemy',
+    affinity: 'unscaled',
+    scaleWithPrimary: false,
+    canCrit: false,
+  });
   return eid;
 }
 

@@ -18,10 +18,7 @@ describe('HudUI mobile layout guards', () => {
     expect(VITALS_PANEL_Y.health - (VITALS_PANEL_Y.xp + VITALS_ROW_HEIGHTS.xp)).toBe(
       VITALS_PANEL_GUTTER,
     );
-    expect(VITALS_PANEL_Y.mana - (VITALS_PANEL_Y.health + VITALS_ROW_HEIGHTS.health)).toBe(
-      VITALS_PANEL_GUTTER,
-    );
-    expect(GAME.HEIGHT - (VITALS_PANEL_Y.mana + VITALS_ROW_HEIGHTS.mana)).toBe(
+    expect(GAME.HEIGHT - (VITALS_PANEL_Y.health + VITALS_ROW_HEIGHTS.health)).toBe(
       VITALS_BOTTOM_MARGIN,
     );
   });

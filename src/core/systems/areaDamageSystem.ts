@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { AreaDamage, Enemy, Health, Owner, Player, Position, Team } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
+import { readDamageMeta } from '../damage-meta.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
@@ -117,10 +118,12 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
         damage,
         position.x[target] ?? 0,
         position.y[target] ?? 0,
-        undefined,
-        x,
-        y,
-        ownerEid >= 0 ? ownerEid : undefined,
+        {
+          ...readDamageMeta(world, eid),
+          sourceX: x,
+          sourceY: y,
+          sourceEid: ownerEid >= 0 ? ownerEid : undefined,
+        },
       );
 
       if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
