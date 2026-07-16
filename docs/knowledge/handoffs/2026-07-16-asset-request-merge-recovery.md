@@ -11,6 +11,14 @@ advanced. The only conflict was the generated handoff index header timestamp in
 `docs/knowledge/handoffs/INDEX.md`; all content additions from both sides were
 kept intact.
 
+This handoff records only the merge-recovery overhead for PR #1213. The primary
+feature work, higher-complexity review stages, and earlier CI recoveries remain
+documented in the existing asset-request handoffs and review ledgers already on
+the branch. The merge commit also absorbed the latest `main`-branch AI/safe-room
+work that was already merged upstream; this handoff does not claim authorship of
+those changes and exists only to document the conflict resolution needed to keep
+the asset-request PR mergeable.
+
 ## Systems touched
 
 sprite-workflow
