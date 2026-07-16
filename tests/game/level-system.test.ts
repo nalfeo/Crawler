@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { hasComponent } from 'bitecs';
-import { Stats } from '../../src/core/components.js';
+import { SkillHolder } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { levelSystem } from '../../src/game/systems/levelSystem.js';
@@ -46,21 +46,12 @@ describe('levelSystem', () => {
     expect(world.playerLevel.unspentPoints).toBe(world.playerLevel.pointsPerLevel * 3);
   });
 
-  it('sets statsDirty on level-up', () => {
-    const world = createTestWorld();
-    spawnPlayer(world, 0, 0);
-    world.statsDirty = false;
-    world.playerLevel.xp = xpRequiredForLevel(1);
-    levelSystem(world);
-    expect(world.statsDirty).toBe(true);
-  });
-
-  it('adds Stats tag to player on first level-up', () => {
+  it('adds SkillHolder tag to player on first level-up', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     world.playerLevel.xp = xpRequiredForLevel(1);
     levelSystem(world);
-    expect(hasComponent(world.ecs, player, Stats)).toBe(true);
+    expect(hasComponent(world.ecs, player, SkillHolder)).toBe(true);
   });
 
   it('does not grant points again if level already reached', () => {

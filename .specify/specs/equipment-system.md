@@ -81,16 +81,22 @@ Equipment may grant bonuses to **primary stats** and/or **secondary stats**.
 
 #### Primary Stats
 
-| Stat ID        | Label        | Effect Summary                               |
-| -------------- | ------------ | -------------------------------------------- |
-| `strength`     | Strength     | Melee damage, carry capacity                 |
-| `dexterity`    | Dexterity    | Attack speed, dodge chance, crit chance      |
-| `constitution` | Constitution | Max HP, HP regen, status resist              |
-| `intelligence` | Intelligence | Spell/ability power, crafting bonus          |
-| `wisdom`       | Wisdom       | XP gain, cooldown reduction, awareness       |
-| `charisma`     | Charisma     | Broadcast Score bonus, shop prices, sponsor  |
-| `luck`         | Luck         | Drop rates, crit chance, random event bias   |
-| `weight`       | Weight       | Placeholder for future momentum interactions |
+| Stat ID        | Label        | Effect Summary                                                                                    |
+| -------------- | ------------ | ------------------------------------------------------------------------------------------------- |
+| `strength`     | Strength     | +1% physical damage per effective point (typed-primary multiplier; no armor, no flat damage)      |
+| `dexterity`    | Dexterity    | +1% attack speed, +0.25% move speed, +0.25pp accuracy, +1/300 (~0.33pp) dodge per effective point |
+| `constitution` | Constitution | +10 max HP per effective point                                                                    |
+| `intelligence` | Intelligence | +1% magic strength per effective point (typed-primary multiplier for magic weapons/spells)        |
+| `wisdom`       | Wisdom       | +0.5pp cooldown reduction per effective point (cap 80%)                                           |
+| `charisma`     | Charisma     | Visible, intentionally zero gameplay effect; not allocatable                                      |
+| `luck`         | Luck         | +0.25pp crit chance per effective point (cap 100%)                                                |
+
+> `weight` is **not** a primary stat (removed by the primary-stat overhaul —
+> see `docs/knowledge/adr/2026-07-16-primary-stat-system-overhaul.md`). Item
+> mass is a **separate** required field, `EquipmentItemDef.weightLb` (see
+> below), feeding the encumbrance system documented in the
+> [Stats, Skills & Leveling spec](stats-skills-levels.md) — not a primary
+> stat bonus.
 
 #### Secondary Stats (derived / granted by items)
 
@@ -185,7 +191,7 @@ Entities must be initialized with `initializeBaseStats(world, entity, defaults)`
 
 ```typescript
 const DEFAULT_BASE_STATS: Record<StatId, number> = {
-  // Primary (all start at 1)
+  // Primary (all start at 1 — effective value = base(1) + allocated + gear)
   strength: 1,
   dexterity: 1,
   constitution: 1,
@@ -193,7 +199,6 @@ const DEFAULT_BASE_STATS: Record<StatId, number> = {
   wisdom: 1,
   charisma: 1,
   luck: 1,
-  weight: 1,
   // Secondary
   armor: 0,
   damageBonus: 0,
@@ -206,6 +211,12 @@ const DEFAULT_BASE_STATS: Record<StatId, number> = {
   hpRegen: 0,
   xpBonus: 0,
   cooldownReduction: 0,
+  maxHp: 90, // + 10 per effective Constitution point (base CON=1 -> 100 HP)
+  accuracy: 0,
+  // Inert snapshot fields (no current derivation/consumer)
+  pickupRange: 0,
+  projectileSpeed: 0,
+  projectileCount: 0,
 };
 ```
 
@@ -223,6 +234,10 @@ interface EquipmentItemDef {
   slots: EquipmentSlotId[];
   /** Stat bonuses granted while equipped */
   statBonuses: Partial<Record<StatId, number>>;
+  /** Item mass in pounds — REQUIRED. Every shipped def currently sets 0 (encumbrance is
+   *  wired but inert until real item weights land). Deduped by equipment instance for
+   *  multi-slot items — see core/effective-stats.ts#computeEquippedWeightLb. */
+  weightLb: number;
   /** Item rarity tier */
   rarity: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
   /** Optional tags for synergy / crafting systems */

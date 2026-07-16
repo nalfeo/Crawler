@@ -17,12 +17,18 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
   {
     ...ABILITY_PRESENTATION_BY_ID.fireball,
     trigger: { kind: 'enemy_cluster', minEnemies: 1, withinFeet: 6 },
-    effects: [{ type: 'spell_fireball', damagePercent: 1.5, radiusTiles: 3 }],
+    effects: [
+      {
+        type: 'spell_fireball',
+        damage: { base: 15, scalesWithIntelligence: true },
+        radiusTiles: { base: 3, scalesWithIntelligence: false },
+      },
+    ],
   },
   {
     ...ABILITY_PRESENTATION_BY_ID.heal,
     trigger: { kind: 'health_deficit_at_least', deficitAmount: 30 },
-    effects: [{ type: 'spell_heal', baseHeal: 30 }],
+    effects: [{ type: 'spell_heal', heal: { base: 30, scalesWithIntelligence: true } }],
   },
   {
     ...ABILITY_PRESENTATION_BY_ID['pulse-shield'],
@@ -32,7 +38,13 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
       minEnemies: 3,
       withinFeet: 5,
     },
-    effects: [{ type: 'spell_pulse_shield', knockbackForce: 1.0, radiusTiles: 4 }],
+    effects: [
+      {
+        type: 'spell_pulse_shield',
+        knockbackForce: { base: 1.0, scalesWithIntelligence: false },
+        radiusTiles: { base: 4, scalesWithIntelligence: false },
+      },
+    ],
   },
   {
     id: 'magic-missile',
@@ -41,10 +53,15 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     description: 'Launch a precise arcane bolt into the nearest enemy.',
     category: 'combat',
     kind: 'spell',
-    mpCost: 4,
     cooldownFrames: 180,
     trigger: { kind: 'enemy_cluster', minEnemies: 1, withinFeet: 10 },
-    effects: [{ type: 'spell_magic_missile', damagePercent: 1.1, rangeTiles: 4 }],
+    effects: [
+      {
+        type: 'spell_magic_missile',
+        damage: { base: 11, scalesWithIntelligence: true },
+        rangeTiles: { base: 4, scalesWithIntelligence: false },
+      },
+    ],
   },
   {
     id: 'frost-nova',
@@ -53,16 +70,15 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     description: 'Burst freezing magic around you, damaging and slowing nearby foes.',
     category: 'combat',
     kind: 'spell',
-    mpCost: 12,
     cooldownFrames: 900,
     trigger: { kind: 'enemy_cluster', minEnemies: 3, withinFeet: 5 },
     effects: [
       {
         type: 'spell_frost_nova',
-        damagePercent: 1.0,
-        radiusTiles: 3,
-        slowMultiplier: 0.55,
-        slowDurationMs: 3_000,
+        damage: { base: 10, scalesWithIntelligence: true },
+        radiusTiles: { base: 3, scalesWithIntelligence: false },
+        slowMultiplier: { base: 0.55, scalesWithIntelligence: false },
+        slowDurationMs: { base: 3_000, scalesWithIntelligence: false },
       },
     ],
   },
@@ -73,13 +89,12 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     description: 'Call down a brief blessing that sharpens your strikes and footwork.',
     category: 'utility',
     kind: 'spell',
-    mpCost: 8,
     cooldownFrames: 1_200,
     trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
     effects: [
       {
         type: 'spell_timed_buff',
-        durationFrames: 900,
+        durationFrames: { base: 900, scalesWithIntelligence: false },
         vfxColor: 0xfef3c7,
         modifiers: [
           { stat: 'damage', op: 'add', value: 4 },
@@ -96,13 +111,12 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     description: 'Harden your flesh into living granite for a few desperate moments.',
     category: 'defense',
     kind: 'spell',
-    mpCost: 10,
     cooldownFrames: 1_500,
     trigger: { kind: 'low_health', healthBelowRatio: 0.75 },
     effects: [
       {
         type: 'spell_timed_buff',
-        durationFrames: 1_200,
+        durationFrames: { base: 1_200, scalesWithIntelligence: false },
         vfxColor: 0x94a3b8,
         modifiers: [{ stat: 'armor', op: 'add', value: 4 }],
       },
@@ -115,15 +129,14 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     description: 'Blight a cluster of enemies, dragging their movement into a crawl.',
     category: 'utility',
     kind: 'spell',
-    mpCost: 9,
     cooldownFrames: 840,
     trigger: { kind: 'enemy_cluster', minEnemies: 4, withinFeet: 8 },
     effects: [
       {
         type: 'spell_enemy_slow_burst',
-        radiusTiles: 4,
-        slowMultiplier: 0.4,
-        slowDurationMs: 3_600,
+        radiusTiles: { base: 4, scalesWithIntelligence: false },
+        slowMultiplier: { base: 0.4, scalesWithIntelligence: false },
+        slowDurationMs: { base: 3_600, scalesWithIntelligence: false },
         vfxColor: 0xa855f7,
       },
     ],
@@ -135,7 +148,6 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     description: 'Rip vitality from the nearest foe and pour it back into yourself.',
     category: 'combat',
     kind: 'spell',
-    mpCost: 10,
     cooldownFrames: 720,
     trigger: {
       kind: 'low_health_crowded',
@@ -143,7 +155,17 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
       minEnemies: 1,
       withinFeet: 5,
     },
-    effects: [{ type: 'spell_life_drain', damagePercent: 1.2, rangeTiles: 3, healPercent: 0.75 }],
+    effects: [
+      {
+        type: 'spell_life_drain',
+        damage: { base: 12, scalesWithIntelligence: true },
+        rangeTiles: { base: 3, scalesWithIntelligence: false },
+        // Independent of the damage roll (not a percent-of-dealt heal): its own
+        // authored base, scaled by the SAME INT rate so the 0.75 baseline
+        // ratio to damage holds at every Intelligence investment.
+        heal: { base: 9, scalesWithIntelligence: true },
+      },
+    ],
   },
   {
     id: 'haste',
@@ -152,13 +174,12 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     description: 'Flood your limbs with quicksilver speed after a strong damage spike.',
     category: 'utility',
     kind: 'spell',
-    mpCost: 7,
     cooldownFrames: 1_080,
     trigger: { kind: 'skill_usage', metric: 'weapon_fired', minAmount: 1 },
     effects: [
       {
         type: 'spell_timed_buff',
-        durationFrames: 780,
+        durationFrames: { base: 780, scalesWithIntelligence: false },
         vfxColor: 0x67e8f9,
         modifiers: [
           { stat: 'moveSpeed', op: 'add', value: 0.125 },
@@ -298,11 +319,11 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     effects: [{ type: 'stat_multiply', stat: 'damage', value: 0.1 }],
   },
   {
-    id: 'mana-efficiency',
-    name: 'Mana Efficiency',
-    shortLabel: 'MANA',
+    id: 'arcane-efficiency',
+    name: 'Arcane Efficiency',
+    shortLabel: 'ARCANE',
     description:
-      'Arcane experience flows freely — bonus damage while an arcane weapon is equipped.',
+      'Arcane discipline sharpens with practice — bonus damage while an arcane weapon is equipped.',
     category: 'utility',
     kind: 'passive',
     weaponPrerequisite: 'arcane',
@@ -467,7 +488,7 @@ export const SKILL_LEVEL5_ABILITY_GRANTS: ReadonlyMap<string, string> = new Map(
   ['ranged', 'marksmans-eye'],
   ['throwing', 'rapid-release'],
   ['forearms', 'iron-resolve'],
-  ['arcane', 'mana-efficiency'],
+  ['arcane', 'arcane-efficiency'],
   ['sword', 'keen-swordsman'],
   ['dagger', 'shadowblade'],
   ['hammer', 'crushing-momentum'],

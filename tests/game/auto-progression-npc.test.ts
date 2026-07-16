@@ -515,6 +515,7 @@ describe('autoFloor1ProgressionSystem', () => {
       name: 'Arcanist Circlet',
       slots: ['head'],
       statBonuses: { intelligence: 2, cooldownReduction: 0.05 },
+      weightLb: 0,
       rarity: 'rare',
     };
     _registerEquipmentDefForTest(circlet);

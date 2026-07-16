@@ -23,6 +23,7 @@ import {
   FamilyMembership,
   Invincible,
   applyDamage,
+  DEFAULT_DAMAGE_OPTIONS,
   spawnEnemy,
   spawnPlayer,
 } from '../../src/core/index.js';
@@ -113,10 +114,13 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
         bossHpBeforeEntry,
         world.stores.position.x[encounter.bossEid!] ?? 0,
         world.stores.position.y[encounter.bossEid!] ?? 0,
-        undefined,
-        playerPos.x,
-        playerPos.y,
-        playerEid,
+        {
+          ...DEFAULT_DAMAGE_OPTIONS,
+          origin: 'player',
+          sourceX: playerPos.x,
+          sourceY: playerPos.y,
+          sourceEid: playerEid,
+        },
       ),
     ).toBe(0);
     expect(world.stores.health.current[encounter.bossEid!]).toBe(bossHpBeforeEntry);
@@ -134,10 +138,13 @@ describe('Floor 2 Slice 4 — den-unlock pipeline', () => {
         1,
         world.stores.position.x[encounter.bossEid!] ?? 0,
         world.stores.position.y[encounter.bossEid!] ?? 0,
-        undefined,
-        playerPos.x,
-        playerPos.y,
-        playerEid,
+        {
+          ...DEFAULT_DAMAGE_OPTIONS,
+          origin: 'player',
+          sourceX: playerPos.x,
+          sourceY: playerPos.y,
+          sourceEid: playerEid,
+        },
       ),
     ).toBeGreaterThan(0);
     expect(world.stores.health.current[encounter.bossEid!]).toBe(bossHpBeforeEntry - 1);

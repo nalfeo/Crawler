@@ -27,6 +27,15 @@ export interface EquipmentItemDef {
   readonly name: string;
   readonly slots: readonly EquipmentSlotId[];
   readonly statBonuses: Partial<Readonly<Record<StatId, number>>>;
+  /**
+   * Equipped weight in pounds — contributes to total carried mass (see
+   * `shared/encumbrance.ts`). REQUIRED so every item explicitly declares its
+   * weight rather than silently defaulting; every current definition sets
+   * this to exactly 0 (encumbrance is intentionally inert until real item
+   * weights are authored). Bag/inventory contents are excluded — only
+   * equipped instances count, deduped for multi-slot items.
+   */
+  readonly weightLb: number;
   readonly rarity: ItemRarity;
   readonly tags?: readonly string[];
   readonly requirements?: readonly EquipRequirement[];

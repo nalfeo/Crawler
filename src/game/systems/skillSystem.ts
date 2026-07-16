@@ -54,7 +54,6 @@ export function skillSystem(world: GameWorld): void {
       if (threshold === undefined || state.usage < threshold) break;
 
       state.level = nextLevel;
-      world.statsDirty = true;
       const sourceId =
         event.holderEid === undefined
           ? `${def.id}:level:${nextLevel}`

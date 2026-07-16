@@ -16,7 +16,7 @@ import {
 } from '../../src/core/systems/equipmentSystem.js';
 import { statSystem } from '../../src/core/systems/statSystem.js';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
-import { CORE_STAT_TO_SECONDARY } from '../../src/shared/stats.js';
+import { CORE_STAT_TO_SECONDARY, DEFAULT_BASE_STATS } from '../../src/shared/stats.js';
 import {
   getEquipmentDefForItem,
   getEquippableItemIds,
@@ -27,8 +27,6 @@ import {
 import { addItem, hasItem, getItemCount, type InventoryBag } from '../../src/shared/inventory.js';
 import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
-
-const STR_TO_DAMAGE_PERCENT = CORE_STAT_TO_SECONDARY.strength.damagePercent!;
 
 // --- Test helpers ---
 
@@ -53,6 +51,7 @@ function makeItem(overrides: Partial<EquipmentItemDef> = {}): EquipmentItemDef {
     name: 'Test Item',
     slots: ['head'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'common',
     ...overrides,
   };
@@ -151,7 +150,14 @@ describe('Equipment System', () => {
     );
     const stats = getEffectiveStats(world, entity);
     expect(stats.armor).toBe(8);
-    expect(stats.moveSpeed).toBe(1);
+    // moveSpeed = gear flat bonus (1) + base Dexterity's own always-on
+    // derivation (effective DEX 1 * CORE_STAT_TO_SECONDARY.dexterity.moveSpeed)
+    // — Dexterity's per-point moveSpeed rate applies to the FULL effective
+    // value (base + allocated + gear), not just allocated points.
+    expect(stats.moveSpeed).toBeCloseTo(
+      1 + DEFAULT_BASE_STATS.dexterity * CORE_STAT_TO_SECONDARY.dexterity.moveSpeed!,
+      6,
+    );
   });
 
   // 8. Stat aggregation after partial unequip
@@ -332,15 +338,19 @@ describe('Equipment System', () => {
   // 24. Multi-slot stats not double-counted
   it('does not double-count multi-slot item stats', () => {
     statSystem(world);
-    const strength = getEffectiveStats(world, entity).strength;
     const item = makeItem({
       id: 'gs',
       slots: ['mainHand', 'offHand'],
       statBonuses: { damageBonus: 10 },
     });
     equip(world, entity, item, { force: true });
-    const expected = strength * STR_TO_DAMAGE_PERCENT;
-    expect(getEffectiveStats(world, entity).damagePercent).toBeCloseTo(expected, 6);
+    // Strength no longer auto-derives a generic `damagePercent` secondary (its
+    // payoff is a typed-primary multiplier applied at damage resolution — see
+    // shared/stats.ts#computeTypedPrimaryMultiplier), so a non-Strength item
+    // equipped once must leave damagePercent at 0 (proving no double-count
+    // leaked a phantom contribution) while damageBonus reflects exactly one
+    // copy of the 2H item's own bonus.
+    expect(getEffectiveStats(world, entity).damagePercent).toBeCloseTo(0, 6);
     expect(getEffectiveStats(world, entity).damageBonus).toBeCloseTo(10, 6);
   });
 
@@ -506,6 +516,7 @@ describe('equipFromBag', () => {
       name: 'Colossus Blade',
       slots: ['mainHand', 'offHand'],
       statBonuses: {},
+      weightLb: 0,
       rarity: 'rare',
       requirements: [{ type: 'minStat', stat: 'strength', value: 30 }],
     });
@@ -549,6 +560,7 @@ describe('equipFromBag', () => {
       name: 'Warblade',
       slots: ['mainHand'],
       statBonuses: { damageBonus: 4 },
+      weightLb: 0,
       rarity: 'rare',
       requirements: [{ type: 'minStat', stat: 'strength', value: 10 }],
     });

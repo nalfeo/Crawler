@@ -120,8 +120,20 @@ export function corpseStepSystem(world: GameWorld): void {
       // Route through the shared corpse-hit path so the corpseExplode event,
       // blood colour, sprite variant, and knockback direction match a weapon
       // hit. The blow "comes from" the player's centre — shards spray forward
-      // along the player's approach.
-      applyDamage(world, eid, 1, cx, cy, undefined, px, py, playerEid);
+      // along the player's approach. This always resolves via the corpse
+      // early-return branch in applyDamage (before any scaling/crit check), so
+      // the exact affinity/scaleWithPrimary/canCrit values here are inert —
+      // origin: 'player' + unscaled/no-crit is the fail-closed, contextually
+      // accurate choice.
+      applyDamage(world, eid, 1, cx, cy, {
+        origin: 'player',
+        affinity: 'unscaled',
+        scaleWithPrimary: false,
+        canCrit: false,
+        sourceX: px,
+        sourceY: py,
+        sourceEid: playerEid,
+      });
     }
   }
 

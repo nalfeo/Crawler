@@ -15,13 +15,13 @@ import {
   AoeOnImpact,
   FamilyMembership,
   Velocity,
-  Stats,
   XpGem,
   Gold,
   DroppedItem,
   Harvestable,
   Npc,
   HARVEST_RANGE_FT,
+  computeMoveSpeed,
   type FamilyId,
   type GameWorld,
 } from '../../core/index.js';
@@ -4039,9 +4039,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   private getPlayerSpeedFtPerFrame(world: GameWorld, playerEid: number): number {
-    return hasComponent(world.ecs, playerEid, Stats)
-      ? (world.stores.stats.moveSpeed[playerEid] ?? PLAYER_SPEED)
-      : PLAYER_SPEED;
+    return computeMoveSpeed(world, playerEid, PLAYER_SPEED);
   }
 
   private getRunPlannerParams(playerSpeedFtPerFrame: number): RunPlannerParams {

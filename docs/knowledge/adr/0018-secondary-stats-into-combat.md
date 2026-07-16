@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by `2026-07-16-primary-stat-system-overhaul.md`
 
 ## Date
 

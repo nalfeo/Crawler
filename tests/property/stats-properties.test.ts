@@ -1,20 +1,33 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { addComponent } from 'bitecs';
-import { Stats } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { statsSystem, spendPoints, addStatModifier } from '../../src/game/systems/statsSystem.js';
+import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
+import { statSystem } from '../../src/core/systems/index.js';
+import { spendPoints, addStatModifier } from '../../src/game/systems/statsSystem.js';
 import {
   PRIMARY_STATS,
+  ALL_STAT_IDS,
   STAT_KEYS,
-  STAT_MIN,
+  STAT_CLAMPS,
   isAllocatablePrimaryStat,
+  type StatKey,
+  type SecondaryStatId,
 } from '../../src/shared/stats.js';
 import { xpThresholdForLevel, xpRequiredForLevel, levelForXp } from '../../src/shared/xpMath.js';
 
+/**
+ * Legacy `StatModifier`/`CatalogEffect` targets (`StatKey`) fold into
+ * EffectiveStats via `foldLegacyStatModifier` — every key maps to the
+ * same-named EffectiveStats field EXCEPT `damage`, which splits into flat
+ * `damageBonus` (additive) — see `shared/stats.ts`.
+ */
+function effectiveStatsFieldFor(stat: StatKey): SecondaryStatId {
+  return stat === 'damage' ? 'damageBonus' : (stat as SecondaryStatId);
+}
+
 describe('stats invariants (property-based)', () => {
-  it('final stats are always >= STAT_MIN after arbitrary core-stat point allocation', () => {
+  it('every EffectiveStats field respects its configured clamp after arbitrary core-stat point allocation', () => {
     fc.assert(
       fc.property(
         fc.array(fc.integer({ min: 0, max: 5 }), {
@@ -24,7 +37,7 @@ describe('stats invariants (property-based)', () => {
         (pointCounts) => {
           const world = createTestWorld({ seed: 1 });
           const player = spawnPlayer(world, 0, 0);
-          addComponent(world.ecs, player, Stats);
+          initializeBaseStats(world, player);
 
           const totalPoints = pointCounts.reduce((a, b) => a + b, 0);
           world.playerLevel.unspentPoints = totalPoints;
@@ -39,11 +52,13 @@ describe('stats invariants (property-based)', () => {
           }
 
           spendPoints(world, allocations);
-          statsSystem(world);
+          statSystem(world);
 
-          for (const stat of STAT_KEYS) {
-            const val = world.stores.stats[stat][player] ?? 0;
-            expect(val).toBeGreaterThanOrEqual(STAT_MIN[stat]);
+          for (const stat of ALL_STAT_IDS) {
+            const val = world.stores.effectiveStats[stat][player] ?? 0;
+            const clamp = STAT_CLAMPS[stat];
+            if (clamp.min !== undefined) expect(val).toBeGreaterThanOrEqual(clamp.min);
+            if (clamp.max !== undefined) expect(val).toBeLessThanOrEqual(clamp.max);
           }
         },
       ),
@@ -51,7 +66,7 @@ describe('stats invariants (property-based)', () => {
     );
   });
 
-  it('adding a positive additive modifier never decreases a stat', () => {
+  it('adding a positive additive legacy modifier never decreases its folded EffectiveStats field', () => {
     fc.assert(
       fc.property(
         fc.constantFrom(...STAT_KEYS),
@@ -59,13 +74,14 @@ describe('stats invariants (property-based)', () => {
         (stat, value) => {
           const world = createTestWorld({ seed: 2 });
           const player = spawnPlayer(world, 0, 0);
-          addComponent(world.ecs, player, Stats);
-          statsSystem(world);
-          const before = world.stores.stats[stat][player] ?? 0;
+          initializeBaseStats(world, player);
+          statSystem(world);
+          const field = effectiveStatsFieldFor(stat);
+          const before = world.stores.effectiveStats[field][player] ?? 0;
 
           addStatModifier(world, { sourceType: 'buff', sourceId: 'test', stat, op: 'add', value });
-          statsSystem(world);
-          const after = world.stores.stats[stat][player] ?? 0;
+          statSystem(world);
+          const after = world.stores.effectiveStats[field][player] ?? 0;
 
           expect(after).toBeGreaterThanOrEqual(before);
         },

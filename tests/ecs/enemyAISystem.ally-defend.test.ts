@@ -21,6 +21,7 @@ import {
   FamilyMembership,
   Position,
   applyDamage,
+  DEFAULT_DAMAGE_OPTIONS,
   collisionSystem,
   damageSystem,
   spawnBehaviorEnemy,
@@ -122,7 +123,7 @@ describe('familyFeudSystem — friendly-band ally follow + defend', () => {
 
     // Real choke point, but the damage has no attacker (e.g. environmental) —
     // applyDamage must not record a durable last-hit, so nothing arms.
-    const dealt = applyDamage(world, player, 5, 0, 0);
+    const dealt = applyDamage(world, player, 5, 0, 0, DEFAULT_DAMAGE_OPTIONS);
     expect(dealt).toBe(5);
     expect(world.lastPlayerHit).toBeUndefined();
 

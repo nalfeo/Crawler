@@ -52,6 +52,7 @@ import {
   SpawnAnim,
   BaseStats,
   EffectiveStats,
+  DamageMeta,
   Gold,
   Npc,
   Weight,
@@ -159,8 +160,6 @@ export interface GameWorld {
   abilityStatesByEntity: Map<number, AbilityState>;
   /** Trigger events emitted this frame — cleared at end of abilitySystem. */
   abilityTriggerEvents: AbilityTriggerEvent[];
-  /** Dirty flag: true when stats need recomputing. Set by level-up, modifier change, etc. */
-  statsDirty: boolean;
   /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
   inventories: Map<number, InventoryBag>;
   /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
@@ -341,10 +340,6 @@ export interface GameWorld {
     /** Achievement IDs whose reward has been opened/claimed this run. */
     claimedIds: Set<string>;
   };
-  /** Player's current MP (mana points). */
-  playerMp: number;
-  /** Player's maximum MP (mana points). */
-  playerMaxMp: number;
   /**
    * True when the player entity's current position is inside a safe room.
    * Updated each tick by `safeRoomSystem`. Systems and UI use this to pause
@@ -430,6 +425,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, SpawnAnim, stores.spawnAnim);
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
+  wireStore(ecs, DamageMeta, stores.damageMeta);
   wireStore(ecs, Gold, stores.gold);
   wireStore(ecs, Npc, stores.npc);
   wireStore(ecs, Weight, stores.weight);
@@ -466,7 +462,6 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     attackWeaponSkillsByEntity: new Map(),
     abilityStatesByEntity: new Map(),
     abilityTriggerEvents: [],
-    statsDirty: true,
     inventories: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
@@ -506,8 +501,6 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       pendingUnlockIds: [],
       claimedIds: new Set(),
     },
-    playerMp: 100,
-    playerMaxMp: 100,
     debugFlags: {
       showAllRooms: false,
     },

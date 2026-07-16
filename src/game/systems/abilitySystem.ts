@@ -177,18 +177,6 @@ function shouldAutoTriggerAbility(
   }
 }
 
-function hasEnoughMp(world: GameWorld, holderEid: number, mpCost: number): boolean {
-  if (mpCost <= 0) return true;
-  if (!hasComponent(world.ecs, holderEid, Player)) return true;
-  return world.playerMp >= mpCost;
-}
-
-function spendMp(world: GameWorld, holderEid: number, mpCost: number): void {
-  if (mpCost <= 0) return;
-  if (!hasComponent(world.ecs, holderEid, Player)) return;
-  world.playerMp = Math.max(0, world.playerMp - mpCost);
-}
-
 function getEffectiveAbilityCooldownFrames(
   world: GameWorld,
   holderEid: number,
@@ -202,12 +190,12 @@ function getEffectiveAbilityCooldownFrames(
 }
 
 /**
- * Debug helper: force an active/spell ability to fire NOW, bypassing cooldown
- * and mana cost. Intended for the abilities lab's clickable hotbar so any
- * ability can be exercised on demand, independent of its authored trigger
- * (enemy_cluster / low_health / skill_usage). Does NOT bypass the spells
- * feature-unlock gate — call sites unlock `world.featureUnlocks.spells` first
- * if they want to fire spells.
+ * Debug helper: force an active/spell ability to fire NOW, bypassing cooldown.
+ * Intended for the abilities lab's clickable hotbar so any ability can be
+ * exercised on demand, independent of its authored trigger (enemy_cluster /
+ * low_health / skill_usage). Does NOT bypass the spells feature-unlock gate —
+ * call sites unlock `world.featureUnlocks.spells` first if they want to fire
+ * spells.
  *
  * Returns true if the ability fired (its effects were applied), false when
  * the ability id / state is unknown or the ability is a passive.
@@ -248,9 +236,6 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
   if (def.kind === 'spell' && !world.featureUnlocks.spells) {
     return;
   }
-  if (!hasEnoughMp(world, holderEid, def.mpCost)) {
-    return;
-  }
 
   const lastTriggerFrame = state.cooldownByAbilityId.get(abilityId) ?? Number.NEGATIVE_INFINITY;
   const cooldownFramesForGate =
@@ -269,7 +254,6 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
       holderEid,
     });
   }
-  spendMp(world, holderEid, def.mpCost);
   const cooldownFramesForNewWindow = getEffectiveAbilityCooldownFrames(
     world,
     holderEid,

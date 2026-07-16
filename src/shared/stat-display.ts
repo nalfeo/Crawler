@@ -6,14 +6,13 @@
  * stats consistently and the formatting is unit-testable.
  */
 import {
-  STAT_POINT_INCREMENT,
   type StatKey,
   type PrimaryStatId,
   type SecondaryStatId,
-  CORE_STAT_GAINS,
   CORE_STAT_TO_SECONDARY,
+  STR_PHYSICAL_DAMAGE_RATE,
+  INT_MAGIC_STRENGTH_RATE,
 } from './stats.js';
-import { MANA_PER_WISDOM } from './mana.js';
 
 export interface StatDisplayInfo {
   /** Short title shown in the allocation row. */
@@ -78,104 +77,94 @@ export function formatStatValue(stat: StatKey, value: number): string {
   return value.toFixed(STAT_DISPLAY[stat].decimals);
 }
 
-/** Per-point increment string, e.g. `+10` or `+0.10`, for tooltips/preview. */
-export function formatStatIncrement(stat: StatKey): string {
-  return `+${STAT_POINT_INCREMENT[stat].toFixed(STAT_DISPLAY[stat].decimals)}`;
-}
-
 /** Human-readable display metadata for each primary (core) stat. */
 export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInfo>> = {
   strength: {
     label: 'Strength',
-    description: '+2 Damage · +1 Armor · +1.0% Damage per point. Melee power and resilience.',
+    description: '+1.0% physical damage per effective point. Melee, ranged, and thrown power.',
     decimals: 0,
   },
   dexterity: {
     label: 'Dexterity',
     description:
-      '+0.05 Attack Speed · +0.0125 Move Speed · +0.01 Accuracy · +0.3% Dodge Chance per point. Agility and precision.',
+      '+1.0% attack speed · +0.25% move speed · +0.25% accuracy · +0.33% dodge chance per effective point. Agility and precision.',
     decimals: 0,
   },
   constitution: {
     label: 'Constitution',
-    description: '+10 Max HP per point. Endurance and survivability.',
+    description: '+10 Max HP per effective point. Endurance and survivability.',
     decimals: 0,
   },
   intelligence: {
     label: 'Intelligence',
-    description: '+0.05 Projectile Speed per point. Arcane focus and precision.',
+    description: '+1.0% magic strength per effective point. Boosts spell and magic-weapon output.',
     decimals: 0,
   },
   wisdom: {
     label: 'Wisdom',
-    description: `+${MANA_PER_WISDOM} Max Mana · +0.5% Cooldown Reduction per point. Arcane reserves and focus.`,
+    description: '+0.5% cooldown reduction per effective point (cap 80%). Arcane focus.',
     decimals: 0,
   },
   charisma: {
     label: 'Charisma',
-    description: 'Reserved — will boost XP gain and improve NPC relations.',
+    description: 'Visible, no gameplay effect yet. Not allocatable.',
     decimals: 0,
   },
   luck: {
     label: 'Luck',
-    description: '+4 Pickup Range · +0.5% Crit Chance per point. Fortune and item magnetism.',
-    decimals: 0,
-  },
-  weight: {
-    label: 'Weight',
-    description: 'Reserved — future momentum/knockback tuning.',
+    description: '+0.25% crit chance per effective point (cap 100%). Fortune and item magnetism.',
     decimals: 0,
   },
 };
 
 /**
- * Display labels for the SECONDARY stats that core stats derive. These values
- * are fractional rates rendered as percentages (e.g. critChance 0.005 →
- * "+0.5% Crit Chance").
+ * Display labels for the SECONDARY stats that core stats derive as percentage
+ * rates (e.g. critChance 0.0025 → "+0.25% Crit Chance"). `maxHp` is a flat
+ * value, not a rate, and is formatted separately in `formatSecondaryGain`.
  */
 const SECONDARY_PERCENT_LABEL: Partial<Record<SecondaryStatId, string>> = {
   damagePercent: 'Damage',
+  attackSpeed: 'Attack Speed',
+  moveSpeed: 'Move Speed',
   critChance: 'Crit Chance',
   dodgeChance: 'Dodge Chance',
   cooldownReduction: 'Cooldown Reduction',
+  accuracy: 'Accuracy',
 };
 
 /** Format a single derived secondary-stat gain for the level-up summary. */
 function formatSecondaryGain(stat: SecondaryStatId, value: number): string {
+  if (stat === 'maxHp') {
+    return `+${value.toFixed(STAT_DISPLAY.maxHp.decimals)} ${STAT_DISPLAY.maxHp.label}`;
+  }
   const label = SECONDARY_PERCENT_LABEL[stat];
   if (label !== undefined) {
-    return `+${(value * 100).toFixed(1)}% ${label}`;
+    return `+${(value * 100).toFixed(2)}% ${label}`;
   }
   return `+${value} ${stat}`;
 }
 
 /**
  * Format the derived gains for a primary stat as a compact summary, e.g.
- * `"+2 Damage, +1 Armor"` or `"+4 Pickup Range, +0.5% Crit Chance"`. Combines
- * gameplay-stat gains (`CORE_STAT_GAINS`), derived secondary stats
- * (`CORE_STAT_TO_SECONDARY`), and the Wisdom→mana resource payoff (which lives
- * outside both maps, see `shared/mana.ts`). Returns `"(no effect yet)"` for
- * stats with no gains in any of those (currently Charisma and Weight).
+ * `"+10 Max HP"` or `"+0.25% Crit Chance"`. Combines the typed-primary rates
+ * (Strength → physical damage, Intelligence → magic strength — see
+ * `shared/stats.ts#computeTypedPrimaryMultiplier`) with the generic derived
+ * secondary stats (`CORE_STAT_TO_SECONDARY`). Returns `"(no effect yet)"` for
+ * stats with no gains in either (currently only Charisma).
  */
 export function formatCoreStatGains(stat: PrimaryStatId): string {
   const parts: string[] = [];
 
-  const gains = CORE_STAT_GAINS[stat];
-  for (const [key, value] of Object.entries(gains) as [StatKey, number][]) {
-    const decimals = STAT_DISPLAY[key].decimals;
-    parts.push(`+${value.toFixed(decimals)} ${STAT_DISPLAY[key].label}`);
+  if (stat === 'strength') {
+    parts.push(`+${(STR_PHYSICAL_DAMAGE_RATE * 100).toFixed(1)}% Physical Damage`);
+  }
+  if (stat === 'intelligence') {
+    parts.push(`+${(INT_MAGIC_STRENGTH_RATE * 100).toFixed(1)}% Magic Strength`);
   }
 
   const secondary = CORE_STAT_TO_SECONDARY[stat];
   for (const [key, value] of Object.entries(secondary) as [SecondaryStatId, number][]) {
     parts.push(formatSecondaryGain(key, value));
-  }
-
-  // Wisdom feeds the MP pool, a resource tracked outside STAT_KEYS / secondary
-  // stats (derived by `manaSystem` from effective Wisdom). Surface it here so the
-  // level-up summary reflects the payoff rather than "(no effect yet)".
-  if (stat === 'wisdom') {
-    parts.push(`+${MANA_PER_WISDOM} Max Mana`);
   }
 
   return parts.length > 0 ? parts.join(', ') : '(no effect yet)';

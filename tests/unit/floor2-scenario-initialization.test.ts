@@ -181,8 +181,13 @@ describe('initializeFloor2Scenario manifest validation', () => {
 
     expect(world.playerLevel.level).toBe(5);
     expect(world.playerLevel.unspentPoints).toBe(0);
-    expect(world.stores.coreStatPoints.strength[playerEid]).toBe(6);
+    // Default allocator sequence (offense->5, CON->6, DEX->5, WIS->5, offense->11,
+    // CON-remainder — see game/scenarios/playerStatAllocationPolicy.ts) spends the
+    // 12 points available at level 5 as: offense(strength, no weapon set)->5,
+    // constitution->6, then 1 leftover point into dexterity.
+    expect(world.stores.coreStatPoints.strength[playerEid]).toBe(5);
     expect(world.stores.coreStatPoints.constitution[playerEid]).toBe(6);
+    expect(world.stores.coreStatPoints.dexterity[playerEid]).toBe(1);
     expect(world.stores.health.max[playerEid]).toBe(190);
     expect(world.stores.health.current[playerEid]).toBe(190);
 

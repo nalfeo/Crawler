@@ -32,6 +32,7 @@ export const MERCHANTS_CHARM_DEF: EquipmentItemDef = {
   name: "Merchant's Magic Charm",
   slots: ['neck'],
   statBonuses: { charisma: 1 },
+  weightLb: 0,
   rarity: 'uncommon',
   grantsStatusEffects: [
     {
@@ -87,6 +88,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     name: 'Sword',
     slots: ['mainHand'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'common',
     weaponId: 'sword',
   }),
@@ -95,6 +97,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     name: 'Bow',
     slots: ['mainHand', 'offHand'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'uncommon',
     weaponId: 'bow',
   }),
@@ -103,6 +106,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     name: 'Baseball Bat',
     slots: ['mainHand', 'offHand'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'common',
     weaponId: 'baseball-bat',
   }),
@@ -111,6 +115,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     name: 'Pistol',
     slots: ['mainHand'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'rare',
     weaponId: 'pistol',
   }),
@@ -119,6 +124,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     name: 'Throwing Knife',
     slots: ['mainHand'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'common',
     weaponId: 'throwing-knife',
   }),
@@ -127,6 +133,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     name: 'Fireball',
     slots: ['mainHand'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'uncommon',
     weaponId: 'fireball',
   }),
@@ -135,6 +142,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     name: 'Laser',
     slots: ['mainHand'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'rare',
     weaponId: 'laser',
   }),
@@ -143,6 +151,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     name: 'Punch',
     slots: ['mainHand'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'common',
     weaponId: 'punch',
   }),
@@ -151,6 +160,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     name: 'Landmine',
     slots: ['mainHand'],
     statBonuses: {},
+    weightLb: 0,
     rarity: 'uncommon',
     weaponId: 'landmine',
   }),
@@ -176,6 +186,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Iron Helm',
     slots: ['head'],
     statBonuses: { armor: 2, constitution: 1 },
+    weightLb: 0,
     rarity: 'common',
   },
   {
@@ -183,6 +194,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Iron Visor',
     slots: ['face'],
     statBonuses: { armor: 1, critChance: 0.03 },
+    weightLb: 0,
     rarity: 'common',
   },
   {
@@ -190,6 +202,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Steel Pauldrons',
     slots: ['shoulders'],
     statBonuses: { armor: 2, strength: 1 },
+    weightLb: 0,
     rarity: 'uncommon',
   },
   {
@@ -197,6 +210,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Iron Breastplate',
     slots: ['chest'],
     statBonuses: { armor: 4, constitution: 1 },
+    weightLb: 0,
     rarity: 'uncommon',
   },
   {
@@ -204,6 +218,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: "Traveler's Cloak",
     slots: ['back'],
     statBonuses: { moveSpeed: 0.05, dodgeChance: 0.03 },
+    weightLb: 0,
     rarity: 'uncommon',
   },
   {
@@ -211,6 +226,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Sturdy Belt',
     slots: ['belt'],
     statBonuses: { hpRegen: 0.5, constitution: 1 },
+    weightLb: 0,
     rarity: 'common',
   },
   {
@@ -218,6 +234,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Iron Greaves',
     slots: ['legs'],
     statBonuses: { armor: 3, dexterity: 1 },
+    weightLb: 0,
     rarity: 'uncommon',
   },
   {
@@ -225,6 +242,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Leather Boots',
     slots: ['feet'],
     statBonuses: { moveSpeed: 0.06, armor: 1 },
+    weightLb: 0,
     rarity: 'common',
   },
   {
@@ -232,6 +250,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Leather Gloves',
     slots: ['gloves'],
     statBonuses: { attackSpeed: 0.05, dexterity: 1 },
+    weightLb: 0,
     rarity: 'common',
   },
   {
@@ -239,6 +258,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Bronze Vambrace',
     slots: ['leftArm'],
     statBonuses: { armor: 1, strength: 1 },
+    weightLb: 0,
     rarity: 'common',
   },
   {
@@ -246,6 +266,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Iron Armguard',
     slots: ['rightArm'],
     statBonuses: { armor: 1, damageBonus: 2 },
+    weightLb: 0,
     rarity: 'common',
   },
   {
@@ -253,6 +274,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Leather Bracer',
     slots: ['leftWrist'],
     statBonuses: { dexterity: 1, dodgeChance: 0.02 },
+    weightLb: 0,
     rarity: 'common',
   },
   {
@@ -260,6 +282,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Beaded Bracelet',
     slots: ['rightWrist'],
     statBonuses: { critChance: 0.02, luck: 1 },
+    weightLb: 0,
     rarity: 'uncommon',
   },
   {
@@ -267,6 +290,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Band of Fortune',
     slots: ['ringLeft'],
     statBonuses: { luck: 1, xpBonus: 0.05 },
+    weightLb: 0,
     rarity: 'rare',
   },
   {
@@ -274,6 +298,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     name: 'Signet of Focus',
     slots: ['ringRight'],
     statBonuses: { intelligence: 1, cooldownReduction: 0.03 },
+    weightLb: 0,
     rarity: 'rare',
   },
 ];

@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "overhaul-primary-stats",
+  "task_title": "Overhaul primary stats and remove mana",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4 + claude-opus-4.8",
+      "concerns_count": 19,
+      "resolved_count": 19,
+      "adversarial": true,
+      "alternatives_considered": 6,
+      "plan_divergence": "major_fork",
+      "notes": "Two pre-edit rounds considered a dual-store adapter, source-resolved damage, persisted attack payloads, parallel versus inline output metadata, mana neutering, and a scope split. The revised plan made a load-bearing fork to one EffectiveStats read lane plus attack-creation snapshots of fail-closed affinity/scaling metadata; it also adopted inline explicit outputs, a legacy modifier remap, authored spell bases, safe cadence bounds, spawn HP seeding, status-speed ordering, synthetic weight tests, and INT parity. Rejected the PR split and weapon/enemy retuning because the approved contract requires one PR and permits only stat constants/default allocator tuning."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 4,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

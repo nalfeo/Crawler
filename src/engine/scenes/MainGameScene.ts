@@ -2325,9 +2325,7 @@ export class MainGameScene extends Phaser.Scene {
           shortLabel: presentation?.shortLabel ?? abilityId.slice(0, 5).toUpperCase(),
           description: presentation?.description ?? 'Configured auto ability.',
           category: presentation?.category ?? 'utility',
-          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${
-            presentation?.mpCost ?? 0
-          } MP  •  ${cooldownSeconds}s CD  •  ${formatAbilityTrigger(abilityId)}`,
+          details: `${presentation?.kind === 'spell' ? 'SPELL' : 'AUTO'}  •  ${cooldownSeconds}s CD  •  ${formatAbilityTrigger(abilityId)}`,
           equipped: state.equippedActiveAbilityIds.includes(abilityId),
         };
       });
