@@ -1778,5 +1778,24 @@ describe('createPhaserBridge', () => {
       const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
       expect(telegraphGfx).toBeUndefined();
     });
+
+    it('does not draw the cue for a shooter killed this same frame, matching the health-bar dead-enemy gate', () => {
+      // Damage/drop/death processing runs after enemy AI, and this render
+      // pass runs after that — so a shooter killed earlier this frame can
+      // still have `telegraphActive` set until the NEXT enemyAISystem pass
+      // cancels it. Without gating on `!isDeadEnemy` the cue would draw from
+      // a corpse (indefinitely, if simulation ever paused on this frame).
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+      addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 3000 }));
+
+      bridge.sync(world);
+
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeUndefined();
+    });
   });
 });

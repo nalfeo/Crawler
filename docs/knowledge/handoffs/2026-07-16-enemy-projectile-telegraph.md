@@ -58,7 +58,8 @@ pre-feature `main` proved the 0ms run's output is **byte-for-byte identical**
 to legacy behavior for the same seed/floor/weapon/frame-count — confirming
 the "0 = exact legacy parity" requirement holds in the real pipeline, not
 just in unit tests. Render-cue behavior (create-once/show/hide, never
-recreated) is additionally covered by 2 new deterministic
+recreated, hidden while outside FOV, and hidden for a shooter killed this
+same frame) is additionally covered by 4 new deterministic
 `tests/unit/phaser-bridge.test.ts` assertions, since this sandboxed
 environment's Playwright/chrome-devtools tools had no screenshot capability
 for Phaser canvas content — the repo's documented deterministic-check
@@ -75,7 +76,7 @@ have dedicated regression tests that fail if either fix is reverted.
 - **Locked-origin/direction architecture**: `telegraphOriginX/Y` and
   `telegraphDirX/Y` are captured ONCE at telegraph start and read verbatim by
   render, AI dodge math, and the real fire-time spawn. This was the outcome
-  of a 5-round adversarial plan review (gpt-5.4) and is what makes rendering
+  of a 4-round adversarial plan review (gpt-5.4) and is what makes rendering
   and AI dodge provably consistent with each other and with what actually
   fires — even if the enemy is later displaced by an unrelated system
   (separation/knockback/unstuck).

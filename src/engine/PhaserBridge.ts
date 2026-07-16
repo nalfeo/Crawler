@@ -1335,7 +1335,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // an off-screen/fog-hidden shooter must not reveal its position or
           // aim line through the telegraph cue (the AI's dodge reasoning still
           // reads the locked fields directly — only the render cue is gated).
-          const isTelegraphing = world.stores.enemyBehavior.telegraphActive[eid] === 1 && isVisible;
+          // Also gated on `!isDeadEnemy`: damage/drop/death processing runs
+          // after enemy AI, and this render pass runs after that, so a
+          // shooter killed earlier this same frame can still have
+          // `telegraphActive` set until the NEXT enemyAISystem pass cancels
+          // it — without this guard the cue would draw from a corpse.
+          const isTelegraphing =
+            world.stores.enemyBehavior.telegraphActive[eid] === 1 && isVisible && !isDeadEnemy;
           const existingTelegraph = telegraphGraphics.get(eid);
           if (!isTelegraphing) {
             existingTelegraph?.setVisible(false);
