@@ -12,9 +12,9 @@ on:
         type: string
         default: 'sword,bow,baseball-bat,pistol,throwing-knife,fireball'
       weapon_personas:
-        description: 'Enable weapon-specific AI stat/gear personas'
+        description: 'Use weapon-specific AI stat/gear personas'
         type: boolean
-        default: false
+        default: true
       max_frames:
         description: 'Frame budget per run (positive integer ≤ 600000; default 19800 ≈ 330s at 60fps)'
         type: string
@@ -104,9 +104,9 @@ jobs:
           WEAPON_PERSONAS: ${{ inputs.weapon_personas }}
         run: |
           set -euo pipefail
-          persona_flag=""
-          if [ "$WEAPON_PERSONAS" = "true" ]; then
-            persona_flag="--weapon-personas"
+          persona_flag="--weapon-personas"
+          if [ "$WEAPON_PERSONAS" = "false" ]; then
+            persona_flag="--no-weapon-personas"
           fi
           npx tsx scripts/agent/perf/weapon-sweep.ts \
             --seeds "$SEEDS" \
