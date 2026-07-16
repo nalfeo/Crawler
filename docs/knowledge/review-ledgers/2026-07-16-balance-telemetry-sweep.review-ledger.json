@@ -18,17 +18,17 @@
       "rounds": [
         {
           "round": 1,
-          "reviewer_model": "gpt-5.4",
-          "concerns": [
-            {
-              "severity": "LOW",
-              "file": "src/labs/damage-lab/index.ts:138",
-              "description": "The damage lab initializes invincibilityMs: 250 while damageSystem.ts PLAYER_INVINCIBILITY_MS is now 350. Lab is out of sync with live gameplay.",
-              "resolution": "Fixed: updated damage lab default to invincibilityMs: 350 to match runtime constant."
-            }
-          ],
-          "terminal": true,
-          "notes": "All concerns resolved in round 1. No concerns remain."
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ]
     }
