@@ -20,6 +20,12 @@ import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { GAME } from '../../shared/constants.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { getEquippableItemIds } from '../../shared/equipmentDefs.js';
+import {
+  computeEquippedWeightLb,
+  getCarryThresholdLb,
+  getEncumbranceBand,
+  ENCUMBRANCE_BAND_LABELS,
+} from '../../shared/encumbrance.js';
 import { addItem, type InventoryBag } from '../../shared/inventory.js';
 import { getItemById } from '../../shared/items.js';
 import { pxToFt } from '../../shared/units.js';
@@ -273,8 +279,16 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
           ? []
           : Object.values(state.equipped).filter((inst): inst is number => inst !== null);
       const equippedCount = new Set(equippedInstanceIds).size;
-      const charisma = getEffectiveStats(this.world, this.playerEid).charisma;
+      const effective = getEffectiveStats(this.world, this.playerEid);
+      const charisma = effective.charisma;
       const slotFilter = this.inventoryUI?.getEquipmentSlotFilter() ?? 'none';
+
+      const gearLb = computeEquippedWeightLb(state);
+      const str = effective.strength ?? 1;
+      const capLb = getCarryThresholdLb(str);
+      const band = getEncumbranceBand(gearLb, str);
+      const bandLabel = ENCUMBRANCE_BAND_LABELS[band];
+      const gearStr = `${gearLb % 1 === 0 ? gearLb.toFixed(0) : gearLb.toFixed(1)} lb / ${capLb} lb cap (STR ${str})`;
 
       hud.textContent = [
         `Safe context: ${isInSafeContext(this.world) ? 'yes' : 'no'} (state=${this.world.state})`,
@@ -282,6 +296,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         `Inventory slots: ${bag?.slots.length ?? 0} · Equipped items: ${equippedCount}`,
         `Active slot filter: ${slotFilter}`,
         `Effective charisma: ${charisma}`,
+        `Gear load: ${gearStr} → ${bandLabel}`,
         'Keys: [I] inventory · [G] equipment · [R] reset',
       ].join('\n');
     }
