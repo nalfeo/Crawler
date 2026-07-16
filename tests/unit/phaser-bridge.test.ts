@@ -1709,7 +1709,7 @@ describe('createPhaserBridge', () => {
   // done" rule via a reproducible, CI-enforced check rather than an ad-hoc
   // manual screenshot.
   describe('enemy projectile telegraph render cue', () => {
-    it('draws a locked-trajectory line + origin marker while an enemy is telegraphing', () => {
+    it('draws a locked-trajectory line + origin marker while an enemy is telegraphing, pinned to the LOCKED origin even after the shooter drifts', () => {
       const { scene, graphics } = createSceneStub({ withGraphics: true });
       const bridge = createPhaserBridge(scene);
       const world = createTestWorld();
@@ -1720,6 +1720,13 @@ describe('createPhaserBridge', () => {
       // the enemy later drifts (knockback/jiggle never un-locks it).
       startEnemyProjectileTelegraph(world, eid, 1, 0);
 
+      // Simulate knockback moving the shooter AFTER the origin locked — the
+      // cue must still render at the ORIGINAL (10, 10) ft / (80, 80) px
+      // origin, not the enemy's new live position, and along the originally
+      // locked (1, 0) direction.
+      world.stores.position.x[eid] = 40;
+      world.stores.position.y[eid] = 60;
+
       bridge.sync(world);
 
       // The cue's red fillStyle (origin-marker circle) must appear on some
@@ -1727,6 +1734,17 @@ describe('createPhaserBridge', () => {
       const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
       expect(telegraphGfx).toBeDefined();
       expect(telegraphGfx?.visible).toBe(true);
+
+      // Pin the actual drawn coordinates: moveTo/fillCircle must sit at the
+      // LOCKED origin (10ft → 80px), not the drifted live position
+      // (40ft/60ft → 320px/480px), and lineTo must extend east from there —
+      // proving the cue tracks the locked trajectory, not the live entity.
+      expect(telegraphGfx?.moveToCalls).toContainEqual({ x: 80, y: 80 });
+      expect(telegraphGfx?.fillCircleCalls).toContainEqual({ x: 80, y: 80, r: 4 });
+      const lineTo = telegraphGfx?.lineToCalls[telegraphGfx.lineToCalls.length - 1];
+      expect(lineTo).toBeDefined();
+      expect(lineTo?.y).toBeCloseTo(80, 5);
+      expect(lineTo?.x).toBeGreaterThan(80);
     });
 
     it('hides (but does not recreate) the telegraph graphic once telegraphActive clears', () => {

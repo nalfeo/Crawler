@@ -2370,7 +2370,15 @@ export class BehaviorTreeAI implements AIInputProvider {
 
         const originX = enemyBehaviorStore.telegraphOriginX[eid] ?? 0;
         const originY = enemyBehaviorStore.telegraphOriginY[eid] ?? 0;
-        if (!this.canPerceiveWorldPosition(ctx.world, originX, originY)) continue;
+        // Gate on the shooter's LIVE position (not the locked telegraph
+        // origin) using STRICT current FOV (matching PhaserBridge's cue gate
+        // at PhaserBridge.ts's isVisible computation exactly) — knockback can
+        // displace a shooter after its telegraph origin is locked, and
+        // canPerceiveWorldPosition's discovered-tile memory would otherwise
+        // let the AI dodge a threat the render cue is not currently showing.
+        const liveX = ctx.world.stores.position.x[eid] ?? originX;
+        const liveY = ctx.world.stores.position.y[eid] ?? originY;
+        if (!this.canCurrentlyPerceiveWorldPosition(ctx.world, liveX, liveY)) continue;
 
         const dirX = enemyBehaviorStore.telegraphDirX[eid] ?? 0;
         const dirY = enemyBehaviorStore.telegraphDirY[eid] ?? 0;
@@ -7503,6 +7511,22 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (!this.hasPerceptionData) return true;
     if (floorMap.isVisible(tile.x, tile.y)) return true;
     return floorMap.isDiscovered(tile.x, tile.y);
+  }
+
+  /**
+   * Stricter sibling of {@link canPerceiveWorldPosition}: matches the render
+   * cue's exact visibility gate (PhaserBridge only draws the telegraph cue
+   * when the shooter's current tile is in LIVE FOV — not merely
+   * discovered/remembered). Used solely for the telegraphed-shot dodge gate
+   * so the AI cannot react to a threat the player cannot currently see
+   * rendered. Falls back to permissive (true) with no floorMap/perception
+   * data yet, matching canPerceiveWorldPosition's isolated-unit-test fallback.
+   */
+  private canCurrentlyPerceiveWorldPosition(world: GameWorld, x: number, y: number): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap || !this.hasPerceptionData) return true;
+    const tile = floorMap.worldToTile(x, y);
+    return floorMap.isVisible(tile.x, tile.y);
   }
 
   /**
