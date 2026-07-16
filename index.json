@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9af4fdc988d0e37ecdb618c7ab03426903735179",
+    "commitDate": "2026-07-16T16:53:10Z",
+    "commitSubject": "fix(deploy): post baseline win-rate comment on all batch-merged PRs, not just the last one (#1202)",
+    "capturedAt": "2026-07-16T18:09:05.621Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29518194954",
+    "winRate": 0.9833333333333333,
+    "totalWins": 590,
+    "totalRuns": 600,
+    "path": "by-sha/9af4fdc988d0e37ecdb618c7ab03426903735179.json"
+  },
+  {
     "commit": "b6bca40f7059ed7665bbb3f36d44365966fea17f",
     "commitDate": "2026-07-16T15:18:30Z",
     "commitSubject": "fix(engine): sticky telegraph flag so 16× AI-runner lab batches don't swallow short-lived cues (#1200)",
