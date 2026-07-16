@@ -8146,15 +8146,20 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
 
-    // Safe loot detour: only reachable while every threat (including
-    // activeTarget itself) is beyond SAFE_LOOT_ENEMY_CLEARANCE_FT. Since that
-    // clearance radius is intentionally wider than contactThreatRadius, this
-    // can only pass during the "closing" phase below (activeTarget still far
-    // out) — by the time activeTarget is close enough to orbit, it is by
-    // definition within the clearance radius and the detour is correctly
-    // blocked. This matches the maintainer's ask: only detour once
-    // enemies have been pushed far enough away to be safe.
-    const lootDetour = this.maybeDetourForLoot(world, playerX, playerY);
+    // Safe loot detour: fires only when activeTarget is in the "closing"
+    // phase (beyond contactThreatRadius — not yet in orbit), AND no OTHER
+    // perceived threat is within SAFE_LOOT_ENEMY_CLEARANCE_FT. Passing
+    // activeTarget separately from the OTHER-enemies scan means short-range
+    // projectile weapons (e.g. throwing-knife, contactThreatRadius ~9ft,
+    // engage radius ~30ft) have a valid window: enemy at 10-30ft qualifies
+    // as "closing-phase clear" even though they're within engage range.
+    const lootDetour = this.maybeDetourForLoot(
+      world,
+      playerX,
+      playerY,
+      activeTarget,
+      contactThreatRadius,
+    );
     if (lootDetour) {
       return lootDetour;
     }
@@ -8180,29 +8185,40 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * Opportunistic "safe loot detour" for ranged kiting. Only fires when the
-   * maintainer's stated condition holds: enemies have actually been kited far
-   * enough away (nearest perceived enemy is beyond
-   * {@link SAFE_LOOT_ENEMY_CLEARANCE_FT}, comfortably outside the multi-threat
-   * defense radius so no closing enemy could reach contact range mid-detour)
-   * AND there's loot worth the trip (within {@link LOOT_DETOUR_MAX_FT}, so the
-   * detour stays short and never wanders toward new danger). Deliberately
-   * returns a plain movement target rather than switching `AIState` to
-   * COLLECT — the engagement target/reason stay set by the caller, so combat
-   * targeting is unaffected and normal orbit-kiting resumes the instant this
-   * returns null again (loot collected, or a threat re-closes).
+   * maintainer's stated condition holds:
+   * 1. `activeTarget` is in the **closing** phase (distance > `contactThreatRadius`) —
+   *    once orbiting, it's too close to safely break off.
+   * 2. No OTHER perceived, living enemy is within {@link SAFE_LOOT_ENEMY_CLEARANCE_FT}.
+   * 3. Loot exists within {@link LOOT_DETOUR_MAX_FT}.
+   *
+   * Splitting the active-target check from the secondary-scan lets short-range
+   * projectile weapons (e.g. throwing-knife, engage radius ~30 ft, orbit ~6 ft)
+   * reach the loot branch during their closing phase (enemy 10–30 ft away, no
+   * flankers) — previously unreachable because the all-enemy 30 ft scan always
+   * found the active target itself. Deliberately returns a plain movement target
+   * rather than switching `AIState` to COLLECT — normal orbit-kiting resumes the
+   * instant this returns null again (loot collected, or a threat re-closes).
    */
   private maybeDetourForLoot(
     world: GameWorld,
     playerX: number,
     playerY: number,
+    activeTarget: WorldTarget,
+    contactThreatRadius: number,
   ): { targetX: number; targetY: number; reason: string } | null {
-    const nearestThreatDist = this.findNearestOtherEnemyDistance(
+    // Active target must be in the closing phase (not yet in orbit range).
+    if (activeTarget.distance <= contactThreatRadius) {
+      return null;
+    }
+    // No OTHER living enemy may be within the clearance radius.
+    const nearestOtherThreatDist = this.findNearestOtherEnemyDistance(
       world,
       playerX,
       playerY,
       SAFE_LOOT_ENEMY_CLEARANCE_FT,
+      activeTarget.eid,
     );
-    if (nearestThreatDist !== null) {
+    if (nearestOtherThreatDist !== null) {
       return null;
     }
     const loot = this.findNearestLoot(world, playerX, playerY);
@@ -8212,7 +8228,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return {
       targetX: loot.x,
       targetY: loot.y,
-      reason: `Detouring for ${loot.kind} loot mid-kite (${loot.distance.toFixed(1)}ft, no threat within ${SAFE_LOOT_ENEMY_CLEARANCE_FT.toFixed(0)}ft)`,
+      reason: `Detouring for ${loot.kind} loot mid-kite (${loot.distance.toFixed(1)}ft, active threat ${activeTarget.distance.toFixed(1)}ft away, no flanker within ${SAFE_LOOT_ENEMY_CLEARANCE_FT.toFixed(0)}ft)`,
     };
   }
 

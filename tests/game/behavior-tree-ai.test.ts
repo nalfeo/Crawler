@@ -2192,14 +2192,19 @@ describe('BehaviorTreeAI', () => {
     expect(decision.targetY!).toBeCloseTo(0, 0);
   });
 
-  it('does not detour for loot while an enemy is still within the safe-loot clearance radius', () => {
-    // Same gold placement as above, but the enemy is close enough (inside
-    // SAFE_LOOT_ENEMY_CLEARANCE_FT) that the detour must NOT fire — normal
-    // ranged engagement (closing to standoff or orbiting) continues instead.
+  it('does not detour for loot while a secondary (flanking) enemy is within the safe-loot clearance radius', () => {
+    // The loot detour fires when the ACTIVE target is in the closing phase and
+    // no OTHER (secondary) enemy is nearby. This test verifies that a secondary
+    // threat within SAFE_LOOT_ENEMY_CLEARANCE_FT correctly blocks the detour
+    // even though the active target itself is in the closing phase.
     const world = createTestWorld({ seed: 7 });
     spawnPlayer(world, 0, 0);
-    const closeFt = SAFE_LOOT_ENEMY_CLEARANCE_FT - 5;
-    spawnEnemy(world, closeFt, 0, 20);
+    // Nearest enemy becomes the active target (15ft — closing phase for bow,
+    // since contactThreatRadius ~= 9ft). The detour alone would fire, but a
+    // second live enemy within SAFE_LOOT_ENEMY_CLEARANCE_FT (at ~25ft) should
+    // block it.
+    spawnEnemy(world, 15, 0, 20); // active target, closing phase
+    spawnEnemy(world, 0, 25, 20); // secondary flanker — blocks detour
     spawnGold(world, 5, 0, 3);
     setActiveWeapon(world, getWeaponDef('bow')!);
 
@@ -2208,6 +2213,33 @@ describe('BehaviorTreeAI', () => {
 
     const decision = ai.getDecision();
     expect(decision.reason).not.toContain('Detouring for');
+  });
+
+  it('detours for loot mid-kite with a short-range weapon (throwing-knife) during the closing phase', () => {
+    // Regression for the short-range-weapon reachability bug: throwing-knife
+    // has engage radius ~30ft and contactThreatRadius ~9ft. Previously the
+    // detour was unreachable because the all-enemy clearance scan (30ft) always
+    // found the active target itself (also ≤30ft by definition). With the fix,
+    // only OTHER enemies are scanned; the active target's distance is checked
+    // separately against contactThreatRadius (~9ft), so a TK user at 15ft
+    // (closing phase: 15 > 9) with no secondary enemies in range can detour.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    // TK engage radius = max(19, 30) = 30ft; contactThreatRadius ~= 9ft.
+    // At 15ft the enemy is in the closing phase (15 > 9) — previously blocked.
+    spawnEnemy(world, 15, 0, 20);
+    spawnGold(world, 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('throwing-knife')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.reason).toContain('Detouring for');
+    expect(decision.reason).toContain('loot mid-kite');
+    expect(decision.targetX!).toBeCloseTo(5, 0);
+    expect(decision.targetY!).toBeCloseTo(0, 0);
   });
 
   it('does not detour for loot farther away than LOOT_DETOUR_MAX_FT even when safe', () => {

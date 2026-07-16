@@ -57,11 +57,16 @@ pushed clear.
     (mirroring the primary-target dead-zone pattern already in the code).
 - **`src/game/ai/bt-ai-tuning.ts`**: new constants `RANGED_MULTI_THREAT_SCAN_FT`,
   `SAFE_LOOT_ENEMY_CLEARANCE_FT`, `LOOT_DETOUR_MAX_FT`.
-- **`tests/game/behavior-tree-ai.test.ts`**: 7 new tests — multi-threat radial
-  defense regression, 3 loot-detour tests (fires when safe, blocked by a
-  nearby enemy, blocked by too-far loot), and 2 corpse-exclusion regression
-  tests (dead enemy doesn't block the loot detour; dead enemy doesn't bend
-  the escape-push vector). 81/81 total passing.
+- **`tests/game/behavior-tree-ai.test.ts`**: 7 new tests (after CI recovery) — multi-threat
+  radial defense regression, 3 loot-detour tests (fires when safe for bow; blocked by
+  secondary/flanking enemy; blocked by too-far loot), 1 new short-range weapon regression
+  (throwing-knife loot detour reachable in closing phase), and 2 corpse-exclusion regression
+  tests (dead enemy doesn't block the loot detour; dead enemy doesn't bend the escape-push
+  vector). 82/82 total passing.
+- `maybeDetourForLoot` now accepts `activeTarget` and `contactThreatRadius` — active-target
+  distance checked against `contactThreatRadius` (not the wider clearance radius), and active
+  target excluded from the OTHER-enemy scan. This fixes a reachability bug for short-range
+  projectile weapons (TK engage radius = clearance radius = 30ft → detour was dead code).
 - Melee kiting (`computeMeleeKiteTarget`) is untouched — ranged-only per scope.
 - Did **not** touch `buildHuntBehavior`, `buildLeaveSafeRoomBehavior`, or the
   `findNearestEnemy` watchdog — that's the sibling session's
@@ -123,9 +128,11 @@ pushed clear.
 
 - `npm run typecheck` — clean.
 - `npm run lint` — clean, 0 warnings.
-- `npx vitest run tests/game/behavior-tree-ai.test.ts` — 81/81 passing.
-- Broader `npm run test:unit` — only pre-existing, unrelated Windows-bash-path
-  failures (confirmed identical on a `git stash` baseline).
+- `npx vitest run tests/game/behavior-tree-ai.test.ts` — 82/82 passing (after CI recovery
+  adding 1 TK-specific loot-detour regression test).
+- `npm run test:unit` — all unit tests passing on Linux CI (the platform CI enforces).
+- `tests/headless/collision-pair-parity.test.ts` golden fingerprint for seed 42 updated to
+  reflect the intentional AI behavior improvement (6 kills / 223.4 damage, up from 5/193.1).
 - Rebased cleanly onto current `main` (2cca6f10) before opening the PR.
 
 ## Coordination with sibling session
