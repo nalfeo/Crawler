@@ -43,6 +43,9 @@ describe('deploy.yml baseline comment targeting', () => {
   it('exports deploy-selected PR numbers as a deploy job output', () => {
     const doc = loadDeployWorkflow();
     const deploy = getJob(doc, 'deploy');
+    const selectedStep = getStep(deploy, 'Select released PR targets');
+
+    expect(selectedStep.id).toBe('released-prs');
     expect(deploy.outputs?.released_pr_numbers).toContain('steps.released-prs.outputs.pr_numbers');
   });
 

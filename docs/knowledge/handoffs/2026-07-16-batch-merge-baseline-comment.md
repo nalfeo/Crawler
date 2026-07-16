@@ -7,7 +7,7 @@
 
 ## Systems touched
 
-deploy, merge-train
+ci-policy
 
 ## Summary
 
@@ -30,19 +30,20 @@ The deploy job's "Label and comment on released PRs" step is NOT affected (it ru
 
 ## Fix
 
-Changed the "Comment baseline win-rate on released PR" step in `.github/workflows/deploy.yml` (`baseline-sweep` job) to:
+Changed `deploy.yml` so baseline comment targeting is scoped to the exact PR set selected by the matching deploy run:
 
-1. Keep the existing path: resolve the specific PR for the swept SHA via `resolve-landed-pr.mjs` (non-fatal on failure; continues to label-based fallback)
-2. **New:** also query `gh pr list --label "released" --limit 50` for all recently released PRs
-3. Deduplicate and iterate over the union
-4. **Idempotency check:** skip any PR whose comments already contain `"📊 Baseline win-rate"` (guards against double-posting on re-runs and overlapping sweeps)
-5. Post on all remaining PRs
+1. Added a `deploy` job step (`Select released PR targets`) that computes merged+unreleased `PR_NUMBERS` once.
+2. Exported that list as a deploy job output: `outputs.released_pr_numbers`.
+3. Updated `baseline-sweep` comment step to target only `SPECIFIC_PR ∪ needs.deploy.outputs.released_pr_numbers` (deduped), instead of querying global `"released"` labels.
+4. Kept idempotency guard (`"📊 Baseline win-rate"` comment already present) so reruns/overlap stay safe.
+5. Added a warning path when PR-target selection fails, rather than silently suppressing all errors.
 
-The surviving deploy run's baseline-sweep now posts the comment on ALL batch PRs (they all have the "released" label from the surviving deploy's "Label and comment on released PRs" step), not just the one whose commit was swept.
+This removes cross-run misassociation risk during overlapping releases and avoids missing current-batch PRs due list caps/order.
 
 ## Files changed
 
-- `.github/workflows/deploy.yml` — "Comment baseline win-rate on released PR" step only
+- `.github/workflows/deploy.yml` — deploy output wiring + scoped baseline comment targets
+- `tests/unit/deploy-baseline-comment-targeting.test.ts` — regression assertions for scoped targeting
 
 ## Backward compatibility
 
@@ -54,4 +55,5 @@ The surviving deploy run's baseline-sweep now posts the comment on ALL batch PRs
 ## Testing
 
 - `npm run verify:fast` passes (87 test files, 1218 tests) ✓
+- `npx vitest run tests/unit/deploy-workflow-gating.test.ts tests/unit/deploy-baseline-comment-targeting.test.ts` ✓
 - The fix is in a GitHub Actions workflow step; full validation requires observing the next batch merge on CI
