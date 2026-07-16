@@ -139,3 +139,7 @@ latent `CombatVfx` floater bug. It stayed out of 5-apple territory by
 deliberately avoiding a new ECS system and reusing existing primitives.
 
 Hello kitties: 4/5 = 0.80 🎀
+
+## Systems touched
+
+ai-pathfinding, enemies, inventory

@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — matched expected medium scope (targeted bug fix + test +
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+ai-combat-balance, inventory
+
 ## What Was Done
 
 - Root-caused stall: `MainGameScene.update()` returned early while `LevelUpUI` was open, so `driveAutoLevelUp()` only ran on the first open frame and never advanced the hold-frame counter afterward.

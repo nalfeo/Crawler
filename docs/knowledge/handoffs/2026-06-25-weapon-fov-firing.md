@@ -91,3 +91,7 @@ fix point and the existing FOV/LOS scaffolding (transparent-tile flags,
 as a focused 3-file source change (`TileMap`, `FloorMap`, `weaponSystem`) plus
 tests rather than a new sub-system. A cross-layer ADR was still required (see
 above).
+
+## Systems touched
+
+ai-pathfinding, weapons

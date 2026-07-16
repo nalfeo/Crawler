@@ -19,6 +19,7 @@ import {
 import { GAME } from '../shared/constants.js';
 import { PIXELS_PER_FOOT } from '../shared/units.js';
 import { applyCrispText, type ScreenBounds } from './ui-scale.js';
+import { getRenderScale } from './render-scale.js';
 import { BLUE_STEEL } from './ui-theme.js';
 import { boundsOverlap } from './navigation-hud-layout.js';
 
@@ -350,11 +351,16 @@ export function createHudDirectionArrows(scene: Phaser.Scene): {
       }
     }
 
+    // Divide by renderScale so the on-screen check operates in design-space
+    // pixels, not canvas pixels.  camera.zoom = BASE_ZOOM * renderScale, so
+    // scale = PIXELS_PER_FOOT * (zoom / renderScale) = PIXELS_PER_FOOT * BASE_ZOOM
+    // regardless of HiDPI supersample factor.
+    const renderScale = getRenderScale(scene);
     const states = resolveDirectionArrowStates(
       waypoints,
       px,
       py,
-      scene.cameras.main.zoom || 1,
+      (scene.cameras.main.zoom || 1) / renderScale,
       forbiddenRegions,
     );
     const stateByQuestId = new Map(states.map((state) => [state.questId, state]));

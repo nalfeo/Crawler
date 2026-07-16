@@ -4,6 +4,10 @@
 **Branch**: `copilot/add-weapons-and-armor-to-shop`  
 **PR**: #433 — Replace plasma pistol-facing content with earth-standard basic weapon naming
 
+## Systems touched
+
+inventory
+
 ## Session Summary
 
 Addressed @nalfeo's request to fix CI failures and review comments on PR #433. CI was already passing; addressed the four open review threads from `copilot-pull-request-reviewer`.

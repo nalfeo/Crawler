@@ -23,6 +23,10 @@ Verdict: 🎯 Exact
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+sprite-workflow
+
 ## What Was Done
 
 Phase 2 of the "stuck generating, no visibility" fix (Phase 1 = PR #318 UI work).

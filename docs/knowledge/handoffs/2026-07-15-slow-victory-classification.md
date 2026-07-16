@@ -58,7 +58,7 @@ All 47 tests in the 4 directly related test files pass.
 
 ## Systems touched
 
-ci-policy, perf
+ci-policy, ai-combat-balance
 
 ## Apples
 

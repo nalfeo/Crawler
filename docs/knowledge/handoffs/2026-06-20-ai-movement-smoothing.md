@@ -5,6 +5,10 @@
 **Persona:** Game Designer  
 **Apple estimate:** 🍎 (1) · **Actual:** 🍎 (1) · verdict **exact**
 
+## Systems touched
+
+ai-pathfinding
+
 ## Goal
 
 Eliminate the visual jerkiness in the AI runner's movement. The player character

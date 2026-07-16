@@ -5,6 +5,10 @@
 **Branch:** nalfeo-friendly-pancake  
 **Complexity Estimate:** 3🍎 (actual: 3🍎, exact)
 
+## Systems touched
+
+lighting
+
 ## Summary
 
 Two related changes:

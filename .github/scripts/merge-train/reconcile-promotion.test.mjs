@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  applyLandedRecoveryDecision,
   createMergePullRequest,
   isMergeTrainPromotionError,
   landedCommitProofError,
   planLandedRecovery,
   promoteExactBatch,
 } from './reconcile-lib.mjs';
-import { LANDED_LABEL, QUEUE_LABEL, BLOCKED_LABEL } from './state.mjs';
+import { BLOCKED_LABEL, LANDED_LABEL, QUEUE_LABEL, RECOVERY_PENDING_LABEL } from './state.mjs';
 
 // Deterministic 40-char hex SHAs for the fixtures.
 const BASE = 'a'.repeat(40);
@@ -363,8 +364,7 @@ test('promoteExactBatch fails closed and publishes postcondition when final main
       commit: { tree: { sha: TREE1 } },
     }),
     eligible: async () => ({ ok: true }),
-    git: (args) =>
-      args[1] === `${CAND1}^{tree}` ? TREE1 : args[1] === `${CAND1}^` ? BASE : '',
+    git: (args) => (args[1] === `${CAND1}^{tree}` ? TREE1 : args[1] === `${CAND1}^` ? BASE : ''),
     mergePullRequest: async () => {
       main = LAND1;
       return { ok: true, sha: LAND1 };
@@ -430,8 +430,7 @@ test('promoteExactBatch final main guard tolerates a transient fetchCurrentMain 
       commit: { tree: { sha: TREE1 } },
     }),
     eligible: async () => ({ ok: true }),
-    git: (args) =>
-      args[1] === `${CAND1}^{tree}` ? TREE1 : args[1] === `${CAND1}^` ? BASE : '',
+    git: (args) => (args[1] === `${CAND1}^{tree}` ? TREE1 : args[1] === `${CAND1}^` ? BASE : ''),
     mergePullRequest: async () => {
       main = LAND1;
       return { ok: true, sha: LAND1 };
@@ -993,8 +992,61 @@ test('planLandedRecovery skips a markerless landing (crash may have occurred bef
   assert.match(decision.reason, /LANDED_LABEL proof-complete marker is absent/);
 });
 
-test('planLandedRecovery skips when recovery proof facts could not all be read', () => {
+test('planLandedRecovery retries when recovery proof facts could not all be read', () => {
   const decision = planLandedRecovery({ ...recoveryDefaults, factsComplete: false });
-  assert.equal(decision.action, 'skip');
+  assert.equal(decision.action, 'retry');
   assert.match(decision.reason, /could not reconstruct all landed-commit proof facts/);
+});
+
+test('applyLandedRecoveryDecision finishes proof-complete recovery before secondary cleanup', async () => {
+  const calls = [];
+  await applyLandedRecoveryDecision({
+    prNumber: 42,
+    landedSha: LAND1,
+    decision: { action: 'finish', reason: 'proven interrupted landing' },
+    postLandedComment: async (...args) => calls.push(['comment', ...args]),
+    setLabel: async (...args) => calls.push(['set', ...args]),
+    removeLabel: async (...args) => calls.push(['remove', ...args]),
+  });
+
+  assert.deepEqual(calls, [
+    ['comment', 42, LAND1, '', true],
+    ['remove', 42, QUEUE_LABEL],
+    ['remove', 42, BLOCKED_LABEL],
+    ['remove', 42, RECOVERY_PENDING_LABEL],
+  ]);
+});
+
+test('applyLandedRecoveryDecision moves indeterminate recovery off the queue label', async () => {
+  const calls = [];
+  await applyLandedRecoveryDecision({
+    prNumber: 42,
+    landedSha: LAND1,
+    decision: { action: 'retry', reason: 'transient evidence read' },
+    postLandedComment: async (...args) => calls.push(['comment', ...args]),
+    setLabel: async (...args) => calls.push(['set', ...args]),
+    removeLabel: async (...args) => calls.push(['remove', ...args]),
+  });
+
+  assert.deepEqual(calls, [
+    ['set', 42, RECOVERY_PENDING_LABEL],
+    ['remove', 42, QUEUE_LABEL],
+  ]);
+});
+
+test('applyLandedRecoveryDecision clears only transient labels for an unprovable closure', async () => {
+  const calls = [];
+  await applyLandedRecoveryDecision({
+    prNumber: 42,
+    landedSha: LAND1,
+    decision: { action: 'skip', reason: 'not a train landing' },
+    postLandedComment: async (...args) => calls.push(['comment', ...args]),
+    setLabel: async (...args) => calls.push(['set', ...args]),
+    removeLabel: async (...args) => calls.push(['remove', ...args]),
+  });
+
+  assert.deepEqual(calls, [
+    ['remove', 42, QUEUE_LABEL],
+    ['remove', 42, RECOVERY_PENDING_LABEL],
+  ]);
 });

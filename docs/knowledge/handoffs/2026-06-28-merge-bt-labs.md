@@ -4,6 +4,10 @@
 **Branch:** nalfeo-verbose-engine
 **Apple estimate:** 🍎🍎 · actual 🍎🍎 (on)
 
+## Systems touched
+
+ai-behavior-tree, devtools
+
 ## Summary
 
 The codebase has exactly one AI tree: `BehaviorTreeAI` builds a single

@@ -6,6 +6,10 @@
 
 Estimated 🍎🍎 (Small). Actual 🍎🍎. Verdict 🎯 Exact — three targeted files for queue polling and approve hydration I/O reductions.
 
+## Systems touched
+
+sprite-pipeline
+
 ## Summary
 
 Optimized non-LLM workflow latency in sprite generation by removing expensive broad store scans from queued polling and reducing remote approve hydration scope.

@@ -14,6 +14,10 @@ Estimated: 🍎🍎
 Actual: 🍎🍎  
 Verdict: 🎯 Exact
 
+## Systems touched
+
+devtools
+
 ## What changed
 
 - Removed dead related-lab mapping from `scripts/agent/pr-lab-links.mjs`:

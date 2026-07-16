@@ -5,6 +5,10 @@
 **Persona:** Producer (small lab-wiring fix)
 **Apple estimate:** 🍎🍎 → **Actual: 🍎🍎** (matches)
 
+## Systems touched
+
+devtools, enemies
+
 ## Summary
 
 The gore lab was rendering procedural green/orange diamonds for player and enemy because `GoreLabScene` never preloaded the Kenney sprite sheets the main game loads via `BootScene`. That made the gore VFX visually unjudgeable, since `CorpseShatterVfx` cuts up whatever texture the live enemy sprite is using — a 24x24 procedural square in the fallback path.

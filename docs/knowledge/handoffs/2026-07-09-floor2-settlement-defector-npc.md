@@ -7,7 +7,7 @@
 
 ## Systems touched
 
-floor2-settlement, npc-spawn, phaser-bridge, dialogue, floor2-scenario, quests
+mapgen, enemies, vfx, quests
 
 ## What was done
 

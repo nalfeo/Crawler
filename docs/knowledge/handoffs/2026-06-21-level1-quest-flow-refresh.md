@@ -69,6 +69,10 @@ land on `floorMap.playerSpawn`.
   shifts the behavior-tree AI's trajectory and breaks the canonical headless
   seed, forcing a re-probe. Budget went mostly to finding new winning seeds.
 
+## Systems touched
+
+quests
+
 ## Deferred (next session)
 
 Full quest-chain **re-sequencing**, all of which re-tunes the behavior-tree AI

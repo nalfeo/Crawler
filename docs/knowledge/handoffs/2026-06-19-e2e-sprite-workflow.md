@@ -5,6 +5,10 @@
 **Persona:** Producer
 **Apples:** declared 🍎🍎🍎🍎 (4) · actual 4 · verdict exact
 
+## Systems touched
+
+sprite-pipeline
+
 ## Goal
 
 Drive a one-line text brief ("Purple Potion Bottle") all the way to a tagged,

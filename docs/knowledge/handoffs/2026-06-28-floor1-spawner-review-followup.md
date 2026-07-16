@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — one surgical gameplay refactor plus focused/full validat
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+enemies
+
 ## What Was Done
 
 - Replaced the inline Fisher–Yates shuffle in `src/game/floorScenario.ts` with `SeededRandom.shuffle(candidateRooms)`.

@@ -64,4 +64,19 @@ describe('AI playthrough level-up UX wiring', () => {
     // The pre-modal bypass must be gone so the modal can actually open.
     expect(source).not.toContain('autoAllocateStatPoints');
   });
+
+  it('AI Runner Lab allocator returns null during manual control so the human can allocate', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
+    // The allocator must gate on manualControl and return null when it is active,
+    // so driveAutoLevelUp() leaves the modal open for the human player.
+    expect(source).toMatch(/autoLevelUpAllocator[\s\S]{0,200}manualControl\s*\?\s*null/);
+  });
+
+  it('MainGameScene driveAutoLevelUp resets hold counter and bails when allocator returns null', () => {
+    const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
+    // When the allocator returns null, the hold timer must be reset so manual
+    // control leaves the modal fully open without auto-confirming.
+    expect(source).toContain('if (allocations === null)');
+    expect(source).toMatch(/allocations === null[\s\S]{0,200}levelUpAutoHoldFrames = 0/);
+  });
 });

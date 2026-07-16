@@ -4,6 +4,10 @@
 **Branch:** `copilot/welcome-room-distance-requirements`  
 **Apples:** 🍎🍎 estimated → 🍎🍎 actual (exact)
 
+## Systems touched
+
+mapgen
+
 ## Summary
 
 Fixed a room graph connectivity bug where `carveCaveRegions` was converting CORRIDOR tiles to CAVE_FLOOR terrain, causing the room-adjacency flood-fill to miss those connections (it only recognised `CORRIDOR` and `DOOR` terrain as connectors). This resulted in 361/500 floor-1 seeds producing graph-disconnected room layouts — rooms reachable by the player but invisible to the AI navigation, NPC placement BFS, and quest-item routing.

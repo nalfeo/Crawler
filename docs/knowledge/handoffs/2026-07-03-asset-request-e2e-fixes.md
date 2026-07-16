@@ -25,6 +25,10 @@ the 3🍎 tier as declared.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+quests
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-03-asset-request-e2e-fixes.review-ledger.json`

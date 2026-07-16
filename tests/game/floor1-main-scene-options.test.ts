@@ -97,4 +97,14 @@ describe('createFloor1MainSceneOptions', () => {
 
     expect(world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)).toBe(true);
   });
+
+  it('wires onFloor1Cleared for floor1 to enable floor 1→2 transition', () => {
+    const options = createFloor1MainSceneOptions();
+    expect(typeof options.onFloor1Cleared).toBe('function');
+  });
+
+  it('does not wire onFloor1Cleared for floor2', () => {
+    const options = createFloorMainSceneOptions('floor2');
+    expect(options.onFloor1Cleared).toBeUndefined();
+  });
 });

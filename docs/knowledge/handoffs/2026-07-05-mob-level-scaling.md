@@ -9,7 +9,7 @@ far edge of the dungeon.
 
 ## Systems touched
 
-spawning, combat-balance
+enemies, ai-combat-balance
 
 ## What was done
 

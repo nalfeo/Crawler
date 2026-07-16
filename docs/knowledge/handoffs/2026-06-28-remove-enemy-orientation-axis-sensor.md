@@ -5,6 +5,10 @@
 **Persona**: Producer  
 **Apples**: 🍎🍎 estimated -> 🍎🍎 actual (exact)
 
+## Systems touched
+
+enemies, mobile-ux
+
 ## Summary
 
 Removed `silhouette-orientation-axis` scoring from `enemy` briefs so enemy candidates are no longer rejected for not being vertically aligned. Character orientation checks remain unchanged.

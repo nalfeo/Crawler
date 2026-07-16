@@ -20,6 +20,10 @@ Verdict: 🎯 Exact - one script wiring fix plus prerequisite artifacts.
 
 Hello kitties: 1/5 = 0.20 🎀
 
+## Systems touched
+
+azure-infra
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-01-azure-env-brief-selector-deployment.review-ledger.json`

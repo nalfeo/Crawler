@@ -75,6 +75,10 @@ green throughout.
   on meet), reaches shop/spell only post-level-2, and reaches the boss door only
   after both remaining gates — so gating/relaxing those never moved the seed.
 
+## Systems touched
+
+quests
+
 ## Deferred
 
 None from the original brief — all four re-sequencing items are now shipped.
