@@ -351,6 +351,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const beamGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   const mobHealthBars = new Map<number, Phaser.GameObjects.Graphics>();
+  /** Per-enemy locked-trajectory telegraph cue (see enemyTelegraph.ts). */
+  const telegraphGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
   /** Per-harvestable node Graphics (fallback body circle + progress ring redrawn each frame). */
@@ -1324,6 +1326,50 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             bar.lineStyle(1, 0x000000, 1);
             bar.strokeRect(barX - 1, barY - 1, barWidth + 2, MOB_HEALTH_BAR_HEIGHT_PX + 2);
           }
+
+          // --- Locked-trajectory telegraph cue ---
+          // Reads the SAME locked origin/direction fields the fire logic and
+          // AI dodge reasoning use (core/systems/enemyTelegraph.ts) — never
+          // live position — so what the player sees is exactly what will fire.
+          const isTelegraphing = world.stores.enemyBehavior.telegraphActive[eid] === 1;
+          const existingTelegraph = telegraphGraphics.get(eid);
+          if (!isTelegraphing) {
+            existingTelegraph?.setVisible(false);
+          } else if (typeof scene.add.graphics === 'function') {
+            const enemyBehaviorStore = world.stores.enemyBehavior;
+            const startMs = enemyBehaviorStore.telegraphStartMs[eid] ?? 0;
+            const delayMs = Math.max(1, enemyBehaviorStore.telegraphDelayMs[eid] ?? 1);
+            const elapsedMs = Math.max(0, renderElapsedMs - startMs);
+            const progress = Math.min(1, elapsedMs / delayMs);
+            const originX = ftToPx(enemyBehaviorStore.telegraphOriginX[eid] ?? 0);
+            const originY = ftToPx(enemyBehaviorStore.telegraphOriginY[eid] ?? 0);
+            const dirX = enemyBehaviorStore.telegraphDirX[eid] ?? 0;
+            const dirY = enemyBehaviorStore.telegraphDirY[eid] ?? 0;
+            const rangeFt = Math.max(1, enemyBehaviorStore.attackRange[eid] ?? 1);
+            const length = ftToPx(rangeFt);
+            // Pulses faster as the shot nears firing so the cue reads as an
+            // urgency ramp, not a static line.
+            const pulse = 0.55 + 0.45 * Math.sin(renderElapsedMs * (0.006 + progress * 0.02));
+            const alpha = (0.35 + 0.5 * progress) * pulse;
+
+            const tg = existingTelegraph ?? scene.add.graphics();
+            if (!existingTelegraph) {
+              telegraphGraphics.set(eid, tg);
+            }
+            tg.setDepth((img.depth ?? 0) + 1).setVisible(true);
+            tg.clear();
+            tg.lineStyle(2, 0xff2222, alpha);
+            tg.beginPath();
+            tg.moveTo(originX, originY);
+            tg.lineTo(originX + dirX * length, originY + dirY * length);
+            tg.strokePath();
+            // Origin marker so the locked shooter position reads clearly even
+            // if the enemy's sprite has visually drifted (e.g. from a knockback
+            // that intentionally does not un-lock the telegraph — see
+            // enemyTelegraph.ts).
+            tg.fillStyle(0xff2222, Math.min(1, alpha + 0.15));
+            tg.fillCircle(originX, originY, 4);
+          }
         }
       }
 
@@ -1580,6 +1626,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         mobHealthBars.delete(eid);
       }
 
+      for (const [eid, tg] of telegraphGraphics) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        tg.destroy();
+        telegraphGraphics.delete(eid);
+      }
+
       // Iterate the spawn-time maps (always populated on first sight), not the
       // shadow maps (only populated when the scene supports add.ellipse), so
       // gem/gold entities clean up even in headless/test render paths that never
@@ -1661,6 +1715,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         bar.destroy();
       }
       mobHealthBars.clear();
+
+      for (const tg of telegraphGraphics.values()) {
+        tg.destroy();
+      }
+      telegraphGraphics.clear();
 
       for (const visual of propVisuals.values()) {
         visual.obj.destroy();

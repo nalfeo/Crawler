@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addComponent, set } from 'bitecs';
+import { addComponent, query, set } from 'bitecs';
 import {
   spawnBehaviorEnemy,
   spawnEnemy,
@@ -11,6 +11,7 @@ import {
 } from '../../src/core/helpers.js';
 import { spawnEnemyProjectile } from '../../src/core/spawners/projectiles.js';
 import { createInputState } from '../../src/shared/input.js';
+import { GAME } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
@@ -36,7 +37,8 @@ import { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { TilePoint } from '../../src/core/map/pathfinding.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
-import { AI_TYPE } from '../../src/game/enemyAISystem.js';
+import { AI_TYPE, enemyAISystem } from '../../src/game/enemyAISystem.js';
+import { isEnemyProjectileTelegraphActive } from '../../src/core/systems/enemyTelegraph.js';
 import {
   AINpcInteractionAction,
   AIProgressSuppressionSource,
@@ -53,7 +55,7 @@ import {
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
-import { FamilyMembership, AoeOnImpact } from '../../src/core/components.js';
+import { FamilyMembership, AoeOnImpact, EnemyProjectile } from '../../src/core/components.js';
 import { asFamilyId, type FamilyId } from '../../src/core/faction-relations.js';
 
 /**
@@ -2053,6 +2055,82 @@ describe('BehaviorTreeAI', () => {
     expect(input.moveX).toBeGreaterThan(0);
     expect(Math.abs(input.moveY)).toBeGreaterThan(0.25);
     expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
+  });
+
+  it('sidesteps a telegraphed-but-not-yet-fired shot using the LOCKED aim (no privileged prediction)', () => {
+    // Same geometry as the real-projectile dodge test above, but the shot has
+    // not spawned yet — it is only telegraphing. The dodge must react to the
+    // locked origin/direction read from the shared public EnemyBehavior store
+    // (see core/systems/enemyTelegraph.ts), the same state the render cue uses.
+    const sword = getWeaponDef('sword')!;
+    const world = createTestWorld({ seed: 42 });
+    world.enemyTelegraphMs = 250;
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, sword);
+
+    // Drive the real fire logic to start (but not resolve) a telegraph aimed
+    // at the player, exactly as the real game loop would.
+    enemyAISystem(world);
+    expect(isEnemyProjectileTelegraphActive(world, enemy)).toBe(true);
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const input = createInputState();
+    ai.poll(input, world);
+    const decision = ai.getDecision();
+    const dodge = ai.getOpportunisticDebug();
+
+    // No projectile exists yet — the only way a dodge triggers here is via the
+    // telegraphed-shot virtual-projectile loop reading locked origin/dir.
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
+  });
+
+  it('applies the muzzle offset to the telegraphed virtual-projectile dodge, matching the real fire-time spawn point (regression: gpt-5.3-codex + gemini-3.1-pro-preview finding)', () => {
+    // The real shot spawns at `telegraphOrigin + telegraphDir * MUZZLE_OFFSET`
+    // (see enemyAISystem.ts's fireEnemyProjectileFrom), not at the raw locked
+    // origin. If the AI's virtual-projectile dodge math ever regresses back to
+    // using the raw origin, its impact-time estimate drifts by
+    // MUZZLE_OFFSET/projectileSpeed frames (1.5ft / 4.0ft-per-frame = 0.375
+    // frames for the fireball def used here) versus the real shot.
+    //
+    // Geometry is tuned so that drift is the ONLY thing separating "candidate
+    // accepted" from "candidate silently skipped" at the dodge horizon gate
+    // (PROJECTILE_DODGE_HORIZON_FRAMES = 90):
+    //   - player sits at x = MUZZLE_OFFSET (1.5), so the FIXED spawn point
+    //     (origin + dir * MUZZLE_OFFSET) lands exactly on the player's x —
+    //     impactFramesAfterSpawn = 0, totalImpactFrames = remainingFrames.
+    //   - remainingFrames = 89.8 (comfortably <= 90 with the fix).
+    //   - WITHOUT the fix, the virtual shot spawns 1.5ft "behind" (at the raw
+    //     origin), adding exactly 0.375 impact frames -> totalImpactFrames =
+    //     90.175 (> 90) -> the candidate is skipped and dodgeY stays 0.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    spawnPlayer(world, 1.5, 1);
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const REMAINING_FRAMES = 89.8;
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = REMAINING_FRAMES * GAME.DELTA_MS;
+    enemyBehavior.telegraphOriginX[enemy] = 0;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Only reachable if the dodge math offsets the spawn point by
+    // MUZZLE_OFFSET before computing impact time; otherwise this candidate is
+    // skipped for exceeding the dodge horizon and dodgeY stays 0.
+    expect(dodge.dodgeY).toBeGreaterThan(2);
   });
 
   it('triggers dodge for an AoE fireball that misses the direct-hit clearance but lands within splash radius+buffer, and ignores one just outside', () => {

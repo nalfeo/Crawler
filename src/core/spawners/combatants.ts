@@ -21,6 +21,7 @@ import { DEFAULT_BLOOD_COLOR } from '../../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../../shared/enemy-behavior.js';
 import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { createEntity, setBloodColor } from './entity-core.js';
+import { TELEGRAPH_MS_UNSET } from '../systems/enemyTelegraph.js';
 
 const ENEMY_SIZE_SCALE_MIN = 0.9;
 const ENEMY_SIZE_SCALE_MAX = 1.1;
@@ -126,6 +127,12 @@ export function spawnBehaviorEnemy(
     aggroEnableAtMs?: number;
     weight?: number;
     bloodColor?: number;
+    /**
+     * Per-mob override (ms) for the projectile telegraph delay; omit to use
+     * the configured/world default. An explicit `0` forces legacy (no
+     * telegraph) behavior for this one mob. See TELEGRAPH_MS_UNSET.
+     */
+    telegraphMs?: number;
   },
 ): number {
   const eid = createEntity(world);
@@ -161,6 +168,11 @@ export function spawnBehaviorEnemy(
       traversalMode,
       flankDistance: options?.flankDistance ?? 12,
       pathRefreshFrames: options?.pathRefreshFrames ?? 10,
+      // clearEntityStores() zeroes this slot on every createEntity() call
+      // (recycled AND brand-new EIDs) — the sentinel MUST be re-asserted here
+      // at every spawn, not just once at store-array-creation time. See
+      // TELEGRAPH_MS_UNSET in core/systems/enemyTelegraph.ts.
+      telegraphMs: options?.telegraphMs ?? TELEGRAPH_MS_UNSET,
     }),
   );
   if (isFlying) {

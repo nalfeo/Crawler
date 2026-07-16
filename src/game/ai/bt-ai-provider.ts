@@ -52,7 +52,13 @@ import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
 import { createLogger } from '../../shared/logger.js';
-import { GAME, WeaponType, PLAYER_SPEED, type WeaponTypeValue } from '../../shared/constants.js';
+import {
+  GAME,
+  WeaponType,
+  PLAYER_SPEED,
+  ENEMY_PROJECTILE,
+  type WeaponTypeValue,
+} from '../../shared/constants.js';
 import { floor1Config } from '../../shared/floor-config.js';
 import { getFloorManifest } from '../../shared/floor-registry.js';
 import {
@@ -108,6 +114,7 @@ import {
   getActiveWeaponReadiness,
   setPreferredWeaponTarget,
 } from '../weaponSystem.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 // AI tuning constants (pure values; identical runtime behavior) live in
 // ./bt-ai-tuning.ts. Imported here so every reference in this file is unchanged.
 import {
@@ -356,6 +363,12 @@ const RISK_REWARD_CANDIDATE_OFFSETS_DEG = [
 ] as const;
 const RISK_REWARD_DANGER_LOOKAHEAD_FT = 8;
 const RISK_REWARD_DANGER_RADIUS_FT = 9; // retuned for spawner-free Floor 1: a following near-player danger bubble means a wide halo is high in EVERY forward direction → progress paralysis; tighten to genuinely-imminent overlap only
+
+// Enemy hostile-fireball weapon def, shared with enemyAISystem.ts's real fire
+// logic (see fireEnemyProjectileFrom) — kept here too so the telegraph-threat
+// dodge math below uses the SAME projectile speed/AOE radius the real shot
+// will actually use, rather than guessing at ENEMY_PROJECTILE defaults.
+const TELEGRAPH_FIREBALL_DEF = getWeaponDef('fireball');
 const RISK_REWARD_W_PROGRESS = 1.0; // baseline — danger must reliably beat this
 const RISK_REWARD_W_REWARD = 0.95;
 const RISK_REWARD_W_DANGER = 1.0; // retuned 1.8→1.0: on a director map danger is a local deflection nudge, not a progress-dominating force (was tuned for a static swarm)
@@ -485,8 +498,13 @@ export interface FusedHeadingDebug {
   /** Ray length the scorer samples danger at, feet (for drawing candidate rays). */
   lookaheadFt: number;
   dangerRadiusFt: number;
-  /** Velocity-projected enemy threat points the scorer actually scored against. */
-  threats: { x: number; y: number }[];
+  /**
+   * Velocity-projected enemy threat points the scorer actually scored
+   * against. `radiusFt` is per-threat (Math.max(base danger radius, that
+   * enemy's actual ranged attackRange) — a long-range shooter's danger
+   * bubble extends to its real reach, not just the generic near-body radius.
+   */
+  threats: { x: number; y: number; radiusFt: number }[];
   candidates: FusedCandidateDebug[];
   /** Slice 4b seam-term internals; null/absent when the seam block did not run. */
   seam?: FusedSeamDebug | null;
@@ -2332,6 +2350,81 @@ export class BehaviorTreeAI implements AIInputProvider {
         earliestImpactFrames = impactFrames;
       }
 
+      // Telegraphed-but-not-yet-fired shots: the aim/origin are already
+      // LOCKED (see core/systems/enemyTelegraph.ts), so a virtual projectile
+      // can be dodged before it even spawns — reading the same public,
+      // deterministic EnemyBehavior store fields the render cue and the real
+      // fire logic use (no privileged prediction). Competes uniformly with
+      // real in-flight projectiles above for "closest threat first" priority
+      // via the shared earliestImpactFrames/projectileDodgeX/Y race.
+      const enemyBehaviorStore = ctx.world.stores.enemyBehavior;
+      for (const eid of query(ctx.world.ecs, [Enemy, Position])) {
+        if (eid === undefined) continue;
+        if (enemyBehaviorStore.telegraphActive[eid] !== 1) continue;
+
+        const originX = enemyBehaviorStore.telegraphOriginX[eid] ?? 0;
+        const originY = enemyBehaviorStore.telegraphOriginY[eid] ?? 0;
+        if (!this.canPerceiveWorldPosition(ctx.world, originX, originY)) continue;
+
+        const dirX = enemyBehaviorStore.telegraphDirX[eid] ?? 0;
+        const dirY = enemyBehaviorStore.telegraphDirY[eid] ?? 0;
+        const startMs = enemyBehaviorStore.telegraphStartMs[eid] ?? 0;
+        const delayMs = enemyBehaviorStore.telegraphDelayMs[eid] ?? 0;
+        const remainingMs = Math.max(0, delayMs - (ctx.world.elapsedMs - startMs));
+        const remainingFrames = remainingMs / GAME.DELTA_MS;
+
+        // The enemy is pinned at the locked origin for the whole telegraph
+        // (see enemyAISystem.ts's movement freeze), so only the player needs
+        // to be projected forward to the instant the virtual shot spawns.
+        // The virtual projectile must start from the SAME point the real one
+        // will — fireEnemyProjectileFrom() spawns at origin + dir *
+        // MUZZLE_OFFSET, not the raw locked origin — otherwise this dodge
+        // math models a shot ~MUZZLE_OFFSET/projectileSpeed frames further
+        // away than it will actually be, drifting from the real threat.
+        const spawnX = originX + dirX * ENEMY_PROJECTILE.MUZZLE_OFFSET;
+        const spawnY = originY + dirY * ENEMY_PROJECTILE.MUZZLE_OFFSET;
+        const projectedPlayerX = ctx.playerX + playerVx * remainingFrames;
+        const projectedPlayerY = ctx.playerY + playerVy * remainingFrames;
+        const relativeX = spawnX - projectedPlayerX;
+        const relativeY = spawnY - projectedPlayerY;
+
+        const projectileSpeed = TELEGRAPH_FIREBALL_DEF?.projectileSpeed ?? ENEMY_PROJECTILE.SPEED;
+        const relativeVx = dirX * projectileSpeed - playerVx;
+        const relativeVy = dirY * projectileSpeed - playerVy;
+        const speedSq = relativeVx * relativeVx + relativeVy * relativeVy;
+        if (speedSq <= Number.EPSILON) continue;
+
+        const impactFramesAfterSpawn = -(relativeX * relativeVx + relativeY * relativeVy) / speedSq;
+        if (impactFramesAfterSpawn < 0) continue;
+        const totalImpactFrames = remainingFrames + impactFramesAfterSpawn;
+        if (
+          totalImpactFrames > PROJECTILE_DODGE_HORIZON_FRAMES ||
+          totalImpactFrames >= earliestImpactFrames
+        ) {
+          continue;
+        }
+
+        const closestX = relativeX + relativeVx * impactFramesAfterSpawn;
+        const closestY = relativeY + relativeVy * impactFramesAfterSpawn;
+        const closestDistance = Math.hypot(closestX, closestY);
+        const aoeRadius = TELEGRAPH_FIREBALL_DEF?.aoeRadius ?? 0;
+        const requiredClearance =
+          aoeRadius > 0
+            ? aoeRadius + PROJECTILE_DODGE_AOE_BUFFER_FT
+            : PROJECTILE_DODGE_CLEARANCE_FT;
+        if (closestDistance > requiredClearance) continue;
+
+        if (closestDistance > Number.EPSILON) {
+          projectileDodgeX = -closestX / closestDistance;
+          projectileDodgeY = -closestY / closestDistance;
+        } else {
+          const speed = Math.sqrt(speedSq);
+          projectileDodgeX = (-relativeVy / speed) * this.kiteOrbitSign;
+          projectileDodgeY = (relativeVx / speed) * this.kiteOrbitSign;
+        }
+        earliestImpactFrames = totalImpactFrames;
+      }
+
       if (earliestImpactFrames < Number.POSITIVE_INFINITY) {
         this.dodgeVecX = projectileDodgeX * PROJECTILE_DODGE_VECTOR_SCALE;
         this.dodgeVecY = projectileDodgeY * PROJECTILE_DODGE_VECTOR_SCALE;
@@ -3742,7 +3835,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const rewardDirX = rewardLen > TRAVEL_HEADING_EPSILON ? rewardX / rewardLen : 0;
     const rewardDirY = rewardLen > TRAVEL_HEADING_EPSILON ? rewardY / rewardLen : 0;
 
-    const threatPoints: { x: number; y: number }[] = [];
+    const threatPoints: { x: number; y: number; radiusFt: number }[] = [];
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === undefined) continue;
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
@@ -3753,9 +3846,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       // position is always at least as dangerous as current. Use it directly.
       const vx = world.stores.velocity.x[eid] ?? 0;
       const vy = world.stores.velocity.y[eid] ?? 0;
+      // A ranged enemy's danger bubble must reach as far as it can actually
+      // hit, not just the generic near-body radius — otherwise the fused
+      // heading scorer would only "see" ranged threats once the player is
+      // already melee-close to them.
+      const attackRangeFt = world.stores.enemyBehavior.attackRange[eid] ?? 0;
+      const radiusFt = Math.max(RISK_REWARD_DANGER_RADIUS_FT, attackRangeFt);
       threatPoints.push({
         x: ex + vx * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
         y: ey + vy * RISK_REWARD_VELOCITY_LOOKAHEAD_FRAMES,
+        radiusFt,
       });
     }
 
@@ -3794,11 +3894,14 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
         }
 
-        // Enemy threat accumulation against projected positions.
+        // Enemy threat accumulation against projected positions. Each threat
+        // uses its OWN radius (Math.max(base, actual ranged attackRange) —
+        // see threatPoints construction above), so a long-range shooter's
+        // danger bubble extends to its real reach.
         for (const threat of threatPoints) {
           const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
-          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
-          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          if (dist >= threat.radiusFt) continue;
+          const norm = 1 - dist / threat.radiusFt;
           danger += norm * norm;
         }
 
@@ -3848,8 +3951,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         // No floor map: enemy-only danger.
         for (const threat of threatPoints) {
           const dist = Math.hypot(threat.x - sampleX, threat.y - sampleY);
-          if (dist >= RISK_REWARD_DANGER_RADIUS_FT) continue;
-          const norm = 1 - dist / RISK_REWARD_DANGER_RADIUS_FT;
+          if (dist >= threat.radiusFt) continue;
+          const norm = 1 - dist / threat.radiusFt;
           danger += norm * norm;
         }
       }
@@ -4021,7 +4124,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         bestScore,
         lookaheadFt: RISK_REWARD_DANGER_LOOKAHEAD_FT,
         dangerRadiusFt: RISK_REWARD_DANGER_RADIUS_FT,
-        threats: threatPoints.map((t) => ({ x: t.x, y: t.y })),
+        threats: threatPoints.map((t) => ({ x: t.x, y: t.y, radiusFt: t.radiusFt })),
         candidates: captured,
         seam: seamDebug,
       };

@@ -1585,15 +1585,20 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const WALL_PROXIMITY_FT = RISK_REWARD_FIELD_CONSTANTS.wallProximityFt;
     const WALL_AMPLIFICATION = RISK_REWARD_FIELD_CONSTANTS.wallAmplification;
     const totalLookahead = VELOCITY_LOOKAHEAD + aiConfig.threatPreviewFrames;
-    const threatPoints: { x: number; y: number }[] = [];
+    const threatPoints: { x: number; y: number; radiusFt: number }[] = [];
     for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
-      if (Math.hypot(ex - playerX, ey - playerY) < sampleRadius + DANGER_RADIUS) {
+      // Mirrors the scorer's per-threat radius (base danger radius vs. actual
+      // ranged attackRange, whichever is larger) — see
+      // computeRiskRewardFusedHeading's threatPoints construction.
+      const attackRangeFt = world.stores.enemyBehavior.attackRange[eid] ?? 0;
+      const radiusFt = Math.max(DANGER_RADIUS, attackRangeFt);
+      if (Math.hypot(ex - playerX, ey - playerY) < sampleRadius + radiusFt) {
         const vx = world.stores.velocity.x[eid] ?? 0;
         const vy = world.stores.velocity.y[eid] ?? 0;
-        threatPoints.push({ x: ex + vx * totalLookahead, y: ey + vy * totalLookahead });
+        threatPoints.push({ x: ex + vx * totalLookahead, y: ey + vy * totalLookahead, radiusFt });
       }
     }
 
@@ -1637,11 +1642,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           // Wall cells have no independent danger — skip. The amplifier is
           // applied to *adjacent* passable cells below.
         } else {
-          // Enemy danger using projected positions.
+          // Enemy danger using projected positions (per-threat radius).
           for (const t of threatPoints) {
             const dist = Math.hypot(x - t.x, y - t.y);
-            if (dist < DANGER_RADIUS) {
-              const norm = 1 - dist / DANGER_RADIUS;
+            if (dist < t.radiusFt) {
+              const norm = 1 - dist / t.radiusFt;
               danger += norm * norm;
             }
           }
@@ -1744,9 +1749,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const span = maxScore - minScore || 1;
 
     // Projected threat points the scorer used (enemy pos + velocity * lookahead).
+    // Each threat's danger-bubble radius is drawn individually — a ranged
+    // enemy's bubble extends to its actual attack range, not just the base
+    // dangerRadiusFt (see computeRiskRewardFusedHeading's threatPoints).
     for (const t of debug.threats) {
       graphics.fillStyle(0xff3030, 0.5);
       graphics.fillCircle(ftToPx(t.x), ftToPx(t.y), 4);
+      graphics.lineStyle(1, 0xff3030, 0.25);
+      graphics.strokeCircle(ftToPx(t.x), ftToPx(t.y), ftToPx(t.radiusFt));
     }
 
     // Candidate rays (skip the chosen one — drawn last, on top).

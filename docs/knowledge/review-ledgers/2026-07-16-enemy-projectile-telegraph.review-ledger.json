@@ -1,0 +1,47 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "enemy-projectile-telegraph",
+  "task_title": "Enemy projectile telegraph (aim-lock + visual cue + AI dodge)",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 10,
+      "resolved_count": 10,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review across 4 rounds. Round 1: 8 concerns (5 blocking) - sentinel/recycle collision, cadence change, cancellation coverage, virtual-projectile dodge fidelity, perception gating, debug-radius plumbing, weak determinism coverage, accuracy-roll timing. Rounds 2-4 resolved all + surfaced 2 more: (1) sentinel uses -1 (not 0) written explicitly in spawnBehaviorEnemy set(EnemyBehavior,{telegraphMs: options?.telegraphMs ?? -1}) at every spawn, since clearEntityStores zeroes typed-array slots on every createEntity call not just recycled EIDs; (2) cadence change (cooldown+telegraphMs) accepted as intentional additive consequence documented in ADR, not compensated; (3) 5 cancellation call sites identified in enemyAISystem per-enemy loop; (4) virtual-projectile dodge reads explicit locked telegraphOriginX/Y + telegraphDirX/Y stored once at telegraph start, used identically by render cue, AI dodge math, and actual fire-time spawn (lockedOrigin + lockedDir * MUZZLE_OFFSET) - correctness independent of live-position drift from separation/knockback/unstuck; (5) perception gating via canPerceiveWorldPosition on new telegraph-dodge loop; (6) debug plumbing scoped to bt-ai-provider.ts only, travel-steering.ts confirmed out of scope; (7) determinism tests added; (8) accuracy roll stays at fire-time (accepted trade-off); (9) stuckFrames forced to 0 every frame while telegraphActive===1, tryUnstuckVelocity gated off for whole window; (10) applySeparation skips writing velocity onto a telegraphing eid. Final verdict: approved."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Single-model pass against the full branch diff. Explicitly verified all 9 contract-correctness points from the review brief (delay resolution, 0ms parity, cancellation coverage, actual-attack-range danger radius, virtual-projectile-vs-real-fire consistency, EID-recycling sentinel, CLI wiring, test genuineness, createTestWorld() 0ms masking risk). No concerns raised. The 2 real bugs below were caught only by the independent multi-model fan-out (see multi_model_review), which is why both stages are required at this apple tier."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "4-way fan-out (3 code-review models + 1 security-review model, gpt-5.4) against the full branch diff. sonnet: no concerns. security (gpt-5.4): no concerns. codex: 2 concerns — (A) enemyAISystem.ts's playerEid===undefined early-return never called cancelEnemyProjectileTelegraph, unlike every other early-exit branch, risking a stale telegraph; (B) bt-ai-provider.ts's telegraphed-virtual-projectile dodge math used the raw locked telegraphOriginX/Y instead of the muzzle-offset-adjusted spawn point that fireEnemyProjectileFrom() actually fires from, a systematic ~0.375-frame drift. gemini independently found the same finding B, corroborating it. Adjudicator (gpt-5.4, xhigh) re-verified both against source, confirmed BOTH VALID with concrete remedies, and confirmed the render cue (PhaserBridge.ts) should stay as-is (intentionally shows locked body position, not the muzzle point). Both fixes applied: (A) added cancelEnemyProjectileTelegraph() call inside the no-player-branch loop; (B) spawnX/Y now computed with ENEMY_PROJECTILE.MUZZLE_OFFSET applied before relativeX/Y. Two new regression tests added (tests/game/enemy-projectile-telegraph.test.ts and tests/game/behavior-tree-ai.test.ts) that fail if either fix is reverted. Full affected-suite re-run + typecheck/lint/verify:fast all green after the fixes."
+        }
+      ]
+    }
+  }
+}

@@ -36,6 +36,9 @@ import { MeleeSpriteId } from '../../src/shared/constants.js';
 import { getSprite } from '../../src/engine/sprites/index.js';
 import { DECORATION_DEF_INDEX } from '../../src/shared/decorationDefs.js';
 import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piece-types.js';
+import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
+import { AI_TYPE } from '../../src/game/enemyAISystem.js';
+import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTelegraph.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -1695,6 +1698,57 @@ describe('createPhaserBridge', () => {
         graphics.some((g) => g.fillCalls.some((c) => c.color === HARVESTABLE_DEFS[0]!.tint)),
         'wired crimson node should render a sprite, not a circle',
       ).toBe(false);
+    });
+  });
+
+  // Deterministic render-cue coverage for the locked-trajectory enemy
+  // projectile telegraph (core/systems/enemyTelegraph.ts). The bridge reads
+  // ONLY the locked `telegraphOrigin*`/`telegraphDir*` fields — never live
+  // position — so this pins the "what the player sees IS what will fire"
+  // contract at the render layer, satisfying the repo's "observe before
+  // done" rule via a reproducible, CI-enforced check rather than an ad-hoc
+  // manual screenshot.
+  describe('enemy projectile telegraph render cue', () => {
+    it('draws a locked-trajectory line + origin marker while an enemy is telegraphing', () => {
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+
+      // Lock the telegraph aiming due east; origin is the enemy's current
+      // (10, 10) position at lock time — this is what must render, even if
+      // the enemy later drifts (knockback/jiggle never un-locks it).
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+
+      bridge.sync(world);
+
+      // The cue's red fillStyle (origin-marker circle) must appear on some
+      // graphics object created this sync, and that object must be visible.
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx).toBeDefined();
+      expect(telegraphGfx?.visible).toBe(true);
+    });
+
+    it('hides (but does not recreate) the telegraph graphic once telegraphActive clears', () => {
+      const { scene, graphics } = createSceneStub({ withGraphics: true });
+      const bridge = createPhaserBridge(scene);
+      const world = createTestWorld();
+      const eid = spawnBehaviorEnemy(world, 10, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+      startEnemyProjectileTelegraph(world, eid, 1, 0);
+
+      bridge.sync(world);
+      const countAfterFirstSync = graphics.length;
+      const telegraphGfx = graphics.find((g) => g.fillCalls.some((c) => c.color === 0xff2222));
+      expect(telegraphGfx?.visible).toBe(true);
+
+      // Simulate the telegraph resolving (shot fired) or being cancelled —
+      // either way `telegraphActive` clears without the entity being removed.
+      world.stores.enemyBehavior.telegraphActive[eid] = 0;
+      bridge.sync(world);
+
+      // Same graphics object, now hidden — no new telegraph graphics created.
+      expect(graphics.length).toBe(countAfterFirstSync);
+      expect(telegraphGfx?.visible).toBe(false);
     });
   });
 });

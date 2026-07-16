@@ -19,7 +19,7 @@ import {
   type GameWorld,
 } from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
-import { GAME } from '../../shared/constants.js';
+import { GAME, ENEMY_PROJECTILE } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { floor2EnemyPack } from '../../shared/enemy-packs.js';
@@ -118,6 +118,14 @@ export interface HeadlessRunnerConfig {
   forceWeaponId?: string;
   /** Multiply hostile (Enemy + EnemyProjectile) Damage component amounts by this factor. */
   enemyDamageMultiplier?: number;
+  /**
+   * Enemy projectile telegraph delay (ms) — the configured default used when
+   * a mob has no per-mob `telegraphMs` override (see
+   * core/systems/enemyTelegraph.ts's `getEffectiveTelegraphMs`). 0 reproduces
+   * today's legacy behavior exactly (no cue, no added delay). Production and
+   * headless CLI both default to 250.
+   */
+  enemyTelegraphMs?: number;
   /** Scenario floor id to run. */
   floorId?: string;
   /**
@@ -172,6 +180,7 @@ const DEFAULT_CONFIG: Required<
   eventSampleInterval: 15,
   questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
   enemyDamageMultiplier: 1,
+  enemyTelegraphMs: ENEMY_PROJECTILE.TELEGRAPH_MS,
   floorId: 'floor1',
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
@@ -200,6 +209,18 @@ function normalizeHostileDamageMultiplier(configuredMultiplier: number): number 
     );
   }
   return Math.max(1, configuredMultiplier);
+}
+
+function normalizeEnemyTelegraphMs(configuredTelegraphMs: number | undefined): number | undefined {
+  if (configuredTelegraphMs === undefined) {
+    return undefined;
+  }
+  if (!Number.isFinite(configuredTelegraphMs) || configuredTelegraphMs < 0) {
+    throw new Error(
+      `Invalid enemyTelegraphMs "${String(configuredTelegraphMs)}" (must be a finite number >= 0)`,
+    );
+  }
+  return configuredTelegraphMs;
 }
 
 /**
@@ -306,6 +327,7 @@ export async function runHeadless(
 
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
+  world.enemyTelegraphMs = normalizeEnemyTelegraphMs(mergedConfig.enemyTelegraphMs);
   configureMerchantWeaponPurchase(world, mergedConfig.merchantWeaponPurchase);
   if (mergedConfig.recordWeaponTelemetry) {
     world.weaponTelemetry = createWeaponTelemetry();
