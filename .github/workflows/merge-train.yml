@@ -28,6 +28,24 @@ permissions:
 
 jobs:
   reconcile:
+    # Fail-closed job gate:
+    #   - pull_request_target: only for PRs from this repo (not forks), as before.
+    #   - workflow_run named 'CI': allowed only for (a) a push-triggered CI
+    #     completion on the default branch, or (b) a schedule-triggered CI
+    #     completion while the train is enabled. (b) closes a gap:
+    #     mainHealthReason() (reconcile-lib.mjs) treats whichever CI run for
+    #     the current main SHA is newest by created_at as authoritative,
+    #     regardless of push vs. schedule. If a scheduled CI run starts after
+    #     the push run and is still in_progress when this wakes on the push
+    #     completion, reconcile pauses citing the schedule run -- without (b),
+    #     nothing would re-wake reconcile once that schedule run completes,
+    #     falling back to the unreliable */5 cron (which arrives ~hourly in
+    #     practice). Mirrors the identical carve-out already proven in
+    #     ci-recovery-incidents.yml (only *reads* vars.MERGE_TRAIN_ENABLED;
+    #     never sets it). Every other CI workflow_run (PR, or schedule while
+    #     disabled) remains blocked -- no storm regression.
+    #   - Every other event (push, schedule, workflow_dispatch, and the
+    #     'Merge Train Validation' workflow_run) is unaffected.
     if: >-
       ${{
         (github.event_name != 'pull_request_target' ||
@@ -35,7 +53,9 @@ jobs:
         (github.event_name != 'workflow_run' ||
         github.event.workflow_run.name != 'CI' ||
         (github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == github.event.repository.default_branch))
+        github.event.workflow_run.head_branch == github.event.repository.default_branch) ||
+        (github.event.workflow_run.event == 'schedule' &&
+        vars.MERGE_TRAIN_ENABLED == 'true'))
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 15

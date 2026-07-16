@@ -1,0 +1,137 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "merge-train-wakeup-gaps",
+  "task_title": "Merge train wake-up gaps: always()-dispatch and schedule wake",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "convergent",
+      "notes": "No blocking concerns. Verdict convergent with the two implemented fixes; two non-blocking suggestions (non-CI workflow_run pass-through test, wake-step ordering test) incorporated.",
+      "models": ["gpt-5.4"],
+      "summary": "Reviewed the two-gap plan: if always on the wake dispatch step; schedule/MERGE_TRAIN_ENABLED carve-out mirroring ci-recovery-incidents.yml on the reconcile job guard. Verdict: no blocking concerns, convergent with reviewer own design. Two non-blocking test-coverage suggestions (non-CI workflow_run pass-through, wake-step ordering) were incorporated as new tests."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "summary": "No significant issues. Verified YAML precedence/semantics of the schedule carve-out, storm-guard non-regression, safety of if: always() on the wake step (permissions present, desirable behavior when publish job is malformed/cancelled), and correctness of the evaluatesReconcileCondition test-helper substitution approach."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "summary": "Round 2: reviewed a follow-up delta responding to a copilot-pull-request-reviewer bot finding on an autonomous agent-merge commit -- the retryable-check fallback step reused the original (possibly-failed) app-token output. Added a dedicated recovery-app-token mint step (if: failure()) and rewired the fallback step to use it. Verified if: failure() semantics are job-scoped (fires correctly even if the original app-token mint step is what failed), confirmed graceful degradation if the recovery mint also fails (wake dispatch still fires via if: always() with GITHUB_TOKEN, falling back to the pre-existing staleness bound), confirmed complete test coverage (token reference, step existence/ordering/condition), and found no permission/cost/syntax issues. No significant issues found."
+        },
+        {
+          "round": 3,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "summary": "Round 3: reviewed the bounded retry added to the recovery check publication. Verified exactly three attempts, immediate first attempt, 1-second and 2-second waits, early return on success, final-error propagation after exhaustion, and executable parsed-workflow coverage proving third-attempt success. No significant issues found."
+        },
+        {
+          "round": 4,
+          "models": ["copilot-pull-request-reviewer", "claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round 4: copilot-pull-request-reviewer flagged that bare `if: failure()` on the recovery-app-token and retryable-check fallback steps also evaluates true when an ANCESTOR job (`verify`, via `needs:`) fails, not just when a step in this job (`publish`) fails. Since `publish` has `if: always()` and `needs: [verify]`, a genuine candidate defect (verify fails) still lets `Publish immutable candidate result` run and correctly post a `failure` conclusion -- but the fallback steps would then fire anyway (ancestor failure(), not this job's own failure) and overwrite that correct `failure` with `cancelled`, causing reconcile to retry a genuinely broken candidate forever instead of bisecting it. Fixed by adding `id: publish` to that step and re-scoping both fallback conditions to `steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure'` (step-local outcomes, not the job-wide/ancestor-aggregate failure()). Verified via a new semantic test that evaluates the real `if:` expression against simulated step outcomes, proving the ancestor-only-failure case (app-token/publish both success) does not fire while genuine app-token-mint or publish-step failures still do. 3 new regression tests added (24 = 19 + 5 total). No remaining concerns."
+        },
+        {
+          "round": 5,
+          "models": ["gpt-5.4", "claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round 5: rather than trust round 4's fix (and GitHub's ambiguous 'any ancestor job' docs phrasing) at face value, ran two real empirical throwaway-workflow probes in nalfeo/Crawler to verify actual runtime semantics. Run 29467076748 (downstream job, if: always(), needs: [upstream] which fails): an implicit-condition step ran and an if: failure() step was skipped -- empirically refuting the original reviewer claim that step-level failure() in an already-running (if: always()) job reflects an ancestor needs: job's failure; it only reflects same-job step outcomes. Cross-checked with a separate-model rubber-duck review (gpt-5.4): verdict AGREE, finding not applicable, no fix needed for that specific concern. Run 29467286711 (bare `if: steps.X.outcome == 'failure'`, no wrapper, X genuinely failed): the step was SKIPPED, proving GitHub Actions implicitly ANDs success() into any if: lacking an explicit status-check function, making round 4's bare-outcome condition self-contradictory dead code -- it could never fire under any circumstance, silently reintroducing the original 40-minute-staleness stall. An independent autonomous agent-merge commit (973e9476) had landed exactly this same dead-code condition while attempting the reviewer's suggested fix, so the regression was real and shipped, not hypothetical. Fixed by changing both fallback conditions to `failure() && (steps.app-token.outcome == 'failure' || steps.publish.outcome == 'failure')` -- the failure() && prefix suppresses the implicit success() AND-ing (making the condition reachable) while the step-local outcome checks remain as defense-in-depth against failure()'s ancestor-job semantics in other job shapes. Updated the explanatory comment block with both run IDs and rationale; updated 3 existing test assertions (2 string checks, 1 semantic eval test now covering 4 cases including a defensive success()-outcome vs failure()-true case) to match; deleted 2 scratch probe workflow files used only for verification. No remaining concerns."
+        },
+        {
+          "round": 6,
+          "models": ["copilot-pull-request-reviewer", "claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round 6: copilot-pull-request-reviewer flagged that the round-5 fallback conditions still skip the cancelled-publication case: failure() is false when a step is cancelled (not failed), so if 'Publish immutable candidate result' is itself cancelled mid-flight (e.g. a manual UI/API run cancellation) before its checks.create call completes, neither fallback step fires, leaving the original check in_progress and reconcile waiting out the 40-minute staleness bound. Confirmed this workflow has no concurrency: block, so the only realistic trigger is a manual cancellation -- rare but real. Fixed by extending both conditions to `(failure() || cancelled()) && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')`. Documented explicitly (in both the workflow comment and the handoff) that this cancelled() extension was NOT independently re-verified with a live probe the way failure()/success() were in round 5 -- it follows by GitHub's documented always()/cancelled() design and by analogy with the already-verified same-job-only scoping of failure()/success(), and should be re-verified with a real probe if this specific behavior is ever in question. Updated the workflow comment block and 2 test assertions (string checks + the semantic eval test, now injecting a mock cancelled() alongside failure() and covering the same-job-cancellation and defensive cancelled()-true/both-success cases). Also updated the PR description and handoff Files-touched/Summary sections to reflect the final end-state and resolved several stale-description review threads flagging the same drift. No remaining concerns."
+        },
+        {
+          "round": 7,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round 7: an independently-landed autonomous agent-merge commit (fad5097f) added a `steps.recovery-app-token.outcome == 'success'` clause to the retryable-check fallback step's condition, requiring the recovery-mint step to have actually succeeded before attempting checks.create with its token -- otherwise a failed recovery mint would waste an attempt calling the Checks API with no valid App token, producing a confusing secondary failure instead of a clean no-op. Reconciled this guard together with round 6's cancelled()-extension work (the two changes landed on divergent commits and needed merging): the final condition is `(failure() || cancelled()) && steps.recovery-app-token.outcome == 'success' && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')`. Verified the guard remains reachable after a genuine app-token/publish failure or cancellation (recovery mint independently succeeds in the common case), correctly suppresses the fallback when the recovery mint itself fails or is cancelled, and does not reintroduce the round-5 implicit-success() dead-code trap (the guard is ANDed alongside the already-verified failure()||cancelled() prefix, not in place of it). Updated the workflow comment block, the semantic eval test (new case: recovery mint failure with genuine app-token failure -> fallback must not fire), and the handoff Files-touched section to document the combined condition. No remaining concerns."
+        },
+        {
+          "round": 8,
+          "models": ["copilot-pull-request-reviewer", "claude-sonnet-5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "summary": "Round 8: copilot-pull-request-reviewer raised two findings. (1) Substantive: 'Publish immutable candidate result'.checks.create can succeed server-side (a genuine terminal success/failure check is durably persisted) while the step itself still reports failure/cancelled to the runner -- e.g. a transient network error losing the confirming HTTP response, or a cancellation landing in the narrow window between the request completing and the step returning. Since trainCheckState() (state.mjs latestChecksByName) always selects the HIGHEST-ID check run matching name/external_id/app-id, the retryable-check fallback blindly creating a second, newer cancelled check with the same fingerprint would mask the already-persisted correct terminal result, causing reconcile to redispatch validation on an already-finished candidate instead of correctly bisecting a real failure. Fixed by having the fallback script call github.rest.checks.listForRef (filtered by ref/check_name) before creating the cancellation, and skip creation (no-op) if a matching completed success/failure check already exists for the trusted app + fingerprint. This check runs on every retry attempt, not just once, so it self-heals if the real check only becomes visible via the API on a later attempt. Added APP_ID to the step's env (reusing the existing secrets.APP_ID already used to mint both App tokens) to support the trusted-app-id comparison. (2) Minor doc nit: the handoff previously implied both fallback steps require steps.recovery-app-token.outcome == 'success', when only the retryable-check step (not the recovery-mint step itself, which can't gate on its own outcome) has that clause -- this was already corrected in round 6's 'Correcting earlier round narratives' section; confirmed present and accurate, no further edit needed. Added 2 new regression tests (26 = 24 + 2): one proving checks.create is NOT called when an existing completed success check already matches the fingerprint/app-id, one proving checks.create IS still called when an existing check for the same fingerprint is only in_progress (not yet terminal). Updated the 2 existing script-execution tests to mock the new listForRef call (empty check_runs) and set APP_ID so their existing pass/fail behavior is unaffected. No remaining concerns."
+        },
+        {
+          "round": 9,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "summary": "Round 9: a further copilot-pull-request-reviewer pass on the round-8 push caught two more accuracy issues. (1) The checks.create output.title/summary posted by the retryable-check fallback said 'publish step failed', but when the original App-token mint itself fails/is cancelled, the publish step is SKIPPED (via its needs/if chain), not failed -- misdescribing the actual trigger in that path. Reworded to 'token mint or result publication failed' / 'Either the App-token mint or the Publish immutable candidate result step failed/was cancelled...' to cover both real trigger paths. No test asserted the previous exact string, so no test changes were needed. (2) Three more spots (the merge-train-validate.yml Files-touched entry, the sixth round's 'Final condition on both fallback steps' heading, and its Correcting-earlier-round-narratives closing paragraph) all stated or implied the combined (failure() || cancelled()) && steps.recovery-app-token.outcome == 'success' && (...) condition applies to BOTH the recovery-mint step and the downstream retryable-check step, when only the downstream step has the recovery-app-token.outcome clause (the recovery-mint step cannot self-gate). Reworded all three spots to state the two steps' conditions separately. Doc-only fix for finding 2; re-ran npm run review:ledger -- validate and npm run verify:fast after both fixes -- both green. No remaining concerns."
+        },
+        {
+          "round": 10,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "summary": "Round 10: a further copilot-pull-request-reviewer pass on the round-9 push found three issues. (1) Substantive TOCTOU race in round 8's listForRef check-masking guard: the lookup only narrows the window, it doesn't close it -- the original 'Publish immutable candidate result' checks.create request can still be in flight when the lookup runs (finding no terminal check), and can land its genuine terminal result after the lookup returns but before this fallback's own write. Since that write was itself a checks.create call, it would always mint a fresher/higher-ID check than whatever the in-flight request persists next, so trainCheckState()'s highest-ID-wins selection would still pick the wrong (fallback) check -- reintroducing round 8's exact masking bug via a narrower path. Fixed per the reviewer's suggested design: when listForRef finds an existing (non-terminal) check run matching the fingerprint + app, the fallback now calls github.rest.checks.update({check_run_id: existingRun.id, ...}) instead of checks.create, preserving the existing run's older ID -- so a later-landing genuine terminal checks.create call still mints a fresh, higher ID and correctly wins. Only when no matching run exists at all does the step fall back to checks.create (nothing to update); this narrower residual window is documented honestly in the workflow comment rather than claimed as fully closed, since the Checks API has no atomic create-if-absent primitive. Updated 2 existing tests: the already-terminal-check test now also asserts checks.update is not called; the in-progress-check test now asserts checks.update IS called with the correct check_run_id and checks.create is NOT called (previously asserted the reverse, matching the old create-based behavior). Test count unchanged at 26 (21 + 5) -- existing test bodies changed, no new it() blocks. (2) Stale test-count/round-count metadata in the handoff's Verification section ('24/24 passed (19+5)', 'seven rounds') -- updated to the current accurate 26/26 (21+5) and round count. (3) Same stale numbers in the PR description -- resynced holistically alongside the handoff update. Ran npx vitest run (both files) -- 26/26 passed; npm run verify:fast and npm run review:ledger -- validate both green after all three fixes. No remaining concerns."
+        },
+        {
+          "round": 11,
+          "models": ["claude-sonnet-5", "copilot-pull-request-reviewer"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "summary": "Round 11: a further copilot-pull-request-reviewer pass found two issues, plus a concurrently-landed self-review fix closed a test-coverage gap in the same area (a third possible finding, the diagnostic-wording complaint RUBDO, was already fully addressed by round 9's fix and required no further change on re-examination). (1) PRRT_kwDOSvo2Ms6RUGDX: even with round 10's update-in-place fix, the narrow 'no matching check run found at all' branch still called checks.create after only a single listForRef read, which could race a genuine terminal check that had just been persisted server-side but was not yet visible to that read (a read-after-write visibility-lag scenario, distinct from the in-flight-request race round 10 closed). This branch should be nearly unreachable in practice since reconcile.mjs always creates the initial in_progress check before this workflow is dispatched, but treating a first-read miss as provisional rather than conclusive is valid hardening. Fixed by factoring the lookup into a findMatch() helper and, when the first read finds no matching check at all, waiting 500ms and re-listing once more before finalizing the decision to create -- narrowing (but, per the same Checks-API atomicity limitation documented throughout, not fully eliminating) this last residual window. Added 2 new regression tests: one proving the re-list finds and updates an in_progress check that appeared only on the second read, one proving the re-list finds a genuine terminal check on the second read and skips as a no-op (no create or update). (2) PRRT_kwDOSvo2Ms6RUGDo: the PR description's Files list only covered this session's own edits, omitting several files added by the coordinator's concurrent automation on the same branch (a second small handoff, two more ledger files, a guard-telemetry artifact). Resynced the Files list to the full git diff --name-only output against the merge base and added a short Follow-up bullet describing the concurrently-landed wake-token assertion tightening. (3) Concurrent test-coverage gap (found independently, before the findMatch() re-list hardening above landed): the round-10 checks.update-in-place logic only fires when listForRef finds an existing non-terminal matching check run; the create fallback path itself had no test asserting it still fires when listForRef returns an empty check_runs array on every read. Added 'falls back to creating a new check only when no matching check-run exists at all yet, even after the residual-race re-list' asserting checks.create is called exactly once and checks.update is not, when listForRef always returns empty. Net test count: 29 (24 + 5, up from 26 = 21 + 5, three new it() blocks total). Ran npx vitest run (both files) -- 29/29 passed; npm run verify:fast and npm run review:ledger -- validate both green after all fixes. No remaining concerns."
+        },
+        {
+          "round": 12,
+          "models": ["gpt-5.6-sol", "claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "summary": "Round 12: final review found that the recovery lookup still used GitHub's default 30-result page and returned matching[0], while trainCheckState() treats the highest matching check-run ID as authoritative. A matching run outside the first page could incorrectly trigger checks.create, and updating an older matching run could leave a newer in-progress run authoritative. Fixed by adding per_page: 100 to findMatch() and selecting the highest numeric check-run ID before checks.update. Extended the existing update-in-place test with older cancelled ID 700 followed by newer in-progress ID 777; it asserts ID 777 is updated and per_page is 100. The old implementation fails this regression. Separate-model review found no significant issues and confirmed terminal success/failure preservation and the no-match create fallback remain sound. Targeted count unchanged at 29 (24 + 5)."
+        },
+        {
+          "round": 13,
+          "reviewer": "copilot-pull-request-reviewer",
+          "summary": "Round 13: a further copilot-pull-request-reviewer pass (PRRT_kwDOSvo2Ms6RUK5b) found that the update-in-place fallback spreads the full create payload -- including head_sha -- into the checks.update() call. head_sha is a create-only field on the Checks API (not listed as an accepted body parameter for `PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}` per the GitHub REST API reference); sending it on an update risks a 422 that would make all three retries repeat the same invalid request, leaving the original check stuck in_progress until the stale timeout. Fix: destructure head_sha out of the shared payload before the update call (`const { head_sha, ...updatePayload } = payload`), so update sends only the fields the endpoint documents (name, external_id, status, conclusion, output, etc.), while create still receives the full payload including head_sha (which IS required there). Added explicit assertions to both existing update-path tests (the direct-match case and the visibility-lag re-list case) that updateArgs.head_sha is undefined and the key is absent from the object entirely (not just undefined-valued), so a future regression that re-introduces head_sha on the update payload fails deterministically.",
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "models": ["claude-sonnet-5"]
+        },
+        {
+          "round": 14,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Round 14: PRRT_kwDOSvo2Ms6RUUjK found that findMatch() selected the highest-ID matching run for existingRun (round 12's fix) but derived alreadyTerminal separately via matching.some(...) across all matching runs. If an older run had already gone terminal (e.g. a genuine prior success) while a newer run from a later retry was still in_progress, alreadyTerminal came back true from the old run alone, causing the whole step to no-op and leave the authoritative (highest-ID) in_progress run stuck for up to the 40-minute stale timeout even though existingRun correctly pointed at that newer run. Fixed by deriving alreadyTerminal from the same existingRun (the highest-ID match) instead of scanning all matches independently. Added a new regression test with an older terminal (success) run (ID 700) alongside a newer in_progress run (ID 900): asserts checks.update is called with check_run_id 900 and checks.create is never called. Verified the test fails against the old matching.some(...) implementation (reverted the fix locally, confirmed the new test fails with updateArgs undefined) before restoring the fix and confirming green. Test count: 30 (25 + 5, up from 29 = 24 + 5). Ran npx vitest run (both files) -- 30/30 passed; npm run verify:fast and npm run review:ledger -- validate both green. No remaining concerns."
+        }
+      ]
+    }
+  }
+}
