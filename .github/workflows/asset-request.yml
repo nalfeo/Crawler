@@ -272,22 +272,33 @@ jobs:
         run: npm run sprites:worker
 
       # TEMPORARY (remove after the Floor 2 cactusfolk-boss regen retries).
-      # Read-only export of the freshly-generated run's artifacts (sheet,
+      # A `brief-path` job only runs Generate (raw sheet, no slice/score/
+      # judge — see worker.ts). This step drives the two explicit re-run
+      # stages (ADR 0023, rerun.ts) — PostProcess then Judge — over the
+      # freshly-generated sheet, then exports every artifact (sheet,
       # processed variants, scorecards, judge verdicts, summary.json) out of
       # the Azure run store into a workspace directory so they can be
       # uploaded as a GitHub Actions artifact for local download/review.
-      # Never approves, checks in, or mutates the store. No-op unless
+      # Never approves, checks in, or mutates checked-in state. No-op unless
       # `regen_brief_id` is set.
-      - name: '[TEMP] Export regenerated run artifacts'
+      - name: '[TEMP] Reprocess + export regenerated run artifacts'
         if: >-
           github.event_name == 'workflow_dispatch' &&
           inputs.regen_brief_id != ''
         env:
+          LOG_LEVEL: info
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
           AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
           AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
           AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
           AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
           SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          # Same ADR-0043 bypass as "Drain worker" — judge.ts otherwise
+          # refuses a live vision call under CI. DO NOT copy elsewhere.
+          SPRITES_ALLOW_CI_PIPELINE: 'true'
         run: |
           EXCLUDE_ARGS=""
           IFS=',' read -ra RUNS <<< "${{ inputs.regen_exclude_runs }}"
@@ -296,7 +307,7 @@ jobs:
               EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude-run $r"
             fi
           done
-          npx tsx scripts/sprites/ci-export-run.ts \
+          npx tsx scripts/sprites/ci-reprocess-run.ts \
             --brief-id "${{ inputs.regen_brief_id }}" \
             --out-dir ci-artifact-export \
             $EXCLUDE_ARGS
