@@ -100,7 +100,15 @@ jobs:
       # immutable result is durable. Must use GITHUB_TOKEN, not the App token:
       # the App token receives 403 on workflow_dispatch endpoints
       # (reconcile-lib.mjs buildDispatchBindings uses GITHUB_TOKEN for the same reason).
+      #
+      # `if: always()` so this fires even when the "Publish immutable candidate
+      # result" step above itself failed (transient checks.create API error) --
+      # without it, this step's implicit default condition (success()) skips it
+      # whenever the previous step fails, leaving reconcile un-woken with no
+      # published check to act on until the unreliable workflow_run/schedule
+      # fallback triggers eventually fire.
       - name: Wake merge-train reconciliation
+        if: always()
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

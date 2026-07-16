@@ -1,0 +1,124 @@
+# 2026-07-16 — Merge train wake-up gaps (fail-closed dispatch + scheduled-CI wake)
+
+## Systems touched
+
+merge-automation, ci-infra
+
+## Summary
+
+Focused follow-up fix on top of already-merged PR #1165 ("fix(merge-train): add
+reliable reconciliation wake-ups"). #1165 shipped the core idea (explicit
+`workflow_dispatch` of `merge-train.yml` from `merge-train-validate.yml`'s
+`publish` job, plus a CI-completion wake-up with a push/default-branch storm
+guard) but had two remaining gaps versus the original task's explicit
+requirements. This PR closes both:
+
+1. **Fail-closed dispatch regression**: `merge-train-validate.yml`'s "Wake
+   merge-train reconciliation" step had **no `if:` condition**, which GitHub
+   Actions defaults to implicit `success()`. That meant the wake-up dispatch
+   was silently skipped whenever the prior "Publish immutable candidate
+   result" step itself failed (e.g. a transient `checks.create` API error) —
+   directly violating the task requirement that dispatch happen for
+   success/failure/cancelled publication so `reconcile` can consume, retry, or
+   bisect. Fixed by adding `if: always()` (matching the sibling `publish` job's
+   own `if: always()`).
+
+2. **Scheduled-CI wake-up gap**: `merge-train.yml`'s `reconcile` job guard for
+   `workflow_run` events named `'CI'` only allowed
+   `event == 'push' && head_branch == default_branch`. But
+   `mainHealthReason()` (`.github/scripts/merge-train/reconcile-lib.mjs`)
+   treats whichever CI run for the current main SHA is newest by `created_at`
+   as authoritative, regardless of push vs. schedule trigger. Production
+   evidence (manual reconcile run 29461261403) showed a real pause citing an
+   in-progress full-CI run for main; once that run completes, nothing
+   previously re-woke `reconcile` unless it happened to be push-triggered —
+   falling back to the empirically-unreliable ~hourly cron. Fixed by adding
+   `|| (github.event.workflow_run.event == 'schedule' && vars.MERGE_TRAIN_ENABLED == 'true')`,
+   an exact structural mirror of the already-shipped, already-proven identical
+   carve-out in `.github/workflows/ci-recovery-incidents.yml` (~lines 38-42).
+   PR-triggered CI completions remain rejected regardless (no storm
+   regression); fails closed when the var is unset/false.
+
+## Context: why this is a _second_ PR, not the original one
+
+The coordinating session's original two-part request was implemented in full
+on branch `nalfeo-fix-merge-train-dispatch-trigger` (PR #1166): both wake-ups,
+plus a schedule/`MERGE_TRAIN_ENABLED` carve-out, fully reviewed (plan review +
+3 code-review rounds) and tested (16+12 tests). While that PR's automated
+review threads were being resolved, an independent concurrent effort merged
+**PR #1165** into main with an overlapping-but-subtly-different implementation
+of the _same two wake-ups_ in the _same two files_, making #1166 conflicting
+and redundant. #1166 was closed as superseded (with an explanatory comment)
+rather than resolving extensive merge conflicts for duplicate content. This PR
+rebuilds only the two genuine gaps left open by #1165's version, off current
+main.
+
+## Files touched
+
+- `.github/workflows/merge-train-validate.yml` — added `if: always()` to the
+  "Wake merge-train reconciliation" step, with an explanatory comment.
+- `.github/workflows/merge-train.yml` — added the schedule/`MERGE_TRAIN_ENABLED`
+  carve-out to the `reconcile` job's `if:` guard, with an explanatory comment
+  describing the `mainHealthReason()` race scenario it closes.
+- `tests/unit/merge-train-validate-publish.test.ts` — added:
+  - a step-ordering assertion (wake step must run after the publish step)
+  - an `if: always()` assertion on the wake step
+- `tests/unit/merge-train-workflow-wakeups.test.ts` — parameterized the
+  existing `evaluatesReconcileCondition()` YAML-condition-evaluator helper with
+  a `mergeTrainEnabled` substitution, and added:
+  - schedule+enabled=true → wakes reconcile
+  - schedule+enabled=false → fails closed
+  - PR-triggered CI even with enabled=true → still rejected (storm-guard lock)
+  - non-CI `workflow_run` names (e.g. `'Merge Train Validation'`) unaffected
+    regardless of event/enabled state
+
+## Verification
+
+- `npm run typecheck` — clean
+- `npm run lint` — clean
+- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **17/17 passed** (8 + 9)
+- Both modified workflow YAML files parse cleanly via the `yaml` package (same
+  parser the tests use) — confirmed no syntax breakage.
+- `npm run verify:fast` — passed (typecheck + lint + changed unit tests +
+  physics-defs/size/weight coverage checks)
+- `npm run verify:pr-prereqs` — passed after this handoff + ledger + telemetry
+  capture were added
+
+## Review harness (3🍎)
+
+- Plan review (separate model, `gpt-5.4`): verdict **convergent**, no blocking
+  concerns. Two non-blocking suggestions (a test locking in that non-CI
+  `workflow_run` names still pass through, and a wake-step-ordering
+  regression test) were incorporated as new tests before implementation was
+  considered final.
+- Code review (separate model, `gemini-3.1-pro-preview`): **no significant
+  issues found** — verified GitHub Actions expression precedence/semantics,
+  storm-guard non-regression, safety of `if: always()` given the `publish`
+  job's own `actions: write` permission and `if: always()`, and correctness of
+  the test helper's string-substitution approach.
+- Ledger: `docs/knowledge/review-ledgers/2026-07-16-merge-train-wakeup-gaps.review-ledger.json`
+  (valid 3-apple ledger).
+
+## Apple estimate
+
+3🍎 (production-critical merge automation change touching two workflow files
+plus their guard logic; consistent with the original task's criticality
+assessment). Not recorded via `apples:record` since actual == estimated and no
+scope change occurred mid-session.
+
+## Unresolved issues / recommended next steps
+
+- None outstanding for this fix's scope. `workflow_run`/schedule triggers are
+  intentionally retained as defense-in-depth per the original task instruction
+  (evidence shows they're unreliable as a _primary_ trigger, not that they
+  never fire).
+- **Process note for the coordinator**: two independent sessions implemented
+  overlapping fixes for the same request concurrently (#1165 and the now-closed
+  #1166), wasting one session's review/implementation effort. Worth
+  deduplicating future multi-session dispatches for the same production
+  incident/request, or having sessions check for in-flight PRs touching the
+  same files before starting significant implementation work.
+- Follow-up idea (raised in code review, non-blocking, not implemented here):
+  bounded retry/backoff around the `actions.createWorkflowDispatch` call itself,
+  in case the dispatch API call transiently fails. Left as a future
+  enhancement since it wasn't part of the original task's explicit scope.

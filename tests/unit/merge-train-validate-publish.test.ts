@@ -33,6 +33,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 interface WorkflowStep {
   name?: string;
   uses?: string;
+  if?: string;
   env?: Record<string, string>;
   with?: { script?: string; [key: string]: unknown };
 }
@@ -206,5 +207,42 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     expect(script).toBeDefined();
     expect(script).toContain('merge-train.yml');
     expect(script).toContain('default_branch');
+  });
+
+  it('reconciliation wake-up step runs after the publish step (not before it)', () => {
+    // The wake-up dispatch is meant to fire *after* the immutable check is
+    // published (so reconcile has something durable to act on). A future
+    // refactor could reorder the steps while still keeping `if: always()` on
+    // the wake step, which would cause a premature wake before the check
+    // exists. Lock in the relative ordering.
+    const raw = readFileSync(
+      path.join(REPO_ROOT, '.github/workflows/merge-train-validate.yml'),
+      'utf8',
+    );
+    const doc = parse(raw) as WorkflowDoc;
+    const steps = doc.jobs.publish?.steps ?? [];
+    const publishIndex = steps.findIndex((s) => s.name === 'Publish immutable candidate result');
+    const wakeIndex = steps.findIndex((s) => s.name === 'Wake merge-train reconciliation');
+    expect(publishIndex).toBeGreaterThanOrEqual(0);
+    expect(wakeIndex).toBeGreaterThan(publishIndex);
+  });
+
+  it('reconciliation wake-up step runs with if: always(), even if publishing the check failed', () => {
+    // Regression coverage: this step previously had no `if:` at all, which
+    // defaults to the implicit `success()` condition. That silently skipped
+    // the dispatch whenever "Publish immutable candidate result" itself
+    // failed (e.g. a transient checks.create API error) -- exactly the
+    // failure/cancelled case reconcile most needs to be woken for, so it can
+    // consume/retry/bisect instead of stalling on the unreliable
+    // workflow_run/schedule fallback.
+    const raw = readFileSync(
+      path.join(REPO_ROOT, '.github/workflows/merge-train-validate.yml'),
+      'utf8',
+    );
+    const doc = parse(raw) as WorkflowDoc;
+    const steps = doc.jobs.publish?.steps ?? [];
+    const wakeStep = steps.find((s) => s.name === 'Wake merge-train reconciliation');
+    expect(wakeStep).toBeDefined();
+    expect(wakeStep?.if).toBe('always()');
   });
 });

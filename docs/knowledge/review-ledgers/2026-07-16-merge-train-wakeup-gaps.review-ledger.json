@@ -1,0 +1,32 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "merge-train-wakeup-gaps",
+  "task_title": "Merge train wake-up gaps: always()-dispatch and schedule wake",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "convergent",
+      "notes": "No blocking concerns. Verdict convergent with the two implemented fixes; two non-blocking suggestions (non-CI workflow_run pass-through test, wake-step ordering test) incorporated.",
+      "models": ["gpt-5.4"],
+      "summary": "Reviewed the two-gap plan: if always on the wake dispatch step; schedule/MERGE_TRAIN_ENABLED carve-out mirroring ci-recovery-incidents.yml on the reconcile job guard. Verdict: no blocking concerns, convergent with reviewer own design. Two non-blocking test-coverage suggestions (non-CI workflow_run pass-through, wake-step ordering) were incorporated as new tests."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "summary": "No significant issues. Verified YAML precedence/semantics of the schedule carve-out, storm-guard non-regression, safety of if: always() on the wake step (permissions present, desirable behavior when publish job is malformed/cancelled), and correctness of the evaluatesReconcileCondition test-helper substitution approach."
+        }
+      ]
+    }
+  }
+}
