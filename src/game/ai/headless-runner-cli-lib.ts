@@ -122,7 +122,7 @@ export function parseArgs(
       // final token, letting a malformed invocation run with the 250ms
       // default instead of failing fast. Handle the flag unconditionally and
       // reject a missing/blank value explicitly.
-      if (next === undefined || next === '') {
+      if (next === undefined || next.trim() === '') {
         throw new Error('--enemy-telegraph-ms requires a value (e.g. --enemy-telegraph-ms 250)');
       }
       const parsed = Number(next);

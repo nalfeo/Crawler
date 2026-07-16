@@ -103,4 +103,14 @@ describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {
     // instead of failing on the malformed invocation.
     expect(() => cli('--enemy-telegraph-ms')).toThrow(/--enemy-telegraph-ms requires a value/);
   });
+
+  it('throws on a whitespace-only value instead of silently disabling telegraphs (regression: copilot-pull-request-reviewer finding)', () => {
+    // Number('   ') === 0, so a naive `next === ''` check let a whitespace-only
+    // token slip past the missing-value guard and silently resolve to
+    // enemyTelegraphMs: 0 (instant-fire, telegraph disabled) instead of
+    // failing fast on the malformed invocation.
+    expect(() => cli('--enemy-telegraph-ms', '   ')).toThrow(
+      /--enemy-telegraph-ms requires a value/,
+    );
+  });
 });
