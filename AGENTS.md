@@ -280,6 +280,23 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 - **Knip in full `verify` is opt-in** (`VERIFY_KNIP=1 npm run verify`). It's advisory
   in CI regardless, so run it locally only when refactoring/removing exports.
 
+- **A `bash` on `PATH` on Windows may resolve to the WSL interop shim**
+  (`C:\Windows\System32\bash.exe`, a genuine Linux `x86_64-pc-linux-gnu` bash),
+  not Git-Bash/MSYS2. Two things silently break tests that `spawnSync('bash', ...)`
+  a script by absolute path: (1) a `path.resolve()`-built Windows path
+  (`C:\Users\...`) is meaningless to WSL, which needs the `/mnt/c/Users/...`
+  mount form instead; (2) WSL does **not** forward the parent process's env
+  vars into the Linux session unless they're named in the `WSLENV`
+  allow-list, so custom env-var test hooks (e.g. `SCOPE_FILES_OVERRIDE`) are
+  silently dropped rather than erroring. Use
+  `tests/helpers/bash-script-path.ts` (`toBashScriptPath()` for the path,
+  `bashEnv()` for env vars) — both are no-ops on non-Windows/non-WSL bash.
+  Separately, a just-exited WSL bash child can leave its working directory
+  transiently locked from Windows' point of view for a few seconds; `rmSync`'s
+  own `maxRetries` does not cover a busy top-level `rmdir`, so cleanup needs a
+  real async wait-and-retry loop (see `local-scope.test.ts`'s `rmDirWithRetry`).
+  <!-- Source handoff: 2026-07-16-enemy-projectile-telegraph.md -->
+
 ## Tech Stack
 
 TypeScript (strict) · Phaser 4 · bitecs 0.4 · Vite · Vitest · fast-check · ESLint · Prettier · GitHub Actions

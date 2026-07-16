@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { toBashScriptPath, bashEnv } from '../helpers/bash-script-path.js';
 
 /**
  * Deterministic coverage for the CI change-scope classifier
@@ -14,9 +15,11 @@ import { describe, expect, it } from 'vitest';
  * real bash implementation via its SCOPE_FILES_OVERRIDE hook (no git needed).
  */
 
-const SCRIPT = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../scripts/agent/ci/detect-art-only.sh',
+const SCRIPT = toBashScriptPath(
+  path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../scripts/agent/ci/detect-art-only.sh',
+  ),
 );
 
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
@@ -33,12 +36,11 @@ function run(override: string, extraEnv: Record<string, string> = {}): Scope {
   const res = spawnSync('bash', [SCRIPT], {
     encoding: 'utf8',
     // GITHUB_OUTPUT='' keeps the script from appending to a real CI output file.
-    env: {
-      ...process.env,
+    env: bashEnv({
       ...extraEnv,
       SCOPE_FILES_OVERRIDE: override,
       GITHUB_OUTPUT: '',
-    },
+    }),
   });
   if (res.status !== 0) {
     throw new Error(

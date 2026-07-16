@@ -33,4 +33,27 @@ describe('MainGameScene simulation pause / step accounting', () => {
   it('does not decrement pending steps by the loop counter (the stuck-queue bug)', () => {
     expect(source).not.toContain('this.pendingSimulationSteps - steps');
   });
+
+  it("re-polls the catch-up AI override before this iteration's clock increment (headless poll-before-step parity)", () => {
+    // The telegraphed-shot dodge math in bt-ai-provider.ts reads world.elapsedMs
+    // live at poll time and assumes it always observes the value from BEFORE
+    // the current step's own increment (matching headless-runner.ts's
+    // poll(); runSimulationStep() ordering). If the catch-up re-poll below
+    // ever moved to run AFTER frameCount/elapsedMs are bumped, the in-browser
+    // AI would see one extra step of telegraph time already elapsed relative
+    // to headless, shifting the dodge-horizon boundary by a frame between the
+    // two AI-driving contexts (copilot-pull-request-reviewer finding).
+    const loopStart = source.indexOf(
+      'while (this.accumulator >= GAME.DELTA_MS && steps < maxStepsThisFrame)',
+    );
+    expect(loopStart).toBeGreaterThan(-1);
+
+    const pollIndex = source.indexOf('this.inputCapture.poll(this.inputState);', loopStart);
+    const frameCountIndex = source.indexOf('this.world.frameCount += 1;', loopStart);
+    const elapsedMsIndex = source.indexOf('this.world.elapsedMs += GAME.DELTA_MS;', loopStart);
+
+    expect(pollIndex).toBeGreaterThan(loopStart);
+    expect(frameCountIndex).toBeGreaterThan(pollIndex);
+    expect(elapsedMsIndex).toBeGreaterThan(pollIndex);
+  });
 });
