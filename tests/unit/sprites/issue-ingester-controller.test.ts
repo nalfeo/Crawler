@@ -47,8 +47,29 @@ function issuesMock(
 async function seedIngestState(
   store: RunStore,
   state: {
-    readonly claims?: Record<string, unknown>;
-    readonly rejected?: Record<string, unknown>;
+    readonly claims?: Record<
+      string,
+      {
+        readonly issueNumber: number;
+        readonly fingerprint: string;
+        readonly claimedAt: string;
+        readonly name: string;
+        readonly briefSentence: string;
+        readonly sizeVariant?: 'default' | 'wide' | 'tall' | 'large';
+      }
+    >;
+    readonly rejected?: Record<
+      string,
+      {
+        readonly issueNumber: number;
+        readonly fingerprint: string;
+        readonly rejectedAt: string;
+        readonly reason: string | null;
+        readonly name: string;
+        readonly briefSentence: string;
+        readonly sizeVariant?: 'default' | 'wide' | 'tall' | 'large';
+      }
+    >;
   },
 ): Promise<void> {
   await store.put(

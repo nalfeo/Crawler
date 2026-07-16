@@ -277,12 +277,11 @@ export function createIssueIngesterController(
     const key = claimKey(issueNumber, payload.fingerprint);
     const current = table[key];
     if (current) return { key, row: current };
-    if (
-      payload.legacyFingerprint &&
-      payload.legacyFingerprint !== payload.fingerprint &&
-      sameLegacyStateSemantics(table[claimKey(issueNumber, payload.legacyFingerprint)], payload)
-    ) {
-      const legacyKey = claimKey(issueNumber, payload.legacyFingerprint);
+    const legacyKey =
+      payload.legacyFingerprint && payload.legacyFingerprint !== payload.fingerprint
+        ? claimKey(issueNumber, payload.legacyFingerprint)
+        : null;
+    if (legacyKey && sameLegacyStateSemantics(table[legacyKey], payload)) {
       return { key: legacyKey, row: table[legacyKey] };
     }
     return { key, row: undefined };

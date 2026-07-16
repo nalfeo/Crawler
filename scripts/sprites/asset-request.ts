@@ -164,6 +164,12 @@ export function fingerprintAssetRequest(
   return createHash('sha256').update(normalized).digest('hex');
 }
 
+/**
+ * Preserve the legacy request fingerprint unless an explicit `type` is the only
+ * reason boss-size inference changes. In that narrow case, append normalized
+ * type context so a type-only edit gets a distinct queue/claim identity while
+ * unchanged legacy requests continue to match their pre-upgrade keys.
+ */
 function fingerprintParsedAssetRequest(input: {
   readonly name: string;
   readonly briefSentence: string;
