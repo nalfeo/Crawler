@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-16  
 **Issue**: #1181 — Welcome room set-piece sprites wrong (goblin, rugs, walls not solid, door broken)  
-**Apple estimate**: 2🍎
+**Apple estimate**: 2🍎  
 
 ## Systems touched
 
@@ -16,12 +16,12 @@ latent physics-flag bug in `applyWelcomeRoomStructuralTiles`.
 The set-piece editor (PR/handoff 2026-07-09) expanded the welcome room from 8×7 to 10×9 and added
 auto-generated border tiles. Those tiles caused four distinct visual/gameplay bugs:
 
-| Symptom                        | Root cause                                                                                                                                                                                                                                        | Fix                                                                   |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| "Goblin guy"                   | `junk-pile-left` and `junk-pile-right` props use `prop-junk-pile-v1-var-0/3`, AI-generated sprites that look like creature/goblin figures                                                                                                         | Removed both props                                                    |
-| "Rugs instead of velvet ropes" | 56 `__auto-floor-*` props used `kenney-roguelike-rpg-pack col=11, row=20` — a solid brownish-orange rug-like tile tiled across the entire floor interior                                                                                          | Removed all 56 auto-floor props                                       |
-| Walls not solid                | 32 `__auto-wall-*` props set `terrain=STONE_WALL` at passable interior tiles, but `applyWelcomeRoomStructuralTiles` only called `setFlags(WALL)` when the tile was ALREADY non-passable (`if (!isPassable)`), so physics flags were never updated | Removed auto-wall props; fixed the physics-flag guard to always apply |
-| Door doesn't work              | 2 door props at set-piece y=8 stamped to `interior.maxY` — the last interior row — not aligned with actual dungeon door border tiles                                                                                                              | Removed door props                                                    |
+| Symptom | Root cause | Fix |
+|---------|-----------|-----|
+| "Goblin guy" | `junk-pile-left` and `junk-pile-right` props use `prop-junk-pile-v1-var-0/3`, AI-generated sprites that look like creature/goblin figures | Removed both props |
+| "Rugs instead of velvet ropes" | 56 `__auto-floor-*` props used `kenney-roguelike-rpg-pack col=11, row=20` — a solid brownish-orange rug-like tile tiled across the entire floor interior | Removed all 56 auto-floor props |
+| Walls not solid | 32 `__auto-wall-*` props set `terrain=STONE_WALL` at passable interior tiles, but `applyWelcomeRoomStructuralTiles` only called `setFlags(WALL)` when the tile was ALREADY non-passable (`if (!isPassable)`), so physics flags were never updated | Removed auto-wall props; fixed the physics-flag guard to always apply |
+| Door doesn't work | 2 door props at set-piece y=8 stamped to `interior.maxY` — the last interior row — not aligned with actual dungeon door border tiles | Removed door props |
 
 ## Files touched
 
@@ -40,7 +40,7 @@ regeneration could improve it.
 
 ## Verification
 
-- `npm run verify:fast` — all 326+87 test files pass
+- `npm run verify:fast` — all 326+87 test files pass  
 - `npm run verify:pr-prereqs` — passes after this handoff and ledger are committed
 
 ## Unresolved issues
