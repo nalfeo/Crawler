@@ -26,8 +26,8 @@
         {
           "round": 2,
           "models": ["claude-sonnet-5", "gpt-5.3-codex"],
-          "concerns_count": 2,
-          "resolved_count": 2,
+          "concerns_count": 3,
+          "resolved_count": 3,
           "clean": true
         }
       ]

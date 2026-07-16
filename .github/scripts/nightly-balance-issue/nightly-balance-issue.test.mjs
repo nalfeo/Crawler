@@ -16,13 +16,18 @@ const intakeToken = 'intake-token';
 
 function createHarness({
   labelExists = true,
-  intakeError = null,
-  closeError = null,
+  // Per-call queues so multi-run scenarios (e.g. a failing run followed by a
+  // successful resume) can script each intake/close call independently. An
+  // undefined/falsy entry at a given call index means that call succeeds.
+  intakeErrors = [],
+  closeErrors = [],
   initialIssues = [],
 } = {}) {
   const calls = [];
   const openIssues = [...initialIssues];
   let nextIssueNumber = 1203;
+  let intakeCallCount = 0;
+  let closeCallCount = 0;
 
   const paginateFn = async (token, path) => {
     calls.push({ kind: 'paginate', token, path });
@@ -37,16 +42,24 @@ function createHarness({
       throw error;
     }
     if (path.endsWith('/issues') && options.method === 'POST') {
+      // Mirror the real GitHub REST shape so ownership/proof checks in
+      // production code (opener login, labels, assignees) have real inputs
+      // to evaluate rather than undefined fields.
       const issue = {
         number: nextIssueNumber,
         node_id: `ISSUE_${nextIssueNumber}`,
         title: options.body.title,
+        user: { login: 'github-actions[bot]' },
+        labels: (options.body.labels || []).map((name) => ({ name })),
+        assignees: [],
       };
       nextIssueNumber += 1;
       openIssues.push(issue);
       return { data: issue };
     }
     if (options.method === 'PATCH' && options.body?.state === 'closed') {
+      const closeError = closeErrors[closeCallCount];
+      closeCallCount += 1;
       if (closeError) throw closeError;
       const issueNumber = Number(path.split('/').at(-1));
       const index = openIssues.findIndex((issue) => issue.number === issueNumber);
@@ -58,7 +71,13 @@ function createHarness({
 
   const intakeFn = async (args) => {
     calls.push({ kind: 'intake', args });
+    const intakeError = intakeErrors[intakeCallCount];
+    intakeCallCount += 1;
     if (intakeError) throw intakeError;
+    // A real successful intake ends with Copilot assigned on the issue, which is
+    // exactly what later `assignees`-based proof checks read back via paginateFn.
+    const target = openIssues.find((issue) => issue.number === args.issue.number);
+    if (target) target.assignees = [{ login: 'copilot-swe-agent' }];
     return { assignee: 'copilot-swe-agent', comment: 'posted' };
   };
 
@@ -176,7 +195,7 @@ test('creates the human approval label when it is missing', async () => {
 
 test('closes a newly created issue and preserves the intake error', async () => {
   const intakeError = new Error('Copilot assignment failed');
-  const harness = createHarness({ intakeError });
+  const harness = createHarness({ intakeErrors: [intakeError] });
 
   await assert.rejects(runWithHarness(harness), (error) => error === intakeError);
 
@@ -192,7 +211,7 @@ test('closes a newly created issue and preserves the intake error', async () => 
 test('wraps both errors in an AggregateError when the rollback close also fails', async () => {
   const intakeError = new Error('Copilot assignment failed');
   const closeError = new Error('GitHub API unavailable');
-  const harness = createHarness({ intakeError, closeError });
+  const harness = createHarness({ intakeErrors: [intakeError], closeErrors: [closeError] });
 
   await assert.rejects(runWithHarness(harness), (error) => {
     assert.ok(error instanceof AggregateError);
@@ -211,6 +230,102 @@ test('wraps both errors in an AggregateError when the rollback close also fails'
   );
   assert.equal(close.path, '/repos/nalfeo/Crawler/issues/1203');
   assert.equal(harness.openIssues.length, 1);
+});
+
+test('resumes intake on the same automation-created issue after a prior run left it orphaned', async () => {
+  const firstIntakeError = new Error('Copilot assignment failed');
+  const firstCloseError = new Error('GitHub API unavailable');
+  const harness = createHarness({
+    intakeErrors: [firstIntakeError],
+    closeErrors: [firstCloseError],
+  });
+
+  await assert.rejects(runWithHarness(harness), (error) => error instanceof AggregateError);
+  assert.equal(harness.openIssues.length, 1);
+  assert.deepEqual(harness.openIssues[0].assignees, []);
+
+  const second = await runWithHarness(harness);
+
+  assert.equal(second.status, 'resumed');
+  assert.equal(second.issue.number, 1203);
+  assert.deepEqual(second.intake, { assignee: 'copilot-swe-agent', comment: 'posted' });
+  assert.equal(harness.openIssues.length, 1);
+  assert.ok(harness.openIssues[0].assignees.some((a) => a.login === 'copilot-swe-agent'));
+
+  const issueCreates = harness.calls.filter(
+    (call) =>
+      call.kind === 'request' && call.path.endsWith('/issues') && call.options.method === 'POST',
+  );
+  assert.equal(issueCreates.length, 1, 'never files a second issue while resuming');
+
+  const intakeCalls = harness.calls.filter((call) => call.kind === 'intake');
+  assert.equal(intakeCalls.length, 2);
+  assert.equal(intakeCalls[1].args.token, intakeToken);
+  assert.equal(intakeCalls[1].args.issue.number, 1203);
+
+  // Once proof of completed intake exists, a third run must deterministically no-op
+  // and must not call intake again.
+  const third = await runWithHarness(harness);
+  assert.equal(third.status, 'existing');
+  assert.equal(
+    harness.calls.filter((call) => call.kind === 'intake').length,
+    2,
+    'no further intake call once proof is present',
+  );
+});
+
+test('never resumes intake or closes a foreign exact-title issue this automation did not create', async () => {
+  const harness = createHarness({
+    initialIssues: [
+      {
+        number: 55,
+        node_id: 'ISSUE_55',
+        title: ISSUE_TITLE,
+        user: { login: 'someone-else' },
+        labels: [{ name: 'automation' }],
+        assignees: [],
+      },
+    ],
+  });
+
+  const result = await runWithHarness(harness);
+
+  assert.equal(result.status, 'existing');
+  assert.equal(result.issue.number, 55);
+  assert.equal(harness.openIssues.length, 1);
+  assert.equal(harness.calls.filter((call) => call.kind === 'intake').length, 0);
+  assert.equal(
+    harness.calls.filter((call) => call.kind === 'request' && call.options.body?.state === 'closed')
+      .length,
+    0,
+  );
+  assert.equal(
+    harness.calls.filter(
+      (call) =>
+        call.kind === 'request' && call.path.endsWith('/issues') && call.options.method === 'POST',
+    ).length,
+    0,
+  );
+});
+
+test('never resumes intake for an automation-opened issue missing the automation label', async () => {
+  const harness = createHarness({
+    initialIssues: [
+      {
+        number: 77,
+        node_id: 'ISSUE_77',
+        title: ISSUE_TITLE,
+        user: { login: 'github-actions[bot]' },
+        labels: [{ name: 'bug' }],
+        assignees: [],
+      },
+    ],
+  });
+
+  const result = await runWithHarness(harness);
+
+  assert.equal(result.status, 'existing');
+  assert.equal(harness.calls.filter((call) => call.kind === 'intake').length, 0);
 });
 
 test('validates every required environment value before GitHub access', async () => {

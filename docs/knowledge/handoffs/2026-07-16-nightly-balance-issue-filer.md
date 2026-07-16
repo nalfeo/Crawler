@@ -34,6 +34,10 @@ helper/CLI, deterministic tests, and review/operational documentation.
 - Intake failures close the newly created issue with `GITHUB_TOKEN` and rethrow the
   original failure. If rollback also fails, both failures are reported through an
   `AggregateError`.
+- A later run resumes intake only for an orphaned issue proven to be owned by this
+  automation (`github-actions[bot]` opener plus `automation` label) and lacking the
+  durable Copilot-assignment proof produced by successful intake. Completed or
+  foreign exact-title issues remain mutation-free no-ops.
 - The issue body encodes aggregate-only current-main evidence, production
   reachability and causal attribution, up-to-three including zero, isolated
   canonical sweeps, no-evidence/no-PR behavior, a durable evidence ledger, and the
@@ -59,14 +63,17 @@ helper/CLI, deterministic tests, and review/operational documentation.
   `plan_divergence=minor`.
 - Code review: `claude-sonnet-4.6`, round 1 clean with no concerns.
 - PR review validation: `claude-sonnet-5` with independent `gpt-5.3-codex`
-  adjudication, two valid concerns resolved in round 2.
+  adjudication, three valid concerns resolved in round 2.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-16-nightly-balance-issue-filer.review-ledger.json`.
 
 ## Validation and observation
 
 - `node --test .github/scripts/nightly-balance-issue/nightly-balance-issue.test.mjs`
-  - 8/8 passing, including intake-plus-rollback double-failure coverage.
+  - 11/11 passing, including intake-plus-rollback double-failure and orphan-resume
+    coverage.
+- `node --test .github/scripts/ci-recovery/issue-intake.test.mjs` - 5/5 passing
+  after exporting shared intake identity helpers.
 - `npm run verify:fast` - passing.
 - `npm run scope` - `gameplay_safe=true`.
 - Before implementation there was no repository-owned scheduled filer on `main`.

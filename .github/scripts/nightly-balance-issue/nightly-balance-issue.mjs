@@ -1,4 +1,8 @@
-import { runIssueIntake } from '../ci-recovery/issue-intake-lib.mjs';
+import {
+  GITHUB_ACTIONS_LOGIN,
+  isCopilotLogin,
+  runIssueIntake,
+} from '../ci-recovery/issue-intake-lib.mjs';
 import { graphql, paginate, request } from '../ci-recovery/github.mjs';
 import { HUMAN_APPROVAL_LABEL } from '../merge-train/human-approval.mjs';
 
@@ -82,44 +86,42 @@ async function closeCreatedIssue({ requestFn, githubToken, owner, repo, issueNum
   });
 }
 
-export async function runNightlyBalanceIssue({
-  githubToken,
-  intakeToken,
-  repository,
-  requestFn = request,
-  paginateFn = paginate,
-  graphqlFn = graphql,
-  intakeFn = runIssueIntake,
-}) {
-  requireToken(githubToken, 'GITHUB_TOKEN');
-  requireToken(intakeToken, 'CRAWLER_CI_PAT');
-  const { owner, repo } = parseRepository(repository);
-
-  const openIssues = await paginateFn(githubToken, `/repos/${owner}/${repo}/issues?state=open`);
-  const existing = openIssues.find(
-    (candidate) => !candidate.pull_request && candidate.title === ISSUE_TITLE,
+// An exact-title open issue is only safe to resume-intake or rollback-close when this
+// automation actually created it: opened by GITHUB_TOKEN's github-actions[bot] identity
+// and carrying the `automation` label this script always applies. Anything else (e.g. a
+// human-filed issue that happens to reuse the title) must be left alone.
+function isAutomationOwnedIssue(issue) {
+  const opener = String(issue?.user?.login || '').toLowerCase();
+  if (opener !== GITHUB_ACTIONS_LOGIN) return false;
+  const labels = (issue?.labels || []).map((label) =>
+    String(typeof label === 'string' ? label : label?.name || '').toLowerCase(),
   );
-  if (existing) {
-    return { status: 'existing', issue: existing };
-  }
+  return labels.includes('automation');
+}
 
-  await ensureHumanApprovalLabel({ requestFn, githubToken, owner, repo });
-  const created = await requestFn(githubToken, `/repos/${owner}/${repo}/issues`, {
-    method: 'POST',
-    body: {
-      title: ISSUE_TITLE,
-      body: ISSUE_BODY,
-      labels: ISSUE_LABELS,
-    },
-  });
-  const issue = created.data;
-  if (!Number.isInteger(issue?.number) || !issue?.node_id) {
-    throw new Error('GitHub issue creation response omitted number or node_id');
-  }
+// runIssueIntake only returns successfully after replaceActorsForAssignable confirms a
+// Copilot login among the issue's assignees, so a Copilot assignee on the issue is
+// durable, deterministic proof that intake previously completed. GitHub's list-issues
+// response (already fetched via paginateFn) includes `assignees`, so this needs no
+// extra API call.
+function hasCompletedIntakeProof(issue) {
+  const assignees = Array.isArray(issue?.assignees) ? issue.assignees : [];
+  return assignees.some((assignee) => isCopilotLogin(assignee?.login));
+}
 
-  let intake;
+async function intakeWithRollback({
+  intakeFn,
+  graphqlFn,
+  paginateFn,
+  requestFn,
+  intakeToken,
+  githubToken,
+  owner,
+  repo,
+  issue,
+}) {
   try {
-    intake = await intakeFn({
+    return await intakeFn({
       graphql: graphqlFn,
       paginate: paginateFn,
       request: requestFn,
@@ -146,6 +148,74 @@ export async function runNightlyBalanceIssue({
     }
     throw intakeError;
   }
+}
+
+export async function runNightlyBalanceIssue({
+  githubToken,
+  intakeToken,
+  repository,
+  requestFn = request,
+  paginateFn = paginate,
+  graphqlFn = graphql,
+  intakeFn = runIssueIntake,
+}) {
+  requireToken(githubToken, 'GITHUB_TOKEN');
+  requireToken(intakeToken, 'CRAWLER_CI_PAT');
+  const { owner, repo } = parseRepository(repository);
+
+  const openIssues = await paginateFn(githubToken, `/repos/${owner}/${repo}/issues?state=open`);
+  const existing = openIssues.find(
+    (candidate) => !candidate.pull_request && candidate.title === ISSUE_TITLE,
+  );
+  if (existing) {
+    // Only an issue this automation created can safely be resumed or rolled back; a
+    // foreign exact-title issue is always left untouched (deterministic no-op).
+    if (!isAutomationOwnedIssue(existing) || hasCompletedIntakeProof(existing)) {
+      return { status: 'existing', issue: existing };
+    }
+
+    // No completed-intake proof on our own issue means a prior run's intake and its
+    // rollback close both failed (AggregateError path below), leaving an orphan. Resume
+    // intake on the same issue rather than permanently no-op'ing on it forever.
+    const intake = await intakeWithRollback({
+      intakeFn,
+      graphqlFn,
+      paginateFn,
+      requestFn,
+      intakeToken,
+      githubToken,
+      owner,
+      repo,
+      issue: existing,
+    });
+    return { status: 'resumed', issue: existing, intake };
+  }
+
+  await ensureHumanApprovalLabel({ requestFn, githubToken, owner, repo });
+  const created = await requestFn(githubToken, `/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    body: {
+      title: ISSUE_TITLE,
+      body: ISSUE_BODY,
+      labels: ISSUE_LABELS,
+    },
+  });
+  const issue = created.data;
+  if (!Number.isInteger(issue?.number) || !issue?.node_id) {
+    throw new Error('GitHub issue creation response omitted number or node_id');
+  }
+
+  const intake = await intakeWithRollback({
+    intakeFn,
+    graphqlFn,
+    paginateFn,
+    requestFn,
+    intakeToken,
+    githubToken,
+    owner,
+    repo,
+    issue,
+  });
 
   return { status: 'created', issue, intake };
 }
