@@ -23,7 +23,19 @@ on:
   #      below additionally requires `event == 'push'` for 'CI' specifically.
   #      This mirrors the proven-safe pattern already shipped in
   #      `.github/workflows/deploy.yml` for the identical hourly-CI-storm class
-  #      of bug.
+  #      of bug -- EXCEPT that (unlike deploy.yml) a scheduled 'CI' completion
+  #      is also allowed to wake reconcile when MERGE_TRAIN_ENABLED == 'true'.
+  #      This is required because reconcile.mjs's own mainHealthAllowsPromotion()
+  #      treats scheduled CI runs for the current main SHA as authoritative
+  #      health evidence (mainHealthReason() picks the *newest* authoritative
+  #      run for that SHA, push or schedule). If an hourly schedule run starts
+  #      after the push run and is still the newest when reconcile wakes on the
+  #      push completion, reconcile pauses on the schedule run instead; without
+  #      also waking on that schedule run's completion, the train would fall
+  #      back to the unreliable ~hourly cron trigger to notice it finished --
+  #      reproducing the exact bug this PR fixes. This mirrors the identical
+  #      `event == 'schedule' && vars.MERGE_TRAIN_ENABLED == 'true'` carve-out
+  #      already shipped in `.github/workflows/ci-recovery-incidents.yml`.
   workflow_run:
     workflows: ['Merge Train Validation', 'CI']
     types: [completed]
@@ -48,16 +60,22 @@ jobs:
     # Fail-closed job gate:
     #   - pull_request_target: only for PRs from this repo (not forks), as before.
     #   - workflow_run named 'CI': only for a *push*-triggered CI completion (not
-    #     a PR's CI completion, and not CI's own hourly schedule run) -- this is
-    #     the storm guard described above. `github.event.workflow_run.name` is
-    #     checked (not just presence) so this clause does not accidentally
-    #     restrict the 'Merge Train Validation' workflow_run, which must keep
-    #     firing regardless of its `event` (it is always workflow_dispatch).
+    #     a PR's CI completion) is unconditionally allowed; an *hourly-schedule*-
+    #     triggered CI completion is ALSO allowed, but only while
+    #     MERGE_TRAIN_ENABLED == 'true' (matching the ci-recovery-incidents.yml
+    #     precedent) -- this closes the gap where reconcile.mjs's own
+    #     mainHealthReason() may treat a same-SHA scheduled run as the newest
+    #     authoritative evidence and pause on it even though this wake-up fired
+    #     from the push run's completion; see the trigger-level comment above.
+    #     `github.event.workflow_run.name` is checked (not just presence) so
+    #     this clause does not accidentally restrict the 'Merge Train
+    #     Validation' workflow_run, which must keep firing regardless of its
+    #     `event` (it is always workflow_dispatch).
     #   - Every other event (push, schedule, workflow_dispatch, and the
     #     'Merge Train Validation' workflow_run) is unaffected.
     if: >-
       (github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name != 'workflow_run' || github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'push')
+      (github.event_name != 'workflow_run' || github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'push' || (github.event.workflow_run.event == 'schedule' && vars.MERGE_TRAIN_ENABLED == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

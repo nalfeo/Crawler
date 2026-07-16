@@ -67,6 +67,24 @@ Two independent wake-ups were added, covering both gaps:
    left completely unrestricted by this new guard (`workflow_run.name != 'CI'`),
    since Validation is only ever `workflow_dispatch`'d against `ref: main`.
 
+3. **Gap found by automated PR review, fixed in this session**:
+   `reconcile.mjs`'s `mainHealthAllowsPromotion()`/`mainHealthReason()`
+   (`reconcile-lib.mjs`) treat whichever CI run for the current main SHA is
+   _newest by `created_at`_ as authoritative health evidence — regardless of
+   whether it was `push`- or `schedule`-triggered. If a scheduled CI run for
+   the same SHA starts after the push run and is still `in_progress` when
+   `reconcile` wakes on the push run's completion, `reconcile` pauses citing
+   the schedule run — and (2) above only allowed `workflow_run.event ==
+'push'` to wake `reconcile`, so nothing would re-wake it when that
+   schedule run later completes. That reproduces the original ~hourly-cron
+   fallback bug for exactly this case. Fixed by adding the identical
+   `(workflow_run.event == 'schedule' && vars.MERGE_TRAIN_ENABLED == 'true')`
+   carve-out already proven in `.github/workflows/ci-recovery-incidents.yml`
+   (lines 38-42) to `merge-train.yml`'s `reconcile` job `if:`, gating the
+   schedule wake-up on the train actually being enabled (this only _reads_
+   `vars.MERGE_TRAIN_ENABLED`; it does not set or alter it). PR-triggered CI
+   completions remain blocked in all cases (no storm regression).
+
 Common to both:
 
 - Kept `workflow_run` / `schedule` / `workflow_dispatch` / push /
@@ -76,19 +94,23 @@ Common to both:
 - Did **not** touch `MERGE_TRAIN_ENABLED`, the ruleset, or branch protection.
 - Did **not** use GitHub's native merge queue.
 - Added deterministic tests:
-  - `tests/unit/merge-train-validate-publish.test.ts` parses the real workflow
+  - `tests/unit/merge-train-validate-publish.test.ts` (16 tests total: 6 for the
+    verify-result -> check-conclusion mapping, 5 for the bot-added failed-publish
+    recovery step below, 5 for the explicit dispatch) parses the real workflow
     YAML and executes the real dispatch step's script (with
     `github.rest.actions.createWorkflowDispatch` stubbed) to assert: the step
     exists and runs after the check-publish step, has `if: always()`, uses the
     correct token, and dispatches `workflow_id: 'merge-train.yml'` with the
     dynamic default-branch `ref` — not a hardcoded value.
-  - `tests/unit/merge-train-workflow-triggers.test.ts` (new, 10 tests) parses the
+  - `tests/unit/merge-train-workflow-triggers.test.ts` (12 tests) parses the
     real `merge-train.yml` YAML to assert the `workflow_run` trigger lists both
     workflows with `branches: [main]`, asserts the exact `reconcile` job `if:`
-    string, and re-transcribes the gate's boolean logic in JS to truth-table it
-    against representative payloads (ordinary push/schedule/dispatch; fork vs.
+    string (including the schedule/`MERGE_TRAIN_ENABLED` carve-out), and
+    re-transcribes the gate's boolean logic in JS to truth-table it against
+    representative payloads (ordinary push/schedule/dispatch; fork vs.
     same-repo `pull_request_target`; CI workflow_run with `event` = push/
-    pull_request/schedule; Merge Train Validation workflow_run).
+    pull_request/schedule, both with the train enabled and disabled; Merge
+    Train Validation workflow_run).
 
 ## Key Decision: deviated from "use the App token" to the built-in `GITHUB_TOKEN`
 
@@ -110,8 +132,8 @@ for this third call site.
 
 ## Validation
 
-- `npx vitest run tests/unit/merge-train-validate-publish.test.ts` — 11/11 passed.
-- `npx vitest run tests/unit/merge-train-workflow-triggers.test.ts` — 10/10 passed.
+- `npx vitest run tests/unit/merge-train-validate-publish.test.ts` — 16/16 passed.
+- `npx vitest run tests/unit/merge-train-workflow-triggers.test.ts` — 12/12 passed.
 - `npm run verify:fast` — passed (typecheck, lint, unit tests, physics-defs/size/
   weight coverage checks).
 - Parsed both real workflow YAMLs with the `yaml` npm package directly to confirm
@@ -121,16 +143,27 @@ for this third call site.
   confirmed the token deviation, the `GITHUB_TOKEN` workflow_dispatch recursion
   exception, and `queue: max` concurrency safety; flagged two refinements
   (hard-cancellation caveat below, live acceptance check) — both addressed.
-- Separate-model **code review** (code-review agent, 2 rounds): round 1 covered
-  the validation-dispatch wake-up (no concerns); round 2 covered the CI-completion
-  wake-up (no concerns) — confirmed expression precedence, that CI's own triggers
+- Separate-model **code review** (code-review agent, 3 rounds, 2 distinct
+  models): round 1 (`gpt-5.4-mini`) covered the validation-dispatch wake-up (no
+  concerns); round 2 (`gpt-5.4-mini`) covered the CI-completion wake-up (no
+  concerns) — confirmed expression precedence, that CI's own triggers
   (push/schedule/pull_request, no workflow_dispatch) make the push-only guard
   exhaustive and correct, that Validation's wake-up is unaffected, that omitting a
   `conclusion` check is deliberate/correct here (unlike `deploy.yml`), and that the
-  pre-existing `queue: max` concurrency coalesces bursts safely.
+  pre-existing `queue: max` concurrency coalesces bursts safely; round 3
+  (`gpt-5.4`, raised by automated PR review threads on #1166) covered both the
+  bot-added "Recover failed check publication" step and this session's
+  schedule/`MERGE_TRAIN_ENABLED` carve-out — confirmed the recovery step's
+  `checks.create` (same `external_id`/fingerprint) necessarily gets a higher
+  check-run id than the original `in_progress` check so `latestChecksByName`'s
+  highest-id selection correctly shadows it, confirmed no race with the
+  unconditional `if: always()` dispatch step, confirmed `vars.MERGE_TRAIN_ENABLED`
+  is readable in job-level `if:` per the working `ci-recovery-incidents.yml`
+  precedent, and confirmed no storm-risk reintroduction. No concerns in any
+  round.
 - Review ledger:
   `docs/knowledge/review-ledgers/2026-07-16-merge-train-dispatch-trigger-fix.review-ledger.json`
-  (3🍎, `plan_review` + `code_review` with 2 clean rounds, both complete/clean).
+  (3🍎, `plan_review` + `code_review` with 3 clean rounds, all complete/clean).
 
 ## Known limitation (flagged by plan review, not fixed here)
 
@@ -163,7 +196,28 @@ strict-null typecheck error (`TS2532`) in its new test assertions
 (`calls[0].status` → `expect(calls[0]).toEqual(expect.objectContaining(...))`,
 matching an existing pattern already used elsewhere in the same file). The
 recovery step is complementary to — not overlapping with — the two wake-ups
-this session added, and is included in this PR's final diff.
+this session added, and is included in this PR's final diff. It received its
+own separate-model code-review round (round 3 above) since it had not been
+covered by rounds 1-2.
+
+## Automated PR review threads (copilot-pull-request-reviewer) resolved
+
+The GitHub Copilot automated PR reviewer opened 4 review threads on #1166
+(this repo enforces `required_conversation_resolution` in branch protection,
+so these block merge even with all status checks green):
+
+1. **Schedule/`mainHealthReason` gap** — genuine, fixed (see item 3 under "What
+   Was Done" above).
+2. **PR description staleness** — description re-synthesized to cover both
+   wake-ups, the schedule/`MERGE_TRAIN_ENABLED` carve-out, and the bot's
+   recovery step.
+3. **Recovery step lacked its own review round** — added (round 3 above).
+4. **Stale test counts in PR body/handoff** — corrected here and in the PR
+   description (16 and 12, not 11 and 10).
+
+Each thread was replied to in-place with a `✅ Addressed in <sha>: <note>`
+marker per the repo's review-thread-resolution protocol so the
+`ci-recovery.yml` reconciler auto-resolves them on its next sweep.
 
 ## Follow-ups (not blocking, recommended)
 

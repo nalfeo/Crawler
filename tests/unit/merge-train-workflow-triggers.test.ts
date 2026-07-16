@@ -34,6 +34,19 @@ import { describe, expect, it } from 'vitest';
  *      identical, already-shipped storm guard in
  *      `.github/workflows/deploy.yml` (see deploy-workflow-gating.test.ts).
  *
+ * A follow-up review finding closed a real gap in wake-up #2: reconcile.mjs's
+ * own mainHealthAllowsPromotion()/mainHealthReason() treat scheduled 'CI' runs
+ * for the current main SHA as authoritative health evidence too, picking
+ * whichever run (push or schedule) is newest. If an hourly schedule run
+ * starts after the push run and is still running when reconcile wakes on the
+ * push completion, reconcile pauses on the schedule run instead -- and without
+ * ALSO waking on that schedule run's completion, the train falls back to the
+ * unreliable ~hourly cron to notice it finished, reproducing the original
+ * bug. The job-level `if:` therefore also allows a scheduled 'CI' completion
+ * to wake reconcile, but only while `vars.MERGE_TRAIN_ENABLED == 'true'` --
+ * mirroring the identical carve-out already shipped in
+ * `.github/workflows/ci-recovery-incidents.yml`.
+ *
  * This test parses the REAL workflow YAML (no reimplementation of the YAML
  * itself) and additionally runs a small, literal re-transcription of the
  * job's `if:` boolean logic against representative event payloads, so a
@@ -87,6 +100,7 @@ function evaluateReconcileGate(payload: {
   repositoryFullName?: string;
   workflowRunName?: string;
   workflowRunEvent?: string;
+  mergeTrainEnabled?: string;
 }): boolean {
   const {
     eventName,
@@ -94,13 +108,17 @@ function evaluateReconcileGate(payload: {
     repositoryFullName,
     workflowRunName,
     workflowRunEvent,
+    mergeTrainEnabled,
   } = payload;
 
   const forkGuardPasses =
     eventName !== 'pull_request_target' || pullRequestHeadRepoFullName === repositoryFullName;
 
   const ciStormGuardPasses =
-    eventName !== 'workflow_run' || workflowRunName !== 'CI' || workflowRunEvent === 'push';
+    eventName !== 'workflow_run' ||
+    workflowRunName !== 'CI' ||
+    workflowRunEvent === 'push' ||
+    (workflowRunEvent === 'schedule' && mergeTrainEnabled === 'true');
 
   return forkGuardPasses && ciStormGuardPasses;
 }
@@ -136,7 +154,7 @@ describe('merge-train.yml trigger wiring (dual post-completion wake-up)', () => 
     const condition = String(getReconcileJob(doc).if).trim();
     expect(condition).toBe(
       "(github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository) && " +
-        "(github.event_name != 'workflow_run' || github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'push')",
+        "(github.event_name != 'workflow_run' || github.event.workflow_run.name != 'CI' || github.event.workflow_run.event == 'push' || (github.event.workflow_run.event == 'schedule' && vars.MERGE_TRAIN_ENABLED == 'true'))",
     );
   });
 
@@ -183,12 +201,42 @@ describe('merge-train.yml trigger wiring (dual post-completion wake-up)', () => 
     ).toBe(false);
   });
 
-  it('does NOT wake reconcile on CI’s own hourly scheduled run completion', () => {
+  it('does NOT wake reconcile on CI’s own hourly scheduled run completion when the train is disabled', () => {
     expect(
       evaluateReconcileGate({
         eventName: 'workflow_run',
         workflowRunName: 'CI',
         workflowRunEvent: 'schedule',
+      }),
+    ).toBe(false);
+    expect(
+      evaluateReconcileGate({
+        eventName: 'workflow_run',
+        workflowRunName: 'CI',
+        workflowRunEvent: 'schedule',
+        mergeTrainEnabled: 'false',
+      }),
+    ).toBe(false);
+  });
+
+  it('DOES wake reconcile on a scheduled CI completion once the train is enabled (closes the mainHealthReason gap)', () => {
+    expect(
+      evaluateReconcileGate({
+        eventName: 'workflow_run',
+        workflowRunName: 'CI',
+        workflowRunEvent: 'schedule',
+        mergeTrainEnabled: 'true',
+      }),
+    ).toBe(true);
+  });
+
+  it('does NOT wake reconcile on a PR-triggered CI completion even when the train is enabled (no storm)', () => {
+    expect(
+      evaluateReconcileGate({
+        eventName: 'workflow_run',
+        workflowRunName: 'CI',
+        workflowRunEvent: 'pull_request',
+        mergeTrainEnabled: 'true',
       }),
     ).toBe(false);
   });
