@@ -2227,6 +2227,60 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).not.toContain('Detouring for');
   });
 
+  it('does not let a dead (lingering-corpse) enemy block the safe-loot detour', () => {
+    // Regression: findNearestOtherEnemyDistance/computeOtherThreatEscapePush must
+    // exclude dead (HP<=0) entities. A killed enemy lingers in the ECS with its
+    // Enemy+Position intact for its DeathTimer duration (see deathTimerSystem.ts),
+    // sitting at the exact spot it just dropped loot. Without a health filter, that
+    // corpse would count as "a nearby threat" and permanently block the detour for
+    // the very drop the AI just earned.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    const farFt = SAFE_LOOT_ENEMY_CLEARANCE_FT + 8;
+    spawnEnemy(world, farFt, 0, 20);
+    // A corpse (hp=0) sitting right next to the gold, well inside
+    // SAFE_LOOT_ENEMY_CLEARANCE_FT — must NOT block the detour.
+    spawnEnemy(world, 5, 0.5, 0);
+    spawnGold(world, 5, 0, 3);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).toContain('Detouring for');
+  });
+
+  it('does not let a dead (lingering-corpse) enemy bend the multi-threat kiting escape push', () => {
+    // Same corpse-exclusion fix, but for computeOtherThreatEscapePush: a dead
+    // second enemy inside the standoff ring must contribute zero escape push,
+    // so the decision should match the single-live-enemy baseline exactly.
+    const baselineWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(baselineWorld, 0, 0);
+    spawnEnemy(baselineWorld, 0, 3, 20);
+    setActiveWeapon(baselineWorld, getWeaponDef('bow')!);
+    const baselineAi = new BehaviorTreeAI({ seed: 7 });
+    baselineAi.poll(createInputState(), baselineWorld);
+    const baseline = baselineAi.getDecision();
+    expect(baseline.reason).toContain('Ranged orbit');
+
+    const corpseWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(corpseWorld, 0, 0);
+    spawnEnemy(corpseWorld, 0, 3, 20);
+    // Dead (hp=0) "enemy" at the same spot the live second threat used in the
+    // sibling multi-threat test (5,0) — well inside the standoff ring — must be
+    // fully ignored by the escape-push scan.
+    spawnEnemy(corpseWorld, 5, 0, 0);
+    setActiveWeapon(corpseWorld, getWeaponDef('bow')!);
+    const corpseAi = new BehaviorTreeAI({ seed: 7 });
+    corpseAi.poll(createInputState(), corpseWorld);
+    const withCorpse = corpseAi.getDecision();
+    expect(withCorpse.reason).toContain('Ranged orbit');
+
+    expect(withCorpse.targetX!).toBeCloseTo(baseline.targetX!, 5);
+    expect(withCorpse.targetY!).toBeCloseTo(baseline.targetY!, 5);
+  });
+
   it('preempts a farther quest target with a nearby threat while keeping the quest eid', () => {
     // Ranged preemption (planRangedEngagement): when the primary engaged target is a
     // far quest enemy but a *different* enemy has pushed inside contactThreatRadius,

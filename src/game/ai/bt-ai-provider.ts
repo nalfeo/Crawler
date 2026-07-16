@@ -7690,13 +7690,21 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Distance (ft) to the nearest perceived enemy within `radiusFt`, optionally
-   * excluding `excludeEid` (e.g. the current engagement target), or `null` if
-   * none. Used by the safe-loot detour ({@link maybeDetourForLoot}) as a
-   * simple "is anything nearby at all" safety gate — magnitude only, no
-   * direction needed there. For the ranged-kiting escape vector itself, see
-   * {@link computeOtherThreatEscapePush}, which needs each threat's position,
-   * not just the nearest distance.
+   * Distance (ft) to the nearest perceived, LIVING enemy within `radiusFt`,
+   * optionally excluding `excludeEid` (e.g. the current engagement target),
+   * or `null` if none. Used by the safe-loot detour ({@link
+   * maybeDetourForLoot}) as a simple "is anything nearby at all" safety gate
+   * — magnitude only, no direction needed there. For the ranged-kiting
+   * escape vector itself, see {@link computeOtherThreatEscapePush}, which
+   * needs each threat's position, not just the nearest distance.
+   *
+   * Filters out dead (HP<=0) entities: a killed enemy lingers in the ECS with
+   * its `Enemy`+`Position` components intact for the duration of its
+   * `DeathTimer` (knockback/death-animation delay — see
+   * `deathTimerSystem.ts`), sitting at the exact spot it just dropped loot.
+   * Without this filter, that corpse would incorrectly count as a nearby
+   * threat and permanently block the loot detour for the very drop the AI
+   * just earned.
    */
   private findNearestOtherEnemyDistance(
     world: GameWorld,
@@ -7706,8 +7714,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     excludeEid?: number,
   ): number | null {
     let nearest: number | null = null;
-    for (const eid of query(world.ecs, [Enemy, Position])) {
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (excludeEid !== undefined && eid === excludeEid) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
@@ -7722,17 +7732,22 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * Accumulates an escape-push vector (raw ft, not unit length) away from
-   * every perceived enemy other than `excludeEid` that has breached the
-   * `spacedOrbit` standoff ring, within `radiusFt`. `target` (the globally
-   * nearest enemy — see {@link buildEngageBehavior}) is always excluded here
-   * because its contribution is already handled by the primary radial/strafe
-   * step; this only adds the DIRECTIONAL correction for other threats a plain
-   * nearest-distance comparison could never see (since no other enemy can be
-   * closer than the one already chosen as target). Each contributing enemy
-   * pushes away from itself with a magnitude proportional to how far it has
-   * breached the ring (`spacedOrbit - dist`), and the summed vector is clamped
-   * to KITE_RADIAL_STEP_FT so a large swarm can't overwhelm the primary
-   * target's own orbit/strafe motion.
+   * every perceived, LIVING enemy other than `excludeEid` that has breached
+   * the `spacedOrbit` standoff ring, within `radiusFt`. `target` (the
+   * globally nearest enemy — see {@link buildEngageBehavior}) is always
+   * excluded here because its contribution is already handled by the primary
+   * radial/strafe step; this only adds the DIRECTIONAL correction for other
+   * threats a plain nearest-distance comparison could never see (since no
+   * other enemy can be closer than the one already chosen as target). Each
+   * contributing enemy pushes away from itself with a magnitude proportional
+   * to how far it has breached the ring (`spacedOrbit - dist`), and the
+   * summed vector is clamped to KITE_RADIAL_STEP_FT so a large swarm can't
+   * overwhelm the primary target's own orbit/strafe motion.
+   *
+   * Filters out dead (HP<=0) entities for the same reason as {@link
+   * findNearestOtherEnemyDistance} — a lingering corpse (see `DeathTimer` /
+   * `deathTimerSystem.ts`) is not an active threat and should not bend the
+   * kite path away from where it's already sitting motionless.
    */
   private computeOtherThreatEscapePush(
     world: GameWorld,
@@ -7744,8 +7759,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   ): { x: number; y: number } {
     let pushX = 0;
     let pushY = 0;
-    for (const eid of query(world.ecs, [Enemy, Position])) {
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
       if (eid === excludeEid) continue;
+      const health = world.stores.health.current[eid] ?? 0;
+      if (health <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
       if (!this.canPerceiveWorldPosition(world, ex, ey)) continue;
