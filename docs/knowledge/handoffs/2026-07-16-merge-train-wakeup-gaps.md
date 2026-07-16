@@ -115,7 +115,8 @@ main.
   - a step-ordering assertion (wake step must run after the publish step)
   - an `if: always()` assertion on the wake step
   - a `describe` block covering the new retryable-check fallback step: its
-    `if: failure()` condition and App-token wiring, its ordering (after
+    final `(failure() || cancelled()) && steps.recovery-app-token.outcome ==
+'success' && (...)` condition and App-token wiring, its ordering (after
     publish, before the wake dispatch), its bounded retry behavior, and that
     its script actually posts a `cancelled` conclusion with the right
     `head_sha`/`external_id`
@@ -418,3 +419,52 @@ Updated `tests/unit/merge-train-validate-publish.test.ts`:
 
 Test counts unchanged (24 = 19 + 5) — extended existing test bodies, no new
 test cases added.
+
+## Sixth round follow-up (reconciling an independent recovery-mint guard)
+
+While pushing the fifth-round fix, an independently-landed autonomous
+agent-merge commit (`fad5097f`) added a `steps.recovery-app-token.outcome ==
+'success'` clause to the retryable-check fallback step's condition: if the
+recovery-mint step itself fails (e.g. the same transient GitHub Apps auth
+error that hit the original mint also hits the recovery attempt), there is no
+valid App-authored token to call `checks.create` with, so attempting the
+retryable-check step would just waste an attempt and produce a confusing
+secondary failure instead of a clean, diagnosable no-op.
+
+Reconciled this with the fifth round's `cancelled()` work (the two changes
+had landed on divergent commits). **Final condition on both fallback steps**:
+
+```
+(failure() || cancelled()) && steps.recovery-app-token.outcome == 'success'
+  && (steps.app-token.outcome == 'failure'
+      || steps.app-token.outcome == 'cancelled'
+      || steps.publish.outcome == 'failure'
+      || steps.publish.outcome == 'cancelled')
+```
+
+Note: the "Generate recovery app token" step itself is **not** gated on its
+own outcome (it can't be — nothing mints its replacement), only the
+downstream "Mark candidate check retryable" step is. Verified the guard
+remains reachable after a genuine app-token/publish failure or cancellation
+(the recovery mint independently succeeds in the common case), correctly
+suppresses the retryable-check step when the recovery mint itself fails or is
+cancelled, and does not reinstate the fourth round's implicit-`success()`
+dead-code trap (the guard is ANDed alongside the already-verified
+`failure() || cancelled()` prefix, not in place of it). Added one new
+semantic-eval test case (recovery-mint failure with a genuine app-token
+failure → fallback must not fire). Test counts: 24 (19 + 5), same file counts
+as the fifth round — one existing test body extended, no new `it()` blocks.
+
+**Correcting earlier round narratives above**: the "Follow-up fix" /
+"Second follow-up fix" prose in the Summary (originally written after the
+first shepherd round) and the "Second shepherd-round follow-up" section both
+describe the retryable-check and recovery-token-mint steps as gated on plain
+`if: failure()`. That was accurate for the commit each section documents at
+the time, but is now stale relative to the shipped workflow — the actual,
+final condition on both steps is the combined
+`(failure() || cancelled()) && steps.recovery-app-token.outcome == 'success'
+&& (...)` expression documented in this section and in "Files touched"
+below, arrived at across the third/fourth/fifth/sixth rounds. Treat this
+section, "Files touched", and the workflow's own inline comments as the
+authoritative current state; earlier round sections are a historical record
+of how the condition evolved, not the shipped behavior.
