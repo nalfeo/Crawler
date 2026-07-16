@@ -137,7 +137,7 @@ main.
 
 - `npm run typecheck` — clean
 - `npm run lint` — clean
-- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **26/26 passed** (21 + 5)
+- Targeted tests: `npx vitest run tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-workflow-wakeups.test.ts` — **27/27 passed** (22 + 5) — this line is kept current at each round; treat a fresh test run as authoritative over any inline count in an older round section below
 - Both modified workflow YAML files parse cleanly via the `yaml` package (same
   parser the tests use) — confirmed no syntax breakage.
 - `npm run verify:fast` — passed (typecheck + lint + changed unit tests +
@@ -626,3 +626,26 @@ this "Verification" section previously said "24/24 passed (19 + 5)" from an
 earlier round; updated to the current accurate "26/26 passed (21 + 5)". The
 PR description had the same stale numbers and round count; resynced
 separately alongside this handoff update.
+
+## Tenth round follow-up (missing coverage for the update-in-place fallback's own fallback branch)
+
+The ninth round's fix left one edge case of its own change untested: the
+`checks.update`-in-place logic only fires when the `listForRef` lookup finds
+an existing (non-terminal) matching check run; when it finds none at all,
+the step still falls back to `checks.create` (the should-be-unreachable
+defensive branch, since `reconcile.mjs`'s `dispatchValidation()` always
+creates the `in_progress` check before this workflow is even dispatched).
+That `create` fallback path had no test asserting it is actually exercised
+when `listForRef` returns an empty `check_runs` array — only the "existing
+non-terminal run" path was covered.
+
+Added `falls back to creating a new check only when no matching check-run
+exists at all yet` to `tests/unit/merge-train-validate-publish.test.ts`:
+mocks `listForRef` returning `{ check_runs: [] }` and asserts `checks.create`
+**is** called exactly once while `checks.update` is **not** called. No
+production code changes — this round is test-coverage-only.
+
+Test counts: **27 (26 + 1 new `it()` block) = 22 (publish) + 5 (wake-ups)**.
+Ran `npx vitest run tests/unit/merge-train-validate-publish.test.ts
+tests/unit/merge-train-workflow-wakeups.test.ts` — 27/27 passed. Re-ran
+`npm run verify:fast` — clean.

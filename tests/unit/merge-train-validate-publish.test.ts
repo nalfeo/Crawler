@@ -570,6 +570,57 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(updateArgs?.conclusion).toBe('cancelled');
     });
 
+    it('falls back to creating a new check only when no matching check-run exists at all yet', async () => {
+      const doc = loadWorkflow();
+      const step = getFallbackStep(doc);
+      const script = step.with?.script;
+      expect(typeof script).toBe('string');
+
+      let createCalls = 0;
+      let updateCalls = 0;
+      const github = {
+        rest: {
+          checks: {
+            listForRef: async () => ({
+              data: { check_runs: [] },
+            }),
+            create: async () => {
+              createCalls += 1;
+              return { data: {} };
+            },
+            update: async () => {
+              updateCalls += 1;
+              return { data: {} };
+            },
+          },
+        },
+      };
+      const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+      const previousEnv = {
+        CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        FINGERPRINT: process.env.FINGERPRINT,
+        APP_ID: process.env.APP_ID,
+      };
+      process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.FINGERPRINT = 'cafef00d';
+      process.env.APP_ID = '12345';
+      try {
+        const run = new Function(
+          'github',
+          'context',
+          `return (async () => {\n${script}\n})();`,
+        ) as (github: unknown, context: unknown) => Promise<void>;
+        await run(github, context);
+      } finally {
+        for (const [key, value] of Object.entries(previousEnv)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+      expect(updateCalls).toBe(0);
+      expect(createCalls).toBe(1);
+    });
+
     it('retries transient check publication failures twice before succeeding', async () => {
       vi.useFakeTimers();
       const doc = loadWorkflow();
