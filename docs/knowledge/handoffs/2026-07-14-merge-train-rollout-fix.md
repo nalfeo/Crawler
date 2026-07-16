@@ -56,18 +56,6 @@ tests now make both runtime assumptions explicit.
 
 ### Mistakes Made
 
-<<<<<<< HEAD
-The permission boundary between the repository App token (used for promotion)
-and the built-in Actions token (used for workflow dispatch) was not modelled
-in the initial test suite, leaving a gap that only surfaced in live hosted-runner
-execution.
-
-### Opportunities for Future Improvement
-
-Add a pre-merge test fixture that explicitly verifies the token-role boundary
-so future authentication changes trigger a test failure before reaching
-production runners.
-=======
 Tests relied only on synthetic commits without verifying the hosted-runner
 permission model, masking the App token vs. Actions token identity boundary
 until the first real CI run.
@@ -77,4 +65,3 @@ until the first real CI run.
 Any future workflow identity or permission change should update the rollout
 tests first, so the boundary assumptions are validated before deployment rather
 than discovered at canary time.
->>>>>>> origin/main

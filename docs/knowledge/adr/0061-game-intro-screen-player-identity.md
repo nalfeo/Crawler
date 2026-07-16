@@ -6,12 +6,8 @@ Accepted
 
 ## Date
 
-<<<<<<< HEAD
-2026-07-13  
-=======
 2026-07-13
 
->>>>>>> origin/main
 **Deciders:** @nalfeo (maintainer)
 
 ## Context

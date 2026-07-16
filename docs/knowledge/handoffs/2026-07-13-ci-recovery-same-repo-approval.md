@@ -57,25 +57,6 @@ ci-policy
 ### Lessons Learned
 
 GitHub's workflow-run approval endpoint is fork-only, but CI recovery
-<<<<<<< HEAD
-intentionally excludes fork PRs. Treating a same-repository `action_required`
-conclusion as approval-capable inverted those two boundaries. Keeping the
-security checks ahead of the benign same-repository disposition preserves
-forensic rejection reasons without dispatching recovery for an unfixable 403.
-
-### Mistakes Made
-
-The original reconciler lacked an explicit same-repository disposition branch,
-so a same-repo `action_required` conclusion fell through to an approval code
-path that GitHub's API cannot satisfy on non-fork PRs, producing a spurious
-403 and a misleading `workflow-approval` blocker.
-
-### Opportunities for Future Improvement
-
-Add a static assertion or integration test that verifies no reconciler code
-path issues a workflow-run approval request for a same-repository PR, so this
-boundary cannot silently regress in future CI recovery rewrites.
-=======
 intentionally excludes fork PRs. Security checks must run ahead of any benign
 same-repository disposition so forensic rejection reasons are preserved and
 recovery is never dispatched for an unfixable 403.
@@ -91,4 +72,3 @@ dispatched recovery for a non-recoverable workflow failure.
 Add explicit coverage for each GitHub event category (fork vs. same-repo) against
 the security precondition checks so future changes to the recovery logic cannot
 accidentally re-invert the boundary.
->>>>>>> origin/main

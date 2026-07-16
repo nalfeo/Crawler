@@ -181,34 +181,6 @@ train and re-observe a clean cycle.
 
 - The GitHub Actions `schedule` cron and `workflow_run` triggers on
   `merge-train.yml` were observed running unreliably under heavy concurrent
-<<<<<<< HEAD
-  Actions load in this shared repo (real gaps of 1.5–2 hours vs. the
-  configured 5-minute cron; `workflow_run` failing to fire after several
-  validation completions). This is an operational observation, not something
-  fixed in this session — worth a future look if it recurs, but out of scope
-  for this bug fix.
-- This incident is a strong, concrete instance of the general lesson from
-  #1151/DEC-021 (list-summary vs. detail hydration) recurring one layer up
-  the stack: an eventually-consistent, secondary GitHub API signal
-  (`merged`/`merged_at`) was treated as synchronous and authoritative, and a
-  lag in it was allowed to override/block already-established ground truth
-  (the atomic git push). Worth keeping in mind for any future GitHub-API-based
-  postcondition check in this codebase.
-
-### Mistakes Made
-
-The batch-promotion postcondition trusted the GitHub REST `merged`/`merged_at`
-field as a synchronous, authoritative signal rather than as an eventually-consistent
-secondary indicator. The atomic git push already established ground truth; polling a
-lagging field on top of it introduced a false-failure path.
-
-### Opportunities for Future Improvement
-
-Any future GitHub-API-based postcondition check should prefer the locally-established
-ground truth (e.g., exit code of the git push, or the exact merge-commit SHA) over
-polling GitHub's eventually-consistent summary fields. Document this as a design
-principle in the merge-train architecture notes.
-=======
   Actions load (real gaps of 1.5–2 hours vs. the configured 5-minute cron;
   `workflow_run` failing to fire after several validation completions). This is
   an operational observation, not something fixed in this session — worth a
@@ -231,4 +203,3 @@ on PRs that had already been merged and their branch deleted.
 A periodic sweep for closed-but-still-labeled PRs would serve as defense in
 depth beyond the coupling fix. Track in issue #1154 if the stale-label pattern
 recurs.
->>>>>>> origin/main
