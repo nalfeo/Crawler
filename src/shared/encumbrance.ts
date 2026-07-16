@@ -88,7 +88,7 @@ export function computeEncumbranceMultiplierForMass(
  */
 export const ENCUMBRANCE_BASE_LB = 10 as const;
 export const ENCUMBRANCE_PER_STR_LB = 5 as const;
-const ENCUMBRANCE_ENCUMBERED_FACTOR = 2 as const;
+export const ENCUMBRANCE_ENCUMBERED_FACTOR = 2 as const;
 export const ENCUMBRANCE_HEAVY_FACTOR = 3 as const;
 
 /** Additive move-speed penalty table for the gear-only helper lane. */
