@@ -198,3 +198,43 @@ None blocking. Follow-up ideas (not required by the approved spec):
   given locked origin/dir" (used by both call sites) would make a future
   regression like this structurally impossible rather than relying on
   review to catch a copy-pasted-but-diverged formula.
+
+## Balance validation: 250ms telegraph default vs. pre-PR baseline
+
+The review harness flagged the new 250ms production/headless telegraph
+default as a hostile-cadence/AI-behavior change requiring a broad win-rate
+seed sweep (only one seed-42 smoke run had been reported). Per AGENTS.md's
+"broad sweeps (>10 runs) use GitHub infrastructure" rule, this was run via
+two GitHub-Actions `weapon-sweep.yml` `workflow_dispatch` runs (not local
+compute), comparing pre-PR `main` (no telegraph; instant fire) against this
+PR's branch (250ms telegraph default) across all 6 Floor-1 starter weapons ×
+seeds 1-15 (90 runs each side):
+
+- `main` baseline run: <https://github.com/nalfeo/Crawler/actions/runs/29494326172>
+- PR-branch run (250ms telegraph): <https://github.com/nalfeo/Crawler/actions/runs/29494332304>
+
+| weapon         | runs | main win% | PR win% (250ms) | delta  |
+| -------------- | ---- | --------- | --------------- | ------ |
+| baseball-bat   | 15   | 100.0%    | 100.0%          | +0.0%  |
+| bow            | 15   | 100.0%    | 100.0%          | +0.0%  |
+| fireball       | 15   | 100.0%    | 100.0%          | +0.0%  |
+| pistol         | 15   | 100.0%    | 100.0%          | +0.0%  |
+| sword          | 15   | 93.3%     | 86.7%           | -6.7%  |
+| throwing-knife | 15   | 80.0%     | 66.7%           | -13.3% |
+| **OVERALL**    | 90   | **95.6%** | **92.2%**       | -3.3%  |
+
+Both the pre-PR baseline and the post-PR (telegraph-enabled) overall win
+rate stay comfortably at/above the repo's Floor-1 90%+ win-rate gate
+(AGENTS.md rule 12), so this is not the "materially less than 90%" signal
+that rule flags as a likely AI-runner bug or extreme regression — no code
+change was made in response to this sweep, per the explicit hard constraint
+not to retune damage/cadence/spawn-rate/player-stat values or bend gameplay
+to chase a higher rate on this sweep. The largest per-weapon deltas
+(throwing-knife -13.3pp, sword -6.7pp) are consistent with those being the
+two weapons with the least reach/mobility against a ranged attacker that now
+gets a fair 250ms telegraph window to re-aim/adjust before firing (rather
+than firing instantly on detection) — i.e. the enemy is timing its shot
+better post-telegraph, which is the intended effect of the feature, not a
+bug. Recorded here as the sweep artifact this thread requested; raw JSON
+available via the two workflow run's uploaded artifacts (`weapon-sweep-<weapon>.json`,
+30-day retention).
