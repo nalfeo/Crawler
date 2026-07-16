@@ -34,6 +34,7 @@ const arbItem: fc.Arbitrary<EquipmentItemDef> = fc.record({
     .dictionary(fc.constantFrom(...ALL_STAT_IDS), fc.integer({ min: -10, max: 10 }))
     .map((d) => d as Partial<Record<StatId, number>>),
   rarity: fc.constantFrom(...RARITIES),
+  weightLb: fc.float({ min: 0, max: 50, noNaN: true }),
 });
 
 describe('Equipment System — Property Tests', () => {
