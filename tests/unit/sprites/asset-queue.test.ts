@@ -437,4 +437,92 @@ describe('AzureStorageQueue dequeue — invalid-size message handling', () => {
     expect(result).toBeNull();
     expect(azureSdkMock.deleteMessage).toHaveBeenCalledWith('msg-3', 'pop-3');
   });
+
+  it('skips consecutive invalid-size messages and returns the following valid request', async () => {
+    const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const validMessageText = JSON.stringify(makeRequest({ briefId: 'iron-sword' }));
+    azureSdkMock.receiveMessages
+      .mockResolvedValueOnce({
+        receivedMessageItems: [
+          {
+            messageId: 'p-1',
+            popReceipt: 'pr-1',
+            messageText: invalidSizeMessage,
+            dequeueCount: 1,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        receivedMessageItems: [
+          {
+            messageId: 'p-2',
+            popReceipt: 'pr-2',
+            messageText: invalidSizeMessage,
+            dequeueCount: 1,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        receivedMessageItems: [
+          {
+            messageId: 'p-3',
+            popReceipt: 'pr-3',
+            messageText: invalidSizeMessage,
+            dequeueCount: 1,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        receivedMessageItems: [
+          {
+            messageId: 'valid-1',
+            popReceipt: 'vpr-1',
+            messageText: validMessageText,
+            dequeueCount: 1,
+          },
+        ],
+      });
+
+    const q = AzureStorageQueue.fromOptions({ accountName: 'myaccount', accountKey: 'dGVzdA==' });
+    const result = await q.dequeue();
+
+    expect(result).not.toBeNull();
+    expect(result?.request).toMatchObject({ briefId: 'iron-sword' });
+    expect(azureSdkMock.deleteMessage).toHaveBeenCalledTimes(3);
+    expect(azureSdkMock.deleteMessage).toHaveBeenCalledWith('p-1', 'pr-1');
+    expect(azureSdkMock.deleteMessage).toHaveBeenCalledWith('p-2', 'pr-2');
+    expect(azureSdkMock.deleteMessage).toHaveBeenCalledWith('p-3', 'pr-3');
+    expect(azureSdkMock.receiveMessages).toHaveBeenCalledTimes(4);
+    stderrWrite.mockRestore();
+  });
+
+  it('returns null (empty queue) after draining all consecutive invalid-size messages', async () => {
+    azureSdkMock.receiveMessages
+      .mockResolvedValueOnce({
+        receivedMessageItems: [
+          {
+            messageId: 'p-a',
+            popReceipt: 'pr-a',
+            messageText: invalidSizeMessage,
+            dequeueCount: 1,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        receivedMessageItems: [
+          {
+            messageId: 'p-b',
+            popReceipt: 'pr-b',
+            messageText: invalidSizeMessage,
+            dequeueCount: 1,
+          },
+        ],
+      });
+    const q = AzureStorageQueue.fromOptions({ accountName: 'myaccount', accountKey: 'dGVzdA==' });
+    const result = await q.dequeue();
+
+    expect(result).toBeNull();
+    expect(azureSdkMock.deleteMessage).toHaveBeenCalledTimes(2);
+    expect(azureSdkMock.receiveMessages).toHaveBeenCalledTimes(3);
+  });
 });

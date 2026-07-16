@@ -46,7 +46,7 @@ body:
     id: size
     attributes:
       label: Size (optional)
-      description: Output footprint. Omitted boss requests default to large; all other requests default to default.
+      description: 'Output footprint. When omitted, defaults to large if Type is omitted/enemy and Name ends in -boss, or if Type is enemy and Brief mentions boss, godfather, or godmother. Otherwise defaults to default.'
       options:
         - ''
         - default
