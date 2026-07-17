@@ -38,6 +38,13 @@ import {
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const SPECIAL_FLOOR_1_MOBS = ['slime-mini', 'slime-rat', 'rat-slime'] as const;
+const SPAWNER_FLOOR_1_MOBS = [
+  'rat-brute',
+  'rat-king',
+  'rat-queen',
+  'mama-slime',
+  'papa-slime',
+] as const;
 const COMPONENTS = [
   Position,
   Velocity,
@@ -98,6 +105,7 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   const expectedIds = [
     ...floor1EnemyPack.archetypes.map((archetype) => archetype.id),
     ...SPECIAL_FLOOR_1_MOBS,
+    ...SPAWNER_FLOOR_1_MOBS,
     ...floor2EnemyPack.archetypes.map((archetype) => archetype.id),
   ].sort();
   const actualIds = RUNTIME_MOB_MOTION_PROFILES.map((profile) => profile.archetypeId).sort();
@@ -407,5 +415,60 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   const expectedRecycledMotion = sampleMovementMotion(800, 'hop');
   expect(recycledImage.x, 'recycled EID resolves the new slime profile').toBeCloseTo(
     ftToPx(20) + (recycledImage.flipX ? -1 : 1) * ftToPx(expectedRecycledMotion.offsetX),
+  );
+
+  // ── Generation-safe hit reaction: stale events must not apply to a recycled EID ──
+  // Push a hit event with the OLD generation before recycling, then verify the
+  // new occupant does not receive the stale reaction on the next sync.
+  const staleGenWorld = createTestWorld({ seed: 99, floor: 2 });
+  staleGenWorld.floorScenario = {
+    enemyArchetypes: new Map(),
+    objective: { bossBattles: new Map() },
+  } as typeof staleGenWorld.floorScenario;
+  staleGenWorld.floorExtendedState = { ambientEnemyArchetypes: new Map() };
+  const victimEid = spawnBehaviorEnemy(staleGenWorld, 5, 5, 100, 0, 1, 30, 8);
+  setComponent(staleGenWorld.ecs, victimEid, Sprite, { textureId: 1, width: 3, height: 3 });
+  setEnemyAppearanceKey(staleGenWorld, victimEid, 'rat');
+  const staleStub = createSceneStub({ kenneyLoaded: true });
+  const staleBridge = createPhaserBridge(staleStub.scene);
+  staleBridge.sync(staleGenWorld, 0);
+
+  // Record the OLD generation for the victim EID.
+  const oldGeneration = staleGenWorld.entityRenderGeneration[victimEid];
+  // Push a hit event with the victim's OLD generation stamped in.
+  staleGenWorld.combatEvents.push({
+    type: 'hit',
+    x: 5,
+    y: 5,
+    amount: 5,
+    targetType: 'enemy',
+    targetEid: victimEid,
+    targetRenderGeneration: oldGeneration,
+    timestamp: 10,
+  });
+
+  // Remove and immediately recycle the EID (bitecs reuses it).
+  removeEntity(staleGenWorld.ecs, victimEid);
+  staleGenWorld.floorScenario!.enemyArchetypes.delete(victimEid);
+  const newOccupantEid = spawnBehaviorEnemy(staleGenWorld, 30, 5, 100, 0, 1, 30, 8);
+  expect(newOccupantEid, 'EID must be recycled for the generation-safety test to be meaningful').toBe(
+    victimEid,
+  );
+  setComponent(staleGenWorld.ecs, newOccupantEid, Sprite, { textureId: 2, width: 3, height: 3 });
+  setEnemyAppearanceKey(staleGenWorld, newOccupantEid, 'slime');
+
+  // The new occupant has a different generation; the stale event must be skipped.
+  expect(staleGenWorld.entityRenderGeneration[newOccupantEid]).not.toBe(oldGeneration);
+  const staleBeforeSync = gameplaySnapshot(staleGenWorld, [newOccupantEid]);
+  staleBridge.sync(staleGenWorld, 50);
+  expect(
+    gameplaySnapshot(staleGenWorld, [newOccupantEid]),
+    'generation-safe: stale hit event must not mutate new occupant gameplay state',
+  ).toEqual(staleBeforeSync);
+  const staleNewImage = [...staleStub.images].reverse().find((image) => !image.destroyed)!;
+  // The new occupant has no motion state, so it sits at neutral position — not
+  // at a hit-reaction offset — proving the stale event was discarded.
+  expect(staleNewImage.x, 'generation-safe: new occupant must not show stale hit reaction').toBe(
+    ftToPx(30),
   );
 });

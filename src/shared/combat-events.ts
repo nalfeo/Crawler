@@ -56,6 +56,20 @@ export interface CombatEvent {
    * against.
    */
   sourceEid?: number;
+  /**
+   * Render-generation of `sourceEid` at event creation time.
+   * Renderers compare this against `world.entityRenderGeneration[sourceEid]`
+   * and skip the reaction if the EID was recycled between event creation and
+   * the next render frame.
+   */
+  sourceRenderGeneration?: number;
+  /**
+   * Render-generation of `targetEid` at event creation time.
+   * Renderers compare this against `world.entityRenderGeneration[targetEid]`
+   * and skip the reaction if the EID was recycled between event creation and
+   * the next render frame.
+   */
+  targetRenderGeneration?: number;
   /** Blood/ichor colour of the dying entity (0xRRGGBB). Defaults to red when absent. */
   bloodColor?: number;
   /** True when this hit critically struck (player-sourced damage only). */

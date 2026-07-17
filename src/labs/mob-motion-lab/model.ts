@@ -193,12 +193,19 @@ export function sampleDeathPreview(elapsedMs: number): DeathPreviewSample {
   };
 }
 
+// Death knockback is authored in legacy pixel units (7 px X, 1 px Y at full
+// progress). Convert to feet at the same ratio used by the other shared
+// samplers (8 px/ft) so ftToPx() in the render boundary produces the
+// originally-intended screen displacement.
+const DEATH_KNOCKBACK_X_FT = 7 / 8; // 7 px / 8 px·ft⁻¹ = 0.875 ft
+const DEATH_KNOCKBACK_Y_FT = 1 / 8; // 1 px / 8 px·ft⁻¹ = 0.125 ft
+
 function sampleDeath(elapsedMs: number): MobMotionTransform {
   const preview = sampleDeathPreview(elapsedMs);
   const impactFlash = 1 - clamp01(preview.phaseMs / 100);
   return {
-    offsetX: 7 * preview.knockbackProgress,
-    offsetY: preview.knockbackProgress,
+    offsetX: DEATH_KNOCKBACK_X_FT * preview.knockbackProgress,
+    offsetY: DEATH_KNOCKBACK_Y_FT * preview.knockbackProgress,
     scaleX: 1,
     scaleY: 1,
     rotation: 0,

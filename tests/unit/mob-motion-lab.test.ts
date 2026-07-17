@@ -143,6 +143,12 @@ describe('mob motion lab model', () => {
       alpha: 1,
     });
     expect(corpsePose.offsetX).toBeGreaterThan(0);
+    // Magnitude guard: peak knockback at 220 ms (smoothstep → 1) must equal
+    // 7 px / 8 px·ft⁻¹ = 0.875 ft. If `sampleDeath` regresses to raw-pixel
+    // amplitudes the bridge would scale them 8× (56 px instead of 7 px).
+    const peakPose = sampleMobMotion('death', 220);
+    expect(peakPose.offsetX).toBeCloseTo(7 / 8, 3);
+    expect(peakPose.offsetY).toBeCloseTo(1 / 8, 3);
   });
 
   it('cycles status concepts deterministically for scrubbed capture', () => {

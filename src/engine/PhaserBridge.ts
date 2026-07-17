@@ -542,9 +542,18 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       };
 
       // Capture authoritative hit events before CombatVfx drains the queue.
+      // Generation guards prevent stale events from a recycled EID being
+      // applied to the new occupant when multiple sim steps run before one render.
       for (const event of world.combatEvents) {
         if (event.type !== 'hit') continue;
         if (event.targetType === 'enemy' && event.targetEid !== undefined) {
+          const expectedGen = event.targetRenderGeneration;
+          if (
+            expectedGen !== undefined &&
+            world.entityRenderGeneration[event.targetEid] !== expectedGen
+          ) {
+            continue;
+          }
           const state = ensureMobMotionState(event.targetEid);
           if (state) state.hitAtMs = event.timestamp;
         }
@@ -553,6 +562,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           event.delivery === 'contact' &&
           event.sourceEid !== undefined
         ) {
+          const expectedGen = event.sourceRenderGeneration;
+          if (
+            expectedGen !== undefined &&
+            world.entityRenderGeneration[event.sourceEid] !== expectedGen
+          ) {
+            continue;
+          }
           const state = ensureMobMotionState(event.sourceEid);
           if (state) state.contactAtMs = event.timestamp;
         }

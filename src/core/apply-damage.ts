@@ -241,7 +241,11 @@ export function applyDamage(
       sourceY: options.sourceY,
     };
     if (isCrit) event.isCrit = true;
-    if (options.sourceEid !== undefined) event.sourceEid = options.sourceEid;
+    if (options.sourceEid !== undefined) {
+      event.sourceEid = options.sourceEid;
+      event.sourceRenderGeneration = world.entityRenderGeneration[options.sourceEid];
+    }
+    event.targetRenderGeneration = world.entityRenderGeneration[target];
     if (options.delivery !== undefined) event.delivery = options.delivery;
     world.combatEvents.push(event);
     if (options.sourceEid !== undefined && current - dealt <= 0) {
