@@ -325,9 +325,10 @@ test('lease-heartbeat in dry-run updates the state comment', async (t) => {
       body: [stateComment],
     }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: { name: LABEL } }),
-    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
-      body: { id: stateComment.id, body: '' },
-    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
   });
 
   t.after(() => server.close());
@@ -371,9 +372,10 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
       repositoryLabelExists = false;
       return { body: {} };
     },
-    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
-      body: { id: stateComment.id, body: '' },
-    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
   });
 
   t.after(() => server.close());
@@ -423,6 +425,10 @@ test('known stale-node 422 refetches ownership, retries detach once, and then co
       repositoryLabelExists
         ? { body: { name: LABEL } }
         : { status: 404, body: { message: 'Not Found' } },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
     [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
       detachAttempts += 1;
       if (detachAttempts === 1) {
@@ -441,9 +447,10 @@ test('known stale-node 422 refetches ownership, retries detach once, and then co
       repositoryLabelExists = false;
       return { body: {} };
     },
-    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
-      body: { id: stateComment.id, body: '' },
-    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
   });
   t.after(() => server.close());
 
@@ -464,6 +471,7 @@ test('known stale-node 422 refetches ownership, retries detach once, and then co
   assert.equal(issueDeletes.length, 2);
   assert.ok(repositoryDelete);
   assert.ok(mutatingCalls.indexOf(issueDeletes[1]) < mutatingCalls.indexOf(repositoryDelete));
+  assert.equal(parseStateComment(stateComment.body)?.status, 'idle');
 });
 
 test('known stale-node retry preserves a concurrently recreated atomic owner label', async (t) => {
@@ -4307,6 +4315,7 @@ test('duplicate stale-node convergence to waiting stops retry reacquire and keep
   if (!assertSuccessfulExit(t, code, stderr, 'converged waiting retry', true)) return;
 
   assert.match(stdout, /reason=converged-elsewhere/);
+  assert.equal(parseStateComment(stateComment.body)?.status, 'idle');
   assert.equal(
     mutatingCalls.some(
       (call) =>
@@ -5169,7 +5178,7 @@ test('stale-node 422 absent owner bit waits for the concurrent terminal state be
   );
 });
 
-test('stale-node 422 absent owner bit exits pending when the terminal state does not arrive', async (t) => {
+test('stale-node 422 absent owner bit fails closed when another run claims the handoff fence', async (t) => {
   const initialShepherdState = makeState({
     prNumber: PR_NUM,
     headSha: HEAD_SHA,
@@ -5209,19 +5218,26 @@ test('stale-node 422 absent owner bit exits pending when the terminal state does
         },
       };
     },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      status: 422,
+      body: {
+        message: 'Validation Failed',
+        errors: [{ resource: 'Label', field: 'name', code: 'already_exists' }],
+      },
+    }),
     [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
       body: { id: stateComment.id, body: '' },
     }),
   });
   t.after(() => server.close());
 
-  const { code, stdout, stderr } = await runScript(port, {
+  const { code, stderr } = await runScript(port, {
     RECOVERY_OPERATION: 'lease-release',
     CI_RECOVERY_MODE: 'dry-run',
   });
-  if (!assertSuccessfulExit(t, code, stderr, 'absent-owner-bit-pending', true)) return;
 
-  assert.match(stdout, /reason=handoff-pending/);
+  assert.notEqual(code, 0, 'a pending handoff must not acknowledge explicit lease release');
+  assert.match(stderr, /owner label was claimed during release handoff completion/);
   assert.equal(commentCalls, 4, 'bounded handoff should perform exactly two follow-up refetches');
   assert.equal(
     mutatingCalls.some(

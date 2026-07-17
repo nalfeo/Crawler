@@ -458,6 +458,9 @@ async function preserveConvergedElsewhereState(
 
 function stopIfReleaseConvergedElsewhere(result) {
   if (![RELEASE_CONVERGED_ELSEWHERE, RELEASE_HANDOFF_PENDING].includes(result)) return;
+  if (result === RELEASE_HANDOFF_PENDING) {
+    throw new Error(`PR #${prNumber} release handoff is still pending; retry reconciliation`);
+  }
   process.stdout.write(`skip pr=#${prNumber} reason=${result}\n`);
   process.exit(0);
 }
@@ -572,6 +575,44 @@ async function settleAbsentOwnerBit(initialFacts, ownershipToRelease, waitingTra
   return RELEASE_HANDOFF_PENDING;
 }
 
+async function completeReleaseHandoff(
+  initialFacts,
+  ownershipToRelease,
+  waitingTransition,
+  releasedState,
+) {
+  const handoffResult = await settleAbsentOwnerBit(
+    initialFacts,
+    ownershipToRelease,
+    waitingTransition,
+  );
+  if (handoffResult !== RELEASE_HANDOFF_PENDING) return handoffResult;
+
+  await claimRepositoryLabelFence('release handoff completion');
+  const fencedFacts = await fetchOwnershipFacts();
+  if (!sameOwnership(fencedFacts.state, ownershipToRelease)) {
+    if (!isConvergedElsewhereState(fencedFacts.state)) {
+      throw new Error(`PR #${prNumber} ownership changed during release handoff completion`);
+    }
+    await removeRepositoryLabel(labelName);
+    labelExists = false;
+    return preserveConvergedElsewhereState(
+      fencedFacts.state,
+      waitingTransition,
+      fencedFacts.labels,
+    );
+  }
+
+  await updateState(releasedState);
+  await completeWaitingExit(waitingTransition);
+  await removeRepositoryLabel(labelName);
+  if (await repositoryLabelExists(labelName)) {
+    throw new Error(`PR #${prNumber} owner label was recreated during release handoff completion`);
+  }
+  labelExists = false;
+  return RELEASE_COMPLETED;
+}
+
 async function disableAutoMergeForHumanGate() {
   if (!pr.auto_merge) return;
   if (!live) {
@@ -636,7 +677,7 @@ async function release(reason, nextState = null) {
         // Another run removed the atomic owner bit. Its terminal state PATCH may
         // still be in flight, so wait briefly for the handoff and never write or
         // reacquire from this stale snapshot if the state has not settled yet.
-        return settleAbsentOwnerBit(facts, ownershipToRelease, waitingTransition);
+        return completeReleaseHandoff(facts, ownershipToRelease, waitingTransition, releasedState);
       } else if (!facts.attached) {
         if (!sameOwnership(facts.state, ownershipToRelease)) {
           throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
@@ -651,7 +692,12 @@ async function release(reason, nextState = null) {
         }
         facts = await fetchOwnershipFacts();
         if (!facts.repositoryLabelPresent) {
-          return settleAbsentOwnerBit(facts, ownershipToRelease, waitingTransition);
+          return completeReleaseHandoff(
+            facts,
+            ownershipToRelease,
+            waitingTransition,
+            releasedState,
+          );
         }
         if (facts.attached || !sameOwnership(facts.state, ownershipToRelease)) {
           throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
@@ -669,7 +715,12 @@ async function release(reason, nextState = null) {
     }
     if (needsPostReleaseCheck) {
       const verifyFacts = await fetchOwnershipFacts();
-      return settleAbsentOwnerBit(verifyFacts, ownershipToRelease, waitingTransition);
+      return completeReleaseHandoff(
+        verifyFacts,
+        ownershipToRelease,
+        waitingTransition,
+        releasedState,
+      );
     }
   }
   labelExists = false;
