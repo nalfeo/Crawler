@@ -4817,8 +4817,8 @@ test('interrupted-release live fence fails closed when label re-created before r
 
 test('interrupted automation release reacquires directly with its attempt budget preserved', async (t) => {
   // The atomic owner label disappeared while the owning state remained at
-  // attempt=2. Resume directly through acquire() without an intermediate idle
-  // PATCH, preserving the same-key attempt so the dispatch becomes attempt=3.
+  // attempt=1. Resume directly through acquire() without an intermediate idle
+  // PATCH, preserving the same-key attempt so the dispatch becomes attempt=2.
   const failedCheck = {
     id: 11,
     name: 'ci',
@@ -4837,7 +4837,7 @@ test('interrupted automation release reacquires directly with its attempt budget
     owner: 'automation',
     status: 'dispatched',
     blockers,
-    attempt: 2,
+    attempt: 1,
     progressKey: automationProgressKey(HEAD_SHA, fingerprint),
     progressAt: new Date(Date.now() - 5000).toISOString(),
     updatedAt: new Date(Date.now() - 5000).toISOString(),
@@ -4907,7 +4907,7 @@ test('interrupted automation release reacquires directly with its attempt budget
   });
   if (!assertSuccessfulExit(t, code, stderr, 'interrupted-release carry-forward', true)) return;
 
-  assert.match(stdout, /resuming interrupted release pr=#42 attempt=2/);
+  assert.match(stdout, /resuming interrupted release pr=#42 attempt=1/);
   assert.match(stdout, /assigned copilot pr=#42/);
   assert.equal(
     mutatingCalls.some((call) => {
@@ -4928,8 +4928,8 @@ test('interrupted automation release reacquires directly with its attempt budget
   assert.equal(finalState?.status, 'dispatched');
   assert.equal(
     finalState?.attempt,
-    3,
-    'interrupted release must dispatch with attempt=3, not a reset attempt=1',
+    2,
+    'interrupted release must dispatch with attempt=2, not a reset attempt=1',
   );
 });
 
