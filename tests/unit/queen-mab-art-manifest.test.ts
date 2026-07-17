@@ -13,6 +13,12 @@ describe('Queen Mab generated-art manifest', () => {
     expect(QUEEN_MAB_ART_MANIFEST.generatedArtScope).toBe('queen-mab-only');
   });
 
+  it('exposes bosses as an extensible collection', () => {
+    expect(Array.isArray(QUEEN_MAB_ART_MANIFEST.bosses)).toBe(true);
+    expect(QUEEN_MAB_ART_MANIFEST.bosses.length).toBeGreaterThan(0);
+    expect(QUEEN_MAB_ART_MANIFEST.bosses[0]!.bossId).toBe('queen-mab-tarnish');
+  });
+
   it('declares every required visual phase with a procedural fallback', () => {
     const phaseIds = new Set(
       QUEEN_MAB_ART_MANIFEST.requiredVisualPhases.map((phase) => phase.phaseId),
@@ -38,6 +44,25 @@ describe('Queen Mab generated-art manifest', () => {
       expect(asset.bossId).toBe('queen-mab-tarnish');
       expect(asset.abilityId).toBe('queen-mab-verdigris-glamour');
     }
+  });
+
+  it('rejects an asset with a non-queen bossId when scope is queen-mab-only', () => {
+    const bad = structuredClone(QUEEN_MAB_ART_MANIFEST) as unknown as Record<string, unknown>;
+    (bad.assets as Array<Record<string, unknown>>)[0]!.bossId = 'some-other-boss';
+    expect(() => queenMabArtManifestSchema.parse(bad)).toThrow();
+  });
+
+  it('allows a second boss identity when scope is not queen-mab-only', () => {
+    const extended = structuredClone(QUEEN_MAB_ART_MANIFEST) as unknown as Record<string, unknown>;
+    extended.generatedArtScope = 'floor2-abilities';
+    (extended.bosses as Array<Record<string, unknown>>).push({
+      bossId: 'nana-snaggle',
+      bossArchetypeId: 'goblin-boss',
+      familyId: 'goblins',
+    });
+    // Assets with bossId 'queen-mab-tarnish' are valid under any scope.
+    // The schema itself should parse without the queen-only constraint.
+    expect(() => queenMabArtManifestSchema.parse(extended)).not.toThrow();
   });
 
   it('rejects a blocking asset', () => {

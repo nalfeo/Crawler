@@ -2580,6 +2580,30 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }
 
+      // Mob-ability circle avoidance: if the player is inside a committed
+      // telegraph circle, flee outward using the same committed geometry the
+      // renderer draws — no information advantage over what the player sees.
+      // Runs only when no projectile threat is in the dodge horizon.
+      for (const cue of ctx.world.mobAbilities.cues) {
+        if (cue.phase !== 'telegraph') continue;
+        const { geometry } = cue;
+        if (geometry.kind !== 'circle') continue;
+        const dx = ctx.playerX - geometry.x;
+        const dy = ctx.playerY - geometry.y;
+        const dist = Math.hypot(dx, dy);
+        // Trigger avoidance while inside the circle footprint.
+        if (dist >= geometry.radiusFt) continue;
+        if (dist > Number.EPSILON) {
+          this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+          this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
+        } else {
+          // Player is exactly at the circle center — flee along kite orbit tangent.
+          this.dodgeVecX = this.kiteOrbitSign;
+          this.dodgeVecY = 0;
+        }
+        return BTStatus.SUCCESS;
+      }
+
       // Enemy-body dodging remains suspended during retreat and engagement:
       // their movement planners own spacing. Projectile dodging above is safe in
       // those states because it reacts to transient trajectories, not the target.

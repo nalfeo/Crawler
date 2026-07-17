@@ -167,16 +167,26 @@ export function createHudAnnouncementBanner(
 
   function show(event: AnnouncementEvent): void {
     // Boss-ability casts carry a full authored string that must render exactly
-    // (never ellipsized or rebuilt from an archetype index).
+    // (never ellipsized or rebuilt from an archetype index). The panel is 420px
+    // wide; authored strings can exceed the 44-char single-line budget, so we
+    // enable word wrap and vertically re-center the label in the full panel.
+    const BOSS_ABILITY_WRAP_WIDTH = PANEL_WIDTH - 24; // 12px inset on each side
     if (event.kind === 'bossAbilityCast') {
-      labelText.setText(event.text ?? '');
-      labelText.setColor(colorForKind(event.kind));
+      labelText
+        .setWordWrapWidth(BOSS_ABILITY_WRAP_WIDTH, true)
+        .setText(event.text ?? '')
+        .setY(ANNOUNCEMENT_PANEL_HEIGHT / 2)
+        .setColor(colorForKind(event.kind));
       verbText.setText('');
       accent.setFillStyle(0xef4444);
     } else {
       const label = event.displayName ?? 'Spawner';
-      labelText.setText(ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS));
-      labelText.setColor(colorForKind(event.kind));
+      // Disable word wrap for the standard single-line path.
+      labelText
+        .setWordWrapWidth(0)
+        .setText(ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS))
+        .setY(16)
+        .setColor(colorForKind(event.kind));
       verbText.setText(verbForKind(event.kind).toUpperCase());
       accent.setFillStyle(event.kind === 'spawnerArenaStart' ? 0xf2b542 : 0x46d369);
     }

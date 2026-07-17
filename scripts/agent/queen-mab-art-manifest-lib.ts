@@ -63,23 +63,65 @@ const assetSchema = z
   })
   .strict();
 
+/**
+ * Per-boss identity entry in the manifest. Stored as an extensible collection
+ * so that future manifests can cover multiple bosses (e.g. all 18 Floor 2
+ * abilities) without changing the top-level schema shape.
+ */
+const bossIdentitySchema = z
+  .object({
+    bossId: idSchema,
+    bossArchetypeId: idSchema,
+    familyId: idSchema,
+  })
+  .strict();
+
 export const queenMabArtManifestSchema = z
   .object({
     schemaVersion: z.literal('mob-ability-art-manifest/v1'),
-    generatedArtScope: z.literal('queen-mab-only'),
+    /**
+     * Scope identifier for the art batch.
+     * - `"queen-mab-only"` is the v1 arena-slice value and is enforced by the
+     *   superRefine below.  Future manifests covering additional bosses must
+     *   use a different scope string (e.g. `"floor2-abilities"`) and will need
+     *   their own scope validation.
+     */
+    generatedArtScope: z.string().min(1),
     lastReviewedAt: z.iso.date(),
-    boss: z
-      .object({
-        bossId: idSchema,
-        bossArchetypeId: idSchema,
-        familyId: idSchema,
-      })
-      .strict(),
+    /**
+     * Extensible collection of boss identities covered by this manifest.
+     * The v1 Queen-only constraint is validated in superRefine, not hardcoded
+     * as a singular object, so future manifests can add entries here without a
+     * schema rewrite.
+     */
+    bosses: z.array(bossIdentitySchema).min(1),
     requiredVisualPhases: z.array(requiredVisualPhaseSchema).min(1),
     assets: z.array(assetSchema).min(1),
   })
   .strict()
   .superRefine((manifest, ctx) => {
+    // v1 scope constraint: the `queen-mab-only` scope may only reference Queen.
+    if (manifest.generatedArtScope === 'queen-mab-only') {
+      const bossIds = manifest.bosses.map((b) => b.bossId);
+      if (bossIds.length !== 1 || bossIds[0] !== 'queen-mab-tarnish') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['bosses'],
+          message:
+            'scope "queen-mab-only" requires exactly one boss with bossId "queen-mab-tarnish"',
+        });
+      }
+      for (const [index, asset] of manifest.assets.entries()) {
+        if (asset.bossId !== 'queen-mab-tarnish') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['assets', index, 'bossId'],
+            message: `scope "queen-mab-only" forbids asset with bossId "${asset.bossId}"`,
+          });
+        }
+      }
+    }
+
     const phaseIds = new Set<string>();
     for (const [index, phase] of manifest.requiredVisualPhases.entries()) {
       if (phaseIds.has(phase.phaseId)) {
@@ -115,6 +157,7 @@ export const queenMabArtManifestSchema = z
 export type QueenMabArtManifest = z.infer<typeof queenMabArtManifestSchema>;
 export type QueenMabArtAsset = QueenMabArtManifest['assets'][number];
 export type QueenMabRequiredVisualPhase = QueenMabArtManifest['requiredVisualPhases'][number];
+export type MobAbilityBossIdentity = z.infer<typeof bossIdentitySchema>;
 
 /** The seven required visual phases from the issue's presentation contract. */
 export const REQUIRED_VISUAL_PHASE_IDS = [

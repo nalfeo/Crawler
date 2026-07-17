@@ -84,8 +84,10 @@ export interface MobAbilityRuntimeDefinition {
 
 /**
  * Committed public cue state, rebuilt each tick by the executor and consumed by
- * the renderer. Never read by gameplay decisions other than the ability's own
- * resolution (which reads the committed geometry directly off the instance).
+ * the renderer AND AI avoidance logic. The same committed geometry that the
+ * renderer draws is the geometry the AI reads — guaranteeing no information
+ * advantage. Ability resolution reads its geometry directly off the instance
+ * (not from cues) to avoid any timing dependency on cue ordering.
  */
 export interface MobAbilityCue {
   readonly abilityId: string;
@@ -112,6 +114,14 @@ export interface MobAbilityInstanceState {
   resolvedCasts: number;
   /** Count of announcements emitted (must equal `resolvedCasts + inFlight`). */
   announcementsEmitted: number;
+  /**
+   * Per-registration generation token. Monotonically increases with each
+   * `registerMobAbility` call. The runtime validates this against
+   * `MobAbilityRuntime.registrationTokens` so that if an EID is recycled and a
+   * new entity of the SAME archetype key is assigned the same slot, the stale
+   * instance's token no longer matches — preventing false-positive liveness.
+   */
+  registrationToken: number;
 }
 
 /**
@@ -133,8 +143,16 @@ export interface MobAbilityRuntime {
   encounterActive: boolean;
   /** Registered per-caster ability instances. Empty in production. */
   readonly byEntity: Map<number, MobAbilityInstanceState>;
-  /** Committed public cue state for the renderer, rebuilt each tick. */
+  /** Committed public cue state for the renderer and AI avoidance, rebuilt each tick. */
   readonly cues: MobAbilityCue[];
+  /**
+   * Per-EID generation token, set on each `registerMobAbility` and cleared on
+   * `clearMobAbility`. Compared against `MobAbilityInstanceState.registrationToken`
+   * in `isCasterValid` to catch same-archetype EID recycling within a tick.
+   */
+  readonly registrationTokens: Map<number, number>;
+  /** Monotonically increasing counter; incremented on each registration. */
+  nextToken: number;
 }
 
 /** Create the default-off, empty runtime state for a fresh world. */
@@ -144,6 +162,8 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     encounterActive: false,
     byEntity: new Map(),
     cues: [],
+    registrationTokens: new Map(),
+    nextToken: 0,
   };
 }
 

@@ -10,7 +10,7 @@ void QUEEN_MAB_ART_MANIFEST;
 const lines: string[] = [
   `Queen Mab generated-art manifest: ${manifest.schemaVersion}`,
   `Scope: ${manifest.generatedArtScope} | reviewed ${manifest.lastReviewedAt}`,
-  `Boss: ${manifest.boss.bossId} (${manifest.boss.bossArchetypeId})`,
+  `Boss: ${manifest.bosses[0]!.bossId} (${manifest.bosses[0]!.bossArchetypeId})`,
   '',
   `Required visual phases: ${manifest.requiredVisualPhases.length} (all with procedural fallbacks)`,
   ...manifest.requiredVisualPhases.map(

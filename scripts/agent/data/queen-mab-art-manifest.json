@@ -2,11 +2,6 @@
   "schemaVersion": "mob-ability-art-manifest/v1",
   "generatedArtScope": "queen-mab-only",
   "lastReviewedAt": "2026-07-17",
-  "boss": {
-    "bossId": "queen-mab-tarnish",
-    "bossArchetypeId": "faerie-boss",
-    "familyId": "faeries"
-  },
   "requiredVisualPhases": [
     {
       "phaseId": "cast-start-cue",
@@ -46,7 +41,7 @@
     },
     {
       "phaseId": "announcement",
-      "description": "Exact announcement treatment: VERDIGRIS GLAMOUR — All that glitters will corrode!",
+      "description": "Exact announcement treatment: VERDIGRIS GLAMOUR \u2014 All that glitters will corrode!",
       "proceduralFallback": "HudAnnouncementBanner renders the verbatim bossAbilityCast announcement text.",
       "renderer": "src/engine/HudAnnouncementBanner.ts"
     }
@@ -57,9 +52,17 @@
       "abilityId": "queen-mab-verdigris-glamour",
       "bossId": "queen-mab-tarnish",
       "kind": "codex-icon",
-      "dimensions": { "width": 64, "height": 64, "frames": 1 },
+      "dimensions": {
+        "width": 64,
+        "height": 64,
+        "frames": 1
+      },
       "state": "planned",
-      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "references": {
+        "issue": null,
+        "briefPath": null,
+        "approvedAssetId": null
+      },
       "proceduralFallback": "Codex entry uses the procedural hostile-red circle glyph until a bespoke icon lands.",
       "coversPhaseId": null,
       "requiredFor": "production-enablement",
@@ -70,9 +73,17 @@
       "abilityId": "queen-mab-verdigris-glamour",
       "bossId": "queen-mab-tarnish",
       "kind": "status-icon",
-      "dimensions": { "width": 32, "height": 32, "frames": 1 },
+      "dimensions": {
+        "width": 32,
+        "height": 32,
+        "frames": 1
+      },
       "state": "planned",
-      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "references": {
+        "issue": null,
+        "briefPath": null,
+        "approvedAssetId": null
+      },
       "proceduralFallback": "Tarnished uses the procedural corroded verdigris ring indicator (tarnished-indicator phase).",
       "coversPhaseId": "tarnished-indicator",
       "requiredFor": "production-enablement",
@@ -83,9 +94,17 @@
       "abilityId": "queen-mab-verdigris-glamour",
       "bossId": "queen-mab-tarnish",
       "kind": "cast-animation",
-      "dimensions": { "width": 128, "height": 128, "frames": 8 },
+      "dimensions": {
+        "width": 128,
+        "height": 128,
+        "frames": 8
+      },
       "state": "not-requested",
-      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "references": {
+        "issue": null,
+        "briefPath": null,
+        "approvedAssetId": null
+      },
       "proceduralFallback": "No authored cast animation required for this slice; the cast-start-cue phase reads without one.",
       "coversPhaseId": "cast-start-cue",
       "requiredFor": "optional-polish",
@@ -96,9 +115,17 @@
       "abilityId": "queen-mab-verdigris-glamour",
       "bossId": "queen-mab-tarnish",
       "kind": "vfx-sprite",
-      "dimensions": { "width": 256, "height": 256, "frames": 1 },
+      "dimensions": {
+        "width": 256,
+        "height": 256,
+        "frames": 1
+      },
       "state": "not-requested",
-      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "references": {
+        "issue": null,
+        "briefPath": null,
+        "approvedAssetId": null
+      },
       "proceduralFallback": "Telegraph uses the procedural locked hostile-red circle with runes and anticipation fill.",
       "coversPhaseId": "locked-telegraph-circle",
       "requiredFor": "optional-polish",
@@ -109,13 +136,28 @@
       "abilityId": "queen-mab-verdigris-glamour",
       "bossId": "queen-mab-tarnish",
       "kind": "vfx-sprite",
-      "dimensions": { "width": 256, "height": 256, "frames": 12 },
+      "dimensions": {
+        "width": 256,
+        "height": 256,
+        "frames": 12
+      },
       "state": "not-requested",
-      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "references": {
+        "issue": null,
+        "briefPath": null,
+        "approvedAssetId": null
+      },
       "proceduralFallback": "Resolution uses the procedural verdigris/bronze burst rings and particle sparks.",
       "coversPhaseId": "resolution-burst",
       "requiredFor": "optional-polish",
       "blockingForArena": false
+    }
+  ],
+  "bosses": [
+    {
+      "bossId": "queen-mab-tarnish",
+      "bossArchetypeId": "faerie-boss",
+      "familyId": "faeries"
     }
   ]
 }

@@ -60,6 +60,9 @@ export function registerMobAbility(
   if (world.mobAbilities.byEntity.has(casterEid)) {
     clearMobAbility(world, casterEid);
   }
+  const token = world.mobAbilities.nextToken;
+  world.mobAbilities.nextToken += 1;
+  world.mobAbilities.registrationTokens.set(casterEid, token);
   world.mobAbilities.byEntity.set(casterEid, {
     definition,
     phase: 'cooldown',
@@ -68,6 +71,7 @@ export function registerMobAbility(
     committedTargetEid: null,
     resolvedCasts: 0,
     announcementsEmitted: 0,
+    registrationToken: token,
   });
 }
 
@@ -81,6 +85,7 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
   const inst = runtime.byEntity.get(casterEid);
   if (inst === undefined) return;
   runtime.byEntity.delete(casterEid);
+  runtime.registrationTokens.delete(casterEid);
 
   // Drop any committed cue for this caster.
   for (let i = runtime.cues.length - 1; i >= 0; i -= 1) {
@@ -131,8 +136,14 @@ function isCasterValid(world: GameWorld, eid: number, inst: MobAbilityInstanceSt
   if (!entityExists(world.ecs, eid)) return false;
   if (!hasComponent(world.ecs, eid, Health)) return false;
   if ((world.stores.health.current[eid] ?? 0) <= 0) return false;
-  // Recycled-id guard: the slot must still carry the same boss identity.
-  return world.enemyAppearanceKeys.get(eid) === inst.definition.bossArchetypeKey;
+  // Appearance-key guard: the slot must still carry the same boss archetype.
+  if (world.enemyAppearanceKeys.get(eid) !== inst.definition.bossArchetypeKey) return false;
+  // Generation-token guard: detect same-archetype EID recycling within a tick.
+  // If a new entity of the same archetype reuses this EID before mobAbilitySystem
+  // runs (e.g. Queen dies and a fresh faerie-boss spawns in the same tick), the
+  // token in registrationTokens will have changed (new registration) or been
+  // deleted (no re-registration) — either way it no longer matches inst.
+  return world.mobAbilities.registrationTokens.get(eid) === inst.registrationToken;
 }
 
 /** Resolve the current target's live position, or `null` if it is gone. */
