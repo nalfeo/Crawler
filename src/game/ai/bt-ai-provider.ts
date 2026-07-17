@@ -6235,18 +6235,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
 
-    if (progressSuppressed) {
-      // progressSuppressed is true when combat or navigation stalls have
-      // temporarily blocked quest-progress navigation (frameCount <
-      // progressGoalSuppressedUntilFrame). Still notify the committed hunt so
-      // the suppression-recovery branch in updateFloor2HuntProgress fires
-      // (advances patrol) even while suppressed.
-      if (this.floor2HuntFamilyId) {
-        this.updateFloor2HuntProgress(world, this.floor2HuntFamilyId);
-      }
-      return null;
-    }
-
     const huntFamilyId = this.selectFloor2HuntFamily(world);
     if (!huntFamilyId) {
       return null;
@@ -6279,7 +6267,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (!quest || quest.status !== 'active') {
       return null;
     }
-    return this.findFloor2QuestProgressTarget(world, playerEid, playerX, playerY, quest);
+    return this.findFloor2QuestProgressTarget(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+      quest,
+      progressSuppressed,
+    );
   }
 
   private findFloor2QuestProgressTarget(
@@ -6288,6 +6283,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     activeQuest: QuestState,
+    progressSuppressed: boolean,
   ): ProgressTarget | null {
     const parsedFamilyId = this.parseFloor2FamilyId(activeQuest.questId);
     const familyId = world.floorExtendedState?.familyState?.presentFamilies.find(
@@ -6360,7 +6356,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const territoryTarget = territoryZone
       ? this.resolveFloor2HuntPatrolTarget(world, familyId, territoryZone, playerX, playerY)
       : null;
-    if (territoryTarget && this.isFloor2HuntRecoveryWindow(world)) {
+    if (!progressSuppressed && territoryTarget && this.isFloor2HuntRecoveryWindow(world)) {
       return {
         ...territoryTarget,
         reason: `Patrolling the ${familyId} territory between engagements`,
@@ -6391,7 +6387,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             'focused',
           );
         }
-        return territoryClearTarget ?? territoryTarget;
+        return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
       case 'collect':
         if (objective.itemId) {
           const itemTarget = this.findNearestQuestItem(world, objective.itemId, playerX, playerY);
@@ -6417,7 +6413,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             'focused',
           );
         }
-        return territoryClearTarget ?? territoryTarget;
+        return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
       case 'goal':
       case 'talk':
       case 'haveEquippable':
@@ -6443,7 +6439,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             'focused',
           );
         }
-        return territoryClearTarget ?? territoryTarget;
+        return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
       default:
         return null;
     }

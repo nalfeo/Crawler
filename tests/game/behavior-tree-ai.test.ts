@@ -131,6 +131,17 @@ function makeSealedRoom(widthTiles: number, heightTiles: number, wallColumnX: nu
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
 }
 
+function suppressProgressGoals(
+  ai: BehaviorTreeAI,
+  untilFrame: number = Number.MAX_SAFE_INTEGER,
+): void {
+  (
+    ai as unknown as {
+      progressGoalSuppressedUntilFrame: number;
+    }
+  ).progressGoalSuppressedUntilFrame = untilFrame;
+}
+
 /**
  * Build a 1-tile-tall horizontal corridor split into two A*-disconnected floor
  * segments by a full-height wall column at `wallColumnX`. An entity standing on
@@ -1244,6 +1255,7 @@ describe('BehaviorTreeAI', () => {
 
     world.goalFlags.set(denUnlockGoalId(familyId), true);
     const unlockedButInactiveAi = new BehaviorTreeAI({ seed: 57 });
+    suppressProgressGoals(unlockedButInactiveAi);
     unlockedButInactiveAi.poll(createInputState(), world);
     expect(unlockedButInactiveAi.getDecision()).toMatchObject({
       state: AIState.EXPLORE,
@@ -1299,6 +1311,51 @@ describe('BehaviorTreeAI', () => {
     ).findNearestFloor2HuntEnemy(world, familyId, 14, 14, 100, false);
 
     expect(target?.eid).toBe(reachableTrash);
+  });
+
+  it('keeps Floor 2 family enemy progress available while fixed goals are suppressed', () => {
+    const world = createTestWorld({ seed: 61, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    const familyId = world.floorExtendedState!.familyState!.presentFamilies[0]!;
+    const familyIndex = 0;
+    world.floorMap = makeOpenRoom(40, 20);
+    (
+      world.floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [{ familyIndex, centerX: 10, centerY: 10, radius: 8 }];
+    const playerPos = world.floorMap.tileToWorld(10, 10);
+    world.stores.position.x[player] = playerPos.x;
+    world.stores.position.y[player] = playerPos.y;
+    const familyEnemy = spawnEnemy(world, playerPos.x + 8, playerPos.y, 20);
+    addComponent(world.ecs, familyEnemy, FamilyMembership);
+    world.stores.familyMembership.familyId[familyEnemy] = familyIndex;
+    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const quest = world.questLog.get(`floor2-den-${familyId}-unlock`);
+    expect(quest?.status).toBe('active');
+
+    const target = (
+      new BehaviorTreeAI({ seed: 61 }) as unknown as {
+        findFloor2QuestProgressTarget(
+          world: GameWorld,
+          playerEid: number,
+          playerX: number,
+          playerY: number,
+          activeQuest: NonNullable<typeof quest>,
+          progressSuppressed: boolean,
+        ): { eid: number } | null;
+      }
+    ).findFloor2QuestProgressTarget(world, player, playerPos.x, playerPos.y, quest!, true);
+
+    expect(target?.eid).toBe(familyEnemy);
   });
 
   it('selects the nearest unresolved Floor 2 territory before kill-count tiebreaks', () => {
@@ -1571,9 +1628,7 @@ describe('BehaviorTreeAI', () => {
     const ai = new BehaviorTreeAI({ seed: 60 });
     // Simulate the DwellTracker having just fired: suppress all fixed-position
     // progress goals far into the future.
-    (
-      ai as unknown as { progressGoalSuppressedUntilFrame: number }
-    ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+    suppressProgressGoals(ai);
 
     ai.poll(createInputState(), world);
 
@@ -1602,9 +1657,7 @@ describe('BehaviorTreeAI', () => {
     world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
 
     const ai = new BehaviorTreeAI({ seed: 59 });
-    (
-      ai as unknown as { progressGoalSuppressedUntilFrame: number }
-    ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+    suppressProgressGoals(ai);
 
     for (let frame = 0; frame < 8; frame++) {
       world.frameCount = frame;
