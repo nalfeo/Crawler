@@ -8,6 +8,7 @@ import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createCorpseShatterVfx, type CorpseExplodeOptions } from './CorpseShatterVfx.js';
 import { createEffectsVfx } from './EffectsVfx.js';
+import { createMobAbilityVfx } from './MobAbilityVfx.js';
 import { createPlayerTrailVfx } from './PlayerTrailVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
@@ -385,6 +386,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const corpseShatterVfx =
     typeof scene.add.image === 'function' ? createCorpseShatterVfx(scene) : null;
   const effectsVfx = createEffectsVfx(scene);
+  const mobAbilityVfx = createMobAbilityVfx(scene);
   const playerTrailVfx = createPlayerTrailVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
@@ -1727,6 +1729,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       playerTrailVfx.update(world, renderElapsedMs);
       // Process combat VFX (floating damage numbers)
       combatVfx.update(world, renderElapsedMs);
+      // Boss/mob ability telegraphs, resolution bursts, Tarnished indicators.
+      // Pure consumer of committed public cue state (world.mobAbilities).
+      mobAbilityVfx.update(world);
     },
 
     destroy(): void {
@@ -1796,6 +1801,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       goreVfx?.destroy();
       corpseShatterVfx?.destroy();
       effectsVfx.destroy();
+      mobAbilityVfx.destroy();
       playerTrailVfx.destroy();
       combatVfx.destroy();
     },
