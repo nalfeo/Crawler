@@ -769,3 +769,425 @@ describe('validateEvidenceRequirements', () => {
     expect(errors.map((e) => e.code)).toContain('evidence.git-verification-failed');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Speculative stacked-work tests — hard gate: lifecycle-blocked and absent
+// from ready_queue; stale-base or post-merge-unrebased must fail validation.
+// ---------------------------------------------------------------------------
+describe('speculative stacked-work metadata', () => {
+  // Build a minimal valid stacked_work block for a blocked node whose only
+  // unvalidated dep (slice:A0 at pr_open) has a known PR ref in state.
+  function makeStackedWork(depHeadSha: string, overrides: Record<string, unknown> = {}) {
+    return {
+      mode: 'stacked_in_progress' as const,
+      issue: {
+        number: 1282,
+        url: 'https://github.com/nalfeo/Crawler/issues/1282',
+      },
+      session: 'speculative-session-001',
+      branch: 'nalfeo-floor-2-stacked-work-protocol',
+      pr: null,
+      stack_bases: [
+        {
+          dependency_node_id: 'slice:A0',
+          dependency_pr_number: 1271,
+          dependency_branch: 'nalfeo-floor-2-epic-control',
+          dependency_head_sha: depHeadSha,
+          last_resynced_at: '2026-07-17T20:00:00.000Z',
+          last_resynced_head: depHeadSha,
+          requires_main_rebase: false,
+        },
+      ],
+      drift_reason: null,
+      ...overrides,
+    };
+  }
+
+  // Set up a slice:A1 node with stacked_work. A0 stays at pr_open so A1 is
+  // correctly blocked by an unvalidated dep.
+  function buildStateWithStackedWork(
+    stackedWorkOverrides: Record<string, unknown> = {},
+    stackBaseOverrides: Record<string, unknown> = {},
+  ): EpicState {
+    const state = cloneState();
+    // A0 at pr_open with a known PR ref (the stale-head tests compare against this).
+    const a0 = state.nodes.find((n) => n.node_id === 'slice:A0')!;
+    const A0_HEAD = FULL_COMMIT;
+    a0.github.pr = {
+      number: 1271,
+      url: 'https://github.com/nalfeo/Crawler/pull/1271',
+      head_sha: A0_HEAD,
+    };
+    // A1 is blocked by A0 (already the canonical dep). Add stacked_work.
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    a1.github.issue = {
+      number: 9100,
+      url: 'https://github.com/nalfeo/Crawler/issues/9100',
+    };
+    const sw = makeStackedWork(A0_HEAD, stackedWorkOverrides);
+    if (stackBaseOverrides && Object.keys(stackBaseOverrides).length > 0) {
+      sw.stack_bases[0] = { ...sw.stack_bases[0]!, ...stackBaseOverrides };
+    }
+    (a1 as Record<string, unknown>)['stacked_work'] = sw;
+    return state;
+  }
+
+  it('accepts a valid stacked_work block on a blocked node with pr_open dep', () => {
+    const state = buildStateWithStackedWork();
+    const result = validate(state);
+    const stackedCodes = result.errors
+      .filter((e) => e.code.startsWith('stacked.'))
+      .map((e) => e.code);
+    expect(stackedCodes).toEqual([]);
+  });
+
+  it('node with stacked_work remains lifecycle-blocked and absent from ready_queue', () => {
+    const state = buildStateWithStackedWork();
+    const result = validate(state);
+    // slice:A1 must not appear in ready_queue regardless of other state.
+    expect(result.ready_queue).not.toContain('slice:A1');
+    // The node status stays blocked; stacked_work is orthogonal.
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    expect(a1.status).toBe('blocked');
+  });
+
+  it('ready_queue stays clear even when all deps would otherwise be validated (requires_main_rebase)', () => {
+    // Set up A0 as validated (would normally make A1 ready), but A1 has
+    // stacked_work with requires_main_rebase: true — must not enter ready_queue.
+    const state = cloneState();
+    validateA0(state);
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    a1.github.issue = {
+      number: 9101,
+      url: 'https://github.com/nalfeo/Crawler/issues/9101',
+    };
+    const A0_HEAD = FULL_COMMIT;
+    // A0 is validated but record stacked_work with requires_main_rebase=true.
+    (a1 as Record<string, unknown>)['stacked_work'] = {
+      mode: 'stacked_in_progress',
+      issue: { number: 1282, url: 'https://github.com/nalfeo/Crawler/issues/1282' },
+      session: 'speculative-session-002',
+      branch: 'nalfeo-floor-2-stacked-work-protocol',
+      pr: null,
+      stack_bases: [
+        {
+          dependency_node_id: 'slice:A0',
+          dependency_pr_number: 1271,
+          dependency_branch: 'nalfeo-floor-2-epic-control',
+          dependency_head_sha: A0_HEAD,
+          last_resynced_at: '2026-07-17T20:00:00.000Z',
+          last_resynced_head: A0_HEAD,
+          requires_main_rebase: true,
+        },
+      ],
+      drift_reason: null,
+    };
+    // A0 is now validated — would normally make A1 ready. But requires_main_rebase
+    // blocks this; A1 must be absent from ready_queue.
+    const result = validate(state);
+    expect(result.ready_queue).not.toContain('slice:A1');
+    // Error for post-merge-unrebased condition.
+    const codes = result.errors.filter((e) => e.code.startsWith('stacked.')).map((e) => e.code);
+    expect(codes).toContain('stacked.requires-main-rebase');
+    // Operator action must be emitted.
+    expect(
+      result.proposal.operator_actions.some((a) => a.includes('slice:A1')),
+    ).toBe(true);
+  });
+
+  it('rejects stale dep head: last_resynced_head does not match dep PR head_sha', () => {
+    const STALE_HEAD = 'aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111';
+    // State has A0 at FULL_COMMIT; stack_base records STALE_HEAD as last_resynced_head.
+    const state = buildStateWithStackedWork({}, { last_resynced_head: STALE_HEAD });
+    const codes = validate(state).errors.map((e) => e.code);
+    expect(codes).toContain('stacked.stale-dep-head');
+  });
+
+  it('rejects speculative work on a dep that is not pr_open (e.g. blocked)', () => {
+    const state = cloneState();
+    // Keep A0 in blocked status (no github.pr).
+    const a0 = state.nodes.find((n) => n.node_id === 'slice:A0')!;
+    expect(a0.status).toBe('pr_open'); // default is pr_open in canonical state
+    // Set A0 to claimed (not pr_open) so it's an invalid dep for speculative work.
+    a0.status = 'claimed';
+    // A1 gets stacked_work against this non-pr_open dep.
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    a1.github.issue = { number: 9102, url: 'https://github.com/nalfeo/Crawler/issues/9102' };
+    (a1 as Record<string, unknown>)['stacked_work'] = {
+      mode: 'stacked_in_progress',
+      issue: { number: 1282, url: 'https://github.com/nalfeo/Crawler/issues/1282' },
+      session: 'speculative-session-003',
+      branch: 'nalfeo-floor-2-stacked-work-protocol',
+      pr: null,
+      stack_bases: [
+        {
+          dependency_node_id: 'slice:A0',
+          dependency_pr_number: 1271,
+          dependency_branch: 'nalfeo-floor-2-epic-control',
+          dependency_head_sha: FULL_COMMIT,
+          last_resynced_at: '2026-07-17T20:00:00.000Z',
+          last_resynced_head: FULL_COMMIT,
+          requires_main_rebase: false,
+        },
+      ],
+      drift_reason: null,
+    };
+    const codes = validate(state).errors.map((e) => e.code);
+    expect(codes).toContain('stacked.dep-not-pr-open');
+  });
+
+  it('rejects stacked_work on a non-blocked node', () => {
+    const state = buildStateWithStackedWork();
+    const a0 = state.nodes.find((n) => n.node_id === 'slice:A0')!;
+    // Move A1 to pr_open (it should not have stacked_work).
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    a1.status = 'pr_open';
+    // A0 must be validated for A1 to be post-pr_open, but keep stacked_work.
+    validateA0(state);
+    a1.github.pr = {
+      number: 9999,
+      url: 'https://github.com/nalfeo/Crawler/pull/9999',
+      head_sha: FULL_COMMIT,
+    };
+    const HANDOFF_PATH = 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md';
+    const LEDGER_PATH =
+      'docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json';
+    a1.evidence = [
+      {
+        kind: 'handoff',
+        path_or_check: HANDOFF_PATH,
+        sha256: sha256OfFile(REPO_ROOT, HANDOFF_PATH),
+        commit: HANDOFF_COMMIT,
+        recorded_at: '2026-07-17T20:00:00.000Z',
+      },
+      {
+        kind: 'review-ledger',
+        path_or_check: LEDGER_PATH,
+        sha256: sha256OfFile(REPO_ROOT, LEDGER_PATH),
+        commit: LEDGER_COMMIT,
+        recorded_at: '2026-07-17T20:00:00.000Z',
+      },
+    ];
+    a1.ownership = {
+      claimant: null,
+      session: null,
+      source: 'none',
+      scope: null,
+      claimed_at: null,
+      lease_expires_at: null,
+      heartbeat_at: null,
+      base_commit: null,
+    };
+    // Ensure A0 PR head matches to avoid stale-dep errors.
+    const A0_HEAD = a0.github.pr?.head_sha ?? FULL_COMMIT;
+    const sw = (a1 as Record<string, unknown>)['stacked_work'] as Record<string, unknown>;
+    if (sw?.stack_bases) {
+      (sw.stack_bases as Array<Record<string, unknown>>)[0]!['last_resynced_head'] = A0_HEAD;
+      (sw.stack_bases as Array<Record<string, unknown>>)[0]!['dependency_head_sha'] = A0_HEAD;
+    }
+    const codes = validate(state).errors.map((e) => e.code);
+    expect(codes).toContain('stacked.not-blocked');
+  });
+
+  it('rejects missing stack_base for an unvalidated dependency', () => {
+    const state = buildStateWithStackedWork();
+    // Remove the stack_base so there's no entry for the unvalidated dep.
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    const sw = (a1 as Record<string, unknown>)['stacked_work'] as Record<string, unknown>;
+    (sw as Record<string, unknown>)['stack_bases'] = [];
+    const codes = validate(state).errors.map((e) => e.code);
+    // stack_bases min(1) fails schema
+    expect(codes.some((c) => c === 'state.schema' || c === 'stacked.missing-base')).toBe(true);
+  });
+
+  it('rejects stack_base referencing a dep that is not a direct dependency', () => {
+    const state = buildStateWithStackedWork();
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    const sw = (a1 as Record<string, unknown>)['stacked_work'] as Record<string, unknown>;
+    // Replace the dep node ID with a non-dep.
+    (sw['stack_bases'] as Array<Record<string, unknown>>)[0]!['dependency_node_id'] = 'slice:B1';
+    const codes = validate(state).errors.map((e) => e.code);
+    expect(codes).toContain('stacked.base-not-dependency');
+  });
+
+  it('rejects duplicate stacked_work session across nodes', () => {
+    const state = buildStateWithStackedWork();
+    // Add stacked_work with the SAME session on a second node (B1 blocked by A1).
+    const b1 = state.nodes.find((n) => n.node_id === 'slice:B1')!;
+    // Make A1 pr_open so B1 can have stacked_work against it.
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    a1.status = 'pr_open';
+    a1.github.pr = {
+      number: 1300,
+      url: 'https://github.com/nalfeo/Crawler/pull/1300',
+      head_sha: FULL_COMMIT,
+    };
+    validateA0(state);
+    a1.ownership = {
+      claimant: null,
+      session: null,
+      source: 'none',
+      scope: null,
+      claimed_at: null,
+      lease_expires_at: null,
+      heartbeat_at: null,
+      base_commit: null,
+    };
+    const HANDOFF_PATH = 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md';
+    const LEDGER_PATH =
+      'docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json';
+    a1.evidence = [
+      {
+        kind: 'handoff',
+        path_or_check: HANDOFF_PATH,
+        sha256: sha256OfFile(REPO_ROOT, HANDOFF_PATH),
+        commit: HANDOFF_COMMIT,
+        recorded_at: '2026-07-17T20:00:00.000Z',
+      },
+      {
+        kind: 'review-ledger',
+        path_or_check: LEDGER_PATH,
+        sha256: sha256OfFile(REPO_ROOT, LEDGER_PATH),
+        commit: LEDGER_COMMIT,
+        recorded_at: '2026-07-17T20:00:00.000Z',
+      },
+    ];
+    b1.github.issue = { number: 9103, url: 'https://github.com/nalfeo/Crawler/issues/9103' };
+    (b1 as Record<string, unknown>)['stacked_work'] = {
+      mode: 'stacked_in_progress',
+      // Same session as A1's stacked_work → duplicate.
+      issue: { number: 1283, url: 'https://github.com/nalfeo/Crawler/issues/1283' },
+      session: 'speculative-session-001',
+      branch: 'some-other-branch',
+      pr: null,
+      stack_bases: [
+        {
+          dependency_node_id: 'slice:A1',
+          dependency_pr_number: 1300,
+          dependency_branch: 'some-a1-branch',
+          dependency_head_sha: FULL_COMMIT,
+          last_resynced_at: '2026-07-17T20:00:00.000Z',
+          last_resynced_head: FULL_COMMIT,
+          requires_main_rebase: false,
+        },
+      ],
+      drift_reason: null,
+    };
+    const codes = validate(state).errors.map((e) => e.code);
+    expect(codes).toContain('stacked.duplicate-session');
+  });
+
+  it('requires requires_main_rebase=true when dep is merged/validated and stacked_work is present', () => {
+    const state = cloneState();
+    validateA0(state);
+    const A0_HEAD = FULL_COMMIT;
+    // A0 is now validated (POST_MERGE_STATUSES). A1 still has stacked_work
+    // with requires_main_rebase: false — should error.
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    a1.github.issue = {
+      number: 9104,
+      url: 'https://github.com/nalfeo/Crawler/issues/9104',
+    };
+    (a1 as Record<string, unknown>)['stacked_work'] = {
+      mode: 'stacked_in_progress',
+      issue: { number: 1282, url: 'https://github.com/nalfeo/Crawler/issues/1282' },
+      session: 'speculative-session-005',
+      branch: 'nalfeo-floor-2-stacked-work-protocol',
+      pr: null,
+      stack_bases: [
+        {
+          dependency_node_id: 'slice:A0',
+          dependency_pr_number: 1271,
+          dependency_branch: 'nalfeo-floor-2-epic-control',
+          dependency_head_sha: A0_HEAD,
+          last_resynced_at: '2026-07-17T20:00:00.000Z',
+          last_resynced_head: A0_HEAD,
+          requires_main_rebase: false, // incorrectly false — dep is validated
+        },
+      ],
+      drift_reason: null,
+    };
+    const codes = validate(state).errors.map((e) => e.code);
+    expect(codes).toContain('stacked.merged-dep-rebase-required');
+  });
+
+  it('proposes speculative PR head reconciliation via GitHub audit', () => {
+    const state = buildStateWithStackedWork({ mode: 'stacked_pr_open' });
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1')!;
+    // Give the stacked_work a PR ref with an old head.
+    const sw = (a1 as Record<string, unknown>)['stacked_work'] as Record<string, unknown>;
+    const OLD_HEAD = 'bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222';
+    const NEW_HEAD = 'cccc3333cccc3333cccc3333cccc3333cccc3333';
+    sw['pr'] = {
+      number: 1295,
+      url: 'https://github.com/nalfeo/Crawler/pull/1295',
+      head_sha: OLD_HEAD,
+    };
+
+    const runner: GithubRunner = {
+      get(path: string) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.endsWith('/issues/9100')) {
+          // A1's child issue (stacked_work node).
+          return {
+            number: 9100,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/9100',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/9100',
+          };
+        }
+        if (path.endsWith('/issues/1282')) {
+          // A1's stacked_work.issue (the speculative work's tracking issue).
+          return {
+            number: 1282,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1282',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1282',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/pulls/1271')) {
+          // The canonical A0 dep PR.
+          return {
+            number: 1271,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: FULL_COMMIT },
+          };
+        }
+        if (path.endsWith('/pulls/1295')) {
+          // The speculative PR — head has advanced.
+          return {
+            number: 1295,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1295',
+            head: { sha: NEW_HEAD },
+          };
+        }
+        throw new Error(`Unexpected GitHub path: ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    expect(audit.errors).toEqual([]);
+    // Must propose a head_sha update for the speculative PR.
+    expect(
+      audit.proposal.repo_patch.some(
+        (p) => p.path.includes('stacked_work/pr/head_sha') && p.value === NEW_HEAD,
+      ),
+    ).toBe(true);
+  });
+});

@@ -28,7 +28,7 @@
     "bootstrap_node": "slice:A0",
     "default_lease_hours": 24,
     "maximum_without_heartbeat_hours": 48,
-    "protocol_headings": ["CLAIMED", "BLOCKED", "UNBLOCKED", "SCOPE-CHANGE-REQUEST", "HANDOFF"]
+    "protocol_headings": ["CLAIMED", "STACKED-WORK", "BLOCKED", "UNBLOCKED", "SCOPE-CHANGE-REQUEST", "HANDOFF"]
   },
   "github": {
     "repository": "nalfeo/Crawler",

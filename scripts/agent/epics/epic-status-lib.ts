@@ -224,6 +224,51 @@ const reconciliationSchema = z
     drift: z.array(z.string()),
   })
   .strict();
+
+/**
+ * Schema for one stack-base entry — one per unvalidated direct prerequisite.
+ * Records the dependency PR facts needed to detect staleness and post-merge rebase requirements.
+ */
+const stackBaseSchema = z
+  .object({
+    dependency_node_id: z.string().regex(NODE_ID_PATTERN),
+    dependency_pr_number: z.number().int().positive(),
+    dependency_branch: z.string().min(1),
+    /** The dep's head SHA at the time speculative work was initiated (initial branch point). */
+    dependency_head_sha: z.string().regex(SHA40_PATTERN),
+    last_resynced_at: z.string().datetime({ offset: true }),
+    /**
+     * The dep's head SHA at the most recent resync. Stale when this differs
+     * from the dep node's cached github.pr.head_sha.
+     */
+    last_resynced_head: z.string().regex(SHA40_PATTERN),
+    /**
+     * Set to true once the dep PR merges. Blocks normal lifecycle advancement
+     * until the stacked branch is rebased onto main and stacked_work is cleared.
+     */
+    requires_main_rebase: z.boolean(),
+  })
+  .strict();
+
+/**
+ * Speculative stacked-work metadata on a lifecycle-blocked node.
+ * The node's main `status` stays `blocked`; this object tracks orthogonal
+ * progress on a stacked branch while prerequisites are under review.
+ */
+const stackedWorkSchema = z
+  .object({
+    mode: z.enum(['stacked_in_progress', 'stacked_pr_open']),
+    issue: stateIssueRefSchema,
+    session: z.string().min(1),
+    branch: z.string().min(1),
+    /** Present only when mode is stacked_pr_open. */
+    pr: statePrRefSchema.nullable(),
+    /** One entry per unvalidated direct dependency. Must not be empty. */
+    stack_bases: z.array(stackBaseSchema).min(1),
+    drift_reason: z.string().nullable(),
+  })
+  .strict();
+
 const nodeSchema = z
   .object({
     node_id: z.string().regex(NODE_ID_PATTERN),
@@ -279,6 +324,12 @@ const nodeSchema = z
     evidence: z.array(evidenceSchema),
     reconciliation: reconciliationSchema,
     superseded_by: z.string().regex(NODE_ID_PATTERN).nullable(),
+    /**
+     * Speculative stacked-work metadata. Optional — absent when there is no
+     * active speculative work on this node. When present, the node status must
+     * remain `blocked`; the field is orthogonal to the normal lifecycle.
+     */
+    stacked_work: stackedWorkSchema.nullable().optional(),
   })
   .strict();
 
@@ -330,6 +381,7 @@ const epicStateSchema = z
         maximum_without_heartbeat_hours: z.literal(48),
         protocol_headings: z.tuple([
           z.literal('CLAIMED'),
+          z.literal('STACKED-WORK'),
           z.literal('BLOCKED'),
           z.literal('UNBLOCKED'),
           z.literal('SCOPE-CHANGE-REQUEST'),
@@ -647,7 +699,7 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
             .object({
               properties: z
                 .object({
-                  protocol_headings: z.object({ minItems: z.literal(5) }).passthrough(),
+                  protocol_headings: z.object({ minItems: z.literal(6) }).passthrough(),
                 })
                 .passthrough(),
             })
@@ -679,6 +731,8 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
                 .passthrough(),
             })
             .passthrough(),
+          stackBase: z.object({ type: z.literal('object') }).passthrough(),
+          stackedWork: z.object({ type: z.literal('object') }).passthrough(),
         })
         .passthrough(),
     })
@@ -718,11 +772,16 @@ function computeReady(
   node: EpicNode,
   nodesById: ReadonlyMap<string, EpicNode>,
 ): boolean {
+  // Any active stacked_work (regardless of requires_main_rebase) prevents the
+  // node from entering the ready queue. The Producer must explicitly reconcile
+  // and clear the speculative metadata before normal lifecycle advancement can
+  // occur — even when all dependencies are otherwise validated.
   return (
     node.release_requirement === 'required' &&
     !TERMINAL_STATUSES.has(node.status) &&
     !POST_PR_STATUSES.has(node.status) &&
     !ACTIVE_STATUSES.has(node.status) &&
+    node.stacked_work == null &&
     dependenciesSatisfied(node, nodesById) &&
     hasIssueAuthority(state, node)
   );
@@ -966,6 +1025,180 @@ function validateEvidenceRequirements(
   }
 }
 
+/**
+ * Validates stacked_work metadata on a lifecycle-blocked node.
+ *
+ * Rules enforced:
+ * 1. Speculative work only on `blocked` nodes.
+ * 2. `stacked_pr_open` requires a PR ref.
+ * 3. One stack_base per unvalidated direct dependency (no extra, no missing).
+ * 4. Each dep must be `pr_open` (or `merged`/`validated` with requires_main_rebase: true).
+ * 5. Stale detection: dep's cached PR head must match last_resynced_head.
+ * 6. Post-merge: when dep is merged/validated, requires_main_rebase must be true
+ *    and an operator action is emitted.
+ * 7. No duplicate dependency node IDs within stack_bases.
+ */
+function validateStackedWork(
+  node: EpicNode,
+  nodesById: ReadonlyMap<string, EpicNode>,
+  result: MutableValidation,
+): void {
+  const sw = node.stacked_work;
+  if (!sw) return;
+
+  // Rule 1: node status must be blocked.
+  if (node.status !== 'blocked') {
+    result.errors.push({
+      code: 'stacked.not-blocked',
+      node_id: node.node_id,
+      message:
+        `${node.node_id} has stacked_work but status is ${node.status}; ` +
+        'speculative work requires status blocked',
+    });
+  }
+
+  // Rule 2: stacked_pr_open requires a PR ref.
+  if (sw.mode === 'stacked_pr_open' && !sw.pr) {
+    result.errors.push({
+      code: 'stacked.pr-open-missing-pr',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked_work mode is stacked_pr_open but pr is null`,
+    });
+  }
+
+  // Determine all direct dependencies and the subset that are unvalidated.
+  const directDepSet = new Set(node.dependencies);
+  const unvalidatedDepIds = node.dependencies.filter((depId) => {
+    const dep = nodesById.get(depId);
+    return dep !== undefined && !isDependencySatisfied(dep, nodesById);
+  });
+
+  // Build stack-base index for O(1) lookup.
+  const stackBasesByDepId = new Map<string, (typeof sw.stack_bases)[number]>();
+  for (const base of sw.stack_bases) {
+    stackBasesByDepId.set(base.dependency_node_id, base);
+  }
+
+  // Rule 3a: every stack_base dep must be a direct dependency (validated deps
+  // with requires_main_rebase=true are a valid transitional state — the
+  // stack_base survives until the child branch rebases onto main).
+  for (const base of sw.stack_bases) {
+    if (!directDepSet.has(base.dependency_node_id)) {
+      result.errors.push({
+        code: 'stacked.base-not-dependency',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work stack_bases includes ${base.dependency_node_id} ` +
+          'which is not a direct dependency',
+      });
+    }
+  }
+
+  // Rule 3b: every unvalidated direct dependency must have a stack_base.
+  for (const depId of unvalidatedDepIds) {
+    if (!stackBasesByDepId.has(depId)) {
+      result.errors.push({
+        code: 'stacked.missing-base',
+        node_id: node.node_id,
+        message: `${node.node_id} stacked_work is missing stack_base for unvalidated dependency ${depId}`,
+      });
+    }
+  }
+
+  // Rule 7: no duplicate dependency node IDs in stack_bases.
+  const seenDeps = new Set<string>();
+  for (const base of sw.stack_bases) {
+    if (seenDeps.has(base.dependency_node_id)) {
+      result.errors.push({
+        code: 'stacked.duplicate-base',
+        node_id: node.node_id,
+        message: `${node.node_id} stacked_work has duplicate stack_base for ${base.dependency_node_id}`,
+      });
+    }
+    seenDeps.add(base.dependency_node_id);
+  }
+
+  // Rules 4, 5, 6: per-dep head and state checks.
+  for (const base of sw.stack_bases) {
+    const dep = nodesById.get(base.dependency_node_id);
+    if (!dep) continue; // already caught by base-not-dependency
+
+    // Rule 4: dep must be pr_open or merged/validated (with rebase flag).
+    if (dep.status !== 'pr_open' && !POST_MERGE_STATUSES.has(dep.status)) {
+      result.errors.push({
+        code: 'stacked.dep-not-pr-open',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work dep ${base.dependency_node_id} is ${dep.status}; ` +
+          'speculative work requires dep status pr_open (or merged/validated with requires_main_rebase)',
+      });
+    }
+
+    // Rule 4b: pr_open dep must have a PR ref for stale detection.
+    if (dep.status === 'pr_open' && !dep.github.pr) {
+      result.errors.push({
+        code: 'stacked.dep-missing-pr',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work dep ${base.dependency_node_id} is pr_open ` +
+          'but has no PR ref; cannot verify stack base',
+      });
+      continue;
+    }
+
+    // Rule 4c: dependency_pr_number must match the dep's recorded PR number.
+    if (dep.github.pr && dep.github.pr.number !== base.dependency_pr_number) {
+      result.errors.push({
+        code: 'stacked.base-pr-mismatch',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work stack_base dependency_pr_number ${base.dependency_pr_number} ` +
+          `does not match dep ${base.dependency_node_id} recorded PR #${dep.github.pr.number}`,
+      });
+    }
+
+    // Rule 5: stale detection — dep's cached PR head must match last_resynced_head.
+    if (dep.github.pr && dep.github.pr.head_sha !== base.last_resynced_head) {
+      result.errors.push({
+        code: 'stacked.stale-dep-head',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work dep ${base.dependency_node_id} head has advanced ` +
+          `(cached: ${dep.github.pr.head_sha}, resynced: ${base.last_resynced_head}); ` +
+          'resynchronization required before continuing speculative work',
+      });
+    }
+
+    // Rules 6a/6b: post-merge rebase requirements.
+    if (POST_MERGE_STATUSES.has(dep.status)) {
+      if (!base.requires_main_rebase) {
+        result.errors.push({
+          code: 'stacked.merged-dep-rebase-required',
+          node_id: node.node_id,
+          message:
+            `${node.node_id} stacked_work dep ${base.dependency_node_id} is ${dep.status}; ` +
+            'stack_base must set requires_main_rebase: true',
+        });
+      } else {
+        // requires_main_rebase correctly set; rebase has not yet happened — block and emit operator action.
+        result.errors.push({
+          code: 'stacked.requires-main-rebase',
+          node_id: node.node_id,
+          message:
+            `${node.node_id} stacked branch must be rebased onto main ` +
+            `(dep ${base.dependency_node_id} is ${dep.status}); ` +
+            'Producer must reconcile after rebase completes and clear stacked_work',
+        });
+        result.proposal.operator_actions.push(
+          `${node.node_id}: dep ${base.dependency_node_id} has ${dep.status}. ` +
+            'Rebase the stacked branch onto main, verify the speculative work, ' +
+            'then clear stacked_work and advance through the normal lifecycle.',
+        );
+      }
+    }
+  }
+}
+
 function validateNodeLifecycle(
   state: EpicState,
   node: EpicNode,
@@ -1163,11 +1396,16 @@ function validateNodeLifecycle(
       message: `${node.node_id} has no materialized child issue`,
     });
   }
+
+  // Validate speculative stacked-work metadata (orthogonal to the normal lifecycle).
+  validateStackedWork(node, nodesById, result);
 }
 
 function validateDuplicateOwnership(state: EpicState, result: MutableValidation): void {
   const ownership = new Map<string, string>();
   const issues = new Map<number, string>();
+  const stackedSessions = new Map<string, string>();
+  const stackedIssues = new Map<number, string>();
   for (const node of state.nodes) {
     if (ACTIVE_STATUSES.has(node.status) && node.ownership.claimant && node.ownership.session) {
       const key = `${node.ownership.claimant}\u0000${node.ownership.session}`;
@@ -1192,6 +1430,30 @@ function validateDuplicateOwnership(state: EpicState, result: MutableValidation)
         });
       } else {
         issues.set(node.github.issue.number, node.node_id);
+      }
+    }
+    // Validate stacked_work session and issue uniqueness.
+    if (node.stacked_work) {
+      const sw = node.stacked_work;
+      const priorSession = stackedSessions.get(sw.session);
+      if (priorSession) {
+        result.errors.push({
+          code: 'stacked.duplicate-session',
+          node_id: node.node_id,
+          message: `Stacked session ${sw.session} is active on both ${priorSession} and ${node.node_id}`,
+        });
+      } else {
+        stackedSessions.set(sw.session, node.node_id);
+      }
+      const priorIssue = stackedIssues.get(sw.issue.number);
+      if (priorIssue) {
+        result.errors.push({
+          code: 'stacked.duplicate-issue',
+          node_id: node.node_id,
+          message: `Stacked issue #${sw.issue.number} is assigned to both ${priorIssue} and ${node.node_id}`,
+        });
+      } else {
+        stackedIssues.set(sw.issue.number, node.node_id);
       }
     }
   }
@@ -1620,6 +1882,12 @@ export function auditGithub(
   if (state.github.parent_issue) auditIssue(state.github.parent_issue.number);
   for (const node of state.nodes) {
     if (node.github.issue) auditIssue(node.github.issue.number, node);
+    // Audit the speculative work's own issue for existence — but without an
+    // expectedNode so we do NOT emit a reconciliation patch for the node's
+    // own observed_issue_state (which mirrors only the canonical github.issue).
+    if (node.stacked_work?.issue && node.stacked_work.issue.number !== node.github.issue?.number) {
+      auditIssue(node.stacked_work.issue.number);
+    }
     if (!node.github.pr) continue;
     try {
       const pull = z
@@ -1703,6 +1971,57 @@ export function auditGithub(
         code: 'github.pr-audit',
         node_id: node.node_id,
         message: `Could not audit PR #${node.github.pr.number}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+    }
+  }
+
+  // Audit speculative stacked-work PRs (stacked_pr_open mode).
+  // Proposes head-SHA updates and flags merged/closed speculative PRs for Producer attention.
+  const prSchema = z
+    .object({
+      number: z.number().int().positive(),
+      state: z.enum(['open', 'closed']),
+      merged: z.boolean(),
+      merge_commit_sha: z.string().nullable(),
+      merged_at: z.string().nullable(),
+      html_url: z.string().url(),
+      head: z.object({ sha: z.string().regex(SHA40_PATTERN) }),
+    })
+    .passthrough();
+  for (const node of state.nodes) {
+    const sw = node.stacked_work;
+    if (!sw?.pr) continue;
+    try {
+      const pull = prSchema.parse(
+        runner.get(`/repos/${owner}/${repo}/pulls/${sw.pr.number}`),
+      ) as GithubPull;
+      if (pull.head.sha !== sw.pr.head_sha) {
+        repoPatch.push({
+          op: 'replace',
+          path: `/nodes/${state.nodes.indexOf(node)}/stacked_work/pr/head_sha`,
+          value: pull.head.sha,
+          reason: `Observed speculative PR #${pull.number} head advanced on GitHub`,
+        });
+      }
+      if (pull.merged && pull.merge_commit_sha) {
+        operatorActions.push(
+          `Speculative PR #${pull.number} for ${node.node_id} is merged on GitHub ` +
+            `(sha: ${pull.merge_commit_sha}, merged_at: ${pull.merged_at ?? 'unknown'}). ` +
+            'Producer must verify rebase-to-main is complete, clear stacked_work, and advance through normal lifecycle.',
+        );
+      } else if (!pull.merged && pull.state === 'closed') {
+        operatorActions.push(
+          `Speculative PR #${pull.number} for ${node.node_id} is closed without merging. ` +
+            'Producer must investigate and update stacked_work status accordingly.',
+        );
+      }
+    } catch (error) {
+      errors.push({
+        code: 'github.stacked-pr-audit',
+        node_id: node.node_id,
+        message: `Could not audit speculative PR #${sw.pr.number}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       });
