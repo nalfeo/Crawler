@@ -176,7 +176,7 @@
       "kind": "slice",
       "parent_slice": null,
       "title": "Implementation contract lock",
-      "summary": "Lock registry APIs, release flags, migration boundaries, and implementation acceptance contracts.",
+      "summary": "Lock registry APIs, release flags, migration boundaries, and implementation acceptance contracts. Unique equipment is deferred outside this DAG to https://github.com/nalfeo/Crawler/issues/1274.",
       "execution_lane": "control",
       "persona": "Producer / Systems Engineer",
       "dependencies": ["slice:A0"],
