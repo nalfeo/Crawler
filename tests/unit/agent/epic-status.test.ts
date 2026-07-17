@@ -8,6 +8,7 @@ import {
   extractPlanContract,
   validateEpicState,
   type EpicState,
+  type GitReader,
   type GithubRunner,
 } from '../../../scripts/agent/epics/epic-status-lib';
 
@@ -17,12 +18,32 @@ const PLAN = readFileSync(resolve(EPIC_DIR, 'PLAN.md'), 'utf8');
 const STATE = JSON.parse(readFileSync(resolve(EPIC_DIR, 'epic-state.json'), 'utf8')) as EpicState;
 const NOW = new Date('2026-07-17T18:00:00.000Z');
 const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
-// Real commits in the branch that contain the canonical evidence files.
+// Placeholder SHAs used in evidence entries – the working-tree git reader ignores
+// the commit parameter and reads from disk, so these only need to be valid SHA-40s.
 const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
 const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
-// A real git commit used as the synthetic merge commit in tests that need
-// validated A0 state (any commit that exists in the repo works).
 const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
+
+/**
+ * A repository-independent GitReader for unit tests: reads evidence files
+ * from the current working tree (content matches the recorded sha256 hashes)
+ * and treats every commit SHA as present. This avoids any dependency on git
+ * history depth, keeping the suite green in shallow CI checkouts.
+ */
+function makeWorkingTreeGitReader(repoRoot: string): GitReader {
+  return {
+    showContent(_commit: string, filePath: string): string | null {
+      try {
+        return readFileSync(resolve(repoRoot, filePath), 'utf8');
+      } catch {
+        return null;
+      }
+    },
+    commitExists(_commit: string): boolean {
+      return true;
+    },
+  };
+}
 
 function cloneState(): EpicState {
   const state = structuredClone(STATE);
@@ -36,6 +57,7 @@ function validate(state: EpicState, planMarkdown = PLAN) {
     repoRoot: REPO_ROOT,
     now: NOW,
     planMarkdown,
+    gitReader: makeWorkingTreeGitReader(REPO_ROOT),
   });
 }
 
@@ -361,8 +383,7 @@ describe('Floor 2 equipment epic status', () => {
     const state = cloneState();
     validateA0(state);
     // Replace handoff with a non-canonical path (not in docs/knowledge/handoffs/)
-    state.nodes[0]!.evidence[0]!.path_or_check =
-      'docs/knowledge/epics/floor-2-equipment/PLAN.md';
+    state.nodes[0]!.evidence[0]!.path_or_check = 'docs/knowledge/epics/floor-2-equipment/PLAN.md';
 
     const codes = validate(state).errors.map((error) => error.code);
 
