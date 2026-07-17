@@ -141,6 +141,11 @@ export function collectPrNumbers({
 }) {
   if (trainEnabled) {
     const directlyTriggeredPrs = eventPrNumbers(payload);
+    const repairWindowSweep = isRepairWindowSweepEvent({
+      payload,
+      eventName,
+      trainEnabled,
+    });
     const eligiblePulls = scheduledPulls
       .filter((pullRequest) => {
         const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
@@ -169,6 +174,11 @@ export function collectPrNumbers({
     const direct = eligiblePulls.filter((pullRequest) =>
       directlyTriggeredPrs.has(pullRequest.number),
     );
+
+    if (!repairWindowSweep) {
+      return direct.map((pullRequest) => pullRequest.number);
+    }
+
     const waitingTransitions = eligiblePulls.filter(
       (pullRequest) =>
         !directlyTriggeredPrs.has(pullRequest.number) &&
@@ -177,15 +187,19 @@ export function collectPrNumbers({
     const sweep = eligiblePulls.filter(
       (pullRequest) =>
         !directlyTriggeredPrs.has(pullRequest.number) &&
-        !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
-        (eventName === 'schedule' ||
-          eventName === 'workflow_dispatch' ||
-          !(pullRequest.labels || []).some((label) =>
-            String(label.name || '').startsWith('ci-owner-pr-'),
-          )),
+        !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL),
     );
     return [...direct, ...waitingTransitions, ...sweep]
       .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
+      .filter(
+        (pullRequest) =>
+          directlyTriggeredPrs.has(pullRequest.number) ||
+          eventName === 'schedule' ||
+          eventName === 'workflow_dispatch' ||
+          !(pullRequest.labels || []).some((label) =>
+            String(label.name || '').startsWith('ci-owner-pr-'),
+          ),
+      )
       .sort(
         (left, right) =>
           new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
@@ -256,6 +270,25 @@ export function collectPrNumbers({
     return [...prioritized, ...remaining].slice(0, maxDispatchPerRun);
   }
   return eligible;
+}
+
+export function isRepairWindowSweepEvent({ payload, eventName, trainEnabled }) {
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+    return true;
+  }
+  if (!trainEnabled) {
+    return false;
+  }
+  if (eventName === 'pull_request_target' && payload.action === 'closed') {
+    return true;
+  }
+  if (eventName !== 'workflow_run' || eventPrNumbers(payload).size > 0) {
+    return false;
+  }
+
+  const workflowRun = payload.workflow_run;
+  const defaultBranch = payload.repository?.default_branch || 'main';
+  return workflowRun?.name === 'CI' && workflowRun.head_branch === defaultBranch;
 }
 
 function hasTrainOwnedLabel(pullRequest) {
