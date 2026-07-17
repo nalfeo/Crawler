@@ -510,8 +510,24 @@ async function release(reason, nextState = null) {
       if (!isKnownStaleNodeLabelError(error)) throw error;
       let facts = await fetchOwnershipFacts();
       if (!facts.repositoryLabelPresent) {
+        // The repository label is already gone. Verify that the live state is
+        // still ours before accepting this as our own atomic release. If a
+        // concurrent run already converged the PR to idle/waiting, preserve
+        // that newer state; if a different active owner is present, fail closed.
         if (!sameOwnership(facts.state, ownershipToRelease)) {
-          throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
+          const isConverged =
+            !facts.state ||
+            facts.state.owner === 'none' ||
+            ['idle', 'waiting'].includes(facts.state.status);
+          if (!isConverged) {
+            throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
+          }
+          // Newer converged state already written by a concurrent run. Skip our
+          // releasedState write and clean up any waiting transition labels.
+          pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
+          labelExists = false;
+          await completeWaitingExit(waitingTransition);
+          return;
         }
         pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
         labelExists = false;
@@ -525,8 +541,19 @@ async function release(reason, nextState = null) {
         await removePrLabel(labelName);
         facts = await fetchOwnershipFacts();
         if (!facts.repositoryLabelPresent) {
+          // Same check as on the first 422: verify ownership before accepting.
           if (!sameOwnership(facts.state, ownershipToRelease)) {
-            throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
+            const isConverged =
+              !facts.state ||
+              facts.state.owner === 'none' ||
+              ['idle', 'waiting'].includes(facts.state.status);
+            if (!isConverged) {
+              throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
+            }
+            // Newer converged state written by concurrent run. Preserve it.
+            labelExists = false;
+            await completeWaitingExit(waitingTransition);
+            return;
           }
           atomicOwnerBitAbsent = true;
         } else if (facts.attached || !sameOwnership(facts.state, ownershipToRelease)) {
@@ -1265,6 +1292,33 @@ if (
 }
 if (labelExists) {
   await release('blocker-fingerprint-changed');
+}
+// Complete an interrupted release: the previous run removed the owner labels
+// but failed to write the terminal idle state (e.g. due to a transient PATCH
+// error). Carry the persisted attempt count forward so the exhaustion budget
+// is not silently reset by a fresh-start acquire with attempt=0.
+if (!labelExists && staleOwningState && state?.owner === 'automation') {
+  const staleAttempt = state.attempt ?? 0;
+  await updateState(
+    makeState({
+      prNumber,
+      headSha: pr.head.sha,
+      fingerprint,
+      owner: 'none',
+      status: 'idle',
+      trigger: 'stale-automation-incomplete-release',
+      blockers: normalized,
+      attempt: staleAttempt,
+      updatedAt: now.toISOString(),
+    }),
+  );
+  process.stdout.write(`completed interrupted release pr=#${prNumber} attempt=${staleAttempt}\n`);
+  if (staleAttempt >= 2) {
+    // Automation was exhausted. Labels are already removed; state is now persisted.
+    // Do not re-dispatch a fresh Copilot task for an already-exhausted PR.
+    process.exit(0);
+  }
+  dispatchAttemptBase = staleAttempt;
 }
 await acquire('automation', null, {
   attempt: dispatchAttemptBase,

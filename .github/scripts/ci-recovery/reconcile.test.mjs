@@ -3764,19 +3764,13 @@ test('reconcile does not escalate router action-required run when it is the only
 });
 
 // ---------------------------------------------------------------------------
-// Thread 1 regression: live label re-fetch suppresses duplicate merge-train
-// admission when a concurrent run already attached the merge-train label.
+// Queue admission must inspect every live label page before deciding whether
+// the merge-train transition is absent.
 // ---------------------------------------------------------------------------
 
-test('queue admission re-fetches labels live so a concurrently attached merge-train label suppresses duplicate admission', async (t) => {
-  // Scenario: a clean PR (no existing state, no owner label, no CI failures)
-  // reaches the merge-train admission section. The initial pr.labels snapshot
-  // does NOT contain the merge-train label, but the live GET /issues/{PR}/labels
-  // call returns it (simulating a race where another run already queued the PR).
-  // The fix must read live labels and log "queue unchanged" without attaching
-  // the label a second time.
+test('queue admission finds a concurrently attached merge-train label on the second page', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }), // no merge-train in labels
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
@@ -3789,14 +3783,16 @@ test('queue admission re-fetches labels live so a concurrently attached merge-tr
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
-    // State comment creation — clean PR needs an initial idle state record
-    // before merge-train admission runs its guard.
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 800 } }),
-    // Thread 1 fix: live label re-fetch finds merge-train already attached by a
-    // concurrent run, preventing duplicate admission.
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({
-      body: [{ name: 'merge-train' }],
-    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: (url) => {
+      const page = new URL(url, 'http://localhost').searchParams.get('page');
+      if (page === '2') {
+        return { body: [{ name: 'merge-train' }] };
+      }
+      return {
+        body: Array.from({ length: 100 }, (_, index) => ({ name: `other-${index}` })),
+      };
+    },
   });
   t.after(() => server.close());
 
@@ -3981,4 +3977,371 @@ test('progressed stale action resets attempt counter to zero and uses blocker-pr
   assert.equal(finalState?.trigger, 'workflow_run:completed');
   assert.equal(finalState?.owner, 'automation');
   assert.equal(finalState?.status, 'dispatched');
+});
+
+// ---------------------------------------------------------------------------
+// RC-A regression: stale-node 422 + !repositoryLabelPresent + converged state
+// (Threads 1, 2, 6 — PRRT_kwDOSvo2Ms6Rvxir / RvxjH / Rv6pp)
+// ---------------------------------------------------------------------------
+
+test('stale-node 422 with !repositoryLabelPresent + converged idle state exits clean without overwriting newer state', async (t) => {
+  // The repo label is already gone when we fetch it post-422.  A concurrent run
+  // has already written the PR to idle. The stale-node release path must NOT
+  // overwrite that newer converged state with an older releasedState PATCH.
+  const initialShepherdState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: LEASE_ID,
+    blockers: [],
+    updatedAt: '2026-07-17T12:00:00.000Z',
+  });
+  const fingerprint = blockerFingerprint([]);
+  const stateComment = { id: 8801, body: renderStateComment(initialShepherdState) };
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      // Mark repo label as gone AND update state to concurrent-run's idle write,
+      // simulating the race. fetchOwnershipFacts() will see both after this 422.
+      repositoryLabelExists = false;
+      stateComment.body = renderStateComment(
+        makeState({
+          prNumber: PR_NUM,
+          headSha: HEAD_SHA,
+          fingerprint,
+          owner: 'none',
+          status: 'idle',
+          trigger: 'lease-release',
+          blockers: [],
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, 'rc-a converged idle', true)) return;
+
+  // Must not PATCH the state comment (that would overwrite the newer idle state).
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'must not overwrite newer converged idle state with releasedState PATCH',
+  );
+});
+
+test('stale-node 422 with !repositoryLabelPresent + active different-owner state fails closed', async (t) => {
+  // A different active shepherd lease was acquired after our first 422 attempt.
+  // The label is already gone from the repository but the state now belongs to
+  // a different run. We must fail closed rather than silently accepting the 422.
+  const initialShepherdState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: LEASE_ID,
+    blockers: [],
+    updatedAt: '2026-07-17T12:00:00.000Z',
+  });
+  const stateComment = { id: 8802, body: renderStateComment(initialShepherdState) };
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      // State is now a DIFFERENT active shepherd (concurrent re-lease, not idle).
+      stateComment.body = renderStateComment(
+        makeState({
+          prNumber: PR_NUM,
+          headSha: HEAD_SHA,
+          fingerprint: blockerFingerprint([]),
+          owner: 'shepherd',
+          status: 'active',
+          leaseId: 'different-new-lease-id',
+          blockers: [],
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.notEqual(code, 0, 'must fail closed when a different active owner is present');
+  assert.match(stderr, /ownership changed during stale-node release/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'must not PATCH state when failing closed',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Thread 9 regression: stale automation incomplete release
+// (PRRT_kwDOSvo2Ms6RwLDt)
+// ---------------------------------------------------------------------------
+
+test('stale automation incomplete release at attempt=2 persists exhausted state and does not re-dispatch', async (t) => {
+  // Simulate: previous run deleted the repo label but failed to write the idle
+  // state. staleOwningState=true, owner=automation, attempt=2. The current run
+  // must detect this, write the terminal idle state, and exit 0 without
+  // dispatching a new Copilot task.
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const staleAt = new Date(Date.now() - 5000).toISOString();
+  const staleAutomationState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers,
+    attempt: 2,
+    progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+    progressAt: staleAt,
+    updatedAt: staleAt,
+  });
+  const stateComment = { id: 8901, body: renderStateComment(staleAutomationState) };
+  // Labels are absent (repo label was deleted by the interrupted release)
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [] }, // no owner label attached
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    // Repository label is also absent (was deleted in the previous incomplete run)
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, 'thread9 attempt=2', true)) return;
+
+  // Must write an idle terminal state preserving attempt=2
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState?.owner, 'none', 'must write owner=none terminal state');
+  assert.equal(finalState?.status, 'idle', 'must write status=idle');
+  assert.equal(finalState?.attempt, 2, 'must preserve the exhausted attempt=2 count');
+  assert.match(stdout, /completed interrupted release pr=#42 attempt=2/);
+
+  // Must NOT dispatch a new Copilot task (no label creation or comment posting)
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+    ),
+    false,
+    'must not re-attach owner label for exhausted PR',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'must not post a new task comment for exhausted PR',
+  );
+});
+
+test('stale automation incomplete release at attempt=1 persists state and re-dispatches with correct attempt', async (t) => {
+  // Same scenario but attempt=1: the interrupted run only consumed one attempt,
+  // so we should complete the terminal state write and then re-dispatch normally
+  // with attempt=dispatchAttemptBase (carry forward, not reset to 0).
+  const failedCheck = {
+    id: 2,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/2`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const staleAt = new Date(Date.now() - 5000).toISOString();
+  const staleAutomationState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers,
+    attempt: 1,
+    progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+    progressAt: staleAt,
+    updatedAt: staleAt,
+  });
+  const stateComment = { id: 8902, body: renderStateComment(staleAutomationState) };
+  let repositoryLabelExists = false; // Already deleted by the previous run
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 9902 },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, 'thread9 attempt=1', true)) return;
+
+  assert.match(stdout, /completed interrupted release pr=#42 attempt=1/);
+  assert.match(stdout, /assigned copilot pr=#42/);
+
+  // The final written state should reflect the re-dispatch at attempt=2
+  // (dispatching from base=1, so acquire writes attempt=1+1=2 via normal acquire).
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState?.owner, 'automation');
+  assert.equal(finalState?.status, 'dispatched');
+  assert.equal(
+    finalState?.attempt,
+    2,
+    're-dispatch after incomplete release must carry forward the attempt budget (1→2)',
+  );
 });

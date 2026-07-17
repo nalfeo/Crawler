@@ -76,9 +76,9 @@ Recovery state machine, Router, workflow triggers, and deterministic tests.
 
 ## Verification
 
-- Focused state/router/reconcile/replay Node suite: 76 passed, 43 documented
-  Windows subprocess skips, 0 failed. Linux CI remains authoritative for
-  skipped subprocess cases.
+- Focused state/router/reconcile/replay Node suite: 81 passed, 45 skipped by the
+  documented Windows subprocess exemption, 0 failed. Linux CI remains
+  authoritative for skipped subprocess cases.
 - Recovery workflow bridge/wiring Vitest suite: 9 passed.
 - `npm run verify:fast`
 - Review ledger validation
