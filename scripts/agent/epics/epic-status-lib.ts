@@ -1188,6 +1188,7 @@ export function auditGithub(
         .passthrough()
         .parse(runner.get(`/repos/${owner}/${repo}/pulls/${node.github.pr.number}`)) as GithubPull;
       const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
+      const observedMergeCommit = pull.merged ? pull.merge_commit_sha : null;
       if (pull.head.sha !== node.github.pr.head_sha) {
         repoPatch.push({
           op: 'replace',
@@ -1221,11 +1222,11 @@ export function auditGithub(
           reason: `Observed PR #${pull.number} head from GitHub`,
         });
       }
-      if (node.reconciliation.observed_merge_commit !== pull.merge_commit_sha) {
+      if (node.reconciliation.observed_merge_commit !== observedMergeCommit) {
         repoPatch.push({
           op: 'replace',
           path: `/nodes/${state.nodes.indexOf(node)}/reconciliation/observed_merge_commit`,
-          value: pull.merge_commit_sha,
+          value: observedMergeCommit,
           reason: `Observed PR #${pull.number} merge commit from GitHub`,
         });
       }
