@@ -41,4 +41,19 @@ describe('CI recovery auto-rebase callback fencing', () => {
     expect(raw.match(/-f expected_base_ref="\$expected_base"/g)).toHaveLength(2);
     expect(raw).toContain('if [ "$train_enabled" = "true" ]; then');
   });
+
+  it('passes workflow inputs through env and rechecks live PR metadata before push', () => {
+    const raw = readFileSync(WORKFLOW_PATH, 'utf8');
+    expect(raw).toContain('TARGET_PR: ${{ inputs.pr_number }}');
+    expect(raw).toContain('EXPECTED_HEAD_INPUT: ${{ inputs.expected_head_sha }}');
+    expect(raw).toContain('EXPECTED_BASE_INPUT: ${{ inputs.expected_base_ref }}');
+    expect(raw).toContain('target_pr="$TARGET_PR"');
+    expect(raw).toContain('expected_head="$EXPECTED_HEAD_INPUT"');
+    expect(raw).toContain('expected_base="$EXPECTED_BASE_INPUT"');
+    expect(raw).toContain('targeted rebase dispatch requires expected head/base metadata');
+    expect(raw).toContain('gh pr view "$number"');
+    expect(raw).toContain('metadata drifted after rebase');
+    expect(raw).toContain('.baseRefName == $base');
+    expect(raw).toContain('.headRefOid == $expected');
+  });
 });

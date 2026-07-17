@@ -68,6 +68,9 @@ jobs:
       - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_PR: ${{ inputs.pr_number }}
+          EXPECTED_HEAD_INPUT: ${{ inputs.expected_head_sha }}
+          EXPECTED_BASE_INPUT: ${{ inputs.expected_base_ref }}
         run: |
           set -euo pipefail
 
@@ -82,22 +85,26 @@ jobs:
 
           echo "🔄 Fetching active PRs targeting main..."
           if [ "$train_enabled" = "true" ]; then
-            target_pr='${{ inputs.pr_number }}'
-            expected_head='${{ inputs.expected_head_sha }}'
-            expected_base='${{ inputs.expected_base_ref }}'
+            target_pr="$TARGET_PR"
+            expected_head="$EXPECTED_HEAD_INPUT"
+            expected_base="$EXPECTED_BASE_INPUT"
             if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ -z "$target_pr" ]; then
               echo "Merge train enabled; blanket rebase sweep disabled."
+              exit 0
+            fi
+            if [ -z "$expected_head" ] || [ -z "$expected_base" ]; then
+              echo "Merge train enabled; targeted rebase dispatch requires expected head/base metadata."
               exit 0
             fi
             prs_json=$(
               gh pr view "$target_pr" \
                 --repo "$GITHUB_REPOSITORY" \
                 --json number,state,isDraft,baseRefName,headRefOid,headRefName,headRepository,headRepositoryOwner,labels |
-                jq --arg expected "$expected_head" \
-                  '[select(.state == "OPEN" and .isDraft == false and .baseRefName == "main" and .headRefOid == $expected)]'
+                jq --arg expected "$expected_head" --arg base "$expected_base" --arg repo "$GITHUB_REPOSITORY" \
+                  '[select(.state == "OPEN" and .isDraft == false and .baseRefName == $base and .headRefOid == $expected and ((.headRepositoryOwner.login // "") + "/" + (.headRepository.name // "")) == $repo)]'
             )
             if [ "$(echo "$prs_json" | jq 'length')" -eq 0 ]; then
-              echo "Target PR is no longer open, non-draft, main-targeting, or at the expected head; skipping stale dispatch."
+              echo "Target PR is no longer open, non-draft, same-repository, base-targeting, or at the expected head; skipping stale dispatch."
               exit 0
             fi
           else
@@ -154,6 +161,19 @@ jobs:
             fi
 
             if git rebase origin/main; then
+              if [ "$train_enabled" = "true" ]; then
+                live_pr=$(
+                  gh pr view "$number" \
+                    --repo "$GITHUB_REPOSITORY" \
+                    --json state,isDraft,baseRefName,headRefOid,headRepository,headRepositoryOwner
+                )
+                if ! echo "$live_pr" | jq -e --arg expected "$expected_head" --arg base "$expected_base" --arg repo "$GITHUB_REPOSITORY" \
+                  '.state == "OPEN" and .isDraft == false and .baseRefName == $base and .headRefOid == $expected and ((.headRepositoryOwner.login // "") + "/" + (.headRepository.name // "")) == $repo' >/dev/null; then
+                  echo "  ⏭️ Skipping push for PR #$number (metadata drifted after rebase)."
+                  skipped=$((skipped + 1))
+                  continue
+                fi
+              fi
               if git push --force-with-lease="refs/heads/$head_ref:$expected_head" origin "HEAD:$head_ref"; then
                 echo "  ✅ Rebasing complete for PR #$number."
                 rebased=$((rebased + 1))

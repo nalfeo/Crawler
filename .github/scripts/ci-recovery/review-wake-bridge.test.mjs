@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  getGitHubSubtreeSnapshot,
   getWorkflowTreeSnapshot,
   inspectReviewWake,
   PROTECTED_WORKFLOW_PATHS,
@@ -129,12 +130,12 @@ function fakeApi({
 }) {
   const calls = [];
   const workflowCalls = [];
-  const workflowTreeCalls = [];
+  const githubSubtreeCalls = [];
   const evidenceByPr = reviewEvidence ?? { 42: [trustedEvidence(run)] };
   return {
     calls,
     workflowCalls,
-    workflowTreeCalls,
+    githubSubtreeCalls,
     api: {
       async getRun(id) {
         calls.push(['getRun', id]);
@@ -150,11 +151,14 @@ function fakeApi({
             : `trusted-workflow-blob:${path}`;
         return sha === null ? null : { sha };
       },
-      async getWorkflowTree(ref) {
-        workflowTreeCalls.push(ref);
-        const sha = Object.hasOwn(workflowTrees, ref)
-          ? workflowTrees[ref]
-          : 'trusted-workflow-tree';
+      async getGitHubSubtree(subtree, ref) {
+        githubSubtreeCalls.push([subtree, ref]);
+        const key = `${subtree}@${ref}`;
+        const sha = Object.hasOwn(workflowTrees, key)
+          ? workflowTrees[key]
+          : Object.hasOwn(workflowTrees, ref)
+            ? workflowTrees[ref]
+            : 'trusted-workflow-tree';
         return sha === null ? null : { sha };
       },
       async compareCommits(base, head) {
@@ -191,7 +195,14 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
     ['listReviewEvidence', 42, 'pull_request_review_comment', evidenceSince],
     ['getPull', 42],
   ]);
-  assert.deepEqual(fake.workflowTreeCalls, [mergeBaseSha, 'a'.repeat(40)]);
+  assert.deepEqual(fake.githubSubtreeCalls, [
+    ['workflows', mergeBaseSha],
+    ['workflows', 'a'.repeat(40)],
+    ['scripts', mergeBaseSha],
+    ['scripts', 'a'.repeat(40)],
+    ['actions', mergeBaseSha],
+    ['actions', 'a'.repeat(40)],
+  ]);
   assert.equal(fake.workflowCalls.length, protectedPaths.length * 2);
   for (const path of protectedPaths) {
     assert.deepEqual(
@@ -223,6 +234,38 @@ test('protected paths are the exact privileged recovery execution boundary', () 
       `privileged dependency must be protected: ${dependency}`,
     );
   }
+});
+
+test('rejects when the protected .github/scripts subtree differs from merge base', async () => {
+  const data = fixture();
+  const fake = fakeApi({
+    run: data.run,
+    pulls: { 42: data.pullRequest },
+    workflowTrees: {
+      [`scripts@${mergeBaseSha}`]: 'trusted-scripts-tree',
+      [`scripts@${'a'.repeat(40)}`]: 'modified-scripts-tree',
+    },
+  });
+
+  assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
+    reason: 'github-scripts-tree-modified',
+  });
+});
+
+test('rejects when the protected .github/actions subtree differs from merge base', async () => {
+  const data = fixture();
+  const fake = fakeApi({
+    run: data.run,
+    pulls: { 42: data.pullRequest },
+    workflowTrees: {
+      [`actions@${mergeBaseSha}`]: 'trusted-actions-tree',
+      [`actions@${'a'.repeat(40)}`]: 'modified-actions-tree',
+    },
+  });
+
+  assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
+    reason: 'github-actions-tree-modified',
+  });
 });
 
 test('resolves the immutable Actions subtree and rejects incomplete tree evidence', async () => {
@@ -275,6 +318,38 @@ test('resolves the immutable Actions subtree and rejects incomplete tree evidenc
       requestFn: async () => ({ data: { truncated: true, tree: [] } }),
     }),
     null,
+  );
+  assert.deepEqual(
+    await getGitHubSubtreeSnapshot({
+      token: 'test-token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      ref: mergeBaseSha,
+      subtree: 'scripts',
+      requestFn: async (_token, path) => {
+        if (path.endsWith(`/git/commits/${mergeBaseSha}`)) {
+          return { data: { tree: { sha: rootTreeSha } } };
+        }
+        if (path.endsWith(`/git/trees/${rootTreeSha}`)) {
+          return {
+            data: {
+              truncated: false,
+              tree: [{ path: '.github', type: 'tree', sha: githubTreeSha }],
+            },
+          };
+        }
+        if (path.endsWith(`/git/trees/${githubTreeSha}`)) {
+          return {
+            data: {
+              truncated: false,
+              tree: [{ path: 'scripts', type: 'tree', sha: workflowTreeSha }],
+            },
+          };
+        }
+        throw new Error(`unexpected request: ${path}`);
+      },
+    }),
+    { sha: workflowTreeSha },
   );
 });
 

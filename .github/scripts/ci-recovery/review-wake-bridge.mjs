@@ -13,6 +13,11 @@ const TRUSTED_REVIEWER_LOGINS = new Set([
   'copilot-pull-request-reviewer[bot]',
 ]);
 const REVIEW_EVENT_MAX_DELAY_MS = 30_000;
+const PROTECTED_GITHUB_SUBTREES = [
+  ['workflows', 'workflow-tree-modified', false],
+  ['scripts', 'github-scripts-tree-modified', true],
+  ['actions', 'github-actions-tree-modified', true],
+];
 export const PROTECTED_WORKFLOW_PATHS = new Set([
   '.github/workflows/ci-recovery-router.yml',
   '.github/workflows/ci-recovery-review-wake-bridge.yml',
@@ -70,7 +75,18 @@ function workflowTreeMatchesBase(baseTree, headTree) {
   );
 }
 
-export async function getWorkflowTreeSnapshot({ token, owner, repo, ref, requestFn = request }) {
+function optionalSubtreeMatchesBase(baseTree, headTree) {
+  return (baseTree === null && headTree === null) || workflowTreeMatchesBase(baseTree, headTree);
+}
+
+export async function getGitHubSubtreeSnapshot({
+  token,
+  owner,
+  repo,
+  ref,
+  subtree,
+  requestFn = request,
+}) {
   const commit = (
     await requestFn(token, `/repos/${owner}/${repo}/git/commits/${encodeURIComponent(ref)}`)
   ).data;
@@ -91,10 +107,14 @@ export async function getWorkflowTreeSnapshot({ token, owner, repo, ref, request
     )
   ).data;
   if (githubEntries?.truncated === true || !Array.isArray(githubEntries?.tree)) return null;
-  const workflowTree = githubEntries.tree.find(
-    (entry) => entry?.path === 'workflows' && entry?.type === 'tree',
+  const subtreeTree = githubEntries.tree.find(
+    (entry) => entry?.path === subtree && entry?.type === 'tree',
   );
-  return /^[0-9a-f]{40}$/i.test(String(workflowTree?.sha || '')) ? { sha: workflowTree.sha } : null;
+  return /^[0-9a-f]{40}$/i.test(String(subtreeTree?.sha || '')) ? { sha: subtreeTree.sha } : null;
+}
+
+export async function getWorkflowTreeSnapshot({ token, owner, repo, ref, requestFn = request }) {
+  return getGitHubSubtreeSnapshot({ token, owner, repo, ref, subtree: 'workflows', requestFn });
 }
 
 export function runRejection({ payload, run, repository }) {
@@ -245,12 +265,17 @@ export async function inspectReviewWake({
   // Protect the complete Actions definition tree, not only the recovery
   // workflows below. Any branch-authored workflow addition, edit, deletion, or
   // rename could otherwise execute with repository credentials after merge.
-  const [baseWorkflowTree, headWorkflowTree] = await Promise.all([
-    api.getWorkflowTree(mergeBaseSha),
-    api.getWorkflowTree(run.head_sha),
-  ]);
-  if (!workflowTreeMatchesBase(baseWorkflowTree, headWorkflowTree)) {
-    return { reason: 'workflow-tree-modified' };
+  for (const [subtree, rejectionReason, allowBothAbsent] of PROTECTED_GITHUB_SUBTREES) {
+    const [baseTree, headTree] = await Promise.all([
+      api.getGitHubSubtree(subtree, mergeBaseSha),
+      api.getGitHubSubtree(subtree, run.head_sha),
+    ]);
+    const matches = allowBothAbsent
+      ? optionalSubtreeMatchesBase(baseTree, headTree)
+      : workflowTreeMatchesBase(baseTree, headTree);
+    if (!matches) {
+      return { reason: rejectionReason };
+    }
   }
 
   const protectedSnapshots = await Promise.all(
@@ -348,8 +373,8 @@ export async function runFromEnv(env = process.env) {
           throw error;
         }
       },
-      async getWorkflowTree(ref) {
-        return getWorkflowTreeSnapshot({ token, owner, repo, ref });
+      async getGitHubSubtree(subtree, ref) {
+        return getGitHubSubtreeSnapshot({ token, owner, repo, ref, subtree });
       },
       async compareCommits(base, head) {
         return (
