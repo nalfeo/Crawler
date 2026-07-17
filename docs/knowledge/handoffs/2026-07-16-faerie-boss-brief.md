@@ -121,7 +121,7 @@ npm run sprites:asset-pr
 ```
 
 After the art PR merges, run `npm run dev` and navigate to Floor 2 to observe
-Queen Mab Tarnish rendering at the correct tall aspect ratio.
+Queen Mab Tarnish rendering at the correct tall aspect ratio (64×128 cell, 2-row × 4-col sheet).
 
 ## Retrospective
 
