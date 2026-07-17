@@ -1,0 +1,27 @@
+type: enemy
+name: cactusfolk-boss
+floor: 2
+description: |
+  Abuela Saguaro, a towering upright saguaro matriarch with an intimidating
+  elder crime-boss presence. Use industrial salvage adornment and dark-fantasy
+  dungeon wear appropriate to Floor 2 — think scavenged iron chain-mail draped
+  over thick green cactus flesh, cracked leather straps binding rusted plating
+  to the torso, and a battered crown or wide-brimmed hat that reads as gang
+  authority. Preserve the towering vertical saguaro silhouette: a thick central
+  column torso with paired arm-columns raised in a classic saguaro pose. Keep
+  arms and spines firmly connected to the body — no isolated thorns, no fragile
+  protrusions, no floating limbs. Face the sprite toward the right (default
+  enemy facing). Colour palette from the Floor 2 dungeon range: dark greens,
+  rusted iron, and dusty ochre with minimal accent highlights.
+sensors:
+  # Towering vertical silhouette may graze the top or sides of the frame.
+  edge:
+    allowMainTouch: true
+  enemy:
+    # Standard rightward enemy facing.
+    facing: right
+variations:
+  - Abuela Saguaro with a battered wide-brimmed hat adorned with iron spike ornaments
+  - Abuela Saguaro wearing rusted pauldrons and a heavy chain across the chest
+  - Abuela Saguaro with a cracked leather eyepatch and a spiked iron crown
+minVariations: 4

@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "merge-train-scheduling",
+  "task_title": "Fix merge-train scheduling and validation",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted explicit merge-train label transition handling (including unlabeled payloads), required pending-success and completed-failure health tests, and made maximal-prefix state transitions explicit. Rejected dispatching smaller prefixes after maximal success because the approved hard gate requires successful batches to complete in one validation round and requests smaller prefixes only after genuine maximal failure; existing retry/security checks remain unchanged."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
