@@ -720,9 +720,9 @@ function validateEvidenceFiles(repoRoot: string, node: EpicNode, result: Mutable
     const content = gitShowContent(repoRoot, evidence.commit, evidence.path_or_check);
     if (content === null) {
       result.errors.push({
-        code: 'evidence.commit-not-found',
+        code: 'evidence.git-verification-failed',
         node_id: node.node_id,
-        message: `${node.node_id} evidence commit ${evidence.commit} does not contain ${evidence.path_or_check}`,
+        message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check} (commit or file may not exist)`,
       });
       continue;
     }
@@ -1453,10 +1453,10 @@ export function auditGithub(
   for (const [, claimsForNode] of claimsByNode) {
     const uniqueSessions = new Map<string, ParsedClaim>();
     for (const claim of claimsForNode) {
-      const key = `${claim.claimant}\u0000${claim.session}`;
-      const prior = uniqueSessions.get(key);
+    const sessionKey = `${claim.claimant}\u0000${claim.session}`;
+      const prior = uniqueSessions.get(sessionKey);
       if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
-        uniqueSessions.set(key, claim);
+        uniqueSessions.set(sessionKey, claim);
       }
     }
     deduplicatedClaims.push(...uniqueSessions.values());
@@ -1468,10 +1468,10 @@ export function auditGithub(
     const byNode = deduplicatedByNode.get(claim.nodeId) ?? [];
     byNode.push(claim);
     deduplicatedByNode.set(claim.nodeId, byNode);
-    const ownerKey = `${claim.claimant}\u0000${claim.session}`;
-    const byOwner = deduplicatedByOwner.get(ownerKey) ?? [];
+    const sessionKey = `${claim.claimant}\u0000${claim.session}`;
+    const byOwner = deduplicatedByOwner.get(sessionKey) ?? [];
     byOwner.push(claim);
-    deduplicatedByOwner.set(ownerKey, byOwner);
+    deduplicatedByOwner.set(sessionKey, byOwner);
   }
   for (const [nodeId, claims] of deduplicatedByNode) {
     if (claims.length > 1) {
