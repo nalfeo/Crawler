@@ -14,8 +14,23 @@
       "notes": "Round 1 rejected lifecycle fabrication and blurred authority; the revised plan separates PR facts from epic lifecycle, assigns one authority per contract, freezes field-level invariants and the existing 10-slot ability cap, keeps Unique external to the DAG, and orders ADR before specs/state. Round 2 found one wording gap, resolved by requiring materialize issue -> validator ready -> CLAIMED lease/base -> heartbeat/in_progress -> PR + HANDOFF -> pr_open."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     }
   }
 }
