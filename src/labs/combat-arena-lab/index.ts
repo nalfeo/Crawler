@@ -32,6 +32,7 @@ import {
 } from '../../engine/generatedAssets/index.js';
 import { SHEETS } from '../../engine/sprites/index.js';
 import { enemyAISystem, weaponSystem } from '../../game/index.js';
+import { mobAbilitySystem } from '../../core/index.js';
 import { equipStarterOrFallback } from '../../game/scenarios/starterWeaponEquip.js';
 import { GAME } from '../../shared/constants.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
@@ -242,9 +243,11 @@ class CombatArenaScene extends Phaser.Scene {
 
       // Use the shared canonical pipeline (same ordering as visual + headless
       // floor simulations). weaponSystem runs before enemyAISystem to match
-      // the main game's preSystems contract.
+      // the main game's preSystems contract. mobAbilitySystem is the canonical
+      // typed ability runtime (default-off in production; the Queen Mab preset
+      // enables it) — the lab does NOT re-dispatch a lab-only copy.
       runCoreSimulationStep(this.world, this.inputState, {
-        preSystems: [weaponSystem, enemyAISystem],
+        preSystems: [weaponSystem, enemyAISystem, mobAbilitySystem],
       });
 
       this.accumulator -= GAME.DELTA_MS;
