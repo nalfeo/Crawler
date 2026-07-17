@@ -320,7 +320,7 @@ describe('Floor 2 equipment epic status', () => {
             number: 1271,
             state: 'open',
             merged: false,
-            merge_commit_sha: null,
+            merge_commit_sha: 'c'.repeat(40),
             html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
             head: { sha: advancedHead },
           };
@@ -337,6 +337,9 @@ describe('Floor 2 equipment epic status', () => {
         path: '/nodes/0/github/pr/head_sha',
         value: advancedHead,
       }),
+    );
+    expect(audit.proposal.repo_patch.map((patch) => patch.path)).not.toContain(
+      '/nodes/0/reconciliation/observed_merge_commit',
     );
   });
 });
