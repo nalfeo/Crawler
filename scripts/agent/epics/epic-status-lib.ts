@@ -1486,6 +1486,16 @@ interface ParsedClaim {
   readonly postedAt: string;
 }
 
+function makeClaimKey(nodeId: string, claimant: string, session: string): string {
+  // Use NUL as the compound-key separator because these structured text fields
+  // cannot contain U+0000, so the joined key remains unambiguous.
+  return `${nodeId}\u0000${claimant}\u0000${session}`;
+}
+
+function makeOwnerSessionKey(claimant: string, session: string): string {
+  return `${claimant}\u0000${session}`;
+}
+
 function parseTrustedStructuredFields(
   comment: GithubComment,
   heading: 'CLAIMED' | 'BLOCKED',
@@ -1629,9 +1639,7 @@ export function auditGithub(
         }
         const claim = parseTrustedClaim(comment, expectedNodeId);
         if (!claim || Date.parse(claim.expiresAt) <= now.getTime()) continue;
-        // Use NUL as the compound-key separator because these structured text fields
-        // cannot contain U+0000, so the joined key remains unambiguous.
-        liveClaims.set(`${claim.nodeId}\u0000${claim.claimant}\u0000${claim.session}`, claim);
+        liveClaims.set(makeClaimKey(claim.nodeId, claim.claimant, claim.session), claim);
       }
       issueClaims.push(...liveClaims.values());
     } catch (error) {
@@ -1854,7 +1862,7 @@ export function auditGithub(
     const byNode = claimsByNode.get(claim.nodeId) ?? [];
     byNode.push(claim);
     claimsByNode.set(claim.nodeId, byNode);
-    const ownerKey = `${claim.claimant}\u0000${claim.session}`;
+    const ownerKey = makeOwnerSessionKey(claim.claimant, claim.session);
     const byOwner = claimsByOwner.get(ownerKey) ?? [];
     byOwner.push(claim);
     claimsByOwner.set(ownerKey, byOwner);
@@ -1865,7 +1873,7 @@ export function auditGithub(
   for (const [, claimsForNode] of claimsByNode) {
     const uniqueSessions = new Map<string, ParsedClaim>();
     for (const claim of claimsForNode) {
-      const sessionKey = `${claim.claimant}\u0000${claim.session}`;
+      const sessionKey = makeOwnerSessionKey(claim.claimant, claim.session);
       const prior = uniqueSessions.get(sessionKey);
       if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
         uniqueSessions.set(sessionKey, claim);
@@ -1880,7 +1888,7 @@ export function auditGithub(
     const byNode = deduplicatedByNode.get(claim.nodeId) ?? [];
     byNode.push(claim);
     deduplicatedByNode.set(claim.nodeId, byNode);
-    const sessionKey = `${claim.claimant}\u0000${claim.session}`;
+    const sessionKey = makeOwnerSessionKey(claim.claimant, claim.session);
     const byOwner = deduplicatedByOwner.get(sessionKey) ?? [];
     byOwner.push(claim);
     deduplicatedByOwner.set(sessionKey, byOwner);

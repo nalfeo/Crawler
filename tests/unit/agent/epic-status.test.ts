@@ -127,8 +127,12 @@ describe('Floor 2 equipment epic status', () => {
   it('accepts the canonical 37-node graph and preserves the approved contract', () => {
     const result = validate(cloneState());
     const contract = extractPlanContract(PLAN).contract;
+    const a0TestEvidence = STATE.nodes[0]!.evidence.find(
+      (evidence) => evidence.kind === 'offline-validator-and-focused-tests',
+    );
 
     expect(result.errors).toEqual([]);
+    expect(a0TestEvidence?.sha256).toBe(CURRENT_TEST_FILE_HASH);
     expect(result.state?.nodes).toHaveLength(EXPECTED_NODE_IDS.length);
     expect(result.release_ready).toBe(false);
     expect(contract.catalog.sprite_ids).toHaveLength(70);
