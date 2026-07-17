@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5a2f90fa6c268166076456e533aca21a6053a64d",
+    "commitDate": "2026-07-17T04:31:08Z",
+    "commitSubject": "Improve Copilot review completeness and consistency (#1240)",
+    "capturedAt": "2026-07-17T05:48:50.435Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29555474284",
+    "winRate": 0.9483333333333334,
+    "totalWins": 569,
+    "totalRuns": 600,
+    "path": "by-sha/5a2f90fa6c268166076456e533aca21a6053a64d.json"
+  },
+  {
     "commit": "baccde1c94f4b2aeda7935d5c47ab2472ee3f39f",
     "commitDate": "2026-07-17T03:47:22Z",
     "commitSubject": "feat(ai): enable tuned weapon personas by default (#1214)",
