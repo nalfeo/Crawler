@@ -15,21 +15,47 @@ kickoff comment that points Copilot at the normal repo instructions.
   router runs that GitHub parks as `action_required` when Copilot authors a
   review event. It re-fetches the immutable run, accepts only the exact router
   path and review events from the production-proven `Copilot` bot identity
-  (`id=175728472`), requires `workflow_run.pull_requests` to be non-empty (fails
-  closed if GitHub does not populate it — commit-to-PR association is not used
-  as a fallback because it does not preserve event-to-PR provenance), filters to
-  exactly one open same-repository PR on the current head SHA, and rejects PRs
-  that modify any workflow in the recovery chain. It threads that validated head
-  SHA into the dispatch (`expected_head_sha`) so recovery is bound to the exact
-  reviewed commit. Read-only inspection and `actions: write` dispatch are
-  separate jobs.
+  (`id=175728472`), and binds recovery to one source PR through an independent,
+  trusted signal rather than treating the `workflow_run.pull_requests`
+  association as provenance. GitHub documents that array as open PRs that merely
+  match the run's head SHA or head branch and warns that they did not
+  necessarily trigger the run, so it is never used to _select_ the PR. Instead
+  the router encodes the trusted `github.event.pull_request.number` webhook
+  field into its `run-name` (surfaced back on the run object as `display_title`).
+  Before parsing that title, the bridge requires the router workflow Git blob at
+  the run head to exactly equal the default-branch blob
+  (`router-workflow-untrusted` on mismatch), so PR-modified workflow code cannot
+  forge the binding. The bridge then evaluates only that source PR and
+  cross-checks it against three immutable run attributes: it must
+  appear in `workflow_run.pull_requests` (`source-pr-not-associated` otherwise),
+  its head SHA must equal the run head SHA, and its head ref must equal
+  `run.head_branch` (an unconditionally GitHub-set run attribute, so branch reuse
+  by an unrelated PR cannot substitute). It fails closed when the run-name
+  binding is absent (`missing-source-pr-binding`) or the association is empty
+  (`no-associated-pr`), and rejects PRs that modify any workflow in the recovery
+  chain. It threads that validated head SHA into the dispatch
+  (`expected_head_sha`) so recovery is bound to the exact reviewed commit.
+  Read-only inspection and `actions: write` dispatch are separate jobs.
 - `ci-recovery.yml`'s optional `expected_head_sha` input closes a
   time-of-check/time-of-use race: the bridge validates one head (including the
   protected-workflow-file gate that only the bridge performs), but reconcile
   re-fetches the live PR head, which a synchronize could move to a commit that
-  now edits a protected workflow. When the input is set and the live head no
-  longer matches, `reconcile.mjs` fails closed — it skips without any mutation.
-  An empty input preserves normal manual/router/scheduled behavior.
+  now edits a protected workflow. `reconcile.mjs` checks the input once against
+  the opening PR fetch, and then — because several read phases (comments, labels,
+  closing issues, review threads, commit compares, check runs, workflow runs) run
+  before the first write — re-fetches the live head and compares again
+  immediately before every mutation phase (state comment, labels, recovery task
+  comment, Copilot assignment, thread resolution, merge-train queueing, and
+  auto-merge). When the input is set and the live head no longer matches at any
+  of those points, reconcile fails closed — it skips without that mutation
+  (`reason=head-sha-moved` at the opening guard, or
+  `reason=head-sha-moved-before-mutation phase=<phase>` at a per-phase recheck).
+  `enablePullRequestAutoMerge` additionally carries an `expectedHeadOid` fence.
+  GitHub exposes no atomic conditional metadata mutation, so the per-phase
+  recheck narrows but cannot fully eliminate the sub-second window between a
+  recheck and its immediately following write. An empty input is a no-op that
+  preserves normal manual/router/scheduled/lease behavior and adds no extra API
+  calls.
 - `ci-recovery.yml`, `ci-recovery-incidents.yml`, and `issue-copilot-intake.yml`
   are the workflows that receive `CRAWLER_CI_PAT`.
 - Explicit shepherd lease operations persist even while automated recovery is in
@@ -67,9 +93,12 @@ dispatches `CI Recovery`, and bridge completion does not match its own trigger.
 workflow reaches `main`, the first live `action_required` Copilot review run is
 the platform-delivery smoke proof; branch-local testing cannot register that
 listener. If GitHub does not deliver that event, or if GitHub delivers the event
-but leaves `workflow_run.pull_requests` empty (the bridge logs
-`reason=no-associated-pr` in that case), use the narrow operator fallback
-instead of waiting for cron:
+but the bridge fails closed on it — for example an empty
+`workflow_run.pull_requests` (`reason=no-associated-pr`), an absent run-name
+source-PR binding (`reason=missing-source-pr-binding`), or a source PR that is
+not in the association (`reason=source-pr-not-associated`), or an untrusted
+router workflow blob (`reason=router-workflow-untrusted`) — use the narrow
+operator fallback instead of waiting for cron:
 
 ```powershell
 gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `

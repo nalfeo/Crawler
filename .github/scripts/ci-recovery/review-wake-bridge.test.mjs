@@ -12,7 +12,7 @@ function fixture() {
     state: 'open',
     changed_files: 1,
     base: { ref: 'main', repo: { full_name: repository } },
-    head: { sha: 'a'.repeat(40), repo: { full_name: repository } },
+    head: { sha: 'a'.repeat(40), ref: 'feature-branch', repo: { full_name: repository } },
   };
   return {
     payload: {
@@ -23,11 +23,13 @@ function fixture() {
     run: {
       id: 123,
       name: 'CI Recovery Router',
+      display_title: 'CI Recovery Router: review-wake pr-42',
       path: '.github/workflows/ci-recovery-router.yml',
       status: 'completed',
       conclusion: 'action_required',
       event: 'pull_request_review_comment',
       head_sha: 'a'.repeat(40),
+      head_branch: 'feature-branch',
       repository: { full_name: repository },
       head_repository: { full_name: repository },
       actor: trustedActor,
@@ -39,14 +41,20 @@ function fixture() {
   };
 }
 
-function fakeApi({ run, pulls = {}, files = {} }) {
+function fakeApi({ run, pulls = {}, files = {}, workflowFiles = {} }) {
   const calls = [];
+  const workflowCalls = [];
   return {
     calls,
+    workflowCalls,
     api: {
       async getRun(id) {
         calls.push(['getRun', id]);
         return run;
+      },
+      async getWorkflowFile(path, ref) {
+        workflowCalls.push([path, ref]);
+        return { sha: workflowFiles[ref] || 'trusted-router-blob' };
       },
       async getPull(number) {
         calls.push(['getPull', number]);
@@ -78,6 +86,10 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
     ['getPull', 42],
     ['listPullFiles', 42],
   ]);
+  assert.deepEqual(fake.workflowCalls, [
+    ['.github/workflows/ci-recovery-router.yml', 'a'.repeat(40)],
+    ['.github/workflows/ci-recovery-router.yml', 'main'],
+  ]);
 });
 
 test('binds the accepted wake to the validated run head SHA (lowercased)', async () => {
@@ -108,19 +120,121 @@ test('fails closed when run.pull_requests is empty without calling any commit AP
   assert.deepEqual(fake.calls, [['getRun', 123]]);
 });
 
-test('fails closed when two PR associations remain eligible', async () => {
+test('fails closed before source-PR selection when the run used a modified router workflow', async () => {
   const data = fixture();
-  data.run.pull_requests = [{ number: 42 }, { number: 43 }];
-  const second = { ...data.pullRequest, number: 43 };
   const fake = fakeApi({
     run: data.run,
-    pulls: { 42: data.pullRequest, 43: second },
+    workflowFiles: {
+      [data.run.head_sha]: 'modified-router-blob',
+      main: 'trusted-router-blob',
+    },
+  });
+
+  assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
+    reason: 'router-workflow-untrusted',
+  });
+  assert.deepEqual(fake.calls, [['getRun', 123]]);
+  assert.deepEqual(fake.workflowCalls, [
+    ['.github/workflows/ci-recovery-router.yml', data.run.head_sha],
+    ['.github/workflows/ci-recovery-router.yml', 'main'],
+  ]);
+});
+
+test('selects the run-name source PR even when extra PRs are associated', async () => {
+  const data = fixture();
+  // GitHub associates two open PRs at the run head, but the trusted run-name
+  // binds recovery to exactly PR #42. #43 must never be fetched.
+  data.run.pull_requests = [{ number: 42 }, { number: 43 }];
+  const fake = fakeApi({
+    run: data.run,
+    pulls: { 42: data.pullRequest },
+    files: { 42: data.changedFiles },
+  });
+
+  assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
+    prNumber: 42,
+    trigger: 'trusted-review-wake:pull_request_review_comment:run-123',
+    headSha: 'a'.repeat(40),
+  });
+  assert.deepEqual(fake.calls, [
+    ['getRun', 123],
+    ['getPull', 42],
+    ['listPullFiles', 42],
+  ]);
+});
+
+test('does not substitute an unrelated associated PR when the source PR head moved', async () => {
+  const data = fixture();
+  // The reviewed source PR (#42) advanced its head after the run, so it no
+  // longer matches run.head_sha. An unrelated PR (#43) happens to sit at
+  // run.head_sha. The bridge must evaluate ONLY the run-name-bound #42, fail
+  // closed on its head mismatch, and never consider #43.
+  data.run.pull_requests = [{ number: 42 }, { number: 43 }];
+  const movedSource = {
+    ...data.pullRequest,
+    head: { ...data.pullRequest.head, sha: 'c'.repeat(40) },
+  };
+  const unrelatedAtRunHead = {
+    number: 43,
+    state: 'open',
+    changed_files: 1,
+    base: { ref: 'main', repo: { full_name: repository } },
+    head: { sha: 'a'.repeat(40), ref: 'other-branch', repo: { full_name: repository } },
+  };
+  const fake = fakeApi({
+    run: data.run,
+    pulls: { 42: movedSource, 43: unrelatedAtRunHead },
     files: { 42: data.changedFiles, 43: data.changedFiles },
   });
 
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
-    reason: 'eligible-pr-count=2',
+    reason: 'head-sha-mismatch',
   });
+  // Only the bound PR is fetched; the unrelated same-head PR is never read.
+  assert.deepEqual(fake.calls, [
+    ['getRun', 123],
+    ['getPull', 42],
+  ]);
+});
+
+test('fails closed when the run-name binding is missing', async () => {
+  const data = fixture();
+  delete data.run.display_title;
+  const fake = fakeApi({ run: data.run });
+
+  assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
+    reason: 'missing-source-pr-binding',
+  });
+  assert.deepEqual(fake.calls, [['getRun', 123]]);
+});
+
+test('fails closed when the run-name PR is not in the association', async () => {
+  const data = fixture();
+  data.run.pull_requests = [{ number: 43 }];
+  const fake = fakeApi({ run: data.run, pulls: { 43: { ...data.pullRequest, number: 43 } } });
+
+  assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
+    reason: 'source-pr-not-associated',
+  });
+  // Disagreement is detected from the association set alone — no PR fetch.
+  assert.deepEqual(fake.calls, [['getRun', 123]]);
+});
+
+test('rejects a source PR whose head ref differs from the run head branch', async () => {
+  const data = fixture();
+  data.pullRequest.head.ref = 'renamed-branch';
+  const fake = fakeApi({
+    run: data.run,
+    pulls: { 42: data.pullRequest },
+  });
+
+  assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
+    reason: 'head-branch-mismatch',
+  });
+  assert.deepEqual(fake.calls, [
+    ['getRun', 123],
+    ['getPull', 42],
+  ]);
 });
 
 for (const [name, mutate, expected] of [
@@ -172,7 +286,7 @@ test('rejects a same-repository PR that modifies or renames a protected workflow
     });
     assert.deepEqual(
       await inspectReviewWake({ payload: data.payload, repository, api: fake.api }),
-      { reason: 'eligible-pr-count=0' },
+      { reason: 'protected-workflow-modified' },
     );
   }
 });
@@ -186,18 +300,19 @@ test('rejects incomplete changed-file evidence', async () => {
     files: { 42: data.changedFiles },
   });
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
-    reason: 'eligible-pr-count=0',
+    reason: 'changed-files-incomplete',
   });
 });
 
-for (const [name, mutate] of [
-  ['closed PR', (pullRequest) => (pullRequest.state = 'closed')],
-  ['non-default base', (pullRequest) => (pullRequest.base.ref = 'release')],
+for (const [name, mutate, expected] of [
+  ['closed PR', (pullRequest) => (pullRequest.state = 'closed'), 'not-open'],
+  ['non-default base', (pullRequest) => (pullRequest.base.ref = 'release'), 'wrong-base'],
   [
     'different base repository',
     (pullRequest) => (pullRequest.base.repo.full_name = 'attacker/Crawler'),
+    'base-repository',
   ],
-  ['stale head SHA', (pullRequest) => (pullRequest.head.sha = 'b'.repeat(40))],
+  ['stale head SHA', (pullRequest) => (pullRequest.head.sha = 'b'.repeat(40)), 'head-sha-mismatch'],
 ]) {
   test(`rejects ${name} metadata before reading changed files`, async () => {
     const data = fixture();
@@ -208,7 +323,7 @@ for (const [name, mutate] of [
     });
     assert.deepEqual(
       await inspectReviewWake({ payload: data.payload, repository, api: fake.api }),
-      { reason: 'eligible-pr-count=0' },
+      { reason: expected },
     );
     assert.deepEqual(fake.calls, [
       ['getRun', 123],

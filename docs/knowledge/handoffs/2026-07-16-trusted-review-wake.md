@@ -26,9 +26,10 @@ deterministic policy/wiring coverage and a two-round review-harness loop.
   router name/path, `completed/action_required`, review/review-comment source,
   the production-proven Copilot bot ID/login/type for both actor fields, and a
   same-repository open PR on `main` at the exact run head SHA.
-- The bridge requires `workflow_run.pull_requests` to identify the exact source
-  PR. When GitHub omits that association, it fails closed; commit-to-PR lookup
-  is not a safe fallback because another PR can share the same head commit.
+- The bridge binds recovery to one source PR. (Superseded — see the
+  2026-07 amendment below: the original `workflow_run.pull_requests`
+  "identifies the exact source PR" assumption was corrected, because that
+  array is head-SHA/branch association, not event-to-PR provenance.)
 - PRs that modify or rename the router, bridge, or recovery workflows are
   rejected. The accepted path emits one PR number and the write-only job makes
   one targeted `ci-recovery.yml` reconciliation dispatch; it never invokes the
@@ -83,3 +84,47 @@ one targeted CI Recovery run. If GitHub does not emit that `workflow_run`
 event, or emits it without a PR association, use the documented targeted
 `gh workflow run ci-recovery.yml` fallback; do not wait for cron or manually
 dispatch the router sweep.
+
+## Amendment (2026-07, PR #1227): source-PR binding + per-phase head recheck
+
+Review of the original bridge surfaced two real gaps, both hardened here:
+
+- **`workflow_run.pull_requests` is association, not provenance.** GitHub
+  documents that array as open PRs whose head SHA or head branch matches the
+  run and warns they did not necessarily trigger it. If the reviewed PR's head
+  moved (so it no longer matched the run head SHA) while an unrelated PR still
+  sat on the run head SHA, the old "exactly one associated PR" selection could
+  dispatch recovery onto that unrelated PR. Fix: `ci-recovery-router.yml` now
+  sets a `run-name` that encodes the trusted `github.event.pull_request.number`
+  for review/review-comment events (`CI Recovery Router: review-wake pr-<N>`),
+  surfaced back as the run's `display_title`. Before parsing the title, the
+  bridge requires the router workflow Git blob at the run head to exactly equal
+  the default-branch blob (`router-workflow-untrusted` on mismatch), so
+  PR-modified workflow code cannot forge the binding. It then evaluates only
+  that source PR, cross-checking it against the association
+  (`source-pr-not-associated`), the run head SHA, and `run.head_branch`
+  (`head-branch-mismatch`). It fails closed on a missing binding
+  (`missing-source-pr-binding`) or empty association (`no-associated-pr`). The
+  workflow `name:` is unchanged so the existing `run.name` gate still matches.
+- **The `expected_head_sha` fence was checked only once.** Reconcile validated
+  the head at its opening PR fetch, but several read phases run before the first
+  write, so a synchronize could still move the head before a state comment,
+  label, recovery task comment, or Copilot assignment mutated it (only
+  `enablePullRequestAutoMerge` carried an `expectedHeadOid`). Fix:
+  `reconcile.mjs` now re-fetches the live head and compares it immediately
+  before every mutation phase (`reason=head-sha-moved-before-mutation
+phase=<phase>`), failing closed with no mutation on a mismatch. An empty
+  `expected_head_sha` remains a no-op with no extra API calls.
+
+Residual risk: GitHub offers no atomic conditional metadata mutation, so the
+per-phase recheck narrows but cannot fully close the sub-second window between a
+recheck and its immediately following write. It is further fenced by
+`expected_head_sha` and the auto-merge `expectedHeadOid`, and is documented
+rather than claimed eliminated.
+
+Validation (this amendment): `node --test
+".github/scripts/ci-recovery/review-wake-bridge.test.mjs"` (22/22) and
+`reconcile.test.mjs` (added moved-head-before-mutation + empty-input coverage);
+`npx vitest run --project unit tests/unit/ci-recovery-review-wake-bridge.test.ts
+tests/unit/ci-recovery-router-run-name.test.ts` (7/7); `npm run typecheck`;
+`npm run verify:fast`.

@@ -110,6 +110,33 @@ if (expectedHeadSha) {
     process.exit(0);
   }
 }
+
+// The initial guard above only proves the head matched at the *start* of
+// reconciliation. Several read phases (comments, labels, closing issues, review
+// threads, commit compares, check runs, workflow runs) run before the first
+// writes, so a synchronize landing mid-run could otherwise let a later mutation
+// (state comment, labels, the recovery task comment, Copilot assignment, or
+// auto-merge) act on a head that never passed the bridge's protected-workflow
+// gate. `enablePullRequestAutoMerge` is separately fenced by `expectedHeadOid`,
+// but the earlier metadata mutations are not. Re-fetch the live head and fail
+// closed immediately before each mutation phase. GitHub exposes no atomic
+// conditional metadata mutation, so this narrows — but cannot fully eliminate —
+// the window; the residual is a comment/label/assignment write racing a push in
+// the sub-second gap between this check and the API call. An empty
+// EXPECTED_HEAD_SHA (normal manual/router/scheduled/lease flows) is a no-op, so
+// those paths keep their exact prior behavior and make no extra API calls.
+async function assertExpectedHeadUnchanged(phase) {
+  if (!expectedHeadSha) return;
+  const liveHeadSha = String(
+    (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)).data?.head?.sha || '',
+  ).toLowerCase();
+  if (liveHeadSha !== expectedHeadSha) {
+    process.stdout.write(
+      `skip pr=#${prNumber} reason=head-sha-moved-before-mutation phase=${phase} expected=${expectedHeadSha} actual=${liveHeadSha}\n`,
+    );
+    process.exit(0);
+  }
+}
 const comments = await paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
 let approvalRejection = null;
 let pendingHumanApproval = false;
@@ -153,6 +180,7 @@ async function updateState(nextState, { forceTimestamp = false } = {}) {
     state = nextState;
     return true;
   }
+  await assertExpectedHeadUnchanged('state-comment');
   const body = renderStateComment(nextState);
   if (stateComments[0]) {
     await request(pat, `/repos/${owner}/${repo}/issues/comments/${stateComments[0].id}`, {
@@ -177,6 +205,7 @@ async function acquire(nextOwner, nextLeaseId = null) {
   }
   const waitingTransition = await prepareWaitingExit();
   if (shouldMutate) {
+    await assertExpectedHeadUnchanged('acquire-label');
     await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
       body: {
@@ -211,6 +240,7 @@ async function acquire(nextOwner, nextLeaseId = null) {
 async function removePrLabel(name, { skipIfMissing = false } = {}) {
   if (skipIfMissing && !(pr.labels || []).some((label) => label.name === name)) return false;
   if (!shouldMutate) return false;
+  await assertExpectedHeadUnchanged('remove-label');
   try {
     await request(
       pat,
@@ -230,6 +260,7 @@ async function ensurePrLabel(name, color, description) {
     process.stdout.write(`dry-run would-add-label pr=#${prNumber} label=${name}\n`);
     return;
   }
+  await assertExpectedHeadUnchanged('add-label');
   try {
     await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
@@ -271,6 +302,7 @@ async function completeWaitingExit(prepared) {
 
 async function removeRepositoryLabel(name) {
   if (!shouldMutate) return false;
+  await assertExpectedHeadUnchanged('remove-repository-label');
   try {
     await request(pat, `/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`, {
       method: 'DELETE',
@@ -297,6 +329,7 @@ async function disableAutoMergeForHumanGate() {
     process.stdout.write(`dry-run would-disable-auto-merge pr=#${prNumber}\n`);
     return;
   }
+  await assertExpectedHeadUnchanged('disable-auto-merge');
   await graphql(
     pat,
     `
@@ -517,6 +550,7 @@ for (const thread of unresolvedThreads.filter((candidate) =>
   shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
 )) {
   if (live) {
+    await assertExpectedHeadUnchanged('resolve-thread');
     await graphql(
       pat,
       `
@@ -889,6 +923,7 @@ if (normalized.length === 0) {
     await removePrLabel(BLOCKED_LABEL);
     await removePrLabel(NOOP_LABEL);
     await removePrLabel(VALIDATION_FAILED_LABEL);
+    await assertExpectedHeadUnchanged('queue-merge-train');
     try {
       await request(pat, `/repos/${owner}/${repo}/labels`, {
         method: 'POST',
@@ -910,6 +945,7 @@ if (normalized.length === 0) {
     process.exit(0);
   }
   if (live) {
+    await assertExpectedHeadUnchanged('arm-auto-merge');
     await graphql(
       pat,
       `
@@ -977,6 +1013,7 @@ const taskBody = [
 ].join('\n');
 
 if (live) {
+  await assertExpectedHeadUnchanged('post-task-comment');
   await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
     method: 'POST',
     body: { body: taskBody },
@@ -1026,6 +1063,7 @@ if (live) {
     throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
   }
   const actorIds = [...new Set([...review.assignees.map((actor) => actor.id), copilot.id])];
+  await assertExpectedHeadUnchanged('assign-copilot');
   await graphql(
     pat,
     `

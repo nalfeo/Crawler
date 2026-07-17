@@ -1144,6 +1144,87 @@ test('empty expected_head_sha preserves normal reconcile behavior', async (t) =>
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+test('moved head after initial fetch fails closed before the first mutation phase', async (t) => {
+  // A synchronize can land after reconcile's opening PR fetch but before the
+  // first write. The per-phase recheck must re-fetch the live head immediately
+  // before mutating and fail closed if it moved, so no state comment, label,
+  // task comment, or Copilot assignment ever touches a head the bridge never
+  // validated. A mergeable:false PR deterministically reaches acquire (the very
+  // first mutation phase) in live mode.
+  const movedHead = 'b'.repeat(40);
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      // Call #1 is the opening fetch (passes the initial guard); call #2 is the
+      // per-phase recheck inside acquire, which must observe the moved head.
+      const head = pullFetches === 1 ? HEAD_SHA : movedHead;
+      return {
+        body: {
+          ...basePr(),
+          mergeable: false,
+          mergeable_state: 'clean',
+          head: { ...basePr().head, sha: head },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=head-sha-moved-before-mutation phase=acquire-label expected=${HEAD_SHA} actual=${movedHead}`,
+    ),
+    'a head that moved after the initial fetch must trip the per-phase guard',
+  );
+  assert.equal(pullFetches, 2, 'the per-phase guard must re-fetch the live head before mutating');
+  assert.deepEqual(
+    mutatingCalls,
+    [],
+    'a head moved before the first mutation must fail closed with no mutation',
+  );
+});
+
+test('empty expected_head_sha makes no extra head re-fetch before mutations', async (t) => {
+  // The per-phase recheck is a no-op when EXPECTED_HEAD_SHA is empty, so normal
+  // manual/router/scheduled/lease flows keep their exact prior API footprint:
+  // exactly one PR fetch and no additional /pulls calls per mutation phase.
+  let pullFetches = 0;
+  const { server, port } = await startServer({
+    ...cleanReconcileRoutes(),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      return { body: basePr() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    EXPECTED_HEAD_SHA: '',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /head-sha-moved/, 'an empty expected SHA must not trip any guard');
+  assert.equal(pullFetches, 1, 'an empty expected SHA must not add per-phase head re-fetches');
+});
+
 test('reconcile treats mergeable_state=behind as non-conflict and does not dispatch recovery', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({

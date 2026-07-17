@@ -5,6 +5,11 @@ import { paginate, request } from './github.mjs';
 
 const ROUTER_WORKFLOW_NAME = 'CI Recovery Router';
 const ROUTER_WORKFLOW_PATH = '.github/workflows/ci-recovery-router.yml';
+// The router encodes the trusted source PR number into its run-name for review
+// events (see ci-recovery-router.yml). GitHub surfaces run-name as the run
+// object's `display_title` (the `name` field stays the workflow name), so the
+// bridge reads it back to select the exact PR that emitted the review event.
+const REVIEW_RUN_NAME_PR_PREFIX = `${ROUTER_WORKFLOW_NAME}: review-wake pr-`;
 const ALLOWED_SOURCE_EVENTS = new Set(['pull_request_review', 'pull_request_review_comment']);
 const TRUSTED_COPILOT_ACTORS = new Map([[175728472, { login: 'copilot', type: 'bot' }]]);
 const PROTECTED_WORKFLOW_PATHS = new Set([
@@ -57,7 +62,24 @@ export function runRejection({ payload, run, repository }) {
   if (!actorIsTrusted(run?.actor)) return 'actor';
   if (!actorIsTrusted(run?.triggering_actor)) return 'triggering-actor';
   if (!/^[0-9a-f]{40}$/i.test(String(run?.head_sha ?? ''))) return 'head-sha';
+  // run.head_branch is a GitHub-set, immutable attribute of the run (never
+  // derived from a workflow file), used below as a trusted anchor to the exact
+  // branch the reviewed run executed on.
+  if (!String(run?.head_branch ?? '').trim()) return 'head-branch';
   return null;
+}
+
+/**
+ * Extract the source PR number the router encoded into its run-name for review
+ * events, surfaced by GitHub as the run object's `display_title`. Returns null
+ * when the marker is absent (e.g. a non-review router run, or run-name not yet
+ * deployed), so callers fail closed.
+ */
+export function sourcePrFromRunName(run) {
+  const prefix = normalize(REVIEW_RUN_NAME_PR_PREFIX);
+  const value = normalize(run?.display_title);
+  if (!value.startsWith(prefix)) return null;
+  return positiveInteger(value.slice(prefix.length));
 }
 
 export function pullRequestMetadataRejection({ pullRequest, run, repository, defaultBranch }) {
@@ -71,6 +93,13 @@ export function pullRequestMetadataRejection({ pullRequest, run, repository, def
   }
   if (normalize(pullRequest?.head?.sha) !== normalize(run?.head_sha)) {
     return 'head-sha-mismatch';
+  }
+  // Trusted immutable anchor: the candidate's head ref must equal the branch the
+  // reviewed run executed on. This rejects an unrelated PR that merely shares
+  // run.head_sha on a different branch (run.pull_requests associates PRs by head
+  // SHA *or* branch and is not event-to-PR provenance).
+  if (normalize(pullRequest?.head?.ref) !== normalize(run?.head_branch)) {
+    return 'head-branch-mismatch';
   }
   return null;
 }
@@ -104,54 +133,70 @@ export async function inspectReviewWake({ payload, repository, api }) {
   const defaultBranch = String(payload?.repository?.default_branch || '');
   if (!defaultBranch) return { reason: 'missing-default-branch' };
 
-  // Fail closed: commit-to-PR association does not preserve event-to-PR
-  // provenance. If GitHub did not populate run.pull_requests, we cannot
-  // identify the exact PR that emitted the trusted review event without
-  // risking associating the run with a different PR that merely shares the
-  // same commit. Use the targeted operator fallback in that case.
+  // The source-PR binding below comes from the router's run-name expression.
+  // Prove that expression came from the trusted default-branch workflow before
+  // parsing it: review events can otherwise evaluate a PR-modified workflow
+  // definition and forge display_title. Git blob identity is exact and does not
+  // depend on first identifying the source PR.
+  const [runWorkflow, trustedWorkflow] = await Promise.all([
+    api.getWorkflowFile(ROUTER_WORKFLOW_PATH, run.head_sha),
+    api.getWorkflowFile(ROUTER_WORKFLOW_PATH, defaultBranch),
+  ]);
+  if (!runWorkflow?.sha || !trustedWorkflow?.sha || runWorkflow.sha !== trustedWorkflow.sha) {
+    return { reason: 'router-workflow-untrusted' };
+  }
+
+  // Select the source PR from the trusted run-name binding, NOT from the
+  // head-SHA/branch association in run.pull_requests. GitHub documents
+  // run.pull_requests as open PRs matching the run head SHA or branch and warns
+  // they do not necessarily indicate the PR that triggered the run. If the
+  // reviewed PR's head moves after the run, an unrelated PR sitting at
+  // run.head_sha could otherwise become the sole "eligible" candidate and be
+  // recovered in its place. Instead we recover exactly the PR the router
+  // encoded into its run-name (from the trusted event payload), require the
+  // association to corroborate it, and re-validate that PR against the immutable
+  // run head SHA and branch.
+  const sourcePr = sourcePrFromRunName(run);
+  if (!sourcePr) return { reason: 'missing-source-pr-binding' };
+
+  // Fail closed when GitHub did not populate the association at all: without it
+  // we cannot corroborate the run-name binding, so defer to the operator
+  // fallback rather than trusting run-name alone.
   if (!Array.isArray(run.pull_requests) || run.pull_requests.length === 0) {
     return { reason: 'no-associated-pr' };
   }
-  const pullNumbers = [
-    ...new Set(
-      run.pull_requests
-        .map((pullRequest) => positiveInteger(pullRequest?.number))
-        .filter((number) => number !== null),
-    ),
-  ];
-  if (pullNumbers.length === 0) return { reason: 'no-associated-pr' };
-
-  const eligible = [];
-  for (const pullNumber of pullNumbers) {
-    const pullRequest = await api.getPull(pullNumber);
-    const metadataRejection = pullRequestMetadataRejection({
-      pullRequest,
-      run,
-      repository,
-      defaultBranch,
-    });
-    if (metadataRejection) {
-      process.stdout.write(
-        `review wake candidate pr=#${pullNumber} skipped=${metadataRejection}\n`,
-      );
-      continue;
-    }
-
-    const changedFiles = await api.listPullFiles(pullNumber);
-    const filesRejection = changedFilesRejection({ pullRequest, changedFiles });
-    if (filesRejection) {
-      process.stdout.write(`review wake candidate pr=#${pullNumber} skipped=${filesRejection}\n`);
-      continue;
-    }
-    eligible.push(pullNumber);
+  const associatedNumbers = new Set(
+    run.pull_requests
+      .map((pullRequest) => positiveInteger(pullRequest?.number))
+      .filter((number) => number !== null),
+  );
+  if (!associatedNumbers.has(sourcePr)) {
+    // The trusted run-name and GitHub's own association disagree on the source
+    // PR; do not dispatch.
+    return { reason: 'source-pr-not-associated' };
   }
 
-  if (eligible.length !== 1) {
-    return { reason: `eligible-pr-count=${eligible.length}` };
+  const pullRequest = await api.getPull(sourcePr);
+  const metadataRejection = pullRequestMetadataRejection({
+    pullRequest,
+    run,
+    repository,
+    defaultBranch,
+  });
+  if (metadataRejection) {
+    process.stdout.write(`review wake source pr=#${sourcePr} skipped=${metadataRejection}\n`);
+    return { reason: metadataRejection };
+  }
+
+  const changedFiles = await api.listPullFiles(sourcePr);
+  const filesRejection = changedFilesRejection({ pullRequest, changedFiles });
+  if (filesRejection) {
+    process.stdout.write(`review wake source pr=#${sourcePr} skipped=${filesRejection}\n`);
+    return { reason: filesRejection };
   }
 
   return {
-    prNumber: eligible[0],
+    prNumber: sourcePr,
     trigger: `trusted-review-wake:${run.event}:run-${run.id}`,
     // Bind the dispatch to the exact head this trust decision (protected-file
     // and same-repository checks) was made against. Recovery re-fetches the
@@ -185,6 +230,14 @@ export async function runFromEnv(env = process.env) {
     api: {
       async getRun(runId) {
         return (await request(token, `/repos/${owner}/${repo}/actions/runs/${runId}`)).data;
+      },
+      async getWorkflowFile(path, ref) {
+        return (
+          await request(
+            token,
+            `/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`,
+          )
+        ).data;
       },
       async getPull(number) {
         return (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
