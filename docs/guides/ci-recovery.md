@@ -19,8 +19,17 @@ kickoff comment that points Copilot at the normal repo instructions.
   closed if GitHub does not populate it — commit-to-PR association is not used
   as a fallback because it does not preserve event-to-PR provenance), filters to
   exactly one open same-repository PR on the current head SHA, and rejects PRs
-  that modify any workflow in the recovery chain. Read-only inspection and
-  `actions: write` dispatch are separate jobs.
+  that modify any workflow in the recovery chain. It threads that validated head
+  SHA into the dispatch (`expected_head_sha`) so recovery is bound to the exact
+  reviewed commit. Read-only inspection and `actions: write` dispatch are
+  separate jobs.
+- `ci-recovery.yml`'s optional `expected_head_sha` input closes a
+  time-of-check/time-of-use race: the bridge validates one head (including the
+  protected-workflow-file gate that only the bridge performs), but reconcile
+  re-fetches the live PR head, which a synchronize could move to a commit that
+  now edits a protected workflow. When the input is set and the live head no
+  longer matches, `reconcile.mjs` fails closed — it skips without any mutation.
+  An empty input preserves normal manual/router/scheduled behavior.
 - `ci-recovery.yml`, `ci-recovery-incidents.yml`, and `issue-copilot-intake.yml`
   are the workflows that receive `CRAWLER_CI_PAT`.
 - Explicit shepherd lease operations persist even while automated recovery is in

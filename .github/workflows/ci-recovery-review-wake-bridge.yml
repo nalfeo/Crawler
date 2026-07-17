@@ -19,6 +19,7 @@ jobs:
     outputs:
       pr_number: ${{ steps.inspect.outputs.pr_number }}
       trigger: ${{ steps.inspect.outputs.trigger }}
+      head_sha: ${{ steps.inspect.outputs.head_sha }}
     steps:
       - name: Checkout trusted bridge
         uses: actions/checkout@v4
@@ -46,6 +47,7 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           PR_NUMBER: ${{ needs.inspect.outputs.pr_number }}
           RECOVERY_TRIGGER: ${{ needs.inspect.outputs.trigger }}
+          EXPECTED_HEAD_SHA: ${{ needs.inspect.outputs.head_sha }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -58,6 +60,7 @@ jobs:
                 operation: 'reconcile',
                 pr_number: process.env.PR_NUMBER,
                 trigger: process.env.RECOVERY_TRIGGER,
+                expected_head_sha: process.env.EXPECTED_HEAD_SHA,
                 lease_id: '',
               },
             });

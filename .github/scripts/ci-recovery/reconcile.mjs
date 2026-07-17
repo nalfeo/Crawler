@@ -44,6 +44,7 @@ const prNumber = Number.parseInt(process.env.PR_NUMBER || '', 10);
 const operation = process.env.RECOVERY_OPERATION || 'reconcile';
 const trigger = process.env.RECOVERY_TRIGGER || 'workflow_dispatch';
 const leaseId = (process.env.LEASE_ID || '').trim();
+const expectedHeadSha = (process.env.EXPECTED_HEAD_SHA || '').trim().toLowerCase();
 const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
 const readToken = pat || process.env.GITHUB_TOKEN || '';
@@ -93,6 +94,21 @@ if (pr.draft) {
 if (pr.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) {
   process.stdout.write(`skip pr=#${prNumber} reason=fork\n`);
   process.exit(0);
+}
+// Fail closed on a time-of-check/time-of-use race: when a caller (the trusted
+// review-wake bridge) validated a specific head SHA — including the
+// protected-workflow-file gate that only that caller performs — recovery must
+// operate on that exact head. If the live head moved after validation, the
+// trust decision no longer applies to this commit, so skip without mutating.
+// An empty EXPECTED_HEAD_SHA preserves normal manual/router behavior.
+if (expectedHeadSha) {
+  const liveHeadSha = String(pr.head?.sha || '').toLowerCase();
+  if (liveHeadSha !== expectedHeadSha) {
+    process.stdout.write(
+      `skip pr=#${prNumber} reason=head-sha-moved expected=${expectedHeadSha} actual=${liveHeadSha}\n`,
+    );
+    process.exit(0);
+  }
 }
 const comments = await paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
 let approvalRejection = null;

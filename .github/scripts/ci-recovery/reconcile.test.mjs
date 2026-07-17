@@ -1065,6 +1065,85 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
   assert.deepEqual(mutatingCalls, [], 'reconcile in dry-run must not issue any mutating API calls');
 });
 
+// ---------------------------------------------------------------------------
+// expected_head_sha binding — fail closed on a time-of-check/time-of-use race
+// between the trusted review-wake bridge's validation and this reconciliation.
+// ---------------------------------------------------------------------------
+
+/** Clean-PR route set: reconcile reaches the arm/admission decision. */
+function cleanReconcileRoutes() {
+  return {
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  };
+}
+
+test('expected_head_sha match: reconcile proceeds normally past the head guard', async (t) => {
+  const { server, port, mutatingCalls } = await startServer(cleanReconcileRoutes());
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /head-sha-moved/, 'a matching head must not trip the guard');
+  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('expected_head_sha mismatch: reconcile fails closed before any mutation, even in live mode', async (t) => {
+  const movedHead = 'b'.repeat(40);
+  // Only the PR fetch should be reached; the guard exits before comments,
+  // labels, checks, or any mutation — so no other route is registered.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: movedHead,
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`skip pr=#${PR_NUM} reason=head-sha-moved expected=${movedHead} actual=${HEAD_SHA}`),
+  );
+  assert.deepEqual(mutatingCalls, [], 'a mismatched head must fail closed with no mutation');
+});
+
+test('empty expected_head_sha preserves normal reconcile behavior', async (t) => {
+  const { server, port, mutatingCalls } = await startServer(cleanReconcileRoutes());
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    EXPECTED_HEAD_SHA: '',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /head-sha-moved/, 'an empty expected SHA must not trip the guard');
+  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
 test('reconcile treats mergeable_state=behind as non-conflict and does not dispatch recovery', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({

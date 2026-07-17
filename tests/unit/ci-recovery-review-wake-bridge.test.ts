@@ -83,6 +83,7 @@ describe('CI Recovery trusted review wake bridge', () => {
     vi.stubEnv('DEFAULT_BRANCH', 'main');
     vi.stubEnv('PR_NUMBER', '42');
     vi.stubEnv('RECOVERY_TRIGGER', 'trusted-review-wake:pull_request_review:run-123');
+    vi.stubEnv('EXPECTED_HEAD_SHA', 'a'.repeat(40));
     try {
       const execute = new Function(
         'github',
@@ -104,8 +105,21 @@ describe('CI Recovery trusted review wake bridge', () => {
         operation: 'reconcile',
         pr_number: '42',
         trigger: 'trusted-review-wake:pull_request_review:run-123',
+        expected_head_sha: 'a'.repeat(40),
         lease_id: '',
       },
     });
+  });
+
+  it('threads the validated head SHA from inspection output into the dispatch', () => {
+    const { doc } = loadWorkflow();
+    // The read-only inspection job must publish the validated head SHA so the
+    // write-capable dispatch can bind recovery to the exact reviewed commit.
+    expect(doc.jobs.inspect.outputs?.head_sha).toBe('${{ steps.inspect.outputs.head_sha }}');
+    const step = doc.jobs.dispatch.steps?.find(
+      (candidate) => candidate.name === 'Dispatch exact PR recovery',
+    );
+    expect(step?.env?.EXPECTED_HEAD_SHA).toBe('${{ needs.inspect.outputs.head_sha }}');
+    expect(step?.with?.script).toContain('expected_head_sha: process.env.EXPECTED_HEAD_SHA');
   });
 });

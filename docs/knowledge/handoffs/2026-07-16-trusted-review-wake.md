@@ -33,6 +33,13 @@ deterministic policy/wiring coverage and a two-round review-harness loop.
   rejected. The accepted path emits one PR number and the write-only job makes
   one targeted `ci-recovery.yml` reconciliation dispatch; it never invokes the
   router or a sweep.
+- The bridge threads the validated head SHA through its inspection output and
+  the dispatch's `expected_head_sha` input. `ci-recovery.yml`/`reconcile.mjs`
+  fail closed (skip without mutating) when the live PR head no longer matches
+  that validated SHA, closing a time-of-check/time-of-use race in which a
+  synchronize after inspection could move the head onto a commit that edits a
+  protected workflow — the protected-file gate only runs in the bridge, against
+  the reviewed head. An empty input preserves normal manual/router behavior.
 - Documented the trust boundary, recursion exclusion, default-branch
   registration constraint, and targeted operator fallback.
 

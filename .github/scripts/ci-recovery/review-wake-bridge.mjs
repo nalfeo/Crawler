@@ -153,6 +153,11 @@ export async function inspectReviewWake({ payload, repository, api }) {
   return {
     prNumber: eligible[0],
     trigger: `trusted-review-wake:${run.event}:run-${run.id}`,
+    // Bind the dispatch to the exact head this trust decision (protected-file
+    // and same-repository checks) was made against. Recovery re-fetches the
+    // live PR head; without this the head can be synchronized between
+    // inspection and reconciliation, defeating the protected-workflow gate.
+    headSha: String(run.head_sha).toLowerCase(),
   };
 }
 
@@ -197,11 +202,11 @@ export async function runFromEnv(env = process.env) {
 
   await appendFile(
     env.GITHUB_OUTPUT,
-    `pr_number=${result.prNumber}\ntrigger=${result.trigger}\n`,
+    `pr_number=${result.prNumber}\ntrigger=${result.trigger}\nhead_sha=${result.headSha}\n`,
     'utf8',
   );
   process.stdout.write(
-    `trusted review wake eligible pr=#${result.prNumber} trigger=${result.trigger}\n`,
+    `trusted review wake eligible pr=#${result.prNumber} trigger=${result.trigger} head_sha=${result.headSha}\n`,
   );
 }
 

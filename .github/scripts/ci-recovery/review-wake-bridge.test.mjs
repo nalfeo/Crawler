@@ -71,12 +71,29 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
     prNumber: 42,
     trigger: 'trusted-review-wake:pull_request_review_comment:run-123',
+    headSha: 'a'.repeat(40),
   });
   assert.deepEqual(fake.calls, [
     ['getRun', 123],
     ['getPull', 42],
     ['listPullFiles', 42],
   ]);
+});
+
+test('binds the accepted wake to the validated run head SHA (lowercased)', async () => {
+  const data = fixture();
+  const upper = 'A'.repeat(40);
+  data.run.head_sha = upper;
+  data.pullRequest.head.sha = upper;
+  const fake = fakeApi({
+    run: data.run,
+    pulls: { 42: data.pullRequest },
+    files: { 42: data.changedFiles },
+  });
+
+  const result = await inspectReviewWake({ payload: data.payload, repository, api: fake.api });
+  assert.equal(result.prNumber, 42);
+  assert.equal(result.headSha, 'a'.repeat(40));
 });
 
 test('fails closed when run.pull_requests is empty without calling any commit API', async () => {
