@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d34cfeed75ab2740de922fd960b1409e7d67de85",
+    "commitDate": "2026-07-17T00:55:02Z",
+    "commitSubject": "perf(ci): parallelize merge-train candidate validation (#1228)",
+    "capturedAt": "2026-07-17T02:12:36.156Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29546584657",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/d34cfeed75ab2740de922fd960b1409e7d67de85.json"
+  },
+  {
     "commit": "fc4fecb88f68fd56817bbf285a64e7d3b2c93d7c",
     "commitDate": "2026-07-17T00:29:39Z",
     "commitSubject": "test(enemies): prove independent per-shot telegraph locks + real seed42 smoke evidence (#1215)",
