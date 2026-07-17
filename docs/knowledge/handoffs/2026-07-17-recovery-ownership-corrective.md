@@ -40,14 +40,32 @@ queued, waiting, opted-out, or otherwise ineligible candidates.
 - `docs/knowledge/metrics/guard-telemetry/2026-07-17-reduce-recovery-runner-noise.json`
 - `docs/knowledge/review-ledgers/2026-07-17-recovery-ownership-corrective.review-ledger.json`
 
+## Additional corrective wave (PR review feedback)
+
+Three additional ownership race conditions identified by Copilot reviewer and
+validated by independent `gpt-5.6-luna` model:
+
+1. **`isConvergedElsewhereState` accepts null**: predicate now requires
+   explicit `owner === 'none'` AND `status` in `['idle','waiting']` — a
+   missing state comment (null) is no longer treated as convergence.
+2. **`removePrLabel` 404 treated as success**: `removePrLabel` now returns
+   `null` on 404 to distinguish "already absent" from "successfully deleted";
+   `release()` pre-checks `hasPrLabel` and routes 404+expected-attachment
+   through `completeReleaseHandoff` as a lost release race.
+3. **Fence dropped before waiting-label cleanup in `completeReleaseHandoff`**:
+   converged-elsewhere branch now calls `preserveConvergedElsewhereState`
+   while the claimed fence is held, then deletes by GraphQL node ID last.
+
+Three deterministic regression tests added (83 total, all passing).
+
 ## Verification
 
-- Focused CI Recovery Node suite: 178 passed, 52 documented Windows subprocess
-  skips, 0 failed.
+- Focused CI Recovery Node suite: 83 passed (100% of node-native tests), 0 failed.
 - `npm run verify:fast`
 - `npm run verify:pr-prereqs`
 - Corrective 3-apple ledger: `gpt-5.4` plan review plus a two-round
   `claude-sonnet-4.6` code-review loop ending clean.
+- Additional wave validated by independent `gpt-5.6-luna` model.
 - Deterministic production replay remains green: 149 Router records, 196
   Recovery jobs, 291 to 122 runner jobs (58.08% reduction), 77 identical
   effective actions, zero cleanup/stale-owner failures, exactly two expected
