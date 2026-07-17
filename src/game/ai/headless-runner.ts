@@ -441,6 +441,7 @@ export async function runHeadless(
   let combatStartFrame = 0;
   let damageDealt = 0;
   let damageTaken = 0;
+  const damageTakenBySource: Record<string, number> = {};
   // Real damage measurement: track each enemy's HP frame-to-frame.
   const enemyHpById = new Map<number, number>();
   let questsAccepted = 0;
@@ -834,6 +835,15 @@ export async function runHeadless(
       }
       for (let eventIndex = combatEventCursor; eventIndex < combatEvents.length; eventIndex += 1) {
         const event = combatEvents[eventIndex]!;
+        if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
+          const source =
+            event.sourceEid === undefined
+              ? 'unknown'
+              : (world.enemyAppearanceKeys.get(event.sourceEid) ??
+                world.floorScenario?.enemyArchetypes.get(event.sourceEid) ??
+                'unknown');
+          damageTakenBySource[source] = (damageTakenBySource[source] ?? 0) + event.amount;
+        }
         if (event.type !== 'death' || event.targetType !== 'enemy') {
           continue;
         }
@@ -1023,6 +1033,7 @@ export async function runHeadless(
         engagementCount,
         damageDealt,
         damageTaken,
+        damageTakenBySource,
       },
       health: {
         minHealthPercent,
@@ -1104,6 +1115,7 @@ export async function runHeadless(
       engagementCount,
       damageDealt,
       damageTaken,
+      damageTakenBySource,
     },
     health: {
       minHealthPercent,

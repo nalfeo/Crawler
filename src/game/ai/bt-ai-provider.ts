@@ -7910,15 +7910,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
   ): { targetX: number; targetY: number; reason: string } {
-    const weapon = getActiveWeapon(world);
-    if (!weapon || weapon.weaponType !== WeaponType.MELEE) {
-      return this.planEngagement(world, playerX, playerY, target);
-    }
-    return {
-      targetX: target.x,
-      targetY: target.y,
-      reason: `Pressing the hunt target at ${target.distance.toFixed(1)}ft`,
-    };
+    return this.planEngagement(world, playerX, playerY, target);
   }
 
   /**

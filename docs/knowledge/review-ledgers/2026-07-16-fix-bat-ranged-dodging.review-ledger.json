@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "fix-bat-ranged-dodging",
+  "task_title": "Fix critical-health ranged-threat dodging",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Supersedes the rejected critical-health plan. Adopted: sword is an outcome control because it shares the corrected generic path; production evidence will report timing and throughput drift. Preserve and compare kills/den time plus multi-hit throughput. Do not claim Track-B projectile dodge changes. Remove the redundant focused melee planner and route focused hunt targets through the existing cadence-aware planner; existing strike-gate geometry prevents handoff oscillation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

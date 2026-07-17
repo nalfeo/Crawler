@@ -142,6 +142,12 @@ describe('headless runner AI telemetry', () => {
     expect(stats.floor2Progression?.hunt.engageTimeMs).toBeGreaterThanOrEqual(0);
     expect(stats.floor2Progression?.hunt.engageRatio).toBeGreaterThanOrEqual(0);
     expect(stats.floor2Progression?.hunt.engageRatio).toBeLessThanOrEqual(1);
+    const attributedDamage = Object.values(stats.combat.damageTakenBySource).reduce(
+      (total, damage) => total + damage,
+      0,
+    );
+    expect(attributedDamage).toBeGreaterThan(0);
+    expect(Math.abs(attributedDamage - stats.combat.damageTaken)).toBeLessThan(0.05);
   });
 });
 

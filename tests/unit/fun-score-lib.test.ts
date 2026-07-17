@@ -24,6 +24,7 @@ function makeRun(overrides: Partial<RunStats> = {}): RunStats {
       engagementCount: 6,
       damageDealt: 4200,
       damageTaken: 950,
+      damageTakenBySource: {},
     },
     health: {
       minHealthPercent: 0.15,
@@ -79,6 +80,7 @@ describe('scoreFunSessions', () => {
         engagementCount: 1,
         damageDealt: 600,
         damageTaken: 1400,
+        damageTakenBySource: {},
       },
       health: {
         minHealthPercent: 0.01,

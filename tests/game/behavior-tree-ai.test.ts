@@ -497,6 +497,71 @@ describe('BehaviorTreeAI', () => {
     expect(cooldownDist).toBeGreaterThan(readyDist + 0.5);
   });
 
+  it('keeps focused Floor 2 melee hunts synchronized to the weapon cadence', () => {
+    const bat = getWeaponDef('baseball-bat')!;
+    const targetX = 3.75;
+    const makeFocusedPlan = (elapsedMs: number) => {
+      const world = createTestWorld({ seed: 7, floor: 2 });
+      spawnPlayer(world, 0, 0);
+      const enemy = spawnEnemy(world, targetX, 0, 40);
+      world.elapsedMs = 5000;
+      setActiveWeapon(world, bat);
+      world.elapsedMs = elapsedMs;
+      const ai = new BehaviorTreeAI({ seed: 7 });
+      const harness = ai as unknown as {
+        planFocusedMeleeEngagement(
+          currentWorld: GameWorld,
+          playerX: number,
+          playerY: number,
+          target: { eid: number; x: number; y: number; distance: number },
+        ): { targetX: number; targetY: number; reason: string };
+      };
+      return harness.planFocusedMeleeEngagement(world, 0, 0, {
+        eid: enemy,
+        x: targetX,
+        y: 0,
+        distance: targetX,
+      });
+    };
+
+    const readyPlan = makeFocusedPlan(5000);
+    const cooldownPlan = makeFocusedPlan(5000 - bat.cooldownMs);
+    const readyDistance = Math.hypot(readyPlan.targetX - targetX, readyPlan.targetY);
+    const cooldownDistance = Math.hypot(cooldownPlan.targetX - targetX, cooldownPlan.targetY);
+
+    expect(readyPlan.reason).toContain('Kiting');
+    expect(cooldownPlan.reason).toContain('Kiting');
+    expect(readyPlan.targetX).not.toBe(targetX);
+    expect(cooldownDistance).toBeGreaterThan(readyDistance + 0.5);
+  });
+
+  it('keeps focused Floor 2 melee hunts committed while outside strike range', () => {
+    const world = createTestWorld({ seed: 7, floor: 2 });
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 20, 0, 40);
+    setActiveWeapon(world, getWeaponDef('baseball-bat')!);
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    const plan = (
+      ai as unknown as {
+        planFocusedMeleeEngagement(
+          currentWorld: GameWorld,
+          playerX: number,
+          playerY: number,
+          target: { eid: number; x: number; y: number; distance: number },
+        ): { targetX: number; targetY: number; reason: string };
+      }
+    ).planFocusedMeleeEngagement(world, 0, 0, {
+      eid: enemy,
+      x: 20,
+      y: 0,
+      distance: 20,
+    });
+
+    expect(plan.reason).toContain('Closing to melee range');
+    expect(plan.targetX).toBeGreaterThan(0);
+    expect(plan.targetX).toBeLessThan(20);
+  });
+
   it('collects gold as loot when no higher-priority progression target is active', () => {
     const world = createTestWorld({ seed: 99 });
     spawnPlayer(world, 0, 0);
