@@ -10,64 +10,69 @@
  * Run with:  npx tsx scripts/agent/queen-mab-arena-evidence.ts
  */
 import { createGameWorld } from '../../src/core/world.js';
-import {
-  spawnPlayer,
-  spawnBehaviorEnemy,
-  setEnemyAppearanceKey,
-  mobAbilitySystem,
-  registerMobAbility,
-  setMobAbilitiesEnabled,
-  activateMobAbilityEncounter,
-  createVerdigrisGlamourDefinition,
-} from '../../src/core/index.js';
+import { spawnPlayer, mobAbilitySystem, statusEffectSystem } from '../../src/core/index.js';
 import { runCoreSimulationStep } from '../../src/core/simulation-core-step.js';
 import { GAME } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
-import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { enemyAISystem, weaponSystem } from '../../src/game/index.js';
+import { SeededRandom } from '../../src/shared/random.js';
+import { getEnemyPreset, getRoomPreset, spawnPresetAroundCenter } from '../../src/labs/combat-arena-lab/arena-data.js';
 
 const DELTA = GAME.DELTA_MS;
-const QUEEN_KEY = 'faerie-boss';
 const TOTAL_FRAMES = 1300; // ~21.7s, past the second resolution at 21,000ms
 
 function makeWorld() {
   const world = createGameWorld({ seed: 42, floor: 1, entityCapacityMode: 'game' });
-  const player = spawnPlayer(world, 40, 40);
+  const roomPreset = getRoomPreset('medium-arena');
+  world.floorMap = roomPreset.buildMap();
+  const spawnWorld = world.floorMap.tileToWorld(
+    roomPreset.playerSpawnTile.x,
+    roomPreset.playerSpawnTile.y,
+  );
+  const player = spawnPlayer(world, spawnWorld.x, spawnWorld.y);
   world.stores.health.current[player] = 100_000;
   world.stores.health.max[player] = 100_000;
-  const queen = spawnBehaviorEnemy(world, 40, 10, 200, AI_TYPE.CHASE, 0.17, 60, 0);
-  setEnemyAppearanceKey(world, queen, QUEEN_KEY);
-  return { world, player, queen };
+  return { world, player };
 }
 
 function run(label: string, arm: boolean) {
-  const { world, queen } = makeWorld();
+  const { world } = makeWorld();
+  const rng = new SeededRandom(42);
   if (arm) {
-    setMobAbilitiesEnabled(world, true);
-    registerMobAbility(world, queen, createVerdigrisGlamourDefinition());
-    activateMobAbilityEncounter(world);
+    const preset = getEnemyPreset('f2-queen-mab');
+    const cx = world.floorMap!.widthFt / 2;
+    const cy = world.floorMap!.heightFt * 0.35;
+    const eids = spawnPresetAroundCenter(world, world.floorMap!, preset, cx, cy, rng, 14);
+    if (eids.length === 0) {
+      throw new Error('Queen Mab preset failed to spawn any enemies');
+    }
   }
   const input = createInputState();
   const telegraphs: Array<{ frame: number; elapsedMs: number }> = [];
   const resolutions: Array<{ frame: number; elapsedMs: number }> = [];
-  let prevAnnounce = 0;
-  let prevResolved = 0;
+  let prevAnnounceCount = 0;
+  let totalResolvedCasts = 0;
   for (let i = 0; i < TOTAL_FRAMES; i += 1) {
     world.frameCount += 1;
     world.elapsedMs += DELTA;
+    // Use the combat arena's exact preSystems ordering.
     runCoreSimulationStep(world, input, {
-      preSystems: [weaponSystem, enemyAISystem, mobAbilitySystem],
+      preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
     });
-    const inst = world.mobAbilities.byEntity.get(queen);
-    if (inst) {
-      if (inst.announcementsEmitted > prevAnnounce) {
-        telegraphs.push({ frame: world.frameCount, elapsedMs: round(world.elapsedMs) });
-        prevAnnounce = inst.announcementsEmitted;
-      }
-      if (inst.resolvedCasts > prevResolved) {
-        resolutions.push({ frame: world.frameCount, elapsedMs: round(world.elapsedMs) });
-        prevResolved = inst.resolvedCasts;
-      }
+    // Count announcements emitted this frame.
+    const casts = world.announcements.filter((a) => a.kind === 'bossAbilityCast');
+    if (casts.length > prevAnnounceCount) {
+      telegraphs.push({ frame: world.frameCount, elapsedMs: round(world.elapsedMs) });
+      prevAnnounceCount = casts.length;
+    }
+    // Count resolved casts from all registered casters.
+    const resolved = [...world.mobAbilities.byEntity.values()].reduce(
+      (sum, inst) => sum + inst.resolvedCasts,
+      0,
+    );
+    if (resolved > totalResolvedCasts) {
+      resolutions.push({ frame: world.frameCount, elapsedMs: round(world.elapsedMs) });
+      totalResolvedCasts = resolved;
     }
   }
   const casts = world.announcements.filter((a) => a.kind === 'bossAbilityCast');

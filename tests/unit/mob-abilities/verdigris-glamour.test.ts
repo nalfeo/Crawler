@@ -409,6 +409,26 @@ describe('Verdigris Glamour — cleanup paths', () => {
     expect(h.world.announcements.filter((a) => a.kind === 'bossAbilityCast')).toHaveLength(0);
   });
 
+  it('skips resolution if the locked target dies during the telegraph', () => {
+    const h = buildHarness();
+    arm(h);
+    // Telegraph starts successfully at frame 540.
+    step(h.world, FIRST_TELEGRAPH_FRAME + 5);
+    const inst = h.world.mobAbilities.byEntity.get(h.queen)!;
+    expect(inst.phase).toBe('telegraph');
+    expect(inst.committedTargetEid).toBe(h.player);
+    expect(inst.announcementsEmitted).toBe(1);
+    // Kill the player mid-telegraph (before resolution at frame 630).
+    h.world.stores.health.current[h.player] = 0;
+    // Step to resolution frame: the runtime revalidates the target and skips
+    // the resolve call (no Tarnished applied), but still re-arms cooldown.
+    step(h.world, FIRST_RESOLUTION_FRAME + 5);
+    expect(inst.phase).toBe('cooldown');
+    expect(inst.resolvedCasts).toBe(0); // No resolve call happened.
+    const playerEffects = getStatusEffects(h.world, h.player);
+    expect(playerEffects).toHaveLength(0); // No Tarnished applied to the dead player.
+  });
+
   it('setMobAbilitiesEnabled(false) tears down the runtime', () => {
     const h = buildHarness();
     arm(h);

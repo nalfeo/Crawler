@@ -24,6 +24,7 @@ import {
 import { runCoreSimulationStep } from '../../core/simulation-core-step.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import { createHudAnnouncementBanner } from '../../engine/HudAnnouncementBanner.js';
 import { buildTerrainLayer } from '../../engine/terrain-renderer.js';
 import {
   fetchGeneratedSpriteRegistry,
@@ -101,6 +102,7 @@ type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 class CombatArenaScene extends Phaser.Scene {
   private accumulator = 0;
   private bridge?: ReturnType<typeof createPhaserBridge>;
+  private announcementBanner?: ReturnType<typeof createHudAnnouncementBanner>;
   private inputCapture?: ReturnType<typeof createInputCapture>;
   private inputState!: InputState;
   private playerEid = -1;
@@ -209,7 +211,9 @@ class CombatArenaScene extends Phaser.Scene {
     });
 
     this.bridge = createPhaserBridge(this);
+    this.announcementBanner = createHudAnnouncementBanner(this);
     this.bridge.sync(this.world);
+    this.announcementBanner.sync(this.world);
     this.emitInfo();
 
     void this.warmGeneratedSprites();
@@ -217,6 +221,8 @@ class CombatArenaScene extends Phaser.Scene {
     this.events.once('shutdown', () => {
       this.inputCapture?.destroy();
       this.inputCapture = undefined;
+      this.announcementBanner?.destroy();
+      this.announcementBanner = undefined;
       this.bridge?.destroy();
       this.bridge = undefined;
     });
@@ -226,7 +232,7 @@ class CombatArenaScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if (!this.bridge || !this.inputCapture) return;
+    if (!this.bridge || !this.inputCapture || !this.announcementBanner) return;
 
     this.inputCapture.poll(this.inputState);
 
@@ -267,6 +273,7 @@ class CombatArenaScene extends Phaser.Scene {
     }
 
     this.bridge.sync(this.world);
+    this.announcementBanner.sync(this.world);
     this.emitInfo();
   }
 

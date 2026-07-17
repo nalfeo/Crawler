@@ -147,6 +147,19 @@ function targetPosition(
   return { x, y };
 }
 
+/**
+ * A target is valid iff it still exists and has non-zero health.
+ * Recycled-id guard: we check liveness, but do NOT check Player component
+ * persistence — the ID could be recycled into a different entity kind, so
+ * resolve handlers must guard against applying effects to recycled IDs.
+ */
+function isTargetValid(world: GameWorld, targetEid: number | null): boolean {
+  if (targetEid === null || !entityExists(world.ecs, targetEid)) return false;
+  if (!hasComponent(world.ecs, targetEid, Health)) return false;
+  if ((world.stores.health.current[targetEid] ?? 0) <= 0) return false;
+  return true;
+}
+
 function beginTelegraph(world: GameWorld, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
   // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
@@ -183,7 +196,10 @@ function beginTelegraph(world: GameWorld, inst: MobAbilityInstanceState): void {
 function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
   const geometry = inst.committedGeometry;
-  if (geometry !== null) {
+  // Revalidate the locked target before resolution. If the player died,
+  // despawned, or its ID was recycled during the 1.5s telegraph, skip the
+  // resolve call and take the cancellation/cleanup path instead.
+  if (geometry !== null && isTargetValid(world, inst.committedTargetEid)) {
     def.resolve(world, {
       abilityId: def.abilityId,
       casterEid,
