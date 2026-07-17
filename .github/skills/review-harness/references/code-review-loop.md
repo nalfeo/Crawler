@@ -88,9 +88,9 @@ final reasoning model decides which concerns are valid and the remedy, you
 1. Fan out review across models in parallel (one tool block):
 
    ```
-   task(agent_type="code-review", model="claude-sonnet-4.6", name="mcr-sonnet", prompt="<diff review prompt>")
-   task(agent_type="code-review", model="gpt-5.3-codex",      name="mcr-codex",  prompt="<diff review prompt>")
-   task(agent_type="code-review", model="gemini-3.1-pro-preview", name="mcr-gemini", prompt="<diff review prompt>")
+   task(agent_type="code-review", model="claude-sonnet-4.6", name="mcr-sonnet", prompt="<canonical review prompt above>")
+   task(agent_type="code-review", model="gpt-5.3-codex",      name="mcr-codex",  prompt="<canonical review prompt above>")
+   task(agent_type="code-review", model="gemini-3.1-pro-preview", name="mcr-gemini", prompt="<canonical review prompt above>")
    task(agent_type="security-review", model="gpt-5.4", name="mcr-sec", prompt="<security review prompt>")
    ```
 
