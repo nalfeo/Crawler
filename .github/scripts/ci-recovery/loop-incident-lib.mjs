@@ -84,7 +84,11 @@ export function buildLoopIncidentBody({
       : (blockers || []).map((blocker, index) => {
           const safeKind = String(blocker.kind || 'unknown').replace(/[`]/g, "'");
           const safeId = String(blocker.id || '').replace(/[`]/g, "'");
-          return `${index + 1}. **${safeKind}** \`${safeId}\`${blocker.url ? `  \n   ${blocker.url}` : ''}`;
+          // Only embed the URL if it is a safe https:// link to avoid
+          // Markdown injection via javascript: or data: schemes.
+          const rawUrl = String(blocker.url || '').trim();
+          const safeUrl = /^https:\/\//i.test(rawUrl) ? rawUrl : null;
+          return `${index + 1}. **${safeKind}** \`${safeId}\`${safeUrl ? `  \n   ${safeUrl}` : ''}`;
         });
 
   return [

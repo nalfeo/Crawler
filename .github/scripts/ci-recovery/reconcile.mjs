@@ -1193,7 +1193,7 @@ if (labelExists && isDuplicateDispatch(state, fingerprint)) {
         );
       } catch (err) {
         process.stderr.write(
-          `loop-incident-filing-failed pr=#${prNumber} err=${err.message}\n`,
+          `loop-incident-filing-failed pr=#${prNumber} err=${String(err.message || err).replace(/[\r\n]/g, ' ')}\n`,
         );
       }
     } else {
