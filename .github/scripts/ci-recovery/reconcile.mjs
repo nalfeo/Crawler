@@ -67,6 +67,8 @@ const workflowRunUrl =
 const REBASE_FAILURE_MAX_ATTEMPTS = 3;
 const REBASE_FAILURE_BASE_BACKOFF_MS = 60 * 1000;
 const REBASE_FAILURE_MAX_BACKOFF_MS = 10 * 60 * 1000;
+const RELEASE_COMPLETED = 'released';
+const RELEASE_CONVERGED_ELSEWHERE = 'converged-elsewhere';
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -379,6 +381,30 @@ async function completeWaitingExit(prepared) {
   await removePrLabel(WAITING_TRANSITION_LABEL, { skipIfMissing: true });
 }
 
+function isConvergedElsewhereState(candidate) {
+  return !candidate || candidate.owner === 'none' || ['idle', 'waiting'].includes(candidate.status);
+}
+
+async function preserveConvergedElsewhereState(preservedState, waitingTransition) {
+  pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
+  labelExists = false;
+  if (!waitingTransition) {
+    return RELEASE_CONVERGED_ELSEWHERE;
+  }
+  if (preservedState?.status === 'waiting') {
+    await removePrLabel(WAITING_TRANSITION_LABEL, { skipIfMissing: true });
+    return RELEASE_CONVERGED_ELSEWHERE;
+  }
+  await completeWaitingExit(waitingTransition);
+  return RELEASE_CONVERGED_ELSEWHERE;
+}
+
+function stopIfReleaseConvergedElsewhere(result) {
+  if (result !== RELEASE_CONVERGED_ELSEWHERE) return;
+  process.stdout.write(`skip pr=#${prNumber} reason=converged-elsewhere\n`);
+  process.exit(0);
+}
+
 async function removeRepositoryLabel(name) {
   if (!shouldMutate) return false;
   await assertExpectedMetadataUnchanged('remove-repository-label');
@@ -515,19 +541,13 @@ async function release(reason, nextState = null) {
         // concurrent run already converged the PR to idle/waiting, preserve
         // that newer state; if a different active owner is present, fail closed.
         if (!sameOwnership(facts.state, ownershipToRelease)) {
-          const isConverged =
-            !facts.state ||
-            facts.state.owner === 'none' ||
-            ['idle', 'waiting'].includes(facts.state.status);
-          if (!isConverged) {
+          if (!isConvergedElsewhereState(facts.state)) {
             throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
           }
           // Newer converged state already written by a concurrent run. Skip our
-          // releasedState write and clean up any waiting transition labels.
-          pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
-          labelExists = false;
-          await completeWaitingExit(waitingTransition);
-          return;
+          // releasedState write and stop the caller so it can re-evaluate from a
+          // fresh snapshot before any further mutation or reacquire.
+          return preserveConvergedElsewhereState(facts.state, waitingTransition);
         }
         pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
         labelExists = false;
@@ -543,17 +563,12 @@ async function release(reason, nextState = null) {
         if (!facts.repositoryLabelPresent) {
           // Same check as on the first 422: verify ownership before accepting.
           if (!sameOwnership(facts.state, ownershipToRelease)) {
-            const isConverged =
-              !facts.state ||
-              facts.state.owner === 'none' ||
-              ['idle', 'waiting'].includes(facts.state.status);
-            if (!isConverged) {
+            if (!isConvergedElsewhereState(facts.state)) {
               throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
             }
-            // Newer converged state written by concurrent run. Preserve it.
-            labelExists = false;
-            await completeWaitingExit(waitingTransition);
-            return;
+            // Newer converged state written by concurrent run. Preserve it and
+            // stop the caller so it can restart from live state if needed.
+            return preserveConvergedElsewhereState(facts.state, waitingTransition);
           }
           atomicOwnerBitAbsent = true;
         } else if (facts.attached || !sameOwnership(facts.state, ownershipToRelease)) {
@@ -574,11 +589,12 @@ async function release(reason, nextState = null) {
   labelExists = false;
   await updateState(releasedState);
   await completeWaitingExit(waitingTransition);
+  return RELEASE_COMPLETED;
 }
 
 if (orphanedOwnershipArtifact) {
   process.stdout.write(`cleanup pr=#${prNumber} reason=orphaned-owner-label\n`);
-  await release('orphaned-label-cleanup');
+  stopIfReleaseConvergedElsewhere(await release('orphaned-label-cleanup'));
 }
 
 if (pr.state !== 'open') {
@@ -598,7 +614,7 @@ if (operation.startsWith('lease-')) {
       throw new Error(`PR #${prNumber} already has an active shepherd lease`);
     }
     if (labelExists && state?.owner === 'shepherd' && isLeaseExpired(state)) {
-      await release('expired-shepherd-lease');
+      stopIfReleaseConvergedElsewhere(await release('expired-shepherd-lease'));
     } else if (labelExists) {
       throw new Error(`PR #${prNumber} is owned by ${state?.owner || 'unknown'}`);
     }
@@ -688,7 +704,7 @@ if (labelExists && state?.owner === 'shepherd' && !isLeaseExpired(state, now)) {
   process.exit(0);
 }
 if (labelExists && state?.owner === 'shepherd') {
-  await release('expired-shepherd-lease');
+  stopIfReleaseConvergedElsewhere(await release('expired-shepherd-lease'));
 }
 
 const review = await listReviewThreads(readToken, owner, repo, prNumber);
@@ -890,7 +906,7 @@ if (
     updatedAt: now.toISOString(),
   });
   if (labelExists) {
-    await release('rebase-dispatched', rebaseState);
+    stopIfReleaseConvergedElsewhere(await release('rebase-dispatched', rebaseState));
   } else {
     const waitingTransition = await prepareWaitingExit();
     await updateState(rebaseState);
@@ -1073,7 +1089,7 @@ if (normalized.length === 0) {
       updatedAt: now.toISOString(),
     });
     if (labelExists || staleOwningState || hasPrLabel(labelName)) {
-      await release('admission-wait', waitingState);
+      stopIfReleaseConvergedElsewhere(await release('admission-wait', waitingState));
     } else {
       await updateState(waitingState);
     }
@@ -1093,7 +1109,7 @@ if (normalized.length === 0) {
     updatedAt: now.toISOString(),
   });
   if (labelExists || staleOwningState || hasPrLabel(labelName)) {
-    await release('converged', convergedState);
+    stopIfReleaseConvergedElsewhere(await release('converged', convergedState));
   } else {
     const waitingTransition = await prepareWaitingExit();
     if (stateComments.length > 0) {
@@ -1229,21 +1245,23 @@ if (labelExists && isDuplicateDispatch(state, fingerprint)) {
         `dry-run would-file-loop-incident pr=#${prNumber} fingerprint=${fingerprint}\n`,
       );
     }
-    await release(
-      'stale-automation-exhausted',
-      makeState({
-        prNumber,
-        headSha: pr.head.sha,
-        fingerprint,
-        owner: 'none',
-        status: 'idle',
-        trigger: 'stale-automation-exhausted',
-        blockers: normalized,
-        attempt: state.attempt,
-        progressKey: currentProgressKey,
-        progressAt: state.progressAt || state.updatedAt,
-        updatedAt: now.toISOString(),
-      }),
+    stopIfReleaseConvergedElsewhere(
+      await release(
+        'stale-automation-exhausted',
+        makeState({
+          prNumber,
+          headSha: pr.head.sha,
+          fingerprint,
+          owner: 'none',
+          status: 'idle',
+          trigger: 'stale-automation-exhausted',
+          blockers: normalized,
+          attempt: state.attempt,
+          progressKey: currentProgressKey,
+          progressAt: state.progressAt || state.updatedAt,
+          updatedAt: now.toISOString(),
+        }),
+      ),
     );
     process.stdout.write(`released stale automation pr=#${prNumber} attempts=${state.attempt}\n`);
     process.exit(0);
@@ -1256,10 +1274,10 @@ if (labelExists && isDuplicateDispatch(state, fingerprint)) {
     // head-progress releases apart from timeout-driven stale retries.
     dispatchAttemptBase = 0;
     dispatchProgressAt = now.toISOString();
-    await release('blocker-progressed');
+    stopIfReleaseConvergedElsewhere(await release('blocker-progressed'));
   } else {
     dispatchAttemptBase = state?.attempt || 0;
-    await release('stale-automation-retry');
+    stopIfReleaseConvergedElsewhere(await release('stale-automation-retry'));
   }
 }
 // The fingerprint changed. If Copilot was assigned recently it may still be
@@ -1291,14 +1309,17 @@ if (
   process.exit(0);
 }
 if (labelExists) {
-  await release('blocker-fingerprint-changed');
+  stopIfReleaseConvergedElsewhere(await release('blocker-fingerprint-changed'));
 }
 // Complete an interrupted release: the previous run removed the owner labels
 // but failed to write the terminal idle state (e.g. due to a transient PATCH
-// error). Carry the persisted attempt count forward so the exhaustion budget
-// is not silently reset by a fresh-start acquire with attempt=0.
+// error). Carry the persisted attempt count forward only for legacy states or
+// when the progress key still matches; a changed progress key must reset to 0
+// so a new head/fingerprint gets a fresh retry budget.
 if (!labelExists && staleOwningState && state?.owner === 'automation') {
   const staleAttempt = state.attempt ?? 0;
+  const resumedAttempt =
+    !state.progressKey || state.progressKey === currentProgressKey ? staleAttempt : 0;
   await updateState(
     makeState({
       prNumber,
@@ -1308,12 +1329,12 @@ if (!labelExists && staleOwningState && state?.owner === 'automation') {
       status: 'idle',
       trigger: 'stale-automation-incomplete-release',
       blockers: normalized,
-      attempt: staleAttempt,
+      attempt: resumedAttempt,
       updatedAt: now.toISOString(),
     }),
   );
-  process.stdout.write(`completed interrupted release pr=#${prNumber} attempt=${staleAttempt}\n`);
-  dispatchAttemptBase = staleAttempt;
+  process.stdout.write(`completed interrupted release pr=#${prNumber} attempt=${resumedAttempt}\n`);
+  dispatchAttemptBase = resumedAttempt;
 }
 await acquire('automation', null, {
   attempt: dispatchAttemptBase,
