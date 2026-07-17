@@ -26,6 +26,8 @@ export interface MobMotionTransform {
   readonly flash: number;
 }
 
+// These enemy-typed manifest entries are structures, so movement transforms
+// would misrepresent them as mobile mobs.
 const STATIONARY_ENEMY_BRIEFS = new Set(['rat-nest-v2', 'rats-nest-v1', 'slime-pool-v1']);
 const TAU = Math.PI * 2;
 
