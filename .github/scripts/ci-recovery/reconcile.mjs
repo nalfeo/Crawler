@@ -375,6 +375,7 @@ async function release(reason, nextState = null) {
     });
   const waitingTransition = releasedState.status === 'waiting' ? false : await prepareWaitingExit();
   if (shouldMutate) {
+    await assertExpectedHeadUnchanged('release-label');
     const cleanup = await Promise.allSettled([
       removePrLabel(labelName),
       removeRepositoryLabel(labelName),
