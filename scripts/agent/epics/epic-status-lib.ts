@@ -1571,27 +1571,27 @@ export function auditGithub(
       // A subsequent CLAIMED event re-establishes ownership.
       // Track live claims per-node per-session so heartbeat deduplication and
       // competing-claimant detection still work correctly.
-      const liveClaimsBySession = new Map<string, Map<string, ParsedClaim>>();
+      const liveClaimsByNodeAndSession = new Map<string, Map<string, ParsedClaim>>();
       const expectedNodeId = expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
       for (const comment of comments) {
         const blocked = parseTrustedBlockedEvent(comment, expectedNodeId);
         if (blocked) {
-          // BLOCKED revokes all live claims for this node.
-          liveClaimsBySession.delete(blocked.nodeId);
+          // BLOCKED revokes all live claims for the blocked node only.
+          liveClaimsByNodeAndSession.delete(blocked.nodeId);
           continue;
         }
         const claim = parseTrustedClaim(comment, expectedNodeId);
         if (claim && Date.parse(claim.expiresAt) > now.getTime()) {
           const perSession =
-            liveClaimsBySession.get(claim.nodeId) ?? new Map<string, ParsedClaim>();
+            liveClaimsByNodeAndSession.get(claim.nodeId) ?? new Map<string, ParsedClaim>();
           const prior = perSession.get(claim.session);
           if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
             perSession.set(claim.session, claim);
           }
-          liveClaimsBySession.set(claim.nodeId, perSession);
+          liveClaimsByNodeAndSession.set(claim.nodeId, perSession);
         }
       }
-      for (const sessionMap of liveClaimsBySession.values()) {
+      for (const sessionMap of liveClaimsByNodeAndSession.values()) {
         issueClaims.push(...sessionMap.values());
       }
     } catch (error) {
