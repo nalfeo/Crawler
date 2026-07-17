@@ -1272,6 +1272,64 @@ describe('BehaviorTreeAI', () => {
     });
   });
 
+  it('does not navigate to a sealed (unreachable) boss den while progress is suppressed', () => {
+    // Regression: when progress is suppressed and the boss den is sealed behind
+    // a wall, findNearestFloor2Boss falls back to the nearest candidate regardless
+    // of reachability.  createFloor2BossProgressTarget then builds an eid:-1
+    // EXPLORE goal that the watchdog immediately re-selects after the no-path
+    // clear, perpetuating the clear/reselect loop.  The guard must return null
+    // when suppressed and the boss is not reachable.
+    const world = createTestWorld({ seed: 64, floor: 2 });
+    // Wall at tile x=14 (feet x=56) splits the map: player on the left, boss on the right.
+    world.floorMap = makeSealedRoom(40, 20, 14);
+    // spawnPlayer is required for the AI to have a valid subject; the eid is not asserted.
+    spawnPlayer(world, 10, 10);
+    const familyId = asFamilyId('imps');
+    const bossEid = spawnEnemy(world, 66, 10, 100);
+    addComponent(world.ecs, bossEid, FamilyMembership);
+    world.stores.familyMembership.familyId[bossEid] = 0;
+    world.stores.familyMembership.isBoss[bossEid] = 1;
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [familyId],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: true,
+        trashKillsByFamily: new Map([[familyId, 0]]),
+        bossEncounters: new Map([
+          [
+            familyId,
+            {
+              familyId,
+              roomId: -1,
+              doorEids: [],
+              activeGoalId: 'floor2-den-imps-boss-active',
+              started: false,
+              bossEid,
+              defeated: false,
+              displayName: 'Imp Boss',
+              lootTableId: 'boss',
+            },
+          ],
+        ]),
+      },
+    };
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    world.goalFlags.set(denUnlockGoalId(familyId), true);
+
+    const ai = new BehaviorTreeAI({ seed: 64 });
+    suppressProgressGoals(ai);
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    // When suppressed, the unreachable sealed boss must not become an EXPLORE
+    // target — it would immediately re-create the same fixed goal the watchdog
+    // just paused, keeping the no-path clear/reselect loop alive.
+    expect(decision.targetEid).not.toBe(bossEid);
+    expect(decision.reason).not.toContain('boss');
+  });
+
   it('selects reachable live trash from the committed Floor 2 family', () => {
     const world = createTestWorld({ seed: 58, floor: 2 });
     spawnPlayer(world, 14, 14);

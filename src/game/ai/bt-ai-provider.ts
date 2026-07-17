@@ -6251,16 +6251,22 @@ export class BehaviorTreeAI implements AIInputProvider {
           Number.POSITIVE_INFINITY,
           false,
         );
-      return boss
-        ? this.createFloor2BossProgressTarget(
-            world,
-            huntFamilyId,
-            boss,
-            playerX,
-            playerY,
-            `Entering the ${huntFamilyId} den to confront its boss`,
-          )
-        : null;
+      if (!boss) return null;
+      // When progress is suppressed, only navigate to a reachable boss.  An
+      // unreachable pre-encounter boss (eid: -1 EXPLORE target) would be
+      // immediately reselected as the same fixed goal the watchdog is pausing,
+      // causing the no-path clear/reselect loop to continue.
+      if (progressSuppressed && !this.isTargetReachable(world, playerX, playerY, boss)) {
+        return null;
+      }
+      return this.createFloor2BossProgressTarget(
+        world,
+        huntFamilyId,
+        boss,
+        playerX,
+        playerY,
+        `Entering the ${huntFamilyId} den to confront its boss`,
+      );
     }
 
     const quest = world.questLog.get(`floor2-den-${huntFamilyId}-unlock`);
@@ -6299,17 +6305,18 @@ export class BehaviorTreeAI implements AIInputProvider {
       objectiveViews.find((view) => !view.complete);
     if (!activeView) {
       const unlockedBoss = this.findNearestFloor2Boss(world, playerX, playerY, familyId);
-      if (unlockedBoss) {
-        return this.createFloor2BossProgressTarget(
-          world,
-          familyId,
-          unlockedBoss,
-          playerX,
-          playerY,
-          `Hunting the ${familyId} boss`,
-        );
+      if (!unlockedBoss) return null;
+      if (progressSuppressed && !this.isTargetReachable(world, playerX, playerY, unlockedBoss)) {
+        return null;
       }
-      return null;
+      return this.createFloor2BossProgressTarget(
+        world,
+        familyId,
+        unlockedBoss,
+        playerX,
+        playerY,
+        `Hunting the ${familyId} boss`,
+      );
     }
 
     const objective = activeView.def;
@@ -6419,14 +6426,18 @@ export class BehaviorTreeAI implements AIInputProvider {
       case 'haveEquippable':
       case 'equip':
         if (bossTarget) {
-          return this.createFloor2BossProgressTarget(
-            world,
-            familyId,
-            bossTarget,
-            playerX,
-            playerY,
-            `Closing on the ${familyId} boss den`,
-          );
+          if (progressSuppressed && !this.isTargetReachable(world, playerX, playerY, bossTarget)) {
+            // Fall through to familyEnemy / territoryClearTarget / territoryTarget.
+          } else {
+            return this.createFloor2BossProgressTarget(
+              world,
+              familyId,
+              bossTarget,
+              playerX,
+              playerY,
+              `Closing on the ${familyId} boss den`,
+            );
+          }
         }
         if (familyEnemy) {
           return this.createProgressTarget(
