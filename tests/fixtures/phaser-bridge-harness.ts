@@ -278,7 +278,7 @@ export class MockGraphics {
   }
 }
 
-export class MockText {
+class MockText {
   destroyed = false;
   alpha = 1;
   depth = 0;

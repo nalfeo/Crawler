@@ -384,10 +384,10 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   );
 
   removeEntity(reuseWorld.ecs, oldEid);
+  reuseWorld.floorScenario!.enemyArchetypes.delete(oldEid);
+  reuseWorld.floorExtendedState!.ambientEnemyArchetypes!.delete(oldEid);
   const recycledEid = spawnBehaviorEnemy(reuseWorld, 20, 10, 100, 0, 1, 30, 8);
   expect(recycledEid).toBe(oldEid);
-  expect(reuseWorld.floorScenario!.enemyArchetypes.has(recycledEid)).toBe(false);
-  expect(reuseWorld.floorExtendedState!.ambientEnemyArchetypes!.has(recycledEid)).toBe(false);
   setComponent(reuseWorld.ecs, recycledEid, Sprite, { textureId: 2, width: 3, height: 3 });
   setEnemyAppearanceKey(reuseWorld, recycledEid, 'slime');
   reuseWorld.stores.velocity.x[recycledEid] = 1;

@@ -143,13 +143,15 @@ function sampleMeleeAttack(elapsedMs: number): MobMotionTransform {
   }
 
   if (phaseMs < windupMs + strikeMs) {
-    return sampleContactAttackMotion((phaseMs - windupMs) * (CONTACT_ATTACK_MOTION_MS / strikeMs));
+    const strikeElapsedMs = phaseMs - windupMs;
+    const contactElapsedMs =
+      CONTACT_ATTACK_MOTION_MS -
+      strikeElapsedMs * (CONTACT_ATTACK_MOTION_MS / Math.max(1, strikeMs));
+    return sampleContactAttackMotion(Math.max(0, contactElapsedMs));
   }
 
   const recoveryElapsedMs = phaseMs - windupMs - strikeMs;
-  const contactElapsedMs =
-    CONTACT_ATTACK_MOTION_MS -
-    recoveryElapsedMs * (CONTACT_ATTACK_MOTION_MS / Math.max(1, recoveryMs));
+  const contactElapsedMs = recoveryElapsedMs * (CONTACT_ATTACK_MOTION_MS / Math.max(1, recoveryMs));
   return sampleContactAttackMotion(Math.max(0, contactElapsedMs));
 }
 
