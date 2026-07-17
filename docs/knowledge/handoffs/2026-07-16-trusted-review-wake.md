@@ -115,6 +115,15 @@ Review of the original bridge surfaced two real gaps, both hardened here:
   before every mutation phase (`reason=head-sha-moved-before-mutation
 phase=<phase>`), failing closed with no mutation on a mismatch. An empty
   `expected_head_sha` remains a no-op with no extra API calls.
+- **Protected-file evidence followed the mutable PR head.** The original
+  `/pulls/{number}/files` check could observe a different commit if the PR moved
+  after `getPull()`, enabling an A→B→A race where the validated run head and the
+  file evidence did not match. Fix: the bridge now compares every protected
+  recovery workflow's Git blob at immutable `run.head_sha` against the
+  default-branch blob and never consults mutable PR-file evidence. Changed or
+  missing definitions fail closed as `protected-workflow-modified`. Base and
+  head branch refs are also compared exactly (trim-only), preserving Git's
+  case-sensitive branch identity.
 
 Residual risk: GitHub offers no atomic conditional metadata mutation, so the
 per-phase recheck narrows but cannot fully close the sub-second window between a
@@ -123,7 +132,7 @@ recheck and its immediately following write. It is further fenced by
 rather than claimed eliminated.
 
 Validation (this amendment): `node --test
-".github/scripts/ci-recovery/review-wake-bridge.test.mjs"` (22/22) and
+".github/scripts/ci-recovery/review-wake-bridge.test.mjs"` (24/24) and
 `reconcile.test.mjs` (added moved-head-before-mutation + empty-input coverage);
 `npx vitest run --project unit tests/unit/ci-recovery-review-wake-bridge.test.ts
 tests/unit/ci-recovery-router-run-name.test.ts` (7/7); `npm run typecheck`;

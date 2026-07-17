@@ -1,7 +1,7 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-import { paginate, request } from './github.mjs';
+import { request } from './github.mjs';
 
 const ROUTER_WORKFLOW_NAME = 'CI Recovery Router';
 const ROUTER_WORKFLOW_PATH = '.github/workflows/ci-recovery-router.yml';
@@ -109,24 +109,6 @@ export function pullRequestMetadataRejection({ pullRequest, run, repository, def
   return null;
 }
 
-export function changedFilesRejection({ pullRequest, changedFiles }) {
-  if (
-    !Number.isInteger(pullRequest?.changed_files) ||
-    pullRequest.changed_files !== changedFiles.length
-  ) {
-    return 'changed-files-incomplete';
-  }
-  for (const file of changedFiles) {
-    if (
-      PROTECTED_WORKFLOW_PATHS.has(normalize(file?.filename)) ||
-      PROTECTED_WORKFLOW_PATHS.has(normalize(file?.previous_filename))
-    ) {
-      return 'protected-workflow-modified';
-    }
-  }
-  return null;
-}
-
 export async function inspectReviewWake({ payload, repository, api }) {
   const runId = positiveInteger(payload?.workflow_run?.id);
   if (!runId) return { reason: 'missing-run-id' };
@@ -143,12 +125,30 @@ export async function inspectReviewWake({ payload, repository, api }) {
   // parsing it: review events can otherwise evaluate a PR-modified workflow
   // definition and forge display_title. Git blob identity is exact and does not
   // depend on first identifying the source PR.
-  const [runWorkflow, trustedWorkflow] = await Promise.all([
-    api.getWorkflowFile(ROUTER_WORKFLOW_PATH, run.head_sha),
-    api.getWorkflowFile(ROUTER_WORKFLOW_PATH, defaultBranch),
-  ]);
-  if (!runWorkflow?.sha || !trustedWorkflow?.sha || runWorkflow.sha !== trustedWorkflow.sha) {
+  const workflowSnapshots = await Promise.all(
+    [...PROTECTED_WORKFLOW_PATHS].map(async (path) => {
+      const [runFile, trustedFile] = await Promise.all([
+        api.getWorkflowFile(path, run.head_sha),
+        api.getWorkflowFile(path, defaultBranch),
+      ]);
+      return { path, runFile, trustedFile };
+    }),
+  );
+  const routerSnapshot = workflowSnapshots.find(({ path }) => path === ROUTER_WORKFLOW_PATH);
+  if (
+    !routerSnapshot?.runFile?.sha ||
+    !routerSnapshot.trustedFile?.sha ||
+    routerSnapshot.runFile.sha !== routerSnapshot.trustedFile.sha
+  ) {
     return { reason: 'router-workflow-untrusted' };
+  }
+  if (
+    workflowSnapshots.some(
+      ({ runFile, trustedFile }) =>
+        !runFile?.sha || !trustedFile?.sha || runFile.sha !== trustedFile.sha,
+    )
+  ) {
+    return { reason: 'protected-workflow-modified' };
   }
 
   // Select the source PR from the trusted run-name binding, NOT from the
@@ -193,13 +193,6 @@ export async function inspectReviewWake({ payload, repository, api }) {
     return { reason: metadataRejection };
   }
 
-  const changedFiles = await api.listPullFiles(sourcePr);
-  const filesRejection = changedFilesRejection({ pullRequest, changedFiles });
-  if (filesRejection) {
-    process.stdout.write(`review wake source pr=#${sourcePr} skipped=${filesRejection}\n`);
-    return { reason: filesRejection };
-  }
-
   return {
     prNumber: sourcePr,
     trigger: `trusted-review-wake:${run.event}:run-${run.id}`,
@@ -237,18 +230,20 @@ export async function runFromEnv(env = process.env) {
         return (await request(token, `/repos/${owner}/${repo}/actions/runs/${runId}`)).data;
       },
       async getWorkflowFile(path, ref) {
-        return (
-          await request(
-            token,
-            `/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`,
-          )
-        ).data;
+        try {
+          return (
+            await request(
+              token,
+              `/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`,
+            )
+          ).data;
+        } catch (error) {
+          if (error.status === 404) return null;
+          throw error;
+        }
       },
       async getPull(number) {
         return (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
-      },
-      async listPullFiles(number) {
-        return paginate(token, `/repos/${owner}/${repo}/pulls/${number}/files`);
       },
     },
   });

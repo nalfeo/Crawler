@@ -32,10 +32,15 @@ kickoff comment that points Copilot at the normal repo instructions.
   `run.head_branch` (an unconditionally GitHub-set run attribute, so branch reuse
   by an unrelated PR cannot substitute). It fails closed when the run-name
   binding is absent (`missing-source-pr-binding`) or the association is empty
-  (`no-associated-pr`), and rejects PRs that modify any workflow in the recovery
-  chain. It threads that validated head SHA into the dispatch
-  (`expected_head_sha`) so recovery is bound to the exact reviewed commit.
-  Read-only inspection and `actions: write` dispatch are separate jobs.
+  (`no-associated-pr`). The protected-workflow gate compares the Git blob for
+  every workflow in the recovery chain at immutable `run.head_sha` against its
+  default-branch blob; any changed or missing definition fails closed as
+  `protected-workflow-modified`. It deliberately does not trust
+  `/pulls/{number}/files`, because that endpoint follows the PR's current head
+  and could supply unrelated evidence during an A→B→A force-push race. It
+  threads the validated run head SHA into the dispatch (`expected_head_sha`) so
+  recovery is bound to the exact reviewed commit. Read-only inspection and
+  `actions: write` dispatch are separate jobs.
 - `ci-recovery.yml`'s optional `expected_head_sha` input closes a
   time-of-check/time-of-use race: the bridge validates one head (including the
   protected-workflow-file gate that only the bridge performs), but reconcile
@@ -97,8 +102,9 @@ but the bridge fails closed on it — for example an empty
 `workflow_run.pull_requests` (`reason=no-associated-pr`), an absent run-name
 source-PR binding (`reason=missing-source-pr-binding`), or a source PR that is
 not in the association (`reason=source-pr-not-associated`), or an untrusted
-router workflow blob (`reason=router-workflow-untrusted`) — use the narrow
-operator fallback instead of waiting for cron:
+router/protected workflow blob (`reason=router-workflow-untrusted` or
+`reason=protected-workflow-modified`) — use the narrow operator fallback instead
+of waiting for cron:
 
 ```powershell
 gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `

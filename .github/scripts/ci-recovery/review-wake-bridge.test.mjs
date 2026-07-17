@@ -37,11 +37,10 @@ function fixture() {
       pull_requests: [{ number: 42 }],
     },
     pullRequest,
-    changedFiles: [{ filename: 'src/example.ts' }],
   };
 }
 
-function fakeApi({ run, pulls = {}, files = {}, workflowFiles = {} }) {
+function fakeApi({ run, pulls = {}, workflowFiles = {} }) {
   const calls = [];
   const workflowCalls = [];
   return {
@@ -54,15 +53,17 @@ function fakeApi({ run, pulls = {}, files = {}, workflowFiles = {} }) {
       },
       async getWorkflowFile(path, ref) {
         workflowCalls.push([path, ref]);
-        return { sha: workflowFiles[ref] || 'trusted-router-blob' };
+        const specificKey = `${path}@${ref}`;
+        const sha = Object.hasOwn(workflowFiles, specificKey)
+          ? workflowFiles[specificKey]
+          : Object.hasOwn(workflowFiles, ref)
+            ? workflowFiles[ref]
+            : `trusted-workflow-blob:${path}`;
+        return sha === null ? null : { sha };
       },
       async getPull(number) {
         calls.push(['getPull', number]);
         return pulls[number];
-      },
-      async listPullFiles(number) {
-        calls.push(['listPullFiles', number]);
-        return files[number] || [];
       },
     },
   };
@@ -73,7 +74,6 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
   const fake = fakeApi({
     run: data.run,
     pulls: { 42: data.pullRequest },
-    files: { 42: data.changedFiles },
   });
 
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
@@ -84,12 +84,21 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
   assert.deepEqual(fake.calls, [
     ['getRun', 123],
     ['getPull', 42],
-    ['listPullFiles', 42],
   ]);
-  assert.deepEqual(fake.workflowCalls, [
-    ['.github/workflows/ci-recovery-router.yml', 'a'.repeat(40)],
-    ['.github/workflows/ci-recovery-router.yml', 'main'],
-  ]);
+  assert.equal(fake.workflowCalls.length, 6);
+  for (const path of [
+    '.github/workflows/ci-recovery-router.yml',
+    '.github/workflows/ci-recovery-review-wake-bridge.yml',
+    '.github/workflows/ci-recovery.yml',
+  ]) {
+    assert.deepEqual(
+      fake.workflowCalls.filter(([candidate]) => candidate === path),
+      [
+        [path, 'a'.repeat(40)],
+        [path, 'main'],
+      ],
+    );
+  }
 });
 
 test('binds the accepted wake to the validated run head SHA (lowercased)', async () => {
@@ -100,7 +109,6 @@ test('binds the accepted wake to the validated run head SHA (lowercased)', async
   const fake = fakeApi({
     run: data.run,
     pulls: { 42: data.pullRequest },
-    files: { 42: data.changedFiles },
   });
 
   const result = await inspectReviewWake({ payload: data.payload, repository, api: fake.api });
@@ -137,6 +145,10 @@ test('fails closed before source-PR selection when the run used a modified route
   assert.deepEqual(fake.workflowCalls, [
     ['.github/workflows/ci-recovery-router.yml', data.run.head_sha],
     ['.github/workflows/ci-recovery-router.yml', 'main'],
+    ['.github/workflows/ci-recovery-review-wake-bridge.yml', data.run.head_sha],
+    ['.github/workflows/ci-recovery-review-wake-bridge.yml', 'main'],
+    ['.github/workflows/ci-recovery.yml', data.run.head_sha],
+    ['.github/workflows/ci-recovery.yml', 'main'],
   ]);
 });
 
@@ -148,7 +160,6 @@ test('selects the run-name source PR even when extra PRs are associated', async 
   const fake = fakeApi({
     run: data.run,
     pulls: { 42: data.pullRequest },
-    files: { 42: data.changedFiles },
   });
 
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
@@ -159,7 +170,6 @@ test('selects the run-name source PR even when extra PRs are associated', async 
   assert.deepEqual(fake.calls, [
     ['getRun', 123],
     ['getPull', 42],
-    ['listPullFiles', 42],
   ]);
 });
 
@@ -184,7 +194,6 @@ test('does not substitute an unrelated associated PR when the source PR head mov
   const fake = fakeApi({
     run: data.run,
     pulls: { 42: movedSource, 43: unrelatedAtRunHead },
-    files: { 42: data.changedFiles, 43: data.changedFiles },
   });
 
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
@@ -270,19 +279,18 @@ for (const [name, mutate, expected] of [
   });
 }
 
-test('rejects a same-repository PR that modifies or renames a protected workflow', async () => {
-  for (const changedFile of [
-    { filename: '.github/workflows/ci-recovery.yml' },
-    {
-      filename: '.github/workflows/router-v2.yml',
-      previous_filename: '.github/workflows/ci-recovery-router.yml',
-    },
+test('rejects changed or missing protected workflows using immutable run-head blobs', async () => {
+  for (const [path, runBlob] of [
+    ['.github/workflows/ci-recovery-review-wake-bridge.yml', 'modified-workflow-blob'],
+    ['.github/workflows/ci-recovery.yml', null],
   ]) {
     const data = fixture();
     const fake = fakeApi({
       run: data.run,
-      pulls: { 42: data.pullRequest },
-      files: { 42: [changedFile] },
+      workflowFiles: {
+        [`${path}@${data.run.head_sha}`]: runBlob,
+        [`${path}@main`]: 'trusted-workflow-blob',
+      },
     });
     assert.deepEqual(
       await inspectReviewWake({ payload: data.payload, repository, api: fake.api }),
@@ -291,17 +299,23 @@ test('rejects a same-repository PR that modifies or renames a protected workflow
   }
 });
 
-test('rejects incomplete changed-file evidence', async () => {
+test('rejects ABA changes from immutable run-head evidence without reading mutable PR files', async () => {
   const data = fixture();
-  data.pullRequest.changed_files = 2;
   const fake = fakeApi({
     run: data.run,
-    pulls: { 42: data.pullRequest },
-    files: { 42: data.changedFiles },
+    workflowFiles: {
+      [`.github/workflows/ci-recovery.yml@${data.run.head_sha}`]: 'modified-at-run-head',
+      [`.github/workflows/ci-recovery.yml@main`]: 'trusted-on-default',
+    },
   });
+  fake.api.listPullFiles = async () => {
+    throw new Error('mutable PR file evidence must never be consulted');
+  };
+
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
-    reason: 'changed-files-incomplete',
+    reason: 'protected-workflow-modified',
   });
+  assert.deepEqual(fake.calls, [['getRun', 123]]);
 });
 
 for (const [name, mutate, expected] of [
@@ -324,7 +338,7 @@ for (const [name, mutate, expected] of [
     'head-branch-mismatch',
   ],
 ]) {
-  test(`rejects ${name} metadata before reading changed files`, async () => {
+  test(`rejects ${name} metadata before dispatch`, async () => {
     const data = fixture();
     mutate(data.pullRequest);
     const fake = fakeApi({
