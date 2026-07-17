@@ -294,4 +294,49 @@ describe('Floor 2 equipment epic status', () => {
     );
     expect(audit.proposal.operator_actions).toHaveLength(1);
   });
+
+  it('reconciles an advanced PR head without invalidating the state cache', () => {
+    const state = cloneState();
+    const a0 = state.nodes[0]!;
+    a0.github.pr = {
+      number: 1271,
+      url: 'https://github.com/nalfeo/Crawler/pull/1271',
+      head_sha: FULL_COMMIT,
+    };
+    const advancedHead = 'b'.repeat(40);
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/pulls/1271')) {
+          return {
+            number: 1271,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: advancedHead },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors).toEqual([]);
+    expect(audit.proposal.repo_patch).toContainEqual(
+      expect.objectContaining({
+        path: '/nodes/0/github/pr/head_sha',
+        value: advancedHead,
+      }),
+    );
+  });
 });

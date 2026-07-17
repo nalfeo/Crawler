@@ -1189,10 +1189,11 @@ export function auditGithub(
         .parse(runner.get(`/repos/${owner}/${repo}/pulls/${node.github.pr.number}`)) as GithubPull;
       const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
       if (pull.head.sha !== node.github.pr.head_sha) {
-        errors.push({
-          code: 'github.pr-head-drift',
-          node_id: node.node_id,
-          message: `${node.node_id} records ${node.github.pr.head_sha}, GitHub PR head is ${pull.head.sha}`,
+        repoPatch.push({
+          op: 'replace',
+          path: `/nodes/${state.nodes.indexOf(node)}/github/pr/head_sha`,
+          value: pull.head.sha,
+          reason: `Observed PR #${pull.number} head advanced on GitHub`,
         });
       }
       if (node.status === 'merged' || node.status === 'validated') {
