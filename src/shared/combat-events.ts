@@ -72,11 +72,11 @@ export interface CombatEvent {
    *   `applyDamage` via `DamageOptions.sourceArchetypeKey` and preferred over any
    *   live lookup.
    *
-   * - **Immediate / contact hits**: `applyDamage` resolves the key live from the
-   *   caller-supplied `DamageOptions.sourceEid` by querying
+   * - **Immediate / contact hits**: `applyDamage` resolves the key from the
+   *   caller-supplied damage metadata by preferring
+   *   `DamageOptions.sourceArchetypeKey` when present, otherwise falling back to
+   *   the live `DamageOptions.sourceEid` lookup through
    *   `world.enemyAppearanceKeys` then `world.floorScenario.enemyArchetypes`.
-   *   `DamageOptions.sourceArchetypeKey` is only used as a direct override when
-   *   `sourceEid` is absent.
    *
    * Applies to player-targeted hit events only.
    */
