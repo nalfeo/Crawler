@@ -102,7 +102,7 @@ function main(): void {
   } else {
     const lines = [
       `Epic: ${options.epicId}`,
-      `Offline schema/DAG: ${errors.length === 0 ? 'valid' : 'invalid'}`,
+      `Offline schema/DAG: ${offline.errors.length === 0 ? 'valid' : 'invalid'}`,
       `Release ready: ${offline.release_ready ? 'yes' : 'no'}`,
       `Ready queue: ${offline.ready_queue.length > 0 ? offline.ready_queue.join(', ') : '(empty)'}`,
       ...renderDiagnostics('Errors', errors),
