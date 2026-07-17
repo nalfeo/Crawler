@@ -32,7 +32,8 @@ normalization plus focused state and mocked reconcile regressions.
 
 ## Observe before done
 
-- Before: `extractAddressedMarkerSha('✅ Addressed in \`a9c5fdb\`: ...')`returned`null`, so CI Recovery left an otherwise resolvable review thread open.
+- Before: ``extractAddressedMarkerSha('✅ Addressed in `a9c5fdb`: ...')`` returned
+  `null`, so CI Recovery left an otherwise resolvable review thread open.
 - After: balanced inline-code SHA and commit-URL forms resolve to their normalized
   SHA, while unbalanced or embedded delimiters remain invalid.
 - Real artifact: `.github/scripts/ci-recovery/reconcile.mjs` executed through the
