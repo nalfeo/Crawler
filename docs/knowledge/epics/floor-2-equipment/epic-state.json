@@ -108,7 +108,7 @@
         "pr": {
           "number": 1271,
           "url": "https://github.com/nalfeo/Crawler/pull/1271",
-          "head_sha": "dd455404cb9de6231d28c5f35384453942281d21"
+          "head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6"
         }
       },
       "ownership": {
@@ -134,15 +134,15 @@
         {
           "kind": "review-ledger",
           "path_or_check": "docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json",
-          "sha256": "0a7ca7d8c1dc6765fa2d4c6ca094487d404e0f275b566f2376d8066a3717a2bc",
-          "commit": "dd455404cb9de6231d28c5f35384453942281d21",
+          "sha256": "fa7d39e5a5e9dcc867ffdbc25ccf6b33c0f0ca86edc229cd8403b97df1316afa",
+          "commit": "065591b1717588fd7acdb8e28936946e4a7e63e6",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         },
         {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
-          "sha256": "3fe50e7141a4ab23446a5e0b236792d5aee4ab205fb53151ac49c0353e5f9efa",
-          "commit": "dd455404cb9de6231d28c5f35384453942281d21",
+          "sha256": "76f6cf0816360cc4286fa89a1e810a938b8f0cc7e1a8f0dc3c8029cc4e251183",
+          "commit": "065591b1717588fd7acdb8e28936946e4a7e63e6",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         }
       ],
@@ -150,7 +150,7 @@
         "last_audited_at": "2026-07-17T18:25:00.000Z",
         "observed_issue_state": "open",
         "observed_pr_state": "OPEN",
-        "observed_head_sha": "dd455404cb9de6231d28c5f35384453942281d21",
+        "observed_head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6",
         "observed_merge_commit": null,
         "drift": []
       },
