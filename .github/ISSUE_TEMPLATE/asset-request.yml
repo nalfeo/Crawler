@@ -42,3 +42,16 @@ body:
       placeholder: '1'
     validations:
       required: false
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size (optional)
+      description: 'Output footprint. When omitted, defaults to large if Type is omitted/enemy and Name ends in -boss, or if Type is enemy and Brief mentions boss, godfather, or godmother. Otherwise defaults to default.'
+      options:
+        - ''
+        - default
+        - large
+        - wide
+        - tall
+    validations:
+      required: false

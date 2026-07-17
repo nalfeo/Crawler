@@ -87,6 +87,347 @@ import {
 } from './scenario-presets.js';
 
 const LAB_ID = 'ai-runner-lab';
+const AI_RUNNER_PANEL_STYLES = `
+  .ai-runner-panel {
+    --runner-bg: #081120;
+    --runner-surface: #0f172a;
+    --runner-surface-raised: #172033;
+    --runner-border: rgba(148, 163, 184, 0.24);
+    --runner-border-strong: rgba(125, 211, 252, 0.42);
+    --runner-text: #e2e8f0;
+    --runner-muted: #94a3b8;
+    --runner-cyan: #7dd3fc;
+    --runner-blue: #38bdf8;
+    --runner-amber: #fbbf24;
+    min-height: 100%;
+    color: var(--runner-text);
+    background:
+      linear-gradient(180deg, rgba(30, 41, 59, 0.34), transparent 180px),
+      var(--runner-bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .ai-runner-panel * { box-sizing: border-box; }
+  .ai-runner-panel button,
+  .ai-runner-panel input,
+  .ai-runner-panel select {
+    min-height: 34px;
+    border: 1px solid var(--runner-border);
+    border-radius: 7px;
+    color: var(--runner-text);
+    background: #0b1220;
+    font: inherit;
+  }
+  .ai-runner-panel button {
+    padding: 6px 9px;
+    cursor: pointer;
+    transition:
+      border-color 120ms ease,
+      background 120ms ease,
+      box-shadow 120ms ease,
+      transform 120ms ease;
+  }
+  .ai-runner-panel button:hover {
+    border-color: rgba(125, 211, 252, 0.62);
+    background: #172033;
+    transform: translateY(-1px);
+  }
+  .ai-runner-panel button:focus-visible,
+  .ai-runner-panel input:focus-visible,
+  .ai-runner-panel select:focus-visible,
+  .ai-runner-panel summary:focus-visible {
+    outline: 2px solid var(--runner-blue);
+    outline-offset: 2px;
+  }
+  .ai-runner-panel button:disabled {
+    cursor: not-allowed;
+    opacity: 0.48;
+    transform: none;
+  }
+  .runner-app-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--runner-border);
+    background:
+      linear-gradient(180deg, rgba(30, 41, 59, 0.84), rgba(15, 23, 42, 0.82)),
+      repeating-conic-gradient(rgba(125, 211, 252, 0.04) 0% 25%, transparent 0% 50%) 0 0 /
+        8px 8px;
+  }
+  .runner-title { min-width: 0; }
+  .runner-eyebrow,
+  .runner-section-label {
+    color: var(--runner-muted);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .runner-title h3 {
+    margin: 2px 0 0;
+    color: #f8fafc;
+    font-family: "Press Start 2P", ui-monospace, monospace;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .runner-mode-pill {
+    flex: 0 0 auto;
+    max-width: 138px;
+    overflow: hidden;
+    padding: 4px 8px;
+    border: 1px solid rgba(125, 211, 252, 0.34);
+    border-radius: 999px;
+    color: #bae6fd;
+    background: rgba(14, 116, 144, 0.18);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .runner-command-deck {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px 10px 10px;
+    border-bottom: 1px solid var(--runner-border-strong);
+    background:
+      linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(8, 17, 32, 0.97)),
+      repeating-conic-gradient(rgba(125, 211, 252, 0.035) 0% 25%, transparent 0% 50%) 0 0 /
+        8px 8px,
+      var(--runner-bg);
+    box-shadow: 0 10px 24px rgba(2, 6, 23, 0.42);
+  }
+  .runner-command-deck,
+  .runner-primary-actions,
+  .runner-transport-row,
+  .runner-details,
+  .runner-details-body {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .runner-status-row,
+  .runner-transport-row,
+  .runner-setup-heading,
+  .runner-telemetry-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .runner-status-row { padding-bottom: 2px; }
+  .runner-status {
+    color: #f8fafc;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .runner-frame {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--runner-muted);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .runner-primary-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .runner-primary-actions button {
+    min-width: 0;
+    min-height: 44px;
+    padding: 9px 7px;
+    overflow: hidden;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .runner-takeover {
+    border-color: rgba(251, 191, 36, 0.62) !important;
+    color: #fef3c7 !important;
+    background: linear-gradient(135deg, rgba(146, 64, 14, 0.9), rgba(120, 53, 15, 0.9)) !important;
+    box-shadow: inset 3px 0 var(--runner-amber);
+  }
+  .runner-play {
+    border-color: #7dd3fc !important;
+    color: #082f49 !important;
+    background: linear-gradient(135deg, #7dd3fc, #38bdf8) !important;
+  }
+  .runner-restart { color: #cbd5e1; }
+  .runner-transport-row { align-items: stretch; }
+  .runner-speed-group {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .runner-speed-group button {
+    min-height: 32px;
+    padding: 4px 7px;
+    border-color: rgba(148, 163, 184, 0.18);
+    background: rgba(15, 23, 42, 0.66);
+  }
+  .runner-speed-group button[aria-pressed="true"] {
+    border-color: rgba(125, 211, 252, 0.72);
+    color: #e0f2fe;
+    background: linear-gradient(180deg, rgba(14, 116, 144, 0.56), rgba(14, 116, 144, 0.28));
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.14);
+  }
+  .runner-step { flex: 0 0 58px; }
+  .runner-details {
+    overflow: hidden;
+    border-top: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(15, 23, 42, 0.56);
+  }
+  #ai-run-setup {
+    margin-top: 12px;
+    border: 1px solid rgba(125, 211, 252, 0.18);
+    border-radius: 7px;
+    background: rgba(14, 116, 144, 0.08);
+  }
+  #ai-run-setup > summary > span:first-child::before {
+    margin-right: 6px;
+    color: var(--runner-cyan);
+    content: "◇";
+  }
+  .runner-details > summary {
+    display: flex;
+    min-height: 38px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    color: #cbd5e1;
+    cursor: pointer;
+    font-weight: 700;
+    list-style: none;
+  }
+  .runner-details > summary::-webkit-details-marker { display: none; }
+  .runner-details > summary::after {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    place-items: center;
+    color: var(--runner-muted);
+    content: "+";
+    font-size: 16px;
+    line-height: 1;
+  }
+  .runner-details[open] > summary::after { content: "−"; }
+  .runner-details-body {
+    display: grid;
+    gap: 8px;
+    padding: 0 10px 10px;
+  }
+  .runner-field-grid {
+    display: grid;
+    grid-template-columns: 94px minmax(0, 1fr);
+    gap: 7px;
+  }
+  .runner-field { display: grid; gap: 3px; }
+  .runner-field label {
+    color: var(--runner-muted);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .runner-field input,
+  .runner-field select { width: 100%; min-width: 0; padding: 5px 7px; }
+  .runner-setup-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+  .runner-apply {
+    border-color: rgba(125, 211, 252, 0.55) !important;
+    color: #e0f2fe !important;
+    background: rgba(14, 116, 144, 0.28) !important;
+    font-weight: 700;
+  }
+  .runner-note {
+    color: var(--runner-muted);
+    font-size: 10px;
+    line-height: 1.45;
+  }
+  .runner-telemetry-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    border-bottom: 1px solid var(--runner-border);
+    background: var(--runner-border);
+  }
+  .runner-telemetry-cell {
+    min-width: 0;
+    padding: 8px 9px;
+    background: #0c1526;
+  }
+  .runner-telemetry-cell strong,
+  .runner-telemetry-cell span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .runner-telemetry-cell strong {
+    margin-bottom: 2px;
+    color: var(--runner-muted);
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .runner-content { display: grid; gap: 8px; padding: 8px; }
+  .runner-card {
+    overflow: hidden;
+    border: 1px solid var(--runner-border);
+    border-radius: 9px;
+    background: var(--runner-surface);
+  }
+  .runner-card .runner-details-body { padding-inline: 9px; }
+  #ai-telemetry .runner-details-body {
+    padding: 22px 20px 32px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    line-height: 2;
+  }
+  #ai-telemetry { padding: 6px 0 8px; }
+  .runner-tree-details {
+    margin-top: 4px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    border-radius: 7px;
+    background: rgba(15, 10, 45, 0.38);
+  }
+  .runner-tree-details > summary {
+    padding: 8px;
+    color: #cbd5e1;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .runner-tree-details #ai-tree { padding: 0 8px 8px; }
+  .runner-decision-grid { display: grid; gap: 5px; }
+  .runner-debug-grid { display: grid; gap: 7px; }
+  .runner-debug-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+  .runner-debug-row select { min-width: 0; width: 100%; padding: 5px 7px; }
+  .runner-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #cbd5e1;
+    cursor: pointer;
+  }
+  .runner-check input { min-height: auto; }
+  .runner-tips { margin: 0; padding-left: 16px; color: var(--runner-muted); }
+  .runner-tips li + li { margin-top: 4px; }
+  @media (prefers-reduced-motion: reduce) {
+    .ai-runner-panel button { transition: none; }
+  }
+`;
 const INITIAL_SEED = 42;
 const SPEED_OPTIONS = [1, 4, 16] as const;
 const INVENTORY_PREVIEW_TICKS = 4;
@@ -493,6 +834,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     autoFloor2ProgressionSystem(world, playerEid);
   };
   let currentFloor = persisted?.floorId ?? 'floor1';
+  let stagedSeedText = String(currentSeed);
+  let stagedRunTarget: AiRunnerRunTargetKey | null = null;
   const recorderControls = createSessionRecorderControls({
     title: 'AI Session Recorder',
     initialController: 'AI',
@@ -1887,11 +2230,22 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
 
   const renderControls = (): void => {
+    const focusedId =
+      panelRoot.contains(document.activeElement) && document.activeElement instanceof HTMLElement
+        ? document.activeElement.id
+        : '';
+    const openDetails = new Set(
+      [...panelRoot.querySelectorAll<HTMLDetailsElement>('details[open]')].map(
+        (details) => details.id,
+      ),
+    );
+    const hadRenderedPanel = panelRoot.childElementCount > 0;
     const floorOptions = getAvailableFloorIds();
-    const selectedRunTarget: AiRunnerRunTargetKey =
+    const appliedRunTarget: AiRunnerRunTargetKey =
       currentFloor === 'floor1' && selectedScenarioPresetId !== DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID
         ? encodeScenarioRunTarget(selectedScenarioPresetId)
         : encodeFloorRunTarget(currentFloor);
+    const selectedRunTarget = stagedRunTarget ?? appliedRunTarget;
     const runTargetOptions = [
       ...floorOptions.map(
         (id) =>
@@ -1904,9 +2258,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           `<option value="${encodeScenarioRunTarget(preset.id)}"${selectedRunTarget === encodeScenarioRunTarget(preset.id) ? ' selected' : ''}>Scenario: ${preset.label}</option>`,
       ),
     ].join('');
+    const selectedTarget = decodeRunTarget(selectedRunTarget);
     const selectedScenarioPreset =
-      getAiRunnerScenarioPreset(selectedScenarioPresetId) ??
-      getAiRunnerScenarioPreset(DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID);
+      getAiRunnerScenarioPreset(
+        selectedTarget.kind === 'scenario'
+          ? selectedTarget.scenarioPresetId
+          : DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID,
+      ) ?? getAiRunnerScenarioPreset(DEFAULT_AI_RUNNER_SCENARIO_PRESET_ID);
     const jumpOptions = Object.entries(JUMP_TARGET_LABELS)
       .map(([value, label]) => `<option value="${value}">${label}</option>`)
       .join('');
@@ -1914,97 +2272,125 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       .map(([label, value]) => `<option value="${value}">${label}</option>`)
       .join('');
     panelRoot.innerHTML = `
-      <div style="font-family: monospace; padding: 12px;">
-        <h3 style="margin: 0 0 12px 0;">AI Runner Lab</h3>
-        <div id="ai-info" style="font-size: 12px; line-height: 1.6;">
-          <div id="ai-playback-dock" style="position:sticky; top:8px; z-index:8; margin:0 0 12px 0; padding:10px; border:1px solid #334155; border-radius:8px; background:linear-gradient(180deg,#10172a,#0b1222); box-shadow:0 6px 16px rgba(2,6,23,0.45);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin:0 0 8px 0; gap:10px; flex-wrap:wrap;">
-              <strong style="color:#dbeafe;">Playback controls</strong>
-              <span id="ai-control-mode" style="font-size:12px;"></span>
+      <style>${AI_RUNNER_PANEL_STYLES}</style>
+      <section class="ai-runner-panel" aria-label="AI Runner controls">
+        <header class="runner-app-bar">
+          <div class="runner-title">
+            <div class="runner-eyebrow">Live simulation</div>
+            <h3>AI Runner</h3>
+          </div>
+          <span id="ai-control-mode" class="runner-mode-pill">AI is driving</span>
+        </header>
+        <div id="ai-playback-dock" class="runner-command-deck">
+          <div class="runner-status-row">
+            <span id="ai-runner-status" class="runner-status" aria-live="polite">Paused</span>
+            <span id="ai-runner-debug" class="runner-frame">frame 0</span>
+          </div>
+          <div class="runner-primary-actions" aria-label="Primary run commands">
+            <button id="ai-manual-toggle" class="runner-takeover" type="button">◆ Control</button>
+            <button id="ai-toggle-run" class="runner-play" type="button">Resume</button>
+            <button id="ai-restart-current" class="runner-restart" type="button" title="Restart with the currently applied seed and target">↻ Restart</button>
+          </div>
+          <div class="runner-transport-row">
+            <div class="runner-speed-group" role="group" aria-label="Simulation speed">
+              <button id="ai-speed-1" type="button" aria-pressed="${selectedSpeed === 1}">1x</button>
+              <button id="ai-speed-4" type="button" aria-pressed="${selectedSpeed === 4}">4x</button>
+              <button id="ai-speed-16" type="button" aria-pressed="${selectedSpeed === 16}">16x</button>
             </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button id="ai-toggle-run" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #2563eb; background:#1d4ed8; color:#eff6ff; border-radius:6px;">Resume</button>
-              <button id="ai-step-frame" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #475569; background:#1e293b; color:#e2e8f0; border-radius:6px;">Step 1 frame (Space)</button>
-              <button id="ai-speed-1" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #475569; background:#0f172a; color:#e2e8f0; border-radius:6px;">1x</button>
-              <button id="ai-speed-4" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #475569; background:#0f172a; color:#e2e8f0; border-radius:6px;">4x</button>
-              <button id="ai-speed-16" type="button" style="padding:6px 10px; cursor:pointer; border:1px solid #475569; background:#0f172a; color:#e2e8f0; border-radius:6px;">16x</button>
-              <button id="ai-manual-toggle" type="button" style="padding:6px 10px; cursor:pointer; font-weight:bold; border:1px solid #f59e0b; background:#78350f; color:#fef3c7; border-radius:6px;">🎮 Take manual control</button>
+            <button id="ai-step-frame" class="runner-step" type="button" title="Advance one frame (Space)">Step</button>
+          </div>
+          <details id="ai-run-setup" class="runner-details"${openDetails.has('ai-run-setup') ? ' open' : ''}>
+            <summary id="ai-run-setup-summary">
+              <span>Run setup</span>
+              <span class="runner-frame">${currentFloor} · seed ${currentSeed}</span>
+            </summary>
+            <div class="runner-details-body">
+              <div class="runner-field-grid">
+                <div class="runner-field">
+                  <label for="ai-seed-input">Seed</label>
+                  <input id="ai-seed-input" type="number" value="${stagedSeedText}" />
+                </div>
+                <div class="runner-field">
+                  <label for="ai-run-target-select">Target</label>
+                  <select id="ai-run-target-select">${runTargetOptions}</select>
+                </div>
+              </div>
+              <div class="runner-setup-actions">
+                <button id="ai-run-apply" class="runner-apply" type="button">Apply staged + restart</button>
+                <button id="ai-seed-random" type="button" title="Stage a random seed">Randomize</button>
+              </div>
+              <div id="ai-run-settings-note" class="runner-note">${pendingRunSettingsNote ?? 'Stage a seed or target here; Restart above always replays the applied run.'}</div>
+              <div id="ai-scenario-description" class="runner-note">${selectedRunTarget.startsWith('scenario:') ? (selectedScenarioPreset?.description ?? '') : 'Floor target selected — scenario overrides are disabled for this run.'}</div>
             </div>
-          </div>
-          <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
-            <label for="ai-seed-input"><strong>Seed:</strong></label>
-            <input id="ai-seed-input" type="number" value="${currentSeed}" style="width:96px; padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;" />
-            <button id="ai-seed-random" type="button" style="padding:4px 8px; cursor:pointer;">🎲 Randomize seed</button>
-          </div>
-          <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-            <label for="ai-run-target-select"><strong>Run target:</strong></label>
-            <select id="ai-run-target-select" style="padding:4px; min-width:260px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${runTargetOptions}</select>
-            <button id="ai-run-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply run settings + restart</button>
-          </div>
-          <div id="ai-run-settings-note" style="margin:0 0 6px 0; font-size:11px; color:#9ca3af;">${pendingRunSettingsNote ?? 'Pick either a Floor target or a Scenario target, then apply once to restart.'}</div>
-          <div id="ai-scenario-description" style="margin:0 0 6px 0; font-size:11px; color:#cfd8ff;">${selectedRunTarget.startsWith('scenario:') ? (selectedScenarioPreset?.description ?? '') : 'Floor target selected — scenario overrides are disabled for this run.'}</div>
-          <div id="ai-runner-status">Paused</div>
-          <div id="ai-runner-debug">frame: 0</div>
-          <div><strong>Persona:</strong> <span id="ai-persona">Off</span></div>
-          <div id="ai-arena-entry-frame" style="font-size:11px; color:#fcd34d;">AI lock-in frame: pending</div>
-          <div id="ai-decision" style="margin-top: 8px; padding: 8px; background: #2a2a4e; border-radius: 4px;">
-            <div><strong>State:</strong> <span id="ai-state">-</span></div>
-            <div><strong>Reason:</strong> <span id="ai-reason">-</span></div>
-            <div><strong>Target:</strong> <span id="ai-target">-</span></div>
-            <div><strong>Path:</strong> <span id="ai-path">-</span></div>
-            <div><strong>Modes:</strong> <span id="ai-modes">-</span></div>
-            <div><strong>Slack:</strong> <span id="ai-slack">-</span></div>
-          </div>
-          <div id="ai-tree"></div>
-          <div style="margin-top:12px; padding:8px; background:#111827; border-radius:4px;">
-            <div style="font-weight:bold; margin-bottom:8px;">Floor 1 Debug</div>
-            <div style="display:flex; gap:8px; margin:0 0 8px 0; flex-wrap:wrap; align-items:center;">
-              <label for="ai-jump-target"><strong>Jump target:</strong></label>
-              <select id="ai-jump-target" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${jumpOptions}</select>
-              <button id="ai-jump-now" type="button" style="padding:4px 8px; cursor:pointer;">Jump now</button>
-            </div>
-            <div style="display:flex; gap:8px; margin:0 0 8px 0; flex-wrap:wrap; align-items:center;">
-              <label for="ai-show-all-rooms" style="display:flex; gap:6px; align-items:center; cursor:pointer;">
-                <input id="ai-show-all-rooms" type="checkbox" style="cursor:pointer;" />
-                <span>Show all rooms (dim)</span>
-              </label>
-            </div>
-            <div style="display:flex; gap:8px; margin:0; flex-wrap:wrap; align-items:center;">
-              <label for="ai-quest-target"><strong>Quest target:</strong></label>
-              <select id="ai-quest-target" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${questOptions}</select>
-              <select id="ai-quest-action" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">
-                <option value="accept">Accept / enable quest</option>
-                <option value="complete">Complete quest now</option>
-              </select>
-              <button id="ai-quest-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply quest debug</button>
-            </div>
-          </div>
-          <div id="ai-recorder-host"></div>
-          <div style="margin-top: 12px; padding: 8px; background: #1a1a3e; border-radius: 4px; font-size: 11px;">
-            <div><strong>Tips:</strong></div>
-            <div>• Starts paused so you can inspect the opening state</div>
-            <div>• Lab auto-clears starter/shop/spell/stair UI for the AI</div>
-            <div>• Use speed controls to accelerate the simulation</div>
-            <div>• Take manual control to play it yourself (WASD/arrows move, Space attacks, E interacts)</div>
-            <div>• The recorder tags every event AI vs MANUAL so handovers are clear in the log</div>
-            <div>• Cyan line shows the AI's smoothed diagonal path, orange circle shows current target</div>
-            <div>• AI Configuration now holds the flow-field heatmap, future-threat scrubber, and auto-pause-on-damage toggles</div>
-            <div>• Floor 1 Debug adds teleport, map reveal, and quest advancement helpers</div>
-            <div>• Use the lil-gui Lighting folder to tune darkness quality, cadence, and falloff live</div>
-            <div>• Use the lil-gui FOV folder to change fog granularity (32/16/8/4px) + discovered-terrain dimming live</div>
-          </div>
+          </details>
         </div>
-      </div>
+        <div class="runner-telemetry-strip" aria-label="Live telemetry summary">
+          <div class="runner-telemetry-cell"><strong>State</strong><span id="ai-state">-</span></div>
+          <div class="runner-telemetry-cell"><strong>Target</strong><span id="ai-target">-</span></div>
+          <div class="runner-telemetry-cell"><strong>Persona</strong><span id="ai-persona">Off</span></div>
+        </div>
+        <div class="runner-content">
+          <details id="ai-telemetry" class="runner-details runner-card"${!hadRenderedPanel || openDetails.has('ai-telemetry') ? ' open' : ''}>
+            <summary id="ai-telemetry-summary"><span>Decision telemetry</span><span id="ai-arena-entry-frame" class="runner-frame">Lock-in pending</span></summary>
+            <div class="runner-details-body">
+              <div id="ai-decision" class="runner-decision-grid">
+                <div><strong>Reason:</strong> <span id="ai-reason">-</span></div>
+                <div><strong>Path:</strong> <span id="ai-path">-</span></div>
+                <div><strong>Modes:</strong> <span id="ai-modes">-</span></div>
+                <div><strong>Slack:</strong> <span id="ai-slack">-</span></div>
+              </div>
+              <details id="ai-tree-details" class="runner-tree-details"${openDetails.has('ai-tree-details') ? ' open' : ''}>
+                <summary id="ai-tree-details-summary">Decision tree</summary>
+                <div id="ai-tree"></div>
+              </details>
+            </div>
+          </details>
+          <details id="ai-floor-debug" class="runner-details runner-card"${openDetails.has('ai-floor-debug') ? ' open' : ''}>
+            <summary id="ai-floor-debug-summary"><span>Floor 1 Debug</span></summary>
+            <div class="runner-details-body runner-debug-grid">
+              <div class="runner-debug-row">
+                <select id="ai-jump-target" aria-label="Jump target">${jumpOptions}</select>
+                <button id="ai-jump-now" type="button">Jump</button>
+              </div>
+              <label for="ai-show-all-rooms" class="runner-check">
+                <input id="ai-show-all-rooms" type="checkbox" />
+                <span>Reveal all rooms (dim)</span>
+              </label>
+              <select id="ai-quest-target" aria-label="Quest target">${questOptions}</select>
+              <div class="runner-debug-row">
+                <select id="ai-quest-action" aria-label="Quest action">
+                  <option value="accept">Accept / enable quest</option>
+                  <option value="complete">Complete quest now</option>
+                </select>
+                <button id="ai-quest-apply" type="button">Apply</button>
+              </div>
+            </div>
+          </details>
+          <details id="ai-recorder" class="runner-details runner-card"${openDetails.has('ai-recorder') ? ' open' : ''}>
+            <summary id="ai-recorder-summary"><span>Session recorder</span></summary>
+            <div id="ai-recorder-host" class="runner-details-body"></div>
+          </details>
+          <details id="ai-tips" class="runner-details runner-card"${openDetails.has('ai-tips') ? ' open' : ''}>
+            <summary id="ai-tips-summary"><span>Expert shortcuts</span></summary>
+            <div class="runner-details-body">
+              <ul class="runner-tips">
+                <li>Space steps one frame while AI control is paused.</li>
+                <li>WASD/arrows move, Space attacks, and E interacts in manual control.</li>
+                <li>Lighting, FOV, path overlays, and auto-pause live in the folders above.</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+      </section>
     `;
 
     const statusElem = document.getElementById('ai-runner-status');
     if (statusElem) {
       const scene = getScene();
       const scenePaused = scene?.isSimulationPaused?.();
-      const controlSuffix = manualControl ? ' — 🎮 MANUAL' : ' — 🤖 AI';
       statusElem.textContent = isPaused
-        ? `Paused @ ${selectedSpeed}x${controlSuffix}`
-        : `Running @ ${selectedSpeed}x${scenePaused ? ' (scene paused)' : ''}${controlSuffix}`;
+        ? `Paused @ ${selectedSpeed}x`
+        : `Running @ ${selectedSpeed}x${scenePaused ? ' (scene paused)' : ''}`;
     }
     const controlModeElem = document.getElementById('ai-control-mode');
     if (controlModeElem) {
@@ -2050,6 +2436,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     };
     if (runTargetSelect) {
       runTargetSelect.onchange = () => {
+        stagedRunTarget = runTargetSelect.value as AiRunnerRunTargetKey;
         const decoded = decodeRunTarget(runTargetSelect.value);
         if (decoded.kind === 'scenario') {
           setScenarioDescription(decoded.scenarioPresetId);
@@ -2065,6 +2452,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         if (runSettingsNote) {
           runSettingsNote.textContent = pendingRunSettingsNote;
         }
+      };
+    }
+    if (seedInput) {
+      seedInput.oninput = () => {
+        stagedSeedText = seedInput.value;
       };
     }
     const runApplyButton = document.getElementById('ai-run-apply') as HTMLButtonElement | null;
@@ -2086,6 +2478,20 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         pendingRunSettingsNote = result.forcedDefault
           ? 'Applied. Non-floor1 runs use the Default Floor 1 scenario preset automatically.'
           : 'Applied. Restarted with the staged Seed/Floor/Scenario.';
+        stagedSeedText = String(nextSeed);
+        stagedRunTarget = null;
+        renderControls();
+      };
+    }
+    const restartButton = document.getElementById('ai-restart-current') as HTMLButtonElement | null;
+    if (restartButton) {
+      restartButton.onclick = () => {
+        applyRunSettings({
+          seed: currentSeed,
+          floorId: currentFloor,
+          scenarioPresetId: selectedScenarioPresetId,
+        });
+        pendingRunSettingsNote = 'Restarted the currently applied run.';
         renderControls();
       };
     }
@@ -2117,10 +2523,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
     const manualButton = document.getElementById('ai-manual-toggle') as HTMLButtonElement | null;
     if (manualButton) {
-      manualButton.textContent = manualControl ? '🤖 Return to AI' : '🎮 Take manual control';
-      manualButton.style.background = manualControl ? '#1e3a8a' : '#78350f';
-      manualButton.style.borderColor = manualControl ? '#3b82f6' : '#f59e0b';
-      manualButton.style.color = manualControl ? '#dbeafe' : '#fef3c7';
+      manualButton.textContent = manualControl ? '◆ Return AI' : '◆ Control';
+      manualButton.classList.toggle('runner-takeover', !manualControl);
+      manualButton.classList.toggle('runner-play', manualControl);
       manualButton.onclick = () => {
         setManualControl(!manualControl);
       };
@@ -2177,10 +2582,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       if (!button) {
         continue;
       }
-      button.disabled = selectedSpeed === speed;
-      button.style.background = selectedSpeed === speed ? '#2563eb' : '#0f172a';
-      button.style.borderColor = selectedSpeed === speed ? '#60a5fa' : '#475569';
-      button.style.color = '#e2e8f0';
+      button.setAttribute('aria-pressed', String(selectedSpeed === speed));
       button.onclick = () => {
         selectedSpeed = speed;
         syncSceneSimulationState();
@@ -2192,11 +2594,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (randomButton) {
       randomButton.onclick = () => {
         const nextSeed = randomRunSeed();
+        stagedSeedText = String(nextSeed);
         if (seedInput) {
-          seedInput.value = String(nextSeed);
+          seedInput.value = stagedSeedText;
         }
-        pendingRunSettingsNote =
-          'Random seed staged. Click "Apply run settings + restart" to run it.';
+        pendingRunSettingsNote = 'Random seed staged. Click "Apply staged + restart" to run it.';
         if (runSettingsNote) {
           runSettingsNote.textContent = pendingRunSettingsNote;
         }
@@ -2206,6 +2608,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const recorderHost = document.getElementById('ai-recorder-host');
     if (recorderHost) {
       recorderControls.mount(recorderHost);
+    }
+    if (focusedId) {
+      document.getElementById(focusedId)?.focus({ preventScroll: true });
     }
   };
 
@@ -2225,8 +2630,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       return;
     }
     const target = event.target as HTMLElement | null;
-    const tagName = target?.tagName.toLowerCase();
-    if (tagName === 'input' || tagName === 'textarea') {
+    if (
+      target?.closest(
+        'button, input, select, textarea, summary, a, [contenteditable="true"], [role="button"]',
+      )
+    ) {
       return;
     }
     event.preventDefault();

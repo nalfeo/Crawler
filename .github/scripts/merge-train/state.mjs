@@ -191,36 +191,43 @@ export function nextBisectStep(prefixStates) {
   return { type: 'validate', prefixLength: Math.floor((green + red) / 2) };
 }
 
-// Decide the next promotion action under the "every promoted prefix is validated
-// before it is exposed on main" invariant (ADR 0063). `prefixStates[i]` is the
-// candidate-validation state of cumulative prefix T_(i+1) (one of
-// 'missing' | 'pending' | 'success' | 'failure').
-//
-// The intended green prefix to promote is [0, target) where `target` is the
-// earliest failing prefix (or the whole batch if none fails); prefixes at/after
-// the earliest failure contain the culprit and are irrelevant. Every prefix in
-// that target range must have terminal SUCCESS evidence before any merge:
-//   - if any target-range prefix is still 'missing' -> validate them (the
-//     caller dispatches all of them in parallel);
-//   - else if any is still 'pending' -> wait for the validators;
-//   - else the whole [0, target) is proven green -> promote it, and localize
-//     the earliest failing PR (target) directly (no bisection needed).
+// Validate the maximal FIFO prefix first. A successful maximal candidate proves
+// the batch in one round. Only a genuine terminal failure enters bisection;
+// cancelled, stale, and infrastructure outcomes are represented as `missing`
+// and retry the same candidate instead of shrinking the batch.
 export function planPrefixPromotion(prefixStates) {
   if (!Array.isArray(prefixStates) || prefixStates.length === 0) {
     return { action: 'noop' };
   }
-  const firstFailure = prefixStates.indexOf('failure');
-  const target = firstFailure === -1 ? prefixStates.length : firstFailure;
-  const relevant = prefixStates.slice(0, target);
-  const missing = [];
-  let pending = false;
-  relevant.forEach((state, index) => {
-    if (state === 'missing') missing.push(index);
-    else if (state === 'pending') pending = true;
-  });
-  if (missing.length > 0) return { action: 'validate', prefixes: missing, firstFailure };
-  if (pending) return { action: 'wait', firstFailure };
-  return { action: 'promote', greenPrefixLength: target, firstFailure };
+  const maximalIndex = prefixStates.length - 1;
+  const maximalState = prefixStates[maximalIndex];
+  if (maximalState === 'missing') {
+    return { action: 'validate', prefixes: [maximalIndex], firstFailure: -1 };
+  }
+  if (maximalState === 'pending') return { action: 'wait', firstFailure: -1 };
+  if (maximalState === 'success') {
+    return {
+      action: 'promote',
+      greenPrefixLength: prefixStates.length,
+      firstFailure: -1,
+      validationIndex: maximalIndex,
+    };
+  }
+
+  const step = nextBisectStep(prefixStates);
+  if (step.type === 'isolate') {
+    return {
+      action: 'promote',
+      greenPrefixLength: step.greenPrefixLength,
+      firstFailure: step.failingPrefixLength - 1,
+      validationIndex: step.greenPrefixLength - 1,
+    };
+  }
+  const index = step.prefixLength - 1;
+  if (prefixStates[index] === 'pending') {
+    return { action: 'wait', firstFailure: maximalIndex };
+  }
+  return { action: 'validate', prefixes: [index], firstFailure: maximalIndex };
 }
 
 export function commitTimestamp(entry) {
@@ -378,11 +385,11 @@ export function renderLandedComment({ landedSha, candidateSha, recovered = false
     '## Landed on `main` via the merge train ✅',
     '',
     `- Landed commit: \`${compact(landedSha)}\``,
-    `- Validated candidate: \`${compact(candidateSha)}\``,
+    `- Validated batch candidate: \`${compact(candidateSha)}\``,
     '',
     'GitHub recorded this PR as **merged** with the landed commit above. Its',
-    'tree was proven identical to the validated merge-train candidate before',
-    'this record was written.',
+    "tree was proven identical to this batch candidate's deterministic cumulative",
+    'prefix before this record was written.',
     '',
     '_Managed by the trusted repository merge-train workflow._',
   ].join('\n');

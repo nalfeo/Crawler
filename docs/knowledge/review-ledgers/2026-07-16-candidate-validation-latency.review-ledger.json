@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "candidate-validation-latency",
+  "task_title": "Parallelize merge-train candidate validation",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "convergent",
+      "notes": "Added strategy.fail-fast:false for unit/sprite matrices; rejected unsafe branch workflow dispatch through the App-token publisher; modeled every path with 45s setup budget (longest: sprite shard 119.2s + setup = 164.2s, under 210s; unit 103.6s, static <=69s, security 54s, health <=48.9s); required executable mixed-result publish tests in addition to structural YAML guards."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

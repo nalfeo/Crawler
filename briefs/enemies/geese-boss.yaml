@@ -1,0 +1,57 @@
+type: enemy
+name: geese-boss
+floor: 2
+sizeVariant: large
+
+description: |
+  Don Honkrado the Godgoose — a mafia godfather goose who is simultaneously
+  imposing and absurd. The body shape is paramount: tucked neck folded against
+  a rounded, compact torso to create a square, dense boss mass. The body is
+  wide and low-slung — a heavy-set cube of feathers with minimal visible neck.
+  Boss-scale goose stands at least 2/3 the cell height.
+
+  Industrial salvage boss regalia fused into the body (not floating props):
+  a heavy pinstripe waistcoat stitched from old conveyor belt straps, brass
+  gear-tooth cufflinks, and a battered wide-brim fedora sitting flat and low
+  on the head. A fat unlit cigar or chewed pipe clenched in the beak. One
+  webbed foot rests on an overturned brass gear or scrap-iron crown — the
+  throne of a Floor 2 dungeon don.
+
+  Preserve ONE unmistakable goose landmark per variant: the orange bill with
+  nostril slot, the black head-cap marking, or the white body-plumage band.
+  Do NOT make this a generic bird. It must be unmistakably a goose wearing
+  crime-boss clothes.
+
+  Color palette: dark Floor 2 menace. Deep charcoal and slate feathers with
+  aged brass and copper-verdigris accents on salvage regalia. Off-white
+  plumage highlight on chest/wing band. Warm amber/sepia pinstripe fabric.
+  Vivid orange beak as the single bold accent. Avoid bright greens or blues
+  that read Floor 1.
+
+  Expression: cold authority. Half-lidded eyes (goose contempt), cigar
+  clenched sideways. Front-facing toward camera — both eyes visible, bill
+  centered.
+
+  Silhouette-first: the wide-body tucked-neck goose silhouette must still
+  read as a large waterfowl even when painted black. Square mass + orange bill
+  = unmistakable.
+
+sensors:
+  enemy:
+    toleranceDeg: 20
+    facing: front
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: false
+
+judge:
+  enabled: true
+  maxVariants: 4
+
+variations:
+  - "Don Honkrado silhouette: square body, neck tucked against chest, fedora low on brow, cigar in beak, front-facing, cold authority expression"
+  - "Don Honkrado with pinstripe waistcoat stitched from conveyor belt material, brass gear cufflinks, one foot on scrap-iron crown, goose contempt half-lid"
+  - "Don Honkrado open-beak HONK intimidation pose — wide orange bill showing tongue, wings slightly spread but close to body mass, fedora still on"
+  - "Don Honkrado heavy silhouette variant: extra wide rounded body, maximum square mass, charcoal-and-slate plumage, off-white chest band, warm amber pinstripes"
+
+minVariations: 2

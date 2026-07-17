@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "asset-request-type-fingerprint-polish",
+  "task_title": "chore(sprites): finalize asset-request dedupe recovery",
+  "estimated_apples": 1,
+  "stages": {}
+}

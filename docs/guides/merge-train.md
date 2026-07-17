@@ -22,11 +22,15 @@ for the architectural rationale.
    separately to avoid review churn for trivial updates.
    Once labeled, CI recovery and broad auto-rebase both leave the PR unchanged;
    the train exclusively owns freshness and promotion.
-2. `.github/workflows/merge-train.yml` serializes reconciliation with
-   `queue: max`, selects up to six oldest admitted PRs, and creates one combined
-   immutable candidate.
-3. `.github/workflows/merge-train-validate.yml` runs `verify:fast` plus the
-   targeted security suite on that SHA.
+2. `.github/workflows/merge-train.yml` serializes the gated `reconcile` job with
+   `queue: single` (one active job plus only the latest pending admitted wake),
+   selects up to six oldest admitted PRs, and creates one combined immutable
+   candidate. Job-level placement keeps rejected PR events out of the queue, so a
+   no-op wake cannot displace meaningful pending work.
+3. `.github/workflows/merge-train-validate.yml` runs every `verify:fast` gate
+   plus the targeted security suite on that SHA as parallel read-only jobs.
+   Complete unit and sprite projects use deterministic Vitest shards; no
+   affected-only filtering is used.
    Candidate-executing jobs have read-only permissions. The final publisher job
    does not check out candidate code and writes the
    `merge-train-candidate` result.
@@ -45,10 +49,13 @@ for the architectural rationale.
    the transient `merge-train` queue label. If landed-proof APIs are temporarily
    unavailable, reconciliation first adds `merge-train-recovery-pending`, clears
    `merge-train`, and retries from that dedicated marker on a later run.
-5. Every cumulative prefix is validated (in parallel) before any merge, so no
-   unvalidated intermediate tree is ever exposed on `main`. If a prefix fails,
-   the train promotes the maximal fully-validated green prefix and returns the
-   first failing addition to recovery. Later ready PRs remain queued.
+5. The maximal cumulative prefix is validated first. A successful maximal
+   candidate authorizes the FIFO batch in one validation round. Only a genuine
+   terminal candidate failure requests smaller prefixes through bisection; a
+   cancelled, stale, or infrastructure result retries the same maximal candidate.
+   Once bisection isolates the first failing addition, the train promotes the
+   validated green prefix and returns that addition to recovery. Later ready PRs
+   remain queued.
 6. A textual conflict removes only that PR from readiness. Recovery performs a
    conflict-only rebase onto the resulting `main`; the new head reruns heavy PR
    validation.
@@ -153,7 +160,7 @@ dry-run train mode.
    - six clean PRs validate together and merge in order;
    - editing a title or pushing a head invalidates the old candidate;
    - a cumulative conflict returns only that PR to recovery;
-   - a failed prefix is localized and the maximal validated green prefix advances;
+   - a failed maximal candidate is bisected and the validated green prefix advances;
    - a `main` race rejects promotion and rebuilds;
    - a failure between PR-head update and main update retries the same tested SHA.
 4. Confirm GitHub records **every** disposable PR as `merged` (real `merged_at`
@@ -312,9 +319,9 @@ repaired `main`.
 - **Blocked:** cumulative squash conflicts. The PR leaves the active queue and
   receives `merge-train-blocked`; recovery rebases it only after the conflict is
   present on `main`.
-- **Failed:** every prefix is validated, so the train localizes the first
-  failing PR directly, promotes the largest validated green prefix before it, and
-  returns the failing addition with `merge-train-validation-failed`.
+- **Failed:** a genuine maximal-candidate failure starts prefix bisection. The
+  train promotes the largest validated green prefix, marks the first isolated
+  failing addition `merge-train-validation-failed`, and returns it to recovery.
 - **Closed with stale queue state:** reconciliation removes `merge-train` from
   every closed PR. A provable interrupted landing receives the truthful landed
   comment before cleanup; an unprovable closure loses only transient queue/retry

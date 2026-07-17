@@ -1,15 +1,23 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+
+import { parse } from 'yaml';
 
 import {
   collectPrNumbers,
   computeBackoffDelayMs,
   eventPrNumbers,
+  isRepairWindowSweepEvent,
   isRetryableError,
   requestWithBackoff,
   recoveryTriggerForPr,
   isManagedCommentEvent,
 } from './router.mjs';
+
+const workflowPath = new URL('../../workflows/ci-recovery-router.yml', import.meta.url);
+const workflow = parse(await readFile(workflowPath, 'utf8'));
+const routeJob = workflow.jobs.route;
 
 function makeError(status, message, headerMap = {}) {
   const error = new Error(message);
@@ -145,7 +153,7 @@ test('collectPrNumbers keeps directly-triggered PRs ahead of the cap alongside t
   assert.ok(numbers.includes(1), 'the train-labeled PR must survive the cap');
 });
 
-test('train mode schedules only the oldest six non-ready repair candidates', () => {
+test('train mode routes PR-scoped events only to their directly affected PR', () => {
   const pulls = Array.from({ length: 9 }, (_, index) => ({
     number: index + 1,
     state: 'open',
@@ -165,7 +173,7 @@ test('train mode schedules only the oldest six non-ready repair candidates', () 
       scheduledPulls: pulls,
       trainEnabled: true,
     }),
-    [2, 3, 4, 5, 6, 7],
+    [3],
   );
 });
 
@@ -225,6 +233,274 @@ test('train schedule rechecks owned slots for expiry without widening the window
   );
 });
 
+test('train sweeps skip genuine waiting PRs while exact direct events preserve them', () => {
+  const pulls = Array.from({ length: 9 }, (_, index) => ({
+    number: index + 1,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: index + 1 === 9 ? [{ name: 'ci-recovery-waiting' }] : [],
+  }));
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [1, 2, 3, 4, 5, 6],
+  );
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: { pull_request: { number: 9 } },
+      eventName: 'pull_request_target',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [9],
+  );
+});
+
+test('train undirected sweeps select at most the six oldest eligible PRs', () => {
+  const pulls = Array.from({ length: 9 }, (_, index) => ({
+    number: 9 - index,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(9 - index).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [],
+  }));
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [1, 2, 3, 4, 5, 6],
+  );
+});
+
+test('train PR-less default-branch CI sweeps preserve owner slots without redispatching them', () => {
+  const pulls = Array.from({ length: 7 }, (_, index) => ({
+    number: index + 1,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: index === 0 ? [{ name: 'ci-owner-pr-1' }] : [],
+  }));
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {
+        repository: { default_branch: 'main' },
+        workflow_run: { name: 'CI', head_branch: 'main', pull_requests: [] },
+      },
+      eventName: 'workflow_run',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [2, 3, 4, 5, 6],
+  );
+});
+
+test('train direct routing preserves opt-out cleanup and same-repository trust', () => {
+  const pulls = [
+    {
+      number: 42,
+      state: 'open',
+      draft: false,
+      created_at: '2026-07-01T00:00:00Z',
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [{ name: 'ci-recovery-opt-out' }],
+    },
+    {
+      number: 43,
+      state: 'open',
+      draft: false,
+      created_at: '2026-07-02T00:00:00Z',
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'fork/Crawler' } },
+      labels: [],
+    },
+  ];
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {
+        workflow_run: { pull_requests: [{ number: 42 }, { number: 43 }] },
+      },
+      eventName: 'workflow_run',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [42],
+  );
+});
+
+test('train direct routing reports no eligible PR when the affected PR is excluded', () => {
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: { pull_request: { number: 42 } },
+      eventName: 'pull_request_target',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [
+        {
+          number: 42,
+          state: 'open',
+          draft: true,
+          created_at: '2026-07-01T00:00:00Z',
+          base: { ref: 'main' },
+          head: { repo: { full_name: 'nalfeo/Crawler' } },
+          labels: [],
+        },
+      ],
+      trainEnabled: true,
+    }),
+    [],
+  );
+});
+
+test('repair-window sweeps are limited to explicit train fill and global CI events', () => {
+  const globalCiPayload = {
+    repository: { default_branch: 'main' },
+    workflow_run: { name: 'CI', head_branch: 'main', pull_requests: [] },
+  };
+  assert.equal(
+    isRepairWindowSweepEvent({
+      payload: globalCiPayload,
+      eventName: 'workflow_run',
+      trainEnabled: true,
+    }),
+    true,
+  );
+  assert.equal(
+    isRepairWindowSweepEvent({
+      payload: {
+        ...globalCiPayload,
+        workflow_run: { ...globalCiPayload.workflow_run, head_branch: 'feature' },
+      },
+      eventName: 'workflow_run',
+      trainEnabled: true,
+    }),
+    false,
+  );
+  assert.equal(
+    isRepairWindowSweepEvent({
+      payload: {
+        ...globalCiPayload,
+        workflow_run: { ...globalCiPayload.workflow_run, pull_requests: [{ number: 42 }] },
+      },
+      eventName: 'workflow_run',
+      trainEnabled: true,
+    }),
+    false,
+  );
+  assert.equal(
+    isRepairWindowSweepEvent({
+      payload: { action: 'closed' },
+      eventName: 'pull_request_target',
+      trainEnabled: true,
+    }),
+    true,
+  );
+  assert.equal(
+    isRepairWindowSweepEvent({
+      payload: { action: 'closed' },
+      eventName: 'pull_request_target',
+      trainEnabled: false,
+    }),
+    false,
+  );
+});
+
+test('interrupted waiting transitions remain sweep-visible without admitting genuine waits', () => {
+  const interrupted = {
+    number: 42,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [
+      { name: 'ci-recovery-waiting' },
+      { name: 'ci-recovery-waiting-transition' },
+      { name: 'ci-owner-pr-42' },
+    ],
+  };
+  const genuineWait = {
+    ...interrupted,
+    number: 43,
+    labels: [{ name: 'ci-recovery-waiting' }],
+  };
+
+  for (const trainEnabled of [true, false]) {
+    assert.deepEqual(
+      collectPrNumbers({
+        payload: {},
+        eventName: 'schedule',
+        repository: 'nalfeo/Crawler',
+        scheduledPulls: [interrupted, genuineWait],
+        trainEnabled,
+      }),
+      [42],
+    );
+  }
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {
+        repository: { default_branch: 'main' },
+        workflow_run: { name: 'CI', head_branch: 'main', pull_requests: [] },
+      },
+      eventName: 'workflow_run',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [interrupted, genuineWait],
+      trainEnabled: true,
+    }),
+    [42],
+  );
+});
+
+test('train sweeps retain waiting PRs that also carry dynamic ownership for cleanup retry', () => {
+  const ownedWaiting = {
+    number: 42,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-owner-pr-42' }],
+  };
+
+  for (const trainEnabled of [true, false]) {
+    assert.deepEqual(
+      collectPrNumbers({
+        payload: {},
+        eventName: 'schedule',
+        repository: 'nalfeo/Crawler',
+        scheduledPulls: [ownedWaiting],
+        trainEnabled,
+      }),
+      [42],
+    );
+  }
+});
+
 test('eventPrNumbers identifies only PRs represented by the triggering event', () => {
   assert.deepEqual([...eventPrNumbers({ pull_request: { number: 42 } })], [42]);
   assert.deepEqual(
@@ -277,6 +553,34 @@ test('managed state, task, and train comments do not feed the recovery router', 
     ),
     false,
   );
+});
+
+test('managed state, task, and train comments are rejected by the workflow job guard', () => {
+  assert.equal(typeof routeJob.if, 'string');
+  for (const marker of [
+    '<!-- crawler-ci-state:v1 -->',
+    '<!-- crawler-ci-task:v1',
+    '<!-- crawler-merge-train:v1 -->',
+  ]) {
+    assert.ok(
+      routeJob.if.includes(`!startsWith(github.event.comment.body, '${marker}')`),
+      `expected job guard for ${marker}`,
+    );
+  }
+});
+
+test('router concurrency keeps latest-pending sweeps and isolates single-PR workflow events', () => {
+  assert.equal(routeJob.concurrency.queue, undefined);
+  assert.match(routeJob.concurrency.group, /crawler-ci-recovery-router-train/);
+  assert.match(
+    routeJob.concurrency.group,
+    /github\.event\.workflow_run\.pull_requests\[0\]\.number/,
+  );
+  assert.match(
+    routeJob.concurrency.group,
+    /!github\.event\.workflow_run\.pull_requests\[1\]\.number/,
+  );
+  assert.equal(routeJob.concurrency['cancel-in-progress'].includes('queue: max'), false);
 });
 
 test('isRetryableError only retries relevant HTTP errors', () => {
