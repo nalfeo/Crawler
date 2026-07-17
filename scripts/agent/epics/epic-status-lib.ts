@@ -151,6 +151,13 @@ const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const nullableSha = z.string().regex(SHA_PATTERN).nullable();
 const GITHUB_ISSUE_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/issues\/[1-9][0-9]*$/;
 const GITHUB_PR_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/pull\/[1-9][0-9]*$/;
+
+/** Zod superRefine that enforces JSON Schema `uniqueItems` for string arrays. */
+function uniqueStringItems(arr: string[], ctx: z.RefinementCtx): void {
+  if (new Set(arr).size !== arr.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Items must be unique' });
+  }
+}
 const issueRefSchema = z
   .object({
     number: z.number().int().positive(),
@@ -240,7 +247,7 @@ const nodeSchema = z
       'verification',
     ]),
     persona: z.string().min(1),
-    dependencies: z.array(z.string().regex(NODE_ID_PATTERN)),
+    dependencies: z.array(z.string().regex(NODE_ID_PATTERN)).superRefine(uniqueStringItems),
     status: z.enum([
       'blocked',
       'ready',
@@ -268,7 +275,7 @@ const nodeSchema = z
         merged_at: nullableDateTime,
       })
       .strict(),
-    evidence_requirements: z.array(z.string().min(1)).min(1),
+    evidence_requirements: z.array(z.string().min(1)).min(1).superRefine(uniqueStringItems),
     evidence: z.array(evidenceSchema),
     reconciliation: reconciliationSchema,
     superseded_by: z.string().regex(NODE_ID_PATTERN).nullable(),
@@ -341,8 +348,10 @@ const epicStateSchema = z
         mode: z.literal('deterministic-plan-only'),
         parent_title: z.string().min(1),
         child_title_prefix: z.string().min(1),
-        labels: z.array(z.string().min(1)),
-        late_bound_fields: z.array(z.enum(['parent_issue_number', 'child_issue_number'])),
+        labels: z.array(z.string().min(1)).superRefine(uniqueStringItems),
+        late_bound_fields: z
+          .array(z.enum(['parent_issue_number', 'child_issue_number']))
+          .superRefine(uniqueStringItems),
       })
       .strict(),
     release: z
@@ -355,7 +364,10 @@ const epicStateSchema = z
               .object({
                 name: z.string().min(1),
                 default: z.literal(false),
-                validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+                validating_nodes: z
+                  .array(z.string().regex(/^slice:/))
+                  .min(1)
+                  .superRefine(uniqueStringItems),
               })
               .strict(),
           )
