@@ -3,7 +3,7 @@
   "schema_version": "crawler-epic-state/v2",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-17T22:20:26.015Z",
+  "updated_at": "2026-07-17T22:35:06.741Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
@@ -122,14 +122,14 @@
         "pr": {
           "number": 1271,
           "url": "https://github.com/nalfeo/Crawler/pull/1271",
-          "head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2"
+          "head_sha": "62ed78aa06240094f10e13bf47cdcc5fe569adbd"
         }
       },
       "ownership": {
         "claimant": "Producer",
         "session": "7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd",
         "source": "parent-issue-bootstrap",
-        "scope": "Slice A0 control plane only; no gameplay",
+        "scope": "Durable control plane only; no equipment gameplay",
         "claimed_at": "2026-07-17T17:32:38.205Z",
         "lease_expires_at": "2026-07-18T17:32:38.205Z",
         "heartbeat_at": "2026-07-17T17:32:38.205Z",
@@ -164,7 +164,7 @@
         "last_audited_at": "2026-07-17T18:25:00.000Z",
         "observed_issue_state": "open",
         "observed_pr_state": "OPEN",
-        "observed_head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2",
+        "observed_head_sha": "62ed78aa06240094f10e13bf47cdcc5fe569adbd",
         "observed_merge_commit": null,
         "drift": []
       },
@@ -208,64 +208,6 @@
         "observed_head_sha": null,
         "observed_merge_commit": null,
         "drift": []
-      },
-      "stacked_work": {
-        "state": "stacked_pr_open",
-        "owner": {
-          "node_id": "slice:A1",
-          "issue": {
-            "number": 1279,
-            "url": "https://github.com/nalfeo/Crawler/issues/1279"
-          },
-          "claimant": "Producer / Systems Engineer",
-          "session": "6f852b99-3c14-4037-b6b2-7ec3947fe4fc",
-          "branch": "nalfeo-floor-2-equipment-contracts",
-          "claimed_at": "2026-07-17T20:48:43.643Z",
-          "lease_expires_at": "2026-07-18T22:20:26.015Z",
-          "heartbeat_at": "2026-07-17T22:20:26.015Z"
-        },
-        "dependency_pull_requests": [
-          {
-            "node_id": "slice:A0",
-            "tracking_issue": null,
-            "repository": "nalfeo/Crawler",
-            "branch": "nalfeo-floor-2-epic-control",
-            "pull_request": {
-              "number": 1271,
-              "url": "https://github.com/nalfeo/Crawler/pull/1271"
-            },
-            "head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2",
-            "base_branch": "main",
-            "is_stack_base": true,
-            "observed_pr_state": "OPEN",
-            "observed_head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2",
-            "observed_head_branch": "nalfeo-floor-2-epic-control",
-            "observed_base_branch": "main",
-            "observed_merge_commit": null
-          }
-        ],
-        "dependent": {
-          "branch": "nalfeo-floor-2-equipment-contracts",
-          "head_sha": "edce21919c72ded228deeed8fe41bd44ac33813e",
-          "base_branch": "nalfeo-floor-2-epic-control",
-          "pull_request": {
-            "number": 1276,
-            "url": "https://github.com/nalfeo/Crawler/pull/1276"
-          },
-          "observed_pr_state": "OPEN",
-          "observed_head_sha": "edce21919c72ded228deeed8fe41bd44ac33813e",
-          "observed_head_branch": "nalfeo-floor-2-equipment-contracts",
-          "observed_base_branch": "nalfeo-floor-2-epic-control"
-        },
-        "last_resynced_dependency_head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2",
-        "last_resynced_at": "2026-07-17T22:20:26.015Z",
-        "rebase_to_main": {
-          "pending": false,
-          "pre_rebase_dependent_head_sha": null,
-          "prerequisite_merge_commit": null
-        },
-        "material_contract_drift": null,
-        "blocked_reason": null
       },
       "superseded_by": null
     },

@@ -678,7 +678,6 @@
       "additionalProperties": false,
       "required": [
         "branch",
-        "head_sha",
         "base_branch",
         "pull_request",
         "observed_pr_state",
@@ -690,9 +689,6 @@
         "branch": {
           "type": "string",
           "minLength": 1
-        },
-        "head_sha": {
-          "$ref": "#/$defs/sha40"
         },
         "base_branch": {
           "type": "string",

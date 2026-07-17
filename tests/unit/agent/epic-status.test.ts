@@ -134,15 +134,73 @@ function stackedFixture(): {
   a1: EpicState['nodes'][number];
   stacked: NonNullable<EpicState['nodes'][number]['stacked_work']>;
 } {
-  const state = cloneState(true);
+  const state = cloneState();
   const a0 = state.nodes.find((node) => node.node_id === 'slice:A0');
   const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
   expect(a0).toBeDefined();
   expect(a1).toBeDefined();
-  expect(a1?.stacked_work).toBeDefined();
-  if (!a0 || !a1 || !a1.stacked_work) {
+  const dependencyHead = a0?.github.pr?.head_sha;
+  if (!a0 || !a1 || !dependencyHead) {
     throw new Error('Canonical stacked fixture is incomplete');
   }
+  a1.github.issue = {
+    number: 1279,
+    url: 'https://github.com/nalfeo/Crawler/issues/1279',
+  };
+  a1.stacked_work = {
+    state: 'stacked_pr_open',
+    owner: {
+      node_id: 'slice:A1',
+      issue: a1.github.issue,
+      claimant: 'Producer / Systems Engineer',
+      session: '6f852b99-3c14-4037-b6b2-7ec3947fe4fc',
+      branch: 'nalfeo-floor-2-equipment-contracts',
+      claimed_at: '2026-07-17T20:48:43.643Z',
+      lease_expires_at: '2026-07-18T22:20:26.015Z',
+      heartbeat_at: '2026-07-17T22:20:26.015Z',
+    },
+    dependency_pull_requests: [
+      {
+        node_id: 'slice:A0',
+        tracking_issue: null,
+        repository: 'nalfeo/Crawler',
+        branch: 'nalfeo-floor-2-epic-control',
+        pull_request: {
+          number: 1271,
+          url: 'https://github.com/nalfeo/Crawler/pull/1271',
+        },
+        head_sha: dependencyHead,
+        base_branch: 'main',
+        is_stack_base: true,
+        observed_pr_state: 'OPEN',
+        observed_head_sha: dependencyHead,
+        observed_head_branch: 'nalfeo-floor-2-epic-control',
+        observed_base_branch: 'main',
+        observed_merge_commit: null,
+      },
+    ],
+    dependent: {
+      branch: 'nalfeo-floor-2-equipment-contracts',
+      base_branch: 'nalfeo-floor-2-epic-control',
+      pull_request: {
+        number: 1276,
+        url: 'https://github.com/nalfeo/Crawler/pull/1276',
+      },
+      observed_pr_state: 'OPEN',
+      observed_head_sha: 'edce21919c72ded228deeed8fe41bd44ac33813e',
+      observed_head_branch: 'nalfeo-floor-2-equipment-contracts',
+      observed_base_branch: 'nalfeo-floor-2-epic-control',
+    },
+    last_resynced_dependency_head_sha: dependencyHead,
+    last_resynced_at: '2026-07-17T22:20:26.015Z',
+    rebase_to_main: {
+      pending: false,
+      pre_rebase_dependent_head_sha: null,
+      prerequisite_merge_commit: null,
+    },
+    material_contract_drift: null,
+    blocked_reason: null,
+  };
   return { state, a0, a1, stacked: a1.stacked_work };
 }
 
@@ -205,7 +263,10 @@ function makeStackedAuditRunner(
     merge_commit_sha: null,
     merged_at: null,
     html_url: stacked.dependent.pull_request?.url ?? 'https://github.com/nalfeo/Crawler/pull/1276',
-    head: { sha: stacked.dependent.head_sha, ref: stacked.dependent.branch },
+    head: {
+      sha: stacked.dependent.observed_head_sha ?? 'edce21919c72ded228deeed8fe41bd44ac33813e',
+      ref: stacked.dependent.branch,
+    },
     base: { ref: stacked.dependent.base_branch },
   };
   const issueComments =
@@ -406,21 +467,29 @@ describe('Floor 2 equipment epic status', () => {
       'stacked.rebase-to-main-required',
     );
 
+    const preRebaseHead = merged.stacked.dependent.observed_head_sha;
+    expect(preRebaseHead).not.toBeNull();
     merged.stacked.rebase_to_main = {
       pending: true,
-      pre_rebase_dependent_head_sha: merged.stacked.dependent.head_sha,
+      pre_rebase_dependent_head_sha: preRebaseHead,
       prerequisite_merge_commit: mergeCommit,
     };
     expect(validate(merged.state).errors).toEqual([]);
 
     merged.stacked.dependent.base_branch = 'main';
+    merged.stacked.dependent.observed_base_branch = null;
+    const rebasedHead = 'c'.repeat(40);
+    merged.stacked.dependent.observed_head_sha = rebasedHead;
+    expect(validate(merged.state).errors.map((error) => error.code)).toContain(
+      'stacked.rebase-base-not-observed',
+    );
+
     merged.stacked.dependent.observed_base_branch = 'main';
+    merged.stacked.dependent.observed_head_sha = preRebaseHead;
     expect(validate(merged.state).errors.map((error) => error.code)).toContain(
       'stacked.rebase-not-pushed',
     );
 
-    const rebasedHead = 'c'.repeat(40);
-    merged.stacked.dependent.head_sha = rebasedHead;
     merged.stacked.dependent.observed_head_sha = rebasedHead;
     expect(validate(merged.state).errors).toEqual([]);
   });
@@ -444,15 +513,44 @@ describe('Floor 2 equipment epic status', () => {
     expectStackedDiagnostic('stacked.dependent-pr-closed', ({ stacked }) => {
       stacked.dependent.observed_pr_state = 'CLOSED';
     });
-    expectStackedDiagnostic('stacked.dependent-head-stale', ({ stacked }) => {
-      stacked.dependent.observed_head_sha = '1'.repeat(40);
-    });
     expectStackedDiagnostic('stacked.dependent-branch-drift', ({ stacked }) => {
       stacked.dependent.observed_head_branch = 'wrong-dependent-branch';
     });
     expectStackedDiagnostic('stacked.dependent-base-drift', ({ stacked }) => {
       stacked.dependent.observed_base_branch = 'wrong-dependent-base';
     });
+  });
+
+  it('treats the dependent head as a nullable observation cache, not an exact invariant', () => {
+    const { state, stacked } = stackedFixture();
+    stacked.dependent.observed_head_sha = null;
+    expect(validate(state).errors).toEqual([]);
+
+    const observedHead = '1'.repeat(40);
+    const audit = auditGithub(
+      state,
+      makeStackedAuditRunner(stacked, {
+        dependentPull: {
+          number: 1276,
+          state: 'open',
+          merged: false,
+          merge_commit_sha: null,
+          merged_at: null,
+          html_url: 'https://github.com/nalfeo/Crawler/pull/1276',
+          head: { sha: observedHead, ref: stacked.dependent.branch },
+          base: { ref: stacked.dependent.base_branch },
+        },
+      }),
+      NOW,
+    );
+
+    expect(audit.errors.map((error) => error.code)).not.toContain('github.stacked-dependent-drift');
+    expect(audit.proposal.repo_patch).toContainEqual(
+      expect.objectContaining({
+        path: expect.stringContaining('/stacked_work/dependent/observed_head_sha'),
+        value: observedHead,
+      }),
+    );
   });
 
   it('rejects incomplete or internally stale stacked prerequisite snapshots', () => {
@@ -491,7 +589,7 @@ describe('Floor 2 equipment epic status', () => {
   it('rejects premature rebase state and surfaces material stacked blockers', () => {
     expectStackedDiagnostic('stacked.unexpected-rebase-to-main', ({ stacked }) => {
       stacked.rebase_to_main.pending = true;
-      stacked.rebase_to_main.pre_rebase_dependent_head_sha = stacked.dependent.head_sha;
+      stacked.rebase_to_main.pre_rebase_dependent_head_sha = stacked.dependent.observed_head_sha;
       stacked.rebase_to_main.prerequisite_merge_commit = '4'.repeat(40);
     });
     expectStackedDiagnostic(
@@ -553,7 +651,8 @@ describe('Floor 2 equipment epic status', () => {
             merged_at: null,
             html_url: 'https://github.com/nalfeo/Crawler/pull/1276',
             head: {
-              sha: stacked.dependent.head_sha,
+              sha:
+                stacked.dependent.observed_head_sha ?? 'edce21919c72ded228deeed8fe41bd44ac33813e',
               ref: stacked.dependent.branch,
             },
             base: { ref: stacked.dependent.base_branch },
@@ -630,7 +729,8 @@ describe('Floor 2 equipment epic status', () => {
             merged_at: null,
             html_url: 'https://github.com/nalfeo/Crawler/pull/1276',
             head: {
-              sha: stacked.dependent.head_sha,
+              sha:
+                stacked.dependent.observed_head_sha ?? 'edce21919c72ded228deeed8fe41bd44ac33813e',
               ref: stacked.dependent.branch,
             },
             base: { ref: 'nalfeo-floor-2-epic-control' },
@@ -649,6 +749,34 @@ describe('Floor 2 equipment epic status', () => {
     expect(audit.proposal.repo_patch.map((patch) => patch.path)).not.toEqual(
       expect.arrayContaining([expect.stringMatching(/\/status$/)]),
     );
+  });
+
+  it('detects a prerequisite PR closed without merge and proposes stopping stacked work', () => {
+    const { state, stacked } = stackedFixture();
+    const dependency = stacked.dependency_pull_requests[0]!;
+    const audit = auditGithub(
+      state,
+      makeStackedAuditRunner(stacked, {
+        dependencyPull: {
+          number: dependency.pull_request.number,
+          state: 'closed',
+          merged: false,
+          merge_commit_sha: null,
+          merged_at: null,
+          html_url: dependency.pull_request.url,
+          head: { sha: dependency.head_sha, ref: dependency.branch },
+          base: { ref: dependency.base_branch },
+        },
+      }),
+      NOW,
+    );
+
+    expect(audit.errors.map((error) => error.code)).toContain('github.stacked-dependency-closed');
+    expect(
+      audit.proposal.operator_actions.some(
+        (action) => action.includes('Stop stacked work') && action.includes('closed without merge'),
+      ),
+    ).toBe(true);
   });
 
   it('audits dependent PR drift and closure without mutating lifecycle', () => {
@@ -816,6 +944,34 @@ describe('Floor 2 equipment epic status', () => {
       NOW,
     );
     expect(unexpectedAudit.errors.map((error) => error.code)).toContain(
+      'github.unexpected-stacked-owner',
+    );
+  });
+
+  it('lets a trusted BLOCKED event revoke live stacked ownership before metadata clears', () => {
+    const fixture = stackedFixture();
+    const recordedStack = structuredClone(fixture.stacked);
+    delete fixture.a1.stacked_work;
+    const audit = auditGithub(
+      fixture.state,
+      makeStackedAuditRunner(recordedStack, {
+        issueComments: [
+          {
+            body: stackedClaimBody(recordedStack),
+            author_association: 'OWNER',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279#issuecomment-stack',
+          },
+          {
+            body: ['BLOCKED', 'node: slice:A1', 'lease_disposition: revoked'].join('\n'),
+            author_association: 'OWNER',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279#issuecomment-blocked',
+          },
+        ],
+      }),
+      NOW,
+    );
+
+    expect(audit.errors.map((error) => error.code)).not.toContain(
       'github.unexpected-stacked-owner',
     );
   });

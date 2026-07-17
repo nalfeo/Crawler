@@ -251,8 +251,8 @@ A blocked node may carry `stacked_work` only when all of the following hold:
 4. each dependency snapshot matches the prerequisite node's cached PR number,
    URL, and full head SHA, while GitHub audit independently checks current
    PR/head/base facts;
-5. the dependent branch and open PR, when present, are based on the recorded
-   stack-base branch, and its head is a full commit SHA;
+5. the dependent branch and open PR, when present, have stable identity and are
+   based on the recorded stack-base branch;
 6. the dependency-head resync snapshot is exact and no more than 24 hours old;
 7. neither its owner/session nor its branch conflicts with normal or stacked
    ownership elsewhere; and
@@ -264,6 +264,13 @@ one auxiliary control-plane support PR. An auxiliary base must be the sole
 issue; it never becomes a delivery node or satisfies a DAG dependency. This
 allows A1 to stack on the protocol support PR while A0 remains its only planned
 delivery prerequisite and the epic remains exactly 37 nodes.
+
+The exact prerequisite and stack-base heads are authoritative because another
+branch can commit those values without changing them. A dependent branch's own
+head cannot be an exact committed invariant: committing a cache refresh changes
+that same head. `dependent.observed_head_sha` is therefore a nullable,
+read-only GitHub observation cache. Head movement proposes a cache refresh but
+does not fail offline validation; stable PR, branch, and base identity still do.
 
 Offline validation proves internal snapshots and heartbeat freshness. Only
 read-only GitHub audit can prove that a mutable PR is still open and that remote
@@ -332,6 +339,8 @@ Use these exact structured headings in issue comments:
   claimed_at, expires_at, and heartbeat_at. It is valid only while lifecycle is
   `blocked` and does not confer a normal claim.
 - `BLOCKED`: blocker node/fact, evidence, requested action, lease disposition.
+  A trusted `BLOCKED` event revokes both normal `CLAIMED` ownership and live
+  `STACKED-WORK` ownership for that node.
 - `UNBLOCKED`: resolving evidence and refreshed dependency snapshot.
 - `SCOPE-CHANGE-REQUEST`: requested delta, rationale, impacted nodes, evidence
   invalidation, apple/review impact. This never changes scope by itself.
@@ -352,8 +361,8 @@ commit, and emits this operator sequence:
 2. rebase the dependent branch onto `main` and push the new head;
 3. retarget the dependent PR base to `main`;
 4. rerun offline and read-only GitHub validation;
-5. verify the pushed head differs from the pre-rebase snapshot and GitHub
-   observes both the new head and `base: main`;
+5. verify GitHub observes a pushed head that differs from the pre-rebase
+   snapshot and also observes `base: main`;
 6. clear the completed stacked metadata in one reviewed Producer state update;
 7. keep lifecycle `blocked` until every prerequisite reaches `validated`; and
 8. only then enter the normal `ready -> claimed -> ...` lifecycle.
@@ -580,8 +589,9 @@ A fresh Producer must be able to resume with zero conversation context:
    over GitHub or committed evidence.
 8. Post structured BLOCKED/UNBLOCKED/HANDOFF comments as needed.
 9. For every `stacked_work` entry, verify the dedicated issue's one live
-   `STACKED-WORK` owner, dependency/dependent PR states, exact heads and bases,
-   last resync, and any pending rebase-to-main action.
+   `STACKED-WORK` owner, exact prerequisite heads/bases, stable dependent
+   PR/branch/base identity, the nullable dependent-head observation cache, last
+   resync, and any pending rebase-to-main action.
 10. As sole global-state writer, apply one reviewed state update.
 11. Dispatch only nodes in the validator-computed ready queue with materialized
     child issues.

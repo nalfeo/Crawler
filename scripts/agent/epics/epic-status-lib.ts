@@ -270,7 +270,6 @@ const stackedWorkSchema = z
     dependent: z
       .object({
         branch: z.string().min(1),
-        head_sha: z.string().regex(SHA40_PATTERN),
         base_branch: z.string().min(1),
         pull_request: prIdentitySchema.nullable(),
         observed_pr_state: observedPrStateSchema,
@@ -1152,16 +1151,6 @@ function validateStackedWork(
     });
   }
   if (
-    stacked.dependent.observed_head_sha &&
-    stacked.dependent.observed_head_sha !== stacked.dependent.head_sha
-  ) {
-    result.errors.push({
-      code: 'stacked.dependent-head-stale',
-      node_id: node.node_id,
-      message: `${node.node_id} dependent head snapshot is stale`,
-    });
-  }
-  if (
     stacked.dependent.observed_head_branch &&
     stacked.dependent.observed_head_branch !== stacked.dependent.branch
   ) {
@@ -1340,10 +1329,16 @@ function validateStackedWork(
         message: `${node.node_id} must keep rebase_to_main pending with exact merge facts`,
       });
     } else if (stacked.dependent.base_branch === state.stacked_work_policy.main_branch) {
+      if (stacked.dependent.observed_base_branch !== state.stacked_work_policy.main_branch) {
+        result.errors.push({
+          code: 'stacked.rebase-base-not-observed',
+          node_id: node.node_id,
+          message: `${node.node_id} cannot complete rebase-to-main until GitHub observes the dependent PR base as ${state.stacked_work_policy.main_branch}`,
+        });
+      }
       if (
-        stacked.dependent.head_sha === stacked.rebase_to_main.pre_rebase_dependent_head_sha ||
-        (stacked.dependent.observed_head_sha &&
-          stacked.dependent.observed_head_sha !== stacked.dependent.head_sha)
+        !stacked.dependent.observed_head_sha ||
+        stacked.dependent.observed_head_sha === stacked.rebase_to_main.pre_rebase_dependent_head_sha
       ) {
         result.errors.push({
           code: 'stacked.rebase-not-pushed',
@@ -2090,6 +2085,11 @@ export function auditGithub(
         if (blocked) {
           // BLOCKED revokes all live claims for the blocked node only.
           liveClaimsByNodeAndSession.delete(blocked.nodeId);
+          for (let index = stackedClaims.length - 1; index >= 0; index -= 1) {
+            if (stackedClaims[index]?.nodeId === blocked.nodeId) {
+              stackedClaims.splice(index, 1);
+            }
+          }
           continue;
         }
         const claim = parseTrustedClaim(comment, expectedNodeId);
@@ -2370,14 +2370,13 @@ export function auditGithub(
         });
       }
       if (
-        pull.head.sha !== stacked.dependent.head_sha ||
         pull.head.ref !== stacked.dependent.branch ||
         pull.base.ref !== stacked.dependent.base_branch
       ) {
         errors.push({
           code: 'github.stacked-dependent-drift',
           node_id: node.node_id,
-          message: `Dependent PR #${pull.number} no longer matches the recorded head/base snapshot`,
+          message: `Dependent PR #${pull.number} no longer matches the recorded branch/base identity`,
         });
       }
       if (observedState !== 'OPEN') {
