@@ -14,8 +14,23 @@
       "notes": "Reviewer raised 2 blocking + 3 non-blocking concerns. (1) Blocking: stabilizeTerminalSnapshot used weapon-sweep-only fields (expectedWeapons/aggregateOutputs) for AI sweeps — fixed via optional isComplete callback with weapon-sweep default behavior. (2) Blocking: listAllSweepRuns masked errors when one workflow failed and other returned no runs — fixed by throwing on empty combined list if any listing failed; also extracted pure mergeSweepRunResults helper for testability. (3) Non-blocking: expired AI leaderboard artifacts not surfaced in aiSweepWarning — fixed by adding expiredArtifactCount parameter. (4) Non-blocking: winnersDiverge showed only composite table — fixed to render both byComposite and byLexicographic tables. (5) Suggestion: missing test coverage for expired warning, AI stabilization, and listAllSweepRuns error paths — added 7 new tests covering all three. No re-architecture was warranted; all changes were focused fixes within the existing design."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     }
   }
 }
