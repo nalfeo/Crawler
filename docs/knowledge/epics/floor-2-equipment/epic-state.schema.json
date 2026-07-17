@@ -512,7 +512,8 @@
         "evidence_requirements",
         "evidence",
         "reconciliation",
-        "superseded_by"
+        "superseded_by",
+        "stacked_work"
       ],
       "properties": {
         "node_id": {
@@ -626,6 +627,9 @@
         "superseded_by": {
           "type": ["string", "null"],
           "pattern": "^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$"
+        },
+        "stacked_work": {
+          "$ref": "#/$defs/stackedWork"
         }
       }
     },
@@ -651,6 +655,137 @@
           "uniqueItems": true
         }
       }
+    },
+    "stackedWork": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "owner",
+            "dependency",
+            "dependent",
+            "resync",
+            "rebase_to_main",
+            "material_drift",
+            "block_reason"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["stacked_in_progress", "stacked_pr_open"]
+            },
+            "owner": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["claimant", "session", "branch", "claimed_at"],
+              "properties": {
+                "claimant": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "session": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claimed_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "dependency": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["node_id", "pr_number", "repository", "branch", "head_sha"],
+              "properties": {
+                "node_id": {
+                  "type": "string",
+                  "pattern": "^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$"
+                },
+                "pr_number": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "repository": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$"
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "head_sha": {
+                  "$ref": "#/$defs/sha40"
+                }
+              }
+            },
+            "dependent": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["head_sha", "pr_number"],
+              "properties": {
+                "head_sha": {
+                  "$ref": "#/$defs/sha40"
+                },
+                "pr_number": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "resync": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["head_sha", "at"],
+              "properties": {
+                "head_sha": {
+                  "$ref": "#/$defs/sha40"
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "rebase_to_main": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "completed_at"],
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": ["pending", "complete"]
+                },
+                "completed_at": {
+                  "$ref": "#/$defs/nullableDateTime"
+                }
+              }
+            },
+            "material_drift": {
+              "type": ["string", "null"]
+            },
+            "block_reason": {
+              "type": ["string", "null"]
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   }
 }
