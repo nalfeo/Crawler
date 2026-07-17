@@ -16,11 +16,21 @@ export const ISSUE_LABELS = Object.freeze([
   HUMAN_APPROVAL_LABEL,
 ]);
 
-export const ISSUE_BODY = `## Objective
+const FINAL_AGGREGATE_ARTIFACTS = Object.freeze([
+  'weapon-sweep-sword',
+  'weapon-sweep-bow',
+  'weapon-sweep-baseball-bat',
+  'weapon-sweep-pistol',
+  'weapon-sweep-throwing-knife',
+  'weapon-sweep-fireball',
+]);
+
+export function buildIssueBody(issueNumberText = '{this issue number}') {
+  return `## Objective
 Examine eligible current telemetry, identify and rank up to 3 evidence-backed game-balance improvements, evaluate each independently with canonical sweeps, and ship only treatments supported by comparable aggregate evidence. Zero eligible ideas is valid and produces no implementation PR.
 
 ## Baseline eligibility — hard gate
-- Latest successful current-main \`weapon-sweep.yml\` with all six FINAL \`weapon-sweep-<weapon>\` aggregate artifacts and 100 seeds/weapon only.
+- Latest successful current-main \`weapon-sweep.yml\` with all six FINAL aggregate artifacts (\`${FINAL_AGGREGATE_ARTIFACTS.join('`, `')}\`) and 100 seeds/weapon only.
 - Record run ID, UTC timestamp, exact head SHA, seed range/count, max frames/time budget, weapon list, every behavior/config flag.
 - Never use individual/selected shards, partial artifacts, local smoke, hand-picked seeds, or mixed runs.
 - Shipped/default runtime configuration only for shipped changes. Default-off/experimental flags may only support explicitly experiment-scoped work.
@@ -38,7 +48,7 @@ One change at a time; identical seeds/weapons/flags/limits; >10 runs via GitHub 
 Max 9 rows. Per row: rank/name, measured symptom, causal evidence, production path, enabling config/flag, hypothesis, exact change, baseline/post metrics, run/artifact URLs, verdict, accepted/rejected/blocked rationale. Keep rejected/blocked visible.
 
 ## Mandatory human approval gate
-Gameplay PR contains \`Closes #<this issue number>\`, labels \`human-approval-required\` + \`merge-train-blocked\`, ready not draft, no \`merge-train\`/auto-merge/merge. Only exact standalone trimmed owner \`nalfeo\` comment \`APPROVED FOR CHECK-IN\` unlocks. Green CI/reviews/quoted text/substrings/other authors do not count. Bad final evidence => close/abandon.
+Gameplay PR contains \`Closes #${issueNumberText}\`, labels \`human-approval-required\` + \`merge-train-blocked\`, ready not draft, no \`merge-train\`/auto-merge/merge. Only exact standalone trimmed owner \`nalfeo\` comment \`APPROVED FOR CHECK-IN\` unlocks. Green CI/reviews/quoted text/substrings/other authors do not count. Bad final evidence => close/abandon.
 
 ## Acceptance evidence
 Up to 3 eligible ideas (zero allowed/no PR), <=3 attempts each, complete ledger, comparable aggregate baseline/post artifacts, final judge, explicit approval status, normal verification/review/harness/handoff/determinism.
@@ -47,6 +57,9 @@ Up to 3 eligible ideas (zero allowed/no PR), <=3 attempts each, complete ledger,
 This issue stays open only while work is in progress; a later nightly run no-ops while it is open. Every terminal outcome that produces no implementation PR — zero eligible candidates, stale/duplicate baseline, missing/unavailable artifacts, failed evaluation contract, or any other stop condition above — is not complete until you post a final rationale/ledger comment summarizing the decision and evidence, then close this issue. Leaving this issue open after a no-PR conclusion blocks every future nightly run from filing a fresh issue against newer telemetry, so closure is mandatory, not optional, for every no-PR path.
 
 @copilot Please execute this issue end-to-end, but obey every hard evidence gate and the mandatory human approval gate above.`;
+}
+
+export const ISSUE_BODY = buildIssueBody();
 
 function parseRepository(repository) {
   const parts = String(repository || '').split('/');
@@ -83,6 +96,13 @@ async function closeCreatedIssue({ requestFn, githubToken, owner, repo, issueNum
   await requestFn(githubToken, `/repos/${owner}/${repo}/issues/${issueNumber}`, {
     method: 'PATCH',
     body: { state: 'closed', state_reason: 'not_planned' },
+  });
+}
+
+async function updateCreatedIssueBody({ requestFn, githubToken, owner, repo, issueNumber }) {
+  await requestFn(githubToken, `/repos/${owner}/${repo}/issues/${issueNumber}`, {
+    method: 'PATCH',
+    body: { body: buildIssueBody(issueNumber) },
   });
 }
 
@@ -203,6 +223,33 @@ export async function runNightlyBalanceIssue({
   const issue = created.data;
   if (!Number.isInteger(issue?.number) || !issue?.node_id) {
     throw new Error('GitHub issue creation response omitted number or node_id');
+  }
+
+  try {
+    await updateCreatedIssueBody({
+      requestFn,
+      githubToken,
+      owner,
+      repo,
+      issueNumber: issue.number,
+    });
+  } catch (updateError) {
+    try {
+      await closeCreatedIssue({
+        requestFn,
+        githubToken,
+        owner,
+        repo,
+        issueNumber: issue.number,
+      });
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [updateError, rollbackError],
+        `Issue body update failed for #${issue.number}: ${updateError.message}; closing the issue also failed: ${rollbackError.message}`,
+        { cause: updateError },
+      );
+    }
+    throw updateError;
   }
 
   const intake = await intakeWithRollback({
