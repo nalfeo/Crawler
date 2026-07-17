@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6561bd1a030a2f98bc91524005d6704426fdca35",
+    "commitDate": "2026-07-17T16:28:10Z",
+    "commitSubject": "Canonicalize nightly balance issue bodies with exact issue numbers (#1254)",
+    "capturedAt": "2026-07-17T17:43:07.277Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29596974504",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/6561bd1a030a2f98bc91524005d6704426fdca35.json"
+  },
+  {
     "commit": "4ed1260ccbf85f18ec70c80b2b9b3ee02a96ad89",
     "commitDate": "2026-07-17T15:41:14Z",
     "commitSubject": "feat(sprites): wide brief + decoupled collision radius for beetlefolk-boss (#1224)",
