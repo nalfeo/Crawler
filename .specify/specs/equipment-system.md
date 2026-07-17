@@ -606,7 +606,7 @@ Generated instances are resolved exactly once in this sequence:
 1. Base template selection (static `EquipmentItemDef`)
 2. Item level (floor zone band)
 3. Inherent scaling (rarity scalar applied to base stats)
-4. Rarity: Common (1.00×, 0 effect units), Uncommon (1.05×, 1 minor unit), Rare (1.10×, 2 units)
+4. Rarity: Common (1.00×, 0 effect units), Uncommon (1.05×, 1 minor unit), Rare (1.10×, 2 minor units)
 5. Enhancement: +0..+5, adds 5% post-rarity inherent damage or armor per step
 6. Affixes and effect-unit budget allocated from rarity
 7. **Freeze:** stats, name, art handle, weapon snapshot (if applicable), and fingerprint

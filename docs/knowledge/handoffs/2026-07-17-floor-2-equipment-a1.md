@@ -87,10 +87,10 @@ and does not advance A1's canonical lifecycle or make downstream nodes ready.
 - The A1 slice was not present in the original A0 epic-state.json — it was a post-A0 control
   plane addition. Future epics should explicitly define all control-lane slices in A0 to avoid
   ambiguity about where each slice's artifacts live.
-- Multiple Copilot sessions simultaneously worked on A1 (PRs #1276, #1278, #1280, #1283).
-  The durable stacked-work protocol recorded in PR #1280 correctly identifies this collision
+  **Multiple concurrent A1 sessions:** Multiple Copilot sessions simultaneously worked on A1 (PRs #1276, #1278, #1280, #1283). This handoff belongs to PR #1283 (`copilot/implement-contract-lock`). The durable stacked-work protocol recorded in PR #1280 correctly identifies this collision
   but doesn't resolve it — the Producer should arbitrate which branch becomes canonical after
-  A0 merges.
+  A0 merges, using this selection criterion: prefer the branch with the most complete, reviewed
+  contract specification and the clearest constitutional amendment.
 
 ### Mistakes Made
 

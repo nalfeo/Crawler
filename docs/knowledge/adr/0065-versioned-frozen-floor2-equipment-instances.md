@@ -54,7 +54,7 @@ band, initially Level 1 → 6 and Level 6 → 11.
 
 - **DEC-005**: Rarity is limited to Common, Uncommon, and Rare for this epic. Their inherent
   scalars are 1.00, 1.05, and 1.10. Common has zero effect units, Uncommon exactly one minor
-  unit, and Rare exactly two units. Enhancement is bounded at +0..+5 and adds 5% post-rarity
+  unit, and Rare exactly two minor units. Enhancement is bounded at +0..+5 and adds 5% post-rarity
   inherent damage or armor per step.
 
 - **DEC-006**: Equipment-granted abilities and passives are source-owned. Every grant records
