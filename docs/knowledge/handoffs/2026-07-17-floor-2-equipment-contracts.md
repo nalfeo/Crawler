@@ -23,7 +23,7 @@ validation, and the full 3-apple review harness.
 - Base branch: `nalfeo-floor-2-epic-control`
 - Latest rebased A0 commit: `de709e08e1be83472bc7ecfe5e35a9d959e78fe2`
 - A0 PR: #1271
-- A1 child issue: #1277
+- A1 child issue: #1279
 - A1 branch: `nalfeo-floor-2-equipment-contracts`
 - A1 PR: #1276, ready-for-review against A0
 
@@ -87,11 +87,11 @@ speculative facts:
 
 ```text
 status: stacked_pr_open
-issue: #1277
+issue: #1279
 session: 6f852b99-3c14-4037-b6b2-7ec3947fe4fc
 branch: nalfeo-floor-2-equipment-contracts
 pr: #1276
-head_sha: tracked in issue #1277
+head_sha: tracked in issue #1279
 a0_pr: #1271
 a0_branch: nalfeo-floor-2-epic-control
 a0_head_sha: de709e08e1be83472bc7ecfe5e35a9d959e78fe2
