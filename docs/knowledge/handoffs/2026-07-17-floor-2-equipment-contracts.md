@@ -23,7 +23,7 @@ validation, and the full 3-apple review harness.
 - Base branch: `nalfeo-floor-2-epic-control`
 - Latest rebased A0 commit: `de709e08e1be83472bc7ecfe5e35a9d959e78fe2`
 - A0 PR: #1271
-- A1 child issue: #1279
+- A1 child issue: #1277
 - A1 branch: `nalfeo-floor-2-equipment-contracts`
 - A1 PR: #1276, ready-for-review against A0
 
@@ -87,16 +87,17 @@ speculative facts:
 
 ```text
 status: stacked_pr_open
-issue: #1279
+issue: #1277
 session: 6f852b99-3c14-4037-b6b2-7ec3947fe4fc
 branch: nalfeo-floor-2-equipment-contracts
 pr: #1276
-head_sha: 185296cab2ff955979100d07b3bac1e380311bbc
+head_sha: tracked in issue #1277
 a0_pr: #1271
 a0_branch: nalfeo-floor-2-epic-control
 a0_head_sha: de709e08e1be83472bc7ecfe5e35a9d959e78fe2
 last_resynced_a0_head_sha: de709e08e1be83472bc7ecfe5e35a9d959e78fe2
 last_resynced_at: 2026-07-17T14:33:00.9948565-07:00
+future_base: nalfeo-floor-2-stacked-work-protocol
 rebase_to_main_required: true
 ```
 
@@ -139,9 +140,11 @@ docs/knowledge/review-ledgers/2026-07-17-floor-2-equipment-contracts.review-ledg
 
 ## Follow-up
 
-- When A0 pushes the speculative schema amendment, fetch/rebase A1 onto the new
-  A0 head and update `epic-state.json` with the permitted orthogonal facts.
-- When A0 merges, fetch and rebase A1 onto `origin/main`, retarget the A1 PR to
-  `main`, rerun focused validation, and then perform the protocol-compliant
-  normal-lifecycle A1 claim/state reconciliation above.
-- Do not merge A1 without explicit authorization.
+- When A0.1 reports a stable head, fetch/rebase A1 onto
+  `origin/nalfeo-floor-2-stacked-work-protocol`, retarget PR #1276 to A0.1,
+  rerun focused validation, and update `epic-state.json` with the permitted
+  orthogonal facts.
+- After the prerequisites merge, fetch and rebase A1 onto `origin/main`,
+  retarget PR #1276 to `main`, rerun focused validation, and then perform the
+  protocol-compliant normal-lifecycle A1 claim/state reconciliation above.
+- Do not merge or arm auto-merge without explicit authorization.
