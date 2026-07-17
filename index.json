@@ -11,6 +11,17 @@
     "path": "by-sha/26a2983c58bfd1df46a7255895027140077b5481.json"
   },
   {
+    "commit": "21c6dd7b516f7a21d7f361b02e07df0901957d1f",
+    "commitDate": "2026-07-17T02:33:00Z",
+    "commitSubject": "feat(assets): geese-boss brief — Don Honkrado the Godgoose (Floor 2 boss, large) (#1223)",
+    "capturedAt": "2026-07-17T03:46:16.355Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29550616160",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/21c6dd7b516f7a21d7f361b02e07df0901957d1f.json"
+  },
+  {
     "commit": "5cfbaddeaf7c6517404c38025527772e4bad5f90",
     "commitDate": "2026-07-17T01:52:38Z",
     "commitSubject": "fix(ci): make recovery state cleanup idempotent (#1229)",
