@@ -13,4 +13,5 @@ export * from './encumbrance.js';
 export * from './movement-speed.js';
 export * from './helpers.js';
 export * from './status-effects.js';
+export * from './mob-abilities/index.js';
 export * from './systems/index.js';

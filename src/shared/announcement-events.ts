@@ -13,7 +13,7 @@
  */
 
 /** Discriminant for every announcement kind the banner can render. */
-export type AnnouncementKind = 'spawnerArenaStart' | 'spawnerArenaEnd';
+export type AnnouncementKind = 'spawnerArenaStart' | 'spawnerArenaEnd' | 'bossAbilityCast';
 
 export interface AnnouncementEvent {
   /** Which announcement preset the HUD should render. */
@@ -35,6 +35,13 @@ export interface AnnouncementEvent {
   readonly durationMs: number;
   /** Simulation timestamp at which the event was pushed (`world.elapsedMs`). */
   readonly elapsedMs: number;
+  /**
+   * Exact, verbatim banner text. Set by boss-ability casts (`bossAbilityCast`)
+   * which carry a full authored announcement string that must render exactly
+   * (never ellipsized or reconstructed from an archetype index). Optional so
+   * spawner-arena events can keep using `archetypeIndex` + `displayName`.
+   */
+  readonly text?: string;
 }
 
 /**

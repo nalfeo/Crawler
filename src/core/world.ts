@@ -12,6 +12,8 @@ import type { StatusEffect } from '../shared/status-effect-types.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
 import type { AnnouncementEvent } from '../shared/announcement-events.js';
+import type { MobAbilityRuntime } from './mob-abilities/types.js';
+import { createMobAbilityRuntime } from './mob-abilities/types.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
@@ -226,6 +228,14 @@ export interface GameWorld {
    * so `src/core` stays portable. Capped defensively by `pushAnnouncement`.
    */
   announcements: AnnouncementEvent[];
+  /**
+   * Typed mob-ability runtime (Queen Mab Verdigris Glamour + future generic mob
+   * abilities). Default-disabled: the normal game never registers active boss
+   * ability definitions or emits casts. Only the combat-arena lab enables it and
+   * activates the encounter. Phaser-free; the renderer consumes committed cue
+   * state. See `src/core/mob-abilities/`.
+   */
+  mobAbilities: MobAbilityRuntime;
   /**
    * Per-spawner cached door entity IDs for a sealed-room arena. Populated at
    * arena trigger, cleared once the arena resolves. Side-car (not SoA) because
@@ -480,6 +490,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
     announcements: [],
+    mobAbilities: createMobAbilityRuntime(),
     spawnerArenaDoors: new Map(),
     spawnerArenaBarriers: new Map(),
     barriers: createBarrierRegistry(),

@@ -39,6 +39,7 @@ const MAX_LABEL_CHARACTERS = 44;
 const COLORS = {
   start: '#f5f5f5',
   end: '#a7f3d0',
+  boss: '#fca5a5',
   fallback: '#e5e7eb',
 } as const;
 
@@ -53,6 +54,9 @@ function verbForKind(kind: AnnouncementKind): string {
       return 'Battle Begins!';
     case 'spawnerArenaEnd':
       return 'Cleared!';
+    case 'bossAbilityCast':
+      // The full authored announcement is the label; no subtitle verb.
+      return '';
     default: {
       const unreachable: never = kind;
       throw new Error(`Unhandled announcement kind: ${String(unreachable)}`);
@@ -66,6 +70,8 @@ function colorForKind(kind: AnnouncementKind): string {
       return COLORS.start;
     case 'spawnerArenaEnd':
       return COLORS.end;
+    case 'bossAbilityCast':
+      return COLORS.boss;
     default:
       return COLORS.fallback;
   }
@@ -160,11 +166,20 @@ export function createHudAnnouncementBanner(
   }
 
   function show(event: AnnouncementEvent): void {
-    const label = event.displayName ?? 'Spawner';
-    labelText.setText(ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS));
-    labelText.setColor(colorForKind(event.kind));
-    verbText.setText(verbForKind(event.kind).toUpperCase());
-    accent.setFillStyle(event.kind === 'spawnerArenaStart' ? 0xf2b542 : 0x46d369);
+    // Boss-ability casts carry a full authored string that must render exactly
+    // (never ellipsized or rebuilt from an archetype index).
+    if (event.kind === 'bossAbilityCast') {
+      labelText.setText(event.text ?? '');
+      labelText.setColor(colorForKind(event.kind));
+      verbText.setText('');
+      accent.setFillStyle(0xef4444);
+    } else {
+      const label = event.displayName ?? 'Spawner';
+      labelText.setText(ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS));
+      labelText.setColor(colorForKind(event.kind));
+      verbText.setText(verbForKind(event.kind).toUpperCase());
+      accent.setFillStyle(event.kind === 'spawnerArenaStart' ? 0xf2b542 : 0x46d369);
+    }
     activeTween?.remove();
     activeTween = scene.tweens.add({
       targets: wrapper,

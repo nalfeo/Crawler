@@ -1,0 +1,199 @@
+/**
+ * Queen Mab Tarnish — VERDIGRIS GLAMOUR typed runtime definition + resolve
+ * handler.
+ *
+ * This adapter reads the *known, named* fields it needs out of the approved
+ * catalog entry (`src/shared/boss-abilities.ts`) into strongly typed values. It
+ * is NOT a generic `designValues` interpreter — every value it consumes is read
+ * by id with an explicit type + validation, and the effect is a hand-written
+ * handler. Adding another ability means writing another typed adapter + handler,
+ * not extending a DSL.
+ *
+ * Contract (see issue #1260 / `.specify/specs/boss-abilities.md`):
+ *   - 9s first eligibility, 9s cooldown anchored after resolution, 0 jitter;
+ *   - 12-foot hostile-red circle locked to the player's position at telegraph
+ *     start; 1.5s telegraph that never tracks after lock;
+ *   - moderate damage only inside the committed circle;
+ *   - Tarnished for 4s: 0.70 move-speed and 0.75 attack-speed multipliers,
+ *     non-stacking (replace);
+ *   - damage/effects/cooldowns are catalog-defined and never inherit level-scaled
+ *     contact damage.
+ */
+
+import { hasComponent, query } from 'bitecs';
+import { Enemy, Health, Position } from '../components.js';
+import { applyDamage } from '../apply-damage.js';
+import { applyStatusEffect } from '../status-effects.js';
+import type { StatusEffectSpec } from '../../shared/status-effect-types.js';
+import {
+  formatBossAbilityAnnouncement,
+  getFloor2BossAbilityById,
+  type BossAbilityDef,
+} from '../../shared/boss-abilities.js';
+import type { GameWorld } from '../world.js';
+import type { MobAbilityResolveContext, MobAbilityRuntimeDefinition } from './types.js';
+
+export const VERDIGRIS_GLAMOUR_ABILITY_ID = 'queen-mab-verdigris-glamour';
+
+/**
+ * Catalog-defined damage descriptors mapped to fixed simulation amounts. The
+ * descriptor comes from the catalog (`effect.designValues['damage-profile']`);
+ * this typed table turns it into a concrete, catalog-scoped amount. Deliberately
+ * NOT the level-scaled contact `Damage` component (issue #1260, PR #1237).
+ */
+const DAMAGE_PROFILE_AMOUNTS = {
+  light: 10,
+  moderate: 20,
+  heavy: 35,
+} as const;
+type DamageProfile = keyof typeof DAMAGE_PROFILE_AMOUNTS;
+
+/** Strongly typed values extracted from the catalog Tarnished effect. */
+interface TarnishedTuning {
+  readonly durationMs: number;
+  readonly moveSpeedMultiplier: number;
+  readonly attackSpeedMultiplier: number;
+  readonly stacking: boolean;
+  readonly damageAmount: number;
+}
+
+function designValue(ability: BossAbilityDef, id: string): number | string | boolean {
+  const found = ability.effect.designValues.find((value) => value.id === id);
+  if (found === undefined) {
+    throw new Error(`Verdigris Glamour catalog entry missing effect design value "${id}"`);
+  }
+  return found.value;
+}
+
+function asNumber(value: number | string | boolean, id: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Verdigris Glamour design value "${id}" must be a finite number`);
+  }
+  return value;
+}
+
+/** Convert a signed percent modifier (e.g. -30) into a multiplier (0.70). */
+function percentModifierToMultiplier(percent: number): number {
+  return 1 + percent / 100;
+}
+
+function readTarnishedTuning(ability: BossAbilityDef): TarnishedTuning {
+  const debuffId = designValue(ability, 'debuff-id');
+  if (debuffId !== 'tarnished') {
+    throw new Error(`Verdigris Glamour debuff-id must be "tarnished", got "${String(debuffId)}"`);
+  }
+  const profileRaw = designValue(ability, 'damage-profile');
+  if (typeof profileRaw !== 'string' || !(profileRaw in DAMAGE_PROFILE_AMOUNTS)) {
+    throw new Error(`Verdigris Glamour has unknown damage-profile "${String(profileRaw)}"`);
+  }
+  const profile = profileRaw as DamageProfile;
+  const stackingRaw = designValue(ability, 'stacking');
+  return {
+    durationMs: asNumber(designValue(ability, 'duration'), 'duration'),
+    moveSpeedMultiplier: percentModifierToMultiplier(
+      asNumber(designValue(ability, 'movement-speed-modifier'), 'movement-speed-modifier'),
+    ),
+    attackSpeedMultiplier: percentModifierToMultiplier(
+      asNumber(designValue(ability, 'attack-speed-modifier'), 'attack-speed-modifier'),
+    ),
+    stacking: stackingRaw === true,
+    damageAmount: DAMAGE_PROFILE_AMOUNTS[profile],
+  };
+}
+
+function readRadiusFt(ability: BossAbilityDef): number {
+  const metric = ability.telegraph.metrics.find((m) => m.id === 'radius');
+  if (metric === undefined || typeof metric.value !== 'number') {
+    throw new Error('Verdigris Glamour telegraph is missing a numeric "radius" metric');
+  }
+  return metric.value;
+}
+
+/** Apply the Tarnished debuff to one entity (non-stacking replace). */
+function applyTarnished(
+  world: GameWorld,
+  targetEid: number,
+  sourceId: string,
+  tuning: TarnishedTuning,
+): void {
+  // Non-stacking is expressed as the `replace` stack rule: re-applying the same
+  // source+stat+op overwrites the existing effect rather than compounding.
+  const stackRule = tuning.stacking
+    ? ({ mode: 'refresh' } as const)
+    : ({ mode: 'replace' } as const);
+  const move: StatusEffectSpec = {
+    stat: 'speed',
+    op: 'multiply',
+    value: tuning.moveSpeedMultiplier,
+    durationMs: tuning.durationMs,
+    sourceType: 'ability',
+    sourceId,
+    stackRule,
+  };
+  const attack: StatusEffectSpec = {
+    stat: 'attackSpeed',
+    op: 'multiply',
+    value: tuning.attackSpeedMultiplier,
+    durationMs: tuning.durationMs,
+    sourceType: 'ability',
+    sourceId,
+    stackRule,
+  };
+  applyStatusEffect(world, targetEid, move);
+  applyStatusEffect(world, targetEid, attack);
+}
+
+/** Build the Verdigris Glamour resolve handler bound to the catalog tuning. */
+function makeResolveHandler(ability: BossAbilityDef) {
+  const tuning = readTarnishedTuning(ability);
+  return function resolveVerdigrisGlamour(world: GameWorld, ctx: MobAbilityResolveContext): void {
+    const { geometry, casterEid, sourceId } = ctx;
+    const r2 = geometry.radiusFt * geometry.radiusFt;
+    // Every damageable entity inside the committed circle (except the caster)
+    // takes moderate damage and is Tarnished. Entities outside are untouched.
+    for (const eid of query(world.ecs, [Position, Health])) {
+      if (eid === casterEid) continue;
+      if (hasComponent(world.ecs, eid, Enemy) && eid !== ctx.targetEid) {
+        // Only the locked target + non-enemy victims (the player) are affected;
+        // other enemies standing in the circle are not friendly-fired.
+        continue;
+      }
+      const dx = (world.stores.position.x[eid] ?? 0) - geometry.x;
+      const dy = (world.stores.position.y[eid] ?? 0) - geometry.y;
+      if (dx * dx + dy * dy > r2) continue;
+      applyDamage(world, eid, tuning.damageAmount, geometry.x, geometry.y, {
+        origin: 'enemy',
+        affinity: 'magic',
+        scaleWithPrimary: false,
+        canCrit: false,
+        sourceEid: casterEid,
+        sourceX: geometry.x,
+        sourceY: geometry.y,
+      });
+      applyTarnished(world, eid, sourceId, tuning);
+    }
+  };
+}
+
+/**
+ * Build the typed runtime definition for Queen Mab's Verdigris Glamour from the
+ * approved Floor 2 catalog. Throws if the catalog entry is missing (a
+ * regression guard — the catalog is the source of truth).
+ */
+export function createVerdigrisGlamourDefinition(): MobAbilityRuntimeDefinition {
+  const ability = getFloor2BossAbilityById(VERDIGRIS_GLAMOUR_ABILITY_ID);
+  if (ability === undefined) {
+    throw new Error(`Catalog is missing ability "${VERDIGRIS_GLAMOUR_ABILITY_ID}"`);
+  }
+  return {
+    abilityId: ability.id,
+    bossArchetypeKey: ability.bossArchetypeId,
+    firstEligibleAfterMs: ability.timing.firstEligibleAfterMs,
+    cooldownMs: ability.timing.cooldownMs,
+    telegraphDurationMs: ability.telegraph.durationMs,
+    dangerColor: ability.telegraph.dangerColor,
+    announcementText: formatBossAbilityAnnouncement(ability),
+    geometry: { kind: 'circle', radiusFt: readRadiusFt(ability) },
+    resolve: makeResolveHandler(ability),
+  };
+}

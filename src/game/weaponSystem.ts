@@ -32,6 +32,7 @@ import {
 import type { GameWorld } from '../core/world.js';
 import { getBodyRadius } from '../core/physics-body.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
+import { computeEffectiveValue, getStatusEffects } from '../core/status-effects.js';
 import {
   setActiveWeaponDef,
   clearActiveWeaponDef,
@@ -201,12 +202,19 @@ function isLeadingProjectileWeapon(def: WeaponDef): boolean {
 }
 
 function getEffectiveCooldownMs(world: GameWorld, player: number, baseCooldownMs: number): number {
-  if (!hasComponent(world.ecs, player, EffectiveStats)) {
-    return baseCooldownMs;
+  let cooldownMs = baseCooldownMs;
+  if (hasComponent(world.ecs, player, EffectiveStats)) {
+    const attackSpeedBonus = world.stores.effectiveStats.attackSpeed[player] ?? 0;
+    const reduction = world.stores.effectiveStats.cooldownReduction[player] ?? 0;
+    cooldownMs = applyAttackSpeedAndCooldownReduction(cooldownMs, attackSpeedBonus, reduction);
   }
-  const attackSpeedBonus = world.stores.effectiveStats.attackSpeed[player] ?? 0;
-  const reduction = world.stores.effectiveStats.cooldownReduction[player] ?? 0;
-  return applyAttackSpeedAndCooldownReduction(baseCooldownMs, attackSpeedBonus, reduction);
+  // Fold in the `attackSpeed` status channel (e.g. Queen Mab's Tarnished 0.75x).
+  // A multiplier < 1 means "attacks slower", so it LENGTHENS the cooldown.
+  const attackSpeedMult = computeEffectiveValue(1, getStatusEffects(world, player), 'attackSpeed');
+  if (attackSpeedMult > 0 && attackSpeedMult !== 1) {
+    cooldownMs /= attackSpeedMult;
+  }
+  return cooldownMs;
 }
 
 function getPlayerEntity(world: GameWorld): number | undefined {
