@@ -776,12 +776,13 @@ function computeReady(
   // node from entering the ready queue. The Producer must explicitly reconcile
   // and clear the speculative metadata before normal lifecycle advancement can
   // occur — even when all dependencies are otherwise validated.
+  // stacked_work is nullable().optional() so both null and undefined mean "absent".
   return (
     node.release_requirement === 'required' &&
     !TERMINAL_STATUSES.has(node.status) &&
     !POST_PR_STATUSES.has(node.status) &&
     !ACTIVE_STATUSES.has(node.status) &&
-    node.stacked_work == null &&
+    (node.stacked_work === null || node.stacked_work === undefined) &&
     dependenciesSatisfied(node, nodesById) &&
     hasIssueAuthority(state, node)
   );
@@ -1067,6 +1068,8 @@ function validateStackedWork(
   }
 
   // Determine all direct dependencies and the subset that are unvalidated.
+  // Note: validateDag already catches unknown dependency IDs, so by the time
+  // validateStackedWork runs all node.dependencies exist in nodesById.
   const directDepSet = new Set(node.dependencies);
   const unvalidatedDepIds = node.dependencies.filter((depId) => {
     const dep = nodesById.get(depId);
@@ -1885,8 +1888,10 @@ export function auditGithub(
     // Audit the speculative work's own issue for existence — but without an
     // expectedNode so we do NOT emit a reconciliation patch for the node's
     // own observed_issue_state (which mirrors only the canonical github.issue).
-    if (node.stacked_work?.issue && node.stacked_work.issue.number !== node.github.issue?.number) {
-      auditIssue(node.stacked_work.issue.number);
+    const stackedIssue = node.stacked_work?.issue;
+    const mainIssue = node.github.issue;
+    if (stackedIssue && stackedIssue.number !== mainIssue?.number) {
+      auditIssue(stackedIssue.number);
     }
     if (!node.github.pr) continue;
     try {
