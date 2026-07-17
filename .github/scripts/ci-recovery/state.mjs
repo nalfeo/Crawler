@@ -348,7 +348,14 @@ export function automationStallAction({
   if (now.getTime() - progressAt < staleMinutes * 60 * 1000) {
     return 'wait';
   }
-  return state.attempt >= 2 ? 'release' : 'retry';
+  // Legacy v1 automation comments pre-date `progressKey` and used `attempt`
+  // as a cumulative dispatch count (not a per-progress-key retry count).
+  // Treating legacy `attempt >= 2` as an exhausted retry would skip the
+  // promised one retry immediately after rollout.  Only count toward the
+  // exhaustion threshold when `progressKey` is present (written by the new
+  // stale-retry logic) so legacy states always receive a single retry.
+  const stallAttempt = state.progressKey ? state.attempt : 0;
+  return stallAttempt >= 2 ? 'release' : 'retry';
 }
 
 export function isHealthyRecoveryOwner({ prNumber, state, now = new Date() }) {

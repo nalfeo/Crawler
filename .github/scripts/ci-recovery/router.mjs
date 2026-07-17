@@ -323,6 +323,7 @@ export async function hydrateRecoveryOwnership(
   pulls,
   loadComments,
   batchSize = OWNERSHIP_HYDRATION_BATCH_SIZE,
+  { stopAfterDispatchable = Infinity, isHealthy = () => false } = {},
 ) {
   const hydrated = [...pulls];
   const ownerIndexes = hydrated
@@ -333,6 +334,7 @@ export async function hydrateRecoveryOwnership(
       ),
     );
 
+  let dispatchableCount = 0;
   for (let offset = 0; offset < ownerIndexes.length; offset += batchSize) {
     const batch = ownerIndexes.slice(offset, offset + batchSize);
     await Promise.all(
@@ -352,6 +354,19 @@ export async function hydrateRecoveryOwnership(
         }
       }),
     );
+    // Count newly-hydrated non-healthy (dispatchable) PRs in this batch and
+    // stop early once we have enough candidates to fill the repair window.
+    // Continuing only when a batch is entirely healthy ensures stale owners
+    // further back in the age-ordered queue are not missed if the front of
+    // the queue looks healthy.
+    for (const { index } of batch) {
+      if (!isHealthy(hydrated[index])) {
+        dispatchableCount += 1;
+      }
+    }
+    if (dispatchableCount >= stopAfterDispatchable) {
+      break;
+    }
   }
   return hydrated;
 }
@@ -457,11 +472,18 @@ export async function runFromEnv(env = process.env) {
         trainEnabled,
       })
     ) {
-      scheduledPulls = await hydrateRecoveryOwnership(scheduledPulls, (number) =>
-        requestWithBackoff(
-          () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
-          { label: `load-owner-state-${number}` },
-        ),
+      scheduledPulls = await hydrateRecoveryOwnership(
+        scheduledPulls,
+        (number) =>
+          requestWithBackoff(
+            () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+            { label: `load-owner-state-${number}` },
+          ),
+        OWNERSHIP_HYDRATION_BATCH_SIZE,
+        {
+          stopAfterDispatchable: REPAIR_WINDOW_SIZE,
+          isHealthy: (pullRequest) => hasHealthyOwnerForSweep(pullRequest, new Date()),
+        },
       );
     }
   }

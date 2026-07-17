@@ -204,6 +204,33 @@ if (staleOwningState) {
       `PR #${prNumber} has an unexpired shepherd lease with a missing owner label; refusing automatic cleanup`,
     );
   }
+  // Detect an interrupted stale-automation-exhausted release: the repository
+  // label was already deleted (hence staleOwningState) but the state-comment
+  // PATCH failed before it could record the terminal idle state.  Without this
+  // guard the run would fall through to a fresh attempt-1 dispatch, silently
+  // resetting the exhausted retry budget.  Complete the pending state update
+  // now so the next reconciliation starts from a clean idle baseline.
+  if (state.owner === 'automation' && state.progressKey && state.attempt >= 2) {
+    await updateState(
+      makeState({
+        prNumber,
+        headSha: state.headSha,
+        fingerprint: state.fingerprint || blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation-exhausted',
+        blockers: state.blockers || [],
+        attempt: state.attempt,
+        progressKey: state.progressKey,
+        progressAt: state.progressAt || state.updatedAt,
+        updatedAt: now.toISOString(),
+      }),
+    );
+    process.stdout.write(
+      `completed-interrupted-exhausted-release pr=#${prNumber} attempts=${state.attempt}\n`,
+    );
+    process.exit(0);
+  }
 } else if (!orphanedOwnershipArtifact) {
   assertOwnershipInvariant({ labelExists, state });
 }
@@ -476,6 +503,9 @@ async function release(reason, nextState = null) {
       if (!isKnownStaleNodeLabelError(error)) throw error;
       let facts = await fetchOwnershipFacts();
       if (!facts.repositoryLabelPresent) {
+        if (!sameOwnership(facts.state, ownershipToRelease)) {
+          throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
+        }
         pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
         labelExists = false;
         atomicOwnerBitAbsent = true;
@@ -488,6 +518,9 @@ async function release(reason, nextState = null) {
         await removePrLabel(labelName);
         facts = await fetchOwnershipFacts();
         if (!facts.repositoryLabelPresent) {
+          if (!sameOwnership(facts.state, ownershipToRelease)) {
+            throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
+          }
           atomicOwnerBitAbsent = true;
         } else if (facts.attached || !sameOwnership(facts.state, ownershipToRelease)) {
           throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
@@ -1049,12 +1082,13 @@ if (normalized.length === 0) {
     // The initial pr.labels snapshot is stale by the time we reach this branch
     // (after all blocker/review/check-run analysis), so alreadyQueued would
     // always read false from the snapshot even if the label was just added.
-    const liveAdmissionLabels = (
-      await request(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/labels`)
-    ).data;
-    const alreadyQueued = Array.isArray(liveAdmissionLabels)
-      ? liveAdmissionLabels.some((label) => label.name === QUEUE_LABEL)
-      : hasPrLabel(QUEUE_LABEL);
+    // Use paginate() so a `merge-train` label beyond the first page (>30
+    // labels) is not missed, which would incorrectly re-dispatch a broad fill.
+    const liveAdmissionLabels = await paginate(
+      readToken,
+      `/repos/${owner}/${repo}/issues/${prNumber}/labels`,
+    );
+    const alreadyQueued = liveAdmissionLabels.some((label) => label.name === QUEUE_LABEL);
     if (shouldDispatchMergeTrainFill(alreadyQueued)) {
       await assertExpectedMetadataUnchanged('queue-merge-train');
       try {

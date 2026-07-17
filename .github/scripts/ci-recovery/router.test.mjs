@@ -812,3 +812,84 @@ test('requestWithBackoff stops immediately for non-retryable errors', async () =
   );
   assert.equal(attempts, 1);
 });
+
+test('hydrateRecoveryOwnership stops incrementally after stopAfterDispatchable non-healthy PRs', async () => {
+  // Regression for Thread 8: the previous implementation loaded the full
+  // comment history for every owner-labeled PR before selecting at most six
+  // candidates. With a large owned backlog this scales with the queue length
+  // and can exhaust the router API budget or 10-minute timeout.
+  // The updated implementation stops hydrating once enough non-healthy PRs
+  // have been found (stopAfterDispatchable), continuing only when a batch is
+  // entirely healthy so stale owners behind a healthy front are not missed.
+  const now = new Date('2026-07-17T12:00:00Z');
+  const freshProgressKey = automationProgressKey(
+    'head-sha',
+    blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]),
+  );
+  // Healthy: fresh progressAt, head matches.
+  const makeHealthy = (number) =>
+    makeState({
+      prNumber: number,
+      headSha: 'head-sha',
+      fingerprint: blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]),
+      owner: 'automation',
+      status: 'dispatched',
+      blockers: [],
+      attempt: 1,
+      progressKey: freshProgressKey,
+      progressAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+  // Unhealthy: stale (40 min ago, past the 30-min threshold).
+  const makeUnhealthy = (number) =>
+    makeState({
+      prNumber: number,
+      headSha: 'head-sha',
+      fingerprint: blockerFingerprint([]),
+      owner: 'automation',
+      status: 'dispatched',
+      blockers: [],
+      attempt: 1,
+      progressKey: automationProgressKey('head-sha', blockerFingerprint([])),
+      progressAt: new Date(now.getTime() - 40 * 60 * 1000).toISOString(),
+      updatedAt: new Date(now.getTime() - 40 * 60 * 1000).toISOString(),
+    });
+
+  // 12 PRs with batchSize=3:
+  //   Batch 1 (PRs  1-3): all healthy  → 0 dispatchable total → continue
+  //   Batch 2 (PRs  4-6): all unhealthy → 3 dispatchable total → continue
+  //   Batch 3 (PRs  7-9): all unhealthy → 6 dispatchable total → stop
+  //   Batch 4 (PRs 10-12): healthy, must never be loaded
+  const pulls = Array.from({ length: 12 }, (_, i) => ({
+    number: i + 1,
+    labels: [{ name: `ci-owner-pr-${i + 1}` }],
+    head: { sha: 'head-sha' },
+  }));
+
+  let loadCount = 0;
+  const hydrated = await hydrateRecoveryOwnership(
+    pulls,
+    async (number) => {
+      loadCount += 1;
+      const isHealthy = number <= 3 || number >= 10;
+      const state = isHealthy ? makeHealthy(number) : makeUnhealthy(number);
+      return [{ body: renderStateComment(state) }];
+    },
+    3, // batchSize — use 3 so each batch is independently healthy/unhealthy
+    {
+      stopAfterDispatchable: 6,
+      isHealthy: (pr) => hasHealthyOwnerForSweep(pr, now),
+    },
+  );
+
+  // Batches 1–3 loaded (9 PRs). Batch 4 (PRs 10–12) skipped.
+  assert.equal(loadCount, 9, 'must stop hydrating after accumulating 6 dispatchable PRs');
+  // The unloaded tail must remain without a recoveryState.
+  assert.equal(hydrated[9].recoveryState, undefined);
+  assert.equal(hydrated[10].recoveryState, undefined);
+  assert.equal(hydrated[11].recoveryState, undefined);
+  // The healthy front (PRs 1–3) must be fully hydrated.
+  assert.ok(hydrated[0].recoveryState !== undefined);
+  assert.ok(hydrated[1].recoveryState !== undefined);
+  assert.ok(hydrated[2].recoveryState !== undefined);
+});

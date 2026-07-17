@@ -525,6 +525,79 @@ test('known stale-node 422 fails closed when ownership is a newer incarnation', 
   );
 });
 
+test('stale-node release fails closed when repository label is absent but state has a newer owner', async (t) => {
+  // Regression for Threads 2/4: the !facts.repositoryLabelPresent branch in
+  // the stale-node handler previously accepted a missing repository label as
+  // sufficient convergence without checking the refetched state incarnation.
+  // If another cleanup already removed the label AND advanced the state to a
+  // newer owner, this path would overwrite the newer state with releasedState.
+  const stateComment = shepherdStateComment();
+  let detachAttempts = 0;
+  let labelExistsCalls = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    // The first call (during normal flow) says the label exists so release()
+    // attempts to remove it. The second call (inside fetchOwnershipFacts after
+    // the 422) says the label is already gone — a concurrent cleanup removed it
+    // and simultaneously advanced the state to a newer owner.
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      labelExistsCalls += 1;
+      if (labelExistsCalls > 1) {
+        return { status: 404, body: { message: 'Not Found' } };
+      }
+      return { body: { name: LABEL } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      detachAttempts += 1;
+      // Advance the comment state to a *new* owner while the 422 is in flight,
+      // simulating the concurrent cleanup that also removed the repo label.
+      const currentState = parseStateComment(stateComment.body);
+      stateComment.body = renderStateComment(
+        makeState({
+          ...currentState,
+          headSha: 'newer-owner-head',
+          updatedAt: new Date(Date.now() + 1000).toISOString(),
+        }),
+      );
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+    GITHUB_TOKEN: TOKEN,
+  });
+
+  // The release must fail closed: the newer state must NOT be overwritten.
+  assert.notEqual(code, 0);
+  assert.match(stderr, /ownership changed during stale-node release/);
+  assert.equal(detachAttempts, 1);
+  // fetchOwnershipFacts() queried the label endpoint (second call returned 404).
+  assert.ok(labelExistsCalls >= 2, 'expected at least 2 label-exists calls');
+  // No state-comment PATCH was attempted.
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+  );
+});
+
 test('unknown issue-label 422 remains fail-closed', async (t) => {
   const stateComment = shepherdStateComment();
   const { server, port, mutatingCalls } = await startServer({
@@ -705,6 +778,78 @@ for (const attempt of [1, 2]) {
     }
   });
 }
+
+test('interrupted exhausted release completes when staleOwningState carries attempt>=2 with progressKey', async (t) => {
+  // Regression for Thread 9: if the state-comment PATCH fails after
+  // removePrLabel succeeds (label deleted but state not updated), the next
+  // reconcile run sees the old automation state (attempt>=2) with no owner
+  // label (staleOwningState=true).  Before this fix, labelExists=false caused
+  // the stale-automation branch to be skipped entirely, and the run fell
+  // through to a fresh attempt-1 dispatch, silently resetting the exhausted
+  // retry budget.  Now the staleOwningState handler detects this pattern and
+  // writes the terminal idle state before exiting.
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
+  ]);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  const exhaustedState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
+    attempt: 2,
+    progressKey,
+    progressAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+  });
+  const stateComment = { id: 900, body: renderStateComment(exhaustedState) };
+  let finalStateBody = null;
+  const { server, port, mutatingCalls } = await startServer({
+    // No owner label on the repository (simulates interrupted label delete).
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      // No PR-level label either — the PR-label delete already completed.
+      body: basePr(),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      finalStateBody = body.body;
+      return { body: { id: stateComment.id } };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /completed-interrupted-exhausted-release pr=#42/);
+  assert.ok(finalStateBody !== null, 'state comment must be updated');
+  const written = parseStateComment(finalStateBody);
+  assert.equal(written.owner, 'none');
+  assert.equal(written.status, 'idle');
+  assert.equal(written.trigger, 'stale-automation-exhausted');
+  assert.equal(written.attempt, 2);
+  // Must NOT dispatch a new Copilot task.
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'exhausted release must not dispatch a new agent task',
+  );
+});
 
 for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] of [
   ['repository label only', true, false],
@@ -904,6 +1049,7 @@ test('PR #1208 partial cleanup converges when both owner-label deletes return 40
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
   t.after(() => server.close());
 
@@ -967,6 +1113,7 @@ test('partial cleanup independently tolerates a missing PR attachment before del
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
   t.after(() => server.close());
 
@@ -1174,6 +1321,7 @@ test('direct state-change event persists convergence before clearing the waiting
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
       body: {},
     }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
   t.after(() => server.close());
 
@@ -1302,6 +1450,7 @@ test('failed non-owning waiting cleanup remains schedule-retryable via transitio
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
       body: {},
     }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
   t.after(() => second.server.close());
 
@@ -2308,6 +2457,7 @@ test('synchronize sweep does not immediately recreate a stale merge-train-noop b
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
       body: {},
     }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
 
   t.after(() => server.close());

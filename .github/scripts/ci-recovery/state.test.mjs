@@ -790,3 +790,39 @@ test('isTrainFastPathPushRun requires a push-triggered CI run carrying a trusted
   );
   assert.equal(isTrainFastPathPushRun(null, trustedAppId, trustedCheckRuns), false, 'missing run');
 });
+
+test('legacy v1 automation state without progressKey is never classified as exhausted', () => {
+  // Regression for Thread 3: before this PR `attempt` was a cumulative
+  // dispatch count in v1 comments that have no `progressKey`. Treating
+  // `attempt >= 2` as exhausted would silently skip the promised one retry
+  // on all in-flight tasks immediately after rollout.  Without a stored
+  // `progressKey`, the stall action must return 'retry' regardless of
+  // `attempt`.
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
+  ]);
+  const legacyState = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
+    attempt: 2,
+    // Deliberately omit progressKey — this simulates a legacy v1 comment.
+    updatedAt: '2026-07-01T12:00:00.000Z',
+  });
+  // Verify the fixture is actually missing progressKey.
+  assert.equal(legacyState.progressKey, undefined);
+
+  assert.equal(
+    automationStallAction({
+      state: legacyState,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-01T12:31:00.000Z'),
+    }),
+    'retry',
+    'legacy v1 state with attempt>=2 but no progressKey must be retried, not released',
+  );
+});
