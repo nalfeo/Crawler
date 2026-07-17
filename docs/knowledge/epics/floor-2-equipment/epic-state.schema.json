@@ -1,0 +1,182 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "floor-2-equipment-epic-state",
+  "title": "Epic State",
+  "description": "Tracks all slices of a Crawler feature epic: their planning status, dependencies, GitHub issue/PR refs, and the hard release gate.",
+  "type": "object",
+  "required": ["epic_id", "title", "schema_version", "updated_at", "hard_release_gate", "slices"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "epic_id": {
+      "type": "string",
+      "description": "Kebab-case identifier for this epic, matching the directory name.",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable epic title."
+    },
+    "github_issue": {
+      "description": "Parent GitHub issue number, or null if not yet created.",
+      "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+    },
+    "schema_version": {
+      "type": "string",
+      "description": "Semver of the epic-state schema used to author this file.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of the last authoritative state update."
+    },
+    "hard_release_gate": {
+      "$ref": "#/definitions/HardReleaseGate"
+    },
+    "slices": {
+      "type": "array",
+      "description": "All slices (work units) in the epic, in tier/seq order.",
+      "items": { "$ref": "#/definitions/SliceNode" },
+      "minItems": 1
+    }
+  },
+  "definitions": {
+    "HardReleaseGate": {
+      "type": "object",
+      "description": "The measurable success criterion the epic must meet before release.",
+      "required": ["description", "checkpoints", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkpoints": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/GateCheckpoint" },
+          "minItems": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "measuring", "passed", "failed"],
+          "description": "Aggregate gate status across all checkpoints."
+        },
+        "evidence_commit": {
+          "description": "Short commit SHA that first produced passing evidence, or null.",
+          "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{7,40}$" }, { "type": "null" }]
+        }
+      }
+    },
+    "GateCheckpoint": {
+      "type": "object",
+      "required": ["id", "label", "target_min", "target_max", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$",
+          "description": "Stable machine-readable identifier."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable label."
+        },
+        "target_min": {
+          "type": "number",
+          "description": "Inclusive lower bound for the measured ratio."
+        },
+        "target_max": {
+          "type": "number",
+          "description": "Inclusive upper bound for the measured ratio."
+        },
+        "measured_value": {
+          "description": "Last measured value, or null.",
+          "oneOf": [{ "type": "number" }, { "type": "null" }]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "measuring", "passed", "failed"]
+        },
+        "evidence_commit": {
+          "description": "Short commit SHA for the evidence run, or null.",
+          "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{7,40}$" }, { "type": "null" }]
+        }
+      }
+    },
+    "SliceNode": {
+      "type": "object",
+      "required": ["id", "title", "tier", "seq", "status", "scope", "deferred", "dependencies"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable node slug, e.g. 'slice:A0', 'slice:B1'.",
+          "pattern": "^slice:[A-Z][0-9]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["A", "B", "C"],
+          "description": "Planning tier: A=bootstrap, B=implementation, C=validation."
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sequence number within the tier."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "claimed",
+            "in_progress",
+            "merged",
+            "validated",
+            "deferred",
+            "blocked"
+          ],
+          "description": "Current lifecycle status."
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1,
+          "description": "One-sentence description of what this slice delivers."
+        },
+        "deferred": {
+          "type": "boolean",
+          "description": "When true, this slice is intentionally deferred and does not block the release gate."
+        },
+        "github_issue": {
+          "description": "Child GitHub issue number, or null before materialization.",
+          "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+        },
+        "pr": {
+          "description": "Merged PR number, or null.",
+          "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+        },
+        "commit_evidence": {
+          "description": "Short commit SHA of the validation evidence, or null.",
+          "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{7,40}$" }, { "type": "null" }]
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^slice:[A-Z][0-9]+$"
+          },
+          "description": "IDs of slices that must be validated before this slice can start."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional free-text notes for the current status."
+        }
+      }
+    }
+  }
+}

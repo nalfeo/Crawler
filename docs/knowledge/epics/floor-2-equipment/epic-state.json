@@ -1,0 +1,127 @@
+{
+  "$schema": "./epic-state.schema.json",
+  "epic_id": "floor-2-equipment",
+  "title": "Epic: Floor 2 equipment",
+  "github_issue": 1264,
+  "schema_version": "1.0.0",
+  "updated_at": "2026-07-17T17:50:48.000Z",
+  "hard_release_gate": {
+    "description": "Representative-build median aggregate DPS ratio 1.7x–2.3x independently for level 1→6 and level 6→11.",
+    "checkpoints": [
+      {
+        "id": "level_1_to_6",
+        "label": "Level 1 → 6 DPS ratio",
+        "target_min": 1.7,
+        "target_max": 2.3,
+        "measured_value": null,
+        "status": "pending",
+        "evidence_commit": null
+      },
+      {
+        "id": "level_6_to_11",
+        "label": "Level 6 → 11 DPS ratio",
+        "target_min": 1.7,
+        "target_max": 2.3,
+        "measured_value": null,
+        "status": "pending",
+        "evidence_commit": null
+      }
+    ],
+    "status": "pending",
+    "evidence_commit": null
+  },
+  "slices": [
+    {
+      "id": "slice:A0",
+      "title": "Bootstrap: Control plane",
+      "tier": "A",
+      "seq": 0,
+      "status": "validated",
+      "scope": "Durable control plane only: PLAN.md, epic-state.json, schema, epic:status CLI, tests, handoff. No equipment gameplay changes.",
+      "deferred": false,
+      "github_issue": 1264,
+      "pr": null,
+      "commit_evidence": null,
+      "dependencies": [],
+      "notes": "Claimed by Producer session 7b4a2e77. This slice is the current implementation target."
+    },
+    {
+      "id": "slice:B1",
+      "title": "DPS ratio measurement tooling",
+      "tier": "B",
+      "seq": 1,
+      "status": "planned",
+      "scope": "Deterministic script that computes representative-build aggregate DPS at levels 1, 6, and 11 for Floor 2; outputs the two ratio values consumed by the hard release gate.",
+      "deferred": false,
+      "github_issue": null,
+      "pr": null,
+      "commit_evidence": null,
+      "dependencies": ["slice:A0"]
+    },
+    {
+      "id": "slice:B2",
+      "title": "Tier 1 equipment catalog",
+      "tier": "B",
+      "seq": 2,
+      "status": "planned",
+      "scope": "New EquipmentItemDef entries for Floor 2 levels 1–5 (one weapon tier + supporting armor/accessory slots) targeting a ~1.7–2.3× DPS contribution over the unequipped level-1 baseline.",
+      "deferred": false,
+      "github_issue": null,
+      "pr": null,
+      "commit_evidence": null,
+      "dependencies": ["slice:A0"]
+    },
+    {
+      "id": "slice:B3",
+      "title": "Tier 2 equipment catalog",
+      "tier": "B",
+      "seq": 3,
+      "status": "planned",
+      "scope": "New EquipmentItemDef entries for Floor 2 levels 6–11 (one weapon tier + supporting armor/accessory slots) targeting a ~1.7–2.3× DPS contribution over the Tier 1 equipped level-6 baseline.",
+      "deferred": false,
+      "github_issue": null,
+      "pr": null,
+      "commit_evidence": null,
+      "dependencies": ["slice:A0"]
+    },
+    {
+      "id": "slice:B4",
+      "title": "Shop / loot-table wiring",
+      "tier": "B",
+      "seq": 4,
+      "status": "planned",
+      "scope": "Wire Tier 1 items into early Floor 2 shop archetypes and chest loot tables; wire Tier 2 items into mid/late Floor 2 archetypes and loot tables.",
+      "deferred": false,
+      "github_issue": null,
+      "pr": null,
+      "commit_evidence": null,
+      "dependencies": ["slice:B2", "slice:B3"]
+    },
+    {
+      "id": "slice:C1",
+      "title": "DPS ratio validation sweep",
+      "tier": "C",
+      "seq": 1,
+      "status": "planned",
+      "scope": "Run headless AI sweeps (≥30 seeds) measuring the median aggregate DPS ratio at both checkpoints; adjust item tuning if either ratio falls outside 1.7–2.3×.",
+      "deferred": false,
+      "github_issue": null,
+      "pr": null,
+      "commit_evidence": null,
+      "dependencies": ["slice:B4", "slice:B1"]
+    },
+    {
+      "id": "slice:C2",
+      "title": "CI gate (deterministic DPS ratio test)",
+      "tier": "C",
+      "seq": 2,
+      "status": "planned",
+      "scope": "Add a deterministic unit test that statically verifies the representative-build DPS ratio for both checkpoints, enforcing the 1.7–2.3× hard gate in CI.",
+      "deferred": false,
+      "github_issue": null,
+      "pr": null,
+      "commit_evidence": null,
+      "dependencies": ["slice:C1"]
+    }
+  ]
+}
