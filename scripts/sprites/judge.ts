@@ -60,7 +60,7 @@ import {
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v6';
+const PROMPT_TEMPLATE_VERSION = 'v7';
 
 export type Evaluator =
   | 'design_language'
@@ -95,14 +95,14 @@ export interface JudgeScorecard {
   readonly briefMatch: EvaluatorResult;
   readonly readability: EvaluatorResult;
   /**
-   * Family/theme design-language adherence. Only present (and only
-   * scored) when the brief resolves a THEME addendum (Floor 2 family
-   * design language) — see `resolveDesignLanguageAddenda`. Sprites with
-   * no theme addendum have nothing to adhere to, so this is omitted
-   * entirely for them rather than defaulting to a pass. When present,
-   * it participates in `passed`/`minScore`/`rejectedBy` exactly like
-   * the other evaluators, so a sheet that ignores the theme addendum
-   * fails review instead of passing on the other four axes alone.
+   * Floor/theme design-language adherence. Only present (and only
+   * scored) when the brief resolves a floor or theme addendum — see
+   * `resolveDesignLanguageAddenda`. Sprites with no addendum have
+   * nothing to adhere to, so this is omitted entirely for them rather
+   * than defaulting to a pass. When present, it participates in
+   * `passed`/`minScore`/`rejectedBy` exactly like the other evaluators,
+   * so a sheet that ignores the floor or theme addendum fails review
+   * instead of passing on the other four axes alone.
    */
   readonly themeAdherence?: EvaluatorResult;
   /** True iff every evaluator scored >= 3. */
@@ -182,11 +182,12 @@ const baseJudgeResponseSchema = z
 
 /**
  * `theme_adherence` is REQUIRED in the parsed response when the brief
- * resolves a theme addendum (Floor 2 family design language), and must
- * be absent otherwise. Requiring rather than merely allowing it is
- * deliberate — an optional field the model can silently skip would let
- * a sheet that ignores the floor or family addendum still pass on the other
- * four axes, exactly the failure mode this dimension exists to catch.
+ * resolves a floor or theme addendum (floor-intensity design language or
+ * Floor 2 family design language), and must be absent otherwise. Requiring
+ * rather than merely allowing it is deliberate — an optional field the model
+ * can silently skip would let a sheet that ignores the floor or family
+ * addendum still pass on the other four axes, exactly the failure mode this
+ * dimension exists to catch.
  */
 function parseJudgeResponse(
   value: unknown,
@@ -430,6 +431,7 @@ function buildSystemInstructions(
   addenda: DesignLanguageAddenda,
 ): string {
   const hasAddendum = addenda.floor !== undefined || addenda.theme !== undefined;
+  const bothAddenda = addenda.floor !== undefined && addenda.theme !== undefined;
   return [
     'You are a strict quality judge for pixel-art sprites generated for a top-down roguelike game.',
     '',
@@ -464,22 +466,39 @@ function buildSystemInstructions(
     '                    punched through the body, disconnected/floating pixel islands,',
     '                    detached limbs/fragments, and broken contiguous silhouette.',
     '                    These defects should score readability <= 2.',
-    ...(hasAddendum
+    ...(bothAddenda
       ? [
           '',
           '  5. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,',
           '                       materials, garments, props, colors, or iconography named in the',
-          '                       floor or theme design language sections above — not just the general',
-          "                       Crawler vibe (that is design_language's job)? Look for",
-          '                       concrete, named details, not a vague thematic gesture.',
-          '                       5 = multiple specific addendum details are clearly visible.',
-          '                       4 = at least one named addendum detail is unambiguous.',
-          '                       3 = one named detail might be present but is ambiguous.',
-          "                       2 = the concept is on-vibe but none of the addendum's distinguishing",
-          '                       details are legible — scores 2 or below auto-reject.',
-          '                       1 = the candidate contradicts or ignores the addendum entirely.',
+          '                       floor AND theme design language sections above — not just the',
+          "                       general Crawler vibe (that is design_language's job)?",
+          '                       Both active sections must be represented: floor-intensity cues',
+          '                       alone do not satisfy this axis when a family theme is also present.',
+          '                       5 = multiple specific details from BOTH sections are clearly visible.',
+          '                       4 = at least one unambiguous named detail from EACH active section.',
+          '                       3 = specific details from at least one section might be present',
+          '                           but are ambiguous; the other section is not represented.',
+          '                       2 = on-vibe but none of the named cues from any section are',
+          '                           legible — scores 2 or below auto-reject.',
+          '                       1 = the candidate contradicts or ignores the addenda entirely.',
         ]
-      : []),
+      : hasAddendum
+        ? [
+            '',
+            '  5. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,',
+            '                       materials, garments, props, colors, or iconography named in the',
+            '                       floor or theme design language section above — not just the',
+            "                       general Crawler vibe (that is design_language's job)? Look for",
+            '                       concrete, named details, not a vague thematic gesture.',
+            '                       5 = multiple specific addendum details are clearly visible.',
+            '                       4 = at least one named addendum detail is unambiguous.',
+            '                       3 = one named detail might be present but is ambiguous.',
+            "                       2 = the concept is on-vibe but none of the addendum's distinguishing",
+            '                       details are legible — scores 2 or below auto-reject.',
+            '                       1 = the candidate contradicts or ignores the addendum entirely.',
+          ]
+        : []),
     '',
     'Anything scoring below 3 auto-rejects the variant. Use the full 1-5 scale; do not',
     'default to 3 for borderline cases — pick 2 (fail) or 4 (pass) and justify briefly.',

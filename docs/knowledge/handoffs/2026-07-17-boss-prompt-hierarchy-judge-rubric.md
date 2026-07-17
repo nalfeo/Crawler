@@ -29,17 +29,20 @@ Saguaro" not reading as a grandmother) and converged on three fixes.
    classifier (`docs/agent-os/sprite-style.md:149-171`) — the exact
    priority-order substring asserted by tests is preserved.
 2. **New `themeAdherence` judge rubric axis** (`scripts/sprites/judge.ts`): a 5th,
-   conditional evaluator (active only when a theme/floor addendum is present) so a
+   conditional evaluator (active only when a floor or theme addendum is present) so a
    sheet that ignores the addendum fails review instead of passing on the 4
-   generic axes. `PROMPT_TEMPLATE_VERSION` bumped to `v5` to invalidate stale
-   judge-response cache. Fixed a plan-review-caught bug where `buildUserPrompt()`
-   hardcoded "four scores" text even when the 5th axis was required.
+   generic axes. `PROMPT_TEMPLATE_VERSION` bumped to `v6` (extended from v5 to also
+   gate on floor-only addenda, not just theme addenda) then to `v7` (rubric updated
+   to require details from EACH active section when both floor+theme are present) to
+   invalidate stale judge-response cache. Fixed a plan-review-caught bug where
+   `buildUserPrompt()` hardcoded "four scores" text even when the 5th axis was required.
 3. **Cactusfolk "Abuela Saguaro" addendum cleanup**
-   (`scripts/sprites/design-language-addenda.ts`, `briefs/enemies/cactusfolk-boss.yaml`):
-   added concrete grandmother visual cues (stooped/hunched posture, deeply
-   wrinkled/weathered flesh, wire-rimmed spectacles, faded floral rebozo) in place
-   of vaguer "matriarch" language; de-capitalized/softened imperative phrasing for
-   the same jailbreak-classifier reason as #1.
+   (`scripts/sprites/design-language-addenda.ts`): added concrete grandmother visual
+   cues (stooped/hunched posture, deeply wrinkled/weathered flesh, wire-rimmed
+   spectacles, faded floral rebozo) scoped to the boss archetype only via
+   `ARCHETYPE_THEME_ADDENDA` — family-wide blurb remains clean so non-boss cactusfolk
+   archetypes are not told to show boss-specific traits. De-capitalized/softened
+   imperative phrasing for the same jailbreak-classifier reason as #1.
 
 ## Review harness (3🍎)
 

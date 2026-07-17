@@ -86,7 +86,9 @@ describe('resolveDesignLanguageAddenda', () => {
       if (archetype.familyId === undefined) continue;
       const addenda = resolveDesignLanguageAddenda(archetype.id, 2);
       expect(addenda.floor).toBe(FLOOR_DESIGN_LANGUAGE[2]);
-      expect(addenda.theme).toBe(
+      // Theme must at minimum contain the family-wide blurb; boss archetypes may
+      // additionally carry archetype-specific cues appended after the blurb.
+      expect(addenda.theme).toContain(
         FAMILY_DESIGN_LANGUAGE[archetype.familyId as keyof typeof FAMILY_DESIGN_LANGUAGE],
       );
     }
@@ -115,11 +117,11 @@ describe('resolveDesignLanguageAddenda', () => {
   });
 
   describe('cactusfolk-boss Abuela Saguaro grandmother cues', () => {
-    it('includes concrete grandmother visual cues in the cactusfolk family blurb', () => {
+    it('does not include boss-specific grandmother cues in the family-wide cactusfolk blurb', () => {
       const blurb = FAMILY_DESIGN_LANGUAGE.cactusfolk;
-      expect(blurb).toContain('wire-rimmed spectacles');
-      expect(blurb).toContain('wrinkled');
-      expect(blurb).toContain('rebozo');
+      expect(blurb).not.toContain('wire-rimmed spectacles');
+      expect(blurb).not.toContain('stooped');
+      expect(blurb).not.toContain('rebozo');
     });
 
     it('resolved cactusfolk-boss addendum at floor 2 carries the grandmother cues', () => {
@@ -135,6 +137,14 @@ describe('resolveDesignLanguageAddenda', () => {
       expect(block).toContain('wire-rimmed spectacles');
       expect(block).toContain('wrinkled');
       expect(block).toContain('rebozo');
+    });
+
+    it('non-boss cactusfolk (cactusfolk-spiny) does not carry grandmother cues in its theme addendum', () => {
+      const addenda = resolveDesignLanguageAddenda('cactusfolk-spiny', 2);
+      expect(addenda.theme).toBeDefined();
+      expect(addenda.theme).not.toContain('wire-rimmed spectacles');
+      expect(addenda.theme).not.toContain('stooped');
+      expect(addenda.theme).not.toContain('rebozo');
     });
   });
 });

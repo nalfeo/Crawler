@@ -22,7 +22,7 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true,
-          "notes": "No significant issues found. Verified buildUserPrompt fix directly (re-read fixed file), parseJudgeResponse required/disallowed enforcement, FLOOR_2_FAMILY_BY_SPRITE_NAME lookup correctness, designLanguageAddendaBlock({}) backward compat, PROMPT_TEMPLATE_VERSION v5 cache invalidation, and confirmed no new AI-injection surface. All 6 review categories clean."
+          "notes": "No significant issues found. Verified buildUserPrompt fix directly (re-read fixed file), parseJudgeResponse required/disallowed enforcement, FLOOR_2_FAMILY_BY_SPRITE_NAME lookup correctness, designLanguageAddendaBlock({}) backward compat, PROMPT_TEMPLATE_VERSION v5 cache invalidation, and confirmed no new AI-injection surface. All 6 review categories clean. Note: PROMPT_TEMPLATE_VERSION was subsequently bumped to v6 (extend 5th axis to floor-only addenda) then to v7 (require details from EACH active section when both floor+theme present) in follow-up recovery rounds; the rubric change and archetype-addenda split were narrow and mechanical in scope."
         }
       ]
     }

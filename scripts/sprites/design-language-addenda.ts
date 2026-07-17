@@ -29,7 +29,7 @@ export const FAMILY_DESIGN_LANGUAGE = Object.freeze({
   ratfolk:
     'The Gutter Guild cuts Gutter Dust beneath Plague-Boss Squick, a diseased undercity kingpin whose plague-rats flood the streets while snipers and underbosses protect the clean end of the business. Sickly browns, sewer heraldry, stolen finery, contaminated packets, rusted firearms, and plague-doctor fragments communicate filth weaponized as distribution infrastructure.',
   cactusfolk:
-    'The Thornbloom Growers cultivate Sun-Grown product for Abuela Saguaro, a revered desert matriarch who reads unmistakably as an elderly grandmother — a stooped, hunched-forward posture, deeply wrinkled and weathered flesh with age-lined ridges, small wire-rimmed spectacles, and a faded floral rebozo/shawl draped over one shoulder — whose spinies guard the crop, needle gunners patrol its borders, and thornlords enforce family law. Desert green, sun-faded cartel finery, devotional charms, flowering contraband bundles, and weaponized spines create a proud agrarian dynasty with lethal hospitality.',
+    'The Thornbloom Growers cultivate Sun-Grown product for Abuela Saguaro, a revered desert matriarch whose spinies guard the crop, needle gunners patrol its borders, and thornlords enforce family law. Desert green, sun-faded cartel finery, devotional charms, flowering contraband bundles, and weaponized spines create a proud agrarian dynasty with lethal hospitality.',
   batfolk:
     'The Nightwing Coven air-freights Echo for Countess Vesper, an aristocratic smuggling queen whose divers move product, sonic shooters defend the routes, and rave dons control the nightlife market. Deep purple, black velvet, aviation harnesses, glowing inhalant vials, cathedral jewelry, and club-culture accents make them gothic nobility operating an airborne narcotics ring.',
   crabfolk:
@@ -53,18 +53,34 @@ const FLOOR_2_FAMILY_BY_SPRITE_NAME = new Map(
   ),
 );
 
+/**
+ * Boss/character-specific addenda appended to the family theme blurb when the
+ * archetype name matches. Keeps boss-only visual traits (e.g. grandmother cues
+ * for Abuela Saguaro) out of the family-wide blurb so they don't contaminate
+ * other archetypes in the same family (e.g. cactusfolk-spiny).
+ */
+const ARCHETYPE_THEME_ADDENDA: Readonly<Partial<Record<string, string>>> = {
+  'cactusfolk-boss':
+    'Abuela Saguaro reads unmistakably as an elderly grandmother: a stooped, hunched-forward posture, deeply wrinkled and weathered flesh with age-lined ridges, small wire-rimmed spectacles, and a faded floral rebozo draped over one shoulder.',
+};
+
 function canonicalSpriteName(name: string): string {
   return name.replace(/-v\d+$/, '');
 }
 
 export function resolveDesignLanguageAddenda(name: string, floor: number): DesignLanguageAddenda {
+  const canonical = canonicalSpriteName(name);
   const floorAddendum = FLOOR_DESIGN_LANGUAGE[floor];
-  const familyId =
-    floor === 2 ? FLOOR_2_FAMILY_BY_SPRITE_NAME.get(canonicalSpriteName(name)) : undefined;
-  const themeAddendum =
+  const familyId = floor === 2 ? FLOOR_2_FAMILY_BY_SPRITE_NAME.get(canonical) : undefined;
+  const familyTheme =
     familyId === undefined
       ? undefined
       : FAMILY_DESIGN_LANGUAGE[familyId as keyof typeof FAMILY_DESIGN_LANGUAGE];
+  const archetypeExtra = familyTheme !== undefined ? ARCHETYPE_THEME_ADDENDA[canonical] : undefined;
+  const themeAddendum =
+    familyTheme !== undefined && archetypeExtra !== undefined
+      ? `${familyTheme} ${archetypeExtra}`
+      : familyTheme;
 
   return {
     ...(floorAddendum === undefined ? {} : { floor: floorAddendum }),
