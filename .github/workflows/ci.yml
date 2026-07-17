@@ -75,7 +75,13 @@ jobs:
             # head must not keep shortcutting full CI — rollback must
             # restore full CI unconditionally.
             if [ "${{ vars.MERGE_TRAIN_ENABLED }}" = "true" ]; then
-              check_runs_json="$(gh api "/repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" 2>/dev/null || true)"
+              check_runs_stderr="$(mktemp)"
+              if ! check_runs_json="$(gh api "/repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" 2>"$check_runs_stderr")"; then
+                check_runs_error="$(cat "$check_runs_stderr")"
+                echo "Could not fetch check-runs for ${TARGET_SHA}: ${check_runs_error}" >&2
+                check_runs_json=''
+              fi
+              rm -f "$check_runs_stderr"
               if [ -n "$check_runs_json" ]; then
                 promotion_checks="$(
                   printf '%s' "$check_runs_json" |

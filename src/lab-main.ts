@@ -6,6 +6,7 @@ import { renderLaunchContextBanner } from './launch-context-banner.js';
 import type { LabCategory } from './labs/registry.js';
 
 const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
+  'combat-arena-lab': '/src/labs/combat-arena-lab/index.ts',
   'ai-runner': '/src/labs/ai-runner-lab/index.ts',
   'bt-viz': '/src/labs/bt-viz-lab/index.ts',
   'bt-exploration': '/src/labs/bt-exploration-lab/index.ts',
@@ -61,6 +62,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'abilities-lab': '/src/labs/abilities-lab/index.ts',
   'tile-blend-lab': '/src/labs/tile-blend-lab/index.ts',
   'sprite-tint-lab': '/src/labs/sprite-tint-lab/index.ts',
+  'mob-motion-lab': '/src/labs/mob-motion-lab/index.ts',
   'ui-probe-lab': '/src/labs/ui-probe-lab/index.ts',
   'set-piece-lab': '/src/labs/set-piece-lab/index.ts',
   'spawner-lab': '/src/labs/spawner-lab/index.ts',

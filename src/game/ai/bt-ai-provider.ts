@@ -963,10 +963,12 @@ export class BehaviorTreeAI implements AIInputProvider {
   private rangedDefensiveSpacing: boolean = false;
   private readonly ignoredLootUntilFrame = new Map<number, number>();
   private readonly ignoredEnemyUntilFrame = new Map<number, number>();
-  private engageTargetEid: number | null = null;
   private engageNoProgressFrames: number = 0;
-  private engageBestDistance: number = Number.POSITIVE_INFINITY;
-  private engageBestHp: number = Number.POSITIVE_INFINITY;
+  /** Per-eid best {distance, hp} seen while tracking that enemy during ENGAGE. */
+  private readonly engageBaselinesByEid = new Map<
+    number,
+    { bestDistance: number; bestHp: number }
+  >();
   private collectDwellActive: boolean = false;
   private collectDwellAnchorX: number = 0;
   private collectDwellAnchorY: number = 0;
@@ -2496,13 +2498,11 @@ export class BehaviorTreeAI implements AIInputProvider {
         // The enemy is pinned at the locked origin for the whole telegraph
         // (see enemyAISystem.ts's movement freeze), so only the player needs
         // to be projected forward to the instant the virtual shot spawns.
-        // The virtual projectile must start from the SAME point the real one
-        // will — fireEnemyProjectileFrom() spawns at origin + dir *
-        // MUZZLE_OFFSET, not the raw locked origin — otherwise this dodge
-        // math models a shot ~MUZZLE_OFFSET/projectileSpeed frames further
-        // away than it will actually be, drifting from the real threat.
-        const spawnX = originX + dirX * ENEMY_PROJECTILE.MUZZLE_OFFSET;
-        const spawnY = originY + dirY * ENEMY_PROJECTILE.MUZZLE_OFFSET;
+        // The virtual projectile starts at the exact locked ECS/visual pivot,
+        // matching fireEnemyProjectileFrom(). Keeping the raw origin here makes
+        // the AI's threat timing identical to the real projectile spawn.
+        const spawnX = originX;
+        const spawnY = originY;
         const projectedPlayerX = ctx.playerX + playerVx * remainingFrames;
         const projectedPlayerY = ctx.playerY + playerVy * remainingFrames;
         const relativeX = spawnX - projectedPlayerX;
@@ -2753,14 +2753,33 @@ export class BehaviorTreeAI implements AIInputProvider {
    * neither improves for {@link ENGAGE_GIVEUP_FRAMES}, the enemy is effectively
    * unreachable (e.g. behind a wall); blacklist it briefly so the behavior tree
    * retargets a reachable enemy instead of fixating forever.
+   *
+   * Baselines are tracked **per eid** ({@link engageBaselinesByEid}) while
+   * {@link engageNoProgressFrames} is a **shared** counter that is NOT reset
+   * when the tracked eid changes. This solves two classes of bug:
+   *
+   * 1. **Flicker deadlock** (weapon-sweep run 29453994290, bow-seed91/
+   *    throwing-knife-seed14/throwing-knife-seed18): two enemies at a near-tied
+   *    distance caused nearest-enemy selection to flip between them every tick,
+   *    resetting the counter to 0 every frame so giveup was never reached.
+   *    With a shared counter, any sustained no-progress stint counts toward
+   *    giveup regardless of which eid is nominated each tick.
+   *
+   * 2. **False-positive blacklist** (code review finding): a global scalar
+   *    baseline let a tight bar from enemy A (1 ft / 1 HP) carry over to
+   *    enemy B (30 ft / 100 HP), making it impossible for real progress on B
+   *    to be recognised until B beat A's unreachable minima. Per-eid baselines
+   *    ensure each target is measured against its own history only.
+   *
+   * First-sight handling: the first call for a freshly-seen eid records the
+   * current distance/HP as the baseline without affecting the counter (neither
+   * progress nor no-progress). Progress is measured from the second call onward.
    */
   private updateEngageWatchdog(world: GameWorld, playerX: number, playerY: number): void {
     const eid = this.decision.targetEid;
     if (this.decision.state !== AIState.ENGAGE || eid === null) {
-      this.engageTargetEid = null;
       this.engageNoProgressFrames = 0;
-      this.engageBestDistance = Number.POSITIVE_INFINITY;
-      this.engageBestHp = Number.POSITIVE_INFINITY;
+      this.engageBaselinesByEid.clear();
       return;
     }
 
@@ -2770,18 +2789,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     // the no-progress counter here prevents the watchdog from blacklisting the
     // entire wave (which would collapse Engage into a COLLECT wiggle deadlock).
     if (world.playerInSafeRoom) {
-      this.engageTargetEid = eid;
       this.engageNoProgressFrames = 0;
-      this.engageBestDistance = Number.POSITIVE_INFINITY;
-      this.engageBestHp = Number.POSITIVE_INFINITY;
+      this.engageBaselinesByEid.clear();
       return;
-    }
-
-    if (eid !== this.engageTargetEid) {
-      this.engageTargetEid = eid;
-      this.engageNoProgressFrames = 0;
-      this.engageBestDistance = Number.POSITIVE_INFINITY;
-      this.engageBestHp = Number.POSITIVE_INFINITY;
     }
 
     const ex = world.stores.position.x[eid];
@@ -2789,19 +2799,33 @@ export class BehaviorTreeAI implements AIInputProvider {
     const hp = world.stores.health.current[eid];
     if (typeof ex !== 'number' || typeof ey !== 'number' || typeof hp !== 'number' || hp <= 0) {
       // Target despawned or died; let normal retargeting take over next tick.
-      this.engageTargetEid = null;
+      // Remove this eid's baseline entry so the next target isn't held to this
+      // target's bar (e.g. a target killed at 1 ft would otherwise make a
+      // fresh 30 ft enemy look like no progress).
       this.engageNoProgressFrames = 0;
+      this.engageBaselinesByEid.delete(eid);
       return;
     }
 
     const dist = Math.hypot(ex - playerX, ey - playerY);
+
+    const baseline = this.engageBaselinesByEid.get(eid);
+    if (baseline === undefined) {
+      // First time seeing this eid: record its starting position/HP as the
+      // baseline. Don't affect the counter — there is no history to compare
+      // against yet, so neither a progress-reset nor a no-progress increment
+      // would be meaningful.
+      this.engageBaselinesByEid.set(eid, { bestDistance: dist, bestHp: hp });
+      return;
+    }
+
     let progressed = false;
-    if (dist < this.engageBestDistance - ENGAGE_PROGRESS_EPSILON_FT) {
-      this.engageBestDistance = dist;
+    if (dist < baseline.bestDistance - ENGAGE_PROGRESS_EPSILON_FT) {
+      baseline.bestDistance = dist;
       progressed = true;
     }
-    if (hp < this.engageBestHp) {
-      this.engageBestHp = hp;
+    if (hp < baseline.bestHp) {
+      baseline.bestHp = hp;
       progressed = true;
     }
 
@@ -2819,8 +2843,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.pathWaypoints = [];
       this.pathIndex = 0;
       this.pathGoalKey = null;
-      this.engageTargetEid = null;
       this.engageNoProgressFrames = 0;
+      this.engageBaselinesByEid.clear();
       if (this.config.debug) {
         logger.debug(`AI abandoning unreachable enemy ${String(eid)} (no progress)`);
       }
@@ -3155,7 +3179,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.pathWaypoints = [];
     this.pathIndex = 0;
     this.pathGoalKey = null;
-    this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
 
     return blacklisted;
@@ -3289,10 +3312,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.smoothMoveY = 0;
     this.ignoredEnemyUntilFrame.clear();
     this.targetReachableCache.clear();
-    this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
-    this.engageBestDistance = Number.POSITIVE_INFINITY;
-    this.engageBestHp = Number.POSITIVE_INFINITY;
+    this.engageBaselinesByEid.clear();
     this.collectDwellActive = false;
     this.collectDwellFrames = 0;
     this.exploreDwell.reset();
@@ -6235,18 +6256,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
 
-    if (progressSuppressed) {
-      // progressSuppressed is true when combat or navigation stalls have
-      // temporarily blocked quest-progress navigation (frameCount <
-      // progressGoalSuppressedUntilFrame). Still notify the committed hunt so
-      // the suppression-recovery branch in updateFloor2HuntProgress fires
-      // (advances patrol) even while suppressed.
-      if (this.floor2HuntFamilyId) {
-        this.updateFloor2HuntProgress(world, this.floor2HuntFamilyId);
-      }
-      return null;
-    }
-
     const huntFamilyId = this.selectFloor2HuntFamily(world);
     if (!huntFamilyId) {
       return null;
@@ -6263,23 +6272,36 @@ export class BehaviorTreeAI implements AIInputProvider {
           Number.POSITIVE_INFINITY,
           false,
         );
-      return boss
-        ? this.createFloor2BossProgressTarget(
-            world,
-            huntFamilyId,
-            boss,
-            playerX,
-            playerY,
-            `Entering the ${huntFamilyId} den to confront its boss`,
-          )
-        : null;
+      if (!boss) return null;
+      // When progress is suppressed, only navigate to a reachable boss.  An
+      // unreachable pre-encounter boss (eid: -1 EXPLORE target) would be
+      // immediately reselected as the same fixed goal the watchdog is pausing,
+      // causing the no-path clear/reselect loop to continue.
+      if (progressSuppressed && !this.isTargetReachable(world, playerX, playerY, boss)) {
+        return null;
+      }
+      return this.createFloor2BossProgressTarget(
+        world,
+        huntFamilyId,
+        boss,
+        playerX,
+        playerY,
+        `Entering the ${huntFamilyId} den to confront its boss`,
+      );
     }
 
     const quest = world.questLog.get(`floor2-den-${huntFamilyId}-unlock`);
     if (!quest || quest.status !== 'active') {
       return null;
     }
-    return this.findFloor2QuestProgressTarget(world, playerEid, playerX, playerY, quest);
+    return this.findFloor2QuestProgressTarget(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+      quest,
+      progressSuppressed,
+    );
   }
 
   private findFloor2QuestProgressTarget(
@@ -6288,6 +6310,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     activeQuest: QuestState,
+    progressSuppressed: boolean,
   ): ProgressTarget | null {
     const parsedFamilyId = this.parseFloor2FamilyId(activeQuest.questId);
     const familyId = world.floorExtendedState?.familyState?.presentFamilies.find(
@@ -6303,17 +6326,18 @@ export class BehaviorTreeAI implements AIInputProvider {
       objectiveViews.find((view) => !view.complete);
     if (!activeView) {
       const unlockedBoss = this.findNearestFloor2Boss(world, playerX, playerY, familyId);
-      if (unlockedBoss) {
-        return this.createFloor2BossProgressTarget(
-          world,
-          familyId,
-          unlockedBoss,
-          playerX,
-          playerY,
-          `Hunting the ${familyId} boss`,
-        );
+      if (!unlockedBoss) return null;
+      if (progressSuppressed && !this.isTargetReachable(world, playerX, playerY, unlockedBoss)) {
+        return null;
       }
-      return null;
+      return this.createFloor2BossProgressTarget(
+        world,
+        familyId,
+        unlockedBoss,
+        playerX,
+        playerY,
+        `Hunting the ${familyId} boss`,
+      );
     }
 
     const objective = activeView.def;
@@ -6360,7 +6384,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const territoryTarget = territoryZone
       ? this.resolveFloor2HuntPatrolTarget(world, familyId, territoryZone, playerX, playerY)
       : null;
-    if (territoryTarget && this.isFloor2HuntRecoveryWindow(world)) {
+    if (!progressSuppressed && territoryTarget && this.isFloor2HuntRecoveryWindow(world)) {
       return {
         ...territoryTarget,
         reason: `Patrolling the ${familyId} territory between engagements`,
@@ -6391,7 +6415,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             'focused',
           );
         }
-        return territoryClearTarget ?? territoryTarget;
+        return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
       case 'collect':
         if (objective.itemId) {
           const itemTarget = this.findNearestQuestItem(world, objective.itemId, playerX, playerY);
@@ -6417,20 +6441,24 @@ export class BehaviorTreeAI implements AIInputProvider {
             'focused',
           );
         }
-        return territoryClearTarget ?? territoryTarget;
+        return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
       case 'goal':
       case 'talk':
       case 'haveEquippable':
       case 'equip':
         if (bossTarget) {
-          return this.createFloor2BossProgressTarget(
-            world,
-            familyId,
-            bossTarget,
-            playerX,
-            playerY,
-            `Closing on the ${familyId} boss den`,
-          );
+          if (progressSuppressed && !this.isTargetReachable(world, playerX, playerY, bossTarget)) {
+            // Fall through to familyEnemy / territoryClearTarget / territoryTarget.
+          } else {
+            return this.createFloor2BossProgressTarget(
+              world,
+              familyId,
+              bossTarget,
+              playerX,
+              playerY,
+              `Closing on the ${familyId} boss den`,
+            );
+          }
         }
         if (familyEnemy) {
           return this.createProgressTarget(
@@ -6443,7 +6471,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             'focused',
           );
         }
-        return territoryClearTarget ?? territoryTarget;
+        return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
       default:
         return null;
     }
@@ -8933,10 +8961,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.ignoredEnemyUntilFrame.clear();
     this.targetReachableCache.clear();
     this.npcInteractionAnchorCache.clear();
-    this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
-    this.engageBestDistance = Number.POSITIVE_INFINITY;
-    this.engageBestHp = Number.POSITIVE_INFINITY;
+    this.engageBaselinesByEid.clear();
     this.rangedDefensiveSpacing = false;
     this.collectDwellActive = false;
     this.collectDwellAnchorX = 0;

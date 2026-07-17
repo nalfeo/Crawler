@@ -802,33 +802,33 @@
       "briefId": "beetlefolk-boss",
       "spriteName": "beetlefolk-boss-var-0",
       "assetPath": "generated/beetlefolk-boss-var-0.png",
-      "approvedAt": "2026-07-08T02:46:19.687Z",
-      "sourceRun": "generated/runs/beetlefolk-boss/2026-07-08T02-32-57-379ab14a",
+      "approvedAt": "2026-07-17T15:22:01.061Z",
+      "sourceRun": "generated/runs/beetlefolk-boss/2026-07-17T01-21-11-572cdd85-salvaged",
       "variantIndex": 0,
       "anchor": {
-        "x": 32,
-        "y": 31,
+        "x": 65,
+        "y": 52,
         "source": "derived"
       },
       "anchors": {
         "hold": {
-          "x": 32,
-          "y": 31,
+          "x": 65,
+          "y": 52,
           "source": "derived"
         },
         "centerOfGravity": {
-          "x": 32,
-          "y": 31,
+          "x": 65,
+          "y": 52,
           "source": "derived"
         }
       },
       "sensorScore": "7/7",
       "judgeScore": "5",
       "type": "enemy",
-      "contentHash": "e05d1df2db53e4a5ec2be2e494d3a278ac8913b51a3e2497e09e3c511bf7abfc",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-boss\\2026-07-08T02-32-57-379ab14a\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-boss\\2026-07-08T02-32-57-379ab14a\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\beetlefolk-boss\\2026-07-08T02-32-57-379ab14a\\postprocess.pipeline.effective.yaml",
+      "contentHash": "16bd5992a6fc62a8d3cd2ac0d803b72d46dc673dda4ba6147101f7d90d7dfd93",
+      "postprocessOverrideProfilePath": "generated/runs/beetlefolk-boss/2026-07-17T01-21-11-572cdd85-salvaged/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "generated/runs/beetlefolk-boss/2026-07-17T01-21-11-572cdd85-salvaged/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "generated/runs/beetlefolk-boss/2026-07-17T01-21-11-572cdd85-salvaged/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },

@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "player-floor-transition",
+  "task_title": "Fix Floor 1 to Floor 2 player transition",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 5,
+      "plan_divergence": "minor",
+      "notes": "Red-team retained the fresh-world/value-snapshot design but made the contract explicit. Rejected in-place world mutation (stale ECS/scenario leakage), localStorage/global singleton (second nondeterministic source of truth), ad hoc URL payload state (serialization/identity/seed loss), and synthetic-only direct-start testing (would not prove production transport). Adopted a shared value-only carry-over module, distinct direct-start vs carry-over player entry policy, capture after Floor 1 finalization, restore before first Floor 2 sync, correct settlement-then-Broker semantics, and browser transport plus chained deterministic coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 3,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Found absolute frame timestamps and split SkillState objects; both fixed with rebasing/shared references. Suggested Broker-chain completion test was adjudicated out of scope because the hard gate is starter-objective exposure."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Found host-composed options would be dropped; resolved with explicit recomposeFloorTransitionOptions wiring. Claude Opus 4.8 final adjudication inspected the fix and reported no blockers at the two-round cap."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 6,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Adjudicated valid: cooldown/timed-modifier frame rebasing, shared SkillState identity, and queued Phaser restart-data lifecycle. Broker-chain completion and duplicate-stair tests were outside the approved hard gate; overlapping alias finding deduplicated."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview", "claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Direct source evidence accepted exact holder-EID parsing/remapping for v2 skill/ability modifiers and host option recomposition. Claude Opus 4.8 adjudicated the final staged diff clean with no high-confidence blockers."
+        }
+      ]
+    }
+  }
+}

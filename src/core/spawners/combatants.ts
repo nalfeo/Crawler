@@ -132,8 +132,8 @@ export function spawnBehaviorEnemy(
     bloodColor?: number;
     /**
      * Per-mob override (ms) for the projectile telegraph delay; omit to use
-     * the configured/world default. An explicit `0` forces legacy (no
-     * telegraph) behavior for this one mob. See TELEGRAPH_MS_UNSET.
+     * the configured/world default. An explicit `0` forces immediate fire
+     * with no telegraph for this one mob. See TELEGRAPH_MS_UNSET.
      */
     telegraphMs?: number;
   },

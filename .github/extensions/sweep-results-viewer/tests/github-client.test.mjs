@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createLruCache, parseGitHubRepository, sanitizeErrorText } from '../lib/github-client.mjs';
+import {
+  _createListClient,
+  createLruCache,
+  parseGitHubRepository,
+  sanitizeErrorText,
+} from '../lib/github-client.mjs';
 import { tokensMatch } from '../lib/http-security.mjs';
 
 test('parses supported GitHub origin URL forms', () => {
@@ -59,4 +64,116 @@ test('LRU cache set overwrites existing entry without growing over max', () => {
   cache.set('a', 99); // update, not grow
   assert.equal(cache.size, 2);
   assert.equal(cache.get('a'), 99);
+});
+
+test('listWeaponSweepRuns tags all returned runs with workflowType weapon-sweep', async () => {
+  const raw = {
+    id: 1,
+    status: 'completed',
+    conclusion: 'success',
+    head_branch: 'main',
+    head_sha: 'abc',
+    created_at: '2026-07-17T00:00:00Z',
+    updated_at: '2026-07-17T01:00:00Z',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/1',
+    event: 'workflow_dispatch',
+    run_attempt: 1,
+  };
+  const mockRunGhJson = async (args) => {
+    assert.ok(args.some((a) => a.includes('weapon-sweep.yml/runs')));
+    return { workflow_runs: [raw] };
+  };
+  const { listWeaponSweepRuns } = _createListClient(mockRunGhJson);
+  const runs = await listWeaponSweepRuns('nalfeo/Crawler', new AbortController().signal);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].workflowType, 'weapon-sweep');
+  assert.equal(runs[0].id, 1);
+});
+
+test('listAiSweepRuns tags all returned runs with workflowType ai-sweep', async () => {
+  const raw = {
+    id: 2,
+    status: 'in_progress',
+    conclusion: null,
+    head_branch: 'main',
+    head_sha: 'def',
+    created_at: '2026-07-17T00:00:00Z',
+    updated_at: '2026-07-17T01:00:00Z',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/2',
+    event: 'workflow_dispatch',
+    run_attempt: 1,
+  };
+  const mockRunGhJson = async (args) => {
+    assert.ok(args.some((a) => a.includes('ai-sweep.yml/runs')));
+    return { workflow_runs: [raw] };
+  };
+  const { listAiSweepRuns } = _createListClient(mockRunGhJson);
+  const runs = await listAiSweepRuns('nalfeo/Crawler', new AbortController().signal);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].workflowType, 'ai-sweep');
+  assert.equal(runs[0].id, 2);
+});
+
+test('listAllSweepRuns combines weapon and AI runs sorted newest first', async () => {
+  const weaponRaw = {
+    id: 10,
+    status: 'completed',
+    conclusion: 'success',
+    head_branch: 'main',
+    head_sha: 'aaa',
+    created_at: '2026-07-16T00:00:00Z',
+    updated_at: '2026-07-16T01:00:00Z',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/10',
+    event: 'workflow_dispatch',
+    run_attempt: 1,
+  };
+  const aiRaw = {
+    id: 20,
+    status: 'completed',
+    conclusion: 'success',
+    head_branch: 'main',
+    head_sha: 'bbb',
+    created_at: '2026-07-17T00:00:00Z',
+    updated_at: '2026-07-17T01:00:00Z',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/20',
+    event: 'workflow_dispatch',
+    run_attempt: 1,
+  };
+  const mockRunGhJson = async (args) => {
+    if (args.some((a) => a.includes('weapon-sweep.yml/runs'))) return { workflow_runs: [weaponRaw] };
+    if (args.some((a) => a.includes('ai-sweep.yml/runs'))) return { workflow_runs: [aiRaw] };
+    throw new Error('Unexpected endpoint');
+  };
+  const { listAllSweepRuns } = _createListClient(mockRunGhJson);
+  const runs = await listAllSweepRuns('nalfeo/Crawler', new AbortController().signal);
+  assert.equal(runs.length, 2);
+  // Newest first: ai run (2026-07-17) before weapon run (2026-07-16)
+  assert.equal(runs[0].id, 20);
+  assert.equal(runs[0].workflowType, 'ai-sweep');
+  assert.equal(runs[1].id, 10);
+  assert.equal(runs[1].workflowType, 'weapon-sweep');
+});
+
+test('listAllSweepRuns propagates weapon-sweep endpoint rejection', async () => {
+  const mockRunGhJson = async (args) => {
+    if (args.some((a) => a.includes('weapon-sweep.yml/runs'))) throw new Error('network error');
+    return { workflow_runs: [] };
+  };
+  const { listAllSweepRuns } = _createListClient(mockRunGhJson);
+  await assert.rejects(
+    listAllSweepRuns('nalfeo/Crawler', new AbortController().signal),
+    /network error/,
+  );
+});
+
+test('listAllSweepRuns propagates ai-sweep endpoint rejection', async () => {
+  const mockRunGhJson = async (args) => {
+    if (args.some((a) => a.includes('ai-sweep.yml/runs'))) throw new Error('ai endpoint error');
+    return { workflow_runs: [] };
+  };
+  const { listAllSweepRuns } = _createListClient(mockRunGhJson);
+  await assert.rejects(
+    listAllSweepRuns('nalfeo/Crawler', new AbortController().signal),
+    /ai endpoint error/,
+  );
 });
