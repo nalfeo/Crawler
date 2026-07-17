@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0f99c4aa0f02212e870be6f6f1b01f7d80b0d75d",
+    "commitDate": "2026-07-17T08:20:11Z",
+    "commitSubject": "feat: add generic weapon anchors to mob sprite metadata, editor, and runtime resolver (#1248)",
+    "capturedAt": "2026-07-17T09:41:26.431Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29566940918",
+    "winRate": 0.95,
+    "totalWins": 570,
+    "totalRuns": 600,
+    "path": "by-sha/0f99c4aa0f02212e870be6f6f1b01f7d80b0d75d.json"
+  },
+  {
     "commit": "1174363f4fd60920cfeee3fdee55c55892a7f09d",
     "commitDate": "2026-07-17T08:20:02Z",
     "commitSubject": "fix(ai): persist ENGAGE progress baseline across legacy BT target churn (#1244)",
