@@ -179,7 +179,7 @@ function startServer(routes) {
         if (method === 'POST' && pathOnly === '/graphql') {
           const doc = String(parsed?.query ?? '').trimStart();
           if (doc.startsWith('mutation')) {
-            mutatingCalls.push({ method: 'GRAPHQL_MUTATION', url: req.url });
+            mutatingCalls.push({ method: 'GRAPHQL_MUTATION', url: req.url, body: parsed });
           }
         }
         const exactKey = `${method} ${pathOnly}`;
@@ -3418,6 +3418,102 @@ test('reconcile resolves only ancestor lineage markers from compare status', asy
   assert.match(stdout, new RegExp(`would-resolve thread=${threadToResolve}`));
   assert.doesNotMatch(stdout, new RegExp(`would-resolve thread=${threadToKeep}`));
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('live reconcile resolves only a trusted backtick-wrapped current-head marker', async (t) => {
+  const trustedThreadId = 'thread-trusted-backtick';
+  const untrustedThreadId = 'thread-untrusted-backtick';
+  const malformedThreadId = 'thread-malformed-backtick';
+  const headPrefix = HEAD_SHA.slice(0, 7);
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      if (
+        String(parsed?.query || '')
+          .trimStart()
+          .startsWith('mutation')
+      ) {
+        return {
+          body: {
+            data: {
+              resolveReviewThread: { thread: { isResolved: true } },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: trustedThreadId,
+            isResolved: false,
+            comments: {
+              nodes: [
+                {
+                  body: `✅ Addressed in \`${headPrefix}\`: fixed`,
+                  authorAssociation: 'OWNER',
+                  author: { login: 'dev' },
+                },
+              ],
+            },
+          },
+          {
+            id: untrustedThreadId,
+            isResolved: false,
+            comments: {
+              nodes: [
+                {
+                  body: `✅ Addressed in \`${headPrefix}\`: untrusted`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'drive-by' },
+                },
+              ],
+            },
+          },
+          {
+            id: malformedThreadId,
+            isResolved: false,
+            comments: {
+              nodes: [
+                {
+                  body: `✅ Addressed in \`${headPrefix}: malformed`,
+                  authorAssociation: 'MEMBER',
+                  author: { login: 'reviewer' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  const resolutionMutations = mutatingCalls.filter(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread'),
+  );
+  assert.equal(resolutionMutations.length, 1);
+  assert.equal(resolutionMutations[0].body.variables.threadId, trustedThreadId);
+  assert.match(stdout, new RegExp(`resolved thread=${trustedThreadId}`));
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${untrustedThreadId}`));
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${malformedThreadId}`));
 });
 
 test('reconcile does not escalate router action-required run when it is the only obstruction', async (t) => {
