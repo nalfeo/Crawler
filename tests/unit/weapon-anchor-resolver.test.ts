@@ -248,7 +248,11 @@ describe('computeNormalizedWeaponAnchor', () => {
       weaponAnchor: { x: 40, y: 28 },
     });
     const withDefault = computeNormalizedWeaponAnchor(entry);
-    const withExplicit = computeNormalizedWeaponAnchor(entry, DEFAULT_GENERATED_FRAME_SIZE_PX, DEFAULT_GENERATED_FRAME_SIZE_PX);
+    const withExplicit = computeNormalizedWeaponAnchor(
+      entry,
+      DEFAULT_GENERATED_FRAME_SIZE_PX,
+      DEFAULT_GENERATED_FRAME_SIZE_PX,
+    );
     expect(withDefault).toEqual(withExplicit);
   });
 });

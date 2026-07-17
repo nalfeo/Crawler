@@ -31,7 +31,11 @@ import type { DiversitySummary } from './diversity.js';
 import type { ExpansionSkipReason } from './expand-variations.js';
 import type { JudgeScorecard } from './judge.js';
 import type { PostprocessOptions } from './postprocess.js';
-import type { FacingOverride, ManualAnchorOverride, ManualWeaponAnchorOverride } from './postprocess-overrides.js';
+import type {
+  FacingOverride,
+  ManualAnchorOverride,
+  ManualWeaponAnchorOverride,
+} from './postprocess-overrides.js';
 import type { Scorecard } from './score-candidate.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
 import type { SpriteType } from '../../src/shared/sprite-types.js';

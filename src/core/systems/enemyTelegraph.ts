@@ -163,8 +163,7 @@ export function startEnemyProjectileTelegraph(
     const needsMirror = wa.artFacing !== (facingRight ? 'right' : 'left');
     enemyBehavior.telegraphOriginX[eid] =
       baseX + (needsMirror ? -wa.relX : wa.relX) * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
-    enemyBehavior.telegraphOriginY[eid] =
-      baseY + wa.relY * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
+    enemyBehavior.telegraphOriginY[eid] = baseY + wa.relY * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
   } else {
     enemyBehavior.telegraphOriginX[eid] = baseX;
     enemyBehavior.telegraphOriginY[eid] = baseY;
