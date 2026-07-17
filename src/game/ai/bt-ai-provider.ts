@@ -965,7 +965,10 @@ export class BehaviorTreeAI implements AIInputProvider {
   private readonly ignoredEnemyUntilFrame = new Map<number, number>();
   private engageNoProgressFrames: number = 0;
   /** Per-eid best {distance, hp} seen while tracking that enemy during ENGAGE. */
-  private readonly engageBaselinesByEid = new Map<number, { bestDistance: number; bestHp: number }>();
+  private readonly engageBaselinesByEid = new Map<
+    number,
+    { bestDistance: number; bestHp: number }
+  >();
   private collectDwellActive: boolean = false;
   private collectDwellAnchorX: number = 0;
   private collectDwellAnchorY: number = 0;
