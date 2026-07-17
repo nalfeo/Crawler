@@ -41,6 +41,12 @@ const anchorsSchema = z
   .object({
     hold: anchorSchema.nullable(),
     centerOfGravity: anchorSchema.nullable(),
+    /**
+     * Optional weapon-attachment anchor. Present only for mob sprites where the
+     * author has explicitly set a muzzle / weapon-grip point in the editor.
+     * Absent entries fall back to the entity's ECS/visual pivot at runtime.
+     */
+    weapon: anchorSchema.nullable().optional(),
   })
   .strict();
 
@@ -116,6 +122,14 @@ export interface GeneratedSpriteEntry {
   readonly assetPath: string;
   readonly anchor: { readonly x: number; readonly y: number };
   readonly centerOfGravity: { readonly x: number; readonly y: number };
+  /**
+   * Optional weapon-attachment anchor in sprite-local pixel coordinates.
+   * Present only when the editor has explicitly set a weapon anchor for this
+   * variant. When `undefined` the runtime resolver falls back to the entity's
+   * ECS/visual pivot (world-space position). Use {@link resolveWeaponAnchorWorldPos}
+   * to get the final world-space coordinate.
+   */
+  readonly weaponAnchor?: { readonly x: number; readonly y: number };
   /** True when the original manifest entry's anchor was null. */
   readonly anchorIsDefault: boolean;
   readonly approvedAt: string;
@@ -226,12 +240,16 @@ function toRegistryEntry(entry: ManifestEntry, manifestKey: string): GeneratedSp
   const center = entry.anchors?.centerOfGravity ?? hold;
   const anchor = hold ? { x: hold.x, y: hold.y } : { ...DEFAULT_GENERATED_ANCHOR };
   const centerOfGravity = center ? { x: center.x, y: center.y } : { ...anchor };
+  const weaponAnchorRaw = entry.anchors?.weapon;
+  const weaponAnchor =
+    weaponAnchorRaw != null ? { x: weaponAnchorRaw.x, y: weaponAnchorRaw.y } : undefined;
   return {
     briefId: entry.briefId,
     textureKey: manifestKey,
     assetPath: entry.assetPath,
     anchor,
     centerOfGravity,
+    ...(weaponAnchor !== undefined ? { weaponAnchor } : {}),
     anchorIsDefault: hold === null,
     approvedAt: entry.approvedAt,
     sourceRun: entry.sourceRun,
@@ -266,4 +284,56 @@ export function pickGeneratedVariant(
     return variants[0] ?? null;
   }
   return new SeededRandom(seed).pick(variants);
+}
+
+/**
+ * Resolve the world-space weapon-origin for an entity.
+ *
+ * When the registry entry has an explicit `weaponAnchor`, this converts the
+ * pixel coordinate to world-space using the sprite's known world dimensions and
+ * frame pixel dimensions. The weapon anchor pixel offset is computed relative to
+ * the sprite's `centerOfGravity` (= the entity's ECS position in world-space),
+ * then converted to feet and added to the entity position.
+ *
+ * **Facing:** Generated mob art defaults to right-facing (`facingDirection:
+ * 'right'`). When `facingRight` is false and `entry.facingDirection` is
+ * `'right'`, the anchor's X coordinate is mirrored: `framePixelWidth - 1 - wpX`.
+ * This matches the render layer's horizontal-flip behavior for left-moving enemies.
+ *
+ * **Fallback:** When `entry` is absent or has no `weaponAnchor`, returns the
+ * entity's ECS position unchanged — identical to pre-feature behavior.
+ *
+ * @param entry           Registry entry for the entity's current sprite variant.
+ * @param entityX         Entity world position X (feet).
+ * @param entityY         Entity world position Y (feet).
+ * @param spriteWidthFt   Entity sprite width in world feet (from `sprite.width`).
+ * @param spriteHeightFt  Entity sprite height in world feet (from `sprite.height`).
+ * @param framePixelWidth Width of the sprite frame in pixels (e.g. 64 for enemy sprites).
+ * @param framePixelHeight Height of the sprite frame in pixels.
+ * @param facingRight     True when the entity is facing / moving right.
+ */
+export function resolveWeaponAnchorWorldPos(
+  entry: GeneratedSpriteEntry | null | undefined,
+  entityX: number,
+  entityY: number,
+  spriteWidthFt: number,
+  spriteHeightFt: number,
+  framePixelWidth: number,
+  framePixelHeight: number,
+  facingRight: boolean,
+): { readonly x: number; readonly y: number } {
+  if (!entry?.weaponAnchor) {
+    return { x: entityX, y: entityY };
+  }
+  const cogX = entry.centerOfGravity.x;
+  const cogY = entry.centerOfGravity.y;
+  let wpX = entry.weaponAnchor.x;
+  const wpY = entry.weaponAnchor.y;
+  // Mirror X when the canonical art faces right but the entity currently faces left.
+  if (entry.facingDirection === 'right' && !facingRight) {
+    wpX = framePixelWidth - 1 - wpX;
+  }
+  const offsetX = ((wpX - cogX) / framePixelWidth) * spriteWidthFt;
+  const offsetY = ((wpY - cogY) / framePixelHeight) * spriteHeightFt;
+  return { x: entityX + offsetX, y: entityY + offsetY };
 }

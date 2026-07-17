@@ -149,8 +149,19 @@ export function startEnemyProjectileTelegraph(
   enemyBehavior.telegraphDelayMs[eid] = getEffectiveTelegraphMs(world, eid);
   enemyBehavior.telegraphDirX[eid] = dirX;
   enemyBehavior.telegraphDirY[eid] = dirY;
-  enemyBehavior.telegraphOriginX[eid] = position.x[eid] ?? 0;
-  enemyBehavior.telegraphOriginY[eid] = position.y[eid] ?? 0;
+  // Apply weapon anchor offset when available (art faces right; negate X for
+  // left-facing entities whose velocity is negative).
+  const weaponAnchor = world.entityWeaponAnchors.get(eid);
+  const baseX = position.x[eid] ?? 0;
+  const baseY = position.y[eid] ?? 0;
+  if (weaponAnchor) {
+    const facingRight = (world.stores.velocity.x[eid] ?? 0) >= 0;
+    enemyBehavior.telegraphOriginX[eid] = baseX + (facingRight ? weaponAnchor.x : -weaponAnchor.x);
+    enemyBehavior.telegraphOriginY[eid] = baseY + weaponAnchor.y;
+  } else {
+    enemyBehavior.telegraphOriginX[eid] = baseX;
+    enemyBehavior.telegraphOriginY[eid] = baseY;
+  }
 }
 
 /**

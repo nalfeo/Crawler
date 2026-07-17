@@ -51,14 +51,18 @@ import {
   POSTPROCESS_PROFILE_KEY,
   readFacingOverride,
   readManualAnchor,
+  readManualWeaponAnchor,
   removeFacingOverride,
   readPostprocessProfile,
   removeManualAnchor,
+  removeManualWeaponAnchor,
   removePostprocessProfile,
   type FacingOverride,
   type ManualAnchorOverride,
+  type ManualWeaponAnchorOverride,
   writeFacingOverride,
   writeEffectivePipelineSnapshot,
+  writeManualWeaponAnchor,
   writePostprocessProfile,
 } from './postprocess-overrides.js';
 import type { VisionProvider } from './provider/vision-types.js';
@@ -182,6 +186,12 @@ export interface RepostprocessArgs {
    */
   readonly allowGridDrift?: boolean;
   readonly manualAnchor?: ManualAnchorOverride | null;
+  /**
+   * Optional weapon-anchor override to thread through the pipeline and write as
+   * per-variant `NN.anchor.weapon.json` sidecars. Pass `null` to clear a
+   * previously authored weapon anchor; omit to preserve the persisted state.
+   */
+  readonly manualWeaponAnchor?: ManualWeaponAnchorOverride | null;
   readonly facing?: {
     variantIndex: number;
     direction: 'left' | 'right';
@@ -228,6 +238,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
   const nowIso = new Date().toISOString();
   const persistedProfile = await readPostprocessProfile(store, `${briefId}/${runId}`);
   const persistedManualAnchor = await readManualAnchor(store, `${briefId}/${runId}`);
+  const persistedManualWeaponAnchor = await readManualWeaponAnchor(store, `${briefId}/${runId}`);
   const persistedFacingOverride = await readFacingOverride(store, `${briefId}/${runId}`);
   const optionsMode =
     args.optionsMode ??
@@ -244,6 +255,12 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       : args.manualAnchor !== undefined
         ? args.manualAnchor
         : (persistedManualAnchor ?? null);
+  const effectiveManualWeaponAnchor: ManualWeaponAnchorOverride | null =
+    optionsMode === 'reset'
+      ? null
+      : args.manualWeaponAnchor !== undefined
+        ? args.manualWeaponAnchor
+        : (persistedManualWeaponAnchor ?? null);
   const effectiveFacingOverride: FacingOverride | null =
     optionsMode === 'reset'
       ? null
@@ -357,6 +374,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       palette,
       options: effectiveOptions,
       ...(effectiveManualAnchor ? { manualAnchor: effectiveManualAnchor } : {}),
+      ...(effectiveManualWeaponAnchor ? { manualWeaponAnchor: effectiveManualWeaponAnchor } : {}),
       traceRefs: {
         overrideProfilePath: store.resolve(storeKey(POSTPROCESS_PROFILE_KEY)),
         effectivePipelineSnapshotPath: store.resolve(storeKey(EFFECTIVE_PIPELINE_JSON_KEY)),
@@ -368,10 +386,21 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
 
   if (optionsMode === 'reset') {
     await removeManualAnchor(store, `${briefId}/${runId}`);
+    await removeManualWeaponAnchor(store, `${briefId}/${runId}`);
     await removeFacingOverride(store, `${briefId}/${runId}`);
     await removePostprocessProfile(store, `${briefId}/${runId}`);
   } else {
     await writePostprocessProfile(store, `${briefId}/${runId}`, effectiveOptions, nowIso);
+    if (effectiveManualWeaponAnchor) {
+      await writeManualWeaponAnchor(
+        store,
+        `${briefId}/${runId}`,
+        effectiveManualWeaponAnchor,
+        nowIso,
+      );
+    } else {
+      await removeManualWeaponAnchor(store, `${briefId}/${runId}`);
+    }
     if (effectiveFacingOverride) {
       await writeFacingOverride(store, `${briefId}/${runId}`, effectiveFacingOverride, nowIso);
     } else {

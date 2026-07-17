@@ -327,6 +327,19 @@ export interface GameWorld {
    * buckets alone.
    */
   enemyAppearanceKeys: Map<number, string>;
+  /**
+   * World-space weapon anchor offsets (feet, relative to entity ECS pivot) for
+   * entities whose generated sprite has an explicit weapon anchor authored in the
+   * sprite editor. Written by PhaserBridge when a generated enemy sprite is
+   * resolved; deleted when the entity's visual is destroyed. Game-layer systems
+   * (enemyAISystem, enemyTelegraph) read this to determine projectile / melee
+   * attachment origins without importing engine code.
+   *
+   * The offset is stored in canonical right-facing form (matching the art direction
+   * of generated sprites). Callers must negate the x component when the entity is
+   * facing left (velocity.x < 0).
+   */
+  entityWeaponAnchors: Map<number, { readonly x: number; readonly y: number }>;
   /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */
   questLog: Map<string, QuestState>;
   /** Quest progression events queued this frame. Drained by questSystem. */
@@ -498,6 +511,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     npcs: new Map(),
     setPieceProps: [],
     enemyAppearanceKeys: new Map(),
+    entityWeaponAnchors: new Map(),
     questLog: new Map(),
     questEvents: [],
     featureUnlocks: {

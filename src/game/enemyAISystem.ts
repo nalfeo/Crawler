@@ -1318,14 +1318,17 @@ function tryFireEnemyProjectile(
 
   const delayMs = getEffectiveTelegraphMs(world, eid);
   if (delayMs <= 0) {
-    fireEnemyProjectileFrom(
-      world,
-      eid,
-      position.x[eid]!,
-      position.y[eid]!,
-      direction.x,
-      direction.y,
-    );
+    // Apply weapon anchor offset for immediate fires (no telegraph, so no
+    // locked origin). Art faces right; negate X when entity faces left.
+    const weaponAnchor = world.entityWeaponAnchors.get(eid);
+    let originX = position.x[eid]!;
+    let originY = position.y[eid]!;
+    if (weaponAnchor) {
+      const facingRight = (world.stores.velocity.x[eid] ?? 0) >= 0;
+      originX += facingRight ? weaponAnchor.x : -weaponAnchor.x;
+      originY += weaponAnchor.y;
+    }
+    fireEnemyProjectileFrom(world, eid, originX, originY, direction.x, direction.y);
     return;
   }
 

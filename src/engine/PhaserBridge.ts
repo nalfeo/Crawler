@@ -15,6 +15,7 @@ import { MeleeSpriteId } from '../shared/constants.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import {
   pickGeneratedVariant,
+  resolveWeaponAnchorWorldPos,
   type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
 } from '../shared/generated-assets.js';
@@ -909,6 +910,49 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = preferred.scale;
           }
+          // Populate weapon anchor on the world so game-layer systems can find
+          // the muzzle / melee-attach origin without importing engine code.
+          // We do this every frame so it self-heals if the registry loads late.
+          const waBriefId = generatedBriefIdForEnemy(visualType, appearanceKey);
+          if (waBriefId !== undefined && generatedRegistry !== null) {
+            const waEntry = pickGeneratedVariant(
+              generatedRegistry,
+              waBriefId,
+              world.stores.sprite.variantRoll[eid] ?? eid,
+            );
+            if (waEntry?.weaponAnchor) {
+              // Sprite frame dimensions from the loaded texture.
+              const texSrc = scene.textures.exists(waEntry.textureKey)
+                ? (scene.textures.get(waEntry.textureKey).getSourceImage() as
+                    | { width?: number; height?: number }
+                    | undefined)
+                : undefined;
+              const frameW =
+                typeof texSrc?.width === 'number' && texSrc.width > 0 ? texSrc.width : 64;
+              const frameH =
+                typeof texSrc?.height === 'number' && texSrc.height > 0 ? texSrc.height : 64;
+              // Sprite world dimensions in feet for offset computation.
+              const spriteWidthFt = world.stores.sprite.width[eid] ?? 1;
+              const spriteHeightFt = world.stores.sprite.height[eid] ?? 1;
+              // Compute offset by passing entity position (0,0) — the return value
+              // is then purely the offset. Store in canonical right-facing form;
+              // callers negate X when the entity faces left.
+              const resolved = resolveWeaponAnchorWorldPos(
+                waEntry,
+                0,
+                0,
+                spriteWidthFt,
+                spriteHeightFt,
+                frameW,
+                frameH,
+                true, // canonical right-facing; callers handle mirroring
+              );
+              // resolved is { x: offsetX, y: offsetY } (entity pos was 0,0)
+              world.entityWeaponAnchors.set(eid, { x: resolved.x, y: resolved.y });
+            } else {
+              world.entityWeaponAnchors.delete(eid);
+            }
+          }
         }
         if (entityType === 'npc') {
           // NPC visuals may be created before their pinned generated texture has
@@ -1617,6 +1661,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         }
         visual.obj.destroy();
         visuals.delete(eid);
+        // Remove weapon anchor so dead/despawned entities don't leave stale
+        // offsets that could be picked up if the eid is reused later.
+        world.entityWeaponAnchors.delete(eid);
       }
 
       for (const [eid, marker] of deathMarkers) {
