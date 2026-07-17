@@ -429,6 +429,12 @@ function gitCommitExists(repoRoot: string, commit: string): boolean {
   }
 }
 
+/**
+ * Creates the production GitReader that shells out to real git commands.
+ * Used by `loadAndValidateEpic` and the CLI. In unit tests, inject a custom
+ * implementation (e.g. a working-tree reader) via `ValidationOptions.gitReader`
+ * to avoid depending on full git history being present in the checkout.
+ */
 export function createDefaultGitReader(repoRoot: string): GitReader {
   return {
     showContent(commit: string, filePath: string): string | null {
