@@ -26,6 +26,7 @@ import {
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
   WAITING_LABEL,
+  WAITING_TRANSITION_LABEL,
 } from './state.mjs';
 
 test('requires a submitted substantive Copilot code review', () => {
@@ -221,6 +222,7 @@ test('waiting state is non-owning and semantic equality ignores timestamp and tr
   });
 
   assert.equal(WAITING_LABEL, 'ci-recovery-waiting');
+  assert.equal(WAITING_TRANSITION_LABEL, 'ci-recovery-waiting-transition');
   assert.equal(isRecoveryStateSemanticallyEqual(waiting, directRecheck), true);
   assert.throws(
     () => makeState({ ...waiting, owner: 'automation' }),
@@ -250,6 +252,67 @@ test('empty idle state ignores non-behavioral trigger churn but preserves behavi
     true,
   );
   assert.equal(isRecoveryStateSemanticallyEqual(idle, { ...idle, attempt: 2 }), false);
+});
+
+test('owning state timestamp churn remains semantically unchanged outside explicit lease persistence', () => {
+  const expired = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: 'lease-1',
+    trigger: 'lease-acquire',
+    blockers: [],
+    updatedAt: '2026-07-11T12:00:00.000Z',
+  });
+  const reacquired = makeState({
+    ...expired,
+    updatedAt: '2026-07-11T13:00:00.000Z',
+  });
+
+  assert.equal(isRecoveryStateSemanticallyEqual(expired, reacquired), true);
+});
+
+test('merge-train-cumulative-conflict trigger is preserved in semantic equality (regression: thread 2)', () => {
+  const converged = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint: blockerFingerprint([]),
+    owner: 'none',
+    status: 'idle',
+    trigger: 'converged',
+    blockers: [],
+    updatedAt: '2026-07-11T12:00:00.000Z',
+  });
+  const cumulativeConflict = makeState({
+    ...converged,
+    trigger: 'merge-train-cumulative-conflict:99',
+    updatedAt: '2026-07-11T12:05:00.000Z',
+  });
+
+  // The cumulative-conflict trigger carries behavioral state (predecessor PR
+  // number) that reconcile reads back. It must NOT be normalized to 'idle'.
+  assert.equal(isRecoveryStateSemanticallyEqual(converged, cumulativeConflict), false);
+
+  // Two identical cumulative-conflict triggers should be equal (no churn).
+  assert.equal(
+    isRecoveryStateSemanticallyEqual(cumulativeConflict, {
+      ...cumulativeConflict,
+      updatedAt: '2026-07-11T12:10:00.000Z',
+    }),
+    true,
+  );
+
+  // Non-behavioral idle triggers still normalize (no churn for sweep/converged).
+  assert.equal(
+    isRecoveryStateSemanticallyEqual(converged, {
+      ...converged,
+      trigger: 'schedule:sweep',
+      updatedAt: '2026-07-11T12:10:00.000Z',
+    }),
+    true,
+  );
 });
 
 test('enforces ownership label and state consistency', () => {

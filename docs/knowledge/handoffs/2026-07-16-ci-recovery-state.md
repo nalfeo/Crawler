@@ -30,14 +30,16 @@ recovery state machine, router, and deterministic tests.
   survive repair-window truncation, and the marker is removed only after a
   non-waiting state is persisted.
 - Suppressed managed-comment PATCHes for semantically unchanged waiting and empty
-  idle states. Shepherd heartbeat explicitly forces timestamp persistence so lease
-  TTL behavior is unchanged.
+  idle states while preserving behaviorful cumulative-conflict triggers. Shepherd
+  heartbeat and ownership acquisition explicitly force timestamp persistence so
+  lease TTL and same-ID reacquisition remain safe.
 - Added deterministic state, router, and mocked GitHub API regressions for the
   PR #1208 cleanup shape, both 404 cleanup orders, waiting repetition/reactivation,
   direct-event windowing, lease expiry/release/heartbeat, and no-op persistence.
-- Made a failed waiting-marker transition sweep-retryable: waiting-only PRs remain
-  excluded, while a PR carrying both waiting and dynamic ownership is rechecked
-  and cleans the stale marker before duplicate/lease early exits.
+- Made every interrupted waiting exit sweep-retryable with the dedicated
+  `ci-recovery-waiting-transition` marker. The marker is attached before state
+  mutation and removed only after waiting cleanup succeeds; genuine waiting PRs
+  remain excluded while transition-marked or waiting-plus-owner PRs are rechecked.
 - No merge-train scheduling or candidate-validation files changed.
 
 ## Observe before done
@@ -55,22 +57,27 @@ recovery state machine, router, and deterministic tests.
 
 ## Verification
 
-- `node --test ".github/scripts/ci-recovery/*.test.mjs"`: 97 tests, 68 passed,
-  29 skipped by the documented Windows `UV_HANDLE_CLOSING` subprocess exemption,
-  0 failed. Linux CI executed the subprocess matrix and exposed one over-broad
-  missing-label optimization; the follow-up restores unconditional train-label
-  cleanup while limiting missing-label suppression to the waiting marker.
+- Focused state/router/reconcile Node suite: 79 tests, 51 passed, 28 skipped by
+  the documented Windows `UV_HANDLE_CLOSING` subprocess exemption, 0 failed.
+  Linux CI executes the authoritative subprocess matrix. Earlier Linux execution
+  exposed one over-broad missing-label optimization; the follow-up restores
+  unconditional train-label cleanup while keeping waiting cleanup idempotent.
 - `npm run verify:fast`
 - `npx prettier --check` on all six changed recovery source/test files
 - Review harness: `gpt-5.4` plan review approved with three adopted tightenings
   (`plan_divergence: minor`); `claude-sonnet-4.6` code review was clean in round 1.
-  A second-model review-thread validation accepted the stale waiting-marker concern
-  and confirmed the retry fix plus two-run regression in round 2.
+  Round 2 validated four distinct concerns across the original and rebased review:
+  stale waiting cleanup, same-ID lease reacquisition timestamps, behaviorful
+  cumulative-conflict triggers, and non-owning transition retry. A final
+  separate-model review found no high-confidence issues in the marker protocol.
 
 ## Risks
 
 - Waiting-only wake-up depends on the existing direct CI/review/approval event
   routes. The scheduled backstop intentionally skips genuine waiting state but
-  consumes inconsistent waiting-plus-owner state until cleanup succeeds.
+  prioritizes explicit transition markers and inconsistent waiting-plus-owner
+  state until cleanup succeeds.
+- PR #1230 overlaps router event hygiene. When it lands, preserve its direct-only
+  PR-scoped routing together with this branch's waiting/transition filtering.
 - A non-404 cleanup failure remains fail-closed after both cleanup operations are
   attempted; terminal state is not fabricated while atomic ownership is uncertain.

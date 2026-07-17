@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
-import { WAITING_LABEL } from './state.mjs';
+import { WAITING_LABEL, WAITING_TRANSITION_LABEL } from './state.mjs';
 import {
   BLOCKED_LABEL,
   NOOP_LABEL,
@@ -148,9 +148,11 @@ export function collectPrNumbers({
         const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
         const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
         const waiting = labels.some((label) => label.name === WAITING_LABEL);
+        const waitingTransition = labels.some((label) => label.name === WAITING_TRANSITION_LABEL);
         const owned = labels.some((label) => String(label.name || '').startsWith('ci-owner-pr-'));
         const shouldExcludeByLabels =
-          hasQueueLabel || (!directlyTriggered && (hasOptOutLabel || (waiting && !owned)));
+          hasQueueLabel ||
+          (!directlyTriggered && (hasOptOutLabel || (waiting && !owned && !waitingTransition)));
         return (
           pullRequest.state === 'open' &&
           !pullRequest.draft &&
@@ -167,16 +169,22 @@ export function collectPrNumbers({
     const direct = eligiblePulls.filter((pullRequest) =>
       directlyTriggeredPrs.has(pullRequest.number),
     );
+    const waitingTransitions = eligiblePulls.filter(
+      (pullRequest) =>
+        !directlyTriggeredPrs.has(pullRequest.number) &&
+        (pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL),
+    );
     const sweep = eligiblePulls.filter(
       (pullRequest) =>
         !directlyTriggeredPrs.has(pullRequest.number) &&
+        !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
         (eventName === 'schedule' ||
           eventName === 'workflow_dispatch' ||
           !(pullRequest.labels || []).some((label) =>
             String(label.name || '').startsWith('ci-owner-pr-'),
           )),
     );
-    return [...direct, ...sweep]
+    return [...direct, ...waitingTransitions, ...sweep]
       .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
       .sort(
         (left, right) =>
@@ -193,18 +201,22 @@ export function collectPrNumbers({
   // unbounded backlog of newly-updated PRs could otherwise keep pushing an
   // older, still-labeled PR past the cap on every sweep (never cleaned up).
   const trainLabeledNumbers = new Set();
+  const waitingTransitionNumbers = new Set();
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
     const normalizedRepo = repository.toLowerCase();
     for (const pullRequest of scheduledPulls) {
       const directlyTriggered = directNumbers.has(pullRequest.number);
       const waiting = (pullRequest.labels || []).some((label) => label.name === WAITING_LABEL);
+      const waitingTransition = (pullRequest.labels || []).some(
+        (label) => label.name === WAITING_TRANSITION_LABEL,
+      );
       const owned = (pullRequest.labels || []).some((label) =>
         String(label.name || '').startsWith('ci-owner-pr-'),
       );
       if (
         !pullRequest.draft &&
-        (directlyTriggered || !waiting || owned) &&
+        (directlyTriggered || !waiting || owned || waitingTransition) &&
         pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
       ) {
         const number = Number.parseInt(String(pullRequest.number ?? ''), 10);
@@ -212,6 +224,9 @@ export function collectPrNumbers({
           numbers.add(number);
           if (hasTrainOwnedLabel(pullRequest)) {
             trainLabeledNumbers.add(number);
+          }
+          if (waitingTransition) {
+            waitingTransitionNumbers.add(number);
           }
         }
       }
@@ -227,10 +242,16 @@ export function collectPrNumbers({
     // train-owned label so the flag-off cleanup sweep completes for them
     // before the cap is spent on unrelated recently-updated PRs.
     const prioritized = eligible.filter(
-      (number) => directNumbers.has(number) || trainLabeledNumbers.has(number),
+      (number) =>
+        directNumbers.has(number) ||
+        trainLabeledNumbers.has(number) ||
+        waitingTransitionNumbers.has(number),
     );
     const remaining = eligible.filter(
-      (number) => !directNumbers.has(number) && !trainLabeledNumbers.has(number),
+      (number) =>
+        !directNumbers.has(number) &&
+        !trainLabeledNumbers.has(number) &&
+        !waitingTransitionNumbers.has(number),
     );
     return [...prioritized, ...remaining].slice(0, maxDispatchPerRun);
   }

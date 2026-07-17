@@ -17,6 +17,7 @@ import {
   shouldResolveThread,
   STATE_MARKER,
   WAITING_LABEL,
+  WAITING_TRANSITION_LABEL,
 } from './state.mjs';
 import { workflowApprovalRejection, REQUIRED_CHECK_WORKFLOW_PATHS } from './approval.mjs';
 import { graphql, listClosingIssues, listReviewThreads, paginate, request } from './github.mjs';
@@ -158,6 +159,7 @@ async function acquire(nextOwner, nextLeaseId = null) {
   if (labelExists) {
     throw new Error(`PR #${prNumber} is already owned by ${state?.owner || 'unknown'}`);
   }
+  const waitingTransition = await prepareWaitingExit();
   if (shouldMutate) {
     await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
@@ -185,7 +187,9 @@ async function acquire(nextOwner, nextLeaseId = null) {
       blockers: [],
       updatedAt: now.toISOString(),
     }),
+    { forceTimestamp: true },
   );
+  await completeWaitingExit(waitingTransition);
 }
 
 async function removePrLabel(name, { skipIfMissing = false } = {}) {
@@ -223,6 +227,30 @@ async function ensurePrLabel(name, color, description) {
     body: { labels: [name] },
   });
   pr.labels = [...(pr.labels || []), { name }];
+}
+
+function hasPrLabel(name) {
+  return (pr.labels || []).some((label) => label.name === name);
+}
+
+async function prepareWaitingExit() {
+  const waiting = hasPrLabel(WAITING_LABEL);
+  const transition = hasPrLabel(WAITING_TRANSITION_LABEL);
+  if (!waiting && !transition) return false;
+  if (waiting && !transition) {
+    await ensurePrLabel(
+      WAITING_TRANSITION_LABEL,
+      'fbca04',
+      'CI recovery is retrying an interrupted transition out of waiting',
+    );
+  }
+  return true;
+}
+
+async function completeWaitingExit(prepared) {
+  if (!prepared) return;
+  await removePrLabel(WAITING_LABEL, { skipIfMissing: true });
+  await removePrLabel(WAITING_TRANSITION_LABEL, { skipIfMissing: true });
 }
 
 async function removeRepositoryLabel(name) {
@@ -283,6 +311,20 @@ async function dispatchWorkflow(workflow, inputs) {
 }
 
 async function release(reason, nextState = null) {
+  const releasedState =
+    nextState ||
+    makeState({
+      prNumber,
+      headSha: pr.head.sha,
+      fingerprint: state?.fingerprint || blockerFingerprint([]),
+      owner: 'none',
+      status: 'idle',
+      trigger: reason,
+      blockers: state?.blockers || [],
+      attempt: state?.attempt || 0,
+      updatedAt: now.toISOString(),
+    });
+  const waitingTransition = releasedState.status === 'waiting' ? false : await prepareWaitingExit();
   if (shouldMutate) {
     const cleanup = await Promise.allSettled([
       removePrLabel(labelName),
@@ -300,23 +342,8 @@ async function release(reason, nextState = null) {
     }
   }
   labelExists = false;
-  if (nextState) {
-    await updateState(nextState);
-    return;
-  }
-  await updateState(
-    makeState({
-      prNumber,
-      headSha: pr.head.sha,
-      fingerprint: state?.fingerprint || blockerFingerprint([]),
-      owner: 'none',
-      status: 'idle',
-      trigger: reason,
-      blockers: state?.blockers || [],
-      attempt: state?.attempt || 0,
-      updatedAt: now.toISOString(),
-    }),
-  );
+  await updateState(releasedState);
+  await completeWaitingExit(waitingTransition);
 }
 
 if (pr.state !== 'open') {
@@ -364,9 +391,9 @@ if (operation.startsWith('lease-')) {
 if (
   state &&
   state.status !== 'waiting' &&
-  (pr.labels || []).some((label) => label.name === WAITING_LABEL)
+  (hasPrLabel(WAITING_LABEL) || hasPrLabel(WAITING_TRANSITION_LABEL))
 ) {
-  await removePrLabel(WAITING_LABEL);
+  await completeWaitingExit(await prepareWaitingExit());
 }
 
 const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
@@ -516,6 +543,7 @@ if (
   conflictPredecessor > 0
 ) {
   if (incomingConflictPredecessor) {
+    const waitingTransition = await prepareWaitingExit();
     await updateState(
       makeState({
         prNumber,
@@ -529,7 +557,7 @@ if (
         updatedAt: now.toISOString(),
       }),
     );
-    await removePrLabel(WAITING_LABEL, { skipIfMissing: true });
+    await completeWaitingExit(waitingTransition);
   }
   const predecessor = (
     await request(readToken, `/repos/${owner}/${repo}/pulls/${conflictPredecessor}`)
@@ -628,9 +656,10 @@ if (
   if (labelExists) {
     await release('rebase-dispatched', rebaseState);
   } else {
+    const waitingTransition = await prepareWaitingExit();
     await updateState(rebaseState);
+    await completeWaitingExit(waitingTransition);
   }
-  await removePrLabel(WAITING_LABEL, { skipIfMissing: true });
   await dispatchWorkflow('auto-rebase-prs.yml', {
     pr_number: String(prNumber),
     expected_head_sha: pr.head.sha,
@@ -810,6 +839,7 @@ if (normalized.length === 0) {
     } else {
       await updateState(waitingState);
     }
+    await removePrLabel(WAITING_TRANSITION_LABEL, { skipIfMissing: true });
     process.stdout.write(`wait pr=#${prNumber} admission=${waiting.join(',')}\n`);
     process.exit(0);
   }
@@ -826,18 +856,19 @@ if (normalized.length === 0) {
   });
   if (labelExists || staleOwningState || ownerLabelAttached) {
     await release('converged', convergedState);
-  } else if (stateComments.length > 0) {
-    // Reuse the managed comment when transitioning out of waiting or a prior
-    // recovery state. Semantically identical idle state is left untouched.
-    await updateState(convergedState);
+  } else {
+    const waitingTransition = await prepareWaitingExit();
+    if (stateComments.length > 0) {
+      // Reuse the managed comment when transitioning out of waiting or a prior
+      // recovery state. Semantically identical idle state is left untouched.
+      await updateState(convergedState);
+    } else {
+      // A clean PR that never needed recovery still needs a state record before
+      // merge-train admission can safely attach the queue label.
+      await updateState(convergedState);
+    }
+    await completeWaitingExit(waitingTransition);
   }
-  // Required checks are satisfied. If this PR never went through recovery (no
-  // state comment exists), persist convergedState now so merge-train/eligible()
-  // finds exactly one record and does not de-admit the queued PR as stale.
-  if (!labelExists && stateComments.length === 0) {
-    await updateState(convergedState);
-  }
-  await removePrLabel(WAITING_LABEL, { skipIfMissing: true });
   if (live && mergeTrainEnabled) {
     await removePrLabel(BLOCKED_LABEL);
     await removePrLabel(NOOP_LABEL);
@@ -909,7 +940,6 @@ if (labelExists) {
   await release('blocker-fingerprint-changed');
 }
 await acquire('automation');
-await removePrLabel(WAITING_LABEL, { skipIfMissing: true });
 
 const taskBody = [
   `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,

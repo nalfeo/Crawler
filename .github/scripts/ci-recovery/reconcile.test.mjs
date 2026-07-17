@@ -19,6 +19,7 @@ import {
   parseStateComment,
   renderStateComment,
   WAITING_LABEL,
+  WAITING_TRANSITION_LABEL,
 } from './state.mjs';
 import { admissionFingerprint } from '../merge-train/state.mjs';
 
@@ -564,8 +565,10 @@ test('missing-label shepherd state fails closed until expiry but matching releas
 
 test('an expired missing-label shepherd lease can be safely reacquired', async (t) => {
   const expired = shepherdStateComment(783, {
+    trigger: 'workflow_dispatch',
     updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
   });
+  let reacquiredStateBody = null;
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
@@ -577,9 +580,10 @@ test('an expired missing-label shepherd lease can be safely reacquired', async (
     }),
     [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
-    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${expired.id}`]: () => ({
-      body: { id: expired.id },
-    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${expired.id}`]: (_url, body) => {
+      reacquiredStateBody = body.body;
+      return { body: { id: expired.id } };
+    },
   });
   t.after(() => server.close());
 
@@ -593,6 +597,13 @@ test('an expired missing-label shepherd lease can be safely reacquired', async (
     mutatingCalls.some(
       (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/labels`,
     ),
+  );
+  const reacquired = parseStateComment(reacquiredStateBody);
+  assert.equal(reacquired.leaseId, LEASE_ID);
+  assert.equal(reacquired.trigger, 'workflow_dispatch');
+  assert.ok(
+    Date.parse(reacquired.updatedAt) > Date.parse(parseStateComment(expired.body).updatedAt),
+    'same-ID/same-trigger reacquisition must persist a fresh lease timestamp',
   );
   assert.ok(
     mutatingCalls.some(
@@ -702,14 +713,140 @@ test('direct state-change event persists convergence before clearing the waiting
       call.method === 'PATCH' &&
       call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
   );
+  const transitionPostIndex = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+      call.body?.labels?.includes(WAITING_TRANSITION_LABEL),
+  );
   const waitingDeleteIndex = mutatingCalls.findIndex(
     (call) =>
       call.method === 'DELETE' &&
       call.url ===
         `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(WAITING_LABEL)}`,
   );
+  const transitionDeleteIndex = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url ===
+        `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(WAITING_TRANSITION_LABEL)}`,
+  );
+  assert.ok(transitionPostIndex >= 0);
+  assert.ok(statePatchIndex > transitionPostIndex);
   assert.ok(statePatchIndex >= 0);
   assert.ok(waitingDeleteIndex > statePatchIndex);
+  assert.ok(transitionDeleteIndex > waitingDeleteIndex);
+});
+
+test('failed non-owning waiting cleanup remains schedule-retryable via transition marker', async (t) => {
+  const waitingComment = waitingStateComment(786);
+  let convergedStateBody = null;
+  const first = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [waitingComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${waitingComment.id}`]: (_url, body) => {
+      convergedStateBody = body.body;
+      return { body: { id: waitingComment.id } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`]: () => ({
+      status: 500,
+      body: { message: 'temporary waiting cleanup failure' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 2, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+  });
+  t.after(() => first.server.close());
+
+  const failed = await runScript(first.port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (isWindowsAsyncCloseCrash(failed.code, failed.stderr)) {
+    t.skip('Node subprocess hit the known Windows UV_HANDLE_CLOSING shutdown assertion');
+    return;
+  }
+  assert.notEqual(failed.code, 0);
+  assert.match(failed.stderr, /temporary waiting cleanup failure/);
+  assert.equal(parseStateComment(convergedStateBody).status, 'idle');
+  assert.ok(
+    first.mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+        call.body?.labels?.includes(WAITING_TRANSITION_LABEL),
+    ),
+    'the transition marker must be durable before persisting non-waiting state',
+  );
+
+  const followupComment = { id: waitingComment.id, body: convergedStateBody };
+  const second = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: WAITING_LABEL }, { name: WAITING_TRANSITION_LABEL }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [followupComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/`]: () => ({ body: {} }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 2, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => second.server.close());
+
+  const retried = await runScript(second.port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, retried.code, retried.stderr, '', true)) return;
+  assert.match(retried.stdout, /queued merge-train pr=#42/);
+  for (const label of [WAITING_LABEL, WAITING_TRANSITION_LABEL]) {
+    assert.ok(
+      second.mutatingCalls.some(
+        (call) =>
+          call.method === 'DELETE' &&
+          call.url ===
+            `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(label)}`,
+      ),
+      `schedule retry must clear ${label}`,
+    );
+  }
 });
 
 test('failed waiting-marker cleanup remains sweep-retryable after automation ownership is acquired', async (t) => {
@@ -765,6 +902,14 @@ test('failed waiting-marker cleanup remains sweep-retryable after automation own
   assert.match(failed.stderr, /temporary label API failure/);
   assert.equal(parseStateComment(acquiredStateBody).status, 'active');
   assert.equal(parseStateComment(acquiredStateBody).owner, 'automation');
+  assert.ok(
+    first.mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+        call.body?.labels?.includes(WAITING_TRANSITION_LABEL),
+    ),
+  );
   assert.equal(
     first.mutatingCalls.some(
       (call) =>
@@ -780,7 +925,7 @@ test('failed waiting-marker cleanup remains sweep-retryable after automation own
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
       body: {
         ...basePr(),
-        labels: [{ name: WAITING_LABEL }, { name: LABEL }],
+        labels: [{ name: WAITING_LABEL }, { name: WAITING_TRANSITION_LABEL }, { name: LABEL }],
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
@@ -791,6 +936,9 @@ test('failed waiting-marker cleanup remains sweep-retryable after automation own
         ? { body: { name: LABEL } }
         : { status: 404, body: { message: 'Not Found' } },
     [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`]: () => ({
+      body: {},
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_TRANSITION_LABEL}`]: () => ({
       body: {},
     }),
     [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
@@ -865,7 +1013,13 @@ test('failed waiting-marker cleanup remains sweep-retryable after automation own
       call.method === 'DELETE' &&
       call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
   );
+  const transitionCleanupIndex = second.mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_TRANSITION_LABEL}`,
+  );
   assert.ok(waitingCleanupIndex >= 0);
+  assert.ok(transitionCleanupIndex > waitingCleanupIndex);
   assert.ok(ownerReleaseIndex > waitingCleanupIndex);
 });
 

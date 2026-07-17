@@ -4,6 +4,7 @@ export const STATE_MARKER = '<!-- crawler-ci-state:v1 -->';
 export const STATE_DATA_PREFIX = '<!-- crawler-ci-state-data:';
 export const OWNER_LABEL_PREFIX = 'ci-owner-pr-';
 export const WAITING_LABEL = 'ci-recovery-waiting';
+export const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';
 export const DEFAULT_LEASE_TTL_MINUTES = 30;
 export const DEFAULT_LEASE_GRACE_MINUTES = 5;
 
@@ -203,12 +204,20 @@ export function validateState(state) {
   return state;
 }
 
+// Triggers that carry behavioral state even in an otherwise-idle context.
+// These must NOT be normalized away during semantic equality checks because
+// reconcile.mjs reads them back from persisted state (e.g. the predecessor PR
+// number in a cumulative-conflict signal).
+const BEHAVIORAL_IDLE_TRIGGER = /^merge-train-cumulative-conflict:\d+$/;
+
 function semanticState(state) {
   const { updatedAt: _updatedAt, ...semantic } = validateState(state);
-  if (
-    semantic.owner === 'none' &&
-    (semantic.status === 'waiting' ||
-      (semantic.status === 'idle' && semantic.blockers.length === 0))
+  if (semantic.status === 'waiting') {
+    semantic.trigger = semantic.status;
+  } else if (
+    semantic.status === 'idle' &&
+    semantic.blockers.length === 0 &&
+    !BEHAVIORAL_IDLE_TRIGGER.test(semantic.trigger)
   ) {
     semantic.trigger = semantic.status;
   }
