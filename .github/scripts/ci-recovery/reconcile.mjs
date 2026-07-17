@@ -1167,24 +1167,35 @@ if (labelExists && isDuplicateDispatch(state, fingerprint)) {
     // File a deduplicated investigation issue so the underlying automation
     // defect is surfaced and assigned rather than silently abandoned.
     // Only in live mode: dry-run skips all GitHub mutations.
+    //
+    // IMPORTANT: release() must always run regardless of whether incident
+    // filing succeeds.  A filing failure must never leave the PR owned by
+    // stale automation, which would cause the reconciler to churn on this
+    // same exhausted path indefinitely.
     if (live) {
-      const loopResult = await fileLoopIncident({
-        request,
-        paginate,
-        token: pat,
-        owner,
-        repo,
-        prNumber,
-        headSha: pr.head.sha,
-        blockerFingerprint: fingerprint,
-        blockers: normalized,
-        attempt: state.attempt,
-        workflowRunUrl,
-        now,
-      });
-      process.stdout.write(
-        `loop-incident pr=#${prNumber} issue=#${loopResult.issueNumber} action=${loopResult.action}\n`,
-      );
+      try {
+        const loopResult = await fileLoopIncident({
+          request,
+          paginate,
+          token: pat,
+          owner,
+          repo,
+          prNumber,
+          headSha: pr.head.sha,
+          blockerFingerprint: fingerprint,
+          blockers: normalized,
+          attempt: state.attempt,
+          workflowRunUrl,
+          now,
+        });
+        process.stdout.write(
+          `loop-incident pr=#${prNumber} issue=#${loopResult.issueNumber} action=${loopResult.action}\n`,
+        );
+      } catch (err) {
+        process.stderr.write(
+          `loop-incident-filing-failed pr=#${prNumber} err=${err.message}\n`,
+        );
+      }
     } else {
       process.stdout.write(
         `dry-run would-file-loop-incident pr=#${prNumber} fingerprint=${fingerprint}\n`,
