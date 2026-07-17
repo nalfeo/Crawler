@@ -8,12 +8,21 @@ import {
   collectPrNumbers,
   computeBackoffDelayMs,
   eventPrNumbers,
+  hasHealthyOwnerForSweep,
+  hydrateRecoveryOwnership,
   isRepairWindowSweepEvent,
   isRetryableError,
+  recoveryStateFromComments,
   requestWithBackoff,
   recoveryTriggerForPr,
   isManagedCommentEvent,
 } from './router.mjs';
+import {
+  automationProgressKey,
+  blockerFingerprint,
+  makeState,
+  renderStateComment,
+} from './state.mjs';
 
 const workflowPath = new URL('../../workflows/ci-recovery-router.yml', import.meta.url);
 const workflow = parse(await readFile(workflowPath, 'utf8'));
@@ -29,6 +38,22 @@ function makeError(status, message, headerMap = {}) {
     },
   };
   return error;
+}
+
+function automationOwnerState(prNumber, updatedAt, attempt = 1) {
+  const fingerprint = blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]);
+  return makeState({
+    prNumber,
+    headSha: `head-${prNumber}`,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+    attempt,
+    progressKey: automationProgressKey(`head-${prNumber}`, fingerprint),
+    progressAt: updatedAt,
+    updatedAt,
+  });
 }
 
 test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
@@ -299,6 +324,7 @@ test('train PR-less default-branch CI sweeps preserve owner slots without redisp
     base: { ref: 'main' },
     head: { repo: { full_name: 'nalfeo/Crawler' } },
     labels: index === 0 ? [{ name: 'ci-owner-pr-1' }] : [],
+    recoveryState: index === 0 ? automationOwnerState(1, '2026-07-17T12:00:00.000Z') : undefined,
   }));
 
   assert.deepEqual(
@@ -311,9 +337,111 @@ test('train PR-less default-branch CI sweeps preserve owner slots without redisp
       repository: 'nalfeo/Crawler',
       scheduledPulls: pulls,
       trainEnabled: true,
+      now: new Date('2026-07-17T12:10:00.000Z'),
     }),
-    [2, 3, 4, 5, 6],
+    [2, 3, 4, 5, 6, 7],
   );
+});
+
+test('train sweeps over-select past healthy owners to the next dispatchable PR', () => {
+  const pulls = Array.from({ length: 7 }, (_, index) => {
+    const number = index + 1;
+    return {
+      number,
+      state: 'open',
+      draft: false,
+      created_at: `2026-07-${String(number).padStart(2, '0')}T00:00:00Z`,
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: number <= 6 ? [{ name: `ci-owner-pr-${number}` }] : [],
+      recoveryState:
+        number <= 6 ? automationOwnerState(number, '2026-07-17T12:00:00.000Z') : undefined,
+    };
+  });
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+      now: new Date('2026-07-17T12:10:00.000Z'),
+    }),
+    [7],
+  );
+});
+
+test('direct events retain a healthy owner while broad sweeps include stale and inconsistent owners', () => {
+  const healthy = {
+    number: 1,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [{ name: 'ci-owner-pr-1' }],
+    recoveryState: automationOwnerState(1, '2026-07-17T12:00:00.000Z'),
+  };
+  const stale = {
+    ...healthy,
+    number: 2,
+    created_at: '2026-07-02T00:00:00Z',
+    labels: [{ name: 'ci-owner-pr-2' }],
+    recoveryState: automationOwnerState(2, '2026-07-17T11:00:00.000Z'),
+  };
+  const inconsistent = {
+    ...healthy,
+    number: 3,
+    created_at: '2026-07-03T00:00:00Z',
+    labels: [{ name: 'ci-owner-pr-3' }],
+    recoveryState: null,
+  };
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [healthy, stale, inconsistent],
+      trainEnabled: true,
+      now: new Date('2026-07-17T12:10:00.000Z'),
+    }),
+    [2, 3],
+  );
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: { pull_request: { number: 1 } },
+      eventName: 'pull_request_target',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [healthy, stale, inconsistent],
+      trainEnabled: true,
+      now: new Date('2026-07-17T12:10:00.000Z'),
+    }),
+    [1],
+  );
+});
+
+test('owner-state hydration is bounded and malformed state remains sweep-visible', async () => {
+  const pulls = Array.from({ length: 8 }, (_, index) => ({
+    number: index + 1,
+    labels: [{ name: `ci-owner-pr-${index + 1}` }],
+  }));
+  let active = 0;
+  let maxActive = 0;
+  const hydrated = await hydrateRecoveryOwnership(pulls, async (number) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    active -= 1;
+    if (number === 8) return [{ body: '<!-- crawler-ci-state:v1 --> broken' }];
+    return [{ body: renderStateComment(automationOwnerState(number, '2026-07-17T12:00:00Z')) }];
+  });
+
+  assert.equal(maxActive, 6);
+  assert.equal(hasHealthyOwnerForSweep(hydrated[0], new Date('2026-07-17T12:10:00Z')), true);
+  assert.equal(recoveryStateFromComments([{ body: 'not managed' }]), null);
+  assert.equal(hasHealthyOwnerForSweep(hydrated[7], new Date('2026-07-17T12:10:00Z')), false);
 });
 
 test('train direct routing preserves opt-out cleanup and same-repository trust', () => {
@@ -567,6 +695,10 @@ test('managed state, task, and train comments are rejected by the workflow job g
       `expected job guard for ${marker}`,
     );
   }
+});
+
+test('router listens only for completed CI workflow runs', () => {
+  assert.deepEqual(workflow.on.workflow_run.types, ['completed']);
 });
 
 test('router concurrency keeps latest-pending sweeps and isolates single-PR workflow events', () => {

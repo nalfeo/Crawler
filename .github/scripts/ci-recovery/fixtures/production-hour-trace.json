@@ -1,0 +1,103 @@
+{
+  "schema": "crawler-ci-recovery-trace/v1",
+  "observed": {
+    "routerRecords": 149,
+    "recoveryJobs": 196,
+    "recoverySuccess": 191,
+    "recoveryFailure": 5,
+    "recoveryP50Seconds": 15,
+    "recoveryP95Seconds": 39
+  },
+  "routerSeries": [
+    {
+      "kind": "managed-comment-skip",
+      "count": 29,
+      "baselineRunnerJob": false
+    },
+    {
+      "kind": "coalesced-cancel",
+      "count": 13,
+      "baselineRunnerJob": false
+    },
+    {
+      "kind": "workflow-requested-parked",
+      "count": 12,
+      "baselineRunnerJob": false
+    },
+    {
+      "kind": "exact-direct-success",
+      "count": 30,
+      "baselineRunnerJob": true
+    },
+    {
+      "kind": "scheduled-sweep-success",
+      "count": 10,
+      "baselineRunnerJob": true
+    },
+    {
+      "kind": "recursive-fill-success",
+      "count": 55,
+      "baselineRunnerJob": true,
+      "alreadyQueued": true
+    }
+  ],
+  "recoverySeries": [
+    {
+      "kind": "effective-success",
+      "count": 77,
+      "baselineOutcome": "success",
+      "effectiveActionPrefix": "action"
+    },
+    {
+      "kind": "cleanup-race",
+      "count": 3,
+      "baselineOutcome": "failure",
+      "afterOutcome": "success",
+      "effectiveActionPrefix": "cleanup"
+    },
+    {
+      "kind": "stale-lease-heartbeat",
+      "count": 2,
+      "baselineOutcome": "failure",
+      "afterOutcome": "failure",
+      "effectiveActionPrefix": "heartbeat"
+    },
+    {
+      "kind": "recursive-noop",
+      "count": 114,
+      "baselineOutcome": "success",
+      "suppressedByQueuedAdmission": true,
+      "duplicateActionModulo": 77,
+      "effectiveActionPrefix": "action"
+    }
+  ],
+  "latencyProfileSeconds": [
+    {
+      "count": 97,
+      "value": 14
+    },
+    {
+      "count": 1,
+      "value": 15
+    },
+    {
+      "count": 88,
+      "value": 20
+    },
+    {
+      "count": 1,
+      "value": 39
+    },
+    {
+      "count": 9,
+      "value": 45
+    }
+  ],
+  "staleOwnerModel": {
+    "headSha": "anonymous-head",
+    "fingerprint": "anonymous-fingerprint",
+    "attempt": 1,
+    "progressAt": "2026-07-17T00:00:00.000Z",
+    "replayedAt": "2026-07-17T00:31:00.000Z"
+  }
+}

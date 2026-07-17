@@ -2,7 +2,15 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
-import { WAITING_LABEL, WAITING_TRANSITION_LABEL } from './state.mjs';
+import {
+  isHealthyRecoveryOwner,
+  OWNER_LABEL_PREFIX,
+  ownerLabel,
+  parseStateComment,
+  STATE_MARKER,
+  WAITING_LABEL,
+  WAITING_TRANSITION_LABEL,
+} from './state.mjs';
 import {
   BLOCKED_LABEL,
   NOOP_LABEL,
@@ -32,6 +40,7 @@ const TRAIN_OWNED_LABELS = new Set([
   NOOP_LABEL,
   VALIDATION_FAILED_LABEL,
 ]);
+const OWNERSHIP_HYDRATION_BATCH_SIZE = 6;
 
 function parsePositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw ?? ''), 10);
@@ -138,6 +147,7 @@ export function collectPrNumbers({
   scheduledPulls = [],
   maxDispatchPerRun = DEFAULT_MAX_DISPATCH_PER_RUN,
   trainEnabled = false,
+  now = new Date(),
 }) {
   if (trainEnabled) {
     const directlyTriggeredPrs = eventPrNumbers(payload);
@@ -187,20 +197,11 @@ export function collectPrNumbers({
     const sweep = eligiblePulls.filter(
       (pullRequest) =>
         !directlyTriggeredPrs.has(pullRequest.number) &&
-        !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL),
+        !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
+        !hasHealthyOwnerForSweep(pullRequest, now),
     );
     return [...direct, ...waitingTransitions, ...sweep]
       .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
-      .filter(
-        (pullRequest) =>
-          directlyTriggeredPrs.has(pullRequest.number) ||
-          (pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) ||
-          eventName === 'schedule' ||
-          eventName === 'workflow_dispatch' ||
-          !(pullRequest.labels || []).some((label) =>
-            String(label.name || '').startsWith('ci-owner-pr-'),
-          ),
-      )
       .sort(
         (left, right) =>
           new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
@@ -271,6 +272,75 @@ export function collectPrNumbers({
     return [...prioritized, ...remaining].slice(0, maxDispatchPerRun);
   }
   return eligible;
+}
+
+export function recoveryStateFromComments(comments) {
+  const stateComments = (comments || []).filter((comment) =>
+    String(comment.body || '')
+      .trimStart()
+      .startsWith(STATE_MARKER),
+  );
+  if (stateComments.length !== 1) return null;
+  try {
+    return parseStateComment(stateComments[0].body);
+  } catch {
+    return null;
+  }
+}
+
+export function hasHealthyOwnerForSweep(pullRequest, now = new Date()) {
+  const ownerLabels = (pullRequest.labels || []).filter((label) =>
+    String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
+  );
+  if (
+    ownerLabels.length !== 1 ||
+    ownerLabels[0].name !== ownerLabel(pullRequest.number) ||
+    pullRequest.recoveryStateUnreadable
+  ) {
+    return false;
+  }
+  return isHealthyRecoveryOwner({
+    prNumber: pullRequest.number,
+    state: pullRequest.recoveryState,
+    now,
+  });
+}
+
+export async function hydrateRecoveryOwnership(
+  pulls,
+  loadComments,
+  batchSize = OWNERSHIP_HYDRATION_BATCH_SIZE,
+) {
+  const hydrated = [...pulls];
+  const ownerIndexes = hydrated
+    .map((pullRequest, index) => ({ pullRequest, index }))
+    .filter(({ pullRequest }) =>
+      (pullRequest.labels || []).some((label) =>
+        String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
+      ),
+    );
+
+  for (let offset = 0; offset < ownerIndexes.length; offset += batchSize) {
+    const batch = ownerIndexes.slice(offset, offset + batchSize);
+    await Promise.all(
+      batch.map(async ({ pullRequest, index }) => {
+        try {
+          const comments = await loadComments(pullRequest.number);
+          hydrated[index] = {
+            ...pullRequest,
+            recoveryState: recoveryStateFromComments(comments),
+          };
+        } catch (error) {
+          hydrated[index] = {
+            ...pullRequest,
+            recoveryState: null,
+            recoveryStateUnreadable: String(error?.message || error),
+          };
+        }
+      }),
+    );
+  }
+  return hydrated;
 }
 
 export function isRepairWindowSweepEvent({ payload, eventName, trainEnabled }) {
@@ -366,6 +436,21 @@ export async function runFromEnv(env = process.env) {
         ),
       { label: 'list-open-prs' },
     );
+    if (
+      trainEnabled &&
+      isRepairWindowSweepEvent({
+        payload,
+        eventName,
+        trainEnabled,
+      })
+    ) {
+      scheduledPulls = await hydrateRecoveryOwnership(scheduledPulls, (number) =>
+        requestWithBackoff(
+          () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+          { label: `load-owner-state-${number}` },
+        ),
+      );
+    }
   }
 
   const prNumbers = collectPrNumbers({
@@ -375,6 +460,7 @@ export async function runFromEnv(env = process.env) {
     scheduledPulls,
     maxDispatchPerRun,
     trainEnabled,
+    now: new Date(),
   });
   const directlyTriggeredPrs = eventPrNumbers(payload);
 
