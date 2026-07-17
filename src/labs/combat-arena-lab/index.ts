@@ -486,7 +486,9 @@ function createCombatArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
   const seedCtrl = simFolder.add(settings, 'arenaSeed').name('Seed (read-only)').disable();
   // Refresh the display whenever create() generates a new seed (initial boot or
   // after a room/layout change that triggers scene.restart()).
-  arenaScene.onSeedChanged = () => { seedCtrl.updateDisplay(); };
+  arenaScene.onSeedChanged = () => {
+    seedCtrl.updateDisplay();
+  };
   simFolder.add(simApi, 'newSeed').name('New Seed + Reset');
   simFolder.close();
 

@@ -330,10 +330,7 @@ function spawnFloor1BossesArena(
     return eid;
   }
 
-  return [
-    spawnBoss(F1_BOSS_STAIR, -6, -4),
-    spawnBoss(F1_BOSS_SLIMERAT, 6, -4),
-  ];
+  return [spawnBoss(F1_BOSS_STAIR, -6, -4), spawnBoss(F1_BOSS_SLIMERAT, 6, -4)];
 }
 
 /**
