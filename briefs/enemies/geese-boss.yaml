@@ -49,9 +49,9 @@ judge:
   maxVariants: 4
 
 variations:
-  - Don Honkrado silhouette: square body, neck tucked against chest, fedora low on brow, cigar in beak, front-facing, cold authority expression
-  - Don Honkrado with pinstripe waistcoat stitched from conveyor belt material, brass gear cufflinks, one foot on scrap-iron crown, goose contempt half-lid
-  - Don Honkrado open-beak HONK intimidation pose — wide orange bill showing tongue, wings slightly spread but close to body mass, fedora still on
-  - Don Honkrado heavy silhouette variant: extra wide rounded body, maximum square mass, charcoal-and-slate plumage, off-white chest band, warm amber pinstripes
+  - "Don Honkrado silhouette: square body, neck tucked against chest, fedora low on brow, cigar in beak, front-facing, cold authority expression"
+  - "Don Honkrado with pinstripe waistcoat stitched from conveyor belt material, brass gear cufflinks, one foot on scrap-iron crown, goose contempt half-lid"
+  - "Don Honkrado open-beak HONK intimidation pose — wide orange bill showing tongue, wings slightly spread but close to body mass, fedora still on"
+  - "Don Honkrado heavy silhouette variant: extra wide rounded body, maximum square mass, charcoal-and-slate plumage, off-white chest band, warm amber pinstripes"
 
 minVariations: 2
