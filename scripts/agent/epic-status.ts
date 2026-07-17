@@ -3,7 +3,7 @@
  * epic-status.ts — CLI entry point for the epic status tool.
  *
  * Usage:
- *   npm run epic:status -- <epic-id> [--github [--reconcile]] [--materialization-plan]
+ *   npm run epic:status -- <epic-id> [--github --reconcile] [--materialization-plan]
  *
  * Modes:
  *   (default)                   Offline status table from epic-state.json
@@ -48,13 +48,15 @@ interface CliArgs {
   materializationPlan: boolean;
 }
 
+const SUPPORTED_FLAGS = new Set(['--github', '--reconcile', '--materialization-plan']);
+
 export function parseArgs(argv: string[]): CliArgs {
   const args = argv.slice(2);
 
   const first = args[0];
   if (args.length === 0 || first === undefined || first.startsWith('-')) {
     throw new Error(
-      'Usage: npm run epic:status -- <epic-id> [--github [--reconcile]] [--materialization-plan]',
+      'Usage: npm run epic:status -- <epic-id> [--github --reconcile] [--materialization-plan]',
     );
   }
 
@@ -64,12 +66,25 @@ export function parseArgs(argv: string[]): CliArgs {
   }
 
   const flags = args.slice(1);
+  const unknownFlags = flags.filter((flag) => !SUPPORTED_FLAGS.has(flag));
+  if (unknownFlags.length > 0) {
+    throw new Error(`Unknown argument(s): ${unknownFlags.join(', ')}`);
+  }
+
   const github = flags.includes('--github');
   const reconcile = flags.includes('--reconcile');
   const materializationPlan = flags.includes('--materialization-plan');
 
+  if (github && !reconcile) {
+    throw new Error('--github requires --reconcile');
+  }
+
   if (reconcile && !github) {
     throw new Error('--reconcile requires --github');
+  }
+
+  if (materializationPlan && (github || reconcile)) {
+    throw new Error('--materialization-plan cannot be combined with --github/--reconcile');
   }
 
   return { epicId, github, reconcile, materializationPlan };
@@ -110,17 +125,35 @@ export function loadStateFile(epicId: string): EpicState {
  * The Producer (sole state writer) is responsible for updating the file after
  * reconciling discrepancies.
  */
-async function runGitHubReconcile(state: EpicState): Promise<void> {
+interface TextWriter {
+  write(chunk: string): void;
+}
+
+interface GitHubReconcileOptions {
+  fetchImpl?: typeof fetch;
+  stdout?: TextWriter;
+  stderr?: TextWriter;
+  repo?: string;
+  token?: string;
+}
+
+export async function runGitHubReconcile(
+  state: EpicState,
+  options: GitHubReconcileOptions = {},
+): Promise<number> {
   // Dynamic import so the GitHub client is only loaded when --github is passed.
   // Uses the GITHUB_TOKEN env var (or CRAWLER_CI_PAT fallback).
-  const token = process.env['GITHUB_TOKEN'] ?? process.env['CRAWLER_CI_PAT'];
+  const token = options.token ?? process.env['GITHUB_TOKEN'] ?? process.env['CRAWLER_CI_PAT'];
   if (!token) {
     throw new Error(
       'GitHub reconciliation requires GITHUB_TOKEN or CRAWLER_CI_PAT environment variable.',
     );
   }
 
-  const repo = 'nalfeo/Crawler';
+  const repo = options.repo ?? 'nalfeo/Crawler';
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const stdout = options.stdout ?? process.stdout;
+  const stderr = options.stderr ?? process.stderr;
   const headers: Record<string, string> = {
     Authorization: `token ${token}`,
     Accept: 'application/vnd.github.v3+json',
@@ -130,54 +163,82 @@ async function runGitHubReconcile(state: EpicState): Promise<void> {
   let discrepancies = 0;
 
   for (const slice of state.slices) {
-    if (slice.github_issue == null) continue;
-    const url = `https://api.github.com/repos/${repo}/issues/${slice.github_issue}`;
-    let issueState: string;
-    try {
-      const resp = await fetch(url, { headers });
-      if (!resp.ok) {
-        process.stderr.write(
-          `  ⚠️  ${slice.id}: HTTP ${resp.status} for issue #${slice.github_issue}\n`,
-        );
+    if (slice.github_issue != null) {
+      const url = `https://api.github.com/repos/${repo}/issues/${slice.github_issue}`;
+      let issueState: string | undefined;
+      let issueCheckFailed = false;
+      try {
+        const resp = await fetchImpl(url, { headers });
+        if (!resp.ok) {
+          stderr.write(`  ⚠️  ${slice.id}: HTTP ${resp.status} for issue #${slice.github_issue}\n`);
+          discrepancies++;
+          issueCheckFailed = true;
+        }
+        if (!issueCheckFailed) {
+          const data = (await resp.json()) as { state: string };
+          issueState = data.state;
+        }
+      } catch (err) {
+        stderr.write(`  ⚠️  ${slice.id}: fetch failed — ${String(err)}\n`);
         discrepancies++;
-        continue;
+        issueCheckFailed = true;
       }
-      const data = (await resp.json()) as { state?: unknown };
-      if (typeof data.state !== 'string') {
-        process.stderr.write(
-          `  ⚠️  ${slice.id}: unexpected API response shape (missing state field)\n`,
-        );
-        discrepancies++;
-        continue;
+
+      if (!issueCheckFailed) {
+        // Flag if the GitHub issue is closed but the slice isn't validated/merged.
+        if (issueState === 'closed' && slice.status !== 'validated' && slice.status !== 'merged') {
+          stdout.write(
+            `  ⚠️  ${slice.id} (${slice.status}): issue #${slice.github_issue} is closed on GitHub but slice is not validated/merged\n`,
+          );
+          discrepancies++;
+        } else if (
+          issueState === 'open' &&
+          (slice.status === 'validated' || slice.status === 'merged')
+        ) {
+          stdout.write(
+            `  ℹ️  ${slice.id} (${slice.status}): issue #${slice.github_issue} is still open on GitHub\n`,
+          );
+        } else if (issueState !== undefined) {
+          stdout.write(`  ✓  ${slice.id}: issue #${slice.github_issue} (${issueState})\n`);
+        }
       }
-      issueState = data.state;
-    } catch (err) {
-      process.stderr.write(`  ⚠️  ${slice.id}: fetch failed — ${String(err)}\n`);
-      discrepancies++;
-      continue;
     }
 
-    // Flag if the GitHub issue is closed but the slice isn't validated/merged.
-    if (issueState === 'closed' && slice.status !== 'validated' && slice.status !== 'merged') {
-      process.stdout.write(
-        `  ⚠️  ${slice.id} (${slice.status}): issue #${slice.github_issue} is closed on GitHub but slice is not validated/merged\n`,
-      );
-      discrepancies++;
-    } else if (
-      issueState === 'open' &&
-      (slice.status === 'validated' || slice.status === 'merged')
-    ) {
-      process.stdout.write(
-        `  ℹ️  ${slice.id} (${slice.status}): issue #${slice.github_issue} is still open on GitHub\n`,
-      );
-    } else {
-      process.stdout.write(`  ✓  ${slice.id}: issue #${slice.github_issue} (${issueState})\n`);
+    if (slice.pr != null) {
+      const prUrl = `https://api.github.com/repos/${repo}/pulls/${slice.pr}`;
+      try {
+        const resp = await fetchImpl(prUrl, { headers });
+        if (!resp.ok) {
+          stderr.write(`  ⚠️  ${slice.id}: HTTP ${resp.status} for PR #${slice.pr}\n`);
+          discrepancies++;
+          continue;
+        }
+        const data = (await resp.json()) as { merged: boolean; state: string };
+        if (data.merged && slice.status !== 'validated' && slice.status !== 'merged') {
+          stdout.write(
+            `  ⚠️  ${slice.id} (${slice.status}): PR #${slice.pr} is merged on GitHub but slice is not validated/merged\n`,
+          );
+          discrepancies++;
+        } else if (!data.merged && (slice.status === 'validated' || slice.status === 'merged')) {
+          stdout.write(
+            `  ⚠️  ${slice.id} (${slice.status}): PR #${slice.pr} is not merged on GitHub\n`,
+          );
+          discrepancies++;
+        } else {
+          const prState = data.merged ? 'merged' : data.state;
+          stdout.write(`  ✓  ${slice.id}: PR #${slice.pr} (${prState})\n`);
+        }
+      } catch (err) {
+        stderr.write(`  ⚠️  ${slice.id}: PR fetch failed — ${String(err)}\n`);
+        discrepancies++;
+      }
     }
   }
 
-  process.stdout.write(
+  stdout.write(
     `\nReconciliation complete. ${discrepancies} discrepanc${discrepancies === 1 ? 'y' : 'ies'} found.\n`,
   );
+  return discrepancies;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,10 +280,9 @@ async function main(): Promise<void> {
   }
 }
 
-// Only run when invoked directly (not when imported as a module in tests).
-const isMain =
-  process.argv[1] != null && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
-if (isMain) {
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+const thisPath = resolve(fileURLToPath(import.meta.url));
+if (invokedPath === thisPath) {
   main().catch((err: unknown) => {
     process.stderr.write(`Unhandled error: ${String(err)}\n`);
     process.exit(1);

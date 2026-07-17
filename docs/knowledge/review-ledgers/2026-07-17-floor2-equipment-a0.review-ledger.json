@@ -2,16 +2,16 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-17",
   "session_slug": "floor2-equipment-a0",
-  "task_title": "Floor 2 Equipment A0 Bootstrap — Control plane, state schema, CLI, tests",
+  "task_title": "Floor 2 equipment A0 bootstrap",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.4",
-      "concerns_count": 5,
-      "resolved_count": 5,
+      "concerns_count": 4,
+      "resolved_count": 4,
       "plan_divergence": "minor",
-      "notes": "5 concerns: DPS formula underspecified (fixed in PLAN.md), B2/B3 missing items.ts plumbing (added to scope), B4 wrong acceptance criteria (no headless purchase loop, corrected), A0 marked validated before merge (changed to in_progress), validator too shallow (added duplicate ID/checkpoint/self-ref/cycle detection). All resolved."
+      "notes": "Recovery-stage plan review for PR #1265. Concern 1: init/record ledger during recovery after original session missed the pre-code stage. Concern 2: validate each listed review thread with separate non-primary review agents before replies; done via 10 claude-sonnet-5 validator agents. Concern 3: treat the missing issue plan-comment as a front-loaded blocker; prepared the detailed comment and attempted gh issue comment, but explicit-repo auth returned HTTP 403, so this remains an external auth blocker to report honestly. Concern 4: align the lifecycle contract across epic-state.json, schema wording, PLAN text, formatter output, and regression tests; done in the current working tree."
     },
     "code_review": {
       "clean": true,
@@ -26,13 +26,6 @@
         {
           "round": 2,
           "models": ["claude-sonnet-4.6"],
-          "concerns_count": 1,
-          "resolved_count": 1,
-          "clean": false
-        },
-        {
-          "round": 3,
-          "models": ["claude-sonnet-5"],
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true

@@ -8,8 +8,9 @@
  * Terminology:
  *   - `SliceNode`  — one chunk of work (e.g. "slice:B2")
  *   - `EpicState`  — the full parsed + validated epic-state.json
- *   - "computed-ready" — a planned slice whose every dependency is validated
- *     or merged; these are the candidates for child-issue materialization
+ *   - "computed-ready" — a planned, non-deferred slice whose every dependency is
+ *     validated or merged; these are the candidates for child-issue
+ *     materialization
  */
 
 import { z } from 'zod';
@@ -38,54 +39,62 @@ const commitShaSchema = z
   .nullable()
   .optional();
 
-const GateCheckpointSchema = z.object({
-  id: z.string().regex(/^[a-z0-9_]+$/),
-  label: z.string().min(1),
-  target_min: z.number(),
-  target_max: z.number(),
-  measured_value: z.number().nullable().optional(),
-  status: GateStatusSchema,
-  evidence_commit: commitShaSchema,
-});
+const GateCheckpointSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9_]+$/),
+    label: z.string().min(1),
+    target_min: z.number(),
+    target_max: z.number(),
+    measured_value: z.number().nullable().optional(),
+    status: GateStatusSchema,
+    evidence_commit: commitShaSchema,
+  })
+  .strict();
 
 export type GateCheckpoint = z.infer<typeof GateCheckpointSchema>;
 
-const HardReleaseGateSchema = z.object({
-  description: z.string().min(1),
-  checkpoints: z.array(GateCheckpointSchema).min(1),
-  status: GateStatusSchema,
-  evidence_commit: commitShaSchema,
-});
+const HardReleaseGateSchema = z
+  .object({
+    description: z.string().min(1),
+    checkpoints: z.array(GateCheckpointSchema).min(1),
+    status: GateStatusSchema,
+    evidence_commit: commitShaSchema,
+  })
+  .strict();
 
 export type HardReleaseGate = z.infer<typeof HardReleaseGateSchema>;
 
-const SliceNodeSchema = z.object({
-  id: z.string().regex(/^slice:[A-Z][0-9]+$/),
-  title: z.string().min(1),
-  tier: z.enum(['A', 'B', 'C']),
-  seq: z.number().int().min(0),
-  status: SliceStatusSchema,
-  scope: z.string().min(1),
-  deferred: z.boolean(),
-  github_issue: z.number().int().positive().nullable().optional(),
-  pr: z.number().int().positive().nullable().optional(),
-  commit_evidence: commitShaSchema,
-  dependencies: z.array(z.string().regex(/^slice:[A-Z][0-9]+$/)),
-  notes: z.string().optional(),
-});
+const SliceNodeSchema = z
+  .object({
+    id: z.string().regex(/^slice:[A-Z][0-9]+$/),
+    title: z.string().min(1),
+    tier: z.enum(['A', 'B', 'C']),
+    seq: z.number().int().min(0),
+    status: SliceStatusSchema,
+    scope: z.string().min(1),
+    deferred: z.boolean(),
+    github_issue: z.number().int().positive().nullable().optional(),
+    pr: z.number().int().positive().nullable().optional(),
+    commit_evidence: commitShaSchema,
+    dependencies: z.array(z.string().regex(/^slice:[A-Z][0-9]+$/)),
+    notes: z.string().optional(),
+  })
+  .strict();
 
 export type SliceNode = z.infer<typeof SliceNodeSchema>;
 
-const EpicStateSchema = z.object({
-  $schema: z.string().optional(),
-  epic_id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  title: z.string().min(1),
-  github_issue: z.number().int().positive().nullable().optional(),
-  schema_version: z.string().regex(/^\d+\.\d+\.\d+$/),
-  updated_at: z.string().datetime(),
-  hard_release_gate: HardReleaseGateSchema,
-  slices: z.array(SliceNodeSchema).min(1),
-});
+const EpicStateSchema = z
+  .object({
+    $schema: z.string().optional(),
+    epic_id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    title: z.string().min(1),
+    github_issue: z.number().int().positive().nullable().optional(),
+    schema_version: z.string().regex(/^\d+\.\d+\.\d+$/),
+    updated_at: z.string().datetime(),
+    hard_release_gate: HardReleaseGateSchema,
+    slices: z.array(SliceNodeSchema).min(1),
+  })
+  .strict();
 
 export type EpicState = z.infer<typeof EpicStateSchema>;
 
@@ -142,6 +151,11 @@ export function validateEpicState(raw: unknown): EpicState {
       if (!ids.has(dep)) {
         throw new Error(`Slice ${slice.id} has unknown dependency: ${dep}`);
       }
+    }
+    if (DONE_STATUSES.has(slice.status) && slice.commit_evidence == null) {
+      throw new Error(
+        `Slice ${slice.id} has done status ${slice.status} but no commit_evidence; update status and evidence together.`,
+      );
     }
   }
 
@@ -331,9 +345,13 @@ export function formatMaterializationPlan(state: EpicState): string {
       lines.push('');
       lines.push(`**Scope:** ${slice.scope}`);
       lines.push('');
-      lines.push(
-        `**Dependencies:** ${slice.dependencies.length === 0 ? 'none' : slice.dependencies.join(', ')} (all validated)`,
-      );
+      const dependencySummary =
+        slice.dependencies.length === 0
+          ? 'none'
+          : slice.dependencies
+              .map((dep) => `${dep} (${statusById.get(dep) ?? 'unknown'})`)
+              .join(', ');
+      lines.push(`**Dependencies:** ${dependencySummary}`);
       lines.push('');
       lines.push('**Suggested issue title:**');
       lines.push('```');

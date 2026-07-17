@@ -67,7 +67,7 @@ A0 (Bootstrap — this slice)
 
 ### slice:A0 — Bootstrap: Control plane
 
-**Status:** `in_progress` — advances to `validated` when this PR merges (Producer fills `commit_evidence` with the merge SHA).
+**Status:** `in_progress` on this branch; update to `validated` (with commit evidence) after this PR merges.
 
 Creates the durable planning artifacts you are reading now: `PLAN.md`,
 `epic-state.json`, `epic-state.schema.json`, the `epic:status` CLI, and
@@ -77,7 +77,7 @@ the unit-test suite for the tooling. No equipment gameplay changes.
 
 ### slice:B1 — DPS ratio measurement tooling
 
-**Status:** `planned` (computed-ready after A0 validates)
+**Status:** `planned` (computed-ready after A0 merges or validates)
 
 Build a deterministic script (`scripts/agent/floor2-dps-ratio.ts`) that:
 
@@ -98,7 +98,7 @@ analytically expected value (regression guard).
 
 ### slice:B2 — Tier 1 equipment catalog
 
-**Status:** `planned` (computed-ready after A0 validates)
+**Status:** `planned` (computed-ready after A0 merges or validates)
 
 Define new entries for Floor 2 levels 1–5 in **both**:
 
@@ -119,7 +119,7 @@ B1 tooling reports `ratio_1_to_6` in [1.7, 2.3] with Tier-1 loadout equipped.
 
 ### slice:B3 — Tier 2 equipment catalog
 
-**Status:** `planned` (computed-ready after A0 validates)
+**Status:** `planned` (computed-ready after A0 merges or validates)
 
 Define new entries for Floor 2 levels 6–11 in **both** `equipmentDefs` and `items.ts`
 (same plumbing pattern as B2). Minimum coverage: one weapon upgrade (higher tier than

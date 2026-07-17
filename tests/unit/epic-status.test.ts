@@ -10,7 +10,7 @@ import {
   type EpicState,
   type SliceNode,
 } from '../../scripts/agent/epic-status-lib.js';
-import { parseArgs } from '../../scripts/agent/epic-status.js';
+import { parseArgs, runGitHubReconcile } from '../../scripts/agent/epic-status.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -28,6 +28,7 @@ function makeSlice(
   }
   const tier = tierMatch[1] as 'A' | 'B' | 'C';
   const seq = parseInt(tierMatch[2], 10);
+  const defaultCommitEvidence = status === 'validated' || status === 'merged' ? '1234567' : null;
   return {
     id,
     title: `Test slice ${id}`,
@@ -38,7 +39,7 @@ function makeSlice(
     deferred: false,
     github_issue: null,
     pr: null,
-    commit_evidence: null,
+    commit_evidence: defaultCommitEvidence,
     dependencies: deps,
     ...overrides,
   };
@@ -104,6 +105,32 @@ describe('validateEpicState', () => {
       makeSlice('slice:B1', 'planned', ['slice:Z9']),
     ]);
     expect(() => validateEpicState(state)).toThrow(/unknown dependency/);
+  });
+
+  it('rejects unknown top-level properties', () => {
+    const state = makeMinimalState([makeSlice('slice:A0', 'validated')]);
+    expect(() =>
+      validateEpicState({ ...state, unexpected_root_key: true } as EpicState & {
+        unexpected_root_key: boolean;
+      }),
+    ).toThrow(/unrecognized key/i);
+  });
+
+  it('rejects unknown nested slice properties', () => {
+    const state = makeMinimalState([
+      {
+        ...makeSlice('slice:A0', 'validated'),
+        github_isse: 42,
+      } as SliceNode & { github_isse: number },
+    ]);
+    expect(() => validateEpicState(state)).toThrow(/unrecognized key/i);
+  });
+
+  it('rejects done slices without commit evidence', () => {
+    const state = makeMinimalState([
+      makeSlice('slice:A0', 'validated', [], { commit_evidence: null }),
+    ]);
+    expect(() => validateEpicState(state)).toThrow(/done status validated but no commit_evidence/i);
   });
 
   it('rejects an invalid slice status', () => {
@@ -186,6 +213,11 @@ describe('computeReadySlices', () => {
       makeSlice('slice:B1', 'planned', ['slice:A0']),
     ]);
     expect(computeReadySlices(state).map((s) => s.id)).toEqual(['slice:B1']);
+  });
+
+  it('excludes deferred planned slices from the ready queue', () => {
+    const state = makeMinimalState([makeSlice('slice:A0', 'planned', [], { deferred: true })]);
+    expect(computeReadySlices(state)).toHaveLength(0);
   });
 
   it('excludes a planned slice with an unresolved dep', () => {
@@ -305,6 +337,16 @@ describe('formatMaterializationPlan', () => {
     expect(out).toContain('feat(test-epic)');
   });
 
+  it('shows actual dependency statuses for ready slices', () => {
+    const state = makeMinimalState([
+      makeSlice('slice:A0', 'merged'),
+      makeSlice('slice:B1', 'planned', ['slice:A0']),
+    ]);
+    const out = formatMaterializationPlan(state);
+    expect(out).toContain('slice:A0 (merged)');
+    expect(out).not.toContain('all validated');
+  });
+
   it('lists blocked slices with unresolved deps', () => {
     const state = makeMinimalState([
       makeSlice('slice:A0', 'planned'),
@@ -314,6 +356,15 @@ describe('formatMaterializationPlan', () => {
     // B1 is blocked because A0 is planned, not validated
     expect(out).toContain('Blocked');
     expect(out).toContain('slice:B1');
+  });
+
+  it('excludes deferred planned slices from the blocked list', () => {
+    const state = makeMinimalState([
+      makeSlice('slice:A0', 'planned'),
+      makeSlice('slice:B1', 'planned', ['slice:A0'], { deferred: true }),
+    ]);
+    const out = formatMaterializationPlan(state);
+    expect(out).not.toContain('### slice:B1');
   });
 
   it('shows no ready slices message when none exist', () => {
@@ -407,6 +458,112 @@ describe('parseArgs', () => {
   it('throws when --reconcile is used without --github', () => {
     expect(() => parseArgs(argv('floor-2-equipment', '--reconcile'))).toThrow(
       /--reconcile requires --github/,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CLI helpers
+// ---------------------------------------------------------------------------
+
+describe('parseArgs', () => {
+  it('accepts the default offline mode', () => {
+    expect(parseArgs(['node', 'epic-status.ts', 'floor-2-equipment'])).toEqual({
+      epicId: 'floor-2-equipment',
+      github: false,
+      reconcile: false,
+      materializationPlan: false,
+    });
+  });
+
+  it('rejects unknown flags and extra args', () => {
+    expect(() =>
+      parseArgs(['node', 'epic-status.ts', 'floor-2-equipment', '--materialisation-plan']),
+    ).toThrow(/Unknown argument/);
+    expect(() =>
+      parseArgs(['node', 'epic-status.ts', 'floor-2-equipment', 'extra-positional-arg']),
+    ).toThrow(/Unknown argument/);
+  });
+
+  it('rejects github mode without reconcile', () => {
+    expect(() => parseArgs(['node', 'epic-status.ts', 'floor-2-equipment', '--github'])).toThrow(
+      /--github requires --reconcile/,
+    );
+  });
+
+  it('rejects conflicting mode combinations', () => {
+    expect(() =>
+      parseArgs([
+        'node',
+        'epic-status.ts',
+        'floor-2-equipment',
+        '--materialization-plan',
+        '--github',
+        '--reconcile',
+      ]),
+    ).toThrow(/cannot be combined/);
+  });
+});
+
+describe('runGitHubReconcile', () => {
+  it('checks pull request state when a slice records a PR', async () => {
+    const state = makeMinimalState([
+      makeSlice('slice:A0', 'planned', [], { github_issue: null, pr: 77 }),
+    ]);
+    const writes: string[] = [];
+    const fetchImpl: typeof fetch = (async (input: string | URL | Request) => {
+      expect(String(input)).toContain('/pulls/77');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ merged: true, state: 'closed' }),
+      } as Response;
+    }) as typeof fetch;
+
+    const discrepancies = await runGitHubReconcile(state, {
+      fetchImpl,
+      token: 'test-token',
+      stdout: { write: (chunk: string) => writes.push(chunk) },
+      stderr: { write: (chunk: string) => writes.push(chunk) },
+    });
+
+    expect(discrepancies).toBe(1);
+    expect(writes.join('')).toContain(
+      'PR #77 is merged on GitHub but slice is not validated/merged',
+    );
+  });
+
+  it('still audits the PR when the issue fetch fails', async () => {
+    const state = makeMinimalState([
+      makeSlice('slice:A0', 'planned', [], { github_issue: 42, pr: 77 }),
+    ]);
+    const writes: string[] = [];
+    const fetchImpl: typeof fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/issues/42')) {
+        return { ok: false, status: 500, json: async () => ({}) } as Response;
+      }
+      if (url.includes('/pulls/77')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ merged: true, state: 'closed' }),
+        } as Response;
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    }) as typeof fetch;
+
+    const discrepancies = await runGitHubReconcile(state, {
+      fetchImpl,
+      token: 'test-token',
+      stdout: { write: (chunk: string) => writes.push(chunk) },
+      stderr: { write: (chunk: string) => writes.push(chunk) },
+    });
+
+    expect(discrepancies).toBe(2);
+    expect(writes.join('')).toContain('HTTP 500 for issue #42');
+    expect(writes.join('')).toContain(
+      'PR #77 is merged on GitHub but slice is not validated/merged',
     );
   });
 });

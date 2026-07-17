@@ -170,7 +170,7 @@
             "type": "string",
             "pattern": "^slice:[A-Z][0-9]+$"
           },
-          "description": "IDs of slices that must be validated before this slice can start."
+          "description": "IDs of slices that must be validated or merged before this slice can start."
         },
         "notes": {
           "type": "string",

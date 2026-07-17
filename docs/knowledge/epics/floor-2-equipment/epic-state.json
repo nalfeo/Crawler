@@ -43,7 +43,7 @@
       "pr": null,
       "commit_evidence": null,
       "dependencies": [],
-      "notes": "Claimed by Producer session 7b4a2e77. Status advances to 'validated' when this PR merges; Producer fills commit_evidence with the merge SHA."
+      "notes": "Claimed by Producer session 7b4a2e77. This slice remains in progress until the PR merges and commit evidence is recorded."
     },
     {
       "id": "slice:B1",

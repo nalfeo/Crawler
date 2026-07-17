@@ -25,7 +25,7 @@ Created the durable control plane for the Floor 2 equipment epic (issue #1264):
    lifecycle, dependency references).
 
 2. **`docs/knowledge/epics/floor-2-equipment/epic-state.json`** — Initial state with all
-   7 slices (A0–C2) fully specified, all in `planned` status except A0 which is `validated`.
+   7 slices (A0–C2) fully specified, with A0 remaining `in_progress` until merge evidence exists.
    Hard release gate defined: 1.7×–2.3× DPS ratio independently at level 1→6 and level 6→11.
 
 3. **`docs/knowledge/epics/floor-2-equipment/PLAN.md`** — Human-readable epic plan
@@ -81,11 +81,11 @@ Created the durable control plane for the Floor 2 equipment epic (issue #1264):
   the CLI entry owns file I/O and GitHub reconciliation. This pattern matches
   `apple-record-cli.ts` / `apple-calibration-lib.ts` and keeps tests fast.
 
-- **slice:A0 marked `validated` in initial state**: The A0 slice is validated by the
-  PR that creates these files — the commit evidence is the merge commit of this PR.
-  The `commit_evidence` field will be filled by the Producer when the PR merges.
+- **slice:A0 remains `in_progress` until merge**: The control-plane artifacts are
+  implemented on this branch, but A0 does not become done until the PR merges and
+  the Producer records commit evidence in the state file.
 
-- **Slices B1, B2, B3 are computed-ready after A0 validates** (no cross-B dependencies):
+- **Slices B1, B2, B3 become computed-ready after A0 merges/validates** (no cross-B dependencies):
   these three slices can be dispatched in parallel by the Producer. B2 and B3 do not
   depend on B1 (measurement tooling) because the tooling is used to _validate_ the
   item stats, not to define them.
@@ -94,7 +94,8 @@ Created the durable control plane for the Floor 2 equipment epic (issue #1264):
 
 The Producer should, after this PR merges:
 
-1. Update `slice:A0` `commit_evidence` field with the merge SHA.
+1. Update `slice:A0` status/evidence together after merge (for example, set the
+   final done status and record the merge SHA in `commit_evidence`).
 2. Run `npm run epic:status -- floor-2-equipment --materialization-plan` to get
    the child issue queue.
 3. Create child issues for slice:B1, slice:B2, and slice:B3 in parallel.
