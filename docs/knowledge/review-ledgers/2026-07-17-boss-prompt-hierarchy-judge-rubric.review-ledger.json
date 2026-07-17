@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "boss-prompt-hierarchy-judge-rubric",
+  "task_title": "Design-language priority hierarchy + theme-adherence judge rubric + cactusfolk addendum",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "1 blocking: buildUserPrompt hardcoded four-scores text even when theme_adherence (5th axis) required -- fixed by threading hasThemeAddendum through buildUserPrompt + added five/four-scores unit test assertions. 4 non-blocking, all resolved: (2) jailbreak-classifier-risk phrasing (ALL-CAPS MUST/NEVER, omit-imperatives) in content-direction.ts/design-language-addenda.ts/cactusfolk-boss.yaml reworded to conversational goal-oriented phrasing per docs/agent-os/sprite-style.md guidance; (3) stale judge.ts module doc comment (four evaluators) corrected to accurately describe 4 always-on + 1 conditional axis; (4) recency-bias positioning concern resolved by inspection -- composed prompt already places the higher-priority Theme block AFTER the Floor block (closer to Subject), so existing structure already favors the higher-priority addendum via recency, no reorder needed; (5) all-17-families validation-gap concern resolved by programmatically checking resolveDesignLanguageAddenda for all 72 family-bearing floor-2 archetype ids (18 families) -- zero missing theme addenda, confirming the fix is family-agnostic not cactusfolk/goblin-specific."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "No significant issues found. Verified buildUserPrompt fix directly (re-read fixed file), parseJudgeResponse required/disallowed enforcement, FLOOR_2_FAMILY_BY_SPRITE_NAME lookup correctness, designLanguageAddendaBlock({}) backward compat, PROMPT_TEMPLATE_VERSION v5 cache invalidation, and confirmed no new AI-injection surface. All 6 review categories clean."
+        }
+      ]
+    }
+  }
+}

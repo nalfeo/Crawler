@@ -2,19 +2,19 @@ type: enemy
 name: cactusfolk-boss
 floor: 2
 description: |
-  Abuela Saguaro, a towering saguaro matriarch who must read as an
-  unmistakable GRANDMOTHER: a stooped, hunched-forward posture, deeply
+  Abuela Saguaro, a towering saguaro matriarch who reads unmistakably as
+  an elderly grandmother: a stooped, hunched-forward posture, deeply
   wrinkled and weathered green flesh with age-lined ridges, small
   wire-rimmed spectacles, and a faded floral rebozo/shawl draped over one
   shoulder. Industrial salvage adornment and dark-fantasy dungeon wear
   (scavenged iron chain-mail, cracked leather straps, rusted plating, a
-  battered crown or wide-brimmed hat) may coordinate with this
-  grandmotherly frame, but must not mask or bury the stoop, spectacles,
-  or wrinkled/weathered texture — omit any dressing element that cannot
-  coordinate without obscuring those cues. Preserve the towering
-  vertical saguaro silhouette: a thick central column torso, bent
-  slightly forward at the shoulders, with paired arm-columns raised in a
-  classic saguaro pose. Keep arms and spines firmly connected to the
+  battered crown or wide-brimmed hat) works best when it coordinates with
+  this grandmotherly frame rather than masking or burying the stoop,
+  spectacles, or wrinkled/weathered texture — leave out any dressing
+  element that cannot coordinate without obscuring those cues. Preserve
+  the towering vertical saguaro silhouette: a thick central column torso,
+  bent slightly forward at the shoulders, with paired arm-columns raised
+  in a classic saguaro pose. Keep arms and spines firmly connected to the
   body — no isolated thorns, no fragile protrusions, no floating limbs.
   Face the sprite toward the right (default enemy facing). Colour
   palette from the Floor 2 dungeon range: dark greens, rusted iron, and

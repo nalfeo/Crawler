@@ -51,12 +51,13 @@ export function designLanguageAddendaBlock(addenda: DesignLanguageAddenda = {}):
       ? [
           '## Design language priority',
           'These addenda refine, and may override, the general Crawler design language above. ' +
-            'If any instruction here conflicts with another, resolve it in this priority order: ' +
-            'theme design language > floor design language > general Crawler design language. ' +
-            'When a conflict exists, ignore the lower-priority directive rather than blending it in. ' +
-            'In particular, general Crawler dark-fantasy/dungeon-dressing motifs (armor, salvage, decay) ' +
-            'must coordinate with — and never mask or bury — the higher-priority floor/theme-specific ' +
-            'details; if a dressing element cannot coordinate without obscuring those details, omit it.',
+            'When instructions conflict, follow this priority order: ' +
+            'theme design language > floor design language > general Crawler design language, ' +
+            'favoring the higher-priority guidance over the lower-priority one rather than blending them. ' +
+            'General Crawler dark-fantasy/dungeon-dressing motifs (armor, salvage, decay) work best when ' +
+            'they coordinate with the higher-priority floor/theme-specific details rather than masking or ' +
+            'burying them; when a dressing element cannot coordinate without obscuring those details, ' +
+            'leave it out.',
           '',
         ]
       : []),

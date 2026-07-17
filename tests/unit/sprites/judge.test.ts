@@ -396,6 +396,7 @@ describe('judgeVariant — happy path', () => {
 
     expect(calls[0]?.request.systemInstructions).toContain('five independent 1-5 ordinal axes');
     expect(calls[0]?.request.systemInstructions).toContain('theme_adherence');
+    expect(calls[0]?.request.userPrompt).toContain('Return your five scores');
     expect(scorecard.themeAdherence).toEqual({ score: 5, rationale: 'cartel details visible' });
   });
 
@@ -422,6 +423,7 @@ describe('judgeVariant — happy path', () => {
 
     expect(calls[0]?.request.systemInstructions).toContain('four independent 1-5 ordinal axes');
     expect(calls[0]?.request.systemInstructions).not.toContain('theme_adherence');
+    expect(calls[0]?.request.userPrompt).toContain('Return your four scores');
     expect(scorecard.themeAdherence).toBeUndefined();
   });
 

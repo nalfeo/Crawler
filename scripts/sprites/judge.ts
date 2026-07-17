@@ -1,17 +1,22 @@
 /**
  * VLM judge for the sprite generation pipeline (spec §F4).
  *
- * Four evaluators, one vision call per variant:
+ * Four evaluators always run, one vision call per variant; a 5th
+ * (`theme_adherence`) joins them whenever the brief carries a floor or
+ * theme design-language addendum:
  *
  *   - `design_language` — does the concept feel specifically like Crawler?
  *   - `reference_style_match` — does rendering match approved references?
  *   - `brief_match`   — does the candidate match `brief.prompt`?
  *   - `readability`   — does the candidate read at game scale on a dark
  *                       floor tile? (composited preview attached)
+ *   - `theme_adherence` (conditional) — does the candidate honor the
+ *                       floor/theme design-language addenda, not just the
+ *                       generic Crawler style?
  *
  * Each evaluator returns a 1-5 integer score and a 1-2 sentence
- * rationale. A variant is `passed` only when ALL evaluators score >= 3
- * (spec §F4: `< 3 auto-rejects`).
+ * rationale. A variant is `passed` only when ALL active evaluators score
+ * >= 3 (spec §F4: `< 3 auto-rejects`).
  *
  * Hard constitutional rule (§3 — Deterministic CI Only): this module
  * REFUSES to run when `process.env.CI` is defined. The judge calls a
@@ -20,9 +25,9 @@
  * ADR — see ADR 0043 for the asset-request CI worker exception, which
  * opens the gate when `SPRITES_ALLOW_CI_PIPELINE=true` is ALSO set.
  *
- * Cost discipline: one vision call per variant — all three evaluators
+ * Cost discipline: one vision call per variant — all active evaluators
  * are requested in a single structured-output response, NOT fanned out
- * into three separate calls. This keeps a typical 8-variant brief well
+ * into separate calls. This keeps a typical 8-variant brief well
  * under the $0.50/run ceiling in spec §"Cost ceiling".
  *
  * Inputs are pure-ish (Buffer + brief + style guide string); the only
@@ -303,13 +308,14 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     .slice(0, 3)
     .map((png) => ({ png, label: 'reference' as const }));
 
+  const hasThemeAddendumForPrompt = designLanguageAddenda.theme !== undefined;
   const request: EvaluateRequest = {
     systemInstructions: buildSystemInstructions(
       options.styleGuide,
       options.brief.floor,
       designLanguageAddenda,
     ),
-    userPrompt: buildUserPrompt(options.brief, referencePreviews.length),
+    userPrompt: buildUserPrompt(options.brief, referencePreviews.length, hasThemeAddendumForPrompt),
     images: [
       { png: candidatePreview, label: 'candidate' },
       { png: readabilityComposite, label: 'readability-composite' },
@@ -494,7 +500,7 @@ function buildSystemInstructions(
   ].join('\n');
 }
 
-function buildUserPrompt(brief: Brief, referenceCount: number): string {
+function buildUserPrompt(brief: Brief, referenceCount: number, hasThemeAddendum: boolean): string {
   const hasReferences = referenceCount > 0;
   const refSummary = hasReferences
     ? `${referenceCount} reference image(s) attached, labelled reference-1 .. reference-${referenceCount}.`
@@ -516,7 +522,12 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
       '                               The candidate must read as same-family with them.',
     );
   }
-  lines.push('', refSummary, '', 'Return your four scores and rationales as a strict JSON object.');
+  lines.push(
+    '',
+    refSummary,
+    '',
+    `Return your ${hasThemeAddendum ? 'five' : 'four'} scores and rationales as a strict JSON object.`,
+  );
   return lines.filter((s) => s !== '').join('\n');
 }
 
