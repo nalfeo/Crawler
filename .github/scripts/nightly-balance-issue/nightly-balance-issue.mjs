@@ -25,7 +25,7 @@ const FINAL_AGGREGATE_ARTIFACTS = Object.freeze([
   'weapon-sweep-fireball',
 ]);
 
-export function buildIssueBody(issueNumberText = '{this issue number}') {
+export function buildIssueBody(issueNumber = '{this issue number}') {
   return `## Objective
 Examine eligible current telemetry, identify and rank up to 3 evidence-backed game-balance improvements, evaluate each independently with canonical sweeps, and ship only treatments supported by comparable aggregate evidence. Zero eligible ideas is valid and produces no implementation PR.
 
@@ -48,7 +48,7 @@ One change at a time; identical seeds/weapons/flags/limits; >10 runs via GitHub 
 Max 9 rows. Per row: rank/name, measured symptom, causal evidence, production path, enabling config/flag, hypothesis, exact change, baseline/post metrics, run/artifact URLs, verdict, accepted/rejected/blocked rationale. Keep rejected/blocked visible.
 
 ## Mandatory human approval gate
-Gameplay PR contains \`Closes #${issueNumberText}\`, labels \`human-approval-required\` + \`merge-train-blocked\`, ready not draft, no \`merge-train\`/auto-merge/merge. Only exact standalone trimmed owner \`nalfeo\` comment \`APPROVED FOR CHECK-IN\` unlocks. Green CI/reviews/quoted text/substrings/other authors do not count. Bad final evidence => close/abandon.
+Gameplay PR contains \`Closes #${issueNumber}\`, labels \`human-approval-required\` + \`merge-train-blocked\`, ready not draft, no \`merge-train\`/auto-merge/merge. Only exact standalone trimmed owner \`nalfeo\` comment \`APPROVED FOR CHECK-IN\` unlocks. Green CI/reviews/quoted text/substrings/other authors do not count. Bad final evidence => close/abandon.
 
 ## Acceptance evidence
 Up to 3 eligible ideas (zero allowed/no PR), <=3 attempts each, complete ledger, comparable aggregate baseline/post artifacts, final judge, explicit approval status, normal verification/review/harness/handoff/determinism.
