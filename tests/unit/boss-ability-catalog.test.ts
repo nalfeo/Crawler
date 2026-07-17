@@ -231,28 +231,30 @@ describe('Floor 2 boss ability delivery status', () => {
     const records = buildBossAbilityStatusRecords();
     expect(records.every((record) => record.stage === 'blocked')).toBe(true);
 
+    // Queen has shipped verified arena evidence but is intentionally NOT
+    // production-verified: she stays blocked behind the still-open arena PR and
+    // the unresolved production-enable/balance gate.
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
+    expect(queen?.status.arenaLabState).toBe('verified');
+    expect(queen?.status.runtimeState).toBe('verified');
     expect(queen?.unresolvedBlockers).toEqual([
-      'floor2-boss-difficulty-pr-1237',
       'combat-arena-lab-pr-1243',
+      'floor2-boss-production-enable',
     ]);
+    // The other 17 abilities remain blocked purely by the production-enable
+    // gate; the arena slice must not promote them to ready.
     for (const record of records.filter(
       (candidate) => candidate.ability.bossArchetypeId !== 'faerie-boss',
     )) {
-      expect(record.unresolvedBlockers).toEqual([
-        'boss-ability-foundation',
-        'queen-mab-vertical-slice',
-      ]);
+      expect(record.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     }
   });
 
-  it('promotes the 17-boss backlog when foundation and Queen evidence are verified', () => {
+  it('promotes the 17-boss backlog only when the production-enable gate is verified', () => {
     const promoted = bossAbilityStatusPackSchema.parse({
       ...FLOOR2_BOSS_ABILITY_STATUS,
       gates: FLOOR2_BOSS_ABILITY_STATUS.gates.map((gate) =>
-        gate.id === 'boss-ability-foundation' || gate.id === 'queen-mab-vertical-slice'
-          ? { ...gate, state: 'verified' }
-          : gate,
+        gate.id === 'floor2-boss-production-enable' ? { ...gate, state: 'verified' } : gate,
       ),
       entries: FLOOR2_BOSS_ABILITY_STATUS.entries.map((entry) =>
         entry.abilityId === 'queen-mab-verdigris-glamour'

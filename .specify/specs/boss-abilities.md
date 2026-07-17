@@ -102,8 +102,11 @@ optional boss-specific layers.
     hand-authored truth field.
 19. **BA19 - Arena proof:** every implemented ability is exercised in the
     canonical combat arena lab from PR #1243. Do not create a second arena.
-20. **BA20 - Real observation:** every runtime slice also records a real-game or
-    headless artifact proving the production pipeline invoked the ability.
+20. **BA20 - Real observation:** every runtime slice records a deterministic
+    artifact proving the ability ran through the canonical simulation pipeline.
+    While production activation is gated off, the arena run driving the canonical
+    runtime is the authoritative evidence; a separate real-game/headless Floor 2
+    artifact is deferred to the production-enable gate and is not required here.
 
 ## Design
 
@@ -200,9 +203,18 @@ Queen Mab is selected because Floor 2 Seed 42 includes faeries and because she
 proves area geometry, debuffs, announcements, VFX, and shared AI/render danger
 state without requiring authored animation.
 
-Acceptance:
+Acceptance (arena-only staging mode):
 
-1. Start from a `main` that contains PRs #1237 and #1243.
+This slice was re-approved to land arena-only, before Floor 2 balance is final.
+The runtime is present in the canonical pipeline but default-off in the real
+game; only the combat arena lab enables it. PR #1237 is no longer a blocker to
+starting arena implementation; PR #1243 remains the authoritative arena
+dependency.
+
+1. Base the implementation on the open combat-arena branch
+   `copilot/create-combat-arena-lab` (PR #1243) at or after `3dbb91d3`, plus the
+   approved catalog/design commit; target the implementation PR at that branch,
+   not `main`.
 2. No cast becomes eligible before 9,000ms of active boss combat.
 3. At eligibility, the exact announcement is
    `VERDIGRIS GLAMOUR — All that glitters will corrode!`.
@@ -212,9 +224,13 @@ Acceptance:
 6. Tarnished lasts 4,000ms, applies 0.70 movement and 0.75 attack-speed
    multipliers, and cannot stack.
 7. The next 9,000ms cooldown begins at resolution, not at cast start.
-8. A deterministic real headless Seed 42 Floor 2 artifact records at least two
-   resolved Mab casts with the expected phase timestamps. This is the hard
-   recurring-ability gate.
+8. A deterministic combat-arena run through the canonical simulation step records
+   at least two fully resolved Verdigris Glamour casts with the exact phase
+   cadence (telegraphs at 9,000/19,500ms, resolutions at 10,500/21,000ms), while
+   the default normal-game configuration records zero ability casts/events over
+   the same duration. This is the hard recurring-ability gate. Real Floor 2
+   headless balance validation is intentionally out of scope and deferred to the
+   production-enable gate.
 9. The PR #1243 combat arena gains or reuses the faerie-boss selection and shows
    the same canonical simulation step, announcement, circle, damage, debuff, and
    excessive procedural VFX.
@@ -222,10 +238,12 @@ Acceptance:
     `not-authored`. Adding animation changes that evidence requirement.
 11. Production AI avoids only the same committed circle that is visible to the
     player; it receives no pre-lock player-position prediction.
-12. The implementation PR records its issue/PR and real/headless plus arena
-    evidence in the status sidecar, marks the foundation and Mab milestones
-    verified, marks Mab verified, sets the other 17 foundation states verified,
-    and thereby promotes them to derived `ready`.
+12. The implementation PR records its issue/PR and deterministic arena evidence
+    in the status sidecar, marks the foundation and Mab milestones verified, and
+    marks Mab's runtime/telegraph/arena states verified. It must NOT derive Mab as
+    production `verified` while the production-enable gate is off, and it must NOT
+    promote the other 17 abilities to `ready`; they remain blocked behind the
+    separate `floor2-boss-production-enable` gate.
 
 ## Test Plan
 
@@ -239,19 +257,23 @@ Acceptance:
   completeness.
 - `npm run boss-abilities:status` is the human-readable backlog audit.
 
-### Runtime foundation and Queen Mab (next slice)
+### Runtime foundation and Queen Mab (this slice)
 
 - Unit tests: phase transitions, cooldown anchor, target lock, cleanup, no
   stacking, exact stat multipliers, announcement/VFX once semantics, geometry
   containment, and AI/render cue-state identity.
 - Integration tests: the ability executor in the canonical simulation step,
   including encounter activation/deactivation and recycled entity IDs.
-- Headless tests: real Floor 2 Seed 42 reaches Queen Mab and records at least two
-  resolved casts at the expected timestamps without state injection.
+- Deterministic arena evidence: a combat-arena run through the canonical
+  simulation step reaches Queen Mab and records at least two resolved casts at
+  the expected timestamps without state injection, while the default normal-game
+  configuration records zero casts. Real Floor 2 Seed 42 headless balance
+  validation is out of scope and deferred to the production-enable gate.
 - Deterministic visual tests: the arena renders the locked circle and active
   Tarnished/VFX state; pixel or UI probes verify the cue exists for the complete
   warning window.
-- Lab observation supplements but never replaces the real headless artifact.
+- Generated-art manifest validation: every required visual phase has a procedural
+  fallback and every generated-art asset is non-blocking for the arena slice.
 
 ## Constitutional Compliance
 

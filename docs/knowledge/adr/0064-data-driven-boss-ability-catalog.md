@@ -53,11 +53,15 @@ should not bundle stale PR states or lab evidence.
    explicit gates and evidence axes.
 5. Implement abilities incrementally. The first runtime slice is a mob-agnostic
    optional executor plus Queen Mab's Verdigris Glamour. The other 17 complete
-   designs remain blocked until the shared foundation and Queen slice are
-   verified, then derive as ready.
+   designs remain blocked until a separate production-enable/balance gate is
+   resolved (see Amendment 2026-07-17); the shared-foundation and Queen slices
+   verifying does not by itself promote them to ready.
 6. Reuse the combat arena lab from PR #1243. Every implemented ability needs
-   arena proof and a real game/headless artifact. Authored cast animation is
-   optional; if added, it makes sprite-animation-lab proof mandatory.
+   arena proof. While production is gated off, the deterministic arena run
+   through the canonical runtime is the authoritative artifact; a real
+   game/headless Floor 2 artifact is deferred to the production-enable gate.
+   Authored cast animation is optional; if added, it makes sprite-animation-lab
+   proof mandatory.
 7. Build rather than buy the runtime foundation. Existing ECS state, Zod,
    announcement events, VFX events, and simulation wiring are the necessary
    seams; a third-party cooldown/ability framework would add adaptation and
@@ -96,8 +100,11 @@ should not bundle stale PR states or lab evidence.
   runtime contract requires one committed public geometry state consumed by
   renderer, AI, and resolution.
 - Queen could appear complete in the arena while remaining inert in production.
-  Verification therefore requires a real headless Seed 42 repeated-cast
-  artifact in addition to the lab.
+  While the production-enable gate is off, Queen therefore must not derive as
+  production `verified`: her runtime/telegraph/arena states are verified from the
+  deterministic arena artifact, but she stays blocked behind the open arena PR
+  and the `floor2-boss-production-enable` gate until a real headless Seed 42
+  repeated-cast artifact is produced at production-enable time.
 - The status sidecar could claim proof without an artifact. Schema validation
   requires evidence for verified lab states; review remains responsible for
   checking the artifact itself.
@@ -119,3 +126,31 @@ should not bundle stale PR states or lab evidence.
 - **Implement all 18 abilities in one PR.** Rejected because failures would
   entangle foundation correctness with 18 unrelated mechanics and prevent a
   small, observable vertical slice.
+
+## Amendment 2026-07-17: Arena-only staging for the Queen Mab slice
+
+The Queen Mab vertical slice was re-approved to land **arena-only**, before
+Floor 2 balance is final, under issue #1260. This amends decisions 5–6 and the
+Queen inertness risk above:
+
+- The reusable mob-ability executor is wired into the canonical production
+  simulation path behind an explicit **default-off** feature gate. The real game
+  registers zero active boss ability definitions and emits zero casts while the
+  gate is off; only the PR #1243 combat arena enables the same canonical path via
+  a deterministic `f2-queen-mab` preset.
+- The hard success gate is a **deterministic combat-arena run** (two resolved
+  Verdigris Glamour casts at 9,000/19,500ms telegraph and 10,500/21,000ms
+  resolution) plus a zero-casts-when-off check — **not** a real Floor 2 headless
+  balance sweep, which is explicitly out of scope for this slice.
+- PR #1237 is no longer a blocker to starting arena implementation. PR #1243
+  remains the authoritative arena dependency.
+- Delivery honesty: the `boss-ability-foundation` and `queen-mab-vertical-slice`
+  milestones become `verified`; Queen's runtime/telegraph/arena states become
+  `verified` with arena evidence, but Queen must **not** derive as production
+  `verified` while the new `floor2-boss-production-enable` gate is unresolved.
+  The other 17 abilities stay blocked behind that same gate and are not promoted
+  to `ready` by this slice.
+- Generated replacement art is tracked in a strict, versioned, non-blocking
+  Node-side manifest (`scripts/agent/data/queen-mab-art-manifest.json`), scoped
+  to Queen Mab but extensible to the other 17 abilities. Every required visual
+  phase ships a procedural fallback, so no generated art blocks the arena slice.
