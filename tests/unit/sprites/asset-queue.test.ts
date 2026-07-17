@@ -2,10 +2,14 @@
  * Unit tests for AssetQueue implementations and factory.
  */
 
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NoopAssetQueue } from '../../../scripts/sprites/queue/noop-queue.js';
 import { createAssetQueue } from '../../../scripts/sprites/queue/index.js';
 import { AzureStorageQueue } from '../../../scripts/sprites/queue/azure-queue.js';
+import { LocalFileQueue } from '../../../scripts/sprites/queue/local-file-queue.js';
 import {
   InvalidAssetRequestMessageError,
   normalizeAssetRequest,
@@ -524,5 +528,198 @@ describe('AzureStorageQueue dequeue — invalid-size message handling', () => {
     expect(result).toBeNull();
     expect(azureSdkMock.deleteMessage).toHaveBeenCalledTimes(2);
     expect(azureSdkMock.receiveMessages).toHaveBeenCalledTimes(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LocalFileQueue
+// ---------------------------------------------------------------------------
+
+function makeTempDir(): string {
+  return mkdtempSync(path.join(tmpdir(), 'local-file-queue-test-'));
+}
+
+describe('LocalFileQueue', () => {
+  it('reports local-file backend', () => {
+    const q = new LocalFileQueue(path.join(makeTempDir(), 'q.json'));
+    expect(q.backend).toBe('local-file');
+  });
+
+  it('dequeue returns null on an empty (non-existent) queue file', async () => {
+    const q = new LocalFileQueue(path.join(makeTempDir(), 'q.json'));
+    expect(await q.dequeue()).toBeNull();
+  });
+
+  it('peek returns empty array on an empty (non-existent) queue file', async () => {
+    const q = new LocalFileQueue(path.join(makeTempDir(), 'q.json'));
+    expect(await q.peek()).toEqual([]);
+  });
+
+  it('enqueue creates the file and dequeue returns the message', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    const q = new LocalFileQueue(filePath);
+    await q.enqueue(makeRequest({ briefId: 'fire-sword' }));
+    expect(existsSync(filePath)).toBe(true);
+    const msg = await q.dequeue();
+    expect(msg).not.toBeNull();
+    expect(msg?.request).toMatchObject({ briefId: 'fire-sword' });
+  });
+
+  it('ack removes the head entry from the file', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    const q = new LocalFileQueue(filePath);
+    await q.enqueue(makeRequest({ briefId: 'ice-staff' }));
+    const msg = await q.dequeue();
+    expect(msg).not.toBeNull();
+    // Before ack: entry is still in the file with incremented count.
+    expect(await q.peek(1)).toHaveLength(1);
+    await msg!.ack();
+    // After ack: file is empty.
+    expect(await q.peek(1)).toHaveLength(0);
+    expect(await q.dequeue()).toBeNull();
+  });
+
+  it('FIFO order: ack each message before dequeuing the next', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    const q = new LocalFileQueue(filePath);
+    await q.enqueue(makeRequest({ briefId: 'sword-a' }));
+    await q.enqueue(makeRequest({ briefId: 'sword-b' }));
+    const msg1 = await q.dequeue();
+    expect(msg1?.request).toMatchObject({ briefId: 'sword-a' });
+    await msg1!.ack();
+    const msg2 = await q.dequeue();
+    expect(msg2?.request).toMatchObject({ briefId: 'sword-b' });
+    await msg2!.ack();
+    expect(await q.dequeue()).toBeNull();
+  });
+
+  it('peek returns items without removing them', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    const q = new LocalFileQueue(filePath);
+    await q.enqueue(makeRequest({ briefId: 'peek-item' }));
+    const peeked = await q.peek(1);
+    expect(peeked).toHaveLength(1);
+    expect(peeked[0]).toMatchObject({ briefId: 'peek-item' });
+    // Still there after peek
+    const msg = await q.dequeue();
+    expect(msg?.request).toMatchObject({ briefId: 'peek-item' });
+  });
+
+  it('peek respects maxCount', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    const q = new LocalFileQueue(filePath);
+    await q.enqueue(makeRequest({ briefId: 'item-1' }));
+    await q.enqueue(makeRequest({ briefId: 'item-2' }));
+    await q.enqueue(makeRequest({ briefId: 'item-3' }));
+    const peeked = await q.peek(2);
+    expect(peeked).toHaveLength(2);
+    expect(peeked[0]).toMatchObject({ briefId: 'item-1' });
+    expect(peeked[1]).toMatchObject({ briefId: 'item-2' });
+  });
+
+  it('dequeueCount is 1 on the first delivery', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    const q = new LocalFileQueue(filePath);
+    await q.enqueue(makeRequest({ briefId: 'test-item' }));
+    const msg = await q.dequeue();
+    expect(msg?.dequeueCount).toBe(1);
+  });
+
+  it('throws on a corrupt file containing non-JSON', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    writeFileSync(filePath, 'not valid json', 'utf8');
+    const q = new LocalFileQueue(filePath);
+    await expect(q.dequeue()).rejects.toThrow(SyntaxError);
+  });
+
+  it('throws on a corrupt file containing a non-array JSON value', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    writeFileSync(filePath, JSON.stringify({ not: 'an-array' }), 'utf8');
+    const q = new LocalFileQueue(filePath);
+    await expect(q.dequeue()).rejects.toThrow(/expected a JSON array/);
+  });
+
+  it('throws on a malformed entry missing the request/dequeueCount wrapper', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    writeFileSync(filePath, JSON.stringify([{ garbage: true }]), 'utf8');
+    const q = new LocalFileQueue(filePath);
+    await expect(q.dequeue()).rejects.toThrow(/corrupt entry/);
+  });
+
+  // --- New focused tests ---
+
+  it('entry remains in file until ack is called (ack retention)', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    const q = new LocalFileQueue(filePath);
+    await q.enqueue(makeRequest({ briefId: 'hold-me' }));
+    const msg = await q.dequeue();
+    expect(msg).not.toBeNull();
+    // The head is still present in the file after dequeue (not yet acked).
+    const peeked = await q.peek(1);
+    expect(peeked).toHaveLength(1);
+    expect(peeked[0]).toMatchObject({ briefId: 'hold-me' });
+    // After ack the file is empty.
+    await msg!.ack();
+    expect(await q.peek(1)).toHaveLength(0);
+    expect(await q.dequeue()).toBeNull();
+  });
+
+  it('dequeueCount increments on each delivery without ack (redelivery count)', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    const q = new LocalFileQueue(filePath);
+    await q.enqueue(makeRequest({ briefId: 'retry-me' }));
+
+    const first = await q.dequeue();
+    expect(first?.dequeueCount).toBe(1);
+
+    // No ack — dequeue again to simulate a retry.
+    const second = await q.dequeue();
+    expect(second?.dequeueCount).toBe(2);
+
+    const third = await q.dequeue();
+    expect(third?.dequeueCount).toBe(3);
+
+    // Ack once to clean up.
+    await third!.ack();
+    expect(await q.dequeue()).toBeNull();
+  });
+
+  it('enqueue creates parent directory if it does not exist', async () => {
+    const base = makeTempDir();
+    // Nest two levels deep to ensure mkdirSync({recursive}) is needed.
+    const filePath = path.join(base, 'sub', 'nested', 'q.json');
+    const q = new LocalFileQueue(filePath);
+    await q.enqueue(makeRequest({ briefId: 'nested-entry' }));
+    expect(existsSync(filePath)).toBe(true);
+    const msg = await q.dequeue();
+    expect(msg?.request).toMatchObject({ briefId: 'nested-entry' });
+  });
+
+  it('throws on a well-formed wrapper whose request payload is invalid', async () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    // Valid wrapper shape, but request body is missing required fields.
+    writeFileSync(
+      filePath,
+      JSON.stringify([{ request: { kind: 'brief-path' }, dequeueCount: 0 }]),
+      'utf8',
+    );
+    const q = new LocalFileQueue(filePath);
+    await expect(q.dequeue()).rejects.toThrow(/invalid asset-request payload/);
+  });
+});
+
+describe('createAssetQueue factory — local-file', () => {
+  it('throws when SPRITES_ASSET_QUEUE_FILE is not set', () => {
+    expect(() => createAssetQueue({ env: { SPRITES_ASSET_QUEUE: 'local-file' } })).toThrow(
+      'SPRITES_ASSET_QUEUE_FILE must be set',
+    );
+  });
+
+  it('returns LocalFileQueue with the provided file path', () => {
+    const filePath = path.join(makeTempDir(), 'q.json');
+    const q = createAssetQueue({
+      env: { SPRITES_ASSET_QUEUE: 'local-file', SPRITES_ASSET_QUEUE_FILE: filePath },
+    });
+    expect(q.backend).toBe('local-file');
   });
 });

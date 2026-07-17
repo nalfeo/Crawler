@@ -446,6 +446,11 @@ export function createIssueIngesterController(
         const priority = await options.issues.getIssue(targetNumber);
         if (priority) {
           issuesToProcess = options.targetIssueOnly ? [priority] : [priority, ...swept];
+        } else if (options.targetIssueOnly) {
+          throw new Error(
+            `targetIssueOnly: issue #${targetNumber} was not found or does not carry the asset-request label. ` +
+              `Verify the issue number is correct and the 'asset-request' label is applied.`,
+          );
         }
       }
     }

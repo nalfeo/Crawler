@@ -94,8 +94,8 @@ export interface WorkerControllerDeps {
 export interface WorkerControllerStatus {
   /** True while the worker loop is running. */
   readonly running: boolean;
-  /** Queue backend the worker consumes (`noop` or `azure-queue`). */
-  readonly backend: 'noop' | 'azure-queue';
+  /** Queue backend the worker consumes. */
+  readonly backend: 'noop' | 'azure-queue' | 'local-file';
   /** ISO timestamp of the most recent successful `start()`, or null. */
   readonly startedAt: string | null;
   /** ISO timestamp of the most recent loop exit, or null. */

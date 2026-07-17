@@ -593,3 +593,145 @@ describe('judgeVariant — JudgeError shape', () => {
     expect(e).toBeInstanceOf(Error);
   });
 });
+
+// ---------------------------------------------------------------------------
+// expectedPresentation and effectiveGeometry helpers
+// ---------------------------------------------------------------------------
+import { expectedPresentation, effectiveGeometry } from '../../../scripts/sprites/judge.js';
+
+describe('expectedPresentation', () => {
+  it('returns generic string for non-enemy briefs', () => {
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      type: 'weapon',
+    });
+    expect(expectedPresentation(brief)).toBe('follow the brief and type conventions');
+  });
+
+  it('returns front-biased description when facing is front (default)', () => {
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      type: 'enemy',
+      sensors: { enemy: { facing: 'front' } },
+    });
+    const result = expectedPresentation(brief);
+    expect(result).toMatch(/front-biased three-quarter/i);
+    expect(result).toMatch(/both eyes/i);
+  });
+
+  it('returns strict profile left when facing is left', () => {
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      type: 'enemy',
+      sensors: { enemy: { facing: 'left' } },
+    });
+    expect(expectedPresentation(brief)).toBe('strict profile facing left');
+  });
+
+  it('returns strict profile right when facing is right', () => {
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      type: 'enemy',
+      sensors: { enemy: { facing: 'right' } },
+    });
+    expect(expectedPresentation(brief)).toBe('strict profile facing right');
+  });
+
+  it('returns consistent-across-variants fallback for unknown facing values', () => {
+    // Construct an enemy brief without a facing field to hit the fallback.
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      type: 'enemy',
+    });
+    // No sensors.enemy.facing → falls back via `?? 'front'` → three-quarter
+    expect(expectedPresentation(brief)).toMatch(/front-biased three-quarter/i);
+  });
+});
+
+describe('effectiveGeometry', () => {
+  it('uses brief.generation.sheet for custom layouts', () => {
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      generation: { sheet: { rows: 2, cols: 8, emptyCells: [], nativeCanvas: 512 } },
+      size: { width: 32, height: 32 },
+    });
+    const result = effectiveGeometry(brief);
+    expect(result).toMatch(/2 rows x 8 columns on 512x512/);
+    expect(result).toMatch(/to 32x32 output pixels/);
+  });
+
+  it('falls back to 4x4 on 1024x1024 when generation is absent', () => {
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      type: 'weapon',
+      generation: undefined,
+      size: { width: 64, height: 64 },
+    });
+    const result = effectiveGeometry(brief);
+    expect(result).toMatch(/4 rows x 4 columns on 1024x1024/);
+    expect(result).toMatch(/to 64x64 output pixels/);
+  });
+
+  it('formats non-integer source dimensions to one decimal place', () => {
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 256 } },
+      size: { width: 16, height: 16 },
+    });
+    // 256/3 ≈ 85.3
+    const result = effectiveGeometry(brief);
+    expect(result).toMatch(/85\.3x85\.3/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// JudgeCache key includes expectedPresentation and effectiveGeometry
+// ---------------------------------------------------------------------------
+import { JudgeCache } from '../../../scripts/sprites/judge-cache.js';
+
+describe('JudgeCache.computeKey — presentation / geometry sensitivity', () => {
+  const baseInputs = () => ({
+    modelDeployment: 'gpt-4o',
+    promptTemplateVersion: 'vtest',
+    variantPng: Buffer.from([1, 2, 3]),
+    referencePngs: [] as Buffer[],
+    briefMatchInstructions: 'iron sword',
+    floor: 1,
+    expectedPresentation: 'follow the brief and type conventions',
+    effectiveGeometry:
+      '4 rows x 4 columns on 1024x1024; approximately 256x256 source pixels to 64x64 output pixels',
+  });
+
+  it('produces different keys when expectedPresentation differs', () => {
+    const cache = new JudgeCache({ cacheDir: 'unused', enabled: false });
+    const k1 = cache.computeKey({
+      ...baseInputs(),
+      expectedPresentation: 'front-biased three-quarter',
+    });
+    const k2 = cache.computeKey({
+      ...baseInputs(),
+      expectedPresentation: 'strict profile facing left',
+    });
+    expect(k1).not.toBe(k2);
+  });
+
+  it('produces different keys when effectiveGeometry differs', () => {
+    const cache = new JudgeCache({ cacheDir: 'unused', enabled: false });
+    const k1 = cache.computeKey({
+      ...baseInputs(),
+      effectiveGeometry:
+        '4 rows x 4 columns on 1024x1024; approximately 256x256 source pixels to 64x64 output pixels',
+    });
+    const k2 = cache.computeKey({
+      ...baseInputs(),
+      effectiveGeometry:
+        '2 rows x 8 columns on 512x512; approximately 64x256 source pixels to 32x32 output pixels',
+    });
+    expect(k1).not.toBe(k2);
+  });
+
+  it('produces the same key when all inputs are identical', () => {
+    const cache = new JudgeCache({ cacheDir: 'unused', enabled: false });
+    expect(cache.computeKey(baseInputs())).toBe(cache.computeKey(baseInputs()));
+  });
+});

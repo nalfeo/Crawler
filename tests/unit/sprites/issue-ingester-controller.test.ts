@@ -848,3 +848,50 @@ describe('issue ingester controller', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// targetIssueOnly + null getIssue → named failure (Fix 2)
+// ---------------------------------------------------------------------------
+describe('issue ingester controller — targetIssueOnly null-fetch failure', () => {
+  function makeQueue() {
+    return {
+      backend: 'local-file' as const,
+      enqueue: async () => {},
+      dequeue: async () => null,
+      peek: async () => [],
+    };
+  }
+
+  it('sets lastError naming the target issue when getIssue returns null', async () => {
+    const controller = createIssueIngesterController({
+      queue: makeQueue(),
+      store: memStore(),
+      issues: issuesMock({ get: async () => null }),
+      requestedBy: 'test',
+      targetIssueNumber: 999,
+      targetIssueOnly: true,
+      now: () => new Date('2026-07-01T00:00:00.000Z'),
+    });
+    const status = await controller.pollOnce();
+    expect(status.lastError).not.toBeNull();
+    expect(status.lastError).toMatch(/999/);
+    expect(status.lastError).toMatch(/not found|asset-request/i);
+  });
+
+  it('succeeds (no lastError) when getIssue returns the target issue', async () => {
+    const body = `<!-- ${ASSET_REQUEST_MARKER}\n{"version":1,"name":"bone-dagger","briefSentence":"A chipped bone dagger."}\n-->`;
+    const issue: OpenAssetRequestIssue = { number: 42, body };
+    const controller = createIssueIngesterController({
+      queue: makeQueue(),
+      store: memStore(),
+      issues: issuesMock({ get: async () => issue }),
+      requestedBy: 'test',
+      targetIssueNumber: 42,
+      targetIssueOnly: true,
+      now: () => new Date('2026-07-01T00:00:00.000Z'),
+    });
+    const status = await controller.pollOnce();
+    expect(status.lastError).toBeNull();
+    expect(status.enqueued).toBe(1);
+  });
+});

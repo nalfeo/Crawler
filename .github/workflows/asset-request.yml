@@ -139,7 +139,15 @@ jobs:
 
           # Force Azure backends. The default CLI falls back to `noop`/`local`
           # if unset, which would silently no-op the workflow.
-          SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
+          # Targeted dispatch (target_issue > 0) uses a local-file queue so the
+          # drain step only sees the single enqueued message and never drains
+          # unrelated jobs from the shared Azure queue.
+          SPRITES_ASSET_QUEUE: >-
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.target_issue > 0)
+                && 'local-file'
+                || secrets.SPRITES_ASSET_QUEUE
+                || 'azure-queue' }}
+          SPRITES_ASSET_QUEUE_FILE: files/target-run-queue.json
           SPRITES_RUN_STORE: >-
             ${{ inputs.export_review_artifacts && 'local'
                 || secrets.SPRITES_RUN_STORE
@@ -226,7 +234,15 @@ jobs:
           AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
 
           # Force Azure backends.
-          SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
+          # Targeted dispatch (target_issue > 0) uses a local-file queue so the
+          # drain step only sees the single enqueued message and never drains
+          # unrelated jobs from the shared Azure queue.
+          SPRITES_ASSET_QUEUE: >-
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.target_issue > 0)
+                && 'local-file'
+                || secrets.SPRITES_ASSET_QUEUE
+                || 'azure-queue' }}
+          SPRITES_ASSET_QUEUE_FILE: files/target-run-queue.json
           SPRITES_RUN_STORE: >-
             ${{ inputs.export_review_artifacts && 'local'
                 || secrets.SPRITES_RUN_STORE
@@ -253,7 +269,7 @@ jobs:
         run: npm run sprites:worker
 
       - name: Upload review artifacts
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.export_review_artifacts }}
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.export_review_artifacts }}
         uses: actions/upload-artifact@v4
         with:
           name: asset-request-${{ inputs.target_issue }}-review

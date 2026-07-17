@@ -172,5 +172,5 @@ export interface AssetQueue {
    */
   peek(maxCount?: number): Promise<readonly AssetRequest[]>;
   /** Human-readable backend tag surfaced in /api/health. */
-  readonly backend: 'noop' | 'azure-queue';
+  readonly backend: 'noop' | 'azure-queue' | 'local-file';
 }

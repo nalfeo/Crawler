@@ -13,6 +13,9 @@
  *   - variant PNG bytes     — any pixel-level change invalidates
  *   - reference PNG bytes   — re-anchoring style invalidates
  *   - brief match prompt    — brief.prompt drives `brief_match`
+ *   - floor                 — dungeon depth affects expected design intensity
+ *   - expectedPresentation  — derived display string baked into the user prompt
+ *   - effectiveGeometry     — derived geometry string baked into the user prompt
  *
  * Critically, this cache stores ONLY `JudgeScorecard` JSON — never
  * variants, never references, never prompts. Rationale (do NOT change
@@ -66,6 +69,18 @@ export interface JudgeCacheKeyInputs {
   readonly briefMatchInstructions: string;
   /** Dungeon depth changes the expected design-language intensity. */
   readonly floor: number;
+  /**
+   * Derived EXPECTED PRESENTATION string used verbatim in the user prompt.
+   * Computed by `expectedPresentation(brief)` in `judge.ts` and shared with
+   * the cache key so the two cannot drift.
+   */
+  readonly expectedPresentation: string;
+  /**
+   * Derived EFFECTIVE GEOMETRY string used verbatim in the user prompt.
+   * Computed by `effectiveGeometry(brief)` in `judge.ts` and shared with
+   * the cache key so the two cannot drift.
+   */
+  readonly effectiveGeometry: string;
 }
 
 export interface JudgeCacheOptions {
@@ -127,6 +142,10 @@ export class JudgeCache {
     hash.update(inputs.briefMatchInstructions);
     hash.update('\nfloor:');
     hash.update(String(inputs.floor));
+    hash.update('\nexpected-presentation:');
+    hash.update(inputs.expectedPresentation);
+    hash.update('\neffective-geometry:');
+    hash.update(inputs.effectiveGeometry);
     hash.update('\nvariant-png:');
     hash.update(inputs.variantPng);
     hash.update('\nreferences:');

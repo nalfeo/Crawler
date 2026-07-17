@@ -194,6 +194,12 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
 
   const now = options.now ?? (() => new Date());
 
+  // Compute presentation and geometry semantics once here so the cache key
+  // and the user prompt are guaranteed to use identical derived strings —
+  // they cannot drift even if the helpers are updated.
+  const presentation = expectedPresentation(options.brief);
+  const geometry = effectiveGeometry(options.brief);
+
   // Cache lookup runs BEFORE building previews / images — a hit
   // avoids both the provider call AND the (cheap-but-not-free) PNG
   // composition work. The orchestrator only calls judgeVariant when
@@ -207,6 +213,8 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
         referencePngs: options.referencePngs,
         briefMatchInstructions: options.brief.prompt,
         floor: options.brief.floor,
+        expectedPresentation: presentation,
+        effectiveGeometry: geometry,
       })
     : null;
   if (options.cache && cacheKey) {
@@ -236,7 +244,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
 
   const request: EvaluateRequest = {
     systemInstructions: buildSystemInstructions(options.styleGuide, options.brief.floor),
-    userPrompt: buildUserPrompt(options.brief, referencePreviews.length),
+    userPrompt: buildUserPrompt(options.brief, referencePreviews.length, presentation, geometry),
     images: [
       { png: candidatePreview, label: 'candidate' },
       { png: readabilityComposite, label: 'readability-composite' },
@@ -396,7 +404,53 @@ function buildSystemInstructions(styleGuide: string, floor: number): string {
   ].join('\n');
 }
 
-function buildUserPrompt(brief: Brief, referenceCount: number): string {
+/**
+ * Derives the EXPECTED PRESENTATION string for the judge prompt and cache key.
+ * Exported so callers can compute once and pass to both `buildUserPrompt` and
+ * `computeKey`, ensuring the prompt and cache key are always in sync.
+ */
+export function expectedPresentation(brief: Brief): string {
+  if (brief.type !== 'enemy') return 'follow the brief and type conventions';
+  const facing = brief.sensors.enemy?.facing ?? 'front';
+  if (facing === 'front') {
+    return 'front-biased three-quarter, roughly two-thirds toward camera, with both eyes and the face plane readable; not strict profile';
+  }
+  if (facing === 'left' || facing === 'right') return `strict profile facing ${facing}`;
+  return 'consistent across variants';
+}
+
+/**
+ * Derives the EFFECTIVE GEOMETRY string for the judge prompt and cache key.
+ * Exported so callers can compute once and pass to both `buildUserPrompt` and
+ * `computeKey`, ensuring the prompt and cache key are always in sync.
+ */
+export function effectiveGeometry(brief: Brief): string {
+  const sheet = brief.generation?.sheet ?? {
+    nativeCanvas: 1024,
+    rows: 4,
+    cols: 4,
+  };
+  const { nativeCanvas, rows, cols } = sheet;
+  const size = brief.size ?? { width: 64, height: 64 };
+  const sourceWidth = nativeCanvas / cols;
+  const sourceHeight = nativeCanvas / rows;
+  return (
+    `${rows} rows x ${cols} columns on ${nativeCanvas}x${nativeCanvas}; ` +
+    `approximately ${formatDimension(sourceWidth)}x${formatDimension(sourceHeight)} source pixels ` +
+    `to ${size.width}x${size.height} output pixels`
+  );
+}
+
+function formatDimension(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function buildUserPrompt(
+  brief: Brief,
+  referenceCount: number,
+  presentation: string,
+  geometry: string,
+): string {
   const hasReferences = referenceCount > 0;
   const refSummary = hasReferences
     ? `${referenceCount} reference image(s) attached, labelled reference-1 .. reference-${referenceCount}.`
@@ -406,8 +460,8 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
     `BRIEF TYPE: ${brief.type}`,
     `BRIEF PROMPT: ${brief.prompt}`,
     `FLOOR: ${brief.floor} of 20`,
-    `EXPECTED PRESENTATION: ${expectedPresentation(brief)}`,
-    `EFFECTIVE GEOMETRY: ${effectiveGeometry(brief)}`,
+    `EXPECTED PRESENTATION: ${presentation}`,
+    `EFFECTIVE GEOMETRY: ${geometry}`,
     brief.tags.length > 0 ? `BRIEF TAGS: ${brief.tags.join(', ')}` : '',
     '',
     'Attached images, in order:',
@@ -421,36 +475,6 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
     );
   }
 
-  function expectedPresentation(brief: Brief): string {
-    if (brief.type !== 'enemy') return 'follow the brief and type conventions';
-    const facing = brief.sensors.enemy?.facing ?? 'front';
-    if (facing === 'front') {
-      return 'front-biased three-quarter, roughly two-thirds toward camera, with both eyes and the face plane readable; not strict profile';
-    }
-    if (facing === 'left' || facing === 'right') return `strict profile facing ${facing}`;
-    return 'consistent across variants';
-  }
-
-  function effectiveGeometry(brief: Brief): string {
-    const sheet = brief.generation?.sheet ?? {
-      nativeCanvas: 1024,
-      rows: 4,
-      cols: 4,
-    };
-    const { nativeCanvas, rows, cols } = sheet;
-    const size = brief.size ?? { width: 64, height: 64 };
-    const sourceWidth = nativeCanvas / cols;
-    const sourceHeight = nativeCanvas / rows;
-    return (
-      `${rows} rows x ${cols} columns on ${nativeCanvas}x${nativeCanvas}; ` +
-      `approximately ${formatDimension(sourceWidth)}x${formatDimension(sourceHeight)} source pixels ` +
-      `to ${size.width}x${size.height} output pixels`
-    );
-  }
-
-  function formatDimension(value: number): string {
-    return Number.isInteger(value) ? String(value) : value.toFixed(1);
-  }
   lines.push('', refSummary, '', 'Return your four scores and rationales as a strict JSON object.');
   return lines.filter((s) => s !== '').join('\n');
 }

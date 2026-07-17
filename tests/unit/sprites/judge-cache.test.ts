@@ -63,6 +63,9 @@ function baseInputs() {
     referencePngs: [Buffer.from([10, 11, 12]), Buffer.from([20, 21, 22])],
     briefMatchInstructions: 'A vertical iron sword.',
     floor: 1,
+    expectedPresentation: 'follow the brief and type conventions',
+    effectiveGeometry:
+      '4 rows x 4 columns on 1024x1024; approximately 256x256 source pixels to 64x64 output pixels',
   };
 }
 
