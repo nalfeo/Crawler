@@ -30,7 +30,7 @@ Estimated 🍎🍎, actual 🍎🍎.
 - `ci` and `Merge gate` were aggregate failures caused by `Human approval` failing, not separate code regressions.
 - Review-thread validation on current head:
   - `src/shared/data/enemies.floor2.json:684` is deterministically addressed by `collisionRadius: 1.5`, the spawner override, and `tests/unit/floor2-boss-spawn.test.ts`.
-  - `briefs/enemies/beetlefolk-boss.yaml:3` remains a real blocker because the checked-in runtime asset is still `public/assets/generated/beetlefolk-boss-var-0.png` at 64×64; the wide 128×64 replacement has not been generated/approved yet.
+  - `briefs/enemies/beetlefolk-boss.yaml:3` was valid on head `7350e84`; recovered by downloading the successful `asset-request` review artifact for issue #1220, deterministically filling enclosed transparent holes in the chosen wide variant, and approving it back onto the canonical `beetlefolk-boss-var-0` runtime asset + manifest entry.
 
 ## Verification
 
@@ -41,5 +41,5 @@ Estimated 🍎🍎, actual 🍎🍎.
 
 ## Review thread outcomes
 
-- Collision-radius thread: ready to mark `✅ Addressed in <sha>` after the final repair commit.
-- Wide-art thread: intentionally left unresolved pending a credentialed sprite-generation/approval run that updates `public/assets/generated/beetlefolk-boss-var-0.png` and `public/assets/generated/manifest.json`.
+- Collision-radius thread: already addressed on current head.
+- Wide-art thread: resolved once the salvaged approved artifact is committed; reply with `✅ Addressed in <sha>` should cite the updated `public/assets/generated/beetlefolk-boss-var-0.png` and manifest entry.
