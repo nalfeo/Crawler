@@ -436,7 +436,11 @@ test('interrupted waiting transitions remain sweep-visible without admitting gen
     created_at: '2026-07-01T00:00:00Z',
     base: { ref: 'main' },
     head: { repo: { full_name: 'nalfeo/Crawler' } },
-    labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-recovery-waiting-transition' }],
+    labels: [
+      { name: 'ci-recovery-waiting' },
+      { name: 'ci-recovery-waiting-transition' },
+      { name: 'ci-owner-pr-42' },
+    ],
   };
   const genuineWait = {
     ...interrupted,
@@ -456,6 +460,20 @@ test('interrupted waiting transitions remain sweep-visible without admitting gen
       [42],
     );
   }
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {
+        repository: { default_branch: 'main' },
+        workflow_run: { name: 'CI', head_branch: 'main', pull_requests: [] },
+      },
+      eventName: 'workflow_run',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [interrupted, genuineWait],
+      trainEnabled: true,
+    }),
+    [42],
+  );
 });
 
 test('train sweeps retain waiting PRs that also carry dynamic ownership for cleanup retry', () => {

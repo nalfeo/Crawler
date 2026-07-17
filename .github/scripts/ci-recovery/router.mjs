@@ -194,6 +194,7 @@ export function collectPrNumbers({
       .filter(
         (pullRequest) =>
           directlyTriggeredPrs.has(pullRequest.number) ||
+          (pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) ||
           eventName === 'schedule' ||
           eventName === 'workflow_dispatch' ||
           !(pullRequest.labels || []).some((label) =>

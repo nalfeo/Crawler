@@ -33,6 +33,9 @@ and deterministic regression coverage fit the planned medium tooling slice.
   workflow runs, so unrelated global sweeps cannot coalesce them away.
 - The router still has no `queue: max`; recovery ownership and lease state were
   not changed.
+- After durable waiting state landed on `main`, the branch was rebased and the
+  router kept genuine waits excluded while prioritizing interrupted waiting
+  transitions, including owned transitions on fill-window events.
 
 ## Deterministic observation
 
@@ -62,7 +65,8 @@ mix.
 
 ## Validation
 
-- `node --test .github/scripts/ci-recovery/router.test.mjs` — 22 passed.
+- `node --test .github/scripts/ci-recovery/router.test.mjs .github/scripts/ci-recovery/state.test.mjs .github/scripts/ci-recovery/reconcile.test.mjs`
+  — passed after the durable-state rebase.
 - `npm run verify:fast` — passed.
 - `npx prettier --check .github/scripts/ci-recovery/router.mjs .github/scripts/ci-recovery/router.test.mjs .github/workflows/ci-recovery-router.yml docs/guides/ci-recovery.md`
   — passed.
@@ -71,4 +75,5 @@ mix.
 
 - Separate-model plan review (`gpt-5.4`) approved with four refinements, all
   adopted; `plan_divergence=minor`.
-- Two final-diff code-review passes (`claude-sonnet-4.6`) found no concerns.
+- The post-rebase code-review loop (`claude-sonnet-4.6`) found and resolved one
+  owned waiting-transition retry gap; the second pass found no concerns.
