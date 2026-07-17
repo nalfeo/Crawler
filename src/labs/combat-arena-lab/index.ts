@@ -23,6 +23,7 @@ import {
 import { runCoreSimulationStep } from '../../core/simulation-core-step.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import { buildTerrainLayer } from '../../engine/terrain-renderer.js';
 import {
   fetchGeneratedSpriteRegistry,
   GENERATED_SPRITE_REGISTRY_KEY,
@@ -110,6 +111,8 @@ class CombatArenaScene extends Phaser.Scene {
   onSpawnAtPosition: ((x: number, y: number) => void) | null = null;
   /** Called each simulation step to update the info overlay. */
   onInfoUpdate: ((text: string) => void) | null = null;
+  /** Called after the arena seed is (re)generated so the GUI display refreshes. */
+  onSeedChanged: (() => void) | null = null;
 
   constructor() {
     super({ key: 'CombatArenaScene' });
@@ -145,6 +148,8 @@ class CombatArenaScene extends Phaser.Scene {
       const buf = new Uint32Array(1);
       globalThis.crypto.getRandomValues(buf);
       this.settings.arenaSeed = buf[0]! >>> 0;
+      // Notify the GUI so the read-only seed display refreshes.
+      this.onSeedChanged?.();
     }
     this.rng = new SeededRandom(this.settings.arenaSeed);
     this.world = createGameWorld({ seed: this.rng.nextInt(1, 99999) });
@@ -153,6 +158,18 @@ class CombatArenaScene extends Phaser.Scene {
     const preset = getRoomPreset(this.settings.roomPresetId);
     this.world.floorMap = preset.buildMap();
     this.world.hideFloorTimer = true;
+
+    // Bake terrain tiles into a flat RenderTexture so walls, pillars, corridors,
+    // and cave tiles are visible. The RT sits beneath all ECS entities at depth -20,
+    // matching the convention used by MainGameScene and the set-piece lab.
+    const { rt } = buildTerrainLayer(this, this.world.floorMap);
+    rt.setDepth(-20);
+    this.cameras.main.setBounds(
+      0,
+      0,
+      ftToPx(this.world.floorMap.widthFt),
+      ftToPx(this.world.floorMap.heightFt),
+    );
 
     // Place player
     const spawnWorld = this.world.floorMap.tileToWorld(
@@ -457,13 +474,19 @@ function createCombatArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
       globalThis.crypto.getRandomValues(buf);
       settings.arenaSeed = buf[0]! >>> 0;
       saveLabState(LAB_ID, settings);
+      // Refresh the display before respawn so the seed is visible immediately.
+      seedCtrl.updateDisplay();
       arenaScene.respawn();
     },
   };
   simFolder.add(simApi, 'togglePause').name('Pause / Resume');
   simFolder.add(simApi, 'stepFrame').name('Step Frame');
   // Seed display: read-only text — shows the active seed for reproducibility.
-  simFolder.add(settings, 'arenaSeed').name('Seed (read-only)').disable();
+  // Store the controller so we can call updateDisplay() when the seed mutates.
+  const seedCtrl = simFolder.add(settings, 'arenaSeed').name('Seed (read-only)').disable();
+  // Refresh the display whenever create() generates a new seed (initial boot or
+  // after a room/layout change that triggers scene.restart()).
+  arenaScene.onSeedChanged = () => { seedCtrl.updateDisplay(); };
   simFolder.add(simApi, 'newSeed').name('New Seed + Reset');
   simFolder.close();
 

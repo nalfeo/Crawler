@@ -7,10 +7,12 @@
  */
 import { addComponent, set, setComponent } from 'bitecs';
 import {
+  Damage,
   FamilyMembership,
   Size,
   Sprite,
   type GameWorld,
+  setBloodColor,
   setEnemyAppearanceKey,
   spawnBehaviorEnemy,
 } from '../../core/index.js';
@@ -51,6 +53,19 @@ export interface ArenaEnemyPreset {
   readonly floor: 'floor1' | 'floor2' | 'all';
   readonly description: string;
   readonly entries: ReadonlyArray<{ def: EnemyArchetypeDef; count: number }>;
+  /**
+   * Optional override spawn function used in place of `spawnPresetAroundCenter`'s
+   * default archetype-loop approach. Required for boss presets that need extra
+   * post-spawn setup (permanent aggro, contact damage, fire cooldown) that the
+   * generic archetype system does not carry.
+   */
+  readonly customSpawnFn?: (
+    world: GameWorld,
+    map: FloorMap,
+    cx: number,
+    cy: number,
+    rng: SeededRandom,
+  ) => number[];
 }
 
 // ─── FloorMap builders ────────────────────────────────────────────────────────
@@ -224,6 +239,103 @@ export const FLOOR2_FAMILY_IDS: readonly string[] = [
   ),
 ];
 
+// ─── Floor 1 boss constants ───────────────────────────────────────────────────
+
+/** Green ichor blood color used for slime-type enemies (mirrors floorScenario.ts). */
+const BLOOD_COLOR_SLIME = 0x22aa44;
+
+/**
+ * Canonical Floor 1 boss stats, sourced from floor1.manifest.json / floor1Config.
+ * Kept as inline constants so arena-data.ts stays import-free of the full
+ * floorScenario module (which requires floorScenario.ts's heavy dependency chain).
+ *
+ * Update these when the floor manifest's `bossVariants` block changes.
+ */
+const F1_BOSS_STAIR = {
+  /** RatSlime — the stair-room boss. Large, high-HP, fires acid every 5 s. */
+  hp: 280,
+  speed: 0.14375,
+  detectRange: 67.5,
+  /** Must be non-zero so the AI treats this as a shooter, not a pure chaser. */
+  attackRange: 280,
+  spriteWidth: 3.75,
+  spriteHeight: 3.75,
+  fireballCooldownMs: 5000,
+  contactDamage: 12,
+  appearanceKey: 'rat-slime',
+} as const;
+
+const F1_BOSS_SLIMERAT = {
+  /** SlimeRat — the side-quest boss. Smaller, fires acid every 7 s. */
+  hp: 140,
+  speed: 0.125,
+  detectRange: 55.0,
+  attackRange: 220,
+  spriteWidth: 3.25, // ratSlime.spriteWidth − 0.5 per production code
+  spriteHeight: 3.25,
+  fireballCooldownMs: 7000,
+  contactDamage: 8,
+  appearanceKey: 'slime-rat',
+} as const;
+
+/**
+ * Spawn the two canonical Floor 1 bosses for the arena lab.
+ *
+ * Replicates the full configuration from `spawnFloor1StairBoss` and
+ * `spawnFloor1SlimeRatBoss` in `floorScenario.ts` — including contact damage,
+ * permanent aggro, fire cooldown, and correct sprite/size — without requiring
+ * the floor-scenario objective state those functions need.
+ */
+function spawnFloor1BossesArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const slimeTextureId = F1_SLIME.spriteTexture;
+
+  function spawnBoss(
+    cfg: typeof F1_BOSS_STAIR | typeof F1_BOSS_SLIMERAT,
+    offsetX: number,
+    offsetY: number,
+  ): number {
+    const pos = findWalkablePosition(map, cx + offsetX, cy + offsetY, rng);
+    const eid = spawnBehaviorEnemy(
+      world,
+      pos.x,
+      pos.y,
+      cfg.hp,
+      AI_TYPE.CHASE,
+      cfg.speed,
+      cfg.detectRange,
+      cfg.attackRange,
+    );
+    setComponent(world.ecs, eid, Sprite, {
+      textureId: slimeTextureId,
+      width: cfg.spriteWidth,
+      height: cfg.spriteHeight,
+    });
+    setComponent(world.ecs, eid, Size, {
+      radius: Math.max(cfg.spriteWidth, cfg.spriteHeight) * 0.5,
+      halfWidth: 0,
+      halfHeight: 0,
+      shape: SHAPE_CIRCLE,
+    });
+    setComponent(world.ecs, eid, Damage, { amount: cfg.contactDamage });
+    setBloodColor(world, eid, BLOOD_COLOR_SLIME);
+    world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+    world.stores.enemyBehavior.fireCooldownMs[eid] = cfg.fireballCooldownMs;
+    setEnemyAppearanceKey(world, eid, cfg.appearanceKey);
+    return eid;
+  }
+
+  return [
+    spawnBoss(F1_BOSS_STAIR, -6, -4),
+    spawnBoss(F1_BOSS_SLIMERAT, 6, -4),
+  ];
+}
+
 /**
  * Spawn a single enemy from an archetype definition.
  *
@@ -387,11 +499,10 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
     id: 'f1-boss',
     name: 'F1: Boss Encounter',
     floor: 'floor1',
-    description: 'High-HP rat and slime simulating the stair-boss encounter.',
-    entries: [
-      { def: { ...F1_RAT, hp: 180, speed: F1_RAT.speed * 0.75 }, count: 1 },
-      { def: { ...F1_SLIME, hp: 200, speed: F1_SLIME.speed * 0.85 }, count: 1 },
-    ],
+    description:
+      'RatSlime (stair boss) + SlimeRat (quest boss) with canonical HP, contact damage, permanent aggro, and fire cooldowns.',
+    entries: [],
+    customSpawnFn: spawnFloor1BossesArena,
   },
   // ── Floor 2 (one per family) ─────────────────────────────────────────────
   ...FLOOR2_FAMILY_IDS.map(buildFloor2FamilyPreset),
@@ -429,6 +540,12 @@ export function spawnPresetAroundCenter(
   rng: SeededRandom,
   radiusFt = 12,
 ): number[] {
+  // Boss presets (and any preset that needs post-spawn config beyond archetypes)
+  // supply their own spawn function.
+  if (preset.customSpawnFn) {
+    return preset.customSpawnFn(world, map, cx, cy, rng);
+  }
+
   const eids: number[] = [];
   let angle = rng.next() * Math.PI * 2;
   const totalEntities = preset.entries.reduce((sum, e) => sum + e.count, 0);
