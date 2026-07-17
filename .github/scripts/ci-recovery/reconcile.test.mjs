@@ -2134,46 +2134,12 @@ test('train mode persists a converged state comment before queuing a clean PR wi
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: { id: 999, body: '' },
     }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
     [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
       body: {},
     }),
-  });
-
-  test('repeated clean reconciliation of an already queued PR does not dispatch another fill sweep', async (t) => {
-    const { server, port, mutatingCalls } = await startServer({
-      [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-        body: { ...basePr(), labels: [{ name: 'merge-train' }] },
-      }),
-      [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
-      [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
-        status: 404,
-        body: { message: 'Not Found' },
-      }),
-      [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
-    });
-    t.after(() => server.close());
-
-    const { code, stdout, stderr } = await runScript(port, {
-      RECOVERY_OPERATION: 'reconcile',
-      RECOVERY_TRIGGER: 'schedule:sweep',
-      CI_RECOVERY_MODE: 'live',
-      MERGE_TRAIN_ENABLED: 'true',
-      MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
-    });
-    if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-
-    assert.match(stdout, /skip pr=#42 reason=merge-train-owned/);
-    assert.equal(
-      mutatingCalls.some(
-        (call) =>
-          call.method === 'POST' &&
-          call.url ===
-            `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`,
-      ),
-      false,
-    );
   });
 
   t.after(() => server.close());
@@ -2205,6 +2171,40 @@ test('train mode persists a converged state comment before queuing a clean PR wi
   assert.ok(
     commentPostIndex < queueLabelIndex,
     'the state comment must be persisted before the queue label is attached',
+  );
+});
+
+test('repeated clean reconciliation of an already queued PR does not dispatch another fill sweep', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: 'merge-train' }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(stdout, /skip pr=#42 reason=merge-train-owned/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`,
+    ),
+    false,
   );
 });
 
