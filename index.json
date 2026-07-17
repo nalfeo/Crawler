@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a2ca41bcd44ccc51920711523c57b6152c5a9acb",
+    "commitDate": "2026-07-17T07:18:54Z",
+    "commitSubject": "feat(sweep-viewer): extend Sweep Results Viewer for AI Sweep Eval with live phase progress and deep-link support (#1246)",
+    "capturedAt": "2026-07-17T08:38:49.270Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29563258782",
+    "winRate": 0.9483333333333334,
+    "totalWins": 569,
+    "totalRuns": 600,
+    "path": "by-sha/a2ca41bcd44ccc51920711523c57b6152c5a9acb.json"
+  },
+  {
     "commit": "5a2f90fa6c268166076456e533aca21a6053a64d",
     "commitDate": "2026-07-17T04:31:08Z",
     "commitSubject": "Improve Copilot review completeness and consistency (#1240)",
