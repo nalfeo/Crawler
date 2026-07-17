@@ -196,9 +196,21 @@ export async function runNightlyBalanceIssue({
     (candidate) => !candidate.pull_request && candidate.title === ISSUE_TITLE,
   );
   if (existing) {
-    // Only an issue this automation created can safely be resumed or rolled back; a
-    // foreign exact-title issue is always left untouched (deterministic no-op).
-    if (!isAutomationOwnedIssue(existing) || hasCompletedIntakeProof(existing)) {
+    // Only an issue this automation created can safely be mutated; a foreign
+    // exact-title issue is always left untouched (deterministic no-op).
+    if (!isAutomationOwnedIssue(existing)) {
+      return { status: 'existing', issue: existing };
+    }
+
+    await updateCreatedIssueBody({
+      requestFn,
+      githubToken,
+      owner,
+      repo,
+      issueNumber: existing.number,
+    });
+
+    if (hasCompletedIntakeProof(existing)) {
       return { status: 'existing', issue: existing };
     }
 

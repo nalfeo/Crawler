@@ -178,15 +178,15 @@ test('consecutive runs create one issue and invoke Copilot intake once', async (
     body: ISSUE_BODY,
     labels: ISSUE_LABELS,
   });
-  const bodyUpdate = harness.calls.find(
+  const bodyUpdates = harness.calls.filter(
     (call) =>
       call.kind === 'request' &&
       call.path === `/repos/nalfeo/Crawler/issues/${harness.openIssues[0].number}` &&
       call.options.method === 'PATCH' &&
       typeof call.options.body?.body === 'string',
   );
-  assert.ok(bodyUpdate, 'Body update PATCH call should exist');
-  assert.equal(bodyUpdate.options.body.body, buildIssueBody(1203));
+  assert.equal(bodyUpdates.length, 2);
+  assert.ok(bodyUpdates.every((call) => call.options.body.body === buildIssueBody(1203)));
   assert.equal(harness.openIssues[0].body, buildIssueBody(1203));
   const intakeCalls = harness.calls.filter((call) => call.kind === 'intake');
   assert.equal(intakeCalls.length, 1);
@@ -299,6 +299,61 @@ test('wraps both errors when issue-number patching fails and rollback close also
   });
 
   assert.equal(harness.openIssues.length, 1);
+});
+
+test('resumed orphan run canonicalizes issue body before intake', async () => {
+  const firstUpdateError = new Error('issue update failed');
+  const firstCloseError = new Error('GitHub API unavailable');
+  const harness = createHarness({
+    updateErrors: [firstUpdateError],
+    closeErrors: [firstCloseError],
+  });
+
+  await assert.rejects(runWithHarness(harness), (error) => error instanceof AggregateError);
+  assert.equal(harness.openIssues.length, 1);
+  assert.equal(harness.openIssues[0].body, ISSUE_BODY);
+
+  const second = await runWithHarness(harness);
+
+  assert.equal(second.status, 'resumed');
+  assert.equal(harness.openIssues[0].body, buildIssueBody(1203));
+  assert.equal(harness.calls.filter((call) => call.kind === 'intake').length, 1);
+
+  const secondRunCalls = harness.calls.slice(
+    harness.calls.findIndex((call, index) => index > 0 && call.kind === 'paginate'),
+  );
+  const secondRunUpdateIndex = secondRunCalls.findIndex(
+    (call) =>
+      call.kind === 'request' &&
+      call.path === '/repos/nalfeo/Crawler/issues/1203' &&
+      call.options.method === 'PATCH' &&
+      typeof call.options.body?.body === 'string',
+  );
+  const secondRunIntakeIndex = secondRunCalls.findIndex((call) => call.kind === 'intake');
+  assert.ok(secondRunUpdateIndex >= 0 && secondRunIntakeIndex >= 0);
+  assert.ok(secondRunUpdateIndex < secondRunIntakeIndex);
+});
+
+test('resume path retries later when existing automation issue body patch fails', async () => {
+  const firstUpdateError = new Error('issue update failed');
+  const firstCloseError = new Error('GitHub API unavailable');
+  const secondUpdateError = new Error('resume body patch failed');
+  const harness = createHarness({
+    updateErrors: [firstUpdateError, secondUpdateError],
+    closeErrors: [firstCloseError],
+  });
+
+  await assert.rejects(runWithHarness(harness), (error) => error instanceof AggregateError);
+  await assert.rejects(runWithHarness(harness), (error) => error === secondUpdateError);
+
+  assert.equal(harness.openIssues.length, 1);
+  assert.equal(harness.openIssues[0].body, ISSUE_BODY);
+  assert.equal(harness.calls.filter((call) => call.kind === 'intake').length, 0);
+  assert.equal(
+    harness.calls.filter((call) => call.kind === 'request' && call.options.body?.state === 'closed')
+      .length,
+    1,
+  );
 });
 
 test('resumes intake on the same automation-created issue after a prior run left it orphaned', async () => {
