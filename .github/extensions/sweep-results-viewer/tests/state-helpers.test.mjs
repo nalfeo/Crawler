@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   formatCloudFailure,
+  isCurrentCloudGeneration,
   isCurrentLocalSelection,
   stabilizeTerminalSnapshot,
 } from '../lib/state-helpers.mjs';
@@ -32,6 +33,25 @@ test('local selection guard rejects stale out-of-order completions', () => {
     path: null,
   };
   assert.equal(isCurrentLocalSelection(state, staleSelection), false);
+});
+
+test('cloud generation guard accepts only active cloud state', () => {
+  assert.equal(
+    isCurrentCloudGeneration({ closed: false, generation: 3, source: 'cloud' }, 3),
+    true,
+  );
+  assert.equal(
+    isCurrentCloudGeneration({ closed: false, generation: 4, source: 'local' }, 4),
+    false,
+  );
+  assert.equal(
+    isCurrentCloudGeneration({ closed: false, generation: 5, source: 'cloud' }, 4),
+    false,
+  );
+  assert.equal(
+    isCurrentCloudGeneration({ closed: true, generation: 3, source: 'cloud' }, 3),
+    false,
+  );
 });
 
 test('terminal stabilization exhausts retry budget while still incomplete', async () => {

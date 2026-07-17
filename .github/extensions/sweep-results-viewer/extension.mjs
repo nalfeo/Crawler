@@ -14,6 +14,7 @@ import { tokensMatch } from './lib/http-security.mjs';
 import { listLocalSweepResults, readLocalSweepFile } from './lib/local-results.mjs';
 import {
   formatCloudFailure,
+  isCurrentCloudGeneration,
   isCurrentLocalSelection,
   stabilizeTerminalSnapshot,
 } from './lib/state-helpers.mjs';
@@ -478,13 +479,21 @@ async function reloadState(instanceId) {
 
 async function initializeCloud(instanceId, explicitRunId) {
   const state = states.get(instanceId);
+  if (!state) throw new CanvasError('no_state', 'Canvas not open');
+  const generation = state.generation;
   try {
     await runCancellableOperation(state, async (signal) => {
       const context = await resolveProjectContext(state.workingDirectory, signal);
       const runs = await listWeaponSweepRuns(context.repository, signal);
+      if (!isCurrentCloudGeneration(state, generation)) {
+        return;
+      }
       state.context = context;
       state.runs = runs;
     });
+    if (!isCurrentCloudGeneration(state, generation)) {
+      return state;
+    }
     if (explicitRunId !== undefined) {
       const selected = state.runs.find((run) => run.id === Number(explicitRunId));
       if (!selected) {
@@ -500,10 +509,15 @@ async function initializeCloud(instanceId, explicitRunId) {
       state.selectionReason = selection.reason;
     }
     await refreshCloudState(instanceId, { refreshRuns: false });
+    return state;
   } catch (error) {
+    if (!isCurrentCloudGeneration(state, generation) || error?.name === 'AbortError') {
+      return state;
+    }
     state.error = formatCloudFailure('Cloud initialization failed: ', errorMessage(error));
     state.lastRefreshedAt = new Date().toISOString();
     notifyClients(instanceId);
+    return state;
   }
 }
 
