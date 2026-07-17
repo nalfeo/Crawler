@@ -221,6 +221,16 @@ The normal lifecycle is:
 it is `release_requirement: deferred` with a required reason. Deferred nodes are
 unclaimable and excluded from the release conjunction.
 
+Speculative stacked work is orthogonal to this lifecycle. A node with
+`stacked_work.state` equal to `stacked_in_progress` or `stacked_pr_open` remains
+literally `status: blocked`; those values are never added to the lifecycle enum.
+The separate `stacked_work.owner` never populates normal `ownership`. Stacked
+work therefore cannot satisfy dependency validation, enter the ready queue, or
+make a downstream node ready.
+
+The protocol support work is tracked in issue #1282. A1's dedicated child issue
+is #1279, and its speculative contracts PR remains dependency-blocked on A0.
+
 A required node computes ready only when:
 
 1. every direct dependency is `validated`; or
@@ -229,6 +239,36 @@ A required node computes ready only when:
 3. the node has a materialized issue, except for A0's parent-issue bootstrap;
 4. the node itself is not terminal or already beyond ready; and
 5. no plan-change invalidation applies.
+
+A blocked node may carry `stacked_work` only when all of the following hold:
+
+1. its execution lane is explicitly listed in `stacked_work_policy`; initially
+   only the locally coordinated `control` lane is permitted;
+2. it has a dedicated child issue and exactly one unexpired trusted
+   `STACKED-WORK` owner comment whose node/session/branch matches state;
+3. every incomplete direct prerequisite is represented once by an open PR
+   snapshot, and exactly one PR is marked as the branch's stack base;
+4. each dependency snapshot matches the prerequisite node's cached PR number,
+   URL, and full head SHA, while GitHub audit independently checks current
+   PR/head/base facts;
+5. the dependent branch and open PR, when present, are based on the recorded
+   stack-base branch, and its head is a full commit SHA;
+6. the dependency-head resync snapshot is exact and no more than 24 hours old;
+7. neither its owner/session nor its branch conflicts with normal or stacked
+   ownership elsewhere; and
+8. material contract drift or a blocking reason is recorded rather than hidden.
+
+The immediate stack base may be either one represented direct prerequisite or
+one auxiliary control-plane support PR. An auxiliary base must be the sole
+`is_stack_base` entry, have `node_id: null`, and link its dedicated tracking
+issue; it never becomes a delivery node or satisfies a DAG dependency. This
+allows A1 to stack on the protocol support PR while A0 remains its only planned
+delivery prerequisite and the epic remains exactly 37 nodes.
+
+Offline validation proves internal snapshots and heartbeat freshness. Only
+read-only GitHub audit can prove that a mutable PR is still open and that remote
+head/base refs have not advanced. Audit records observed facts and proposes
+reviewed patches/operator actions; it never writes lifecycle or completion state.
 
 `cancelled` dependencies never satisfy readiness. If an active node loses
 readiness after a plan change or dependency invalidation, the Producer posts
@@ -288,6 +328,9 @@ Bulk online creation is outside A0. The acceptance path is:
 Use these exact structured headings in issue comments:
 
 - `CLAIMED`: owner, session, base commit, scope, claimed_at, expires_at.
+- `STACKED-WORK`: node, claimant, session, branch, dependency_head,
+  claimed_at, expires_at, and heartbeat_at. It is valid only while lifecycle is
+  `blocked` and does not confer a normal claim.
 - `BLOCKED`: blocker node/fact, evidence, requested action, lease disposition.
 - `UNBLOCKED`: resolving evidence and refreshed dependency snapshot.
 - `SCOPE-CHANGE-REQUEST`: requested delta, rationale, impacted nodes, evidence
@@ -297,6 +340,27 @@ Use these exact structured headings in issue comments:
 
 Free-form updates may follow the structured block, but automation and Producers
 use only the structured fields for reconciliation.
+
+### Prerequisite merge transition
+
+When a stack-base prerequisite merges, the cached lifecycle is not silently
+advanced. GitHub audit marks the prerequisite observation `MERGED`, requires
+`rebase_to_main.pending: true`, captures the pre-rebase dependent head and merge
+commit, and emits this operator sequence:
+
+1. fetch the prerequisite merge and current `main`;
+2. rebase the dependent branch onto `main` and push the new head;
+3. retarget the dependent PR base to `main`;
+4. rerun offline and read-only GitHub validation;
+5. verify the pushed head differs from the pre-rebase snapshot and GitHub
+   observes both the new head and `base: main`;
+6. clear the completed stacked metadata in one reviewed Producer state update;
+7. keep lifecycle `blocked` until every prerequisite reaches `validated`; and
+8. only then enter the normal `ready -> claimed -> ...` lifecycle.
+
+Clearing `rebase_to_main.pending` while stacked metadata still exists is invalid
+after a prerequisite merge. The metadata is removed only after the remote rebase
+and retarget are observed, preventing a local-only or premature completion claim.
 
 ## Execution lanes
 
@@ -515,8 +579,11 @@ A fresh Producer must be able to resume with zero conversation context:
 7. Resolve stronger-fact conflicts in authority order. Do not copy cached state
    over GitHub or committed evidence.
 8. Post structured BLOCKED/UNBLOCKED/HANDOFF comments as needed.
-9. As sole global-state writer, apply one reviewed state update.
-10. Dispatch only nodes in the validator-computed ready queue with materialized
+9. For every `stacked_work` entry, verify the dedicated issue's one live
+   `STACKED-WORK` owner, dependency/dependent PR states, exact heads and bases,
+   last resync, and any pending rebase-to-main action.
+10. As sole global-state writer, apply one reviewed state update.
+11. Dispatch only nodes in the validator-computed ready queue with materialized
     child issues.
 
 If the parent issue is unavailable, merged git and deterministic evidence still

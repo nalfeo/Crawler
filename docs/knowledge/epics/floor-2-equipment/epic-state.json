@@ -1,9 +1,9 @@
 {
   "$schema": "./epic-state.schema.json",
-  "schema_version": "crawler-epic-state/v1",
+  "schema_version": "crawler-epic-state/v2",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-17T17:32:38.205Z",
+  "updated_at": "2026-07-17T22:20:26.015Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
@@ -28,7 +28,21 @@
     "bootstrap_node": "slice:A0",
     "default_lease_hours": 24,
     "maximum_without_heartbeat_hours": 48,
-    "protocol_headings": ["CLAIMED", "BLOCKED", "UNBLOCKED", "SCOPE-CHANGE-REQUEST", "HANDOFF"]
+    "protocol_headings": [
+      "CLAIMED",
+      "STACKED-WORK",
+      "BLOCKED",
+      "UNBLOCKED",
+      "SCOPE-CHANGE-REQUEST",
+      "HANDOFF"
+    ]
+  },
+  "stacked_work_policy": {
+    "states": ["stacked_in_progress", "stacked_pr_open"],
+    "allowed_execution_lanes": ["control"],
+    "maximum_without_resync_hours": 24,
+    "comment_heading": "STACKED-WORK",
+    "main_branch": "main"
   },
   "github": {
     "repository": "nalfeo/Crawler",
@@ -108,7 +122,7 @@
         "pr": {
           "number": 1271,
           "url": "https://github.com/nalfeo/Crawler/pull/1271",
-          "head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6"
+          "head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2"
         }
       },
       "ownership": {
@@ -150,7 +164,7 @@
         "last_audited_at": "2026-07-17T18:25:00.000Z",
         "observed_issue_state": "open",
         "observed_pr_state": "OPEN",
-        "observed_head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6",
+        "observed_head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2",
         "observed_merge_commit": null,
         "drift": []
       },
@@ -189,11 +203,69 @@
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
-        "observed_issue_state": null,
+        "observed_issue_state": "open",
         "observed_pr_state": null,
         "observed_head_sha": null,
         "observed_merge_commit": null,
         "drift": []
+      },
+      "stacked_work": {
+        "state": "stacked_pr_open",
+        "owner": {
+          "node_id": "slice:A1",
+          "issue": {
+            "number": 1279,
+            "url": "https://github.com/nalfeo/Crawler/issues/1279"
+          },
+          "claimant": "Producer / Systems Engineer",
+          "session": "6f852b99-3c14-4037-b6b2-7ec3947fe4fc",
+          "branch": "nalfeo-floor-2-equipment-contracts",
+          "claimed_at": "2026-07-17T20:48:43.643Z",
+          "lease_expires_at": "2026-07-18T22:20:26.015Z",
+          "heartbeat_at": "2026-07-17T22:20:26.015Z"
+        },
+        "dependency_pull_requests": [
+          {
+            "node_id": "slice:A0",
+            "tracking_issue": null,
+            "repository": "nalfeo/Crawler",
+            "branch": "nalfeo-floor-2-epic-control",
+            "pull_request": {
+              "number": 1271,
+              "url": "https://github.com/nalfeo/Crawler/pull/1271"
+            },
+            "head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2",
+            "base_branch": "main",
+            "is_stack_base": true,
+            "observed_pr_state": "OPEN",
+            "observed_head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2",
+            "observed_head_branch": "nalfeo-floor-2-epic-control",
+            "observed_base_branch": "main",
+            "observed_merge_commit": null
+          }
+        ],
+        "dependent": {
+          "branch": "nalfeo-floor-2-equipment-contracts",
+          "head_sha": "edce21919c72ded228deeed8fe41bd44ac33813e",
+          "base_branch": "nalfeo-floor-2-epic-control",
+          "pull_request": {
+            "number": 1276,
+            "url": "https://github.com/nalfeo/Crawler/pull/1276"
+          },
+          "observed_pr_state": "OPEN",
+          "observed_head_sha": "edce21919c72ded228deeed8fe41bd44ac33813e",
+          "observed_head_branch": "nalfeo-floor-2-equipment-contracts",
+          "observed_base_branch": "nalfeo-floor-2-epic-control"
+        },
+        "last_resynced_dependency_head_sha": "de709e08e1be83472bc7ecfe5e35a9d959e78fe2",
+        "last_resynced_at": "2026-07-17T22:20:26.015Z",
+        "rebase_to_main": {
+          "pending": false,
+          "pre_rebase_dependent_head_sha": null,
+          "prerequisite_merge_commit": null
+        },
+        "material_contract_drift": null,
+        "blocked_reason": null
       },
       "superseded_by": null
     },

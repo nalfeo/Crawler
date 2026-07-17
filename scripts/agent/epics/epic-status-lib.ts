@@ -193,6 +193,13 @@ const statePrRefSchema = prRefSchema
       });
     }
   });
+const prIdentitySchema = z
+  .object({
+    number: z.number().int().positive(),
+    url: z.string().regex(GITHUB_PR_URL),
+  })
+  .strict();
+const observedPrStateSchema = z.enum(['OPEN', 'CLOSED', 'MERGED']).nullable();
 const evidenceSchema = z
   .object({
     kind: z.string().min(1),
@@ -222,6 +229,67 @@ const reconciliationSchema = z
     observed_head_sha: z.string().regex(SHA40_PATTERN).nullable(),
     observed_merge_commit: z.string().regex(SHA40_PATTERN).nullable(),
     drift: z.array(z.string()),
+  })
+  .strict();
+const stackedWorkSchema = z
+  .object({
+    state: z.enum(['stacked_in_progress', 'stacked_pr_open']),
+    owner: z
+      .object({
+        node_id: z.string().regex(NODE_ID_PATTERN),
+        issue: stateIssueRefSchema,
+        claimant: z.string().min(1),
+        session: z.string().min(1),
+        branch: z.string().min(1),
+        claimed_at: z.string().datetime({ offset: true }),
+        lease_expires_at: z.string().datetime({ offset: true }),
+        heartbeat_at: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    dependency_pull_requests: z
+      .array(
+        z
+          .object({
+            node_id: z.string().regex(NODE_ID_PATTERN).nullable(),
+            tracking_issue: stateIssueRefSchema.nullable(),
+            repository: z.literal('nalfeo/Crawler'),
+            branch: z.string().min(1),
+            pull_request: prIdentitySchema,
+            head_sha: z.string().regex(SHA40_PATTERN),
+            base_branch: z.string().min(1),
+            is_stack_base: z.boolean(),
+            observed_pr_state: observedPrStateSchema,
+            observed_head_sha: z.string().regex(SHA40_PATTERN).nullable(),
+            observed_head_branch: z.string().nullable(),
+            observed_base_branch: z.string().nullable(),
+            observed_merge_commit: z.string().regex(SHA40_PATTERN).nullable(),
+          })
+          .strict(),
+      )
+      .min(1),
+    dependent: z
+      .object({
+        branch: z.string().min(1),
+        head_sha: z.string().regex(SHA40_PATTERN),
+        base_branch: z.string().min(1),
+        pull_request: prIdentitySchema.nullable(),
+        observed_pr_state: observedPrStateSchema,
+        observed_head_sha: z.string().regex(SHA40_PATTERN).nullable(),
+        observed_head_branch: z.string().nullable(),
+        observed_base_branch: z.string().nullable(),
+      })
+      .strict(),
+    last_resynced_dependency_head_sha: z.string().regex(SHA40_PATTERN),
+    last_resynced_at: z.string().datetime({ offset: true }),
+    rebase_to_main: z
+      .object({
+        pending: z.boolean(),
+        pre_rebase_dependent_head_sha: z.string().regex(SHA40_PATTERN).nullable(),
+        prerequisite_merge_commit: z.string().regex(SHA40_PATTERN).nullable(),
+      })
+      .strict(),
+    material_contract_drift: z.string().nullable(),
+    blocked_reason: z.string().nullable(),
   })
   .strict();
 const nodeSchema = z
@@ -278,6 +346,7 @@ const nodeSchema = z
     evidence_requirements: z.array(z.string().min(1)).min(1).superRefine(uniqueStringItems),
     evidence: z.array(evidenceSchema),
     reconciliation: reconciliationSchema,
+    stacked_work: stackedWorkSchema.nullable().optional(),
     superseded_by: z.string().regex(NODE_ID_PATTERN).nullable(),
   })
   .strict();
@@ -285,7 +354,7 @@ const nodeSchema = z
 const epicStateSchema = z
   .object({
     $schema: z.literal('./epic-state.schema.json'),
-    schema_version: z.literal('crawler-epic-state/v1'),
+    schema_version: z.literal('crawler-epic-state/v2'),
     epic_id: z.literal('floor-2-equipment'),
     title: z.string().min(1),
     updated_at: z.string().datetime({ offset: true }),
@@ -330,11 +399,21 @@ const epicStateSchema = z
         maximum_without_heartbeat_hours: z.literal(48),
         protocol_headings: z.tuple([
           z.literal('CLAIMED'),
+          z.literal('STACKED-WORK'),
           z.literal('BLOCKED'),
           z.literal('UNBLOCKED'),
           z.literal('SCOPE-CHANGE-REQUEST'),
           z.literal('HANDOFF'),
         ]),
+      })
+      .strict(),
+    stacked_work_policy: z
+      .object({
+        states: z.tuple([z.literal('stacked_in_progress'), z.literal('stacked_pr_open')]),
+        allowed_execution_lanes: z.tuple([z.literal('control')]),
+        maximum_without_resync_hours: z.literal(24),
+        comment_heading: z.literal('STACKED-WORK'),
+        main_branch: z.literal('main'),
       })
       .strict(),
     github: z
@@ -624,7 +703,7 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
       $id: z.string().url(),
       properties: z
         .object({
-          schema_version: z.object({ const: z.literal('crawler-epic-state/v1') }),
+          schema_version: z.object({ const: z.literal('crawler-epic-state/v2') }),
           epic_id: z.object({ const: z.literal('floor-2-equipment') }),
           nodes: z.object({ minItems: z.literal(37) }).passthrough(),
           release: z
@@ -657,7 +736,17 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
             .object({
               properties: z
                 .object({
-                  protocol_headings: z.object({ minItems: z.literal(5) }).passthrough(),
+                  protocol_headings: z.object({ minItems: z.literal(6) }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+          stacked_work_policy: z
+            .object({
+              properties: z
+                .object({
+                  states: z.object({ minItems: z.literal(2) }).passthrough(),
+                  allowed_execution_lanes: z.object({ minItems: z.literal(1) }).passthrough(),
                 })
                 .passthrough(),
             })
@@ -733,6 +822,7 @@ function computeReady(
     !TERMINAL_STATUSES.has(node.status) &&
     !POST_PR_STATUSES.has(node.status) &&
     !ACTIVE_STATUSES.has(node.status) &&
+    !node.stacked_work &&
     dependenciesSatisfied(node, nodesById) &&
     hasIssueAuthority(state, node)
   );
@@ -976,6 +1066,314 @@ function validateEvidenceRequirements(
   }
 }
 
+function validateStackedWork(
+  state: EpicState,
+  node: EpicNode,
+  nodesById: ReadonlyMap<string, EpicNode>,
+  now: Date,
+  result: MutableValidation,
+): void {
+  const stacked = node.stacked_work;
+  if (!stacked) return;
+
+  if (node.status !== 'blocked') {
+    result.errors.push({
+      code: 'stacked.lifecycle-not-blocked',
+      node_id: node.node_id,
+      message: `${node.node_id} has stacked work but lifecycle is ${node.status}, not blocked`,
+    });
+  }
+  if (
+    !state.stacked_work_policy.allowed_execution_lanes.some((lane) => lane === node.execution_lane)
+  ) {
+    result.errors.push({
+      code: 'stacked.lane-not-allowed',
+      node_id: node.node_id,
+      message: `${node.execution_lane} does not permit locally coordinated stacked work`,
+    });
+  }
+  if (
+    !node.github.issue ||
+    stacked.owner.node_id !== node.node_id ||
+    stacked.owner.issue.number !== node.github.issue.number ||
+    stacked.owner.issue.url !== node.github.issue.url
+  ) {
+    result.errors.push({
+      code: 'stacked.missing-issue-owner',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner must match its dedicated child issue`,
+    });
+  }
+  if (
+    stacked.owner.branch !== stacked.dependent.branch ||
+    Date.parse(stacked.owner.lease_expires_at) <= Date.parse(stacked.owner.claimed_at)
+  ) {
+    result.errors.push({
+      code: 'stacked.owner-mismatch',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner branch or lease metadata is inconsistent`,
+    });
+  }
+  if (Date.parse(stacked.owner.lease_expires_at) <= now.getTime()) {
+    result.errors.push({
+      code: 'stacked.owner-expired',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner lease expired at ${stacked.owner.lease_expires_at}`,
+    });
+  }
+  const maxOwnershipHeartbeatMs = state.claim_policy.maximum_without_heartbeat_hours * 3_600_000;
+  if (now.getTime() - Date.parse(stacked.owner.heartbeat_at) > maxOwnershipHeartbeatMs) {
+    result.errors.push({
+      code: 'stacked.owner-heartbeat-stale',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner heartbeat exceeds ${state.claim_policy.maximum_without_heartbeat_hours}h`,
+    });
+  }
+
+  if (stacked.state === 'stacked_pr_open' && !stacked.dependent.pull_request) {
+    result.errors.push({
+      code: 'stacked.dependent-pr-missing',
+      node_id: node.node_id,
+      message: `${node.node_id} is stacked_pr_open without a dependent PR`,
+    });
+  }
+  if (stacked.state === 'stacked_in_progress' && stacked.dependent.pull_request) {
+    result.errors.push({
+      code: 'stacked.dependent-pr-premature',
+      node_id: node.node_id,
+      message: `${node.node_id} has a dependent PR but state is stacked_in_progress`,
+    });
+  }
+  if (stacked.dependent.observed_pr_state === 'CLOSED') {
+    result.errors.push({
+      code: 'stacked.dependent-pr-closed',
+      node_id: node.node_id,
+      message: `${node.node_id} dependent PR is observed closed without merge`,
+    });
+  }
+  if (
+    stacked.dependent.observed_head_sha &&
+    stacked.dependent.observed_head_sha !== stacked.dependent.head_sha
+  ) {
+    result.errors.push({
+      code: 'stacked.dependent-head-stale',
+      node_id: node.node_id,
+      message: `${node.node_id} dependent head snapshot is stale`,
+    });
+  }
+  if (
+    stacked.dependent.observed_head_branch &&
+    stacked.dependent.observed_head_branch !== stacked.dependent.branch
+  ) {
+    result.errors.push({
+      code: 'stacked.dependent-branch-drift',
+      node_id: node.node_id,
+      message: `${node.node_id} dependent PR head branch differs from the recorded branch`,
+    });
+  }
+  if (
+    stacked.dependent.observed_base_branch &&
+    stacked.dependent.observed_base_branch !== stacked.dependent.base_branch
+  ) {
+    result.errors.push({
+      code: 'stacked.dependent-base-drift',
+      node_id: node.node_id,
+      message: `${node.node_id} dependent PR base differs from the recorded base`,
+    });
+  }
+
+  const incompleteDependencies = node.dependencies.filter((dependencyId) => {
+    const dependency = nodesById.get(dependencyId);
+    return !dependency || !isDependencySatisfied(dependency, nodesById);
+  });
+  const recordedDependencyIds = stacked.dependency_pull_requests
+    .map((dependency) => dependency.node_id)
+    .filter((dependencyId): dependencyId is string => dependencyId !== null);
+  if (
+    new Set(recordedDependencyIds).size !== recordedDependencyIds.length ||
+    incompleteDependencies.length !== recordedDependencyIds.length ||
+    incompleteDependencies.some((dependencyId) => !recordedDependencyIds.includes(dependencyId))
+  ) {
+    result.errors.push({
+      code: 'stacked.dependency-coverage',
+      node_id: node.node_id,
+      message: `${node.node_id} must represent every incomplete direct prerequisite exactly once`,
+    });
+  }
+
+  const stackBases = stacked.dependency_pull_requests.filter(
+    (dependency) => dependency.is_stack_base,
+  );
+  if (stackBases.length !== 1) {
+    result.errors.push({
+      code: 'stacked.stack-base-count',
+      node_id: node.node_id,
+      message: `${node.node_id} must identify exactly one dependency PR as its stack base`,
+    });
+  }
+
+  let mergedStackBase = false;
+  for (const dependencySnapshot of stacked.dependency_pull_requests) {
+    const dependencyLabel = dependencySnapshot.node_id ?? 'auxiliary stack base';
+    if (dependencySnapshot.node_id === null) {
+      if (!dependencySnapshot.is_stack_base || !dependencySnapshot.tracking_issue) {
+        result.errors.push({
+          code: 'stacked.auxiliary-base-authority',
+          node_id: node.node_id,
+          message: `${node.node_id} auxiliary stack base requires a tracking issue and is_stack_base`,
+        });
+      }
+    } else {
+      const dependency = nodesById.get(dependencySnapshot.node_id);
+      if (!dependency?.github.pr) {
+        result.errors.push({
+          code: 'stacked.dependency-pr-missing',
+          node_id: node.node_id,
+          message: `${dependencySnapshot.node_id} has no cached prerequisite PR`,
+        });
+        continue;
+      }
+      if (
+        dependency.github.pr.number !== dependencySnapshot.pull_request.number ||
+        dependency.github.pr.url !== dependencySnapshot.pull_request.url ||
+        dependency.github.pr.head_sha !== dependencySnapshot.head_sha
+      ) {
+        result.errors.push({
+          code: 'stacked.dependency-snapshot-stale',
+          node_id: node.node_id,
+          message: `${dependencySnapshot.node_id} PR snapshot does not match cached prerequisite facts`,
+        });
+      }
+      if (dependency.status !== 'pr_open' && dependencySnapshot.observed_pr_state !== 'MERGED') {
+        result.errors.push({
+          code: 'stacked.dependency-not-open',
+          node_id: node.node_id,
+          message: `${dependencySnapshot.node_id} is not represented by an open prerequisite PR`,
+        });
+      }
+    }
+    if (dependencySnapshot.observed_pr_state === 'CLOSED') {
+      result.errors.push({
+        code: 'stacked.dependency-pr-closed',
+        node_id: node.node_id,
+        message: `${dependencyLabel} prerequisite PR is closed without merge`,
+      });
+    }
+    if (
+      dependencySnapshot.observed_head_sha &&
+      dependencySnapshot.observed_head_sha !== dependencySnapshot.head_sha
+    ) {
+      result.errors.push({
+        code: 'stacked.dependency-head-stale',
+        node_id: node.node_id,
+        message: `${dependencyLabel} prerequisite head advanced after the last resync`,
+      });
+    }
+    if (
+      dependencySnapshot.observed_head_branch &&
+      dependencySnapshot.observed_head_branch !== dependencySnapshot.branch
+    ) {
+      result.errors.push({
+        code: 'stacked.dependency-branch-drift',
+        node_id: node.node_id,
+        message: `${dependencyLabel} prerequisite head branch drifted`,
+      });
+    }
+    if (
+      dependencySnapshot.observed_base_branch &&
+      dependencySnapshot.observed_base_branch !== dependencySnapshot.base_branch
+    ) {
+      result.errors.push({
+        code: 'stacked.dependency-base-drift',
+        node_id: node.node_id,
+        message: `${dependencyLabel} prerequisite base branch drifted`,
+      });
+    }
+    if (dependencySnapshot.observed_pr_state === 'MERGED') {
+      if (!dependencySnapshot.observed_merge_commit) {
+        result.errors.push({
+          code: 'stacked.dependency-merge-facts',
+          node_id: node.node_id,
+          message: `${dependencyLabel} is observed merged without a merge commit`,
+        });
+      }
+      if (dependencySnapshot.is_stack_base) mergedStackBase = true;
+    }
+  }
+
+  const stackBase = stackBases[0];
+  if (stackBase) {
+    if (stacked.last_resynced_dependency_head_sha !== stackBase.head_sha) {
+      result.errors.push({
+        code: 'stacked.resync-head-stale',
+        node_id: node.node_id,
+        message: `${node.node_id} last-resynced head does not match its stack-base head`,
+      });
+    }
+    if (!mergedStackBase && stacked.dependent.base_branch !== stackBase.branch) {
+      result.errors.push({
+        code: 'stacked.wrong-base-branch',
+        node_id: node.node_id,
+        message: `${node.node_id} dependent branch is not based on ${stackBase.branch}`,
+      });
+    }
+  }
+  const maxResyncMs = state.stacked_work_policy.maximum_without_resync_hours * 3_600_000;
+  if (now.getTime() - Date.parse(stacked.last_resynced_at) > maxResyncMs) {
+    result.errors.push({
+      code: 'stacked.resync-stale',
+      node_id: node.node_id,
+      message: `${node.node_id} has not resynced within ${state.stacked_work_policy.maximum_without_resync_hours}h`,
+    });
+  }
+
+  if (mergedStackBase) {
+    const mergeCommit = stackBase?.observed_merge_commit ?? null;
+    if (
+      !stacked.rebase_to_main.pending ||
+      !stacked.rebase_to_main.pre_rebase_dependent_head_sha ||
+      stacked.rebase_to_main.prerequisite_merge_commit !== mergeCommit
+    ) {
+      result.errors.push({
+        code: 'stacked.rebase-to-main-required',
+        node_id: node.node_id,
+        message: `${node.node_id} must keep rebase_to_main pending with exact merge facts`,
+      });
+    } else if (stacked.dependent.base_branch === state.stacked_work_policy.main_branch) {
+      if (
+        stacked.dependent.head_sha === stacked.rebase_to_main.pre_rebase_dependent_head_sha ||
+        (stacked.dependent.observed_head_sha &&
+          stacked.dependent.observed_head_sha !== stacked.dependent.head_sha)
+      ) {
+        result.errors.push({
+          code: 'stacked.rebase-not-pushed',
+          node_id: node.node_id,
+          message: `${node.node_id} retargeted to main without an observed rebased dependent head`,
+        });
+      }
+    }
+  } else if (
+    stacked.rebase_to_main.pending ||
+    stacked.rebase_to_main.pre_rebase_dependent_head_sha ||
+    stacked.rebase_to_main.prerequisite_merge_commit
+  ) {
+    result.errors.push({
+      code: 'stacked.unexpected-rebase-to-main',
+      node_id: node.node_id,
+      message: `${node.node_id} records rebase-to-main work before its stack base merged`,
+    });
+  }
+
+  if (stacked.material_contract_drift || stacked.blocked_reason) {
+    result.blockers.push({
+      code: 'stacked.material-block',
+      node_id: node.node_id,
+      message:
+        stacked.material_contract_drift ?? stacked.blocked_reason ?? 'Stacked work is blocked',
+    });
+  }
+}
+
 function validateNodeLifecycle(
   state: EpicState,
   node: EpicNode,
@@ -1017,6 +1415,8 @@ function validateNodeLifecycle(
       message: `${node.node_id} names superseded_by but is not superseded`,
     });
   }
+
+  validateStackedWork(state, node, nodesById, now, result);
 
   const ready = computeReady(state, node, nodesById);
   if (ready) result.readyQueue.push(node.node_id);
@@ -1177,6 +1577,7 @@ function validateNodeLifecycle(
 
 function validateDuplicateOwnership(state: EpicState, result: MutableValidation): void {
   const ownership = new Map<string, string>();
+  const stackedBranches = new Map<string, string>();
   const issues = new Map<number, string>();
   for (const node of state.nodes) {
     if (ACTIVE_STATUSES.has(node.status) && node.ownership.claimant && node.ownership.session) {
@@ -1190,6 +1591,29 @@ function validateDuplicateOwnership(state: EpicState, result: MutableValidation)
         });
       } else {
         ownership.set(key, node.node_id);
+      }
+    }
+    if (node.stacked_work) {
+      const key = `${node.stacked_work.owner.claimant}\u0000${node.stacked_work.owner.session}`;
+      const priorOwner = ownership.get(key);
+      if (priorOwner) {
+        result.errors.push({
+          code: 'stacked.duplicate-owner',
+          node_id: node.node_id,
+          message: `${node.stacked_work.owner.claimant}/${node.stacked_work.owner.session} owns both ${priorOwner} and ${node.node_id}`,
+        });
+      } else {
+        ownership.set(key, node.node_id);
+      }
+      const priorBranch = stackedBranches.get(node.stacked_work.dependent.branch);
+      if (priorBranch) {
+        result.errors.push({
+          code: 'stacked.duplicate-branch',
+          node_id: node.node_id,
+          message: `${node.stacked_work.dependent.branch} is assigned to both ${priorBranch} and ${node.node_id}`,
+        });
+      } else {
+        stackedBranches.set(node.stacked_work.dependent.branch, node.node_id);
       }
     }
     if (node.github.issue) {
@@ -1395,7 +1819,7 @@ export function buildMaterializationPlan(state: EpicState): ReadonlyArray<Materi
         ...node.evidence_requirements.map((requirement) => `- \`${requirement}\``),
         '',
         '## Coordination protocol',
-        'Use structured CLAIMED, BLOCKED, UNBLOCKED, SCOPE-CHANGE-REQUEST, and HANDOFF comments.',
+        'Use structured CLAIMED, STACKED-WORK, BLOCKED, UNBLOCKED, SCOPE-CHANGE-REQUEST, and HANDOFF comments.',
         'Do not edit the global epic state; the Producer is the sole global-state writer.',
       ].join('\n'),
     }));
@@ -1416,6 +1840,10 @@ interface GithubPull {
   readonly html_url: string;
   readonly head: {
     readonly sha: string;
+    readonly ref?: string;
+  };
+  readonly base?: {
+    readonly ref: string;
   };
 }
 
@@ -1455,6 +1883,18 @@ interface ParsedClaim {
 
 interface ParsedBlockedEvent {
   readonly nodeId: string;
+  readonly url: string;
+}
+
+interface ParsedStackedClaim {
+  readonly nodeId: string;
+  readonly claimant: string;
+  readonly session: string;
+  readonly branch: string;
+  readonly dependencyHead: string;
+  readonly expiresAt: string;
+  readonly claimedAt: string;
+  readonly heartbeatAt: string;
   readonly url: string;
 }
 
@@ -1524,6 +1964,54 @@ function parseTrustedBlockedEvent(
   return { nodeId, url: comment.html_url };
 }
 
+function parseTrustedStackedClaim(
+  comment: GithubComment,
+  expectedNodeId?: string,
+): ParsedStackedClaim | null {
+  if (!isTrustedAuthor(comment)) return null;
+  const lines = comment.body.split(/\r?\n/);
+  if (lines[0]?.trim() !== 'STACKED-WORK') return null;
+  const fields = new Map<string, string>();
+  for (const line of lines.slice(1)) {
+    const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
+    if (match?.[1] && match[2]) fields.set(match[1], match[2]);
+  }
+  const nodeId = fields.get('node');
+  const claimant = fields.get('claimant');
+  const session = fields.get('session');
+  const branch = fields.get('branch');
+  const dependencyHead = fields.get('dependency_head');
+  const expiresAt = fields.get('expires_at');
+  const claimedAt = fields.get('claimed_at');
+  const heartbeatAt = fields.get('heartbeat_at');
+  if (
+    !nodeId ||
+    !claimant ||
+    !session ||
+    !branch ||
+    !dependencyHead ||
+    !expiresAt ||
+    !claimedAt ||
+    !heartbeatAt ||
+    !SHA40_PATTERN.test(dependencyHead) ||
+    [expiresAt, claimedAt, heartbeatAt].some((value) => Number.isNaN(Date.parse(value)))
+  ) {
+    return null;
+  }
+  if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
+  return {
+    nodeId,
+    claimant,
+    session,
+    branch,
+    dependencyHead,
+    expiresAt,
+    claimedAt,
+    heartbeatAt,
+    url: comment.html_url,
+  };
+}
+
 export function auditGithub(
   state: EpicState,
   runner: GithubRunner,
@@ -1546,6 +2034,7 @@ export function auditGithub(
     };
   }
   const issueClaims: ParsedClaim[] = [];
+  const stackedClaims: ParsedStackedClaim[] = [];
   const auditedIssues = new Map<number, GithubIssue>();
   const proposeIssueState = (issue: GithubIssue, expectedNode?: EpicNode): void => {
     if (expectedNode && expectedNode.reconciliation.observed_issue_state !== issue.state) {
@@ -1616,6 +2105,10 @@ export function auditGithub(
           }
           liveClaimsByNodeAndSession.set(claim.nodeId, perSession);
         }
+        const stackedClaim = parseTrustedStackedClaim(comment, expectedNodeId);
+        if (stackedClaim && Date.parse(stackedClaim.expiresAt) > now.getTime()) {
+          stackedClaims.push(stackedClaim);
+        }
       }
       for (const sessionMap of liveClaimsByNodeAndSession.values()) {
         issueClaims.push(...sessionMap.values());
@@ -1644,7 +2137,11 @@ export function auditGithub(
           merge_commit_sha: z.string().nullable(),
           merged_at: z.string().nullable(),
           html_url: z.string().url(),
-          head: z.object({ sha: z.string().regex(SHA40_PATTERN) }),
+          head: z.object({
+            sha: z.string().regex(SHA40_PATTERN),
+            ref: z.string().optional(),
+          }),
+          base: z.object({ ref: z.string() }).optional(),
         })
         .passthrough()
         .parse(runner.get(`/repos/${owner}/${repo}/pulls/${node.github.pr.number}`)) as GithubPull;
@@ -1723,6 +2220,184 @@ export function auditGithub(
     }
   }
 
+  const stackedPullSchema = z
+    .object({
+      number: z.number().int().positive(),
+      state: z.enum(['open', 'closed']),
+      merged: z.boolean(),
+      merge_commit_sha: z.string().nullable(),
+      merged_at: z.string().nullable(),
+      html_url: z.string().url(),
+      head: z.object({
+        sha: z.string().regex(SHA40_PATTERN),
+        ref: z.string().min(1),
+      }),
+      base: z.object({ ref: z.string().min(1) }),
+    })
+    .passthrough();
+  const stackedPullCache = new Map<number, z.infer<typeof stackedPullSchema>>();
+  const readStackedPull = (number: number): z.infer<typeof stackedPullSchema> => {
+    const cached = stackedPullCache.get(number);
+    if (cached) return cached;
+    const pull = stackedPullSchema.parse(runner.get(`/repos/${owner}/${repo}/pulls/${number}`));
+    stackedPullCache.set(number, pull);
+    return pull;
+  };
+
+  for (const node of state.nodes) {
+    const stacked = node.stacked_work;
+    if (!stacked) continue;
+    const nodeIndex = state.nodes.indexOf(node);
+    for (const [dependencyIndex, dependency] of stacked.dependency_pull_requests.entries()) {
+      try {
+        const pull = readStackedPull(dependency.pull_request.number);
+        const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
+        const observedMergeCommit = pull.merged ? pull.merge_commit_sha : null;
+        const observations: ReadonlyArray<{
+          readonly field: string;
+          readonly current: unknown;
+          readonly value: unknown;
+        }> = [
+          {
+            field: 'observed_pr_state',
+            current: dependency.observed_pr_state,
+            value: observedState,
+          },
+          {
+            field: 'observed_head_sha',
+            current: dependency.observed_head_sha,
+            value: pull.head.sha,
+          },
+          {
+            field: 'observed_head_branch',
+            current: dependency.observed_head_branch,
+            value: pull.head.ref,
+          },
+          {
+            field: 'observed_base_branch',
+            current: dependency.observed_base_branch,
+            value: pull.base.ref,
+          },
+          {
+            field: 'observed_merge_commit',
+            current: dependency.observed_merge_commit,
+            value: observedMergeCommit,
+          },
+        ];
+        for (const observation of observations) {
+          if (observation.current === observation.value) continue;
+          repoPatch.push({
+            op: 'replace',
+            path: `/nodes/${nodeIndex}/stacked_work/dependency_pull_requests/${dependencyIndex}/${observation.field}`,
+            value: observation.value,
+            reason: `Observed stacked prerequisite PR #${pull.number} ${observation.field} from GitHub`,
+          });
+        }
+        if (
+          pull.head.sha !== dependency.head_sha ||
+          pull.head.ref !== dependency.branch ||
+          pull.base.ref !== dependency.base_branch
+        ) {
+          errors.push({
+            code: 'github.stacked-dependency-drift',
+            node_id: node.node_id,
+            message: `Prerequisite PR #${pull.number} no longer matches the recorded head/base snapshot`,
+          });
+        }
+        if (observedState !== 'OPEN') {
+          errors.push({
+            code: pull.merged
+              ? 'github.stacked-dependency-merged'
+              : 'github.stacked-dependency-closed',
+            node_id: node.node_id,
+            message: `Prerequisite PR #${pull.number} is ${observedState}`,
+          });
+          operatorActions.push(
+            pull.merged
+              ? `Set ${node.node_id} rebase_to_main pending with merge ${pull.merge_commit_sha ?? 'unknown'}, rebase ${stacked.dependent.branch} onto ${state.stacked_work_policy.main_branch}, retarget its PR, revalidate, then clear stacked metadata.`
+              : `Stop stacked work for ${node.node_id}; prerequisite PR #${pull.number} closed without merge.`,
+          );
+        }
+      } catch (error) {
+        errors.push({
+          code: 'github.stacked-dependency-audit',
+          node_id: node.node_id,
+          message: `Could not audit stacked prerequisite PR #${dependency.pull_request.number}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      }
+    }
+
+    const dependentPr = stacked.dependent.pull_request;
+    if (!dependentPr) continue;
+    try {
+      const pull = readStackedPull(dependentPr.number);
+      const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
+      const observations: ReadonlyArray<{
+        readonly field: string;
+        readonly current: unknown;
+        readonly value: unknown;
+      }> = [
+        {
+          field: 'observed_pr_state',
+          current: stacked.dependent.observed_pr_state,
+          value: observedState,
+        },
+        {
+          field: 'observed_head_sha',
+          current: stacked.dependent.observed_head_sha,
+          value: pull.head.sha,
+        },
+        {
+          field: 'observed_head_branch',
+          current: stacked.dependent.observed_head_branch,
+          value: pull.head.ref,
+        },
+        {
+          field: 'observed_base_branch',
+          current: stacked.dependent.observed_base_branch,
+          value: pull.base.ref,
+        },
+      ];
+      for (const observation of observations) {
+        if (observation.current === observation.value) continue;
+        repoPatch.push({
+          op: 'replace',
+          path: `/nodes/${nodeIndex}/stacked_work/dependent/${observation.field}`,
+          value: observation.value,
+          reason: `Observed stacked dependent PR #${pull.number} ${observation.field} from GitHub`,
+        });
+      }
+      if (
+        pull.head.sha !== stacked.dependent.head_sha ||
+        pull.head.ref !== stacked.dependent.branch ||
+        pull.base.ref !== stacked.dependent.base_branch
+      ) {
+        errors.push({
+          code: 'github.stacked-dependent-drift',
+          node_id: node.node_id,
+          message: `Dependent PR #${pull.number} no longer matches the recorded head/base snapshot`,
+        });
+      }
+      if (observedState !== 'OPEN') {
+        errors.push({
+          code: 'github.stacked-dependent-not-open',
+          node_id: node.node_id,
+          message: `Dependent PR #${pull.number} is ${observedState}, not OPEN`,
+        });
+      }
+    } catch (error) {
+      errors.push({
+        code: 'github.stacked-dependent-audit',
+        node_id: node.node_id,
+        message: `Could not audit stacked dependent PR #${dependentPr.number}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+    }
+  }
+
   // Group live claims by node to detect competing claimants.
   // Within auditIssue, same-session heartbeat replacement is already collapsed.
   const deduplicatedByNode = new Map<string, ParsedClaim[]>();
@@ -1790,6 +2465,69 @@ export function auditGithub(
       });
       operatorActions.push(
         `Producer must confirm non-overlapping scope or release claims for ${[...nodes].join(', ')}.`,
+      );
+    }
+  }
+
+  const stackedClaimsByNode = new Map<string, Map<string, ParsedStackedClaim>>();
+  for (const claim of stackedClaims) {
+    const byOwner = stackedClaimsByNode.get(claim.nodeId) ?? new Map();
+    const ownerKey = `${claim.claimant}\u0000${claim.session}`;
+    const prior = byOwner.get(ownerKey);
+    if (!prior || Date.parse(claim.heartbeatAt) > Date.parse(prior.heartbeatAt)) {
+      byOwner.set(ownerKey, claim);
+    }
+    stackedClaimsByNode.set(claim.nodeId, byOwner);
+  }
+  for (const node of state.nodes) {
+    const liveClaims = [...(stackedClaimsByNode.get(node.node_id)?.values() ?? [])];
+    if (!node.stacked_work) {
+      if (liveClaims.length > 0) {
+        errors.push({
+          code: 'github.unexpected-stacked-owner',
+          node_id: node.node_id,
+          message: `${node.node_id} has a live STACKED-WORK owner but no stacked metadata`,
+        });
+      }
+      continue;
+    }
+    const normalClaims = deduplicatedByNode.get(node.node_id) ?? [];
+    if (normalClaims.length > 0) {
+      errors.push({
+        code: 'github.stacked-normal-claim-conflict',
+        node_id: node.node_id,
+        message: `${node.node_id} has both normal CLAIMED and STACKED-WORK ownership`,
+      });
+    }
+    if (liveClaims.length !== 1) {
+      errors.push({
+        code:
+          liveClaims.length === 0
+            ? 'github.stacked-owner-missing'
+            : 'github.stacked-owner-duplicate',
+        node_id: node.node_id,
+        message: `${node.node_id} requires exactly one live trusted STACKED-WORK owner; found ${liveClaims.length}`,
+      });
+      operatorActions.push(
+        `Reconcile STACKED-WORK ownership on issue #${node.github.issue?.number ?? 'missing'} for ${node.node_id}.`,
+      );
+      continue;
+    }
+    const live = liveClaims[0]!;
+    const expected = node.stacked_work;
+    if (
+      live.claimant !== expected.owner.claimant ||
+      live.session !== expected.owner.session ||
+      live.branch !== expected.owner.branch ||
+      live.dependencyHead !== expected.last_resynced_dependency_head_sha
+    ) {
+      errors.push({
+        code: 'github.stacked-owner-drift',
+        node_id: node.node_id,
+        message: `${node.node_id} live STACKED-WORK owner differs from cached state`,
+      });
+      operatorActions.push(
+        `Verify the live STACKED-WORK comment ${live.url} and reconcile ${node.node_id} as Producer.`,
       );
     }
   }
