@@ -34,7 +34,9 @@ declare global {
   interface Window {
     __arenaReady?: boolean;
     __arenaScene?: {
-      children?: { list?: Array<{ type?: string; setVisible?: (visible: boolean) => void }> };
+      children?: {
+        list?: Array<{ type?: string; depth?: number; setVisible?: (visible: boolean) => void }>;
+      };
     };
   }
 }
@@ -85,7 +87,7 @@ async function hideNonTerrainObjects(page: Page): Promise<{ hidden: number; terr
     let hidden = 0;
     let terrain = 0;
     for (const obj of list) {
-      if (obj?.type === 'RenderTexture') {
+      if (obj?.type === 'RenderTexture' && obj?.depth === -20) {
         terrain += 1;
         continue;
       }
