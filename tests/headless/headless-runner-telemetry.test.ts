@@ -156,6 +156,33 @@ describe('headless runner AI telemetry', () => {
       Math.max(1, stats.combat.damageTaken * 0.1),
     );
   });
+
+  it('attributes the lethal hit via the terminal flush when the run ends in death', async () => {
+    // Use a very high enemy damage multiplier to guarantee the player dies
+    // quickly (within a few seconds of encountering the first enemy).
+    // This forces the break-on-death path (lines 726–739) and exercises the
+    // post-loop combat-event flush that captures the killing blow.
+    const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
+      seed: 42,
+      maxFrames: 7_200, // 2-minute safety cap
+      maxWallTimeMs: 60_000,
+      enemyDamageMultiplier: 999,
+    });
+
+    expect(stats.outcome).toBe('death');
+    // The killing blow must appear in damageTakenBySource regardless of whether
+    // it was the last event before the run ended.
+    const attributedDamage = Object.values(stats.combat.damageTakenBySource).reduce(
+      (total, damage) => total + damage,
+      0,
+    );
+    expect(attributedDamage).toBeGreaterThan(0);
+    // At least one source must be identified (not 100% 'unknown')
+    const namedSources = Object.keys(stats.combat.damageTakenBySource).filter(
+      (k) => k !== 'unknown',
+    );
+    expect(namedSources.length).toBeGreaterThan(0);
+  });
 });
 
 describe('headless runner weapon telemetry (opt-in)', () => {

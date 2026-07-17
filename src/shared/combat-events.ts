@@ -60,6 +60,14 @@ export interface CombatEvent {
    * `corpseExplode` event. 1 = rat, 2 = slime, otherwise the generic enemy.
    */
   spriteTextureId?: number;
+  /**
+   * Snapshot of the attacker's stable archetype identity captured at event
+   * creation time. Safe to consume after the source entity is removed or its
+   * EID is recycled. Populated only for player-targeted hit events where the
+   * source entity ID is known. When present, prefer this over resolving
+   * `sourceEid` at consumption time.
+   */
+  sourceArchetypeKey?: string;
   /** Stable spawned mob identity used to resolve generated-art families. */
   spriteAppearanceKey?: string;
   /** Spawn-time roll in [0, 1) used to pick a stable generated-art variant. */

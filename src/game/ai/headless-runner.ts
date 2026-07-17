@@ -836,12 +836,17 @@ export async function runHeadless(
       for (let eventIndex = combatEventCursor; eventIndex < combatEvents.length; eventIndex += 1) {
         const event = combatEvents[eventIndex]!;
         if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
+          // Prefer the pre-snapshotted stable archetype key over the EID lookup:
+          // sourceEid is best-effort (may reference a recycled entity), but
+          // sourceArchetypeKey is captured at hit creation while the source is
+          // still live and is therefore always stable.
           const source =
-            event.sourceEid === undefined
+            event.sourceArchetypeKey ??
+            (event.sourceEid === undefined
               ? 'unknown'
               : (world.enemyAppearanceKeys.get(event.sourceEid) ??
                 world.floorScenario?.enemyArchetypes.get(event.sourceEid) ??
-                'unknown');
+                'unknown'));
           damageTakenBySource[source] = (damageTakenBySource[source] ?? 0) + event.amount;
         }
         if (event.type !== 'death' || event.targetType !== 'enemy') {
@@ -1017,11 +1022,12 @@ export async function runHeadless(
       const event = world.combatEvents[eventIndex]!;
       if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
         const source =
-          event.sourceEid === undefined
+          event.sourceArchetypeKey ??
+          (event.sourceEid === undefined
             ? 'unknown'
             : (world.enemyAppearanceKeys.get(event.sourceEid) ??
               world.floorScenario?.enemyArchetypes.get(event.sourceEid) ??
-              'unknown');
+              'unknown'));
         damageTakenBySource[source] = (damageTakenBySource[source] ?? 0) + event.amount;
       }
     }

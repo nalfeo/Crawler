@@ -239,7 +239,20 @@ export function applyDamage(
       sourceY: options.sourceY,
     };
     if (isCrit) event.isCrit = true;
-    if (options.sourceEid !== undefined) event.sourceEid = options.sourceEid;
+    if (options.sourceEid !== undefined) {
+      event.sourceEid = options.sourceEid;
+      // Snapshot the attacker's stable archetype identity while the entity is
+      // still live. Consuming EID at attribution time is unsafe because entity
+      // IDs are recycled — a projectile that outlives its shooter would resolve
+      // to whatever new mob reuses that ID.  Storing a key-snapshot here makes
+      // `damageTakenBySource` attribution correct even for delayed projectiles.
+      if (isPlayerTarget) {
+        const sourceKey =
+          world.enemyAppearanceKeys.get(options.sourceEid) ??
+          world.floorScenario?.enemyArchetypes.get(options.sourceEid);
+        if (sourceKey !== undefined) event.sourceArchetypeKey = sourceKey;
+      }
+    }
     world.combatEvents.push(event);
     if (options.sourceEid !== undefined && current - dealt <= 0) {
       world.lethalDamageSourceByTarget.set(target, options.sourceEid);
