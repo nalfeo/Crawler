@@ -1,5 +1,16 @@
 [
   {
+    "commit": "5cfbaddeaf7c6517404c38025527772e4bad5f90",
+    "commitDate": "2026-07-17T01:52:38Z",
+    "commitSubject": "fix(ci): make recovery state cleanup idempotent (#1229)",
+    "capturedAt": "2026-07-17T03:05:26.528Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29549438729",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/5cfbaddeaf7c6517404c38025527772e4bad5f90.json"
+  },
+  {
     "commit": "4edba83597e6a5df827d3a95397d9e20f673671b",
     "commitDate": "2026-07-17T01:16:44Z",
     "commitSubject": "fix(merge-train): collapse stale scheduling wakes (#1226)",
