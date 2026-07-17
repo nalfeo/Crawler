@@ -22,20 +22,22 @@ kickoff comment that points Copilot at the normal repo instructions.
   necessarily trigger the run, so it is never used to _select_ the PR. Instead
   the router encodes the trusted `github.event.pull_request.number` webhook
   field into its `run-name` (surfaced back on the run object as `display_title`).
-  Before parsing that title, the bridge requires the router workflow Git blob at
-  the run head to exactly equal the default-branch blob
-  (`router-workflow-untrusted` on mismatch), so PR-modified workflow code cannot
-  forge the binding. The bridge then evaluates only that source PR and
-  cross-checks it against three immutable run attributes: it must
+  Before parsing that title, the bridge proves the branch did not author a router
+  change by comparing its Git blob at the immutable merge base and
+  `run.head_sha` (`router-workflow-untrusted` on mismatch). The bridge then
+  evaluates only that source PR and cross-checks it against three immutable run
+  attributes: it must
   appear in `workflow_run.pull_requests` (`source-pr-not-associated` otherwise),
   its head SHA must equal the run head SHA, and its head ref must equal
   `run.head_branch` (an unconditionally GitHub-set run attribute, so branch reuse
   by an unrelated PR cannot substitute). It fails closed when the run-name
   binding is absent (`missing-source-pr-binding`) or the association is empty
-  (`no-associated-pr`). The protected-workflow gate compares the Git blob for
-  every workflow in the recovery chain at immutable `run.head_sha` against its
-  default-branch blob; any changed or missing definition fails closed as
-  `protected-workflow-modified`. It deliberately does not trust
+  (`no-associated-pr`). The protected-workflow gate compares every recovery
+  workflow blob at the branch's immutable merge base and `run.head_sha`; unequal
+  presence or content fails closed as `protected-workflow-modified`, while a
+  stale branch that has identical old blobs—or predates a file at both
+  points—remains eligible. Missing merge-base evidence fails closed as
+  `missing-merge-base`. The bridge deliberately does not trust
   `/pulls/{number}/files`, because that endpoint follows the PR's current head
   and could supply unrelated evidence during an A→B→A force-push race. It
   threads the validated run head SHA and base ref into the dispatch
@@ -53,8 +55,8 @@ kickoff comment that points Copilot at the normal repo instructions.
   immediately before every mutation phase (state comment, labels, recovery task
   comment, Copilot assignment, thread resolution, merge-train queueing, and
   auto-merge). When the input is set and the live head no longer matches at any
-  of those points—or the PR is closed, retargeted, or moved across
-  repositories—reconcile fails closed without that mutation
+  of those points—or the PR is closed, converted to draft, retargeted, or moved
+  across repositories—reconcile fails closed without that mutation
   (`reason=head-sha-moved` at the opening guard, or
   `reason=head-sha-moved-before-mutation phase=<phase>` at a per-phase recheck).
   `enablePullRequestAutoMerge` additionally carries an `expectedHeadOid` fence.

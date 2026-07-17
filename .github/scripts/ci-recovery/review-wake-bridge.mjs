@@ -43,6 +43,15 @@ function actorIsTrusted(actor) {
   );
 }
 
+function workflowBlobMatchesBase(baseFile, headFile) {
+  if (baseFile === null && headFile === null) return true;
+  return (
+    typeof baseFile?.sha === 'string' &&
+    typeof headFile?.sha === 'string' &&
+    baseFile.sha === headFile.sha
+  );
+}
+
 export function runRejection({ payload, run, repository }) {
   const payloadRun = payload?.workflow_run;
   if (payload?.action !== 'completed') return `action=${payload?.action}`;
@@ -119,34 +128,37 @@ export async function inspectReviewWake({ payload, repository, api }) {
 
   const defaultBranch = String(payload?.repository?.default_branch || '');
   if (!defaultBranch) return { reason: 'missing-default-branch' };
+  if (!Array.isArray(run.pull_requests) || run.pull_requests.length === 0) {
+    return { reason: 'no-associated-pr' };
+  }
 
-  // The source-PR binding below comes from the router's run-name expression.
-  // Prove that expression came from the trusted default-branch workflow before
-  // parsing it: review events can otherwise evaluate a PR-modified workflow
-  // definition and forge display_title. Git blob identity is exact and does not
-  // depend on first identifying the source PR.
+  // Compare each protected path between the branch's immutable fork point and
+  // the immutable run head. This detects branch-authored modifications,
+  // additions, deletions, and renames without comparing against today's default
+  // tip (which would incorrectly reject stale branches that merely predate a
+  // trusted workflow addition/edit).
+  const comparison = await api.compareCommits(defaultBranch, run.head_sha);
+  const mergeBaseSha = String(comparison?.merge_base_commit?.sha || '').toLowerCase();
+  if (!/^[0-9a-f]{40}$/.test(mergeBaseSha)) return { reason: 'missing-merge-base' };
+
   const workflowSnapshots = await Promise.all(
     [...PROTECTED_WORKFLOW_PATHS].map(async (path) => {
-      const [runFile, trustedFile] = await Promise.all([
+      const [baseFile, headFile] = await Promise.all([
+        api.getWorkflowFile(path, mergeBaseSha),
         api.getWorkflowFile(path, run.head_sha),
-        api.getWorkflowFile(path, defaultBranch),
       ]);
-      return { path, runFile, trustedFile };
+      return { path, baseFile, headFile };
     }),
   );
   const routerSnapshot = workflowSnapshots.find(({ path }) => path === ROUTER_WORKFLOW_PATH);
   if (
-    !routerSnapshot?.runFile?.sha ||
-    !routerSnapshot.trustedFile?.sha ||
-    routerSnapshot.runFile.sha !== routerSnapshot.trustedFile.sha
+    !routerSnapshot ||
+    !workflowBlobMatchesBase(routerSnapshot.baseFile, routerSnapshot.headFile)
   ) {
     return { reason: 'router-workflow-untrusted' };
   }
   if (
-    workflowSnapshots.some(
-      ({ runFile, trustedFile }) =>
-        !runFile?.sha || !trustedFile?.sha || runFile.sha !== trustedFile.sha,
-    )
+    workflowSnapshots.some(({ baseFile, headFile }) => !workflowBlobMatchesBase(baseFile, headFile))
   ) {
     return { reason: 'protected-workflow-modified' };
   }
@@ -164,12 +176,8 @@ export async function inspectReviewWake({ payload, repository, api }) {
   const sourcePr = sourcePrFromRunName(run);
   if (!sourcePr) return { reason: 'missing-source-pr-binding' };
 
-  // Fail closed when GitHub did not populate the association at all: without it
-  // we cannot corroborate the run-name binding, so defer to the operator
-  // fallback rather than trusting run-name alone.
-  if (!Array.isArray(run.pull_requests) || run.pull_requests.length === 0) {
-    return { reason: 'no-associated-pr' };
-  }
+  // Corroborate the trusted run-name against GitHub's PR association rather
+  // than using that head-SHA/branch association to select a recovery target.
   const associatedNumbers = new Set(
     run.pull_requests
       .map((pullRequest) => positiveInteger(pullRequest?.number))
@@ -241,6 +249,14 @@ export async function runFromEnv(env = process.env) {
           if (error.status === 404) return null;
           throw error;
         }
+      },
+      async compareCommits(base, head) {
+        return (
+          await request(
+            token,
+            `/repos/${owner}/${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
+          )
+        ).data;
       },
       async getPull(number) {
         return (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;

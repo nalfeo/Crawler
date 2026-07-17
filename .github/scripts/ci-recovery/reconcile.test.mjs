@@ -41,7 +41,6 @@ function basePr() {
     mergeable: true,
     mergeable_state: 'clean',
     html_url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
-    base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
     head: { sha: HEAD_SHA, repo: { full_name: `${OWNER}/${REPO}` } },
     labels: [],
     changed_files: 0,
@@ -1072,9 +1071,19 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
 // ---------------------------------------------------------------------------
 
 /** Clean-PR route set: reconcile reaches the arm/admission decision. */
+function trustedReviewWakePr(overrides = {}) {
+  return {
+    ...basePr(),
+    base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+    ...overrides,
+  };
+}
+
 function cleanReconcileRoutes() {
   return {
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: trustedReviewWakePr(),
+    }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
@@ -1111,7 +1120,9 @@ test('expected_head_sha mismatch: reconcile fails closed before any mutation, ev
   // Only the PR fetch should be reached; the guard exits before comments,
   // labels, checks, or any mutation — so no other route is registered.
   const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: trustedReviewWakePr(),
+    }),
   });
   t.after(() => server.close());
 
@@ -1151,7 +1162,10 @@ test('same-head retarget before reconcile fails closed before any mutation', asy
   const retargetedBase = 'release';
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: { ...basePr(), base: { ...basePr().base, ref: retargetedBase } },
+      body: {
+        ...trustedReviewWakePr(),
+        base: { ...trustedReviewWakePr().base, ref: retargetedBase },
+      },
     }),
   });
   t.after(() => server.close());
@@ -1189,10 +1203,10 @@ test('moved head after initial fetch fails closed before the first mutation phas
       const head = pullFetches === 1 ? HEAD_SHA : movedHead;
       return {
         body: {
-          ...basePr(),
+          ...trustedReviewWakePr(),
           mergeable: false,
           mergeable_state: 'clean',
-          head: { ...basePr().head, sha: head },
+          head: { ...trustedReviewWakePr().head, sha: head },
         },
       };
     },
@@ -1238,10 +1252,10 @@ test('same-head retarget after initial fetch fails closed before the first mutat
       const baseRef = pullFetches === 1 ? 'main' : retargetedBase;
       return {
         body: {
-          ...basePr(),
+          ...trustedReviewWakePr(),
           mergeable: false,
           mergeable_state: 'clean',
-          base: { ...basePr().base, ref: baseRef },
+          base: { ...trustedReviewWakePr().base, ref: baseRef },
         },
       };
     },
@@ -1271,6 +1285,48 @@ test('same-head retarget after initial fetch fails closed before the first mutat
   );
   assert.equal(pullFetches, 2);
   assert.deepEqual(mutatingCalls, [], 'a same-head retarget must fail closed with no mutation');
+});
+
+test('same-head draft conversion fails closed before the first mutation phase', async (t) => {
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'clean',
+          draft: pullFetches > 1,
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=pr-drafted-before-mutation phase=acquire-label expected=false actual=true`,
+    ),
+  );
+  assert.equal(pullFetches, 2);
+  assert.deepEqual(mutatingCalls, [], 'a draft conversion must fail closed with no mutation');
 });
 
 test('empty expected_head_sha makes no extra head re-fetch before mutations', async (t) => {

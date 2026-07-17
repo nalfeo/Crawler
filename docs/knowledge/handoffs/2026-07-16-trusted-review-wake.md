@@ -98,10 +98,10 @@ Review of the original bridge surfaced two real gaps, both hardened here:
   sets a `run-name` that encodes the trusted `github.event.pull_request.number`
   for review/review-comment events (`CI Recovery Router: review-wake pr-<N>`),
   surfaced back as the run's `display_title`. Before parsing the title, the
-  bridge requires the router workflow Git blob at the run head to exactly equal
-  the default-branch blob (`router-workflow-untrusted` on mismatch), so
-  PR-modified workflow code cannot forge the binding. It then evaluates only
-  that source PR, cross-checking it against the association
+  bridge proves the branch did not author a router change by comparing blobs at
+  its immutable merge base and run head (`router-workflow-untrusted` on
+  mismatch). It then evaluates only that source PR, cross-checking it against
+  the association
   (`source-pr-not-associated`), the run head SHA, and `run.head_branch`
   (`head-branch-mismatch`). It fails closed on a missing binding
   (`missing-source-pr-binding`) or empty association (`no-associated-pr`). The
@@ -126,13 +126,22 @@ phase=<phase>`), failing closed with no mutation on a mismatch. An empty
   missing definitions fail closed as `protected-workflow-modified`. Base and
   head branch refs are also compared exactly (trim-only), preserving Git's
   case-sensitive branch identity.
+- **Default-tip blob equality rejected legitimate stale branches.** Comparing
+  `run.head_sha` to today's default branch treated trusted workflow additions or
+  edits made only on `main` as if the PR authored them. Fix: the bridge obtains
+  the immutable merge base of the default branch and run head, then compares
+  only the three protected blobs at that fork point and the run head. Equal old
+  blobs and files absent at both points pass; branch additions, modifications,
+  deletions, and renames fail closed. Missing merge-base evidence also fails
+  closed. The mutable/truncated compare `files` list is never trusted.
 - **Same-head metadata changes escaped the SHA fence.** A PR can be retargeted
   or closed without changing its head, so SHA-only rechecks could mutate a PR
   whose live metadata no longer satisfied the bridge policy. Fix: the bridge
   now passes `expected_base_ref`, and reconcile mirrors the validated state,
-  base ref, base repository, head repository, and head SHA both at startup and
-  immediately before each mutation. Same-head retargets fail closed with zero
-  mutations; empty expected inputs preserve normal recovery behavior.
+  draft status, base ref, base repository, head repository, and head SHA both at
+  startup and immediately before each mutation. Same-head retarget and
+  draft-conversion races fail closed with zero mutations; empty expected inputs
+  preserve normal recovery behavior.
 
 Residual risk: GitHub offers no atomic conditional metadata mutation, so the
 per-phase recheck narrows but cannot fully close the sub-second window between a
@@ -141,7 +150,7 @@ recheck and its immediately following write. It is further fenced by
 rather than claimed eliminated.
 
 Validation (this amendment): `node --test
-".github/scripts/ci-recovery/review-wake-bridge.test.mjs"` (24/24) and
+".github/scripts/ci-recovery/review-wake-bridge.test.mjs"` (26/26) and
 `reconcile.test.mjs` (added moved-head-before-mutation + empty-input coverage);
 `npx vitest run --project unit tests/unit/ci-recovery-review-wake-bridge.test.ts
 tests/unit/ci-recovery-router-run-name.test.ts` (7/7); `npm run typecheck`;

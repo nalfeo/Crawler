@@ -5,6 +5,7 @@ import { inspectReviewWake } from './review-wake-bridge.mjs';
 
 const repository = 'nalfeo/Crawler';
 const trustedActor = { id: 175728472, login: 'Copilot', type: 'Bot' };
+const mergeBaseSha = 'd'.repeat(40);
 
 function fixture() {
   const pullRequest = {
@@ -40,7 +41,12 @@ function fixture() {
   };
 }
 
-function fakeApi({ run, pulls = {}, workflowFiles = {} }) {
+function fakeApi({
+  run,
+  pulls = {},
+  workflowFiles = {},
+  comparison = { merge_base_commit: { sha: mergeBaseSha } },
+}) {
   const calls = [];
   const workflowCalls = [];
   return {
@@ -60,6 +66,10 @@ function fakeApi({ run, pulls = {}, workflowFiles = {} }) {
             ? workflowFiles[ref]
             : `trusted-workflow-blob:${path}`;
         return sha === null ? null : { sha };
+      },
+      async compareCommits(base, head) {
+        calls.push(['compareCommits', base, head]);
+        return comparison;
       },
       async getPull(number) {
         calls.push(['getPull', number]);
@@ -83,6 +93,7 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
   });
   assert.deepEqual(fake.calls, [
     ['getRun', 123],
+    ['compareCommits', 'main', 'a'.repeat(40)],
     ['getPull', 42],
   ]);
   assert.equal(fake.workflowCalls.length, 6);
@@ -94,8 +105,8 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
     assert.deepEqual(
       fake.workflowCalls.filter(([candidate]) => candidate === path),
       [
+        [path, mergeBaseSha],
         [path, 'a'.repeat(40)],
-        [path, 'main'],
       ],
     );
   }
@@ -133,22 +144,25 @@ test('fails closed before source-PR selection when the run used a modified route
   const fake = fakeApi({
     run: data.run,
     workflowFiles: {
-      [data.run.head_sha]: 'modified-router-blob',
-      main: 'trusted-router-blob',
+      [`.github/workflows/ci-recovery-router.yml@${mergeBaseSha}`]: 'trusted-router-blob',
+      [`.github/workflows/ci-recovery-router.yml@${data.run.head_sha}`]: 'modified-router-blob',
     },
   });
 
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
     reason: 'router-workflow-untrusted',
   });
-  assert.deepEqual(fake.calls, [['getRun', 123]]);
+  assert.deepEqual(fake.calls, [
+    ['getRun', 123],
+    ['compareCommits', 'main', data.run.head_sha],
+  ]);
   assert.deepEqual(fake.workflowCalls, [
+    ['.github/workflows/ci-recovery-router.yml', mergeBaseSha],
     ['.github/workflows/ci-recovery-router.yml', data.run.head_sha],
-    ['.github/workflows/ci-recovery-router.yml', 'main'],
+    ['.github/workflows/ci-recovery-review-wake-bridge.yml', mergeBaseSha],
     ['.github/workflows/ci-recovery-review-wake-bridge.yml', data.run.head_sha],
-    ['.github/workflows/ci-recovery-review-wake-bridge.yml', 'main'],
+    ['.github/workflows/ci-recovery.yml', mergeBaseSha],
     ['.github/workflows/ci-recovery.yml', data.run.head_sha],
-    ['.github/workflows/ci-recovery.yml', 'main'],
   ]);
 });
 
@@ -169,6 +183,7 @@ test('selects the run-name source PR even when extra PRs are associated', async 
   });
   assert.deepEqual(fake.calls, [
     ['getRun', 123],
+    ['compareCommits', 'main', 'a'.repeat(40)],
     ['getPull', 42],
   ]);
 });
@@ -202,6 +217,7 @@ test('does not substitute an unrelated associated PR when the source PR head mov
   // Only the bound PR is fetched; the unrelated same-head PR is never read.
   assert.deepEqual(fake.calls, [
     ['getRun', 123],
+    ['compareCommits', 'main', 'a'.repeat(40)],
     ['getPull', 42],
   ]);
 });
@@ -214,7 +230,10 @@ test('fails closed when the run-name binding is missing', async () => {
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
     reason: 'missing-source-pr-binding',
   });
-  assert.deepEqual(fake.calls, [['getRun', 123]]);
+  assert.deepEqual(fake.calls, [
+    ['getRun', 123],
+    ['compareCommits', 'main', data.run.head_sha],
+  ]);
 });
 
 test('fails closed when the run-name PR is not in the association', async () => {
@@ -226,7 +245,10 @@ test('fails closed when the run-name PR is not in the association', async () => 
     reason: 'source-pr-not-associated',
   });
   // Disagreement is detected from the association set alone — no PR fetch.
-  assert.deepEqual(fake.calls, [['getRun', 123]]);
+  assert.deepEqual(fake.calls, [
+    ['getRun', 123],
+    ['compareCommits', 'main', data.run.head_sha],
+  ]);
 });
 
 test('rejects a source PR whose head ref differs from the run head branch', async () => {
@@ -242,6 +264,7 @@ test('rejects a source PR whose head ref differs from the run head branch', asyn
   });
   assert.deepEqual(fake.calls, [
     ['getRun', 123],
+    ['compareCommits', 'main', data.run.head_sha],
     ['getPull', 42],
   ]);
 });
@@ -288,8 +311,8 @@ test('rejects changed or missing protected workflows using immutable run-head bl
     const fake = fakeApi({
       run: data.run,
       workflowFiles: {
+        [`${path}@${mergeBaseSha}`]: 'trusted-workflow-blob',
         [`${path}@${data.run.head_sha}`]: runBlob,
-        [`${path}@main`]: 'trusted-workflow-blob',
       },
     });
     assert.deepEqual(
@@ -304,8 +327,8 @@ test('rejects ABA changes from immutable run-head evidence without reading mutab
   const fake = fakeApi({
     run: data.run,
     workflowFiles: {
+      [`.github/workflows/ci-recovery.yml@${mergeBaseSha}`]: 'trusted-at-fork-point',
       [`.github/workflows/ci-recovery.yml@${data.run.head_sha}`]: 'modified-at-run-head',
-      [`.github/workflows/ci-recovery.yml@main`]: 'trusted-on-default',
     },
   });
   fake.api.listPullFiles = async () => {
@@ -315,7 +338,48 @@ test('rejects ABA changes from immutable run-head evidence without reading mutab
   assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
     reason: 'protected-workflow-modified',
   });
-  assert.deepEqual(fake.calls, [['getRun', 123]]);
+  assert.deepEqual(fake.calls, [
+    ['getRun', 123],
+    ['compareCommits', 'main', data.run.head_sha],
+  ]);
+});
+
+test('accepts a stale branch that predates a protected workflow addition', async () => {
+  const data = fixture();
+  const bridgePath = '.github/workflows/ci-recovery-review-wake-bridge.yml';
+  const fake = fakeApi({
+    run: data.run,
+    pulls: { 42: data.pullRequest },
+    workflowFiles: {
+      [`${bridgePath}@${mergeBaseSha}`]: null,
+      [`${bridgePath}@${data.run.head_sha}`]: null,
+    },
+  });
+
+  const result = await inspectReviewWake({ payload: data.payload, repository, api: fake.api });
+  assert.equal(result.prNumber, 42);
+  assert.equal(
+    fake.workflowCalls.some(([, ref]) => ref === 'main'),
+    false,
+    'protected blobs must never be compared to the mutable default-branch tip',
+  );
+});
+
+test('fails closed when GitHub does not provide an immutable merge base', async () => {
+  const data = fixture();
+  const fake = fakeApi({
+    run: data.run,
+    comparison: { merge_base_commit: null },
+  });
+
+  assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
+    reason: 'missing-merge-base',
+  });
+  assert.deepEqual(fake.calls, [
+    ['getRun', 123],
+    ['compareCommits', 'main', data.run.head_sha],
+  ]);
+  assert.deepEqual(fake.workflowCalls, []);
 });
 
 for (const [name, mutate, expected] of [
@@ -351,6 +415,7 @@ for (const [name, mutate, expected] of [
     );
     assert.deepEqual(fake.calls, [
       ['getRun', 123],
+      ['compareCommits', 'main', data.run.head_sha],
       ['getPull', 42],
     ]);
   });

@@ -105,6 +105,9 @@ function expectedMetadataRejection(candidate) {
   if (liveState !== 'open') {
     return { reason: 'pr-state-moved', expected: 'open', actual: liveState };
   }
+  if (candidate?.draft === true) {
+    return { reason: 'pr-drafted', expected: 'false', actual: 'true' };
+  }
   const liveBaseRef = String(candidate?.base?.ref || '').trim();
   if (expectedBaseRef && liveBaseRef !== expectedBaseRef) {
     return { reason: 'base-ref-moved', expected: expectedBaseRef, actual: liveBaseRef };
