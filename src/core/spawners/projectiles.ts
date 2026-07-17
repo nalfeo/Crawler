@@ -87,6 +87,19 @@ export function spawnEnemyProjectile(
     scaleWithPrimary: false,
     canCrit: false,
   });
+  // Snapshot the shooter's archetype identity while it is still live.
+  // `Owner.eid` persists on the projectile but the shooter can be reaped before
+  // impact; `clearEntityStores` removes its appearance key at that point, making
+  // a hit-time lookup return `undefined` or the wrong recycled archetype.
+  // Storing the snapshot here guarantees `damageTakenBySource` attribution is
+  // correct even when the projectile outlives its shooter.
+  if (ownerEid !== undefined) {
+    const archetypeKey =
+      world.enemyAppearanceKeys.get(ownerEid) ?? world.floorScenario?.enemyArchetypes.get(ownerEid);
+    if (archetypeKey !== undefined) {
+      world.enemyProjectileArchetypeKeys.set(eid, archetypeKey);
+    }
+  }
   return eid;
 }
 

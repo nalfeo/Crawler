@@ -327,6 +327,18 @@ export interface GameWorld {
    * buckets alone.
    */
   enemyAppearanceKeys: Map<number, string>;
+  /**
+   * Archetype-key snapshot for in-flight enemy projectiles, keyed by projectile
+   * EID. Populated in `spawnEnemyProjectile` while the shooter is still live so
+   * the key survives shooter death and EID recycling. Read in damageSystem when
+   * a projectile hits the player and passed as `DamageOptions.sourceArchetypeKey`
+   * so `apply-damage` can emit a stable attribution without re-resolving a
+   * potentially-recycled `sourceEid` at impact time.
+   *
+   * Entries are implicitly managed: a new spawn overwrites a recycled EID entry,
+   * keeping the map bounded without requiring explicit cleanup on projectile death.
+   */
+  enemyProjectileArchetypeKeys: Map<number, string>;
   /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */
   questLog: Map<string, QuestState>;
   /** Quest progression events queued this frame. Drained by questSystem. */
@@ -498,6 +510,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     npcs: new Map(),
     setPieceProps: [],
     enemyAppearanceKeys: new Map(),
+    enemyProjectileArchetypeKeys: new Map(),
     questLog: new Map(),
     questEvents: [],
     featureUnlocks: {

@@ -41,6 +41,14 @@ export interface DamageOptions {
   readonly sourceX?: number;
   readonly sourceY?: number;
   readonly sourceEid?: number;
+  /**
+   * Stable archetype identity of the attacker, pre-snapshotted before any
+   * entity removal/EID-recycling can invalidate a live EID lookup. When
+   * provided, `applyDamage` propagates this directly into the emitted
+   * `CombatEvent.sourceArchetypeKey` without any further EID resolution.
+   * Preferred over deriving the key from `sourceEid` at impact time.
+   */
+  readonly sourceArchetypeKey?: string;
 }
 
 /** Convenience: the fail-closed default options (never scales, never crits, environment-sourced). */
@@ -241,17 +249,19 @@ export function applyDamage(
     if (isCrit) event.isCrit = true;
     if (options.sourceEid !== undefined) {
       event.sourceEid = options.sourceEid;
-      // Snapshot the attacker's stable archetype identity while the entity is
-      // still live. Consuming EID at attribution time is unsafe because entity
-      // IDs are recycled — a projectile that outlives its shooter would resolve
-      // to whatever new mob reuses that ID.  Storing a key-snapshot here makes
-      // `damageTakenBySource` attribution correct even for delayed projectiles.
+      // Prefer a pre-snapshotted key (from options.sourceArchetypeKey, captured
+      // at spawn time) over a live EID lookup. The live lookup is kept as the
+      // fallback for melee/instant-damage sources where the attacker is guaranteed
+      // live at hit time and no spawn-time snapshot is available.
       if (isPlayerTarget) {
         const sourceKey =
+          options.sourceArchetypeKey ??
           world.enemyAppearanceKeys.get(options.sourceEid) ??
           world.floorScenario?.enemyArchetypes.get(options.sourceEid);
         if (sourceKey !== undefined) event.sourceArchetypeKey = sourceKey;
       }
+    } else if (options.sourceArchetypeKey !== undefined && isPlayerTarget) {
+      event.sourceArchetypeKey = options.sourceArchetypeKey;
     }
     world.combatEvents.push(event);
     if (options.sourceEid !== undefined && current - dealt <= 0) {

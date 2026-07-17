@@ -258,6 +258,10 @@ function applyEnemyProjectileHit(
       sourceX: world.stores.position.x[projectile] ?? 0,
       sourceY: world.stores.position.y[projectile] ?? 0,
       sourceEid: projectileOwner !== -1 ? projectileOwner : projectile,
+      // Pass the archetype key snapshotted at projectile-spawn time so that
+      // attribution in apply-damage is correct even if the shooter has been
+      // reaped and its EID recycled before this hit occurs.
+      sourceArchetypeKey: world.enemyProjectileArchetypeKeys.get(projectile),
     },
   );
   hitTimestamps[player] = world.elapsedMs;
