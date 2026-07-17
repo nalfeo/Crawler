@@ -479,7 +479,6 @@ async function reloadState(instanceId) {
 
 async function initializeCloud(instanceId, explicitRunId) {
   const state = states.get(instanceId);
-  if (!state) throw new CanvasError('no_state', 'Canvas not open');
   const generation = state.generation;
   try {
     await runCancellableOperation(state, async (signal) => {
@@ -492,7 +491,7 @@ async function initializeCloud(instanceId, explicitRunId) {
       state.runs = runs;
     });
     if (!isCurrentCloudGeneration(state, generation)) {
-      return state;
+      return;
     }
     if (explicitRunId !== undefined) {
       const selected = state.runs.find((run) => run.id === Number(explicitRunId));
@@ -509,15 +508,13 @@ async function initializeCloud(instanceId, explicitRunId) {
       state.selectionReason = selection.reason;
     }
     await refreshCloudState(instanceId, { refreshRuns: false });
-    return state;
   } catch (error) {
     if (!isCurrentCloudGeneration(state, generation) || error?.name === 'AbortError') {
-      return state;
+      return;
     }
     state.error = formatCloudFailure('Cloud initialization failed: ', errorMessage(error));
     state.lastRefreshedAt = new Date().toISOString();
     notifyClients(instanceId);
-    return state;
   }
 }
 
