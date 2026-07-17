@@ -385,14 +385,18 @@ function isConvergedElsewhereState(candidate) {
   return !candidate || candidate.owner === 'none' || ['idle', 'waiting'].includes(candidate.status);
 }
 
-async function preserveConvergedElsewhereState(preservedState, waitingTransition) {
-  pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
+async function preserveConvergedElsewhereState(
+  preservedState,
+  waitingTransition,
+  liveLabels = pr.labels || [],
+) {
+  pr.labels = liveLabels.filter((label) => label.name !== labelName);
   labelExists = false;
-  if (!waitingTransition) {
-    return RELEASE_CONVERGED_ELSEWHERE;
-  }
   if (preservedState?.status === 'waiting') {
     await removePrLabel(WAITING_TRANSITION_LABEL, { skipIfMissing: true });
+    return RELEASE_CONVERGED_ELSEWHERE;
+  }
+  if (!waitingTransition) {
     return RELEASE_CONVERGED_ELSEWHERE;
   }
   await completeWaitingExit(waitingTransition);
@@ -470,6 +474,7 @@ async function fetchOwnershipFacts() {
     liveStateComments.length === 1 ? parseStateComment(liveStateComments[0].body) : null;
   return {
     attached: (livePullRequest.labels || []).some((label) => label.name === labelName),
+    labels: livePullRequest.labels || [],
     repositoryLabelPresent,
     state: liveState,
   };
@@ -547,7 +552,7 @@ async function release(reason, nextState = null) {
           // Newer converged state already written by a concurrent run. Skip our
           // releasedState write and stop the caller so it can re-evaluate from a
           // fresh snapshot before any further mutation or reacquire.
-          return preserveConvergedElsewhereState(facts.state, waitingTransition);
+          return preserveConvergedElsewhereState(facts.state, waitingTransition, facts.labels);
         }
         pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
         labelExists = false;
@@ -558,7 +563,11 @@ async function release(reason, nextState = null) {
         }
         pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
       } else if (sameOwnership(facts.state, ownershipToRelease)) {
-        await removePrLabel(labelName);
+        try {
+          await removePrLabel(labelName);
+        } catch (retryError) {
+          if (!isKnownStaleNodeLabelError(retryError)) throw retryError;
+        }
         facts = await fetchOwnershipFacts();
         if (!facts.repositoryLabelPresent) {
           // Same check as on the first 422: verify ownership before accepting.
@@ -568,7 +577,7 @@ async function release(reason, nextState = null) {
             }
             // Newer converged state written by concurrent run. Preserve it and
             // stop the caller so it can restart from live state if needed.
-            return preserveConvergedElsewhereState(facts.state, waitingTransition);
+            return preserveConvergedElsewhereState(facts.state, waitingTransition, facts.labels);
           }
           atomicOwnerBitAbsent = true;
         } else if (facts.attached || !sameOwnership(facts.state, ownershipToRelease)) {
@@ -641,6 +650,7 @@ if (operation.startsWith('lease-')) {
 
 if (
   state &&
+  state.owner === 'none' &&
   state.status !== 'waiting' &&
   (hasPrLabel(WAITING_LABEL) || hasPrLabel(WAITING_TRANSITION_LABEL))
 ) {
@@ -1235,10 +1245,10 @@ if (labelExists && isDuplicateDispatch(state, fingerprint)) {
           `loop-incident pr=#${prNumber} issue=#${loopResult.issueNumber} action=${loopResult.action}\n`,
         );
       } catch (err) {
-        const safeMsg = String(err.message || err).replace(/[\r\n]/g, ' ').slice(0, 500);
-        process.stderr.write(
-          `loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`,
-        );
+        const safeMsg = String(err.message || err)
+          .replace(/[\r\n]/g, ' ')
+          .slice(0, 500);
+        process.stderr.write(`loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`);
       }
     } else {
       process.stdout.write(
