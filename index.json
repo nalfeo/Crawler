@@ -1,5 +1,16 @@
 [
   {
+    "commit": "26a2983c58bfd1df46a7255895027140077b5481",
+    "commitDate": "2026-07-17T02:45:10Z",
+    "commitSubject": "fix(ci): reduce recovery router trigger waste (#1230)",
+    "capturedAt": "2026-07-17T03:41:29.632Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29551104875",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/26a2983c58bfd1df46a7255895027140077b5481.json"
+  },
+  {
     "commit": "5cfbaddeaf7c6517404c38025527772e4bad5f90",
     "commitDate": "2026-07-17T01:52:38Z",
     "commitSubject": "fix(ci): make recovery state cleanup idempotent (#1229)",
