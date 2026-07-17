@@ -55,6 +55,98 @@ export const EXPECTED_NODE_IDS = [
   'slice:J',
 ] as const;
 
+/**
+ * Canonical dependency edges for the Floor 2 equipment epic DAG.
+ * Derived from the approved execution graph in PLAN.md.
+ * Any change to these edges requires the plan-change protocol.
+ */
+const CANONICAL_DEPENDENCIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
+  ['slice:A0', []],
+  ['slice:A1', ['slice:A0']],
+  ['slice:B1', ['slice:A1']],
+  ['slice:B2', ['slice:B1']],
+  ['slice:B3', ['slice:B2']],
+  ['slice:C1', ['slice:A1']],
+  ['slice:C2', ['slice:C1', 'slice:B3']],
+  ['slice:D1', ['slice:A1']],
+  ['packet:D2-A', ['slice:D1', 'slice:B1']],
+  ['packet:D2-B', ['slice:D1', 'slice:C1']],
+  ['slice:D2', ['packet:D2-A', 'packet:D2-B']],
+  ['packet:D3-A', ['slice:D2', 'slice:B2']],
+  ['packet:D3-B', ['slice:D2', 'slice:C1']],
+  ['slice:D3', ['packet:D3-A', 'packet:D3-B']],
+  ['slice:E1', ['slice:A1']],
+  ['slice:E2', ['slice:E1', 'slice:C1']],
+  ['packet:E3-A', ['slice:E2', 'slice:B2']],
+  ['packet:E3-B', ['slice:E2', 'slice:D2']],
+  ['packet:E3-C', ['slice:E2', 'slice:C1']],
+  ['slice:E3', ['packet:E3-A', 'packet:E3-B', 'packet:E3-C']],
+  ['slice:F1', ['slice:B1', 'slice:C1']],
+  ['slice:F2', ['slice:F1', 'slice:B2']],
+  ['slice:F3', ['slice:F2', 'slice:E2']],
+  ['slice:F4', ['slice:F3', 'slice:C2']],
+  ['slice:G1', ['slice:A1']],
+  ['packet:G2-A', ['slice:G1', 'slice:C1']],
+  ['packet:G2-B+', ['slice:G1', 'slice:B2']],
+  ['slice:G2', ['packet:G2-A', 'packet:G2-B+']],
+  ['packet:G3', ['slice:G2', 'slice:D3']],
+  ['slice:G3', ['packet:G3']],
+  ['slice:H1', ['slice:C1', 'slice:F1']],
+  ['slice:H2', ['slice:H1', 'slice:G2']],
+  ['slice:H3', ['slice:H2', 'slice:G3']],
+  [
+    'slice:I1',
+    ['slice:B3', 'slice:C2', 'slice:D3', 'slice:E3', 'slice:F4', 'slice:G3', 'slice:H3'],
+  ],
+  ['slice:I2', ['slice:I1']],
+  ['slice:I3', ['slice:I2']],
+  ['slice:J', ['slice:I3']],
+]);
+
+/**
+ * Canonical parent-slice assignments for cloud packets.
+ * A null value means the node is a slice with no parent.
+ */
+const CANONICAL_PARENT_SLICES: ReadonlyMap<string, string | null> = new Map([
+  ['slice:A0', null],
+  ['slice:A1', null],
+  ['slice:B1', null],
+  ['slice:B2', null],
+  ['slice:B3', null],
+  ['slice:C1', null],
+  ['slice:C2', null],
+  ['slice:D1', null],
+  ['packet:D2-A', 'slice:D2'],
+  ['packet:D2-B', 'slice:D2'],
+  ['slice:D2', null],
+  ['packet:D3-A', 'slice:D3'],
+  ['packet:D3-B', 'slice:D3'],
+  ['slice:D3', null],
+  ['slice:E1', null],
+  ['slice:E2', null],
+  ['packet:E3-A', 'slice:E3'],
+  ['packet:E3-B', 'slice:E3'],
+  ['packet:E3-C', 'slice:E3'],
+  ['slice:E3', null],
+  ['slice:F1', null],
+  ['slice:F2', null],
+  ['slice:F3', null],
+  ['slice:F4', null],
+  ['slice:G1', null],
+  ['packet:G2-A', 'slice:G2'],
+  ['packet:G2-B+', 'slice:G2'],
+  ['slice:G2', null],
+  ['packet:G3', 'slice:G3'],
+  ['slice:G3', null],
+  ['slice:H1', null],
+  ['slice:H2', null],
+  ['slice:H3', null],
+  ['slice:I1', null],
+  ['slice:I2', null],
+  ['slice:I3', null],
+  ['slice:J', null],
+]);
+
 const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const nullableSha = z.string().regex(SHA_PATTERN).nullable();
 const GITHUB_ISSUE_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/issues\/[1-9][0-9]*$/;
@@ -72,12 +164,28 @@ const prRefSchema = z
     head_sha: z.string().regex(SHA40_PATTERN),
   })
   .strict();
-const stateIssueRefSchema = issueRefSchema.extend({
-  url: z.string().regex(GITHUB_ISSUE_URL),
-});
-const statePrRefSchema = prRefSchema.extend({
-  url: z.string().regex(GITHUB_PR_URL),
-});
+const stateIssueRefSchema = issueRefSchema
+  .extend({ url: z.string().regex(GITHUB_ISSUE_URL) })
+  .superRefine((data, ctx) => {
+    if (!data.url.endsWith(`/${data.number}`)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Issue URL does not match number ${data.number}`,
+        path: ['url'],
+      });
+    }
+  });
+const statePrRefSchema = prRefSchema
+  .extend({ url: z.string().regex(GITHUB_PR_URL) })
+  .superRefine((data, ctx) => {
+    if (!data.url.endsWith(`/${data.number}`)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `PR URL does not match number ${data.number}`,
+        path: ['url'],
+      });
+    }
+  });
 const evidenceSchema = z
   .object({
     kind: z.string().min(1),
@@ -701,6 +809,34 @@ function validateDag(
     visited.add(nodeId);
   };
   for (const node of state.nodes) visit(node.node_id, []);
+
+  // Validate that dependencies and parent_slice exactly match the canonical plan graph.
+  for (const node of state.nodes) {
+    const canonicalDeps = CANONICAL_DEPENDENCIES.get(node.node_id);
+    if (canonicalDeps !== undefined) {
+      const actual = [...node.dependencies].sort();
+      const expected = [...canonicalDeps].sort();
+      if (actual.join('\u0000') !== expected.join('\u0000')) {
+        result.errors.push({
+          code: 'dag.dependency-contract-drift',
+          node_id: node.node_id,
+          message:
+            `${node.node_id} dependencies [${actual.join(', ')}] do not match ` +
+            `canonical plan [${expected.join(', ')}]`,
+        });
+      }
+    }
+    const canonicalParent = CANONICAL_PARENT_SLICES.get(node.node_id);
+    if (canonicalParent !== undefined && node.parent_slice !== canonicalParent) {
+      result.errors.push({
+        code: 'dag.parent-slice-contract-drift',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} parent_slice ${String(node.parent_slice)} does not match ` +
+          `canonical plan ${String(canonicalParent)}`,
+      });
+    }
+  }
 }
 
 function isRepoFile(repoRoot: string, candidate: string): boolean {
@@ -722,6 +858,7 @@ function validateEvidenceFiles(
   node: EpicNode,
   result: MutableValidation,
 ): void {
+  // Verify handoff and review-ledger evidence (required for every post-PR node).
   for (const kind of ['handoff', 'review-ledger']) {
     const evidence = node.evidence.find((item) => item.kind === kind);
     if (!evidence) {
@@ -760,6 +897,54 @@ function validateEvidenceFiles(
     }
     const actualHash = sha256(content);
     if (actualHash !== evidence.sha256) {
+      result.errors.push({
+        code: 'evidence.hash-drift',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
+      });
+    }
+  }
+}
+
+function validateEvidenceRequirements(
+  repoRoot: string,
+  gitReader: GitReader,
+  node: EpicNode,
+  result: MutableValidation,
+): void {
+  const handledKinds = new Set(['handoff', 'review-ledger']);
+  for (const requirement of node.evidence_requirements) {
+    const evidence = node.evidence.find((item) => item.kind === requirement);
+    if (!evidence) {
+      result.errors.push({
+        code: 'evidence.missing-requirement',
+        node_id: node.node_id,
+        message: `${node.node_id} lacks required evidence kind ${requirement}`,
+      });
+      continue;
+    }
+    // handoff and review-ledger are already verified in validateEvidenceFiles.
+    if (handledKinds.has(requirement)) continue;
+    // For non-canonical kinds, verify commit existence and sha256 for file-like paths.
+    if (!gitReader.commitExists(evidence.commit)) {
+      result.errors.push({
+        code: 'evidence.git-verification-failed',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
+      });
+      continue;
+    }
+    if (!isRepoFile(repoRoot, evidence.path_or_check)) continue;
+    const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
+    if (content === null) {
+      result.errors.push({
+        code: 'evidence.git-verification-failed',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check}`,
+      });
+      continue;
+    }
+    if (sha256(content) !== evidence.sha256) {
       result.errors.push({
         code: 'evidence.hash-drift',
         node_id: node.node_id,
@@ -870,6 +1055,18 @@ function validateNodeLifecycle(
         message: `${node.node_id} is ${node.status} without complete trusted claim metadata`,
       });
     }
+    if (
+      owns.source === 'parent-issue-bootstrap' &&
+      node.node_id !== state.claim_policy.bootstrap_node
+    ) {
+      result.errors.push({
+        code: 'ownership.invalid-bootstrap-source',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} uses parent-issue-bootstrap source but is not the configured ` +
+          `bootstrap node (${state.claim_policy.bootstrap_node})`,
+      });
+    }
     if (owns.lease_expires_at && Date.parse(owns.lease_expires_at) <= now.getTime()) {
       result.errors.push({
         code: 'ownership.stale-claim',
@@ -938,22 +1135,9 @@ function validateNodeLifecycle(
     }
   }
   if (node.status === 'validated') {
-    const kinds = new Set(node.evidence.map((item) => item.kind));
-    for (const requirement of node.evidence_requirements) {
-      if (!kinds.has(requirement)) {
-        result.errors.push({
-          code: 'evidence.missing-requirement',
-          node_id: node.node_id,
-          message: `${node.node_id} lacks required evidence kind ${requirement}`,
-        });
-      }
-    }
+    validateEvidenceRequirements(repoRoot, gitReader, node, result);
   }
-  if (
-    node.status !== 'validated' &&
-    node.release_requirement === 'required' &&
-    !TERMINAL_STATUSES.has(node.status)
-  ) {
+  if (node.status !== 'validated' && node.release_requirement === 'required') {
     result.blockers.push({
       code: 'release.node-not-validated',
       node_id: node.node_id,
@@ -1247,10 +1431,17 @@ interface ParsedClaim {
   readonly postedAt: string;
 }
 
+interface ParsedBlockedEvent {
+  readonly nodeId: string;
+  readonly url: string;
+}
+
+function isTrustedAuthor(comment: GithubComment): boolean {
+  return ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association);
+}
+
 function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): ParsedClaim | null {
-  if (!['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association)) {
-    return null;
-  }
+  if (!isTrustedAuthor(comment)) return null;
   const lines = comment.body.split(/\r?\n/);
   if (lines[0]?.trim() !== 'CLAIMED') return null;
   const fields = new Map<string, string>();
@@ -1290,6 +1481,24 @@ function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): Par
     url: comment.html_url,
     postedAt: claimedAt,
   };
+}
+
+function parseTrustedBlockedEvent(
+  comment: GithubComment,
+  expectedNodeId?: string,
+): ParsedBlockedEvent | null {
+  if (!isTrustedAuthor(comment)) return null;
+  const lines = comment.body.split(/\r?\n/);
+  if (lines[0]?.trim() !== 'BLOCKED') return null;
+  const fields = new Map<string, string>();
+  for (const line of lines.slice(1)) {
+    const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
+    if (match?.[1] && match[2]) fields.set(match[1], match[2]);
+  }
+  const nodeId = fields.get('node');
+  if (!nodeId) return null;
+  if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
+  return { nodeId, url: comment.html_url };
 }
 
 export function auditGithub(
@@ -1357,10 +1566,33 @@ export function auditGithub(
         comments.push(...batch);
         if (batch.length < 100) break;
       }
+      // Fold CLAIMED and BLOCKED events in chronological order (comments arrive oldest-first).
+      // A BLOCKED event from a trusted author revokes the live claim for that node.
+      // A subsequent CLAIMED event re-establishes ownership.
+      // Track live claims per-node per-session so heartbeat deduplication and
+      // competing-claimant detection still work correctly.
+      const liveClaimsBySession = new Map<string, Map<string, ParsedClaim>>();
+      const expectedNodeId = expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
       for (const comment of comments) {
-        const expectedNodeId = expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
+        const blocked = parseTrustedBlockedEvent(comment, expectedNodeId);
+        if (blocked) {
+          // BLOCKED revokes all live claims for this node.
+          liveClaimsBySession.delete(blocked.nodeId);
+          continue;
+        }
         const claim = parseTrustedClaim(comment, expectedNodeId);
-        if (claim && Date.parse(claim.expiresAt) > now.getTime()) issueClaims.push(claim);
+        if (claim && Date.parse(claim.expiresAt) > now.getTime()) {
+          const perSession =
+            liveClaimsBySession.get(claim.nodeId) ?? new Map<string, ParsedClaim>();
+          const prior = perSession.get(claim.session);
+          if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
+            perSession.set(claim.session, claim);
+          }
+          liveClaimsBySession.set(claim.nodeId, perSession);
+        }
+      }
+      for (const sessionMap of liveClaimsBySession.values()) {
+        issueClaims.push(...sessionMap.values());
       }
     } catch (error) {
       errors.push({
@@ -1465,35 +1697,11 @@ export function auditGithub(
     }
   }
 
-  const claimsByNode = new Map<string, ParsedClaim[]>();
-  const claimsByOwner = new Map<string, ParsedClaim[]>();
-  for (const claim of issueClaims) {
-    const byNode = claimsByNode.get(claim.nodeId) ?? [];
-    byNode.push(claim);
-    claimsByNode.set(claim.nodeId, byNode);
-    const ownerKey = `${claim.claimant}\u0000${claim.session}`;
-    const byOwner = claimsByOwner.get(ownerKey) ?? [];
-    byOwner.push(claim);
-    claimsByOwner.set(ownerKey, byOwner);
-  }
-  // Deduplicate: for same node+claimant+session, keep only the newest claim (heartbeat
-  // replacement pattern posts a new CLAIMED comment before the old one expires).
-  const deduplicatedClaims: ParsedClaim[] = [];
-  for (const [, claimsForNode] of claimsByNode) {
-    const uniqueSessions = new Map<string, ParsedClaim>();
-    for (const claim of claimsForNode) {
-      const sessionKey = `${claim.claimant}\u0000${claim.session}`;
-      const prior = uniqueSessions.get(sessionKey);
-      if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
-        uniqueSessions.set(sessionKey, claim);
-      }
-    }
-    deduplicatedClaims.push(...uniqueSessions.values());
-  }
-  // Rebuild per-node and per-owner maps from deduplicated claims.
+  // Group live claims by node to detect competing claimants.
+  // Within auditIssue, same-session heartbeat replacement is already collapsed.
   const deduplicatedByNode = new Map<string, ParsedClaim[]>();
   const deduplicatedByOwner = new Map<string, ParsedClaim[]>();
-  for (const claim of deduplicatedClaims) {
+  for (const claim of issueClaims) {
     const byNode = deduplicatedByNode.get(claim.nodeId) ?? [];
     byNode.push(claim);
     deduplicatedByNode.set(claim.nodeId, byNode);
@@ -1520,10 +1728,22 @@ export function auditGithub(
       const epicNode = nodesById.get(nodeId);
       if (epicNode && ACTIVE_STATUSES.has(epicNode.status)) {
         const owns = epicNode.ownership;
-        if (liveClaim.claimant !== owns.claimant || liveClaim.session !== owns.session) {
+        const drifts: string[] = [];
+        if (liveClaim.claimant !== owns.claimant)
+          drifts.push(`claimant: ${liveClaim.claimant} vs ${owns.claimant ?? 'none'}`);
+        if (liveClaim.session !== owns.session)
+          drifts.push(`session: ${liveClaim.session} vs ${owns.session ?? 'none'}`);
+        if (liveClaim.expiresAt !== owns.lease_expires_at)
+          drifts.push(`expires_at: ${liveClaim.expiresAt} vs ${owns.lease_expires_at ?? 'none'}`);
+        if (liveClaim.scope !== owns.scope)
+          drifts.push(`scope: ${liveClaim.scope} vs ${owns.scope ?? 'none'}`);
+        if (liveClaim.baseCommit !== owns.base_commit)
+          drifts.push(`base_commit: ${liveClaim.baseCommit} vs ${owns.base_commit ?? 'none'}`);
+        if (liveClaim.claimedAt !== owns.claimed_at)
+          drifts.push(`claimed_at: ${liveClaim.claimedAt} vs ${owns.claimed_at ?? 'none'}`);
+        if (drifts.length > 0) {
           operatorActions.push(
-            `Live claim on ${nodeId} (claimant: ${liveClaim.claimant}, session: ${liveClaim.session}) ` +
-              `differs from cached ownership (claimant: ${owns.claimant ?? 'none'}, session: ${owns.session ?? 'none'}). ` +
+            `Live claim on ${nodeId} differs from cached ownership (${drifts.join('; ')}). ` +
               `Producer must verify and reconcile ${nodeId} ownership.`,
           );
         }

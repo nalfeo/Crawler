@@ -372,13 +372,14 @@ guidance and may contain parallel nodes:
 4. Wave 3: B2, D2-A, D2-B, E2, F1, G2-A.
 5. Wave 4: B3, D2, E3-A, E3-C, F2, G2-B+.
 6. Wave 5: C2, D3-A, D3-B, E3-B, F3, G2.
-7. Wave 6: D3, E3, packet G3, H1.
-8. Wave 7: F4, G3, H2.
-9. Wave 8: H3.
-10. Wave 9: I1.
-11. Wave 10: I2.
-12. Wave 11: I3.
-13. Wave 12: J.
+7. Wave 6: D3, E3, H1.
+8. Wave 7: F4, packet G3, H2.
+9. Wave 8: G3.
+10. Wave 9: H3.
+11. Wave 10: I1.
+12. Wave 11: I2.
+13. Wave 12: I3.
+14. Wave 13: J.
 
 ## Test and evidence plan
 

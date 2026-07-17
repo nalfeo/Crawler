@@ -102,10 +102,12 @@ function validateA0(state: EpicState): void {
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
     {
+      // Use the handoff file as a stable stand-in for the offline-validator evidence
+      // (avoids circular sha256 bootstrap when the test file itself changes).
       kind: 'offline-validator-and-focused-tests',
-      path_or_check: 'tests/unit/agent/epic-status.test.ts',
-      sha256: '76f6cf0816360cc4286fa89a1e810a938b8f0cc7e1a8f0dc3c8029cc4e251183',
-      commit: LEDGER_COMMIT,
+      path_or_check: 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md',
+      sha256: '9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb',
+      commit: HANDOFF_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
   ];
@@ -390,6 +392,181 @@ describe('Floor 2 equipment epic status', () => {
     expect(codes).toContain('evidence.non-canonical-path');
   });
 
+  it('rejects issue URL that does not match the issue number', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      // URL says 9999 but number says 9001 — should fail schema validation.
+      a1.github.issue = {
+        number: 9001,
+        url: 'https://github.com/nalfeo/Crawler/issues/9999',
+      };
+    }
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).toContain('state.schema');
+  });
+
+  it('rejects canonical dependency drift', () => {
+    const state = cloneState();
+    // Change slice:I2 to depend on slice:A0 instead of the canonical slice:I1
+    const i2 = state.nodes.find((node) => node.node_id === 'slice:I2');
+    expect(i2).toBeDefined();
+    if (i2) i2.dependencies = ['slice:A0'];
+
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).toContain('dag.dependency-contract-drift');
+  });
+
+  it('includes required terminal nodes in release blockers', () => {
+    const state = cloneState();
+    // Mark a required node as cancelled — it should still appear in blockers
+    const b1 = state.nodes.find((node) => node.node_id === 'slice:B1');
+    expect(b1).toBeDefined();
+    if (b1) {
+      b1.status = 'cancelled';
+      b1.ownership = {
+        claimant: null,
+        session: null,
+        source: 'none',
+        scope: null,
+        claimed_at: null,
+        lease_expires_at: null,
+        heartbeat_at: null,
+        base_commit: null,
+      };
+    }
+    const result = validate(state);
+    expect(result.blockers.map((b) => b.node_id)).toContain('slice:B1');
+  });
+
+  it('rejects parent-issue-bootstrap source on non-bootstrap node', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.status = 'claimed';
+      a1.github.issue = {
+        number: 9003,
+        url: 'https://github.com/nalfeo/Crawler/issues/9003',
+      };
+      a1.dependencies = []; // Satisfy dependency check
+      a1.ownership = {
+        claimant: 'agent',
+        session: 'sess',
+        source: 'parent-issue-bootstrap',
+        scope: 'A1 only',
+        claimed_at: '2026-07-17T17:00:00.000Z',
+        lease_expires_at: '2026-07-18T18:00:00.000Z',
+        heartbeat_at: '2026-07-17T17:00:00.000Z',
+        base_commit: HANDOFF_COMMIT,
+      };
+    }
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).toContain('ownership.invalid-bootstrap-source');
+  });
+
+  it('revokes a live claim when a trusted BLOCKED event follows', () => {
+    const state = cloneState();
+    const makeClaim = (claimedAt: string): string =>
+      [
+        'CLAIMED',
+        'node: slice:A0',
+        'claimant: agent-b',
+        'session: session-z',
+        'expires_at: 2026-07-18T18:00:00.000Z',
+        `claimed_at: ${claimedAt}`,
+        `base_commit: ${HANDOFF_COMMIT}`,
+        'scope: Slice A0 control plane only',
+      ].join('\n');
+    const makeBlocked = (): string =>
+      ['BLOCKED', 'node: slice:A0', 'reason: dependency unresolved'].join('\n');
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            // CLAIMED first, then BLOCKED — the claim should be revoked.
+            {
+              body: makeClaim('2026-07-17T16:00:00.000Z'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-20',
+            },
+            {
+              body: makeBlocked(),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-21',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+    const audit = auditGithub(state, runner, NOW);
+    // No duplicate-live-claims and no operator action for the revoked claim.
+    expect(audit.errors.map((e) => e.code)).not.toContain('github.duplicate-live-claims');
+    expect(audit.proposal.operator_actions.filter((a) => a.includes('session-z'))).toHaveLength(0);
+  });
+
+  it('keeps release_ready false when GitHub audit adds errors', () => {
+    const state = cloneState();
+    const a0 = state.nodes[0]!;
+    // Set up a merged node where the GitHub merge facts will disagree
+    a0.status = 'merged';
+    a0.merge = { commit: TEST_MERGE_COMMIT, merged_at: '2026-07-17T17:50:00.000Z' };
+    a0.github.pr = {
+      number: 1271,
+      url: 'https://github.com/nalfeo/Crawler/pull/1271',
+      head_sha: FULL_COMMIT,
+    };
+    a0.ownership = {
+      claimant: null,
+      session: null,
+      source: 'none',
+      scope: null,
+      claimed_at: null,
+      lease_expires_at: null,
+      heartbeat_at: null,
+      base_commit: null,
+    };
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/pulls/1271')) {
+          // Disagree on merge commit — triggers github.merge-drift
+          return {
+            number: 1271,
+            state: 'closed',
+            merged: true,
+            merge_commit_sha: 'd'.repeat(40), // different from TEST_MERGE_COMMIT
+            merged_at: '2026-07-17T17:50:00.000Z',
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: FULL_COMMIT },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+    const audit = auditGithub(state, runner, NOW);
+    expect(audit.errors.map((e) => e.code)).toContain('github.merge-drift');
+  });
+
   it('emits operator action when pr_open node has merged PR on GitHub', () => {
     const state = cloneState();
     const a0 = state.nodes[0]!;
@@ -537,5 +714,50 @@ describe('Floor 2 equipment epic status', () => {
         (a) => a.includes('new-agent') && a.includes('old-agent'),
       ),
     ).toBe(true);
+  });
+});
+
+describe('validateEvidenceRequirements', () => {
+  it('rejects a validated node with a fabricated commit for non-handoff evidence', () => {
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'validated';
+    node.merge.commit = HANDOFF_COMMIT;
+    node.merge.merged_at = '2026-07-17T20:00:00.000Z';
+    const FABRICATED_COMMIT = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+    // Replace the offline-validator evidence with a fabricated commit that does not exist.
+    node.evidence = node.evidence.map((e) => {
+      if (e.kind === 'offline-validator-and-focused-tests') {
+        return {
+          ...e,
+          commit: FABRICATED_COMMIT,
+          path_or_check: 'docs/knowledge/epics/floor-2-equipment/PLAN.md',
+        };
+      }
+      return e;
+    });
+
+    // Use a reader that only recognises the known commits, not the fabricated one.
+    const knownCommits = new Set([HANDOFF_COMMIT, LEDGER_COMMIT]);
+    const strictReader: GitReader = {
+      commitExists(sha) {
+        return knownCommits.has(sha);
+      },
+      showContent(_commit, filePath) {
+        try {
+          return readFileSync(resolve(REPO_ROOT, filePath), 'utf8');
+        } catch {
+          return null;
+        }
+      },
+    };
+
+    const errors = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      gitReader: strictReader,
+    }).errors;
+    expect(errors.map((e) => e.code)).toContain('evidence.git-verification-failed');
   });
 });
