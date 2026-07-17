@@ -164,26 +164,41 @@ describe('headless runner AI telemetry', () => {
     // quickly (within a few seconds of encountering the first enemy).
     // This forces the break-on-death path (lines 726–739) and exercises the
     // post-loop combat-event flush that captures the killing blow.
+    //
+    // The tight assertion: bucket total must equal the sum of every player-hit
+    // event in world.combatEvents captured by onFinish. world.combatEvents is
+    // never drained during headless runs, so onFinish sees all events including
+    // those processed by the terminal flush. If the flush is absent, the lethal
+    // hit remains in world.combatEvents but is missing from damageTakenBySource,
+    // so totalEventDamage > attributedDamage and the check fails — even when
+    // earlier non-lethal hits already satisfy weaker > 0 / named-source checks.
+    let totalEventDamage = 0;
+
     const stats = await runHeadless(new BehaviorTreeAI({ seed: 42 }), {
       seed: 42,
       maxFrames: 7_200, // 2-minute safety cap
       maxWallTimeMs: 60_000,
       enemyDamageMultiplier: 999,
+      onFinish: (world) => {
+        for (const event of world.combatEvents) {
+          if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
+            totalEventDamage += event.amount;
+          }
+        }
+      },
     });
 
     expect(stats.outcome).toBe('death');
-    // The killing blow must appear in damageTakenBySource regardless of whether
-    // it was the last event before the run ended.
+    expect(totalEventDamage).toBeGreaterThan(0);
+
     const attributedDamage = Object.values(stats.combat.damageTakenBySource).reduce(
       (total, damage) => total + damage,
       0,
     );
-    expect(attributedDamage).toBeGreaterThan(0);
-    // At least one source must be identified (not 100% 'unknown')
-    const namedSources = Object.keys(stats.combat.damageTakenBySource).filter(
-      (k) => k !== 'unknown',
-    );
-    expect(namedSources.length).toBeGreaterThan(0);
+    // The bucket total must match the ground-truth event sum exactly. Any
+    // omitted event (e.g. a missing terminal flush) causes attributedDamage to
+    // be strictly less than totalEventDamage.
+    expect(attributedDamage).toBe(totalEventDamage);
   });
 });
 
