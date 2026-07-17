@@ -1374,6 +1374,87 @@ test('admission wait after orphan cleanup does not release ownership twice', asy
   );
 });
 
+test('post-state/pre-fence crash recovery preserves terminal waiting state and admission marker', async (t) => {
+  // Scenario: a prior run wrote owner:none/status:waiting (terminal admission-wait state)
+  // but crashed before removing the repository fence label.  The orphaned-cleanup path
+  // must only delete the leftover fence, never overwrite the waiting state or remove
+  // the durable WAITING_LABEL that keeps the PR out of the dispatch queue.
+  const stateComment = waitingStateComment(995);
+  let repositoryLabelDeleted = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelDeleted
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL, node_id: 'LBL_orphan' } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelDeleted = true;
+      return { body: {} };
+    },
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Fence-only cleanup logged; full release was NOT called.
+  assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+  assert.match(stdout, /orphaned-fence-cleanup pr=#42 status=waiting/);
+
+  // Repository fence was deleted.
+  assert.ok(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    'orphaned repository fence must be deleted',
+  );
+
+  // State comment must NOT have been PATCHed (waiting state preserved).
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'terminal waiting state must not be overwritten',
+  );
+
+  // WAITING_LABEL must NOT have been removed (admission marker preserved).
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url.includes(`/labels/${encodeURIComponent(WAITING_LABEL)}`),
+    ),
+    false,
+    'durable waiting marker must not be removed during fence-only cleanup',
+  );
+
+  // Process continues to the normal waiting admission path.
+  assert.match(stdout, /wait pr=#42 admission=ci/);
+});
+
 test('PR #1208 partial cleanup converges when both owner-label deletes return 404', async (t) => {
   const stateComment = automationStateComment();
   const { server, port, mutatingCalls } = await startServer({

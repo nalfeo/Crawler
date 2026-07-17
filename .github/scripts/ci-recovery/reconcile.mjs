@@ -768,7 +768,19 @@ async function release(reason, nextState = null) {
 
 if (orphanedOwnershipArtifact) {
   process.stdout.write(`cleanup pr=#${prNumber} reason=orphaned-owner-label\n`);
-  stopIfReleaseConvergedElsewhere(await release('orphaned-label-cleanup'));
+  // Guard: if the state is already terminal (owner:none, status idle or waiting) a prior
+  // run completed the state write but crashed before removing the repository fence.  Only
+  // clean the leftover fence — do not overwrite the existing terminal state or touch the
+  // durable waiting marker (which must survive for ongoing admission waits).
+  if (state && state.owner === 'none' && (state.status === 'idle' || state.status === 'waiting')) {
+    if (shouldMutate) {
+      await removeRepositoryLabel(labelName);
+    }
+    labelExists = false;
+    process.stdout.write(`orphaned-fence-cleanup pr=#${prNumber} status=${state.status}\n`);
+  } else {
+    stopIfReleaseConvergedElsewhere(await release('orphaned-label-cleanup'));
+  }
 }
 
 if (pr.state !== 'open') {
