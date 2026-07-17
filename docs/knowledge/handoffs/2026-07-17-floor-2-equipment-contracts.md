@@ -22,11 +22,11 @@ validation, and the full 3-apple review harness.
 
 - Base branch: `nalfeo-floor-2-stacked-work-protocol`
 - Latest rebased A0.1 commit:
-  `8cb9e163ab41ca233f6a53d3bd65b8bf8cfad45a`
+  `f4f058d35af7b9c3df116fbc05e1042b6f44eba0`
 - A0.1 PR: #1287
 - Current A0 PR head: `90b6350ac82c835cf11802042d81f5547c6a96eb`
 - A0.1 published A0 base:
-  `62ed78aa06240094f10e13bf47cdcc5fe569adbd`
+  `90b6350ac82c835cf11802042d81f5547c6a96eb`
 - A0 PR: #1271
 - A1 child issue: #1279
 - A1 branch: `nalfeo-floor-2-equipment-contracts`
@@ -102,9 +102,9 @@ a0_head_sha: 90b6350ac82c835cf11802042d81f5547c6a96eb
 a01_pr: #1287
 a01_issue: #1282
 a01_branch: nalfeo-floor-2-stacked-work-protocol
-a01_published_a0_head_sha: 62ed78aa06240094f10e13bf47cdcc5fe569adbd
-last_resynced_dependency_head_sha: 8cb9e163ab41ca233f6a53d3bd65b8bf8cfad45a
-last_resynced_at: 2026-07-17T23:24:09.792Z
+a01_published_a0_head_sha: 90b6350ac82c835cf11802042d81f5547c6a96eb
+last_resynced_dependency_head_sha: f4f058d35af7b9c3df116fbc05e1042b6f44eba0
+last_resynced_at: 2026-07-17T23:44:12.576Z
 rebase_to_main_required: true
 ```
 

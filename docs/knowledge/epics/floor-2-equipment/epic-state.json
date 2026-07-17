@@ -3,7 +3,7 @@
   "schema_version": "crawler-epic-state/v2",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-17T23:30:56.166Z",
+  "updated_at": "2026-07-17T23:44:12.576Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
@@ -221,8 +221,8 @@
           "session": "6f852b99-3c14-4037-b6b2-7ec3947fe4fc",
           "branch": "nalfeo-floor-2-equipment-contracts",
           "claimed_at": "2026-07-17T21:37:42.000Z",
-          "lease_expires_at": "2026-07-18T23:24:09.792Z",
-          "heartbeat_at": "2026-07-17T23:24:09.792Z"
+          "lease_expires_at": "2026-07-18T23:44:12.576Z",
+          "heartbeat_at": "2026-07-17T23:44:12.576Z"
         },
         "dependency_pull_requests": [
           {
@@ -255,11 +255,11 @@
               "number": 1287,
               "url": "https://github.com/nalfeo/Crawler/pull/1287"
             },
-            "head_sha": "8cb9e163ab41ca233f6a53d3bd65b8bf8cfad45a",
+            "head_sha": "f4f058d35af7b9c3df116fbc05e1042b6f44eba0",
             "base_branch": "nalfeo-floor-2-epic-control",
             "is_stack_base": true,
             "observed_pr_state": "OPEN",
-            "observed_head_sha": "8cb9e163ab41ca233f6a53d3bd65b8bf8cfad45a",
+            "observed_head_sha": "f4f058d35af7b9c3df116fbc05e1042b6f44eba0",
             "observed_head_branch": "nalfeo-floor-2-stacked-work-protocol",
             "observed_base_branch": "nalfeo-floor-2-epic-control",
             "observed_merge_commit": null
@@ -277,8 +277,8 @@
           "observed_head_branch": "nalfeo-floor-2-equipment-contracts",
           "observed_base_branch": "nalfeo-floor-2-stacked-work-protocol"
         },
-        "last_resynced_dependency_head_sha": "8cb9e163ab41ca233f6a53d3bd65b8bf8cfad45a",
-        "last_resynced_at": "2026-07-17T23:24:09.792Z",
+        "last_resynced_dependency_head_sha": "f4f058d35af7b9c3df116fbc05e1042b6f44eba0",
+        "last_resynced_at": "2026-07-17T23:44:12.576Z",
         "rebase_to_main": {
           "pending": false,
           "pre_rebase_dependent_head_sha": null,
