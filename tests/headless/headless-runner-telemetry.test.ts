@@ -152,7 +152,9 @@ describe('headless runner AI telemetry', () => {
     // (level-up max-HP sync, healing effects). Allow up to 10% of total damage taken
     // or 1 HP as tolerance, whichever is greater, to keep the check meaningful
     // without requiring near-exact equality across different run conditions.
-    expect(Math.abs(attributedDamage - stats.combat.damageTaken)).toBeLessThan(
+    // toBeLessThanOrEqual is used (not toBeLessThan) so an exact boundary match does
+    // not cause a spurious failure.
+    expect(Math.abs(attributedDamage - stats.combat.damageTaken)).toBeLessThanOrEqual(
       Math.max(1, stats.combat.damageTaken * 0.1),
     );
   });
