@@ -41,6 +41,8 @@ export interface DamageOptions {
   readonly sourceX?: number;
   readonly sourceY?: number;
   readonly sourceEid?: number;
+  /** Render-only classification of the successful hit's delivery path. */
+  readonly delivery?: CombatEvent['delivery'];
 }
 
 /** Convenience: the fail-closed default options (never scales, never crits, environment-sourced). */
@@ -240,6 +242,7 @@ export function applyDamage(
     };
     if (isCrit) event.isCrit = true;
     if (options.sourceEid !== undefined) event.sourceEid = options.sourceEid;
+    if (options.delivery !== undefined) event.delivery = options.delivery;
     world.combatEvents.push(event);
     if (options.sourceEid !== undefined && current - dealt <= 0) {
       world.lethalDamageSourceByTarget.set(target, options.sourceEid);

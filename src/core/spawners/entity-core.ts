@@ -18,12 +18,18 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
   world.enemyAppearanceKeys.delete(eid);
   world.statusEffectsByEntity.delete(eid);
   world.attackWeaponSkillsByEntity.delete(eid);
+  world.floorScenario?.enemyArchetypes?.delete(eid);
+  world.floorExtendedState?.ambientEnemyArchetypes?.delete(eid);
 }
 
 /** Create an entity with zeroed store slots (safe against ID recycling). */
 export function createEntity(world: GameWorld): number {
   const eid = addEntity(world.ecs);
   clearEntityStores(world, eid);
+  let generation = (world.nextEntityRenderGeneration + 1) >>> 0;
+  if (generation === 0) generation = 1;
+  world.nextEntityRenderGeneration = generation;
+  world.entityRenderGeneration[eid] = generation;
   return eid;
 }
 

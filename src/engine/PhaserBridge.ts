@@ -1,6 +1,14 @@
 import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
-import { DeathTimer, Position, Prop, Rotation, Sprite } from '../core/components.js';
+import {
+  DeathTimer,
+  Position,
+  Prop,
+  Rotation,
+  SpawnAnim,
+  Spawner,
+  Sprite,
+} from '../core/components.js';
 import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
@@ -20,6 +28,24 @@ import {
 } from '../shared/generated-assets.js';
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
+import {
+  combineMobMotion,
+  CONTACT_ATTACK_MOTION_MS,
+  getRuntimeMobMotionProfile,
+  HIT_REACTION_MOTION_MS,
+  NEUTRAL_MOB_MOTION,
+  RANGED_RELEASE_MOTION_MS,
+  sampleContactAttackMotion,
+  sampleHitReactionMotion,
+  sampleMovementMotion,
+  sampleRangedReleaseMotion,
+  sampleRangedWindupMotion,
+  sampleSpawnMotion,
+  sampleSpeedStatusMotion,
+  type MobMotionTransform,
+  type RuntimeMobMotionProfile,
+} from '../shared/mob-motion.js';
+import { MINI_SLIME_SPAWN_ANIM_MS } from '../shared/spawn-anim.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
 import {
   ENTITY_DEPTH,
@@ -61,6 +87,10 @@ const MOB_HEALTH_BAR_Y_GAP_PX = 2;
 /** Fallback half-height when a sprite's displayHeight is unavailable. */
 const MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX = 8;
 const ENEMY_RIGHTWARD_FLIP_EPSILON = 0.001;
+const ENEMY_MOVEMENT_MOTION_EPSILON = 0.0001;
+const SPEED_STATUS_TINT = 0xaadfff;
+/** Phaser 4's fill tint mode; kept numeric to preserve Node-safe type-only imports. */
+const PHASER_TINT_MODE_FILL = 1;
 const logger = createLogger('engine:phaser-bridge');
 
 interface EntityVisual {
@@ -86,6 +116,15 @@ interface PropVisual {
   mode: 'sprite' | 'placeholder';
   textureKey?: string;
   frame?: number;
+}
+
+interface MobMotionRenderState {
+  readonly generation: number;
+  readonly firstSeenMs: number;
+  lastFireMs: number;
+  releaseAtMs?: number;
+  contactAtMs?: number;
+  hitAtMs?: number;
 }
 
 const RENDER_KIND_CONFIGS = (ENTITY_SPRITE_MAPPINGS as EntitySpriteMappings).renderKinds;
@@ -341,6 +380,33 @@ function getProceduralTextureForType(type: string): string {
   return PROCEDURAL_TEXTURE_KEYS[token] ?? PROCEDURAL_TEXTURE_KEYS.default;
 }
 
+function resolveMobMotionProfile(
+  world: GameWorld,
+  eid: number,
+): RuntimeMobMotionProfile | undefined {
+  if (hasComponent(world.ecs, eid, Spawner)) return undefined;
+  const archetypeId =
+    world.floorScenario?.enemyArchetypes.get(eid) ??
+    world.floorExtendedState?.ambientEnemyArchetypes?.get(eid) ??
+    world.enemyAppearanceKeys.get(eid);
+  return getRuntimeMobMotionProfile(archetypeId);
+}
+
+function hasActiveSpeedStatus(world: GameWorld, eid: number): boolean {
+  return (
+    world.statusEffectsByEntity
+      .get(eid)
+      ?.some((effect) => effect.stat === 'speed' && effect.remainingMs > 0) === true
+  );
+}
+
+function multiplyTint(left: number, right: number): number {
+  const r = Math.round((((left >> 16) & 0xff) * ((right >> 16) & 0xff)) / 0xff);
+  const g = Math.round((((left >> 8) & 0xff) * ((right >> 8) & 0xff)) / 0xff);
+  const b = Math.round(((left & 0xff) * (right & 0xff)) / 0xff);
+  return (r << 16) | (g << 8) | b;
+}
+
 export function createPhaserBridge(scene: Phaser.Scene): {
   sync(world: GameWorld, renderElapsedMs?: number, interpAlpha?: number): void;
   destroy(): void;
@@ -390,6 +456,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const missingTypeWarnings = new Set<string>();
   let cachedGeneratedRegistry: GeneratedSpriteRegistry | null = null;
   const generatedFacingByTexture = new Map<string, 'left' | 'right'>();
+  const mobMotionStates = new Map<number, MobMotionRenderState>();
+  const mobFlashOverlays = new Map<number, Phaser.GameObjects.Image>();
   let lastRenderMs: number | null = null;
 
   function logFallback(type: string): void {
@@ -458,6 +526,37 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       };
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
         world.stores;
+
+      const ensureMobMotionState = (eid: number): MobMotionRenderState | undefined => {
+        if (!resolveMobMotionProfile(world, eid)) return undefined;
+        const generation = world.entityRenderGeneration[eid] ?? 0;
+        const existing = mobMotionStates.get(eid);
+        if (existing?.generation === generation) return existing;
+        const state: MobMotionRenderState = {
+          generation,
+          firstSeenMs: renderElapsedMs,
+          lastFireMs: world.stores.enemyBehavior.lastFireMs[eid] ?? 0,
+        };
+        mobMotionStates.set(eid, state);
+        return state;
+      };
+
+      // Capture authoritative hit events before CombatVfx drains the queue.
+      for (const event of world.combatEvents) {
+        if (event.type !== 'hit') continue;
+        if (event.targetType === 'enemy' && event.targetEid !== undefined) {
+          const state = ensureMobMotionState(event.targetEid);
+          if (state) state.hitAtMs = event.timestamp;
+        }
+        if (
+          event.targetType === 'player' &&
+          event.delivery === 'contact' &&
+          event.sourceEid !== undefined
+        ) {
+          const state = ensureMobMotionState(event.sourceEid);
+          if (state) state.contactAtMs = event.timestamp;
+        }
+      }
 
       // Corpse explosions: capture the texture to cut up NOW, while the dead
       // enemy's visual is still in the map (it gets reaped by the cleanup loop
@@ -956,6 +1055,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           img.setVisible(isVisible);
         }
         img.setPosition(x, y);
+        const enemyVisibilityAlpha = entityType === 'enemy' ? img.alpha : 1;
 
         const isDeadEnemy = entityType === 'enemy' && hasComponent(world.ecs, eid, DeathTimer);
         // Decay state for a dead enemy's corpse, applied AFTER the per-type
@@ -983,6 +1083,56 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           deathMarker.setAlpha(corpseDecay.skullAlpha);
         } else if (deathMarker) {
           deathMarker.setVisible(false);
+        }
+
+        let mobMotion: MobMotionTransform = NEUTRAL_MOB_MOTION;
+        let speedStatusActive = false;
+        if (entityType === 'enemy' && !isDeadEnemy) {
+          const profile = resolveMobMotionProfile(world, eid);
+          const state = profile ? ensureMobMotionState(eid) : undefined;
+          if (profile && state) {
+            const currentLastFireMs = world.stores.enemyBehavior.lastFireMs[eid] ?? 0;
+            if (currentLastFireMs !== state.lastFireMs) {
+              if (currentLastFireMs > 0) state.releaseAtMs = currentLastFireMs;
+              state.lastFireMs = currentLastFireMs;
+            }
+
+            const spawnElapsedMs = renderElapsedMs - state.firstSeenMs;
+            if (spawnElapsedMs < MINI_SLIME_SPAWN_ANIM_MS) {
+              mobMotion = sampleSpawnMotion(spawnElapsedMs);
+              if (hasComponent(world.ecs, eid, SpawnAnim)) {
+                mobMotion = { ...mobMotion, scaleX: 1, scaleY: 1 };
+              }
+            } else if (
+              state.hitAtMs !== undefined &&
+              renderElapsedMs - state.hitAtMs < HIT_REACTION_MOTION_MS
+            ) {
+              mobMotion = sampleHitReactionMotion(renderElapsedMs - state.hitAtMs);
+            } else if (
+              state.contactAtMs !== undefined &&
+              renderElapsedMs - state.contactAtMs < CONTACT_ATTACK_MOTION_MS
+            ) {
+              mobMotion = sampleContactAttackMotion(renderElapsedMs - state.contactAtMs);
+            } else if (isEnemyProjectileTelegraphActive(world, eid)) {
+              const startMs = world.stores.enemyBehavior.telegraphStartMs[eid] ?? renderElapsedMs;
+              const delayMs = Math.max(1, world.stores.enemyBehavior.telegraphDelayMs[eid] ?? 1);
+              mobMotion = sampleRangedWindupMotion((renderElapsedMs - startMs) / delayMs);
+            } else if (
+              state.releaseAtMs !== undefined &&
+              renderElapsedMs - state.releaseAtMs < RANGED_RELEASE_MOTION_MS
+            ) {
+              mobMotion = sampleRangedReleaseMotion(renderElapsedMs - state.releaseAtMs);
+            } else if (
+              Math.hypot(velocity.x[eid] ?? 0, velocity.y[eid] ?? 0) > ENEMY_MOVEMENT_MOTION_EPSILON
+            ) {
+              mobMotion = sampleMovementMotion(renderElapsedMs, profile.movementStyle);
+            }
+
+            speedStatusActive = hasActiveSpeedStatus(world, eid);
+            if (speedStatusActive) {
+              mobMotion = combineMobMotion(mobMotion, sampleSpeedStatusMotion(renderElapsedMs));
+            }
+          }
         }
 
         // Per-type updates
@@ -1199,7 +1349,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               const { scaleX, scaleY } = computeEnemyScale(world, eid, visual.baseScale);
               const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
               const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
-              img.setScale(scaleX, scaleY);
+              img.setPosition(x + mobMotion.offsetX, y + mobMotion.offsetY);
+              img.setScale(
+                Math.abs(scaleX) * mobMotion.scaleX,
+                Math.abs(scaleY) * mobMotion.scaleY,
+              );
+              img.setRotation(mobMotion.rotation);
+              img.setAlpha(enemyVisibilityAlpha * mobMotion.alpha);
               if (typeof img.setFlipX === 'function') {
                 const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
                 img.setFlipX(shouldMirror);
@@ -1277,17 +1433,44 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         // Enemy tint policy from live identity: unwired spawners stay red,
         // then Rat Brute dark-grey. Dedicated spawner art opts out of the red wash.
         if (entityType === 'enemy' && !corpseDecay) {
-          const tint = enemyAppearanceTint(world.ecs, eid, appearanceKey, visualType);
-          if (tint !== null) {
-            if (typeof img.setTint === 'function') {
-              img.setTint(tint);
-            }
+          const identityTint = enemyAppearanceTint(world.ecs, eid, appearanceKey, visualType);
+          let tint = identityTint ?? 0xffffff;
+          if (speedStatusActive) tint = multiplyTint(tint, SPEED_STATUS_TINT);
+          if (tint !== 0xffffff && typeof img.setTint === 'function') {
+            img.setTint(tint);
           } else if (typeof img.clearTint === 'function') {
             img.clearTint();
           }
         }
 
         if (entityType === 'enemy') {
+          let flashOverlay = mobFlashOverlays.get(eid);
+          if (!corpseDecay && mobMotion.flash > 0) {
+            const frame = img.frame?.name;
+            if (!flashOverlay) {
+              flashOverlay = scene.add.image(img.x, img.y, img.texture.key, frame);
+              flashOverlay.setTint(0xffffff).setTintMode(PHASER_TINT_MODE_FILL);
+              mobFlashOverlays.set(eid, flashOverlay);
+            } else if (
+              flashOverlay.texture.key !== img.texture.key ||
+              flashOverlay.frame?.name !== frame
+            ) {
+              flashOverlay.setTexture(img.texture.key, frame);
+            }
+            flashOverlay
+              .setOrigin(img.originX, img.originY)
+              .setPosition(img.x, img.y)
+              .setScale(img.scaleX, img.scaleY)
+              .setRotation(img.rotation)
+              .setFlipX(img.flipX)
+              .setFlipY(img.flipY)
+              .setDepth(img.depth + 0.001)
+              .setAlpha(img.alpha * mobMotion.flash)
+              .setVisible(img.visible);
+          } else {
+            flashOverlay?.setVisible(false);
+          }
+
           const shouldShowMobHealthBar =
             !isBoss && !isDeadEnemy && isVisible && typeof scene.add.graphics === 'function';
           const existingBar = mobHealthBars.get(eid);
@@ -1696,6 +1879,29 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         telegraphGraphics.delete(eid);
       }
 
+      for (const [eid] of mobMotionStates) {
+        if (
+          activeEntities.has(eid) &&
+          resolveRenderKind(world, eid) === 'enemy' &&
+          resolveMobMotionProfile(world, eid)
+        ) {
+          continue;
+        }
+        mobMotionStates.delete(eid);
+      }
+
+      for (const [eid, overlay] of mobFlashOverlays) {
+        if (
+          activeEntities.has(eid) &&
+          resolveRenderKind(world, eid) === 'enemy' &&
+          resolveMobMotionProfile(world, eid)
+        ) {
+          continue;
+        }
+        overlay.destroy();
+        mobFlashOverlays.delete(eid);
+      }
+
       // Iterate the spawn-time maps (always populated on first sight), not the
       // shadow maps (only populated when the scene supports add.ellipse), so
       // gem/gold entities clean up even in headless/test render paths that never
@@ -1746,6 +1952,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visual.obj.destroy();
       }
       visuals.clear();
+      mobMotionStates.clear();
+      for (const overlay of mobFlashOverlays.values()) {
+        overlay.destroy();
+      }
+      mobFlashOverlays.clear();
 
       for (const marker of deathMarkers.values()) {
         marker.destroy();

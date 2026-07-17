@@ -1293,7 +1293,8 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, miniSlime, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
     world.floorScenario!.enemyArchetypes.set(miniSlime, 'slime-mini');
 
-    bridge.sync(world);
+    bridge.sync(world, 0);
+    bridge.sync(world, 500);
 
     expect(images).toHaveLength(2);
     const fullImg = images[0]!;
@@ -1465,6 +1466,11 @@ describe('createPhaserBridge', () => {
     expect(images).toHaveLength(2);
     expect(images[0]?.visible).toBe(true);
     expect(images[1]?.visible).toBe(false);
+
+    world.debugFlags.showAllRooms = true;
+    bridge.sync(world, 500);
+    expect(images[1]?.visible).toBe(true);
+    expect(images[1]?.alpha).toBe(0.3);
   });
 
   it('applies a sine-wave bob offset to XP gems each frame', () => {

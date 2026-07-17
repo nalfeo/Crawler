@@ -23,6 +23,9 @@ import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
+/** Phaser 4's fill tint mode, exposed so renderer tests can distinguish it from multiply. */
+export const PHASER_TINT_MODE_FILL = 1;
+
 /**
  * Records the mutable visual state the bridge drives on a Phaser image, so tests
  * can assert position, texture, tint, scale, visibility, crop and destruction
@@ -40,6 +43,7 @@ export class MockImage {
   rotation = 0;
   tint = 0xffffff;
   tinted = false;
+  tintMode = 0;
   frame: number | undefined;
   displayWidth: number | undefined;
   displayHeight: number | undefined;
@@ -74,6 +78,11 @@ export class MockImage {
   setTint(tint: number): this {
     this.tint = tint;
     this.tinted = true;
+    return this;
+  }
+
+  setTintMode(mode: number | Phaser.TintModes): this {
+    this.tintMode = mode;
     return this;
   }
 
@@ -269,10 +278,50 @@ export class MockGraphics {
   }
 }
 
+export class MockText {
+  destroyed = false;
+  alpha = 1;
+  depth = 0;
+  originX = 0;
+  originY = 0;
+
+  constructor(
+    public x: number,
+    public y: number,
+    public text: string,
+  ) {}
+
+  setOrigin(x: number, y: number): this {
+    this.originX = x;
+    this.originY = y;
+    return this;
+  }
+
+  setDepth(depth: number): this {
+    this.depth = depth;
+    return this;
+  }
+
+  setY(y: number): this {
+    this.y = y;
+    return this;
+  }
+
+  setAlpha(alpha: number): this {
+    this.alpha = alpha;
+    return this;
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+  }
+}
+
 /** Result of {@link createSceneStub}: the recorded images plus the mock scene. */
 export interface SceneStub {
   graphics: MockGraphics[];
   images: MockImage[];
+  texts: MockText[];
   scene: Phaser.Scene;
 }
 
@@ -286,6 +335,7 @@ export function createSceneStub(
 ): SceneStub {
   const images: MockImage[] = [];
   const graphics: MockGraphics[] = [];
+  const texts: MockText[] = [];
   const image = vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
     const mockImage = new MockImage(x, y, textureKey, frame);
     images.push(mockImage);
@@ -300,16 +350,26 @@ export function createSceneStub(
     graphics.push(mockGraphics);
     return mockGraphics as unknown as Phaser.GameObjects.Graphics;
   });
+  const addText = vi.fn((x = 0, y = 0, text = '') => {
+    const mockText = new MockText(x, y, text);
+    texts.push(mockText);
+    return mockText as unknown as Phaser.GameObjects.Text;
+  });
 
   const textures = options.kenneyLoaded ? { exists: (_key: string) => true } : undefined;
 
   return {
     graphics,
     images,
+    texts,
     scene: {
       add: {
         ...(options.withGraphics ? { graphics: addGraphics } : {}),
         image,
+        text: addText,
+      },
+      cameras: {
+        getCamera: () => null,
       },
       textures,
     } as unknown as Phaser.Scene,

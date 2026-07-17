@@ -43,6 +43,12 @@ export interface CombatEvent {
   sourceX?: number;
   sourceY?: number;
   /**
+   * How a successful hit reached its target. Renderers use this to distinguish
+   * authoritative contact strikes from projectile impacts without inferring
+   * from proximity or cooldown state.
+   */
+  delivery?: 'contact' | 'projectile';
+  /**
    * Attacker entity id — the mob (or projectile owner) whose action caused this
    * event. Optional and best-effort; consumers must validate before use because
    * the entity may not exist next frame. Consumed by Floor 2 Slice 3's

@@ -1,0 +1,406 @@
+import { addComponent, hasComponent, removeEntity, set, setComponent } from 'bitecs';
+import { expect, it } from 'vitest';
+import {
+  Damage,
+  DeathTimer,
+  Enemy,
+  EnemyBehavior,
+  Health,
+  Position,
+  Size,
+  Spawner,
+  Sprite,
+  Velocity,
+  Weight,
+} from '../../src/core/components.js';
+import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
+import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
+import { WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
+import { floor1EnemyPack, floor2EnemyPack } from '../../src/shared/enemy-packs.js';
+import {
+  CONTACT_ATTACK_MOTION_MS,
+  HIT_REACTION_MOTION_MS,
+  RUNTIME_MOB_MOTION_PROFILES,
+  RANGED_RELEASE_MOTION_MS,
+  sampleContactAttackMotion,
+  sampleHitReactionMotion,
+  sampleMovementMotion,
+  sampleRangedReleaseMotion,
+  sampleRangedWindupMotion,
+} from '../../src/shared/mob-motion.js';
+import { MINI_SLIME_SPAWN_ANIM_MS } from '../../src/shared/spawn-anim.js';
+import { ftToPx } from '../../src/shared/units.js';
+import {
+  createSceneStub,
+  PHASER_TINT_MODE_FILL,
+  type MockImage,
+} from '../fixtures/phaser-bridge-harness.js';
+import { createTestWorld } from '../helpers/world-factory.js';
+
+const SPECIAL_FLOOR_1_MOBS = ['slime-mini', 'slime-rat', 'rat-slime'] as const;
+const COMPONENTS = [
+  Position,
+  Velocity,
+  Health,
+  Damage,
+  Enemy,
+  EnemyBehavior,
+  Sprite,
+  Size,
+  Weight,
+  DeathTimer,
+] as const;
+
+function gameplaySnapshot(world: ReturnType<typeof createTestWorld>, eids: readonly number[]) {
+  const { stores } = world;
+  return {
+    frameCount: world.frameCount,
+    elapsedMs: world.elapsedMs,
+    state: world.state,
+    rngState: (world.rng as unknown as { state: number }).state,
+    entities: eids.map((eid) => ({
+      eid,
+      components: COMPONENTS.map((component) => hasComponent(world.ecs, eid, component)),
+      position: [stores.position.x[eid], stores.position.y[eid]],
+      velocity: [stores.velocity.x[eid], stores.velocity.y[eid]],
+      health: [stores.health.current[eid], stores.health.max[eid]],
+      damage: stores.damage.amount[eid],
+      sprite: [
+        stores.sprite.textureId[eid],
+        stores.sprite.variantRoll[eid],
+        stores.sprite.sizeScale[eid],
+      ],
+      size: [
+        stores.size.radius[eid],
+        stores.size.halfWidth[eid],
+        stores.size.halfHeight[eid],
+        stores.size.shape[eid],
+      ],
+      weight: stores.weight.value[eid],
+      behavior: Object.fromEntries(
+        Object.entries(stores.enemyBehavior).map(([key, values]) => [
+          key,
+          key === 'telegraphWasActiveThisFrame' ? '<render-cue>' : values[eid],
+        ]),
+      ),
+      statusEffects: world.statusEffectsByEntity
+        .get(eid)
+        ?.map((effect) => ({ ...effect, stackRule: { ...effect.stackRule } })),
+      appearanceKey: world.enemyAppearanceKeys.get(eid),
+      scenarioArchetype: world.floorScenario?.enemyArchetypes.get(eid),
+      ambientArchetype: world.floorExtendedState?.ambientEnemyArchetypes?.get(eid),
+      generation: world.entityRenderGeneration[eid],
+    })),
+  };
+}
+
+it('renders every eligible Floor 1-2 mob state through the real PhaserBridge with zero gameplay deltas', () => {
+  const expectedIds = [
+    ...floor1EnemyPack.archetypes.map((archetype) => archetype.id),
+    ...SPECIAL_FLOOR_1_MOBS,
+    ...floor2EnemyPack.archetypes.map((archetype) => archetype.id),
+  ].sort();
+  const actualIds = RUNTIME_MOB_MOTION_PROFILES.map((profile) => profile.archetypeId).sort();
+  expect(actualIds).toEqual(expectedIds);
+  expect(new Set(actualIds).size).toBe(actualIds.length);
+  expect(actualIds).not.toContain('rat-nest-v2');
+  expect(actualIds).not.toContain('slime-pool-v1');
+
+  const world = createTestWorld({ seed: 42, floor: 1 });
+  const spawned = RUNTIME_MOB_MOTION_PROFILES.map((profile, index) => {
+    const x = 10 + index * 4;
+    const eid = spawnBehaviorEnemy(world, x, 20, 100, 0, 1, 30, 8);
+    setComponent(
+      world.ecs,
+      eid,
+      set(Sprite, {
+        textureId: profile.spriteTexture,
+        width: 3,
+        height: 3,
+      }),
+    );
+    addComponent(world.ecs, eid, set(Damage, { amount: 7 }));
+    setEnemyAppearanceKey(world, eid, profile.archetypeId);
+    return { eid, x, profile };
+  });
+
+  // A structure deliberately masquerading as a known mobile archetype proves
+  // component-based exclusion wins over appearance-key lookup.
+  const spawnerEid = spawnBehaviorEnemy(world, 999, 20, 100, 0, 1, 30, 8);
+  addComponent(world.ecs, spawnerEid, Spawner);
+  setEnemyAppearanceKey(world, spawnerEid, 'rat');
+  world.stores.velocity.x[spawnerEid] = 1;
+
+  const allEids = [...spawned.map(({ eid }) => eid), spawnerEid];
+  const rat = spawned.find(({ profile }) => profile.archetypeId === 'rat')!;
+  setEnemyAppearanceKey(world, rat.eid, 'rat-brute');
+  world.floorScenario = {
+    enemyArchetypes: new Map([[rat.eid, 'rat']]),
+    objective: { bossBattles: new Map() },
+  } as typeof world.floorScenario;
+
+  const { scene, images } = createSceneStub({ kenneyLoaded: true });
+  const bridge = createPhaserBridge(scene);
+  const coverage = new Map(actualIds.map((id) => [id, new Set<string>()]));
+  const baseImageCount = allEids.length;
+
+  const syncWithoutGameplayDelta = (state: string, renderMs: number) => {
+    const before = gameplaySnapshot(world, allEids);
+    bridge.sync(world, renderMs);
+    expect(gameplaySnapshot(world, allEids), `${state} mutated gameplay state`).toEqual(before);
+  };
+
+  syncWithoutGameplayDelta('spawn', 0);
+  expect(images).toHaveLength(spawned.length + 1);
+  const imageByEid = new Map<number, MockImage>(
+    allEids.map((eid, index) => [eid, images[index] as MockImage]),
+  );
+  for (const { eid, profile } of spawned) {
+    const img = imageByEid.get(eid)!;
+    expect(img.scaleX, `${profile.archetypeId}:spawn scaleX`).toBe(0);
+    expect(img.scaleY, `${profile.archetypeId}:spawn scaleY`).toBe(0);
+    coverage.get(profile.archetypeId)!.add('spawn');
+  }
+  expect(
+    imageByEid.get(spawnerEid)!.scaleX,
+    'spawner must not receive spawn motion',
+  ).toBeGreaterThan(0);
+
+  for (const { eid } of spawned) {
+    world.combatEvents.push({
+      type: 'hit',
+      x: 0,
+      y: 0,
+      amount: 5,
+      targetType: 'player',
+      timestamp: 100,
+      sourceEid: eid,
+      delivery: 'contact',
+    });
+  }
+  syncWithoutGameplayDelta('contact immediately after spawn', MINI_SLIME_SPAWN_ANIM_MS);
+  const expectedEarlyContact = sampleContactAttackMotion(MINI_SLIME_SPAWN_ANIM_MS - 100);
+  expect(MINI_SLIME_SPAWN_ANIM_MS - 100).toBeLessThan(CONTACT_ATTACK_MOTION_MS);
+  for (const { eid, x, profile } of spawned) {
+    expect(imageByEid.get(eid)!.x, `${profile.archetypeId}:early contact`).toBeCloseTo(
+      ftToPx(x) + expectedEarlyContact.offsetX,
+    );
+    coverage.get(profile.archetypeId)!.add('contact');
+  }
+
+  for (const { eid } of spawned) {
+    world.stores.velocity.x[eid] = 1;
+  }
+  syncWithoutGameplayDelta('movement', 700);
+  for (const { eid, x, profile } of spawned) {
+    const expected = sampleMovementMotion(700, profile.movementStyle);
+    const img = imageByEid.get(eid)!;
+    expect(img.x, `${profile.archetypeId}:movement x`).toBeCloseTo(ftToPx(x) + expected.offsetX);
+    expect(img.y, `${profile.archetypeId}:movement y`).toBeCloseTo(ftToPx(20) + expected.offsetY);
+    expect(img.rotation, `${profile.archetypeId}:movement rotation`).toBeCloseTo(expected.rotation);
+    coverage.get(profile.archetypeId)!.add('movement');
+  }
+  expect(imageByEid.get(spawnerEid)!.x, 'spawner must not receive locomotion').toBe(ftToPx(999));
+
+  for (const { eid } of spawned) {
+    world.stores.velocity.x[eid] = 0;
+  }
+  const ranged = spawned.filter(({ profile }) => profile.hasProjectile);
+  for (const { eid } of ranged) {
+    world.stores.enemyBehavior.telegraphActive[eid] = 1;
+    world.stores.enemyBehavior.telegraphStartMs[eid] = 700;
+    world.stores.enemyBehavior.telegraphDelayMs[eid] = 400;
+  }
+  syncWithoutGameplayDelta('ranged windup', 900);
+  const expectedWindup = sampleRangedWindupMotion(0.5);
+  for (const { eid, x, profile } of ranged) {
+    expect(imageByEid.get(eid)!.x, `${profile.archetypeId}:ranged windup`).toBeCloseTo(
+      ftToPx(x) + expectedWindup.offsetX,
+    );
+    coverage.get(profile.archetypeId)!.add('ranged-windup');
+  }
+
+  for (const { eid } of ranged) {
+    world.stores.enemyBehavior.telegraphActive[eid] = 0;
+    world.stores.enemyBehavior.lastFireMs[eid] = 950;
+  }
+  syncWithoutGameplayDelta('ranged release', 950);
+  const expectedRelease = sampleRangedReleaseMotion(0);
+  expect(sampleRangedReleaseMotion(RANGED_RELEASE_MOTION_MS).flash).toBe(0);
+  for (const { eid, x, profile } of ranged) {
+    const baseImage = imageByEid.get(eid)!;
+    expect(baseImage.x, `${profile.archetypeId}:ranged release`).toBeCloseTo(
+      ftToPx(x) + expectedRelease.offsetX,
+    );
+    const flashOverlay = images.find(
+      (image, index) =>
+        index >= baseImageCount &&
+        image.visible &&
+        image.tintMode === PHASER_TINT_MODE_FILL &&
+        Math.abs(image.x - baseImage.x) < 0.001,
+    );
+    expect(flashOverlay, `${profile.archetypeId}:ranged release flash`).toBeDefined();
+    expect(flashOverlay!.alpha).toBeCloseTo(expectedRelease.flash);
+    coverage.get(profile.archetypeId)!.add('ranged-release');
+  }
+
+  for (const { eid } of ranged) {
+    world.combatEvents.push({
+      type: 'hit',
+      x: 0,
+      y: 0,
+      amount: 5,
+      targetType: 'player',
+      timestamp: 1_100,
+      sourceEid: eid,
+      delivery: 'projectile',
+    });
+  }
+  syncWithoutGameplayDelta('projectile non-contact', 1_100);
+  for (const { eid, x, profile } of ranged) {
+    expect(imageByEid.get(eid)!.x, `${profile.archetypeId}:projectile non-contact`).toBe(ftToPx(x));
+    coverage.get(profile.archetypeId)!.add('projectile-no-contact');
+  }
+
+  for (const { eid, x } of spawned) {
+    world.combatEvents.push({
+      type: 'hit',
+      x,
+      y: 20,
+      amount: 5,
+      targetType: 'enemy',
+      targetEid: eid,
+      timestamp: 1_500,
+    });
+  }
+  syncWithoutGameplayDelta('enemy hit reaction', 1_500);
+  const expectedHit = sampleHitReactionMotion(0);
+  expect(expectedHit).not.toEqual(sampleHitReactionMotion(HIT_REACTION_MOTION_MS));
+  for (const { eid, x, profile } of spawned) {
+    const baseImage = imageByEid.get(eid)!;
+    expect(baseImage.x, `${profile.archetypeId}:hit reaction`).toBeCloseTo(
+      ftToPx(x) + expectedHit.offsetX,
+    );
+    const flashOverlay = images.find(
+      (image, index) =>
+        index >= baseImageCount &&
+        image.visible &&
+        image.tintMode === PHASER_TINT_MODE_FILL &&
+        Math.abs(image.x - baseImage.x) < 0.001,
+    );
+    expect(flashOverlay, `${profile.archetypeId}:hit flash`).toBeDefined();
+    expect(flashOverlay!.alpha).toBeCloseTo(baseImage.alpha * expectedHit.flash);
+    coverage.get(profile.archetypeId)!.add('hit');
+  }
+  expect(imageByEid.get(rat.eid)!.tint, 'Rat Brute identity tint survives flash').not.toBe(
+    0xffffff,
+  );
+
+  for (const { eid } of spawned) {
+    world.statusEffectsByEntity.set(eid, [
+      {
+        stat: 'speed',
+        op: 'multiply',
+        value: 0.75,
+        durationMs: 2_000,
+        remainingMs: 1_000,
+        sourceType: 'ability',
+        sourceId: 'runtime-motion-test-slow',
+        stackRule: { mode: 'refresh' },
+      },
+    ]);
+  }
+  syncWithoutGameplayDelta('active speed status', 1_900);
+  for (const { eid, profile } of spawned) {
+    const img = imageByEid.get(eid)!;
+    expect(img.tinted, `${profile.archetypeId}:status tint`).toBe(true);
+    expect(img.alpha, `${profile.archetypeId}:status alpha`).toBeCloseTo(0.9);
+    const flashOverlay = images.find(
+      (image, index) =>
+        index >= baseImageCount &&
+        image.visible &&
+        image.tintMode === PHASER_TINT_MODE_FILL &&
+        Math.abs(image.x - img.x) < 0.001,
+    );
+    expect(flashOverlay, `${profile.archetypeId}:status flash`).toBeDefined();
+    expect(flashOverlay!.alpha, `${profile.archetypeId}:status flash alpha`).toBeCloseTo(
+      img.alpha * 0.15,
+    );
+    coverage.get(profile.archetypeId)!.add('status');
+  }
+
+  for (const { eid } of spawned) {
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 3_000 }));
+  }
+  syncWithoutGameplayDelta('corpse precedence', 2_100);
+  for (const { eid, x, profile } of spawned) {
+    const img = imageByEid.get(eid)!;
+    expect(img.x, `${profile.archetypeId}:corpse x`).toBe(ftToPx(x));
+    expect(img.y, `${profile.archetypeId}:corpse y`).toBe(ftToPx(20));
+    expect(img.rotation, `${profile.archetypeId}:corpse rotation`).toBe(0);
+    expect(img.depth, `${profile.archetypeId}:corpse depth`).toBe(WORLD_VFX_DEPTH.corpse);
+    coverage.get(profile.archetypeId)!.add('death');
+  }
+  expect(
+    images
+      .slice(baseImageCount)
+      .filter((image) => image.tintMode === PHASER_TINT_MODE_FILL)
+      .every((image) => !image.visible),
+    'corpse presentation hides every live flash overlay',
+  ).toBe(true);
+
+  for (const { profile } of spawned) {
+    const expectedStates = ['spawn', 'movement', 'contact', 'hit', 'status', 'death'];
+    if (profile.hasProjectile) {
+      expectedStates.push('ranged-windup', 'ranged-release', 'projectile-no-contact');
+    }
+    expect(
+      [...coverage.get(profile.archetypeId)!].sort(),
+      `${profile.archetypeId}:state coverage`,
+    ).toEqual(expectedStates.sort());
+  }
+
+  const reuseWorld = createTestWorld({ seed: 42, floor: 2 });
+  reuseWorld.floorScenario = {
+    enemyArchetypes: new Map(),
+    objective: { bossBattles: new Map() },
+  } as typeof reuseWorld.floorScenario;
+  reuseWorld.floorExtendedState = { ambientEnemyArchetypes: new Map() };
+  const oldEid = spawnBehaviorEnemy(reuseWorld, 10, 10, 100, 0, 1, 30, 8);
+  setComponent(reuseWorld.ecs, oldEid, set(Sprite, { textureId: 1, width: 3, height: 3 }));
+  setEnemyAppearanceKey(reuseWorld, oldEid, 'glow-worm');
+  reuseWorld.floorScenario!.enemyArchetypes.set(oldEid, 'snailfolk-boss');
+  reuseWorld.floorExtendedState!.ambientEnemyArchetypes!.set(oldEid, 'glow-worm');
+  const reuseStub = createSceneStub({ kenneyLoaded: true });
+  const reuseBridge = createPhaserBridge(reuseStub.scene);
+  let before = gameplaySnapshot(reuseWorld, [oldEid]);
+  reuseBridge.sync(reuseWorld, 0);
+  expect(gameplaySnapshot(reuseWorld, [oldEid]), 'initial reuse sync mutated gameplay').toEqual(
+    before,
+  );
+
+  removeEntity(reuseWorld.ecs, oldEid);
+  const recycledEid = spawnBehaviorEnemy(reuseWorld, 20, 10, 100, 0, 1, 30, 8);
+  expect(recycledEid).toBe(oldEid);
+  expect(reuseWorld.floorScenario!.enemyArchetypes.has(recycledEid)).toBe(false);
+  expect(reuseWorld.floorExtendedState!.ambientEnemyArchetypes!.has(recycledEid)).toBe(false);
+  setComponent(reuseWorld.ecs, recycledEid, set(Sprite, { textureId: 2, width: 3, height: 3 }));
+  setEnemyAppearanceKey(reuseWorld, recycledEid, 'slime');
+  reuseWorld.stores.velocity.x[recycledEid] = 1;
+  before = gameplaySnapshot(reuseWorld, [recycledEid]);
+  reuseBridge.sync(reuseWorld, 500);
+  expect(
+    gameplaySnapshot(reuseWorld, [recycledEid]),
+    'recycled spawn sync mutated gameplay',
+  ).toEqual(before);
+  before = gameplaySnapshot(reuseWorld, [recycledEid]);
+  reuseBridge.sync(reuseWorld, 800);
+  expect(
+    gameplaySnapshot(reuseWorld, [recycledEid]),
+    'recycled movement sync mutated gameplay',
+  ).toEqual(before);
+  const expectedRecycledMotion = sampleMovementMotion(800, 'hop');
+  expect(reuseStub.images[0]!.x, 'recycled EID resolves the new slime profile').toBeCloseTo(
+    ftToPx(20) + expectedRecycledMotion.offsetX,
+  );
+});
