@@ -3324,3 +3324,220 @@ test('reconcile does not escalate router action-required run when it is the only
     'router-only action_required must not trigger any mutating calls',
   );
 });
+
+// ---------------------------------------------------------------------------
+// Thread 1 regression: live label re-fetch suppresses duplicate merge-train
+// admission when a concurrent run already attached the merge-train label.
+// ---------------------------------------------------------------------------
+
+test('queue admission re-fetches labels live so a concurrently attached merge-train label suppresses duplicate admission', async (t) => {
+  // Scenario: a clean PR (no existing state, no owner label, no CI failures)
+  // reaches the merge-train admission section. The initial pr.labels snapshot
+  // does NOT contain the merge-train label, but the live GET /issues/{PR}/labels
+  // call returns it (simulating a race where another run already queued the PR).
+  // The fix must read live labels and log "queue unchanged" without attaching
+  // the label a second time.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }), // no merge-train in labels
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // State comment creation — clean PR needs an initial idle state record
+    // before merge-train admission runs its guard.
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 800 } }),
+    // Thread 1 fix: live label re-fetch finds merge-train already attached by a
+    // concurrent run, preventing duplicate admission.
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({
+      body: [{ name: 'merge-train' }],
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, new RegExp(`queue unchanged merge-train pr=#${PR_NUM}`));
+  assert.ok(
+    !mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+        Array.isArray(call.body?.labels) &&
+        call.body.labels.includes('merge-train'),
+    ),
+    'must not POST merge-train label after live re-fetch reveals it is already attached',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Thread 3 regression: automationStallAction 'progressed' resets attempt
+// counter and uses 'blocker-progressed' release trigger.
+// ---------------------------------------------------------------------------
+
+test('progressed stale action resets attempt counter to zero and uses blocker-progressed release trigger', async (t) => {
+  // Scenario: the PR was dispatched against an older head SHA ('old-head-sha')
+  // with attempt=1. The head has since advanced to HEAD_SHA (e.g. a rebase) but
+  // the blockers fingerprint is unchanged (same CI failure). automationStallAction
+  // must return 'progressed', which triggers the Thread 3 fix:
+  //   - dispatchAttemptBase reset to 0 (so the new head gets a full retry budget)
+  //   - release trigger set to 'blocker-progressed' (not 'stale-automation-retry')
+  //   - final attempt stored as 0+1=1 (not 2, which would exhaust the budget)
+  const PROG_FINGERPRINT = blockerFingerprint([
+    {
+      kind: 'ci-failure',
+      id: 'ci',
+      summary: 'ci concluded failure.',
+      url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+    },
+  ]);
+  const OLD_HEAD = 'old000head000sha000000000000000000000000';
+  const oldProgressKey = automationProgressKey(OLD_HEAD, PROG_FINGERPRINT);
+  const stateComment = {
+    id: 780,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: OLD_HEAD,
+        fingerprint: PROG_FINGERPRINT,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: [
+          {
+            kind: 'ci-failure',
+            id: 'ci',
+            summary: 'ci concluded failure.',
+            url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+        attempt: 1,
+        progressKey: oldProgressKey,
+        progressAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+      }),
+    ),
+  };
+  const ciFailure = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  let repoLabelDeleted = false;
+  const capturedPatches = [];
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: LABEL }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repoLabelDeleted
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repoLabelDeleted = true;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      capturedPatches.push(body);
+      return { body: { id: stateComment.id } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 900 } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [ciFailure] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /assigned copilot pr=#42/);
+
+  // Must use 'blocker-progressed' release trigger, never 'stale-automation-retry'.
+  const releasePatch = capturedPatches.find((patch) => {
+    const parsed = parseStateComment(patch.body);
+    return parsed?.trigger === 'blocker-progressed';
+  });
+  assert.ok(
+    releasePatch,
+    'the release state must carry trigger=blocker-progressed for a progressed head',
+  );
+  assert.ok(
+    !mutatingCalls.some((call) => {
+      if (call.method !== 'PATCH') return false;
+      try {
+        return parseStateComment(call.body?.body)?.trigger === 'stale-automation-retry';
+      } catch {
+        return false;
+      }
+    }),
+    'must not use stale-automation-retry for a progressed head',
+  );
+
+  // Final dispatched state must carry attempt=1 (reset-to-0 then incremented),
+  // not attempt=2 (which would carry forward the stale budget and exhaust it).
+  const finalPatch = capturedPatches.at(-1);
+  assert.ok(finalPatch, 'a final state PATCH must be issued');
+  const finalState = parseStateComment(finalPatch.body);
+  assert.equal(
+    finalState?.attempt,
+    1,
+    'progressed dispatch must reset attempt budget: stored attempt must be 1 (0+1), not 2',
+  );
+  assert.equal(finalState?.trigger, 'workflow_run:completed');
+  assert.equal(finalState?.owner, 'automation');
+  assert.equal(finalState?.status, 'dispatched');
+});

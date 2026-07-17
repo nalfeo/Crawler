@@ -444,6 +444,51 @@ test('owner-state hydration is bounded and malformed state remains sweep-visible
   assert.equal(hasHealthyOwnerForSweep(hydrated[7], new Date('2026-07-17T12:10:00Z')), false);
 });
 
+test('automation owner with a stale head SHA is unhealthy for sweeps even when progressAt is fresh', () => {
+  // Regression for Thread 2: an automation state recorded against an older
+  // head SHA must NOT be treated as healthy even if progressAt is recent.
+  // Without this guard a push/rebase leaves the PR suppressed for up to 30
+  // minutes because isHealthyRecoveryOwner only inspects progressAt, not headSha.
+  const fingerprint = blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]);
+  const stateForOldHead = makeState({
+    prNumber: 1,
+    headSha: 'old-head-sha',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+    attempt: 1,
+    progressKey: automationProgressKey('old-head-sha', fingerprint),
+    progressAt: new Date('2026-07-17T12:00:00Z').toISOString(),
+    updatedAt: new Date('2026-07-17T12:00:00Z').toISOString(),
+  });
+  const pullRequestWithNewHead = {
+    number: 1,
+    labels: [{ name: 'ci-owner-pr-1' }],
+    head: { sha: 'new-head-sha' },
+    recoveryState: stateForOldHead,
+  };
+  // 10 minutes after progressAt — fresh enough that the old code would return true
+  const now = new Date('2026-07-17T12:10:00Z');
+
+  assert.equal(
+    hasHealthyOwnerForSweep(pullRequestWithNewHead, now),
+    false,
+    'stale-head automation owner must be swept immediately after a head advance',
+  );
+
+  // Matching head: should remain healthy (progressAt is fresh, head matches)
+  const pullRequestWithMatchingHead = {
+    ...pullRequestWithNewHead,
+    head: { sha: 'old-head-sha' },
+  };
+  assert.equal(
+    hasHealthyOwnerForSweep(pullRequestWithMatchingHead, now),
+    true,
+    'matching-head automation owner with a fresh progressAt must remain healthy',
+  );
+});
+
 test('train direct routing preserves opt-out cleanup and same-repository trust', () => {
   const pulls = [
     {

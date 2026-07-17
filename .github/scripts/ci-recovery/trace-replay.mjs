@@ -26,14 +26,11 @@ function effectiveActionKey(record) {
 
 export function replayProductionHourTrace(fixture) {
   const routerRecords = expandSeries(fixture.routerSeries);
-  const recoveryJobs = expandSeries(fixture.recoverySeries).map((record, traceIndex) => ({
-    ...record,
-    traceIndex,
-  }));
-  const latencies = expandSeries(fixture.latencyProfileSeconds).map((entry) => entry.value);
-  if (latencies.length !== recoveryJobs.length) {
-    throw new Error('Trace latency profile must contain one value per Recovery job');
-  }
+  // Each expanded recovery job carries its own latencySeconds so latency is
+  // correlated to the job/series entry rather than to a separate histogram
+  // that is zip-correlated by position (which is fragile and semantically
+  // wrong when entries are suppressed or interleaved differently).
+  const recoveryJobs = expandSeries(fixture.recoverySeries);
 
   const proposedRouterJobs = routerRecords.filter((record) => {
     if (!record.baselineRunnerJob) return false;
@@ -46,12 +43,16 @@ export function replayProductionHourTrace(fixture) {
       shouldDispatchMergeTrainFill(record.alreadyQueued ?? true),
   );
 
-  const baselineActions = new Set(recoveryJobs.map(effectiveActionKey));
-  const proposedActions = new Set(proposedRecoveryJobs.map(effectiveActionKey));
+  const baselineActions = new Set(
+    recoveryJobs.filter((record) => record.effectiveAction).map(effectiveActionKey),
+  );
+  const proposedActions = new Set(
+    proposedRecoveryJobs.filter((record) => record.effectiveAction).map(effectiveActionKey),
+  );
   const afterOutcomes = proposedRecoveryJobs.map(
     (record) => record.afterOutcome || record.baselineOutcome,
   );
-  const proposedLatencies = proposedRecoveryJobs.map((record) => latencies[record.traceIndex]);
+  const proposedLatencies = proposedRecoveryJobs.map((record) => record.latencySeconds);
 
   const stale = fixture.staleOwnerModel;
   const staleState = {
@@ -86,8 +87,12 @@ export function replayProductionHourTrace(fixture) {
       runnerJobs: baselineRunnerJobs,
       recoverySuccess: recoveryJobs.filter((record) => record.baselineOutcome === 'success').length,
       recoveryFailure: recoveryJobs.filter((record) => record.baselineOutcome === 'failure').length,
-      p50Seconds: nearestRank(latencies, 0.5),
-      p95Seconds: nearestRank(latencies, 0.95),
+      // Baseline p50/p95 come from the observed production measurements in the
+      // fixture rather than being recomputed from individual job entries, since
+      // the per-job latencySeconds values are anonymised approximations chosen
+      // to reflect typical outcomes, not exact per-event recordings.
+      p50Seconds: fixture.observed?.recoveryP50Seconds ?? null,
+      p95Seconds: fixture.observed?.recoveryP95Seconds ?? null,
       cleanupRaceFailures: recoveryJobs.filter((record) => record.kind === 'cleanup-race').length,
       staleOwnerFailures: 1,
       staleHeartbeatFailures: recoveryJobs.filter(

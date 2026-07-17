@@ -1044,7 +1044,17 @@ if (normalized.length === 0) {
     await removePrLabel(BLOCKED_LABEL);
     await removePrLabel(NOOP_LABEL);
     await removePrLabel(VALIDATION_FAILED_LABEL);
-    const alreadyQueued = hasPrLabel(QUEUE_LABEL);
+    // Re-fetch labels live immediately before admission so a concurrent
+    // reconcile run that already attached QUEUE_LABEL is visible here.
+    // The initial pr.labels snapshot is stale by the time we reach this branch
+    // (after all blocker/review/check-run analysis), so alreadyQueued would
+    // always read false from the snapshot even if the label was just added.
+    const liveAdmissionLabels = (
+      await request(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/labels`)
+    ).data;
+    const alreadyQueued = Array.isArray(liveAdmissionLabels)
+      ? liveAdmissionLabels.some((label) => label.name === QUEUE_LABEL)
+      : hasPrLabel(QUEUE_LABEL);
     if (shouldDispatchMergeTrainFill(alreadyQueued)) {
       await assertExpectedMetadataUnchanged('queue-merge-train');
       try {
@@ -1132,8 +1142,19 @@ if (labelExists && isDuplicateDispatch(state, fingerprint)) {
     process.stdout.write(`released stale automation pr=#${prNumber} attempts=${state.attempt}\n`);
     process.exit(0);
   }
-  dispatchAttemptBase = state?.attempt || 0;
-  await release('stale-automation-retry');
+  if (staleAction === 'progressed') {
+    // The head advanced while the same blockers remained (e.g. a rebase that
+    // did not fix the failing checks). This is genuine new progress, not stale
+    // automation: reset the attempt counter so the new head gets a full set of
+    // retry budget, and use a distinct release reason so operators can tell
+    // head-progress releases apart from timeout-driven stale retries.
+    dispatchAttemptBase = 0;
+    dispatchProgressAt = now.toISOString();
+    await release('blocker-progressed');
+  } else {
+    dispatchAttemptBase = state?.attempt || 0;
+    await release('stale-automation-retry');
+  }
 }
 // The fingerprint changed. If Copilot was assigned recently it may still be
 // working on the previous blockers — give it time before overwriting with a

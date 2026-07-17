@@ -299,6 +299,19 @@ export function hasHealthyOwnerForSweep(pullRequest, now = new Date()) {
   ) {
     return false;
   }
+  // An automation state recorded for an older head incorrectly suppresses the
+  // PR for up to 30 minutes after a push or rebase. Require the state head to
+  // match the live PR head for automation owners so any head advance clears
+  // suppression immediately. Shepherd leases are governed by their explicit
+  // lease expiry and are not gated on head SHA.
+  const state = pullRequest.recoveryState;
+  if (state?.owner === 'automation') {
+    const liveHead = String(pullRequest.head?.sha || '').toLowerCase();
+    const stateHead = String(state.headSha || '').toLowerCase();
+    if (liveHead && stateHead !== liveHead) {
+      return false;
+    }
+  }
   return isHealthyRecoveryOwner({
     prNumber: pullRequest.number,
     state: pullRequest.recoveryState,

@@ -18,6 +18,8 @@ test('production-hour replay preserves efficacy while cutting runner jobs by at 
   assert.equal(replay.baseline.p50Seconds, 15);
   assert.equal(replay.baseline.p95Seconds, 39);
 
+  assert.equal(replay.baseline.effectiveActions.length, 77);
+  assert.equal(replay.proposed.effectiveActions.length, 77);
   assert.deepEqual(replay.proposed.effectiveActions, replay.baseline.effectiveActions);
   assert.equal(replay.proposed.cleanupRaceFailures, 0);
   assert.equal(replay.proposed.staleOwnerFailures, 0);
@@ -37,29 +39,31 @@ test('proposed latency follows retained jobs when suppression is interleaved', (
       {
         count: 1,
         kind: 'action',
+        effectiveAction: true,
         effectiveActionPrefix: 'first',
         baselineOutcome: 'success',
+        latencySeconds: 1,
       },
       {
         count: 1,
         kind: 'recursive',
+        effectiveAction: true,
         effectiveActionPrefix: 'suppressed',
         baselineOutcome: 'success',
         suppressedByQueuedAdmission: true,
         alreadyQueued: true,
+        latencySeconds: 100,
       },
       {
         count: 1,
         kind: 'action',
+        effectiveAction: true,
         effectiveActionPrefix: 'last',
         baselineOutcome: 'success',
+        latencySeconds: 2,
       },
     ],
-    latencyProfileSeconds: [
-      { count: 1, value: 1 },
-      { count: 1, value: 100 },
-      { count: 1, value: 2 },
-    ],
+    observed: { recoveryP50Seconds: 0, recoveryP95Seconds: 0 },
     staleOwnerModel: {
       headSha: 'trace-head',
       fingerprint: 'trace-fingerprint',

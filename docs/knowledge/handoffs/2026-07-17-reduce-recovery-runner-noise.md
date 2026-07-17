@@ -49,7 +49,7 @@ Recovery state machine, Router, workflow triggers, and deterministic tests.
 - Expected stale-heartbeat mismatches retained: exactly 2.
 - Cleanup-race failures: 3 to 0.
 - Stale-owner failures: 1 to 0.
-- Modeled p95 wake-to-reconcile latency: 39 seconds to 14 seconds, below the
+- Modeled p95 wake-to-reconcile latency: 39 seconds to 20 seconds, below the
   approved 60-second ceiling.
 
 ## Preserved invariants

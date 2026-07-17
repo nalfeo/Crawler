@@ -46,51 +46,35 @@
       "kind": "effective-success",
       "count": 77,
       "baselineOutcome": "success",
-      "effectiveActionPrefix": "action"
+      "effectiveAction": true,
+      "effectiveActionPrefix": "action",
+      "latencySeconds": 20
     },
     {
       "kind": "cleanup-race",
       "count": 3,
       "baselineOutcome": "failure",
       "afterOutcome": "success",
-      "effectiveActionPrefix": "cleanup"
+      "effectiveActionPrefix": "cleanup",
+      "latencySeconds": 14
     },
     {
       "kind": "stale-lease-heartbeat",
       "count": 2,
       "baselineOutcome": "failure",
       "afterOutcome": "failure",
-      "effectiveActionPrefix": "heartbeat"
+      "effectiveActionPrefix": "heartbeat",
+      "latencySeconds": 14
     },
     {
       "kind": "recursive-noop",
       "count": 114,
       "baselineOutcome": "success",
       "suppressedByQueuedAdmission": true,
+      "effectiveAction": true,
       "duplicateActionModulo": 77,
-      "effectiveActionPrefix": "action"
-    }
-  ],
-  "latencyProfileSeconds": [
-    {
-      "count": 97,
-      "value": 14
-    },
-    {
-      "count": 1,
-      "value": 15
-    },
-    {
-      "count": 88,
-      "value": 20
-    },
-    {
-      "count": 1,
-      "value": 39
-    },
-    {
-      "count": 9,
-      "value": 45
+      "effectiveActionPrefix": "action",
+      "latencySeconds": 20
     }
   ],
   "staleOwnerModel": {
