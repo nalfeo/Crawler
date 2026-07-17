@@ -3,7 +3,7 @@
   "schema_version": "crawler-epic-state/v1",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-17T17:32:38.205Z",
+  "updated_at": "2026-07-17T20:49:12.449Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
@@ -162,7 +162,7 @@
       "kind": "slice",
       "parent_slice": null,
       "title": "Implementation contract lock",
-      "summary": "Lock registry APIs, release flags, migration boundaries, and implementation acceptance contracts.",
+      "summary": "Lock registry APIs, release flags, migration boundaries, and implementation acceptance contracts. Unique equipment is deferred outside this DAG to https://github.com/nalfeo/Crawler/issues/1274.",
       "execution_lane": "control",
       "persona": "Producer / Systems Engineer",
       "dependencies": ["slice:A0"],
