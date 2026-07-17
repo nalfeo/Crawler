@@ -112,6 +112,7 @@ function runWithHarness(harness, overrides = {}) {
 }
 
 test('hardened prompt encodes every evidence and approval gate', () => {
+  const expectedArtifactClause = `all six FINAL aggregate artifacts (${FINAL_AGGREGATE_ARTIFACTS.map((name) => `\`${name}\``).join(', ')}) and 100 seeds/weapon only`;
   const required = [
     /exact head SHA/,
     /Shipped\/default runtime configuration only/,
@@ -132,6 +133,7 @@ test('hardened prompt encodes every evidence and approval gate', () => {
     /closure is mandatory, not optional, for every no-PR path/,
     /@copilot Please execute this issue end-to-end/,
   ];
+  assert.equal(ISSUE_BODY.includes(expectedArtifactClause), true);
   assert.match(ISSUE_BODY, /all six FINAL aggregate artifacts/);
   assert.match(ISSUE_BODY, /100 seeds\/weapon only/);
   for (const artifact of FINAL_AGGREGATE_ARTIFACTS) {
