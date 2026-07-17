@@ -113,6 +113,7 @@ jobs:
           SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
           SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
         run: |
+          git fetch --no-tags --depth=1 origin 574552e8d98c2538a24ad973654f262f667aa2a8
           node -e "const fs=require('fs'),cp=require('child_process');fs.writeFileSync('public/assets/generated/manifest.json',cp.execFileSync('git',['show','574552e8d98c2538a24ad973654f262f667aa2a8:public/assets/generated/manifest.json']))"
           npx tsx scripts/sprites/ci-floor2-boss-ab-reprocess.ts --preflight
           npm run sprites:enqueue -- --brief iron-sword-ab-warmup --path briefs/weapons/iron-sword.yaml --by floor2-boss-family-ab --priority high
