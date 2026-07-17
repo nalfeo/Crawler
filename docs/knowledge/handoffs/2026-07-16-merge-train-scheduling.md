@@ -58,7 +58,7 @@ tests, and an amendment to the existing promotion ADR.
 
 - `node --test .github/scripts/merge-train/*.test.mjs` - 177 passed.
 - `npx vitest run --project unit tests/unit/merge-train-workflow-wakeups.test.ts tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-promotion-gate.test.ts`
-  - 42 passed on the rebased branch after review tightened event-type coverage.
+  - 43 passed on the latest rebased branch after review tightened event-type coverage.
 - `npm run verify:fast` - passed.
 
 ## Review harness
