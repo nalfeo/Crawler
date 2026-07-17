@@ -7,7 +7,10 @@ import { describe, expect, it } from 'vitest';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 interface WorkflowDoc {
-  on: { workflow_run?: { workflows?: string[]; types?: string[]; branches?: string[] } };
+  on: {
+    workflow_run?: { workflows?: string[]; types?: string[]; branches?: string[] };
+    pull_request_target?: { types?: string[] };
+  };
   concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
   jobs: { reconcile?: { if?: string } };
 }
@@ -73,20 +76,32 @@ describe('merge-train workflow wake-ups', () => {
     expect(concurrency?.['cancel-in-progress']).not.toBe(true);
   });
 
-  it.each(['synchronize', 'edited', 'closed', 'ready_for_review'])(
-    'admits queued same-repo PR work for %s events',
-    () => {
-      const condition = loadWorkflow().jobs.reconcile?.if;
-      if (!condition) throw new Error('reconcile job condition not found');
-      expect(
-        evaluatesPullRequestCondition(condition, {
-          repository: 'nalfeo/Crawler',
-          headRepository: 'nalfeo/Crawler',
-          labels: ['merge-train'],
-        }),
-      ).toBe(true);
-    },
-  );
+  it('subscribes to all required pull_request_target event types', () => {
+    const types = loadWorkflow().on.pull_request_target?.types ?? [];
+    expect(types).toEqual(
+      expect.arrayContaining([
+        'labeled',
+        'unlabeled',
+        'synchronize',
+        'edited',
+        'closed',
+        'ready_for_review',
+      ]),
+    );
+    expect(types).toHaveLength(6);
+  });
+
+  it('admits same-repository PRs that carry the merge-train label', () => {
+    const condition = loadWorkflow().jobs.reconcile?.if;
+    if (!condition) throw new Error('reconcile job condition not found');
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'nalfeo/Crawler',
+        labels: ['merge-train'],
+      }),
+    ).toBe(true);
+  });
 
   it('admits merge-train label transitions, including removal', () => {
     const condition = loadWorkflow().jobs.reconcile?.if;
@@ -160,12 +175,13 @@ describe('merge-train workflow wake-ups', () => {
   });
 
   it('reconciles a completed scheduled CI run only while the merge train is enabled', () => {
-    // mainHealthReason() (reconcile-lib.mjs) treats whichever CI run for the
-    // current main SHA is newest by created_at as authoritative, regardless of
-    // whether it was push- or schedule-triggered. Without this carve-out, a
-    // scheduled CI completion that races a push completion would never
-    // re-wake reconcile, leaving the train stuck until the unreliable */5 cron
-    // fallback (observed arriving ~hourly in production) eventually fires.
+    // mainHealthReason() (reconcile-lib.mjs) picks the newest *completed* run
+    // for the current main SHA as authoritative; a pending duplicate never hides
+    // completed evidence. This carve-out covers only the pending-only initial
+    // case: when main just moved and no completed CI run exists yet, reconcile
+    // pauses, and a wakeup is needed once that pending run completes. Without
+    // this carve-out, nothing re-wakes reconcile in that window, leaving the
+    // train stuck until the unreliable */5 cron (observed ~hourly in production).
     const condition = loadWorkflow().jobs.reconcile?.if;
     if (!condition) throw new Error('reconcile job condition not found');
 

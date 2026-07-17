@@ -57,7 +57,7 @@ tests, and an amendment to the existing promotion ADR.
 
 - `node --test .github/scripts/merge-train/*.test.mjs` - 177 passed.
 - `npx vitest run --project unit tests/unit/merge-train-workflow-wakeups.test.ts tests/unit/merge-train-validate-publish.test.ts tests/unit/merge-train-promotion-gate.test.ts`
-  - 42 passed.
+  - 40 passed after the post-publish review tightened event-type coverage.
 - `npm run verify:fast` - passed.
 
 ## Review harness
@@ -65,6 +65,9 @@ tests, and an amendment to the existing promotion ADR.
 - Plan review: `claude-sonnet-4.6`, approved with refinements; all four concerns
   resolved or deterministically adjudicated, `plan_divergence: minor`.
 - Code review round 1: `gpt-5.3-codex`, no significant issues.
+- Post-publish review round 2: `claude-sonnet-4.6` validated and resolved two
+  findings: trigger-type coverage now consumes the workflow subscription, and
+  scheduled-CI wake comments match completed-only main-health authority.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-16-merge-train-scheduling.review-ledger.json`.
 
