@@ -558,7 +558,17 @@ function gitCommitExists(repoRoot: string, commit: string): boolean {
 export function createDefaultGitReader(repoRoot: string): GitReader {
   return {
     showContent(commit: string, filePath: string): string | null {
-      return gitShowContent(repoRoot, commit, filePath);
+      const gitContent = gitShowContent(repoRoot, commit, filePath);
+      if (gitContent !== null) return gitContent;
+      // Working-tree fallback: if the commit is not locally accessible (e.g. after
+      // a squash-merge deletes the PR branch), read from disk. sha256 validation
+      // in the caller still enforces content integrity. Any read failure (file
+      // missing, permission error, etc.) means the evidence cannot be verified.
+      try {
+        return readFileSync(resolve(repoRoot, filePath), 'utf8');
+      } catch {
+        return null;
+      }
     },
     commitExists(commit: string): boolean {
       return gitCommitExists(repoRoot, commit);
@@ -1477,7 +1487,8 @@ function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): Par
     !baseCommit ||
     !scope ||
     Number.isNaN(Date.parse(expiresAt)) ||
-    Number.isNaN(Date.parse(claimedAt))
+    Number.isNaN(Date.parse(claimedAt)) ||
+    !SHA_PATTERN.test(baseCommit)
   ) {
     return null;
   }
@@ -1596,9 +1607,12 @@ export function auditGithub(
         if (claim && Date.parse(claim.expiresAt) > now.getTime()) {
           const perSession =
             liveClaimsByNodeAndSession.get(claim.nodeId) ?? new Map<string, ParsedClaim>();
-          const prior = perSession.get(claim.session);
+          // Key by claimant:session composite so two competing claimants that
+          // reuse the same session string are not collapsed into one entry.
+          const compositeKey = `${claim.claimant}:${claim.session}`;
+          const prior = perSession.get(compositeKey);
           if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
-            perSession.set(claim.session, claim);
+            perSession.set(compositeKey, claim);
           }
           liveClaimsByNodeAndSession.set(claim.nodeId, perSession);
         }

@@ -260,7 +260,8 @@ describe('Floor 2 equipment epic status', () => {
     };
     const withParent = buildMaterializationPlan(state);
 
-    expect(withoutParent).toHaveLength(EXPECTED_NODE_IDS.length - 1);
+    // A0 (bootstrap) and A1 (already has issue #1279) are both excluded.
+    expect(withoutParent).toHaveLength(EXPECTED_NODE_IDS.length - 2);
     expect(withoutParent[0]?.body).toContain('#<parent-issue-number>');
     expect(withParent.map((packet) => packet.node_id)).toEqual(
       withoutParent.map((packet) => packet.node_id),
@@ -346,6 +347,14 @@ describe('Floor 2 equipment epic status', () => {
             state: 'open',
             html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.endsWith('/issues/1279')) {
+          return {
+            number: 1279,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1279',
           };
         }
         if (path.includes('/comments?per_page=100&page=1')) return [];
@@ -594,6 +603,14 @@ describe('Floor 2 equipment epic status', () => {
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
           };
         }
+        if (path.endsWith('/issues/1279')) {
+          return {
+            number: 1279,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1279',
+          };
+        }
         if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.endsWith('/pulls/1271')) {
           return {
@@ -700,6 +717,14 @@ describe('Floor 2 equipment epic status', () => {
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
           };
         }
+        if (path.endsWith('/issues/1279')) {
+          return {
+            number: 1279,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1279',
+          };
+        }
         if (path.includes('/comments?per_page=100&page=1')) {
           return [
             {
@@ -722,6 +747,108 @@ describe('Floor 2 equipment epic status', () => {
         (a) => a.includes('new-agent') && a.includes('old-agent'),
       ),
     ).toBe(true);
+  });
+
+  it('emits duplicate-live-claims when two competing claimants share the same session string', () => {
+    const state = cloneState();
+    // Same session string, different claimants — must NOT collapse into one entry.
+    // Use an explicit 40-char hex string; the test is about dedup behavior, not commit validation.
+    const DUMMY_SHA = 'a'.repeat(40);
+    const makeClaim = (claimant: string): string =>
+      [
+        'CLAIMED',
+        'node: slice:A0',
+        `claimant: ${claimant}`,
+        'session: shared-session',
+        'expires_at: 2026-07-18T18:00:00.000Z',
+        'claimed_at: 2026-07-17T17:00:00.000Z',
+        `base_commit: ${DUMMY_SHA}`,
+        'scope: Slice A0 control plane only',
+      ].join('\n');
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: makeClaim('agent-alpha'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-30',
+            },
+            {
+              body: makeClaim('agent-beta'),
+              author_association: 'MEMBER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-31',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    // Two distinct claimants with the same session must each be a separate entry;
+    // dedup must fire because there are two live claims for the same node.
+    expect(audit.errors.map((e) => e.code)).toContain('github.duplicate-live-claims');
+  });
+
+  it('ignores a trusted claim whose base_commit is not a valid SHA', () => {
+    const state = cloneState();
+    // Test several invalid base_commit formats: a literal word, too-short hex, and
+    // uppercase hex (SHA_PATTERN requires lowercase [0-9a-f]{7,64}).
+    const invalidBaseCommits = ['pending', 'abc123', 'ABCDEF01234567890ABCDEF01234567890ABCDEF'];
+    for (const badCommit of invalidBaseCommits) {
+      const makeInvalidClaim = (): string =>
+        [
+          'CLAIMED',
+          'node: slice:A0',
+          'claimant: agent-c',
+          'session: session-q',
+          'expires_at: 2026-07-18T18:00:00.000Z',
+          'claimed_at: 2026-07-17T17:00:00.000Z',
+          `base_commit: ${badCommit}`,
+          'scope: Slice A0 control plane only',
+        ].join('\n');
+      const runner: GithubRunner = {
+        get(path) {
+          if (path.endsWith('/issues/1264')) {
+            return {
+              number: 1264,
+              state: 'open',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+              url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+            };
+          }
+          if (path.includes('/comments?per_page=100&page=1')) {
+            return [
+              {
+                body: makeInvalidClaim(),
+                author_association: 'OWNER',
+                html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-40',
+              },
+            ];
+          }
+          if (path.includes('/comments?per_page=100&page=2')) return [];
+          throw new Error(`Unexpected GitHub path ${path}`);
+        },
+      };
+
+      const audit = auditGithub(state, runner, NOW);
+
+      // The malformed claim must be silently dropped — no live claims means no duplicate error
+      // and no owner reconciliation for the invalid claim.
+      expect(audit.errors.map((e) => e.code)).not.toContain('github.duplicate-live-claims');
+      expect(audit.proposal.operator_actions.filter((a) => a.includes('agent-c'))).toHaveLength(0);
+    }
   });
 });
 

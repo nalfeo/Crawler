@@ -141,7 +141,7 @@
         {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
-          "sha256": "76f6cf0816360cc4286fa89a1e810a938b8f0cc7e1a8f0dc3c8029cc4e251183",
+          "sha256": "ad25d7c665b0fab256d3e71179664ace6070d14066f55eb8f941f97f02eab018",
           "commit": "065591b1717588fd7acdb8e28936946e4a7e63e6",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         }
@@ -170,7 +170,10 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": { "issue": null, "pr": null },
+      "github": {
+        "issue": { "number": 1279, "url": "https://github.com/nalfeo/Crawler/issues/1279" },
+        "pr": null
+      },
       "ownership": {
         "claimant": null,
         "session": null,
