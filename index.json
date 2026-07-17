@@ -1,5 +1,16 @@
 [
   {
+    "commit": "baccde1c94f4b2aeda7935d5c47ab2472ee3f39f",
+    "commitDate": "2026-07-17T03:47:22Z",
+    "commitSubject": "feat(ai): enable tuned weapon personas by default (#1214)",
+    "capturedAt": "2026-07-17T05:03:49.305Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29553679754",
+    "winRate": 0.9483333333333334,
+    "totalWins": 569,
+    "totalRuns": 600,
+    "path": "by-sha/baccde1c94f4b2aeda7935d5c47ab2472ee3f39f.json"
+  },
+  {
     "commit": "26a2983c58bfd1df46a7255895027140077b5481",
     "commitDate": "2026-07-17T02:45:10Z",
     "commitSubject": "fix(ci): reduce recovery router trigger waste (#1230)",
