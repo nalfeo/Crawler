@@ -25,12 +25,16 @@ export const FINAL_AGGREGATE_ARTIFACTS = Object.freeze([
   'weapon-sweep-fireball',
 ]);
 
+export function buildFinalAggregateArtifactClause() {
+  return `all six FINAL aggregate artifacts (\`${FINAL_AGGREGATE_ARTIFACTS.join('`, `')}\`) and 100 seeds/weapon only`;
+}
+
 export function buildIssueBody(issueNumber = '<this issue number>') {
   return `## Objective
 Examine eligible current telemetry, identify and rank up to 3 evidence-backed game-balance improvements, evaluate each independently with canonical sweeps, and ship only treatments supported by comparable aggregate evidence. Zero eligible ideas is valid and produces no implementation PR.
 
 ## Baseline eligibility — hard gate
-- Latest successful current-main \`weapon-sweep.yml\` with all six FINAL aggregate artifacts (\`${FINAL_AGGREGATE_ARTIFACTS.join('`, `')}\`) and 100 seeds/weapon only.
+- Latest successful current-main \`weapon-sweep.yml\` with ${buildFinalAggregateArtifactClause()}.
 - Record run ID, UTC timestamp, exact head SHA, seed range/count, max frames/time budget, weapon list, every behavior/config flag.
 - Never use individual/selected shards, partial artifacts, local smoke, hand-picked seeds, or mixed runs.
 - Shipped/default runtime configuration only for shipped changes. Default-off/experimental flags may only support explicitly experiment-scoped work.
@@ -75,7 +79,7 @@ function requireToken(value, name) {
   }
 }
 
-function describeError(error) {
+function getErrorMessage(error) {
   return error?.message ?? String(error);
 }
 
@@ -166,7 +170,7 @@ async function intakeWithRollback({
     } catch (rollbackError) {
       throw new AggregateError(
         [intakeError, rollbackError],
-        `Issue intake failed for #${issue.number}: ${describeError(intakeError)}; closing the issue also failed: ${describeError(rollbackError)}`,
+        `Issue intake failed for #${issue.number}: ${getErrorMessage(intakeError)}; closing the issue also failed: ${getErrorMessage(rollbackError)}`,
         { cause: intakeError },
       );
     }
@@ -249,7 +253,7 @@ export async function runNightlyBalanceIssue({
     } catch (rollbackError) {
       throw new AggregateError(
         [updateError, rollbackError],
-        `Issue body update failed for #${issue.number}: ${describeError(updateError)}; closing the issue also failed: ${describeError(rollbackError)}`,
+        `Issue body update failed for #${issue.number}: ${getErrorMessage(updateError)}; closing the issue also failed: ${getErrorMessage(rollbackError)}`,
         { cause: updateError },
       );
     }
