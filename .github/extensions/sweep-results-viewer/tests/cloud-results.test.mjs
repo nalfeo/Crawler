@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   aggregateArtifactWeapon,
+  aiSweepWarning,
   cloudResultWarning,
   expectedWeaponsFromJobs,
+  isLeaderboardArtifact,
   isTerminalRun,
   mergeAggregateOutputs,
   normalizeRun,
+  parseAiSweepJobPhases,
   selectDefaultRun,
   shouldPollRun,
   sortRunsNewestFirst,
@@ -212,4 +215,106 @@ test('partial warnings are keyed by missing membership, not only array length', 
   });
   assert.match(warning, /Missing/);
   assert.match(warning, /sword/);
+});
+
+// ── AI sweep helpers ──────────────────────────────────────────────────────────
+
+test('parseAiSweepJobPhases classifies Preflight, Search, Validate, and Aggregate jobs', () => {
+  const jobs = [
+    { name: 'Preflight (derive + cap combo matrix)', status: 'completed', conclusion: 'success' },
+    { name: 'Search legacy+legacy', status: 'completed', conclusion: 'success' },
+    { name: 'Search navmeshFused+slackAware', status: 'in_progress', conclusion: null },
+    { name: 'Validate legacy+legacy', status: 'queued', conclusion: null },
+    { name: 'Aggregate → leaderboard', status: 'queued', conclusion: null },
+  ];
+  const phases = parseAiSweepJobPhases(jobs);
+  assert.equal(phases.preflight.total, 1);
+  assert.equal(phases.preflight.done, 1);
+  assert.equal(phases.search.total, 2);
+  assert.equal(phases.search.done, 1);
+  assert.equal(phases.search.running, 1);
+  assert.equal(phases.validate.total, 1);
+  assert.equal(phases.validate.pending, 1);
+  assert.equal(phases.aggregate.total, 1);
+  assert.equal(phases.aggregate.pending, 1);
+});
+
+test('parseAiSweepJobPhases counts failed jobs and ignores unrecognized names', () => {
+  const jobs = [
+    { name: 'Search legacy+legacy', status: 'completed', conclusion: 'failure' },
+    { name: 'Some unrelated setup job', status: 'completed', conclusion: 'success' },
+  ];
+  const phases = parseAiSweepJobPhases(jobs);
+  assert.equal(phases.search.total, 1);
+  assert.equal(phases.search.failed, 1);
+  // Unrecognized job must not appear in any phase.
+  for (const phase of Object.values(phases)) {
+    assert.ok(phase.total <= 1, 'unexpected total in phase');
+  }
+});
+
+test('parseAiSweepJobPhases counts skipped jobs as done', () => {
+  const jobs = [
+    { name: 'Validate navmeshFused+slackAware', status: 'completed', conclusion: 'skipped' },
+  ];
+  const phases = parseAiSweepJobPhases(jobs);
+  assert.equal(phases.validate.done, 1);
+  assert.equal(phases.validate.failed, 0);
+});
+
+test('isLeaderboardArtifact accepts only a non-expired artifact named "leaderboard"', () => {
+  assert.equal(isLeaderboardArtifact({ name: 'leaderboard', expired: false }), true);
+  assert.equal(isLeaderboardArtifact({ name: 'leaderboard', expired: true }), false);
+  assert.equal(isLeaderboardArtifact({ name: 'leaderboard-old', expired: false }), false);
+  assert.equal(isLeaderboardArtifact({ name: 'weapon-sweep-sword', expired: false }), false);
+  assert.equal(isLeaderboardArtifact(null), false);
+});
+
+test('aiSweepWarning returns null for a successful terminal run with a leaderboard', () => {
+  const result = aiSweepWarning({
+    run: { status: 'completed', conclusion: 'success' },
+    jobPhases: null,
+    hasLeaderboard: true,
+  });
+  assert.equal(result, null);
+});
+
+test('aiSweepWarning describes search phase progress', () => {
+  const result = aiSweepWarning({
+    run: { status: 'in_progress' },
+    jobPhases: {
+      preflight: { total: 1, done: 1, failed: 0, running: 0, pending: 0 },
+      search: { total: 8, done: 3, failed: 0, running: 2, pending: 3 },
+      validate: { total: 0, done: 0, failed: 0, running: 0, pending: 0 },
+      aggregate: { total: 0, done: 0, failed: 0, running: 0, pending: 0 },
+    },
+    hasLeaderboard: false,
+  });
+  assert.match(result, /Search/i);
+  assert.match(result, /Refreshing automatically/i);
+});
+
+test('aiSweepWarning describes validation phase progress', () => {
+  const result = aiSweepWarning({
+    run: { status: 'in_progress' },
+    jobPhases: {
+      preflight: { total: 1, done: 1, failed: 0, running: 0, pending: 0 },
+      search: { total: 8, done: 8, failed: 0, running: 0, pending: 0 },
+      validate: { total: 8, done: 5, failed: 0, running: 3, pending: 0 },
+      aggregate: { total: 0, done: 0, failed: 0, running: 0, pending: 0 },
+    },
+    hasLeaderboard: false,
+  });
+  assert.match(result, /Validation/i);
+  assert.match(result, /Refreshing automatically/i);
+});
+
+test('aiSweepWarning reports missing leaderboard on a failed terminal run', () => {
+  const result = aiSweepWarning({
+    run: { status: 'completed', conclusion: 'failure' },
+    jobPhases: null,
+    hasLeaderboard: false,
+  });
+  assert.match(result, /failure/i);
+  assert.match(result, /leaderboard/i);
 });

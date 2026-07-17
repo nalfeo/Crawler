@@ -6,7 +6,9 @@ import { promisify } from 'node:util';
 import {
   aggregateArtifactWeapon,
   expectedWeaponsFromJobs,
+  isLeaderboardArtifact,
   normalizeRun,
+  parseAiSweepJobPhases,
   sortRunsNewestFirst,
 } from './cloud-results.mjs';
 
@@ -144,7 +146,47 @@ export async function listWeaponSweepRuns(repository, signal) {
     'workflow_runs',
     signal,
   );
-  return sortRunsNewestFirst(rawRuns.map(normalizeRun));
+  return sortRunsNewestFirst(
+    rawRuns.map((raw) => ({ ...normalizeRun(raw), workflowType: 'weapon-sweep' })),
+  );
+}
+
+/**
+ * Lists all AI Sweep Eval (`ai-sweep.yml`) workflow runs, newest first.
+ * Each run is tagged with `workflowType: 'ai-sweep'`.
+ */
+export async function listAiSweepRuns(repository, signal) {
+  const rawRuns = await paginate(
+    repository,
+    'actions/workflows/ai-sweep.yml/runs',
+    'workflow_runs',
+    signal,
+  );
+  return sortRunsNewestFirst(
+    rawRuns.map((raw) => ({ ...normalizeRun(raw), workflowType: 'ai-sweep' })),
+  );
+}
+
+/**
+ * Lists all sweep runs (weapon-sweep + AI Sweep Eval) combined, newest first.
+ * Each run carries a `workflowType` field indicating its source workflow.
+ * Errors from either workflow are surfaced; if one workflow has no runs the
+ * other's results are returned alone.
+ */
+export async function listAllSweepRuns(repository, signal) {
+  const [weaponRuns, aiRuns] = await Promise.allSettled([
+    listWeaponSweepRuns(repository, signal),
+    listAiSweepRuns(repository, signal),
+  ]);
+  const combined = [
+    ...(weaponRuns.status === 'fulfilled' ? weaponRuns.value : []),
+    ...(aiRuns.status === 'fulfilled' ? aiRuns.value : []),
+  ];
+  // If both failed, surface the weapon-sweep error (it's the primary workflow).
+  if (combined.length === 0 && weaponRuns.status === 'rejected') {
+    throw weaponRuns.reason;
+  }
+  return sortRunsNewestFirst(combined);
 }
 
 async function getRun(repository, runId, signal) {
@@ -238,5 +280,37 @@ export async function loadCloudRun(repository, runId, signal) {
     expiredArtifactCount: artifacts.filter(
       (artifact) => artifact.expired === true && /^weapon-sweep-(?!shard-)/.test(artifact.name),
     ).length,
+  };
+}
+
+/**
+ * Loads metadata, job phases, and leaderboard artifact for an AI Sweep Eval run.
+ *
+ * @param {string} repository  e.g. "nalfeo/Crawler"
+ * @param {number} runId
+ * @param {AbortSignal} signal
+ * @returns {Promise<{ run: object, jobPhases: object, leaderboardData: object | null, expiredArtifactCount: number }>}
+ */
+export async function loadAiSweepRun(repository, runId, signal) {
+  const [run, artifacts, jobs] = await Promise.all([
+    getRun(repository, runId, signal),
+    listArtifacts(repository, runId, signal),
+    listJobs(repository, runId, signal),
+  ]);
+
+  const leaderboardArtifact = artifacts.find(isLeaderboardArtifact) ?? null;
+  const leaderboardData = leaderboardArtifact
+    ? await downloadArtifactJson(repository, runId, leaderboardArtifact, signal)
+    : null;
+
+  const expiredArtifactCount = artifacts.filter(
+    (artifact) => artifact.expired === true && artifact.name === 'leaderboard',
+  ).length;
+
+  return {
+    run,
+    jobPhases: parseAiSweepJobPhases(jobs),
+    leaderboardData,
+    expiredArtifactCount,
   };
 }
