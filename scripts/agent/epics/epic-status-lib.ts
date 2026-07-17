@@ -373,11 +373,21 @@ export interface ValidationResult {
   readonly proposal: ReconciliationProposal;
 }
 
+/**
+ * Abstraction over git operations used during validation. Inject a custom
+ * implementation in tests to avoid requiring full git history.
+ */
+export interface GitReader {
+  showContent(commit: string, filePath: string): string | null;
+  commitExists(commit: string): boolean;
+}
+
 export interface ValidationOptions {
   readonly repoRoot: string;
   readonly now?: Date;
   readonly planMarkdown?: string;
   readonly schemaDocument?: unknown;
+  readonly gitReader?: GitReader;
 }
 
 interface MutableValidation {
@@ -417,6 +427,17 @@ function gitCommitExists(repoRoot: string, commit: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function createDefaultGitReader(repoRoot: string): GitReader {
+  return {
+    showContent(commit: string, filePath: string): string | null {
+      return gitShowContent(repoRoot, commit, filePath);
+    },
+    commitExists(commit: string): boolean {
+      return gitCommitExists(repoRoot, commit);
+    },
+  };
 }
 
 function formatZodIssue(issue: z.core.$ZodIssue): string {
@@ -689,7 +710,12 @@ const EVIDENCE_CANONICAL_DIRS: Readonly<Record<string, string>> = {
   'review-ledger': 'docs/knowledge/review-ledgers/',
 };
 
-function validateEvidenceFiles(repoRoot: string, node: EpicNode, result: MutableValidation): void {
+function validateEvidenceFiles(
+  repoRoot: string,
+  gitReader: GitReader,
+  node: EpicNode,
+  result: MutableValidation,
+): void {
   for (const kind of ['handoff', 'review-ledger']) {
     const evidence = node.evidence.find((item) => item.kind === kind);
     if (!evidence) {
@@ -717,7 +743,7 @@ function validateEvidenceFiles(repoRoot: string, node: EpicNode, result: Mutable
       });
       continue;
     }
-    const content = gitShowContent(repoRoot, evidence.commit, evidence.path_or_check);
+    const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
     if (content === null) {
       result.errors.push({
         code: 'evidence.git-verification-failed',
@@ -743,6 +769,7 @@ function validateNodeLifecycle(
   nodesById: ReadonlyMap<string, EpicNode>,
   now: Date,
   repoRoot: string,
+  gitReader: GitReader,
   result: MutableValidation,
 ): void {
   if (
@@ -848,8 +875,7 @@ function validateNodeLifecycle(
       );
     }
     if (owns.heartbeat_at) {
-      const maxHeartbeatMs =
-        (state.claim_policy.maximum_without_heartbeat_hours ?? 48) * 3_600_000;
+      const maxHeartbeatMs = (state.claim_policy.maximum_without_heartbeat_hours ?? 48) * 3_600_000;
       if (now.getTime() - Date.parse(owns.heartbeat_at) > maxHeartbeatMs) {
         result.errors.push({
           code: 'ownership.stale-heartbeat',
@@ -888,7 +914,7 @@ function validateNodeLifecycle(
         message: `${node.node_id} at ${node.status} requires issue and PR refs`,
       });
     }
-    validateEvidenceFiles(repoRoot, node, result);
+    validateEvidenceFiles(repoRoot, gitReader, node, result);
   }
   if (POST_MERGE_STATUSES.has(node.status)) {
     if (!node.merge.commit || !node.merge.merged_at) {
@@ -897,7 +923,7 @@ function validateNodeLifecycle(
         node_id: node.node_id,
         message: `${node.node_id} at ${node.status} requires merge commit and timestamp`,
       });
-    } else if (!gitCommitExists(repoRoot, node.merge.commit)) {
+    } else if (!gitReader.commitExists(node.merge.commit)) {
       result.errors.push({
         code: 'merge.commit-not-found',
         node_id: node.node_id,
@@ -1035,8 +1061,9 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
   const nodesById = new Map(state.nodes.map((node) => [node.node_id, node]));
   validateDag(state, nodesById, result);
   const now = options.now ?? new Date();
+  const gitReader = options.gitReader ?? createDefaultGitReader(options.repoRoot);
   for (const node of state.nodes) {
-    validateNodeLifecycle(state, node, nodesById, now, options.repoRoot, result);
+    validateNodeLifecycle(state, node, nodesById, now, options.repoRoot, gitReader, result);
   }
   validateDuplicateOwnership(state, result);
 
@@ -1214,10 +1241,7 @@ interface ParsedClaim {
   readonly postedAt: string;
 }
 
-function parseTrustedClaim(
-  comment: GithubComment,
-  expectedNodeId?: string,
-): ParsedClaim | null {
+function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): ParsedClaim | null {
   if (!['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association)) {
     return null;
   }
@@ -1328,8 +1352,7 @@ export function auditGithub(
         if (batch.length < 100) break;
       }
       for (const comment of comments) {
-        const expectedNodeId =
-          expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
+        const expectedNodeId = expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
         const claim = parseTrustedClaim(comment, expectedNodeId);
         if (claim && Date.parse(claim.expiresAt) > now.getTime()) issueClaims.push(claim);
       }
@@ -1453,7 +1476,7 @@ export function auditGithub(
   for (const [, claimsForNode] of claimsByNode) {
     const uniqueSessions = new Map<string, ParsedClaim>();
     for (const claim of claimsForNode) {
-    const sessionKey = `${claim.claimant}\u0000${claim.session}`;
+      const sessionKey = `${claim.claimant}\u0000${claim.session}`;
       const prior = uniqueSessions.get(sessionKey);
       if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
         uniqueSessions.set(sessionKey, claim);
@@ -1491,10 +1514,7 @@ export function auditGithub(
       const epicNode = nodesById.get(nodeId);
       if (epicNode && ACTIVE_STATUSES.has(epicNode.status)) {
         const owns = epicNode.ownership;
-        if (
-          liveClaim.claimant !== owns.claimant ||
-          liveClaim.session !== owns.session
-        ) {
+        if (liveClaim.claimant !== owns.claimant || liveClaim.session !== owns.session) {
           operatorActions.push(
             `Live claim on ${nodeId} (claimant: ${liveClaim.claimant}, session: ${liveClaim.session}) ` +
               `differs from cached ownership (claimant: ${owns.claimant ?? 'none'}, session: ${owns.session ?? 'none'}). ` +
