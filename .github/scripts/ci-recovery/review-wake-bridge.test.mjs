@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -33,18 +34,24 @@ const protectedPaths = [
 ];
 const addedProtectedPaths = protectedPaths.slice(3);
 
-function relativeImportClosure(entryPaths) {
+function relativeImportClosure(entryPaths, rootDir = repoRoot) {
   const pending = [...entryPaths];
   const visited = new Set();
   while (pending.length > 0) {
     const relativePath = pending.pop();
     if (visited.has(relativePath)) continue;
     visited.add(relativePath);
-    const absolutePath = path.join(repoRoot, relativePath);
+    const absolutePath = path.join(rootDir, relativePath);
     const source = readFileSync(absolutePath, 'utf8');
-    for (const match of source.matchAll(/from\s+['"](\.{1,2}\/[^'"]+)['"]/g)) {
+    // Match all relative ESM import forms:
+    //   import { … } from './rel'   (named/default)
+    //   import './rel'              (side-effect)
+    //   import('./rel')             (dynamic)
+    for (const match of source.matchAll(
+      /(?:from\s+|import\s+|import\()['"](\.{1,2}\/[^'"]+)['"]/g,
+    )) {
       const dependency = path
-        .relative(repoRoot, path.resolve(path.dirname(absolutePath), match[1]))
+        .relative(rootDir, path.resolve(path.dirname(absolutePath), match[1]))
         .replaceAll('\\', '/');
       pending.push(dependency);
     }
@@ -200,6 +207,31 @@ test('protected paths are the exact privileged recovery execution boundary', () 
       true,
       `privileged dependency must be protected: ${dependency}`,
     );
+  }
+});
+
+test('relativeImportClosure follows side-effect and dynamic relative imports', () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'ci-closure-test-'));
+  try {
+    writeFileSync(
+      path.join(tempDir, 'entry.mjs'),
+      [
+        "import './side-effect.mjs';",
+        "const m = await import('./dynamic.mjs');",
+        "import { named } from './named.mjs';",
+      ].join('\n'),
+    );
+    writeFileSync(path.join(tempDir, 'side-effect.mjs'), '');
+    writeFileSync(path.join(tempDir, 'dynamic.mjs'), '');
+    writeFileSync(path.join(tempDir, 'named.mjs'), '');
+
+    const closure = relativeImportClosure(['entry.mjs'], tempDir);
+    assert.equal(closure.has('entry.mjs'), true);
+    assert.equal(closure.has('side-effect.mjs'), true, 'side-effect import not followed');
+    assert.equal(closure.has('dynamic.mjs'), true, 'dynamic import not followed');
+    assert.equal(closure.has('named.mjs'), true, 'named import not followed');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
   }
 });
 

@@ -35,7 +35,7 @@ jobs:
 
   dispatch:
     needs: inspect
-    if: ${{ needs.inspect.outputs.pr_number != '' }}
+    if: ${{ github.run_attempt == 1 && needs.inspect.outputs.pr_number != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

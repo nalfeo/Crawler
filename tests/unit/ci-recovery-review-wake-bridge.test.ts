@@ -61,6 +61,7 @@ describe('CI Recovery trusted review wake bridge', () => {
     expect(doc.jobs.inspect.if).toContain("conclusion == 'action_required'");
     expect(doc.jobs.dispatch.permissions).toEqual({ actions: 'write' });
     expect(doc.jobs.dispatch.needs).toBe('inspect');
+    expect(doc.jobs.dispatch.if).toContain('run_attempt == 1');
     expect(doc.jobs.dispatch.if).toContain('needs.inspect.outputs.pr_number');
     expect(raw).not.toContain('APP_PRIVATE_KEY');
     expect(raw).not.toContain('CRAWLER_CI_PAT');
