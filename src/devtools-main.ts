@@ -3039,6 +3039,22 @@ function render(): void {
   manualAnchorYInput.style.color = '#e2e8f0';
   manualAnchorYInput.style.border = '1px solid rgba(148,163,184,0.4)';
   manualAnchorYInput.style.borderRadius = '6px';
+  const manualWeaponAnchorXInput = document.createElement('input');
+  manualWeaponAnchorXInput.type = 'number';
+  manualWeaponAnchorXInput.step = '1';
+  manualWeaponAnchorXInput.style.width = '72px';
+  manualWeaponAnchorXInput.style.background = '#020617';
+  manualWeaponAnchorXInput.style.color = '#e2e8f0';
+  manualWeaponAnchorXInput.style.border = '1px solid rgba(148,163,184,0.4)';
+  manualWeaponAnchorXInput.style.borderRadius = '6px';
+  const manualWeaponAnchorYInput = document.createElement('input');
+  manualWeaponAnchorYInput.type = 'number';
+  manualWeaponAnchorYInput.step = '1';
+  manualWeaponAnchorYInput.style.width = '72px';
+  manualWeaponAnchorYInput.style.background = '#020617';
+  manualWeaponAnchorYInput.style.color = '#e2e8f0';
+  manualWeaponAnchorYInput.style.border = '1px solid rgba(148,163,184,0.4)';
+  manualWeaponAnchorYInput.style.borderRadius = '6px';
   const applyScopeSelect = document.createElement('select');
   applyScopeSelect.style.background = '#020617';
   applyScopeSelect.style.color = '#e2e8f0';
@@ -3141,6 +3157,8 @@ function render(): void {
   };
   let pendingPostprocessMode: 'default' | 'replace' | 'reset' = 'default';
   let manualAnchorOverride: ManualAnchorState | null = null;
+  let manualWeaponAnchorOverride: ManualAnchorState | null = null;
+  let pendingManualWeaponAnchorClear = false;
   let facingDirection: FacingDirection = 'right';
   let applyScopeSelection: 'variant' | 'all' = 'variant';
   let pendingManualAnchorClear = false;
@@ -3351,6 +3369,12 @@ function render(): void {
     fringeTolField.input.value = String(appliedBackgroundTweaks.fringeToleranceSq);
     manualAnchorXInput.value = manualAnchorOverride ? String(manualAnchorOverride.x) : '';
     manualAnchorYInput.value = manualAnchorOverride ? String(manualAnchorOverride.y) : '';
+    manualWeaponAnchorXInput.value = manualWeaponAnchorOverride
+      ? String(manualWeaponAnchorOverride.x)
+      : '';
+    manualWeaponAnchorYInput.value = manualWeaponAnchorOverride
+      ? String(manualWeaponAnchorOverride.y)
+      : '';
     facingDirectionSelect.value = facingDirection;
     applyScopeSelect.value = applyScopeSelection;
     resetAnchorBtn.disabled = manualAnchorOverride === null && !pendingManualAnchorClear;
@@ -3401,6 +3425,7 @@ function render(): void {
       fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
     };
     manualAnchorOverride = null;
+    manualWeaponAnchorOverride = null;
     facingDirection = 'right';
     pendingPostprocessMode = 'reset';
     syncTweakInputsFromState();
@@ -3428,8 +3453,25 @@ function render(): void {
     finalAdjustStatus.style.color = '#93c5fd';
     rerenderDebuggerAfterTweaks();
   };
+  const syncManualWeaponAnchorFromInputs = (): void => {
+    if (!debugTarget) return;
+    const x = Number.parseInt(manualWeaponAnchorXInput.value, 10);
+    const y = Number.parseInt(manualWeaponAnchorYInput.value, 10);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    pendingManualWeaponAnchorClear = false;
+    pendingPostprocessMode = 'replace';
+    manualWeaponAnchorOverride = {
+      variantIndex: debugTarget.variantIndex,
+      x,
+      y,
+      ...(applyScopeSelection === 'all' ? { applyToAllVariants: true } : {}),
+    };
+    syncTweakInputsFromState();
+  };
   manualAnchorXInput.addEventListener('change', syncManualAnchorFromInputs);
   manualAnchorYInput.addEventListener('change', syncManualAnchorFromInputs);
+  manualWeaponAnchorXInput.addEventListener('change', syncManualWeaponAnchorFromInputs);
+  manualWeaponAnchorYInput.addEventListener('change', syncManualWeaponAnchorFromInputs);
   applyScopeSelect.addEventListener('change', () => {
     applyScopeSelection = applyScopeSelect.value === 'all' ? 'all' : 'variant';
     if (manualAnchorOverride) {
@@ -5702,9 +5744,17 @@ function render(): void {
         style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
       });
       anchorRow.append(
-        el('span', { text: 'Anchor x/y', style: { fontSize: '11px', color: '#bae6fd' } }),
+        el('span', { text: 'Hold anchor x/y', style: { fontSize: '11px', color: '#bae6fd' } }),
         manualAnchorXInput,
         manualAnchorYInput,
+      );
+      const weaponAnchorRow = el('div', {
+        style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
+      });
+      weaponAnchorRow.append(
+        el('span', { text: 'Weapon anchor x/y', style: { fontSize: '11px', color: '#bae6fd' } }),
+        manualWeaponAnchorXInput,
+        manualWeaponAnchorYInput,
       );
       const actionRow = el('div', {
         style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
@@ -5720,9 +5770,12 @@ function render(): void {
           pendingPostprocessMode === 'reset' ? 'reset' : 'replace';
         if (applyMode === 'replace') {
           syncManualAnchorFromInputs();
+          syncManualWeaponAnchorFromInputs();
         }
         const hasManualAnchor = manualAnchorOverride !== null;
         const currentManualAnchor = manualAnchorOverride;
+        const hasManualWeaponAnchor = manualWeaponAnchorOverride !== null;
+        const currentManualWeaponAnchor = manualWeaponAnchorOverride;
         const applyToAll = applyScopeSelection === 'all';
         finalAdjustStatus.textContent = 'Applying…';
         finalAdjustStatus.style.color = '#93c5fd';
@@ -5737,6 +5790,17 @@ function render(): void {
                   variantIndex: debugTarget.variantIndex,
                   x: currentManualAnchor!.x,
                   y: currentManualAnchor!.y,
+                  ...(applyToAll ? { applyToAllVariants: true } : {}),
+                };
+          const manualWeaponAnchorPayload =
+            pendingManualWeaponAnchorClear || !hasManualWeaponAnchor
+              ? pendingManualWeaponAnchorClear
+                ? null
+                : undefined
+              : {
+                  variantIndex: debugTarget.variantIndex,
+                  x: currentManualWeaponAnchor!.x,
+                  y: currentManualWeaponAnchor!.y,
                   ...(applyToAll ? { applyToAllVariants: true } : {}),
                 };
           await fetchJson(
@@ -5762,6 +5826,9 @@ function render(): void {
                       ...(manualAnchorPayload !== undefined
                         ? { manualAnchor: manualAnchorPayload }
                         : {}),
+                      ...(manualWeaponAnchorPayload !== undefined
+                        ? { weaponAnchor: manualWeaponAnchorPayload }
+                        : {}),
                       ...(!applyToAll ? { variantIndexes: [debugTarget.variantIndex] } : {}),
                     }
                   : {}),
@@ -5771,7 +5838,11 @@ function render(): void {
           if (pendingManualAnchorClear) {
             manualAnchorOverride = null;
           }
+          if (pendingManualWeaponAnchorClear) {
+            manualWeaponAnchorOverride = null;
+          }
           pendingManualAnchorClear = false;
+          pendingManualWeaponAnchorClear = false;
           pendingPostprocessMode = 'default';
           finalAdjustStatus.textContent = applyToAll
             ? 'Applied to all variants.'
@@ -5793,7 +5864,7 @@ function render(): void {
         text: facingDirection === 'left' ? '← facing left' : 'facing right →',
         style: { fontSize: '11px', color: '#bae6fd', marginTop: '6px' },
       });
-      controlPanel.append(topRow, anchorRow, facingArrow, actionRow);
+      controlPanel.append(topRow, anchorRow, weaponAnchorRow, facingArrow, actionRow);
       imageWrap.append(img, anchorMarker);
       card.append(title, imageWrap, controlPanel);
       return card;
@@ -6033,6 +6104,27 @@ function render(): void {
               }
             }
             applyScopeSelection = manualApplyToAll || facingApplyToAll ? 'all' : 'variant';
+            // Hydrate weapon anchor state from persisted summary.
+            const manualWeapon = (post as { manualWeaponAnchor?: unknown }).manualWeaponAnchor;
+            if (manualWeapon && typeof manualWeapon === 'object') {
+              const variantIndex = (manualWeapon as { variantIndex?: unknown }).variantIndex;
+              const x = (manualWeapon as { x?: unknown }).x;
+              const y = (manualWeapon as { y?: unknown }).y;
+              const applyToAllVariants =
+                (manualWeapon as { applyToAllVariants?: unknown }).applyToAllVariants === true;
+              if (
+                typeof variantIndex === 'number' &&
+                typeof x === 'number' &&
+                typeof y === 'number'
+              ) {
+                manualWeaponAnchorOverride = {
+                  variantIndex,
+                  x,
+                  y,
+                  ...(applyToAllVariants ? { applyToAllVariants: true } : {}),
+                };
+              }
+            }
             syncTweakInputsFromState();
           }
         }

@@ -583,6 +583,59 @@ describe('approveVariant', () => {
     expect(entry.anchor).toBeNull();
   });
 
+  it('ingest weapon anchor sidecar into anchors.weapon when NN.anchor.weapon.json is present', () => {
+    const { runDir } = writeFakeRun(repoRoot, { variantIndices: [0] });
+    // Write weapon anchor sidecar for variant 0.
+    const processedDir = path.join(runDir, 'processed');
+    writeFileSync(
+      path.join(processedDir, '00.anchor.weapon.json'),
+      JSON.stringify({ x: 42, y: 18, source: 'manual', updatedAt: '2026-01-01T00:00:00.000Z' }),
+    );
+    const entry = approveVariant({
+      runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+    expect(entry.anchors.weapon).toEqual({ x: 42, y: 18, source: 'manual' });
+  });
+
+  it('records anchors.weapon as null when weapon sidecar contains { cleared: true }', () => {
+    const { runDir } = writeFakeRun(repoRoot, { variantIndices: [0] });
+    const processedDir = path.join(runDir, 'processed');
+    writeFileSync(
+      path.join(processedDir, '00.anchor.weapon.json'),
+      JSON.stringify({ cleared: true }),
+    );
+    const entry = approveVariant({
+      runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+    expect(entry.anchors.weapon).toBeNull();
+  });
+
+  it('omits anchors.weapon entirely when no weapon sidecar is present', () => {
+    const { runDir } = writeFakeRun(repoRoot, { variantIndices: [0] });
+    const entry = approveVariant({
+      runDir,
+      variantIndex: 0,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+    expect('weapon' in entry.anchors).toBe(false);
+  });
+
   it('persists approved sprite to both manifest and catalog', () => {
     const { runDir, briefId } = writeFakeRun(repoRoot, {
       variantIndices: [0, 1],
