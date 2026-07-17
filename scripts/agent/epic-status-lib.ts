@@ -307,6 +307,7 @@ export function formatMaterializationPlan(state: EpicState): string {
 
   const blockedPlanned = state.slices.filter((s) => {
     if (s.status !== 'planned') return false;
+    if (s.deferred) return false;
     return s.dependencies.some((dep) => {
       const depStatus = statusById.get(dep);
       return depStatus === undefined || !DONE_STATUSES.has(depStatus);

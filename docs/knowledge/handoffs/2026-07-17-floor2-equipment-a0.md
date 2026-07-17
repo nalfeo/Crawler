@@ -43,10 +43,29 @@ Created the durable control plane for the Floor 2 equipment epic (issue #1264):
 
 6. **`package.json`** — Added `"epic:status": "tsx scripts/agent/epic-status.ts"`.
 
-7. **`tests/unit/epic-status.test.ts`** — 23 unit tests covering validation, ready-slice
-   computation, and formatter output.
+7. **`tests/unit/epic-status.test.ts`** — 37 unit tests covering validation, ready-slice
+   computation, formatter output, parseArgs, and deferred-slice exclusion.
 
-`npm run verify:fast` passes: 87 test files, 1260 tests.
+`npm run verify:fast` passes: 1260 tests across 87 test files.
+
+## Review Harness Summary
+
+**3🍎 — plan review + code review loop.**
+
+- **Plan review (gpt-5.4, high):** 5 concerns surfaced (blocking: DPS formula
+  underspecified, B2/B3 missing items.ts scope, B4 wrong acceptance criteria;
+  non-blocking: A0 premature `validated`, validator too shallow). All 5 resolved
+  before implementation.
+- **Code review rounds:**
+  - Round 1 (claude-sonnet-4.6): 3 concerns — `computeReadySlices` surfaced
+    deferred slices; `parseArgs` lacked tests; GitHub API cast unsafe.
+    All 3 fixed.
+  - Round 2 (claude-sonnet-4.6): 1 concern — `formatMaterializationPlan` also
+    leaked deferred slices into "Blocked" section (mirroring the round-1 bug in
+    a different function). Fixed + test added.
+  - Round 3 (claude-sonnet-5): clean, no findings.
+
+**Ledger:** `docs/knowledge/review-ledgers/2026-07-17-floor2-equipment-a0.review-ledger.json`
 
 ## Key Decisions Made
 

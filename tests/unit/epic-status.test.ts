@@ -321,6 +321,16 @@ describe('formatMaterializationPlan', () => {
     const out = formatMaterializationPlan(state);
     expect(out).toContain('No slices are currently computed-ready');
   });
+
+  it('excludes deferred:true slices from the Blocked section', () => {
+    const state = makeMinimalState([
+      makeSlice('slice:A0', 'planned'),
+      makeSlice('slice:B1', 'planned', ['slice:A0'], { deferred: true }),
+    ]);
+    const out = formatMaterializationPlan(state);
+    // B1 is deferred so it must NOT appear in the Blocked section
+    expect(out).not.toContain('slice:B1');
+  });
 });
 
 // ---------------------------------------------------------------------------
