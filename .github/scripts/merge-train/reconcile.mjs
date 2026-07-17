@@ -614,9 +614,13 @@ for (let index = 0; index < train.length; index += 1) {
   );
 }
 
-async function promotePrefix(prefixLength) {
+async function promotePrefix(prefixLength, validationIndex) {
   if (!(await mainHealthAllowsPromotion())) return false;
   const provenanceEntries = train.slice(0, prefixLength);
+  const validationCandidate = candidates[validationIndex];
+  if (!validationCandidate) {
+    throw new Error(`Missing validation candidate at prefix index ${validationIndex}`);
+  }
   return promoteExactBatch({
     entries: provenanceEntries,
     candidateShas: candidates.slice(0, prefixLength).map((candidate) => candidate.candidateSha),
@@ -636,14 +640,12 @@ async function promotePrefix(prefixLength) {
     updateStatus,
     postLandedComment,
     publishPostconditionCheck,
-    // Re-confirm, immediately before merging each PR, that its cumulative
-    // prefix still has terminal SUCCESS validation evidence bound to that
-    // prefix's exact candidate SHA + fingerprint.
-    verifyPrefixEvidence: async (index) => {
-      const candidate = candidates[index];
+    // Re-confirm, immediately before every merge, that the selected maximal or
+    // bisected batch candidate still has terminal SUCCESS evidence.
+    verifyCandidateEvidence: async () => {
       const state = trainCheckState(
-        await checkRuns(candidate.candidateSha),
-        candidate.fingerprint,
+        await checkRuns(validationCandidate.candidateSha),
+        validationCandidate.fingerprint,
         trustedAppId,
         new Date(),
       );
@@ -654,15 +656,11 @@ async function promotePrefix(prefixLength) {
   });
 }
 
-// Promotion gate (ADR 0063): every cumulative prefix that will be exposed on
-// main must have terminal SUCCESS validation evidence BEFORE any merge, so the
-// sequential squash-merges never land an unvalidated tree. `planPrefixPromotion`
-// decides the next action from the per-prefix candidate states.
+// Validate the maximal candidate first. Only a genuine terminal maximal failure
+// asks the bisection planner for a smaller prefix.
 const plan = planPrefixPromotion(candidates.map((candidate) => candidate.state));
 
 if (plan.action === 'validate') {
-  // Validate every still-missing prefix in the target range in parallel, so a
-  // full batch's validation wall-time is one candidate run, not N serial runs.
   await Promise.all(
     plan.prefixes.map((index) =>
       dispatchValidation(
@@ -673,7 +671,7 @@ if (plan.action === 'validate') {
     ),
   );
   process.stdout.write(
-    `dispatched ${plan.prefixes.length} prefix validation(s) in parallel prefixes=${plan.prefixes
+    `dispatched ${plan.prefixes.length} prefix validation(s) prefixes=${plan.prefixes
       .map((index) => index + 1)
       .join(',')} total=${train.length}\n`,
   );
@@ -685,13 +683,9 @@ if (plan.action === 'wait') {
   process.exit(0);
 }
 
-// plan.action === 'promote': the whole [0, greenPrefixLength) is proven green.
-// Localize the earliest failing PR FIRST (before promoting the green prefix, so
-// promoting does not move main and make the failing-PR reattestation falsely
-// stale). No bisection is needed: every promotable prefix was validated, so the
-// first failing prefix's last-added PR is the culprit. Reattest against live
-// state before mutating so a stale result can't block a PR for a problem that no
-// longer applies.
+// plan.action === 'promote': either the maximal candidate passed, or bisection
+// isolated the first failing addition. Localize a failure before promotion so
+// moving main cannot make the failing-PR reattestation falsely stale.
 if (plan.firstFailure !== -1) {
   const failingEntry = train[plan.firstFailure];
   const [liveMainSha, liveFailingPr] = await Promise.all([
@@ -722,6 +716,6 @@ if (plan.firstFailure !== -1) {
 }
 
 if (plan.greenPrefixLength > 0) {
-  await promotePrefix(plan.greenPrefixLength);
+  await promotePrefix(plan.greenPrefixLength, plan.validationIndex);
 }
 process.exit(0);
