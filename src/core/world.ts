@@ -328,17 +328,25 @@ export interface GameWorld {
    */
   enemyAppearanceKeys: Map<number, string>;
   /**
-   * Archetype-key snapshot for in-flight enemy projectiles, keyed by projectile
-   * EID. Populated in `spawnEnemyProjectile` while the shooter is still live so
-   * the key survives shooter death and EID recycling. Read in damageSystem when
-   * a projectile hits the player and passed as `DamageOptions.sourceArchetypeKey`
-   * so `apply-damage` can emit a stable attribution without re-resolving a
-   * potentially-recycled `sourceEid` at impact time.
+   * Archetype-key snapshot for enemy projectile and AoE explosion entities,
+   * keyed by entity EID. Covers two entity phases:
+   *
+   * - **In-flight projectiles**: populated in `spawnEnemyProjectile` and
+   *   `spawnAoeProjectile` while the shooter is still live. `damageSystem` reads
+   *   the entry and passes it as `DamageOptions.sourceArchetypeKey` so
+   *   `apply-damage` emits a stable attribution even after shooter death or EID
+   *   recycling.
+   *
+   * - **AoE explosion entities**: `aoeOnImpactSystem` copies the projectile's
+   *   entry onto the spawned explosion EID (`aoeOnImpactPostDamage`);
+   *   `areaDamageSystem` reads it for the splash-hit attribution and then deletes
+   *   it via `clearAreaDamageHits`.
    *
    * Entries are explicitly managed: `clearEntityStores` deletes the entry on
-   * every entity removal or EID recycle, and each enemy-projectile spawn sets a
-   * fresh entry when the owner archetype is known. This ensures `damageSystem`
-   * never reads a stale snapshot from a previous occupant of the same EID.
+   * every entity removal or EID recycle, and each enemy-projectile/AoE spawn sets
+   * a fresh entry when the owner archetype is known. This ensures neither
+   * `damageSystem` nor `areaDamageSystem` ever reads a stale snapshot from a
+   * previous occupant of the same EID.
    */
   enemyProjectileArchetypeKeys: Map<number, string>;
   /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */

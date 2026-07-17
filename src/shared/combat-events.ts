@@ -61,20 +61,23 @@ export interface CombatEvent {
    */
   spriteTextureId?: number;
   /**
-   * Snapshot of the attacker's stable archetype identity. Captured via one of
-   * two paths depending on how the damage originates:
+   * Snapshot of the attacker's stable archetype identity. Set via one of two
+   * resolution paths inside `applyDamage`, depending on how the damage originates:
    *
    * - **Projectile / AoE sources** (delayed hits): captured at spawn time in
    *   `spawnEnemyProjectile` or `spawnAoeProjectile` while the source entity is
    *   still live, stored in `world.enemyProjectileArchetypeKeys`, and propagated
    *   through the AoE explosion chain (`aoeOnImpactSystem` → `areaDamageSystem`).
-   *   The value survives source removal and EID recycling.
+   *   The snapshot survives source removal and EID recycling. Passed to
+   *   `applyDamage` via `DamageOptions.sourceArchetypeKey` and preferred over any
+   *   live lookup.
    *
-   * - **Immediate contact damage** (direct hits resolved inside `applyDamage`):
-   *   passed via `DamageOptions.sourceArchetypeKey`. This path can supply a value
-   *   even when `options.sourceEid` is `undefined`.
+   * - **Immediate / contact hits**: `applyDamage` resolves the key live from the
+   *   caller-supplied `DamageOptions.sourceEid` by querying
+   *   `world.enemyAppearanceKeys` then `world.floorScenario.enemyArchetypes`.
+   *   `DamageOptions.sourceArchetypeKey` is only used as a direct override when
+   *   `sourceEid` is absent.
    *
-   * When present, prefer this over resolving `sourceEid` at consumption time.
    * Applies to player-targeted hit events only.
    */
   sourceArchetypeKey?: string;
