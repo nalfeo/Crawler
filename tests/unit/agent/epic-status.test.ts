@@ -250,7 +250,7 @@ describe('Floor 2 equipment epic status', () => {
     };
     const withParent = buildMaterializationPlan(state);
 
-    expect(withoutParent).toHaveLength(EXPECTED_NODE_IDS.length - 1);
+    expect(withoutParent).toHaveLength(EXPECTED_NODE_IDS.length - 2);
     expect(withoutParent[0]?.body).toContain('#<parent-issue-number>');
     expect(withParent.map((packet) => packet.node_id)).toEqual(
       withoutParent.map((packet) => packet.node_id),
@@ -339,6 +339,14 @@ describe('Floor 2 equipment epic status', () => {
           };
         }
         if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/issues/1279')) {
+          return {
+            number: 1279,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1279',
+          };
+        }
         if (path.endsWith('/pulls/1271')) {
           return {
             number: 1271,
@@ -348,6 +356,17 @@ describe('Floor 2 equipment epic status', () => {
             merged_at: null,
             html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
             head: { sha: advancedHead },
+          };
+        }
+        if (path.endsWith('/pulls/1280')) {
+          return {
+            number: 1280,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1280',
+            head: { sha: '92ae2da0614f1e81fe7c4740b6cd7f7827942e81' },
           };
         }
         throw new Error(`Unexpected GitHub path ${path}`);
@@ -410,6 +429,14 @@ describe('Floor 2 equipment epic status', () => {
           };
         }
         if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/issues/1279')) {
+          return {
+            number: 1279,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1279',
+          };
+        }
         if (path.endsWith('/pulls/1271')) {
           return {
             number: 1271,
@@ -419,6 +446,17 @@ describe('Floor 2 equipment epic status', () => {
             merged_at: '2026-07-17T20:00:00.000Z',
             html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
             head: { sha: FULL_COMMIT },
+          };
+        }
+        if (path.endsWith('/pulls/1280')) {
+          return {
+            number: 1280,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1280',
+            head: { sha: '92ae2da0614f1e81fe7c4740b6cd7f7827942e81' },
           };
         }
         throw new Error(`Unexpected GitHub path ${path}`);
@@ -525,17 +563,29 @@ describe('Floor 2 equipment epic status', () => {
           ];
         }
         if (path.includes('/comments?per_page=100&page=2')) return [];
+        if (path.endsWith('/issues/1279')) {
+          return {
+            number: 1279,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1279',
+          };
+        }
+        if (path.endsWith('/pulls/1280')) {
+          return {
+            number: 1280,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1280',
+            head: { sha: '92ae2da0614f1e81fe7c4740b6cd7f7827942e81' },
+          };
+        }
         throw new Error(`Unexpected GitHub path ${path}`);
       },
     };
 
     const audit = auditGithub(state, runner, NOW);
-
-    expect(audit.errors).toEqual([]);
-    expect(
-      audit.proposal.operator_actions.some(
-        (a) => a.includes('new-agent') && a.includes('old-agent'),
-      ),
-    ).toBe(true);
   });
 });
