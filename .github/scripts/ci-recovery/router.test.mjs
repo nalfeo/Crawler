@@ -879,14 +879,13 @@ test('requestWithBackoff stops immediately for non-retryable errors', async () =
   assert.equal(attempts, 1);
 });
 
-test('hydrateRecoveryOwnership stops incrementally after stopAfterDispatchable non-healthy PRs', async () => {
+test('hydrateRecoveryOwnership stops after six dispatchable PRs in the resolved prefix', async () => {
   // Regression for Thread 8: the previous implementation loaded the full
   // comment history for every owner-labeled PR before selecting at most six
   // candidates. With a large owned backlog this scales with the queue length
   // and can exhaust the router API budget or 10-minute timeout.
-  // The updated implementation stops hydrating once enough non-healthy PRs
-  // have been found (stopAfterDispatchable), continuing only when a batch is
-  // entirely healthy so stale owners behind a healthy front are not missed.
+  // The updated implementation stops hydrating once the fully-resolved,
+  // age-ordered prefix contains enough dispatchable PRs.
   const now = new Date('2026-07-17T12:00:00Z');
   const freshProgressKey = automationProgressKey(
     'head-sha',
@@ -943,8 +942,9 @@ test('hydrateRecoveryOwnership stops incrementally after stopAfterDispatchable n
     },
     3, // batchSize — use 3 so each batch is independently healthy/unhealthy
     {
-      stopAfterDispatchable: 6,
-      isHealthy: (pr) => hasHealthyOwnerForSweep(pr, now),
+      targetDispatchable: 6,
+      countDispatchable: (resolvedPulls) =>
+        resolvedPulls.filter((pr) => !hasHealthyOwnerForSweep(pr, now)).length,
     },
   );
 
