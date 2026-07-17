@@ -410,6 +410,12 @@ export function spawnFromArchetype(
  */
 const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
+/**
+ * Minimum attack range (ft) for ranged Floor 2 bosses.
+ * Mirrors the `max(160, detectRange × 4)` formula in `spawnFamilyBoss`
+ * (`floor2Scenario.ts`) so arena playtesting reproduces production spacing.
+ */
+const FLOOR2_BOSS_MIN_RANGED_RANGE = 160;
 
 function spawnBossFromArchetype(
   world: GameWorld,
@@ -418,7 +424,8 @@ function spawnBossFromArchetype(
   def: EnemyArchetypeDef,
 ): number {
   const aiType = archetypeToAiType(def);
-  const attackRange = aiType === AI_TYPE.RANGED ? Math.max(160, def.detectRange * 4) : 0;
+  const attackRange =
+    aiType === AI_TYPE.RANGED ? Math.max(FLOOR2_BOSS_MIN_RANGED_RANGE, def.detectRange * 4) : 0;
 
   const eid = spawnBehaviorEnemy(
     world,

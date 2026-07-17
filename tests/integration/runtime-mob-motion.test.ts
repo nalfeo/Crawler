@@ -420,13 +420,29 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   // ── Generation-safe hit reaction: stale events must not apply to a recycled EID ──
   // Push a hit event with the OLD generation before recycling, then verify the
   // new occupant does not receive the stale reaction on the next sync.
+  const VICTIM_X = 5;
+  const VICTIM_Y = 5;
+  const NEW_OCCUPANT_X = 30;
+  const STALE_HP = 100;
+  const STALE_DETECT = 30;
+  const STALE_ATTACK_RANGE = 8;
+
   const staleGenWorld = createTestWorld({ seed: 99, floor: 2 });
   staleGenWorld.floorScenario = {
     enemyArchetypes: new Map(),
     objective: { bossBattles: new Map() },
   } as typeof staleGenWorld.floorScenario;
   staleGenWorld.floorExtendedState = { ambientEnemyArchetypes: new Map() };
-  const victimEid = spawnBehaviorEnemy(staleGenWorld, 5, 5, 100, 0, 1, 30, 8);
+  const victimEid = spawnBehaviorEnemy(
+    staleGenWorld,
+    VICTIM_X,
+    VICTIM_Y,
+    STALE_HP,
+    0,
+    1,
+    STALE_DETECT,
+    STALE_ATTACK_RANGE,
+  );
   setComponent(staleGenWorld.ecs, victimEid, Sprite, { textureId: 1, width: 3, height: 3 });
   setEnemyAppearanceKey(staleGenWorld, victimEid, 'rat');
   const staleStub = createSceneStub({ kenneyLoaded: true });
@@ -438,8 +454,8 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   // Push a hit event with the victim's OLD generation stamped in.
   staleGenWorld.combatEvents.push({
     type: 'hit',
-    x: 5,
-    y: 5,
+    x: VICTIM_X,
+    y: VICTIM_Y,
     amount: 5,
     targetType: 'enemy',
     targetEid: victimEid,
@@ -450,7 +466,16 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   // Remove and immediately recycle the EID (bitecs reuses it).
   removeEntity(staleGenWorld.ecs, victimEid);
   staleGenWorld.floorScenario!.enemyArchetypes.delete(victimEid);
-  const newOccupantEid = spawnBehaviorEnemy(staleGenWorld, 30, 5, 100, 0, 1, 30, 8);
+  const newOccupantEid = spawnBehaviorEnemy(
+    staleGenWorld,
+    NEW_OCCUPANT_X,
+    VICTIM_Y,
+    STALE_HP,
+    0,
+    1,
+    STALE_DETECT,
+    STALE_ATTACK_RANGE,
+  );
   expect(newOccupantEid, 'EID must be recycled for the generation-safety test to be meaningful').toBe(
     victimEid,
   );
@@ -469,6 +494,6 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   // The new occupant has no motion state, so it sits at neutral position — not
   // at a hit-reaction offset — proving the stale event was discarded.
   expect(staleNewImage.x, 'generation-safe: new occupant must not show stale hit reaction').toBe(
-    ftToPx(30),
+    ftToPx(NEW_OCCUPANT_X),
   );
 });
