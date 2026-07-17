@@ -40,6 +40,7 @@ import {
   humanApprovalRejection,
   requiresHumanApproval,
 } from '../merge-train/human-approval.mjs';
+import { fileLoopIncident } from './loop-incident-lib.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -57,6 +58,12 @@ const shouldMutate = shouldMutateRecoveryState(mode, operation);
 const mergeTrainEnabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const mergeTrainAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const now = new Date();
+// GitHub Actions populates GITHUB_SERVER_URL and GITHUB_RUN_ID automatically.
+// Outside of Actions (tests, local runs) these are absent; workflowRunUrl is null.
+const workflowRunUrl =
+  process.env.GITHUB_SERVER_URL && process.env.GITHUB_RUN_ID
+    ? `${process.env.GITHUB_SERVER_URL}/${repository}/actions/runs/${process.env.GITHUB_RUN_ID}`
+    : null;
 const REBASE_FAILURE_MAX_ATTEMPTS = 3;
 const REBASE_FAILURE_BASE_BACKOFF_MS = 60 * 1000;
 const REBASE_FAILURE_MAX_BACKOFF_MS = 10 * 60 * 1000;
@@ -1157,6 +1164,44 @@ if (labelExists && isDuplicateDispatch(state, fingerprint)) {
     process.exit(0);
   }
   if (staleAction === 'release') {
+    // File a deduplicated investigation issue so the underlying automation
+    // defect is surfaced and assigned rather than silently abandoned.
+    // Only in live mode: dry-run skips all GitHub mutations.
+    //
+    // IMPORTANT: release() must always run regardless of whether incident
+    // filing succeeds.  A filing failure must never leave the PR owned by
+    // stale automation, which would cause the reconciler to churn on this
+    // same exhausted path indefinitely.
+    if (live) {
+      try {
+        const loopResult = await fileLoopIncident({
+          request,
+          paginate,
+          token: pat,
+          owner,
+          repo,
+          prNumber,
+          headSha: pr.head.sha,
+          blockerFingerprint: fingerprint,
+          blockers: normalized,
+          attempt: state.attempt,
+          workflowRunUrl,
+          now,
+        });
+        process.stdout.write(
+          `loop-incident pr=#${prNumber} issue=#${loopResult.issueNumber} action=${loopResult.action}\n`,
+        );
+      } catch (err) {
+        const safeMsg = String(err.message || err).replace(/[\r\n]/g, ' ').slice(0, 500);
+        process.stderr.write(
+          `loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`,
+        );
+      }
+    } else {
+      process.stdout.write(
+        `dry-run would-file-loop-incident pr=#${prNumber} fingerprint=${fingerprint}\n`,
+      );
+    }
     await release(
       'stale-automation-exhausted',
       makeState({
