@@ -69,6 +69,9 @@ const REBASE_FAILURE_BASE_BACKOFF_MS = 60 * 1000;
 const REBASE_FAILURE_MAX_BACKOFF_MS = 10 * 60 * 1000;
 const RELEASE_COMPLETED = 'released';
 const RELEASE_CONVERGED_ELSEWHERE = 'converged-elsewhere';
+const RELEASE_HANDOFF_PENDING = 'handoff-pending';
+const RELEASE_HANDOFF_ATTEMPTS = 3;
+const RELEASE_HANDOFF_DELAY_MS = 100;
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -404,8 +407,8 @@ async function preserveConvergedElsewhereState(
 }
 
 function stopIfReleaseConvergedElsewhere(result) {
-  if (result !== RELEASE_CONVERGED_ELSEWHERE) return;
-  process.stdout.write(`skip pr=#${prNumber} reason=converged-elsewhere\n`);
+  if (![RELEASE_CONVERGED_ELSEWHERE, RELEASE_HANDOFF_PENDING].includes(result)) return;
+  process.stdout.write(`skip pr=#${prNumber} reason=${result}\n`);
   process.exit(0);
 }
 
@@ -480,6 +483,27 @@ async function fetchOwnershipFacts() {
   };
 }
 
+async function settleAbsentOwnerBit(initialFacts, ownershipToRelease, waitingTransition) {
+  let facts = initialFacts;
+  for (let attempt = 1; attempt < RELEASE_HANDOFF_ATTEMPTS; attempt += 1) {
+    if (facts.repositoryLabelPresent || !sameOwnership(facts.state, ownershipToRelease)) break;
+    await new Promise((resolve) => setTimeout(resolve, RELEASE_HANDOFF_DELAY_MS));
+    facts = await fetchOwnershipFacts();
+  }
+  if (facts.repositoryLabelPresent) {
+    throw new Error(`PR #${prNumber} owner label was recreated during release handoff`);
+  }
+  if (!sameOwnership(facts.state, ownershipToRelease)) {
+    if (!isConvergedElsewhereState(facts.state)) {
+      throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
+    }
+    return preserveConvergedElsewhereState(facts.state, waitingTransition, facts.labels);
+  }
+  pr.labels = facts.labels.filter((label) => label.name !== labelName);
+  labelExists = false;
+  return RELEASE_HANDOFF_PENDING;
+}
+
 async function disableAutoMergeForHumanGate() {
   if (!pr.auto_merge) return;
   if (!live) {
@@ -534,34 +558,26 @@ async function release(reason, nextState = null) {
   const waitingTransition = releasedState.status === 'waiting' ? false : await prepareWaitingExit();
   if (shouldMutate) {
     await assertExpectedMetadataUnchanged('release-label');
-    let atomicOwnerBitAbsent = false;
+    let needsPostReleaseCheck = false;
     try {
       await removePrLabel(labelName);
     } catch (error) {
       if (!isKnownStaleNodeLabelError(error)) throw error;
       let facts = await fetchOwnershipFacts();
       if (!facts.repositoryLabelPresent) {
-        // The repository label is already gone. Verify that the live state is
-        // still ours before accepting this as our own atomic release. If a
-        // concurrent run already converged the PR to idle/waiting, preserve
-        // that newer state; if a different active owner is present, fail closed.
-        if (!sameOwnership(facts.state, ownershipToRelease)) {
-          if (!isConvergedElsewhereState(facts.state)) {
-            throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
-          }
-          // Newer converged state already written by a concurrent run. Skip our
-          // releasedState write and stop the caller so it can re-evaluate from a
-          // fresh snapshot before any further mutation or reacquire.
-          return preserveConvergedElsewhereState(facts.state, waitingTransition, facts.labels);
-        }
-        pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
-        labelExists = false;
-        atomicOwnerBitAbsent = true;
+        // Another run removed the atomic owner bit. Its terminal state PATCH may
+        // still be in flight, so wait briefly for the handoff and never write or
+        // reacquire from this stale snapshot if the state has not settled yet.
+        return settleAbsentOwnerBit(facts, ownershipToRelease, waitingTransition);
       } else if (!facts.attached) {
-        if (!sameOwnership(facts.state, ownershipToRelease)) {
+        if (
+          !sameOwnership(facts.state, ownershipToRelease) &&
+          !isConvergedElsewhereState(facts.state)
+        ) {
           throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
         }
-        pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
+        pr.labels = facts.labels.filter((label) => label.name !== labelName);
+        needsPostReleaseCheck = true;
       } else if (sameOwnership(facts.state, ownershipToRelease)) {
         try {
           await removePrLabel(labelName);
@@ -570,29 +586,29 @@ async function release(reason, nextState = null) {
         }
         facts = await fetchOwnershipFacts();
         if (!facts.repositoryLabelPresent) {
-          // Same check as on the first 422: verify ownership before accepting.
-          if (!sameOwnership(facts.state, ownershipToRelease)) {
-            if (!isConvergedElsewhereState(facts.state)) {
-              throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
-            }
-            // Newer converged state written by concurrent run. Preserve it and
-            // stop the caller so it can restart from live state if needed.
-            return preserveConvergedElsewhereState(facts.state, waitingTransition, facts.labels);
-          }
-          atomicOwnerBitAbsent = true;
-        } else if (facts.attached || !sameOwnership(facts.state, ownershipToRelease)) {
+          return settleAbsentOwnerBit(facts, ownershipToRelease, waitingTransition);
+        }
+        if (
+          facts.attached ||
+          (!sameOwnership(facts.state, ownershipToRelease) &&
+            !isConvergedElsewhereState(facts.state))
+        ) {
           throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
         }
+        pr.labels = facts.labels.filter((label) => label.name !== labelName);
+        needsPostReleaseCheck = true;
       } else {
         throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
       }
     }
 
-    if (!atomicOwnerBitAbsent) {
-      await removeRepositoryLabel(labelName);
-    }
+    await removeRepositoryLabel(labelName);
     if (await repositoryLabelExists(labelName)) {
       throw new Error(`PR #${prNumber} owner label was recreated during release`);
+    }
+    if (needsPostReleaseCheck) {
+      const verifyFacts = await fetchOwnershipFacts();
+      return settleAbsentOwnerBit(verifyFacts, ownershipToRelease, waitingTransition);
     }
   }
   labelExists = false;
@@ -608,7 +624,7 @@ if (orphanedOwnershipArtifact) {
 
 if (pr.state !== 'open') {
   if (labelExists || staleOwningState || hasPrLabel(labelName)) {
-    await release(`pr-${pr.state}`);
+    stopIfReleaseConvergedElsewhere(await release(`pr-${pr.state}`));
   }
   process.stdout.write(`skip pr=#${prNumber} state=${pr.state}\n`);
   process.exit(0);
@@ -640,7 +656,7 @@ if (operation.startsWith('lease-')) {
     if (state?.owner !== 'shepherd' || state.leaseId !== leaseId) {
       throw new Error(`PR #${prNumber} shepherd lease does not match`);
     }
-    await release('lease-release');
+    stopIfReleaseConvergedElsewhere(await release('lease-release'));
   } else {
     throw new Error(`Unsupported recovery operation: ${operation}`);
   }
@@ -1321,29 +1337,34 @@ if (
 if (labelExists) {
   stopIfReleaseConvergedElsewhere(await release('blocker-fingerprint-changed'));
 }
-// Complete an interrupted release: the previous run removed the owner labels
-// but failed to write the terminal idle state (e.g. due to a transient PATCH
-// error). Carry the persisted attempt count forward only for legacy states or
-// when the progress key still matches; a changed progress key must reset to 0
-// so a new head/fingerprint gets a fresh retry budget.
+// Resume an interrupted release: the previous run removed the atomic owner
+// label but left the owning state behind. Carry the attempt count forward only
+// for legacy states or when the progress key still matches; a changed key gets
+// a fresh retry budget.
 if (!labelExists && staleOwningState && state?.owner === 'automation') {
   const staleAttempt = state.attempt ?? 0;
   const resumedAttempt =
     !state.progressKey || state.progressKey === currentProgressKey ? staleAttempt : 0;
-  await updateState(
-    makeState({
-      prNumber,
-      headSha: pr.head.sha,
-      fingerprint,
-      owner: 'none',
-      status: 'idle',
-      trigger: 'stale-automation-incomplete-release',
-      blockers: normalized,
-      attempt: resumedAttempt,
-      updatedAt: now.toISOString(),
-    }),
-  );
-  process.stdout.write(`completed interrupted release pr=#${prNumber} attempt=${resumedAttempt}\n`);
+  // Re-fetch before reacquiring. We intentionally avoid an intermediate idle
+  // PATCH: repository-label creation is the atomic fence, and a competing
+  // acquisition fails before this run can overwrite its state.
+  const interruptedReleaseFacts = await fetchOwnershipFacts();
+  if (interruptedReleaseFacts.repositoryLabelPresent) {
+    throw new Error(`PR #${prNumber} owner label re-created before interrupted-release reacquire`);
+  }
+  if (!sameOwnership(interruptedReleaseFacts.state, state)) {
+    if (!isConvergedElsewhereState(interruptedReleaseFacts.state)) {
+      throw new Error(`PR #${prNumber} ownership changed before interrupted-release reacquire`);
+    }
+    stopIfReleaseConvergedElsewhere(
+      await preserveConvergedElsewhereState(
+        interruptedReleaseFacts.state,
+        false,
+        interruptedReleaseFacts.labels,
+      ),
+    );
+  }
+  process.stdout.write(`resuming interrupted release pr=#${prNumber} attempt=${resumedAttempt}\n`);
   dispatchAttemptBase = resumedAttempt;
 }
 await acquire('automation', null, {

@@ -937,7 +937,10 @@ test('stale-automation-exhausted releases ownership even when incident filing fa
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
     // Loop incident label creation returns a non-422 error to simulate filing failure.
-    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ status: 500, body: { message: 'Internal Server Error' } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      status: 500,
+      body: { message: 'Internal Server Error' },
+    }),
   });
   t.after(() => server.close());
 
@@ -4648,7 +4651,7 @@ test('legacy stale automation incomplete release gets one retry despite its cumu
   });
   if (!assertSuccessfulExit(t, code, stderr, 'legacy interrupted release', true)) return;
 
-  assert.match(stdout, /completed interrupted release pr=#42 attempt=5/);
+  assert.match(stdout, /resuming interrupted release pr=#42 attempt=5/);
   assert.match(stdout, /assigned copilot pr=#42/);
 
   const finalState = parseStateComment(stateComment.body);
@@ -4658,6 +4661,445 @@ test('legacy stale automation incomplete release gets one retry despite its cumu
     finalState?.attempt,
     6,
     'the one compatible retry must preserve the legacy cumulative attempt count',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Thread PRRT_kwDOSvo2Ms6R14jx regressions: ownership fence + durable resume
+// ---------------------------------------------------------------------------
+
+test('interrupted-release live fence fails closed when label re-created before reacquire', async (t) => {
+  // Regression: staleOwningState=true (automation/active, label absent at startup).
+  // Between startup and the interrupted-release idle PATCH a concurrent run
+  // re-creates the label. The live fence must detect this and fail closed before
+  // the direct reacquire can overwrite the concurrent run's active state.
+  const failedCheck = {
+    id: 10,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/10`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const staleAt = new Date(Date.now() - 5000).toISOString();
+  const staleAutomationState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers,
+    attempt: 1,
+    progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+    progressAt: staleAt,
+    updatedAt: staleAt,
+  });
+  const stateComment = { id: 8910, body: renderStateComment(staleAutomationState) };
+  let labelEndpointCalls = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [] }, // no owner label attached
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      labelEndpointCalls += 1;
+      // First call (startup): label absent — staleOwningState=true.
+      // Second call onward (fetchOwnershipFacts in interrupted-release fence):
+      // label re-created by a concurrent run — fence must fail closed.
+      return labelEndpointCalls === 1
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return { body: { data: { repository: { suggestedActors: { nodes: [] } } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  assert.notEqual(code, 0, 'must fail closed when label is re-created before reacquire');
+  assert.match(stderr, /owner label re-created before interrupted-release reacquire/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'must not write state when interrupted-release fence detected label re-creation',
+  );
+});
+
+test('interrupted automation release reacquires directly with its attempt budget preserved', async (t) => {
+  // The atomic owner label disappeared while the owning state remained at
+  // attempt=2. Resume directly through acquire() without an intermediate idle
+  // PATCH, preserving the same-key attempt so the dispatch becomes attempt=3.
+  const failedCheck = {
+    id: 11,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/11`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const interruptedReleaseState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers,
+    attempt: 2,
+    progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+    progressAt: new Date(Date.now() - 5000).toISOString(),
+    updatedAt: new Date(Date.now() - 5000).toISOString(),
+  });
+  const stateComment = { id: 8911, body: renderStateComment(interruptedReleaseState) };
+  let repositoryLabelExists = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 9911 },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, 'interrupted-release carry-forward', true)) return;
+
+  assert.match(stdout, /resuming interrupted release pr=#42 attempt=2/);
+  assert.match(stdout, /assigned copilot pr=#42/);
+  assert.equal(
+    mutatingCalls.some((call) => {
+      if (
+        call.method !== 'PATCH' ||
+        call.url !== `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`
+      ) {
+        return false;
+      }
+      return parseStateComment(call.body?.body)?.trigger === 'stale-automation-incomplete-release';
+    }),
+    false,
+    'interrupted release must not write a resumability-breaking idle state',
+  );
+
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState?.owner, 'automation');
+  assert.equal(finalState?.status, 'dispatched');
+  assert.equal(
+    finalState?.attempt,
+    3,
+    'interrupted release must dispatch with attempt=3, not a reset attempt=1',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Thread PRRT_kwDOSvo2Ms6R18LO regressions: !facts.attached TOCTOU
+// ---------------------------------------------------------------------------
+
+test('stale-node 422 !facts.attached + converged state exits clean without writing releasedState', async (t) => {
+  // Regression: the !facts.attached branch must mirror the converged-elsewhere
+  // handling from the !repositoryLabelPresent branch. If another run already
+  // converged the PR to idle/waiting when our fetchOwnershipFacts() runs, we
+  // must NOT overwrite that state by proceeding to write our releasedState.
+  const initialShepherdState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: LEASE_ID,
+    blockers: [],
+    updatedAt: '2026-07-17T14:00:00.000Z',
+  });
+  const stateComment = { id: 8912, body: renderStateComment(initialShepherdState) };
+  let repositoryLabelPresent = true;
+  let pullRequestCalls = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullRequestCalls += 1;
+      // Startup: label attached. fetchOwnershipFacts after 422: label detached.
+      return pullRequestCalls <= 1
+        ? { body: { ...basePr(), labels: [{ name: LABEL }] } }
+        : { body: { ...basePr(), labels: [] } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelPresent
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      // 422 stale-node. Simultaneously, another run wrote the terminal idle
+      // state (this is the converged-elsewhere scenario for !facts.attached).
+      stateComment.body = renderStateComment(
+        makeState({
+          prNumber: PR_NUM,
+          headSha: HEAD_SHA,
+          fingerprint: blockerFingerprint([]),
+          owner: 'none',
+          status: 'idle',
+          trigger: 'concurrent-converge',
+          blockers: [],
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelPresent = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '!attached-converged-elsewhere', true)) return;
+
+  // Must not PATCH the state comment (converged elsewhere).
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    '!facts.attached converged-elsewhere must not overwrite newer idle state',
+  );
+});
+
+test('stale-node 422 absent owner bit waits for the concurrent terminal state before writing', async (t) => {
+  // Regression for Thread PRRT_kwDOSvo2Ms6R18LO: the first refetch sees the
+  // repository owner label already absent while the concurrent releaser's state
+  // PATCH is still in flight. The bounded handoff must refetch, observe the
+  // terminal state, and preserve it instead of writing or reacquiring from the
+  // stale ownership snapshot.
+  const initialShepherdState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: LEASE_ID,
+    blockers: [],
+    updatedAt: '2026-07-17T14:01:00.000Z',
+  });
+  const stateComment = { id: 8913, body: renderStateComment(initialShepherdState) };
+  let repoLabelPresent = true;
+  let pullRequestCalls = 0;
+  let commentCalls = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullRequestCalls += 1;
+      // Startup: label attached. fetchOwnershipFacts: label already detached.
+      return pullRequestCalls <= 1
+        ? { body: { ...basePr(), labels: [{ name: LABEL }] } }
+        : { body: { ...basePr(), labels: [] } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => {
+      commentCalls += 1;
+      if (commentCalls >= 3) {
+        stateComment.body = renderStateComment(
+          makeState({
+            prNumber: PR_NUM,
+            headSha: HEAD_SHA,
+            fingerprint: blockerFingerprint([]),
+            owner: 'none',
+            status: 'idle',
+            trigger: 'concurrent-release',
+            blockers: [],
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+      }
+      return { body: [stateComment] };
+    },
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repoLabelPresent
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      repoLabelPresent = false;
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, 'absent-owner-bit-handoff', true)) return;
+
+  assert.match(stdout, /reason=converged-elsewhere/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'bounded handoff must preserve the delayed concurrent terminal state',
+  );
+});
+
+test('stale-node 422 absent owner bit exits pending when the terminal state does not arrive', async (t) => {
+  const initialShepherdState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: LEASE_ID,
+    blockers: [],
+    updatedAt: '2026-07-17T14:02:00.000Z',
+  });
+  const stateComment = { id: 8914, body: renderStateComment(initialShepherdState) };
+  let repositoryLabelPresent = true;
+  let pullRequestCalls = 0;
+  let commentCalls = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullRequestCalls += 1;
+      return pullRequestCalls === 1
+        ? { body: { ...basePr(), labels: [{ name: LABEL }] } }
+        : { body: { ...basePr(), labels: [] } };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => {
+      commentCalls += 1;
+      return { body: [stateComment] };
+    },
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelPresent
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      repositoryLabelPresent = false;
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, 'absent-owner-bit-pending', true)) return;
+
+  assert.match(stdout, /reason=handoff-pending/);
+  assert.equal(commentCalls, 4, 'bounded handoff should perform exactly two follow-up refetches');
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'pending handoff must not overwrite the in-flight owner state',
   );
 });
 
@@ -4752,7 +5194,7 @@ test('interrupted stale automation release resets the carried attempt when progr
   });
   if (!assertSuccessfulExit(t, code, stderr, 'interrupted release progress reset', true)) return;
 
-  assert.match(stdout, /completed interrupted release pr=#42 attempt=0/);
+  assert.match(stdout, /resuming interrupted release pr=#42 attempt=0/);
   assert.match(stdout, /assigned copilot pr=#42/);
 
   const finalState = parseStateComment(stateComment.body);
