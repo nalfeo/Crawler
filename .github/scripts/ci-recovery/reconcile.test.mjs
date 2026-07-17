@@ -5543,3 +5543,299 @@ test('interrupted stale automation release resets the carried attempt when progr
     'a changed progress key must reset the carried attempt so the new head gets a full retry budget',
   );
 });
+
+// ---------------------------------------------------------------------------
+// Fix A regression: isConvergedElsewhereState must reject null (missing state)
+// ---------------------------------------------------------------------------
+
+test('null fetched state after owner bit disappears fails closed instead of treating as converged', async (t) => {
+  // Regression: isConvergedElsewhereState previously returned true for null,
+  // so a missing state comment (e.g. deleted by concurrent cleanup) after the
+  // owner bit disappeared was silently accepted as convergence and the release
+  // proceeded without a terminal idle/waiting record.  Null state is not
+  // evidence another run converged — fail closed.
+  const initialShepherdState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: LEASE_ID,
+    blockers: [],
+    updatedAt: '2026-07-17T15:00:00.000Z',
+  });
+  const stateComment = { id: 9100, body: renderStateComment(initialShepherdState) };
+  let repositoryLabelPresent = true;
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      // After the 422, simulate the concurrent run deleting the state comment.
+      body: repositoryLabelPresent ? [stateComment] : [],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelPresent
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      // Concurrent cleanup removed the repository label and deleted the state comment.
+      repositoryLabelPresent = false;
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  // Null state is not convergence evidence — must fail closed.
+  assert.notEqual(code, 0, 'must fail closed when state is null after owner bit disappears');
+  assert.match(stderr, /ownership changed during stale-node release/);
+});
+
+// ---------------------------------------------------------------------------
+// Fix B regression: 404 from removePrLabel with expected attachment routes
+// through handoff instead of writing terminal state over concurrent state.
+// ---------------------------------------------------------------------------
+
+test('concurrent PR-label detach (404) during release routes through handoff and preserves concurrent idle state', async (t) => {
+  // Regression: removePrLabel() swallows 404. If a concurrent release already
+  // detached the owner PR label before this run's DELETE, the 404 was silently
+  // accepted as success and the ordinary path continued — writing an outdated
+  // releasedState over the concurrent run's terminal state and potentially
+  // deleting a newly recreated repository fence by name.  When the label was
+  // expected to be attached (hasPrLabel), a 404 must route through handoff.
+  const initialShepherdState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: LEASE_ID,
+    blockers: [],
+    updatedAt: '2026-07-17T15:01:00.000Z',
+  });
+  const stateComment = { id: 9101, body: renderStateComment(initialShepherdState) };
+  let commentCallCount82 = 0;
+  // Concurrent run has already written terminal idle state and removed the repository label.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      // Startup: PR still shows label attached (stale cache before concurrent detach).
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => {
+      commentCallCount82 += 1;
+      if (commentCallCount82 > 1) {
+        // fetchOwnershipFacts (call 2+) sees the concurrent run's already-written idle state.
+        stateComment.body = renderStateComment(
+          makeState({
+            prNumber: PR_NUM,
+            headSha: HEAD_SHA,
+            fingerprint: blockerFingerprint([]),
+            owner: 'none',
+            status: 'idle',
+            trigger: 'concurrent-lease-release',
+            blockers: [],
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+      }
+      return { body: [stateComment] };
+    },
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      // Repository label is already gone (concurrent run removed it).
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      // Concurrent run already detached the PR label — return 404 (swallowed by removePrLabel).
+      status: 404,
+      body: { message: 'Label does not exist' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, 'pr-label-detach-handoff', true)) return;
+
+  // Must exit via converged-elsewhere, not write its own releasedState.
+  assert.match(stdout, /reason=converged-elsewhere/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'must not overwrite the concurrent idle state with releasedState PATCH',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Fix C regression: completeReleaseHandoff converged-elsewhere branch holds
+// the fence through waiting-label cleanup and deletes it last by node ID.
+// ---------------------------------------------------------------------------
+
+test('handoff converged-elsewhere holds fence through waiting-label cleanup before deleting by node ID', async (t) => {
+  // Regression: completeReleaseHandoff dropped the claimed repository fence
+  // (removeRepositoryLabel by name) before calling preserveConvergedElsewhereState,
+  // which removes the WAITING_TRANSITION_LABEL.  A new reconcile could establish
+  // a fresh waiting state in that gap, and this stale run could delete its
+  // durable marker.  The fix calls preserveConvergedElsewhereState first (while
+  // the fence is held) and then deletes the exact fence incarnation by node ID.
+  const initialShepherdState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: LEASE_ID,
+    blockers: [],
+    updatedAt: '2026-07-17T15:02:00.000Z',
+  });
+  const concurrentWaitingState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'none',
+    status: 'waiting',
+    trigger: 'admission-wait',
+    blockers: [],
+    updatedAt: new Date().toISOString(),
+  });
+  const stateComment = { id: 9102, body: renderStateComment(initialShepherdState) };
+  let repoLabelPresent = true;
+  let commentCallCount = 0;
+  let prLabels = [{ name: LABEL }, { name: WAITING_LABEL }, { name: WAITING_TRANSITION_LABEL }];
+  const FENCE_NODE_ID = 'LBL_handoff_fence_9102';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: prLabels },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => {
+      commentCallCount += 1;
+      // On the fifth+ fetch (inside completeReleaseHandoff after claimRepositoryLabelFence),
+      // return the concurrent waiting state to trigger the converged-elsewhere branch.
+      // Earlier calls (startup, fetchOwnershipFacts after 422, settleAbsentOwnerBit loop
+      // iterations 1 and 2) must still return the matching shepherd state so that
+      // settleAbsentOwnerBit returns RELEASE_HANDOFF_PENDING and reaches the fenced path.
+      if (commentCallCount >= 5) {
+        stateComment.body = renderStateComment(concurrentWaitingState);
+      }
+      return { body: [stateComment] };
+    },
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repoLabelPresent
+        ? { body: { name: LABEL, node_id: FENCE_NODE_ID } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      // 422: stale node, kick into handoff path.
+      repoLabelPresent = false;
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: (_url, body) => {
+      // claimRepositoryLabelFence re-creates the repository label.
+      repoLabelPresent = true;
+      return { body: { name: body?.name || LABEL, node_id: FENCE_NODE_ID } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(WAITING_TRANSITION_LABEL)}`]:
+      () => {
+        prLabels = prLabels.filter((l) => l.name !== WAITING_TRANSITION_LABEL);
+        return { body: {} };
+      },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(WAITING_LABEL)}`]:
+      () => {
+        prLabels = prLabels.filter((l) => l.name !== WAITING_LABEL);
+        return { body: {} };
+      },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repoLabelPresent = false;
+      return { body: {} };
+    },
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '').trimStart();
+      if (query.startsWith('mutation') && query.includes('deleteLabel')) {
+        repoLabelPresent = false;
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, 'handoff-converged-elsewhere-fence', true)) return;
+
+  assert.match(stdout, /reason=converged-elsewhere/);
+
+  // WAITING_TRANSITION_LABEL must have been removed (waiting-label cleanup ran).
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url ===
+          `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(WAITING_TRANSITION_LABEL)}`,
+    ),
+    'WAITING_TRANSITION_LABEL must be cleaned up by preserveConvergedElsewhereState',
+  );
+
+  // WAITING_LABEL must NOT have been removed (concurrent durable waiting marker preserved).
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url ===
+          `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(WAITING_LABEL)}`,
+    ),
+    false,
+    'durable WAITING_LABEL must not be removed during handoff converged-elsewhere cleanup',
+  );
+
+  // Fence must have been deleted via GraphQL deleteLabel (by node ID), not by REST name.
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'GRAPHQL_MUTATION' &&
+        String(call.body?.variables?.labelId || '') === FENCE_NODE_ID,
+    ),
+    'fence must be deleted by exact node ID via GraphQL, not by name',
+  );
+
+  // No state comment PATCH (concurrent waiting state preserved).
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'concurrent waiting state must not be overwritten',
+  );
+});

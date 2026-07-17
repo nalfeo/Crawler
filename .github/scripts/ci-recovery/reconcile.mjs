@@ -370,6 +370,7 @@ async function removePrLabel(name, { skipIfMissing = false } = {}) {
   if (skipIfMissing && !(pr.labels || []).some((label) => label.name === name)) return false;
   if (!shouldMutate) return false;
   await assertExpectedMetadataUnchanged('remove-label');
+  let alreadyAbsent = false;
   try {
     await request(
       pat,
@@ -378,9 +379,11 @@ async function removePrLabel(name, { skipIfMissing = false } = {}) {
     );
   } catch (error) {
     if (error.status !== 404) throw error;
+    alreadyAbsent = true;
   }
   pr.labels = (pr.labels || []).filter((label) => label.name !== name);
-  return true;
+  // Return null when the label was already absent (404); true when deleted; false when skipped.
+  return alreadyAbsent ? null : true;
 }
 
 async function ensurePrLabel(name, color, description) {
@@ -430,7 +433,7 @@ async function completeWaitingExit(prepared) {
 }
 
 function isConvergedElsewhereState(candidate) {
-  return !candidate || candidate.owner === 'none' || ['idle', 'waiting'].includes(candidate.status);
+  return candidate?.owner === 'none' && ['idle', 'waiting'].includes(candidate.status);
 }
 
 async function preserveConvergedElsewhereState(
@@ -620,13 +623,18 @@ async function completeReleaseHandoff(
     if (!isConvergedElsewhereState(fencedFacts.state)) {
       throw new Error(`PR #${prNumber} ownership changed during release handoff completion`);
     }
-    await removeRepositoryLabel(labelName);
-    labelExists = false;
-    return preserveConvergedElsewhereState(
+    // Perform waiting-label cleanup while still holding the fence so a new reconcile
+    // cannot establish a fresh waiting state in the gap and have its durable marker
+    // removed by this stale run.  Delete the exact fence incarnation last.
+    const convergedResult = await preserveConvergedElsewhereState(
       fencedFacts.state,
       waitingTransition,
       fencedFacts.labels,
     );
+    // preserveConvergedElsewhereState already set labelExists=false; delete the exact
+    // incarnation we claimed rather than deleting by name to avoid hitting a recreated lock.
+    await removeRepositoryLabelById(ownerLabelNodeId);
+    return convergedResult;
   }
 
   await updateState(releasedState);
@@ -695,7 +703,20 @@ async function release(reason, nextState = null) {
     await assertExpectedMetadataUnchanged('release-label');
     let needsPostReleaseCheck = false;
     try {
-      await removePrLabel(labelName);
+      // Track whether we expected the PR label to be attached before the DELETE.
+      // A 404 on DELETE when the label was present in the cache means a concurrent
+      // run already detached it (lost release race); a 404 when it was absent means
+      // it was never attached (e.g. orphaned repository-label-only case, expected).
+      const labelWasAttached = hasPrLabel(labelName);
+      const removeResult = await removePrLabel(labelName);
+      if (removeResult === null && labelWasAttached) {
+        // 404 with an expected attachment: a concurrent run already detached the
+        // owner label.  Route through handoff rather than continuing the ordinary
+        // path, which would write terminal state and could later delete a newly
+        // recreated repository fence by name.
+        const facts = await fetchOwnershipFacts();
+        return completeReleaseHandoff(facts, ownershipToRelease, waitingTransition, releasedState);
+      }
     } catch (error) {
       if (!isKnownStaleNodeLabelError(error)) throw error;
       let facts = await fetchOwnershipFacts();
