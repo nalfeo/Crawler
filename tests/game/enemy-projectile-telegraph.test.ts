@@ -3,7 +3,7 @@
  *
  * Covers the state machine in `enemyAISystem.ts`'s `tryFireEnemyProjectile()`
  * plus the shared resolver in `core/systems/enemyTelegraph.ts`:
- *  - 0ms (world default and per-mob) is byte-identical legacy behavior.
+ *  - 0ms (world default and per-mob) preserves immediate timing and RNG order.
  *  - Nonzero delay locks the aim vector at telegraph start and holds it
  *    immutable through spawn, even if the player moves during the window.
  *  - Per-mob `telegraphMs` override beats the configured world/production
@@ -24,6 +24,7 @@ import {
 } from '../../src/core/systems/enemyTelegraph.js';
 import { AI_TYPE, enemyAISystem } from '../../src/game/index.js';
 import { ENEMY_PROJECTILE } from '../../src/shared/constants.js';
+import { DEFAULT_GENERATED_VISUAL_WIDTH_FT } from '../../src/shared/generated-assets.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('getEffectiveTelegraphMs resolver', () => {
@@ -50,7 +51,7 @@ describe('getEffectiveTelegraphMs resolver', () => {
     expect(getEffectiveTelegraphMs(world, enemy)).toBe(75);
   });
 
-  it('an explicit per-mob 0 overrides a nonzero world default (mob-level legacy parity)', () => {
+  it('an explicit per-mob 0 overrides a nonzero world default (mob-level immediate fire)', () => {
     const world = createTestWorld();
     world.enemyTelegraphMs = 500;
     const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
@@ -125,7 +126,7 @@ describe('getEffectiveTelegraphMs resolver', () => {
     expect(getEffectiveTelegraphMs(world, enemy)).toBe(ENEMY_PROJECTILE.TELEGRAPH_MS);
   });
 
-  it('an explicit per-mob 0 still overrides a negative world default (0 stays legitimate legacy parity)', () => {
+  it('an explicit per-mob 0 still overrides a negative world default (0 stays a valid immediate override)', () => {
     const world = createTestWorld();
     world.enemyTelegraphMs = -5;
     const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 1, 200, 150, {
@@ -182,8 +183,8 @@ describe('getEffectiveTelegraphMs resolver', () => {
   });
 });
 
-describe('enemy projectile telegraph — 0ms legacy parity', () => {
-  it('fires immediately with world.enemyTelegraphMs = 0, identical to pre-telegraph behavior', () => {
+describe('enemy projectile telegraph — 0ms timing and RNG contract', () => {
+  it('fires immediately from the shooter pivot with world.enemyTelegraphMs = 0', () => {
     const world = createTestWorld();
     world.enemyTelegraphMs = 0;
     world.elapsedMs = 100;
@@ -191,11 +192,16 @@ describe('enemy projectile telegraph — 0ms legacy parity', () => {
 
     spawnPlayer(world, 0, 0);
     const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+    const shooterX = world.stores.position.x[enemy]!;
+    const shooterY = world.stores.position.y[enemy]!;
 
     enemyAISystem(world);
 
     const projectiles = query(world.ecs, [EnemyProjectile, Projectile, Position]);
     expect(projectiles.length).toBe(1);
+    const projectile = projectiles[0] as number;
+    expect(world.stores.position.x[projectile]).toBe(shooterX);
+    expect(world.stores.position.y[projectile]).toBe(shooterY);
     expect(isEnemyProjectileTelegraphActive(world, enemy)).toBe(false);
   });
 
@@ -213,7 +219,7 @@ describe('enemy projectile telegraph — 0ms legacy parity', () => {
     expect(query(world.ecs, [EnemyProjectile]).length).toBe(1);
   });
 
-  it('consumes exactly the same single RNG draw as the legacy path (no extra draws for telegraph bookkeeping)', () => {
+  it('consumes exactly one RNG draw with no extra draws for telegraph bookkeeping', () => {
     const world = createTestWorld();
     world.enemyTelegraphMs = 0;
     world.elapsedMs = 100;
@@ -290,11 +296,24 @@ describe('enemy projectile telegraph — nonzero delay lifecycle', () => {
 
     enemyAISystem(world); // starts telegraph at t=100
     expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
+    const lockedOriginX = world.stores.enemyBehavior.telegraphOriginX[enemy]!;
+    const lockedOriginY = world.stores.enemyBehavior.telegraphOriginY[enemy]!;
+
+    world.stores.position.x[enemy] = 120;
+    world.stores.position.y[enemy] = 40;
+    const displacedX = world.stores.position.x[enemy]!;
+    const displacedY = world.stores.position.y[enemy]!;
 
     world.elapsedMs = 351; // 251ms later, past the 250ms delay
     enemyAISystem(world);
 
-    expect(query(world.ecs, [EnemyProjectile]).length).toBe(1);
+    const projectiles = query(world.ecs, [EnemyProjectile, Position]);
+    expect(projectiles.length).toBe(1);
+    const projectile = projectiles[0] as number;
+    expect(world.stores.position.x[projectile]).toBe(lockedOriginX);
+    expect(world.stores.position.y[projectile]).toBe(lockedOriginY);
+    expect(world.stores.position.x[projectile]).not.toBe(displacedX);
+    expect(world.stores.position.y[projectile]).not.toBe(displacedY);
     expect(isEnemyProjectileTelegraphActive(world, enemy)).toBe(false);
   });
 
@@ -510,5 +529,61 @@ describe('telegraphWasActiveThisFrame sticky render-frame flag', () => {
     const world = createTestWorld();
     const enemy = spawnBehaviorEnemy(world, 0, 0, 10, AI_TYPE.RANGED, 0, 20, 20);
     expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[enemy]).toBe(0);
+  });
+});
+
+describe('weapon anchor — telegraph origin consumers', () => {
+  // NormalizedWeaponAnchor relX/relY are dimensionless fractions multiplied by
+  // DEFAULT_GENERATED_VISUAL_WIDTH_FT (3.2 ft for 64px @ 0.4 scale) in consumers.
+
+  it('startEnemyProjectileTelegraph uses weapon anchor origin when anchor is present (facing right)', () => {
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 5, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+    // Velocity rightward so facing is right.
+    world.stores.velocity.x[enemy] = 1;
+    // Inject a normalized weapon anchor: relX=0.1, relY=-0.05, right-art.
+    world.entityWeaponAnchors.set(enemy, { relX: 0.1, relY: -0.05, artFacing: 'right' });
+
+    startEnemyProjectileTelegraph(world, enemy, 1, 0);
+
+    // facing right, art=right → needsMirror=false → originX = 5 + 0.1 * 3.2 = 5.32
+    // originY = 10 + (-0.05) * 3.2 = 9.84
+    expect(world.stores.enemyBehavior.telegraphOriginX[enemy]).toBeCloseTo(
+      5 + 0.1 * DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+    );
+    expect(world.stores.enemyBehavior.telegraphOriginY[enemy]).toBeCloseTo(
+      10 + -0.05 * DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+    );
+  });
+
+  it('startEnemyProjectileTelegraph mirrors X when right-art entity faces left', () => {
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 5, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+    // Velocity leftward so facing is left.
+    world.stores.velocity.x[enemy] = -1;
+    // Right-art anchor: relX=0.1 → mirrored to -0.1 → originX = 5 + (-0.1) * 3.2 = 4.68
+    world.entityWeaponAnchors.set(enemy, { relX: 0.1, relY: -0.05, artFacing: 'right' });
+
+    startEnemyProjectileTelegraph(world, enemy, 1, 0);
+
+    expect(world.stores.enemyBehavior.telegraphOriginX[enemy]).toBeCloseTo(
+      5 + -0.1 * DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+    );
+    expect(world.stores.enemyBehavior.telegraphOriginY[enemy]).toBeCloseTo(
+      10 + -0.05 * DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+    );
+  });
+
+  it('startEnemyProjectileTelegraph falls back to entity pivot when no weapon anchor present', () => {
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 5, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+    world.stores.velocity.x[enemy] = 1;
+    // No entry in entityWeaponAnchors and no generatedSpriteRegistry.
+
+    startEnemyProjectileTelegraph(world, enemy, 1, 0);
+
+    // Falls back to entity pivot.
+    expect(world.stores.enemyBehavior.telegraphOriginX[enemy]).toBeCloseTo(5);
+    expect(world.stores.enemyBehavior.telegraphOriginY[enemy]).toBeCloseTo(10);
   });
 });

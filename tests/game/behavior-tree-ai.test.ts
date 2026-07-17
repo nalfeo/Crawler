@@ -49,6 +49,7 @@ import {
   AINpcInteractionAction,
   AIProgressSuppressionSource,
   AIState,
+  type AIStateValue,
 } from '../../src/game/ai/types.js';
 import {
   ENGAGE_GIVEUP_FRAMES,
@@ -129,6 +130,17 @@ function makeSealedRoom(widthTiles: number, heightTiles: number, wallColumnX: nu
     }
   }
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
+}
+
+function suppressProgressGoals(
+  ai: BehaviorTreeAI,
+  untilFrame: number = Number.MAX_SAFE_INTEGER,
+): void {
+  (
+    ai as unknown as {
+      progressGoalSuppressedUntilFrame: number;
+    }
+  ).progressGoalSuppressedUntilFrame = untilFrame;
 }
 
 /**
@@ -1244,6 +1256,7 @@ describe('BehaviorTreeAI', () => {
 
     world.goalFlags.set(denUnlockGoalId(familyId), true);
     const unlockedButInactiveAi = new BehaviorTreeAI({ seed: 57 });
+    suppressProgressGoals(unlockedButInactiveAi);
     unlockedButInactiveAi.poll(createInputState(), world);
     expect(unlockedButInactiveAi.getDecision()).toMatchObject({
       state: AIState.EXPLORE,
@@ -1258,6 +1271,64 @@ describe('BehaviorTreeAI', () => {
       state: AIState.ENGAGE,
       targetEid: bossEid,
     });
+  });
+
+  it('does not navigate to a sealed (unreachable) boss den while progress is suppressed', () => {
+    // Regression: when progress is suppressed and the boss den is sealed behind
+    // a wall, findNearestFloor2Boss falls back to the nearest candidate regardless
+    // of reachability.  createFloor2BossProgressTarget then builds an eid:-1
+    // EXPLORE goal that the watchdog immediately re-selects after the no-path
+    // clear, perpetuating the clear/reselect loop.  The guard must return null
+    // when suppressed and the boss is not reachable.
+    const world = createTestWorld({ seed: 64, floor: 2 });
+    // Wall at tile x=14 (feet x=56) splits the map: player on the left, boss on the right.
+    world.floorMap = makeSealedRoom(40, 20, 14);
+    // spawnPlayer is required for the AI to have a valid subject; the eid is not asserted.
+    spawnPlayer(world, 10, 10);
+    const familyId = asFamilyId('imps');
+    const bossEid = spawnEnemy(world, 66, 10, 100);
+    addComponent(world.ecs, bossEid, FamilyMembership);
+    world.stores.familyMembership.familyId[bossEid] = 0;
+    world.stores.familyMembership.isBoss[bossEid] = 1;
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [familyId],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: true,
+        trashKillsByFamily: new Map([[familyId, 0]]),
+        bossEncounters: new Map([
+          [
+            familyId,
+            {
+              familyId,
+              roomId: -1,
+              doorEids: [],
+              activeGoalId: 'floor2-den-imps-boss-active',
+              started: false,
+              bossEid,
+              defeated: false,
+              displayName: 'Imp Boss',
+              lootTableId: 'boss',
+            },
+          ],
+        ]),
+      },
+    };
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    world.goalFlags.set(denUnlockGoalId(familyId), true);
+
+    const ai = new BehaviorTreeAI({ seed: 64 });
+    suppressProgressGoals(ai);
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    // When suppressed, the unreachable sealed boss must not become an EXPLORE
+    // target — it would immediately re-create the same fixed goal the watchdog
+    // just paused, keeping the no-path clear/reselect loop alive.
+    expect(decision.targetEid).not.toBe(bossEid);
+    expect(decision.reason).not.toContain('boss');
   });
 
   it('selects reachable live trash from the committed Floor 2 family', () => {
@@ -1299,6 +1370,51 @@ describe('BehaviorTreeAI', () => {
     ).findNearestFloor2HuntEnemy(world, familyId, 14, 14, 100, false);
 
     expect(target?.eid).toBe(reachableTrash);
+  });
+
+  it('keeps Floor 2 family enemy progress available while fixed goals are suppressed', () => {
+    const world = createTestWorld({ seed: 61, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    const familyId = world.floorExtendedState!.familyState!.presentFamilies[0]!;
+    const familyIndex = 0;
+    world.floorMap = makeOpenRoom(40, 20);
+    (
+      world.floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [{ familyIndex, centerX: 10, centerY: 10, radius: 8 }];
+    const playerPos = world.floorMap.tileToWorld(10, 10);
+    world.stores.position.x[player] = playerPos.x;
+    world.stores.position.y[player] = playerPos.y;
+    const familyEnemy = spawnEnemy(world, playerPos.x + 8, playerPos.y, 20);
+    addComponent(world.ecs, familyEnemy, FamilyMembership);
+    world.stores.familyMembership.familyId[familyEnemy] = familyIndex;
+    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const quest = world.questLog.get(`floor2-den-${familyId}-unlock`);
+    expect(quest?.status).toBe('active');
+
+    const target = (
+      new BehaviorTreeAI({ seed: 61 }) as unknown as {
+        findFloor2QuestProgressTarget(
+          world: GameWorld,
+          playerEid: number,
+          playerX: number,
+          playerY: number,
+          activeQuest: NonNullable<typeof quest>,
+          progressSuppressed: boolean,
+        ): { eid: number } | null;
+      }
+    ).findFloor2QuestProgressTarget(world, player, playerPos.x, playerPos.y, quest!, true);
+
+    expect(target?.eid).toBe(familyEnemy);
   });
 
   it('selects the nearest unresolved Floor 2 territory before kill-count tiebreaks', () => {
@@ -1571,9 +1687,7 @@ describe('BehaviorTreeAI', () => {
     const ai = new BehaviorTreeAI({ seed: 60 });
     // Simulate the DwellTracker having just fired: suppress all fixed-position
     // progress goals far into the future.
-    (
-      ai as unknown as { progressGoalSuppressedUntilFrame: number }
-    ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+    suppressProgressGoals(ai);
 
     ai.poll(createInputState(), world);
 
@@ -1602,9 +1716,7 @@ describe('BehaviorTreeAI', () => {
     world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
 
     const ai = new BehaviorTreeAI({ seed: 59 });
-    (
-      ai as unknown as { progressGoalSuppressedUntilFrame: number }
-    ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+    suppressProgressGoals(ai);
 
     for (let frame = 0; frame < 8; frame++) {
       world.frameCount = frame;
@@ -1675,6 +1787,111 @@ describe('BehaviorTreeAI', () => {
 
     expect(ai.getDecision().state).toBe(AIState.ENGAGE);
     expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it('persists the ENGAGE no-progress baseline across a flipping nearest-enemy target', () => {
+    // Regression test for a legacy AI deadlock found via headless weapon-sweep
+    // repro (GitHub Actions run 29453994290, bow-seed91 / throwing-knife-seed14 /
+    // throwing-knife-seed18): two enemies sitting at a near-tied distance can
+    // cause the behavior tree's "nearest enemy" target to flip between them
+    // every frame. The watchdog used to reset its no-progress baseline whenever
+    // the tracked eid changed, so a flip-flopping pair reset the counter back to
+    // 0 every single frame and giveup could never fire -- ENGAGE deadlocked
+    // forever against an oscillating RETREAT. The shared no-progress counter must
+    // keep incrementing regardless of eid swaps while per-eid baselines ensure
+    // each target is measured against its own history.
+    const world = createTestWorld({ seed: 5 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.position.x[player] = 0;
+    world.stores.position.y[player] = 0;
+
+    // Both enemies sit at the exact same distance/HP so neither swap ever looks
+    // like progress -- isolates the eid-churn behavior from ordinary distance/HP
+    // improvement, which already correctly resets the baseline.
+    const enemyA = spawnEnemy(world, 20, 0, 20);
+    const enemyB = spawnEnemy(world, 20, 0, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 5 });
+    const internals = ai as unknown as {
+      decision: { state: AIStateValue; targetEid: number | null };
+      engageNoProgressFrames: number;
+      engageBaselinesByEid: Map<number, { bestDistance: number; bestHp: number }>;
+      updateEngageWatchdog: (world: GameWorld, playerX: number, playerY: number) => void;
+    };
+    internals.decision.state = AIState.ENGAGE;
+
+    // Pre-establish baselines for both enemies (first-sight is a neutral
+    // baseline-recording call that does not affect the counter).
+    internals.decision.targetEid = enemyA;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageNoProgressFrames).toBe(0);
+
+    internals.decision.targetEid = enemyB;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageNoProgressFrames).toBe(0);
+
+    // Flip the tracked target every frame for exactly ENGAGE_GIVEUP_FRAMES
+    // frames. Both baselines are now established, so none of these frames show
+    // progress; the shared no-progress counter must keep incrementing regardless
+    // of the eid swap.
+    for (let frame = 0; frame < ENGAGE_GIVEUP_FRAMES; frame += 1) {
+      internals.decision.targetEid = frame % 2 === 0 ? enemyA : enemyB;
+      internals.updateEngageWatchdog(world, 0, 0);
+    }
+    expect(internals.engageNoProgressFrames).toBe(ENGAGE_GIVEUP_FRAMES);
+    expect(internals.decision.targetEid).not.toBeNull();
+
+    // One more no-progress frame must trip giveup.
+    internals.decision.targetEid = enemyB;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.decision.targetEid).toBeNull();
+
+    // Giveup must clear the entire baseline map so the next enemy the BT
+    // retargets starts fresh rather than inheriting a stale bar.
+    expect(internals.engageBaselinesByEid.size).toBe(0);
+  });
+
+  it('resets the ENGAGE progress baseline when the tracked target dies', () => {
+    // Companion regression test for the per-eid baseline design: the death/
+    // despawn branch removes the eid's entry from engageBaselinesByEid so that
+    // the next enemy is measured against its own starting position, not the
+    // tight bar the dead target had established (e.g. killed at 1 ft / 20 HP,
+    // fresh enemy at 30 ft would look like no progress without this reset).
+    const world = createTestWorld({ seed: 6 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.position.x[player] = 0;
+    world.stores.position.y[player] = 0;
+
+    const nearlyDeadEnemy = spawnEnemy(world, 1, 0, 20);
+    const freshEnemy = spawnEnemy(world, 30, 0, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 6 });
+    const internals = ai as unknown as {
+      decision: { state: AIStateValue; targetEid: number | null };
+      engageNoProgressFrames: number;
+      engageBaselinesByEid: Map<number, { bestDistance: number; bestHp: number }>;
+      updateEngageWatchdog: (world: GameWorld, playerX: number, playerY: number) => void;
+    };
+    internals.decision.state = AIState.ENGAGE;
+
+    // First-sight of nearlyDeadEnemy records its baseline (1 ft / 20 HP).
+    internals.decision.targetEid = nearlyDeadEnemy;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageBaselinesByEid.get(nearlyDeadEnemy)?.bestDistance).toBeCloseTo(1, 5);
+    expect(internals.engageBaselinesByEid.get(nearlyDeadEnemy)?.bestHp).toBe(20);
+
+    // Kill it; the death branch removes its entry and resets the counter.
+    world.stores.health.current[nearlyDeadEnemy] = 0;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageBaselinesByEid.has(nearlyDeadEnemy)).toBe(false);
+
+    // Switch to a distant fresh enemy. First-sight establishes its baseline at
+    // 30 ft -- not the dead target's 1 ft bar -- so the next comparison frame
+    // will correctly detect that the fresh enemy is making progress.
+    internals.decision.targetEid = freshEnemy;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageNoProgressFrames).toBe(0);
+    expect(internals.engageBaselinesByEid.get(freshEnemy)?.bestDistance).toBeCloseTo(30, 5);
   });
 
   it('resets NPC threat-clear progress when the nearby-threat gate exits', () => {
@@ -2388,31 +2605,14 @@ describe('BehaviorTreeAI', () => {
     expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
   });
 
-  it('applies the muzzle offset to the telegraphed virtual-projectile dodge, matching the real fire-time spawn point (regression: gpt-5.3-codex + gemini-3.1-pro-preview finding)', () => {
-    // The real shot spawns at `telegraphOrigin + telegraphDir * MUZZLE_OFFSET`
-    // (see enemyAISystem.ts's fireEnemyProjectileFrom), not at the raw locked
-    // origin. If the AI's virtual-projectile dodge math ever regresses back to
-    // using the raw origin, its impact-time estimate drifts by
-    // MUZZLE_OFFSET/projectileSpeed frames. The runtime source of truth for
-    // `projectileSpeed` is `getWeaponDef('fireball')` (src/shared/weaponDefs.ts),
-    // which both the real fire path and this dodge math call — NOT the raw
-    // `src/shared/data/weapons.json` value, which is unused stale data here.
-    // getWeaponDef('fireball').projectileSpeed === 0.5 ft/frame, so the drift
-    // is 1.5ft / 0.5ft-per-frame = 3 frames for the fireball def used here.
-    //
-    // Geometry is tuned so that drift is the ONLY thing separating "candidate
-    // accepted" from "candidate silently skipped" at the dodge horizon gate
-    // (PROJECTILE_DODGE_HORIZON_FRAMES = 90):
-    //   - player sits at x = MUZZLE_OFFSET (1.5), so the FIXED spawn point
-    //     (origin + dir * MUZZLE_OFFSET) lands exactly on the player's x —
-    //     impactFramesAfterSpawn = 0, totalImpactFrames = remainingFrames.
-    //   - remainingFrames = 89.8 (comfortably <= 90 with the fix).
-    //   - WITHOUT the fix, the virtual shot spawns 1.5ft "behind" (at the raw
-    //     origin), adding exactly 3 impact frames -> totalImpactFrames =
-    //     92.8 (> 90) -> the candidate is skipped and dodgeY stays 0.
+  it('uses the raw locked pivot for the telegraphed virtual-projectile dodge, matching the real fire-time spawn point', () => {
+    // The real and virtual shots both spawn at the raw locked origin. Geometry
+    // puts the player directly above that pivot so impactFramesAfterSpawn is 0.
+    // Reintroducing a forward offset would put the projectile past the player
+    // and moving away, causing this threat candidate to be skipped.
     const world = createTestWorld({ seed: 42 });
     world.elapsedMs = 0;
-    spawnPlayer(world, 1.5, 1);
+    spawnPlayer(world, 0, 1);
     const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
@@ -2430,9 +2630,7 @@ describe('BehaviorTreeAI', () => {
     ai.poll(createInputState(), world);
     const dodge = ai.getOpportunisticDebug();
 
-    // Only reachable if the dodge math offsets the spawn point by
-    // MUZZLE_OFFSET before computing impact time; otherwise this candidate is
-    // skipped for exceeding the dodge horizon and dodgeY stays 0.
+    // Only reachable when dodge math uses the same raw pivot as real fire.
     expect(dodge.dodgeY).toBeGreaterThan(2);
   });
 
@@ -2449,9 +2647,9 @@ describe('BehaviorTreeAI', () => {
     // exactly one step; the correct count is
     // ceil(remainingMs / DELTA_MS) - 1.
     //
-    // Geometry mirrors the muzzle-offset test above: the player sits exactly
-    // at the virtual shot's spawn point (origin + dir * MUZZLE_OFFSET) with
-    // zero velocity, so impactFramesAfterSpawn = 0 and
+    // Geometry mirrors the pivot-origin test above: the player sits exactly
+    // at the virtual shot's raw-origin spawn x with zero velocity, so
+    // impactFramesAfterSpawn = 0 and
     // totalImpactFrames = remainingFrames exactly — isolating the horizon
     // gate (PROJECTILE_DODGE_HORIZON_FRAMES = 90) to the remainingFrames
     // formula alone, independent of projected player position.
@@ -2464,7 +2662,7 @@ describe('BehaviorTreeAI', () => {
     //     > 0.
     const world = createTestWorld({ seed: 42 });
     world.elapsedMs = 0;
-    spawnPlayer(world, 1.5, 1);
+    spawnPlayer(world, 0, 1);
     const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
     setActiveWeapon(world, getWeaponDef('sword')!);
 

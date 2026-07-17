@@ -19,7 +19,7 @@ import type { JudgeBudget } from './cost-tracker.js';
 import type { JudgeCache } from './judge-cache.js';
 import { judgeVariant, type JudgeScorecard } from './judge.js';
 import { type PostprocessOptions, postprocessWithTrace } from './postprocess.js';
-import type { ManualAnchorOverride } from './postprocess-overrides.js';
+import type { ManualAnchorOverride, ManualWeaponAnchorOverride } from './postprocess-overrides.js';
 import { scoreCandidate } from './score-candidate.js';
 import type { JudgeSkipReason, RunSummaryEntry } from './run-artifacts.js';
 import type { RunStore } from './store/types.js';
@@ -67,6 +67,12 @@ export interface ProcessVariantArgs {
   readonly options?: PostprocessOptions;
   /** Optional persisted manual anchor override for this variant. */
   readonly manualAnchor?: ManualAnchorOverride | null;
+  /**
+   * Optional weapon-anchor override. When present (and applicable to this
+   * variant) a `NN.anchor.weapon.json` sidecar is written alongside the other
+   * per-variant artifacts so the approval step can read it.
+   */
+  readonly manualWeaponAnchor?: ManualWeaponAnchorOverride | null;
   /** Optional provenance references surfaced in pipeline manifests. */
   readonly traceRefs?: {
     readonly overrideProfilePath?: string | null;
@@ -193,6 +199,35 @@ export async function postprocessScoreAndStoreVariant(
     centerOfGravitySidecarPath = store.resolve(cogKey);
   } else {
     await store.remove(storeKey(`processed/${id}.anchor.cog.json`));
+  }
+
+  // Weapon anchor sidecar: written when the editor has set an explicit weapon
+  // anchor for this variant (or for all variants via applyToAllVariants).
+  // Cleared on reprocess when no weapon anchor is in effect so stale values
+  // never survive a postprocess cycle.
+  const weaponAnchorForVariant =
+    args.manualWeaponAnchor &&
+    (args.manualWeaponAnchor.applyToAllVariants === true ||
+      args.manualWeaponAnchor.variantIndex === index)
+      ? args.manualWeaponAnchor
+      : null;
+  if (weaponAnchorForVariant) {
+    await store.put(
+      storeKey(`processed/${id}.anchor.weapon.json`),
+      Buffer.from(
+        `${JSON.stringify(
+          {
+            x: weaponAnchorForVariant.x,
+            y: weaponAnchorForVariant.y,
+            source: 'manual' as const,
+          },
+          null,
+          2,
+        )}\n`,
+      ),
+    );
+  } else {
+    await store.remove(storeKey(`processed/${id}.anchor.weapon.json`));
   }
 
   function applyManualAnchorToScorecard(

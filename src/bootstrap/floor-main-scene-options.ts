@@ -13,6 +13,8 @@ import {
   spawnerArenaSystem,
   spawnerSystem,
   weaponSystem,
+  capturePlayerCarryover,
+  type ScenarioInitializationOptions,
 } from '../game/index.js';
 import {
   confirmFloor1StairDescend,
@@ -45,12 +47,18 @@ import {
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
+import type { MainGameSceneTransitionOptions } from '../engine/scenes/MainGameScene.js';
+
+export type FloorMainSceneOptions = MainGameSceneTransitionOptions;
 
 /**
  * Create main scene options for a floor.
  * @param floorId - The floor identifier (e.g., "floor1")
  */
-export function createFloorMainSceneOptions(floorId: string = 'floor1') {
+export function createFloorMainSceneOptions(
+  floorId: string = 'floor1',
+  initializationOptions?: ScenarioInitializationOptions,
+): FloorMainSceneOptions {
   const scenario = getScenarioDefinition(floorId);
   const manifest = getFloorManifest(floorId);
   if (!manifest) {
@@ -58,16 +66,25 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
   }
   const floor1Callbacks = floorId === 'floor1';
   return {
+    floorId,
     lightingConfig: { ambient: manifest.lighting.ambient },
-    configureWorld: scenario.configureWorld,
+    configureWorld: (world: GameWorld, playerEid: number) =>
+      scenario.configureWorld(world, playerEid, initializationOptions),
     selectLoadoutOption: scenario.selectLoadoutOption,
     director: scenario.director,
     onStairDescend: floor1Callbacks ? confirmFloor1StairDescend : confirmFloor2StairDescend,
     onFloor1Cleared: floor1Callbacks
-      ? () => {
-          const url = new URL(window.location.href);
-          url.searchParams.set('floor', 'floor2');
-          window.location.replace(url.toString());
+      ? (world: GameWorld, playerEid: number) => {
+          const playerCarryover = capturePlayerCarryover(world, playerEid);
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.set('floor', 'floor2');
+            window.history.replaceState(window.history.state, '', url);
+          }
+          return {
+            ...createFloorMainSceneOptions('floor2', { playerCarryover }),
+            worldSeed: world.seed,
+          };
         }
       : undefined,
     selectSpellFromBossBattle: (world: GameWorld, playerEid: number, spellId: string) => {

@@ -121,8 +121,8 @@ export interface HeadlessRunnerConfig {
   /**
    * Enemy projectile telegraph delay (ms) — the configured default used when
    * a mob has no per-mob `telegraphMs` override (see
-   * core/systems/enemyTelegraph.ts's `getEffectiveTelegraphMs`). 0 reproduces
-   * today's legacy behavior exactly (no cue, no added delay). Production and
+   * core/systems/enemyTelegraph.ts's `getEffectiveTelegraphMs`). 0 disables
+   * the cue and added delay while preserving pivot-based projectile origins. Production and
    * headless CLI both default to 250.
    */
   enemyTelegraphMs?: number;

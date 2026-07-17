@@ -76,15 +76,18 @@ All tests use `createTestWorld` from `tests/helpers/world-factory.ts` (not `crea
 ## Files touched
 
 - `src/labs/combat-arena-lab/arena-data.ts` — new (Phaser-free data module)
-- `src/labs/combat-arena-lab/index.ts` — new (Phaser scene, ~602 lines)
+- `src/labs/combat-arena-lab/index.ts` — new (Phaser scene, ~602 lines); `__arenaReady` flag for E2E probe
 - `src/lab-main.ts` — +1 line
 - `tests/unit/combat-arena-lab-wiring.test.ts` — new (32 tests)
+- `tests/e2e/combat-arena-terrain.test.ts` — new (E2E visual terrain-render guard)
 - `docs/knowledge/handoffs/2026-07-17-combat-arena-lab.md` — this file
 - `docs/knowledge/review-ledgers/2026-07-17-combat-arena-lab.review-ledger.json` — review ledger
 
 ## Verification run
 
 `npm run verify:fast` — all tests passing. Headless integration test confirmed arena pipeline is functional without Phaser.
+
+**Visual/runtime evidence (Rule 9):** `tests/e2e/combat-arena-terrain.test.ts` — boots the real lab in a headless Chromium/WebGL session, waits for `window.__arenaReady` (set at end of `ArenaScene.create()`), screenshots the canvas, and asserts ≥1% non-background pixels in the center region. A missing `buildTerrainLayer` call would produce 0% (solid background). The `__arenaReady` flag is set after `buildTerrainLayer`, `bridge.sync`, and all scene setup, so the test deterministically observes the after-state of the terrain rendering fix.
 
 ## Unresolved issues
 

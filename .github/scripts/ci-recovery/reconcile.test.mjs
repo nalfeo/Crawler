@@ -14,6 +14,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  automationProgressKey,
   blockerFingerprint,
   makeState,
   parseStateComment,
@@ -131,6 +132,10 @@ function gqlNoThreads(reviews = [substantiveCopilotReview()]) {
         pullRequest: {
           id: 'PR_test_id',
           assignees: { nodes: [] },
+          closingIssuesReferences: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [],
+          },
           reviews: reviewConnection(reviews),
           reviewThreads: {
             pageInfo: { hasNextPage: false, endCursor: null },
@@ -174,7 +179,7 @@ function startServer(routes) {
         if (method === 'POST' && pathOnly === '/graphql') {
           const doc = String(parsed?.query ?? '').trimStart();
           if (doc.startsWith('mutation')) {
-            mutatingCalls.push({ method: 'GRAPHQL_MUTATION', url: req.url });
+            mutatingCalls.push({ method: 'GRAPHQL_MUTATION', url: req.url, body: parsed });
           }
         }
         const exactKey = `${method} ${pathOnly}`;
@@ -280,6 +285,7 @@ test('lease-acquire in dry-run writes the owner label and state comment', async 
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: { id: 999, body: '' },
     }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
   });
 
   t.after(() => server.close());
@@ -395,6 +401,805 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
   assert.ok(labelDetach, 'expected DELETE to detach the owner label from the PR');
   assert.ok(labelDelete, 'expected DELETE to remove the owner label from the repo');
   assert.ok(commentUpdate, 'expected PATCH to write idle state into the state comment');
+  assert.ok(
+    mutatingCalls.indexOf(labelDetach) < mutatingCalls.indexOf(labelDelete),
+    'the PR label attachment must be detached before the repository label definition is deleted',
+  );
+});
+
+test('known stale-node 422 refetches ownership, retries detach once, and then converges', async (t) => {
+  const stateComment = shepherdStateComment();
+  let repositoryLabelExists = true;
+  let attached = true;
+  let detachAttempts = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: attached ? [{ name: LABEL }] : [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      detachAttempts += 1;
+      if (detachAttempts === 1) {
+        return {
+          status: 422,
+          body: {
+            message: 'Validation Failed',
+            errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+          },
+        };
+      }
+      attached = false;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const issueDeletes = mutatingCalls.filter(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+  );
+  const repositoryDelete = mutatingCalls.find(
+    (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+  );
+  assert.equal(issueDeletes.length, 2);
+  assert.ok(repositoryDelete);
+  assert.ok(mutatingCalls.indexOf(issueDeletes[1]) < mutatingCalls.indexOf(repositoryDelete));
+});
+
+test('known stale-node 422 fails closed when ownership is a newer incarnation', async (t) => {
+  const stateComment = shepherdStateComment();
+  let detachAttempts = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: { name: LABEL } }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      detachAttempts += 1;
+      if (detachAttempts === 1) {
+        const currentState = parseStateComment(stateComment.body);
+        stateComment.body = renderStateComment(
+          makeState({
+            ...currentState,
+            headSha: 'newer-owner-head',
+            updatedAt: new Date(Date.now() + 1000).toISOString(),
+          }),
+        );
+        return {
+          status: 422,
+          body: {
+            message: 'Validation Failed',
+            errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+          },
+        };
+      }
+      return { body: {} };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.notEqual(code, 0);
+  assert.match(stderr, /ownership changed during stale-node release/);
+  assert.equal(detachAttempts, 1);
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+  );
+});
+
+test('stale-node release fails closed when repository label is absent but state has a newer owner', async (t) => {
+  // Regression for Threads 2/4: the !facts.repositoryLabelPresent branch in
+  // the stale-node handler previously accepted a missing repository label as
+  // sufficient convergence without checking the refetched state incarnation.
+  // If another cleanup already removed the label AND advanced the state to a
+  // newer owner, this path would overwrite the newer state with releasedState.
+  const stateComment = shepherdStateComment();
+  let detachAttempts = 0;
+  let labelExistsCalls = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    // The first call (during normal flow) says the label exists so release()
+    // attempts to remove it. The second call (inside fetchOwnershipFacts after
+    // the 422) says the label is already gone — a concurrent cleanup removed it
+    // and simultaneously advanced the state to a newer owner.
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      labelExistsCalls += 1;
+      if (labelExistsCalls > 1) {
+        return { status: 404, body: { message: 'Not Found' } };
+      }
+      return { body: { name: LABEL } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      detachAttempts += 1;
+      // Advance the comment state to a *new* owner while the 422 is in flight,
+      // simulating the concurrent cleanup that also removed the repo label.
+      const currentState = parseStateComment(stateComment.body);
+      stateComment.body = renderStateComment(
+        makeState({
+          ...currentState,
+          headSha: 'newer-owner-head',
+          updatedAt: new Date(Date.now() + 1000).toISOString(),
+        }),
+      );
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+    GITHUB_TOKEN: TOKEN,
+  });
+
+  // The release must fail closed: the newer state must NOT be overwritten.
+  assert.notEqual(code, 0);
+  assert.match(stderr, /ownership changed during stale-node release/);
+  assert.equal(detachAttempts, 1);
+  // fetchOwnershipFacts() queried the label endpoint (second call returned 404).
+  assert.ok(labelExistsCalls >= 2, 'expected at least 2 label-exists calls');
+  // No state-comment PATCH was attempted.
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+  );
+});
+
+test('unknown issue-label 422 remains fail-closed', async (t) => {
+  const stateComment = shepherdStateComment();
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: { name: LABEL } }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      status: 422,
+      body: { message: 'Validation Failed', errors: [{ resource: 'Issue', code: 'custom' }] },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.notEqual(code, 0);
+  assert.match(stderr, /Validation Failed/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+  );
+});
+
+for (const attempt of [1, 2]) {
+  test(`stale automation attempt ${attempt} ${
+    attempt === 1 ? 'retries once with preserved progress state' : 'releases to idle'
+  }`, async (t) => {
+    const failedCheck = {
+      id: 1,
+      name: 'ci',
+      status: 'completed',
+      conclusion: 'failure',
+      html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+    };
+    const blockers = [
+      {
+        kind: 'ci-failure',
+        id: 'ci',
+        summary: 'ci concluded failure.',
+        url: failedCheck.html_url,
+      },
+    ];
+    const fingerprint = blockerFingerprint(blockers);
+    const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+    const stateComment = {
+      id: 880 + attempt,
+      body: renderStateComment(
+        makeState({
+          prNumber: PR_NUM,
+          headSha: HEAD_SHA,
+          fingerprint,
+          owner: 'automation',
+          status: 'dispatched',
+          blockers,
+          attempt,
+          progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+          progressAt: staleAt,
+          updatedAt: staleAt,
+        }),
+      ),
+    };
+    let repositoryLabelExists = true;
+    const { server, port, mutatingCalls } = await startServer({
+      [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+        body: { ...basePr(), labels: [{ name: LABEL }] },
+      }),
+      [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+        body: [stateComment],
+      }),
+      [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+        repositoryLabelExists
+          ? { body: { name: LABEL } }
+          : { status: 404, body: { message: 'Not Found' } },
+      [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+        body: {},
+      }),
+      [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+        repositoryLabelExists = false;
+        return { body: {} };
+      },
+      [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+        stateComment.body = body.body;
+        return { body: { id: stateComment.id, body: body.body } };
+      },
+      [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+        repositoryLabelExists = true;
+        return { body: { name: LABEL } };
+      },
+      [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+      [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+        body: { id: 990 + attempt },
+      }),
+      [`POST /graphql`]: (_url, body) => {
+        const query = String(body?.query || '');
+        if (query.includes('suggestedActors')) {
+          return {
+            body: {
+              data: {
+                repository: {
+                  suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+                },
+              },
+            },
+          };
+        }
+        if (query.trimStart().startsWith('mutation')) {
+          return {
+            body: {
+              data: {
+                replaceActorsForAssignable: {
+                  assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+                },
+              },
+            },
+          };
+        }
+        return { body: gqlNoThreads() };
+      },
+      [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+        body: { check_runs: [failedCheck] },
+      }),
+      [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+      // Loop incident routes (used only on attempt=2 / stale-automation-exhausted path).
+      [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+      [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
+        body: { number: 999, node_id: 'ISSUE_999' },
+      }),
+    });
+    t.after(() => server.close());
+
+    const { code, stdout, stderr } = await runScript(port, {
+      RECOVERY_OPERATION: 'reconcile',
+      RECOVERY_TRIGGER: 'schedule:sweep',
+      CI_RECOVERY_MODE: 'live',
+    });
+    if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+    const finalState = parseStateComment(stateComment.body);
+    if (attempt === 1) {
+      assert.match(stdout, /assigned copilot pr=#42/);
+      assert.equal(finalState.owner, 'automation');
+      assert.equal(finalState.status, 'dispatched');
+      assert.equal(finalState.attempt, 2);
+      assert.equal(finalState.progressKey, automationProgressKey(HEAD_SHA, fingerprint));
+      assert.ok(
+        mutatingCalls.some(
+          (call) =>
+            call.method === 'POST' &&
+            call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+        ),
+      );
+      // Loop incident must NOT be filed on a normal retry (attempt=1).
+      assert.equal(
+        mutatingCalls.filter(
+          (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+        ).length,
+        0,
+        'must not file a loop incident on a non-exhausted retry',
+      );
+    } else {
+      assert.match(stdout, /released stale automation pr=#42 attempts=2/);
+      assert.equal(finalState.owner, 'none');
+      assert.equal(finalState.status, 'idle');
+      assert.equal(finalState.trigger, 'stale-automation-exhausted');
+      assert.equal(finalState.attempt, 2);
+      assert.equal(
+        mutatingCalls.some(
+          (call) =>
+            call.method === 'POST' &&
+            call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+        ),
+        false,
+      );
+      assert.equal(
+        mutatingCalls.some(
+          (call) =>
+            call.method === 'POST' &&
+            call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+        ),
+        false,
+      );
+      // Loop incident must be filed on exhausted release (attempt=2).
+      assert.match(
+        stdout,
+        /loop-incident pr=#42 issue=#999 action=created/,
+        'must log loop-incident creation on stale-automation-exhausted release',
+      );
+      assert.equal(
+        mutatingCalls.filter(
+          (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+        ).length,
+        1,
+        'must create exactly one loop incident issue on exhausted release',
+      );
+    }
+  });
+}
+
+test('stale-automation-exhausted in dry-run logs would-file message without creating an issue', async (t) => {
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 885,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers,
+        attempt: 2,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /dry-run would-file-loop-incident pr=#42/,
+    'dry-run must log the would-file message',
+  );
+  // No issue mutations in dry-run.
+  assert.equal(
+    mutatingCalls.filter(
+      (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+    ).length,
+    0,
+    'dry-run must not create any loop incident issues',
+  );
+});
+
+test('stale-automation-exhausted releases ownership even when incident filing fails', async (t) => {
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 886,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers,
+        attempt: 2,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { status: 204, body: '' };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      status: 204,
+      body: '',
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // Loop incident label creation returns a non-422 error to simulate filing failure.
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      status: 500,
+      body: { message: 'Internal Server Error' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Release must succeed even though filing failed.
+  assert.match(stdout, /released stale automation pr=#42 attempts=2/);
+  // Filing failure must be logged to stderr.
+  assert.match(stderr, /loop-incident-filing-failed pr=#42/);
+
+  const finalState = parseStateComment(stateComment.body);
+  assert.equal(finalState.owner, 'none');
+  assert.equal(finalState.status, 'idle');
+  assert.equal(finalState.trigger, 'stale-automation-exhausted');
+});
+
+test('interrupted exhausted release completes when staleOwningState carries attempt>=2 with progressKey', async (t) => {
+  // Regression for Thread 9: if the state-comment PATCH fails after
+  // removePrLabel succeeds (label deleted but state not updated), the next
+  // reconcile run sees the old automation state (attempt>=2) with no owner
+  // label (staleOwningState=true).  Before this fix, labelExists=false caused
+  // through to a fresh attempt-1 dispatch, silently resetting the exhausted
+  // retry budget.  Now the staleOwningState handler detects this pattern and
+  // writes the terminal idle state before exiting.
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
+  ]);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  const exhaustedState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
+    attempt: 2,
+    progressKey,
+    progressAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+  });
+  const stateComment = { id: 900, body: renderStateComment(exhaustedState) };
+  let finalStateBody = null;
+  const { server, port, mutatingCalls } = await startServer({
+    // No owner label on the repository (simulates interrupted label delete).
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      // No PR-level label either — the PR-label delete already completed.
+      body: basePr(),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      finalStateBody = body.body;
+      return { body: { id: stateComment.id } };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /completed-interrupted-exhausted-release pr=#42/);
+  assert.ok(finalStateBody !== null, 'state comment must be updated');
+  const written = parseStateComment(finalStateBody);
+  assert.equal(written.owner, 'none');
+  assert.equal(written.status, 'idle');
+  assert.equal(written.trigger, 'stale-automation-exhausted');
+  assert.equal(written.attempt, 2);
+  // Must NOT dispatch a new Copilot task.
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'exhausted release must not dispatch a new agent task',
+  );
+});
+
+for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] of [
+  ['repository label only', true, false],
+  ['PR attachment only', false, true],
+]) {
+  test(`interrupted acquire cleans an orphaned ${name} before invariant checks`, async (t) => {
+    let repositoryLabelExists = repositoryLabelInitiallyExists;
+    const prLabels = [{ name: 'ci-recovery-opt-out' }];
+    if (ownerLabelInitiallyAttached) prLabels.push({ name: LABEL });
+
+    const { server, port, mutatingCalls } = await startServer({
+      [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+        body: { ...basePr(), labels: prLabels },
+      }),
+      [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+      [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+        repositoryLabelExists
+          ? { body: { name: LABEL } }
+          : { status: 404, body: { message: 'Not Found' } },
+      [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () =>
+        ownerLabelInitiallyAttached
+          ? { body: {} }
+          : { status: 404, body: { message: 'Label does not exist' } },
+      [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+        if (!repositoryLabelExists) {
+          return { status: 404, body: { message: 'Not Found' } };
+        }
+        repositoryLabelExists = false;
+        return { body: {} };
+      },
+      [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+        body: { id: 999, body: '' },
+      }),
+      [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    });
+    t.after(() => server.close());
+
+    const { code, stdout, stderr } = await runScript(port, {
+      RECOVERY_OPERATION: 'reconcile',
+      RECOVERY_TRIGGER: 'workflow_dispatch',
+      CI_RECOVERY_MODE: 'live',
+    });
+
+    if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+    assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+    assert.match(stdout, /skip pr=#42 reason=opt-out/);
+    assert.ok(
+      mutatingCalls.some(
+        (call) =>
+          call.method === 'DELETE' &&
+          call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+      ),
+    );
+    assert.ok(
+      mutatingCalls.some(
+        (call) =>
+          call.method === 'POST' &&
+          call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+      ),
+    );
+  });
+}
+
+test('closed PR orphan cleanup releases ownership exactly once', async (t) => {
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed', labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_dispatch',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+  assert.match(stdout, /skip pr=#42 state=closed/);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ).length,
+    1,
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ).length,
+    1,
+  );
+});
+
+test('admission wait after orphan cleanup does not release ownership twice', async (t) => {
+  const stateCommentId = 999;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: stateCommentId, body: '' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateCommentId}`]: () => ({
+      body: { id: stateCommentId, body: '' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+  assert.match(stdout, /wait pr=#42 admission=/);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ).length,
+    1,
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ).length,
+    1,
+  );
 });
 
 test('PR #1208 partial cleanup converges when both owner-label deletes return 404', async (t) => {
@@ -426,6 +1231,7 @@ test('PR #1208 partial cleanup converges when both owner-label deletes return 40
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
   t.after(() => server.close());
 
@@ -489,6 +1295,7 @@ test('partial cleanup independently tolerates a missing PR attachment before del
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
   t.after(() => server.close());
 
@@ -696,6 +1503,7 @@ test('direct state-change event persists convergence before clearing the waiting
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
       body: {},
     }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
   t.after(() => server.close());
 
@@ -824,6 +1632,7 @@ test('failed non-owning waiting cleanup remains schedule-retryable via transitio
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
       body: {},
     }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
   t.after(() => second.server.close());
 
@@ -1063,6 +1872,348 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.deepEqual(mutatingCalls, [], 'reconcile in dry-run must not issue any mutating API calls');
+});
+
+// ---------------------------------------------------------------------------
+// expected_head_sha binding — fail closed on a time-of-check/time-of-use race
+// between the trusted review-wake bridge's validation and this reconciliation.
+// ---------------------------------------------------------------------------
+
+/** Clean-PR route set: reconcile reaches the arm/admission decision. */
+function trustedReviewWakePr(overrides = {}) {
+  return {
+    ...basePr(),
+    base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+    ...overrides,
+  };
+}
+
+function cleanReconcileRoutes() {
+  return {
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: trustedReviewWakePr(),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  };
+}
+
+test('expected_head_sha match: reconcile proceeds normally past the head guard', async (t) => {
+  const { server, port, mutatingCalls } = await startServer(cleanReconcileRoutes());
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /head-sha-moved/, 'a matching head must not trip the guard');
+  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('expected_head_sha mismatch: reconcile fails closed before any mutation, even in live mode', async (t) => {
+  const movedHead = 'b'.repeat(40);
+  // Only the PR fetch should be reached; the guard exits before comments,
+  // labels, checks, or any mutation — so no other route is registered.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: trustedReviewWakePr(),
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: movedHead,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`skip pr=#${PR_NUM} reason=head-sha-moved expected=${movedHead} actual=${HEAD_SHA}`),
+  );
+  assert.deepEqual(mutatingCalls, [], 'a mismatched head must fail closed with no mutation');
+});
+
+test('trusted metadata mismatch does not clean a pre-existing ownership artifact', async (t) => {
+  const movedHead = 'b'.repeat(40);
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...trustedReviewWakePr(),
+        labels: [{ name: LABEL }],
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: movedHead,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /reason=head-sha-moved/);
+  assert.deepEqual(
+    mutatingCalls,
+    [],
+    'orphan cleanup must remain behind the opening trusted-metadata fence',
+  );
+});
+
+test('expected_head_sha without expected_base_ref fails closed before any mutation', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: trustedReviewWakePr(),
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: '',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`skip pr=#${PR_NUM} reason=missing-expected-base-ref expected=non-empty actual=`),
+  );
+  assert.deepEqual(mutatingCalls, [], 'an incomplete trust envelope must not mutate the PR');
+});
+
+test('empty expected_head_sha preserves normal reconcile behavior', async (t) => {
+  const { server, port, mutatingCalls } = await startServer(cleanReconcileRoutes());
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    EXPECTED_HEAD_SHA: '',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /head-sha-moved/, 'an empty expected SHA must not trip the guard');
+  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('same-head retarget before reconcile fails closed before any mutation', async (t) => {
+  const retargetedBase = 'release';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...trustedReviewWakePr(),
+        base: { ...trustedReviewWakePr().base, ref: retargetedBase },
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`skip pr=#${PR_NUM} reason=base-ref-moved expected=main actual=${retargetedBase}`),
+  );
+  assert.deepEqual(mutatingCalls, [], 'a retargeted PR must fail closed with no mutation');
+});
+
+test('moved head after initial fetch fails closed before the first mutation phase', async (t) => {
+  // A synchronize can land after reconcile's opening PR fetch but before the
+  // first write. The per-phase recheck must re-fetch the live head immediately
+  // before mutating and fail closed if it moved, so no state comment, label,
+  // task comment, or Copilot assignment ever touches a head the bridge never
+  // validated. A mergeable:false PR deterministically reaches acquire (the very
+  // first mutation phase) in live mode.
+  const movedHead = 'b'.repeat(40);
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      // Call #1 is the opening fetch (passes the initial guard); call #2 is the
+      // per-phase recheck inside acquire, which must observe the moved head.
+      const head = pullFetches === 1 ? HEAD_SHA : movedHead;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'clean',
+          head: { ...trustedReviewWakePr().head, sha: head },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=head-sha-moved-before-mutation phase=acquire-label expected=${HEAD_SHA} actual=${movedHead}`,
+    ),
+    'a head that moved after the initial fetch must trip the per-phase guard',
+  );
+  assert.equal(pullFetches, 2, 'the per-phase guard must re-fetch the live head before mutating');
+  assert.deepEqual(
+    mutatingCalls,
+    [],
+    'a head moved before the first mutation must fail closed with no mutation',
+  );
+});
+
+test('same-head retarget after initial fetch fails closed before the first mutation phase', async (t) => {
+  const retargetedBase = 'release';
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      const baseRef = pullFetches === 1 ? 'main' : retargetedBase;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'clean',
+          base: { ...trustedReviewWakePr().base, ref: baseRef },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=base-ref-moved-before-mutation phase=acquire-label expected=main actual=${retargetedBase}`,
+    ),
+  );
+  assert.equal(pullFetches, 2);
+  assert.deepEqual(mutatingCalls, [], 'a same-head retarget must fail closed with no mutation');
+});
+
+test('same-head draft conversion fails closed before the first mutation phase', async (t) => {
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'clean',
+          draft: pullFetches > 1,
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=pr-drafted-before-mutation phase=acquire-label expected=false actual=true`,
+    ),
+  );
+  assert.equal(pullFetches, 2);
+  assert.deepEqual(mutatingCalls, [], 'a draft conversion must fail closed with no mutation');
+});
+
+test('empty expected_head_sha makes no extra head re-fetch before mutations', async (t) => {
+  // The per-phase recheck is a no-op when EXPECTED_HEAD_SHA is empty, so normal
+  // manual/router/scheduled/lease flows keep their exact prior API footprint:
+  // exactly one PR fetch and no additional /pulls calls per mutation phase.
+  let pullFetches = 0;
+  const { server, port } = await startServer({
+    ...cleanReconcileRoutes(),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      return { body: basePr() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    EXPECTED_HEAD_SHA: '',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /head-sha-moved/, 'an empty expected SHA must not trip any guard');
+  assert.equal(pullFetches, 1, 'an empty expected SHA must not add per-phase head re-fetches');
 });
 
 test('reconcile treats mergeable_state=behind as non-conflict and does not dispatch recovery', async (t) => {
@@ -1314,6 +2465,7 @@ test('train mode persists a converged state comment before queuing a clean PR wi
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: { id: 999, body: '' },
     }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
     [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: 'merge-train' } }),
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
@@ -1350,6 +2502,40 @@ test('train mode persists a converged state comment before queuing a clean PR wi
   assert.ok(
     commentPostIndex < queueLabelIndex,
     'the state comment must be persisted before the queue label is attached',
+  );
+});
+
+test('repeated clean reconciliation of an already queued PR does not dispatch another fill sweep', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: 'merge-train' }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(stdout, /skip pr=#42 reason=merge-train-owned/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`,
+    ),
+    false,
   );
 });
 
@@ -1453,6 +2639,7 @@ test('synchronize sweep does not immediately recreate a stale merge-train-noop b
     [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
       body: {},
     }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: [] }),
   });
 
   t.after(() => server.close());
@@ -1596,7 +2783,7 @@ test('reconcile still emits merge-conflict blocker for dirty or mergeable=false 
 test('train mode dispatches exactly one conflict-only rebase', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: { ...basePr(), mergeable: false, mergeable_state: 'dirty' },
+      body: { ...trustedReviewWakePr(), mergeable: false, mergeable_state: 'dirty' },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
@@ -1643,6 +2830,62 @@ test('train mode dispatches exactly one conflict-only rebase', async (t) => {
       call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
   );
   assert.equal(dispatch.body.inputs.expected_head_sha, HEAD_SHA);
+  assert.equal(dispatch.body.inputs.expected_base_ref, 'main');
+});
+
+test('trusted metadata drift after conflict state write blocks auto-rebase dispatch', async (t) => {
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      const baseRef = pullFetches >= 3 ? 'release' : 'main';
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'dirty',
+          base: { ...trustedReviewWakePr().base, ref: baseRef },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /reason=base-ref-moved-before-mutation phase=auto-rebase-dispatch expected=main actual=release/,
+  );
+  assert.equal(pullFetches, 3);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    0,
+  );
 });
 
 /** A previously-dispatched conflict-only rebase state comment for HEAD_SHA. */
@@ -2359,6 +3602,115 @@ test('reconcile resolves only ancestor lineage markers from compare status', asy
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+test('live reconcile resolves only a trusted backtick-wrapped current-head marker', async (t) => {
+  const trustedThreadId = 'thread-trusted-backtick';
+  const untrustedThreadId = 'thread-untrusted-backtick';
+  const malformedThreadId = 'thread-malformed-backtick';
+  const headPrefix = HEAD_SHA.slice(0, 7);
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      if (String(parsed?.query || '').includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (
+        String(parsed?.query || '')
+          .trimStart()
+          .startsWith('mutation')
+      ) {
+        return {
+          body: {
+            data: {
+              resolveReviewThread: { thread: { isResolved: true } },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: trustedThreadId,
+            isResolved: false,
+            comments: {
+              nodes: [
+                {
+                  body: `✅ Addressed in \`${headPrefix}\`: fixed`,
+                  authorAssociation: 'OWNER',
+                  author: { login: 'dev' },
+                },
+              ],
+            },
+          },
+          {
+            id: untrustedThreadId,
+            isResolved: false,
+            comments: {
+              nodes: [
+                {
+                  body: `✅ Addressed in \`${headPrefix}\`: untrusted`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'drive-by' },
+                },
+              ],
+            },
+          },
+          {
+            id: malformedThreadId,
+            isResolved: false,
+            comments: {
+              nodes: [
+                {
+                  body: `✅ Addressed in \`${headPrefix}: malformed`,
+                  authorAssociation: 'MEMBER',
+                  author: { login: 'reviewer' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  const resolutionMutations = mutatingCalls.filter(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread'),
+  );
+  assert.equal(resolutionMutations.length, 1);
+  assert.equal(resolutionMutations[0].body.variables.threadId, trustedThreadId);
+  assert.match(stdout, new RegExp(`resolved thread=${trustedThreadId}`));
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${untrustedThreadId}`));
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${malformedThreadId}`));
+});
+
 test('reconcile does not escalate router action-required run when it is the only obstruction', async (t) => {
   // The CI Recovery Router is a non-required infrastructure workflow; its
   // action_required status must remain a skip, not a blocker, preserving the
@@ -2412,4 +3764,224 @@ test('reconcile does not escalate router action-required run when it is the only
     [],
     'router-only action_required must not trigger any mutating calls',
   );
+});
+
+// ---------------------------------------------------------------------------
+// Thread 1 regression: live label re-fetch suppresses duplicate merge-train
+// admission when a concurrent run already attached the merge-train label.
+// ---------------------------------------------------------------------------
+
+test('queue admission re-fetches labels live so a concurrently attached merge-train label suppresses duplicate admission', async (t) => {
+  // Scenario: a clean PR (no existing state, no owner label, no CI failures)
+  // reaches the merge-train admission section. The initial pr.labels snapshot
+  // does NOT contain the merge-train label, but the live GET /issues/{PR}/labels
+  // call returns it (simulating a race where another run already queued the PR).
+  // The fix must read live labels and log "queue unchanged" without attaching
+  // the label a second time.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }), // no merge-train in labels
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    // State comment creation — clean PR needs an initial idle state record
+    // before merge-train admission runs its guard.
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 800 } }),
+    // Thread 1 fix: live label re-fetch finds merge-train already attached by a
+    // concurrent run, preventing duplicate admission.
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({
+      body: [{ name: 'merge-train' }],
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, new RegExp(`queue unchanged merge-train pr=#${PR_NUM}`));
+  assert.ok(
+    !mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+        Array.isArray(call.body?.labels) &&
+        call.body.labels.includes('merge-train'),
+    ),
+    'must not POST merge-train label after live re-fetch reveals it is already attached',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Thread 3 regression: automationStallAction 'progressed' resets attempt
+// counter and uses 'blocker-progressed' release trigger.
+// ---------------------------------------------------------------------------
+
+test('progressed stale action resets attempt counter to zero and uses blocker-progressed release trigger', async (t) => {
+  // Scenario: the PR was dispatched against an older head SHA ('old-head-sha')
+  // with attempt=1. The head has since advanced to HEAD_SHA (e.g. a rebase) but
+  // the blockers fingerprint is unchanged (same CI failure). automationStallAction
+  // must return 'progressed', which triggers the Thread 3 fix:
+  //   - dispatchAttemptBase reset to 0 (so the new head gets a full retry budget)
+  //   - release trigger set to 'blocker-progressed' (not 'stale-automation-retry')
+  //   - final attempt stored as 0+1=1 (not 2, which would exhaust the budget)
+  const PROG_FINGERPRINT = blockerFingerprint([
+    {
+      kind: 'ci-failure',
+      id: 'ci',
+      summary: 'ci concluded failure.',
+      url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+    },
+  ]);
+  const OLD_HEAD = 'old000head000sha000000000000000000000000';
+  const oldProgressKey = automationProgressKey(OLD_HEAD, PROG_FINGERPRINT);
+  const stateComment = {
+    id: 780,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: OLD_HEAD,
+        fingerprint: PROG_FINGERPRINT,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers: [
+          {
+            kind: 'ci-failure',
+            id: 'ci',
+            summary: 'ci concluded failure.',
+            url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+        attempt: 1,
+        progressKey: oldProgressKey,
+        progressAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+      }),
+    ),
+  };
+  const ciFailure = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  let repoLabelDeleted = false;
+  const capturedPatches = [];
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: LABEL }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repoLabelDeleted
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repoLabelDeleted = true;
+      return { body: {} };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      capturedPatches.push(body);
+      return { body: { id: stateComment.id } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 900 } }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [ciFailure] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /assigned copilot pr=#42/);
+
+  // Must use 'blocker-progressed' release trigger, never 'stale-automation-retry'.
+  const releasePatch = capturedPatches.find((patch) => {
+    const parsed = parseStateComment(patch.body);
+    return parsed?.trigger === 'blocker-progressed';
+  });
+  assert.ok(
+    releasePatch,
+    'the release state must carry trigger=blocker-progressed for a progressed head',
+  );
+  assert.ok(
+    !mutatingCalls.some((call) => {
+      if (call.method !== 'PATCH') return false;
+      try {
+        return parseStateComment(call.body?.body)?.trigger === 'stale-automation-retry';
+      } catch {
+        return false;
+      }
+    }),
+    'must not use stale-automation-retry for a progressed head',
+  );
+
+  // Final dispatched state must carry attempt=1 (reset-to-0 then incremented),
+  // not attempt=2 (which would carry forward the stale budget and exhaust it).
+  const finalPatch = capturedPatches.at(-1);
+  assert.ok(finalPatch, 'a final state PATCH must be issued');
+  const finalState = parseStateComment(finalPatch.body);
+  assert.equal(
+    finalState?.attempt,
+    1,
+    'progressed dispatch must reset attempt budget: stored attempt must be 1 (0+1), not 2',
+  );
+  assert.equal(finalState?.trigger, 'workflow_run:completed');
+  assert.equal(finalState?.owner, 'automation');
+  assert.equal(finalState?.status, 'dispatched');
 });

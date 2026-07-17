@@ -156,4 +156,21 @@ describe('spawnFamilyBoss / initializeFloor2Bosses', () => {
 
     expect(query(world.ecs, [EnemyProjectile])).toHaveLength(0);
   });
+
+  it('beetlefolk-boss: wide sprite (6×3 ft) does not inflate collision radius beyond 1.5 ft', () => {
+    // The Broodfather uses a wide (128×64, 6×3 ft) sprite. Without an explicit
+    // collisionRadius the spawner would derive max(6, 3) * 0.5 = 3.0 ft, doubling
+    // melee reach. The archetype must carry collisionRadius: 1.5 and the spawner
+    // must honour it, so the physics footprint matches the 3-ft-tall visual.
+    const archetype = floor2EnemyPack.archetypes.find((a) => a.id === 'beetlefolk-boss');
+    expect(archetype).toBeDefined();
+    expect(archetype!.spriteWidth).toBe(6.0);
+    expect(archetype!.spriteHeight).toBe(3.0);
+    expect(archetype!.collisionRadius).toBe(1.5);
+
+    // Verify the spawner applies the explicit radius.
+    const world = createTestWorld({ floor: 2 });
+    const eid = spawnFamilyBoss(world, 0, 0, 0, asFamilyId('beetlefolk'));
+    expect(world.stores.size.radius[eid]).toBeCloseTo(1.5);
+  });
 });

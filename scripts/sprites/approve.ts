@@ -96,6 +96,14 @@ export interface ManifestEntry {
   readonly anchors: {
     readonly hold: ManifestAnchor | null;
     readonly centerOfGravity: ManifestAnchor | null;
+    /**
+     * Optional weapon-attachment anchor. Set when the editor has explicitly
+     * authored a muzzle / weapon-grip point for this mob sprite. `null` means
+     * the editor cleared a previously set anchor; absent (no key) means it was
+     * never set. Runtime code should treat both absent and `null` as "no anchor
+     * — fall back to ECS pivot."
+     */
+    readonly weapon?: ManifestAnchor | null;
   };
   /** Sensor scorecard summary, e.g. `"7/7"`. */
   readonly sensorScore: string;
@@ -570,9 +578,14 @@ function resolveAnchors(
     readonly y: number;
     readonly source: string;
   } | null,
-): { hold: ManifestAnchor | null; centerOfGravity: ManifestAnchor | null } {
+): {
+  hold: ManifestAnchor | null;
+  centerOfGravity: ManifestAnchor | null;
+  weapon?: ManifestAnchor | null;
+} {
   const sidecarPath = path.join(processedDir, `${paddedIndex}.anchor.json`);
   const centerOfGravitySidecarPath = path.join(processedDir, `${paddedIndex}.anchor.cog.json`);
+  const weaponSidecarPath = path.join(processedDir, `${paddedIndex}.anchor.weapon.json`);
   const hold = resolveSingleAnchor(fs, sidecarPath, candidateHoldAnchor, chosenAnchor);
   const centerOfGravity = resolveSingleAnchor(
     fs,
@@ -580,7 +593,8 @@ function resolveAnchors(
     candidateCenterOfGravityAnchor,
     chosenCenterOfGravityAnchor,
   );
-  return { hold, centerOfGravity };
+  const weapon = resolveWeaponAnchorSidecar(fs, weaponSidecarPath);
+  return { hold, centerOfGravity, ...(weapon !== undefined ? { weapon } : {}) };
 }
 
 function resolveSingleAnchor(
@@ -632,6 +646,49 @@ function resolveSingleAnchor(
   // Derive-mode + derivation failed for this variant. The engine should
   // fall back to brief default at load time; nothing useful to record here.
   return null;
+}
+
+/**
+ * Read the weapon-anchor sidecar (`NN.anchor.weapon.json`) written by the
+ * editor's weapon-anchor flow. Returns the anchor when the file is present and
+ * valid, `null` when the file explicitly records a cleared anchor, and
+ * `undefined` when the file is absent (= anchor was never authored).
+ *
+ * @returns `ManifestAnchor` when an explicit anchor is present and valid;
+ *   `null` when the file contains `{ cleared: true }` (intentional removal);
+ *   `undefined` when the file is absent (anchor was never set).
+ */
+function resolveWeaponAnchorSidecar(
+  fs: ApproveFs,
+  sidecarPath: string,
+): ManifestAnchor | null | undefined {
+  if (!fs.existsSync(sidecarPath)) {
+    return undefined;
+  }
+  try {
+    const raw = JSON.parse(fs.readFileSync(sidecarPath, 'utf8')) as {
+      x?: unknown;
+      y?: unknown;
+      source?: unknown;
+      cleared?: unknown;
+    };
+    // An explicit `{ cleared: true }` marker means the editor cleared a
+    // previously authored anchor — preserve null in the manifest so callers
+    // know it was intentionally removed.
+    if (raw.cleared === true) {
+      return null;
+    }
+    if (typeof raw.x === 'number' && typeof raw.y === 'number') {
+      const source =
+        raw.source === 'manual' || raw.source === 'derived' || raw.source === 'brief'
+          ? raw.source
+          : 'manual';
+      return { x: raw.x, y: raw.y, source };
+    }
+  } catch {
+    // Corrupt sidecar must not block approval.
+  }
+  return undefined;
 }
 
 function padIndex(index: number): string {

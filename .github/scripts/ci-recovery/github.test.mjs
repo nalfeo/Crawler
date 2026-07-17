@@ -5,6 +5,7 @@ import test from 'node:test';
 import { listReviewThreads } from './github.mjs';
 
 const MODULE_URL = new URL('./github.mjs', import.meta.url).href;
+let importCounter = 0;
 
 function startServer(handler) {
   return new Promise((resolve) => {
@@ -18,7 +19,8 @@ function startServer(handler) {
 async function importRequestWithApiBase(port) {
   process.env.GITHUB_API_URL = `http://127.0.0.1:${port}`;
   process.env.GITHUB_GRAPHQL_URL = `http://127.0.0.1:${port}/graphql`;
-  return import(`${MODULE_URL}?t=${Date.now()}-${Math.random()}`);
+  importCounter += 1;
+  return import(`${MODULE_URL}?t=${importCounter}`);
 }
 
 test('paginates review threads and review history with independent cursors', async () => {

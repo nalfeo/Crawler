@@ -220,6 +220,9 @@ class CombatArenaScene extends Phaser.Scene {
       this.bridge?.destroy();
       this.bridge = undefined;
     });
+
+    // Signal E2E test harness that create() has fully run and terrain is baked.
+    (window as unknown as Record<string, unknown>).__arenaReady = true;
   }
 
   update(_time: number, delta: number): void {

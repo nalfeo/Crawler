@@ -195,7 +195,7 @@ Options:
                            Multiply hostile Damage values (default: 1)
   --enemy-telegraph-ms <n>
                            Delay (ms) enemy projectiles telegraph before firing;
-                           0 reproduces legacy immediate-fire behavior (default: ${ENEMY_PROJECTILE.TELEGRAPH_MS})
+                           0 disables the cue and fires immediately (default: ${ENEMY_PROJECTILE.TELEGRAPH_MS})
   --floor <id>            Scenario floor id (default: floor1)
   --start-level <n>       Start at player character level N (default: 1, no boost)
   --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)
