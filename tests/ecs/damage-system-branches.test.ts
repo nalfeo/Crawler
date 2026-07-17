@@ -194,7 +194,8 @@ describe('damageSystem hit-gated weapon-skill XP', () => {
 describe('damageSystem archetype-key EID-recycling safety', () => {
   it('attributes a projectile hit to the original shooter archetype even after the shooter EID is recycled', () => {
     const world = createTestWorld();
-    const player = spawnPlayer(world, 0, 0);
+    // Spawn a player as the projectile target (EID not needed explicitly).
+    spawnPlayer(world, 0, 0);
 
     // Spawn an enemy far away (no contact damage), then label it 'bat'.
     const ownerEid = spawnEnemy(world, 100, 100, 10);
