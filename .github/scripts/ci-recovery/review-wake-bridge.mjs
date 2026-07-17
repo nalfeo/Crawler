@@ -97,6 +97,7 @@ export function sourcePrFromRunName(run) {
 
 export function pullRequestMetadataRejection({ pullRequest, run, repository, defaultBranch }) {
   if (normalize(pullRequest?.state) !== 'open') return 'not-open';
+  if (pullRequest?.draft !== false) return 'pr-drafted';
   if (trimRef(pullRequest?.base?.ref) !== trimRef(defaultBranch)) return 'wrong-base';
   if (normalize(pullRequest?.base?.repo?.full_name) !== normalize(repository)) {
     return 'base-repository';

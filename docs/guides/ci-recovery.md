@@ -59,6 +59,9 @@ kickoff comment that points Copilot at the normal repo instructions.
   across repositories—reconcile fails closed without that mutation
   (`reason=head-sha-moved` at the opening guard, or
   `reason=head-sha-moved-before-mutation phase=<phase>` at a per-phase recheck).
+  The other trust-envelope diagnostics are `pr-state-moved`, `pr-drafted`,
+  `base-ref-moved`, `base-repository-moved`, and `head-repository-moved`; each
+  also gains the `-before-mutation` suffix during a phase recheck.
   A dispatch that supplies the expected head without its validated base ref also
   fails closed as `missing-expected-base-ref`.
   `enablePullRequestAutoMerge` additionally carries an `expectedHeadOid` fence.

@@ -11,6 +11,7 @@ function fixture() {
   const pullRequest = {
     number: 42,
     state: 'open',
+    draft: false,
     changed_files: 1,
     base: { ref: 'main', repo: { full_name: repository } },
     head: { sha: 'a'.repeat(40), ref: 'feature-branch', repo: { full_name: repository } },
@@ -384,6 +385,7 @@ test('fails closed when GitHub does not provide an immutable merge base', async 
 
 for (const [name, mutate, expected] of [
   ['closed PR', (pullRequest) => (pullRequest.state = 'closed'), 'not-open'],
+  ['draft PR', (pullRequest) => (pullRequest.draft = true), 'pr-drafted'],
   ['non-default base', (pullRequest) => (pullRequest.base.ref = 'release'), 'wrong-base'],
   [
     'different base repository',

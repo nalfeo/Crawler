@@ -39,7 +39,7 @@ ci-policy
 
 - Independent complete-diff review via a separate `gemini-3.1-pro-preview`
   code-review agent: no concerns.
-- Full CI recovery script suite: 147 tests total, 110 passed and 37 known
+- Full CI recovery script suite: 148 tests total, 111 passed and 37 known
   Windows subprocess-shutdown skips.
 - Recovery workflow wiring and router-title Vitest suite: 7/7.
 - `npm run verify:pr-prereqs`
