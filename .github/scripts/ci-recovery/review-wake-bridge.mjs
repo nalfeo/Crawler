@@ -24,6 +24,10 @@ function normalize(value) {
     .toLowerCase();
 }
 
+function trimRef(value) {
+  return String(value ?? '').trim();
+}
+
 function positiveInteger(value) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -84,7 +88,7 @@ export function sourcePrFromRunName(run) {
 
 export function pullRequestMetadataRejection({ pullRequest, run, repository, defaultBranch }) {
   if (normalize(pullRequest?.state) !== 'open') return 'not-open';
-  if (normalize(pullRequest?.base?.ref) !== normalize(defaultBranch)) return 'wrong-base';
+  if (trimRef(pullRequest?.base?.ref) !== trimRef(defaultBranch)) return 'wrong-base';
   if (normalize(pullRequest?.base?.repo?.full_name) !== normalize(repository)) {
     return 'base-repository';
   }
@@ -97,8 +101,9 @@ export function pullRequestMetadataRejection({ pullRequest, run, repository, def
   // Trusted immutable anchor: the candidate's head ref must equal the branch the
   // reviewed run executed on. This rejects an unrelated PR that merely shares
   // run.head_sha on a different branch (run.pull_requests associates PRs by head
-  // SHA *or* branch and is not event-to-PR provenance).
-  if (normalize(pullRequest?.head?.ref) !== normalize(run?.head_branch)) {
+  // SHA *or* branch and is not event-to-PR provenance). Branch names are
+  // case-sensitive in git/GitHub; compare exactly (trim only).
+  if (trimRef(pullRequest?.head?.ref) !== trimRef(run?.head_branch)) {
     return 'head-branch-mismatch';
   }
   return null;

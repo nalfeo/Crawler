@@ -313,6 +313,16 @@ for (const [name, mutate, expected] of [
     'base-repository',
   ],
   ['stale head SHA', (pullRequest) => (pullRequest.head.sha = 'b'.repeat(40)), 'head-sha-mismatch'],
+  [
+    'case-variant base ref (Main vs main)',
+    (pullRequest) => (pullRequest.base.ref = 'Main'),
+    'wrong-base',
+  ],
+  [
+    'case-variant head ref (Feature-Branch vs feature-branch)',
+    (pullRequest) => (pullRequest.head.ref = 'Feature-Branch'),
+    'head-branch-mismatch',
+  ],
 ]) {
   test(`rejects ${name} metadata before reading changed files`, async () => {
     const data = fixture();
