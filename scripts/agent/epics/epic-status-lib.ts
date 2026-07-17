@@ -132,10 +132,11 @@ const nodeSchema = z
       'verification',
     ]),
     persona: z.string().min(1),
-    dependencies: z.array(z.string().regex(NODE_ID_PATTERN)).refine(
-      (arr) => new Set(arr).size === arr.length,
-      { message: 'dependencies must be unique' },
-    ),
+    dependencies: z
+      .array(z.string().regex(NODE_ID_PATTERN))
+      .refine((arr) => new Set(arr).size === arr.length, {
+        message: 'dependencies must be unique',
+      }),
     status: z.enum([
       'blocked',
       'ready',
@@ -163,10 +164,12 @@ const nodeSchema = z
         merged_at: nullableDateTime,
       })
       .strict(),
-    evidence_requirements: z.array(z.string().min(1)).min(1).refine(
-      (arr) => new Set(arr).size === arr.length,
-      { message: 'evidence_requirements must be unique' },
-    ),
+    evidence_requirements: z
+      .array(z.string().min(1))
+      .min(1)
+      .refine((arr) => new Set(arr).size === arr.length, {
+        message: 'evidence_requirements must be unique',
+      }),
     evidence: z.array(evidenceSchema),
     reconciliation: reconciliationSchema,
     superseded_by: z.string().regex(NODE_ID_PATTERN).nullable(),
@@ -239,14 +242,14 @@ const epicStateSchema = z
         mode: z.literal('deterministic-plan-only'),
         parent_title: z.string().min(1),
         child_title_prefix: z.string().min(1),
-        labels: z.array(z.string().min(1)).refine(
-          (arr) => new Set(arr).size === arr.length,
-          { message: 'labels must be unique' },
-        ),
-        late_bound_fields: z.array(z.enum(['parent_issue_number', 'child_issue_number'])).refine(
-          (arr) => new Set(arr).size === arr.length,
-          { message: 'late_bound_fields must be unique' },
-        ),
+        labels: z
+          .array(z.string().min(1))
+          .refine((arr) => new Set(arr).size === arr.length, { message: 'labels must be unique' }),
+        late_bound_fields: z
+          .array(z.enum(['parent_issue_number', 'child_issue_number']))
+          .refine((arr) => new Set(arr).size === arr.length, {
+            message: 'late_bound_fields must be unique',
+          }),
       })
       .strict(),
     release: z
@@ -259,10 +262,12 @@ const epicStateSchema = z
               .object({
                 name: z.string().min(1),
                 default: z.literal(false),
-                validating_nodes: z.array(z.string().regex(/^slice:/)).min(1).refine(
-                  (arr) => new Set(arr).size === arr.length,
-                  { message: 'validating_nodes must be unique' },
-                ),
+                validating_nodes: z
+                  .array(z.string().regex(/^slice:/))
+                  .min(1)
+                  .refine((arr) => new Set(arr).size === arr.length, {
+                    message: 'validating_nodes must be unique',
+                  }),
               })
               .strict(),
           )
