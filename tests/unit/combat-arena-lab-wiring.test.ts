@@ -283,10 +283,7 @@ describe('combat-arena-lab wiring', () => {
     expect(playerEid).toBeGreaterThanOrEqual(0);
 
     // Spawn f1-rats preset around center
-    const centerPt = map.tileToWorld(
-      Math.floor(map.width / 2),
-      Math.floor(map.height / 2),
-    );
+    const centerPt = map.tileToWorld(Math.floor(map.width / 2), Math.floor(map.height / 2));
     const f1RatsPreset = getEnemyPreset('f1-rats');
     const enemyEids = spawnPresetAroundCenter(
       world,
