@@ -59,6 +59,8 @@ const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const nullableSha = z.string().regex(SHA_PATTERN).nullable();
 const GITHUB_ISSUE_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/issues\/[1-9][0-9]*$/;
 const GITHUB_PR_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/pull\/[1-9][0-9]*$/;
+const nonEmptyTrimmedString = z.string().trim().min(1);
+const nullableNonEmptyTrimmedString = nonEmptyTrimmedString.nullable();
 const issueRefSchema = z
   .object({
     number: z.number().int().positive(),
@@ -72,12 +74,39 @@ const prRefSchema = z
     head_sha: z.string().regex(SHA40_PATTERN),
   })
   .strict();
-const stateIssueRefSchema = issueRefSchema.extend({
-  url: z.string().regex(GITHUB_ISSUE_URL),
-});
-const statePrRefSchema = prRefSchema.extend({
-  url: z.string().regex(GITHUB_PR_URL),
-});
+function parseTrailingGithubNumber(url: string): number | null {
+  const trailingSegment = url.split('/').at(-1);
+  if (!trailingSegment) return null;
+  const parsed = Number.parseInt(trailingSegment, 10);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+const stateIssueRefSchema = issueRefSchema
+  .extend({
+    url: z.string().regex(GITHUB_ISSUE_URL),
+  })
+  .superRefine((value, ctx) => {
+    if (parseTrailingGithubNumber(value.url) !== value.number) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['url'],
+        message: 'Issue URL trailing number must match number field',
+      });
+    }
+  });
+const statePrRefSchema = prRefSchema
+  .extend({
+    url: z.string().regex(GITHUB_PR_URL),
+  })
+  .superRefine((value, ctx) => {
+    if (parseTrailingGithubNumber(value.url) !== value.number) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['url'],
+        message: 'PR URL trailing number must match number field',
+      });
+    }
+  });
 const evidenceSchema = z
   .object({
     kind: z.string().min(1),
@@ -89,10 +118,10 @@ const evidenceSchema = z
   .strict();
 const ownershipSchema = z
   .object({
-    claimant: z.string().nullable(),
-    session: z.string().nullable(),
+    claimant: nullableNonEmptyTrimmedString,
+    session: nullableNonEmptyTrimmedString,
     source: z.enum(['none', 'parent-issue-bootstrap', 'child-issue-comment']),
-    scope: z.string().nullable(),
+    scope: nullableNonEmptyTrimmedString,
     claimed_at: nullableDateTime,
     lease_expires_at: nullableDateTime,
     heartbeat_at: nullableDateTime,
@@ -468,13 +497,60 @@ function gitShowContent(repoRoot: string, commit: string, filePath: string): str
 
 function gitCommitExists(repoRoot: string, commit: string): boolean {
   try {
-    execFileSync('git', ['cat-file', '-e', commit], {
-      cwd: repoRoot,
-      stdio: 'ignore',
-    });
-    return true;
+    return (
+      execFileSync('git', ['cat-file', '-t', commit], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() === 'commit'
+    );
   } catch {
     return false;
+  }
+}
+
+function validateEvidenceRecord(
+  repoRoot: string,
+  gitReader: GitReader,
+  node: EpicNode,
+  evidence: EvidenceRecord,
+  result: MutableValidation,
+): void {
+  const canonicalDir = EVIDENCE_CANONICAL_DIRS[evidence.kind];
+  if (canonicalDir && !evidence.path_or_check.startsWith(canonicalDir)) {
+    result.errors.push({
+      code: 'evidence.non-canonical-path',
+      node_id: node.node_id,
+      message: `${node.node_id} ${evidence.kind} evidence must be under ${canonicalDir}`,
+    });
+    return;
+  }
+  if (!isRepoFile(repoRoot, evidence.path_or_check)) {
+    result.errors.push({
+      code: 'evidence.unsafe-path',
+      node_id: node.node_id,
+      message: `${node.node_id} evidence path is outside the repository`,
+    });
+    return;
+  }
+  const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
+  if (content === null) {
+    result.errors.push({
+      code: 'evidence.git-verification-failed',
+      node_id: node.node_id,
+      message:
+        `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ` +
+        `${evidence.path_or_check} (commit or file may not exist)`,
+    });
+    return;
+  }
+  const actualHash = sha256(content);
+  if (actualHash !== evidence.sha256) {
+    result.errors.push({
+      code: 'evidence.hash-drift',
+      node_id: node.node_id,
+      message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
+    });
   }
 }
 
@@ -779,42 +855,10 @@ function validateEvidenceFiles(
         node_id: node.node_id,
         message: `${node.node_id} at ${node.status} requires ${kind} evidence`,
       });
-      continue;
     }
-    const canonicalDir = EVIDENCE_CANONICAL_DIRS[kind];
-    if (canonicalDir && !evidence.path_or_check.startsWith(canonicalDir)) {
-      result.errors.push({
-        code: 'evidence.non-canonical-path',
-        node_id: node.node_id,
-        message: `${node.node_id} ${kind} evidence must be under ${canonicalDir}`,
-      });
-      continue;
-    }
-    if (!isRepoFile(repoRoot, evidence.path_or_check)) {
-      result.errors.push({
-        code: 'evidence.unsafe-path',
-        node_id: node.node_id,
-        message: `${node.node_id} evidence path is outside the repository`,
-      });
-      continue;
-    }
-    const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
-    if (content === null) {
-      result.errors.push({
-        code: 'evidence.git-verification-failed',
-        node_id: node.node_id,
-        message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check} (commit or file may not exist)`,
-      });
-      continue;
-    }
-    const actualHash = sha256(content);
-    if (actualHash !== evidence.sha256) {
-      result.errors.push({
-        code: 'evidence.hash-drift',
-        node_id: node.node_id,
-        message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
-      });
-    }
+  }
+  for (const evidence of node.evidence) {
+    validateEvidenceRecord(repoRoot, gitReader, node, evidence, result);
   }
 }
 
@@ -1426,17 +1470,26 @@ interface ParsedClaim {
   readonly postedAt: string;
 }
 
-function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): ParsedClaim | null {
+function parseTrustedStructuredFields(
+  comment: GithubComment,
+  heading: 'CLAIMED' | 'BLOCKED',
+): Map<string, string> | null {
   if (!['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association)) {
     return null;
   }
   const lines = comment.body.split(/\r?\n/);
-  if (lines[0]?.trim() !== 'CLAIMED') return null;
+  if (lines[0]?.trim() !== heading) return null;
   const fields = new Map<string, string>();
   for (const line of lines.slice(1)) {
     const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
     if (match?.[1] && match[2]) fields.set(match[1], match[2]);
   }
+  return fields;
+}
+
+function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): ParsedClaim | null {
+  const fields = parseTrustedStructuredFields(comment, 'CLAIMED');
+  if (!fields) return null;
   const nodeId = fields.get('node');
   const claimant = fields.get('claimant');
   const session = fields.get('session');
@@ -1469,6 +1522,15 @@ function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): Par
     url: comment.html_url,
     postedAt: claimedAt,
   };
+}
+
+function parseTrustedBlockedNode(comment: GithubComment, expectedNodeId?: string): string | null {
+  const fields = parseTrustedStructuredFields(comment, 'BLOCKED');
+  if (!fields) return null;
+  const nodeId = fields.get('node') ?? expectedNodeId;
+  if (!nodeId) return null;
+  if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
+  return nodeId;
 }
 
 export function auditGithub(
@@ -1536,11 +1598,21 @@ export function auditGithub(
         comments.push(...batch);
         if (batch.length < 100) break;
       }
+      const expectedNodeId = expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
+      const liveClaims = new Map<string, ParsedClaim>();
       for (const comment of comments) {
-        const expectedNodeId = expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
+        const blockedNodeId = parseTrustedBlockedNode(comment, expectedNodeId);
+        if (blockedNodeId) {
+          for (const [claimKey, claim] of liveClaims) {
+            if (claim.nodeId === blockedNodeId) liveClaims.delete(claimKey);
+          }
+          continue;
+        }
         const claim = parseTrustedClaim(comment, expectedNodeId);
-        if (claim && Date.parse(claim.expiresAt) > now.getTime()) issueClaims.push(claim);
+        if (!claim || Date.parse(claim.expiresAt) <= now.getTime()) continue;
+        liveClaims.set(`${claim.nodeId}\u0000${claim.claimant}\u0000${claim.session}`, claim);
       }
+      issueClaims.push(...liveClaims.values());
     } catch (error) {
       errors.push({
         code: 'github.issue-audit',

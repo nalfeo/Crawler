@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -23,6 +25,9 @@ const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
 const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
 const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
 const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
+const CURRENT_TEST_FILE_HASH = createHash('sha256')
+  .update(readFileSync(resolve(REPO_ROOT, 'tests', 'unit', 'agent', 'epic-status.test.ts'), 'utf8'))
+  .digest('hex');
 
 /**
  * A repository-independent GitReader for unit tests: reads evidence files
@@ -49,6 +54,10 @@ function cloneState(): EpicState {
   const state = structuredClone(STATE);
   state.nodes[0]!.reconciliation.drift = [];
   state.reconciliation.drift = [];
+  const a0TestEvidence = state.nodes[0]!.evidence.find(
+    (evidence) => evidence.kind === 'offline-validator-and-focused-tests',
+  );
+  if (a0TestEvidence) a0TestEvidence.sha256 = CURRENT_TEST_FILE_HASH;
   return state;
 }
 
@@ -104,7 +113,7 @@ function validateA0(state: EpicState): void {
     {
       kind: 'offline-validator-and-focused-tests',
       path_or_check: 'tests/unit/agent/epic-status.test.ts',
-      sha256: '76f6cf0816360cc4286fa89a1e810a938b8f0cc7e1a8f0dc3c8029cc4e251183',
+      sha256: CURRENT_TEST_FILE_HASH,
       commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
@@ -238,6 +247,83 @@ describe('Floor 2 equipment epic status', () => {
     state.nodes[0]!.evidence[0]!.sha256 = 'a'.repeat(64);
 
     expect(validate(state).errors.map((error) => error.code)).toContain('evidence.hash-drift');
+  });
+
+  it('rejects whitespace-only active ownership metadata', () => {
+    const state = cloneState();
+    state.nodes[0]!.status = 'claimed';
+    state.nodes[0]!.ownership = {
+      claimant: '   ',
+      session: '\t',
+      source: 'parent-issue-bootstrap',
+      scope: '  ',
+      claimed_at: '2026-07-17T17:00:00.000Z',
+      lease_expires_at: '2026-07-18T17:00:00.000Z',
+      heartbeat_at: '2026-07-17T17:00:00.000Z',
+      base_commit: HANDOFF_COMMIT,
+    };
+
+    expect(validate(state).errors.map((error) => error.code)).toContain('state.schema');
+  });
+
+  it('rejects mismatched issue and PR number/url pairs', () => {
+    const state = cloneState();
+    state.github.parent_issue = {
+      number: 1264,
+      url: 'https://github.com/nalfeo/Crawler/issues/9999',
+    };
+    state.nodes[0]!.github.pr = {
+      number: 1271,
+      url: 'https://github.com/nalfeo/Crawler/pull/8888',
+      head_sha: FULL_COMMIT,
+    };
+
+    const messages = validate(state).errors.map((error) => error.message);
+
+    expect(
+      messages.some((message) => message.includes('Issue URL trailing number must match')),
+    ).toBe(true);
+    expect(messages.some((message) => message.includes('PR URL trailing number must match'))).toBe(
+      true,
+    );
+  });
+
+  it('rejects unverifiable required evidence paths for validated nodes', () => {
+    const state = cloneState();
+    validateA0(state);
+    state.nodes[0]!.evidence[2] = {
+      kind: 'offline-validator-and-focused-tests',
+      path_or_check: 'tests/unit/agent/does-not-exist.test.ts',
+      sha256: CURRENT_TEST_FILE_HASH,
+      commit: LEDGER_COMMIT,
+      recorded_at: '2026-07-17T17:55:00.000Z',
+    };
+
+    expect(validate(state).errors.map((error) => error.code)).toContain(
+      'evidence.git-verification-failed',
+    );
+  });
+
+  it('rejects merge facts that point at a non-commit git object', () => {
+    const state = cloneState();
+    validateA0(state);
+    const treeObject = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    }).trim();
+    state.nodes[0]!.status = 'merged';
+    state.nodes[0]!.merge = {
+      commit: treeObject,
+      merged_at: '2026-07-17T17:50:00.000Z',
+    };
+
+    const result = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain('merge.commit-not-found');
   });
 
   it('renders stable child issue packets with late-bound parent substitution', () => {
@@ -539,6 +625,65 @@ describe('Floor 2 equipment epic status', () => {
     ).toBe(true);
   });
 
+  it('treats a later trusted BLOCKED comment as revoking earlier live claims', () => {
+    const state = cloneState();
+    state.nodes[0]!.status = 'blocked';
+    state.nodes[0]!.ownership = {
+      claimant: null,
+      session: null,
+      source: 'none',
+      scope: null,
+      claimed_at: null,
+      lease_expires_at: null,
+      heartbeat_at: null,
+      base_commit: null,
+    };
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A0',
+                'claimant: released-agent',
+                'session: released-session',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T17:00:00.000Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A0 control plane only',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-200',
+            },
+            {
+              body: ['BLOCKED', 'node: slice:A0', 'reason: waiting on dependency'].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-201',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors.map((error) => error.code)).not.toContain('github.duplicate-live-claims');
+    expect(
+      audit.proposal.operator_actions.some((action) => action.includes('live CLAIMED comment')),
+    ).toBe(false);
+  });
+
   describe('Stacked-work protocol', () => {
     const DEP_HEAD = 'a'.repeat(40);
     const DEP_RESYNC_HEAD = 'b'.repeat(40);
@@ -810,7 +955,7 @@ describe('Floor 2 equipment epic status', () => {
         {
           kind: 'offline-validator-and-focused-tests',
           path_or_check: 'tests/unit/agent/epic-status.test.ts',
-          sha256: '76f6cf0816360cc4286fa89a1e810a938b8f0cc7e1a8f0dc3c8029cc4e251183',
+          sha256: CURRENT_TEST_FILE_HASH,
           commit: LEDGER_COMMIT,
           recorded_at: '2026-07-17T17:55:00.000Z',
         },

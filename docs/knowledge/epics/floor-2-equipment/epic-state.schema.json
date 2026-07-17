@@ -416,16 +416,19 @@
       ],
       "properties": {
         "claimant": {
-          "type": ["string", "null"]
+          "type": ["string", "null"],
+          "minLength": 1
         },
         "session": {
-          "type": ["string", "null"]
+          "type": ["string", "null"],
+          "minLength": 1
         },
         "source": {
           "enum": ["none", "parent-issue-bootstrap", "child-issue-comment"]
         },
         "scope": {
-          "type": ["string", "null"]
+          "type": ["string", "null"],
+          "minLength": 1
         },
         "claimed_at": {
           "$ref": "#/$defs/nullableDateTime"
