@@ -1569,7 +1569,9 @@ function cleanReconcileRoutes() {
     }),
     [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
-      body: { check_runs: [] },
+      body: {
+        check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
   };
@@ -1992,6 +1994,7 @@ test('human-gated balance PR cannot keep merge-train or armed auto-merge before 
     RECOVERY_OPERATION: 'reconcile',
     CI_RECOVERY_MODE: 'live',
     MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
