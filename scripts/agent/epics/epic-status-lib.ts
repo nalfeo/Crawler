@@ -1,0 +1,1296 @@
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { z } from 'zod';
+
+const SHA_PATTERN = /^[0-9a-f]{7,64}$/;
+const SHA40_PATTERN = /^[0-9a-f]{40}$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const NODE_ID_PATTERN = /^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$/;
+const ACTIVE_STATUSES = new Set(['claimed', 'in_progress', 'pr_open']);
+const POST_PR_STATUSES = new Set(['pr_open', 'merged', 'validated']);
+const POST_MERGE_STATUSES = new Set(['merged', 'validated']);
+const TERMINAL_STATUSES = new Set(['cancelled', 'superseded']);
+const PLAN_BEGIN = '<!-- EPIC-CONTRACT:BEGIN -->';
+const PLAN_END = '<!-- EPIC-CONTRACT:END -->';
+
+export const EXPECTED_NODE_IDS = [
+  'slice:A0',
+  'slice:A1',
+  'slice:B1',
+  'slice:B2',
+  'slice:B3',
+  'slice:C1',
+  'slice:C2',
+  'slice:D1',
+  'packet:D2-A',
+  'packet:D2-B',
+  'slice:D2',
+  'packet:D3-A',
+  'packet:D3-B',
+  'slice:D3',
+  'slice:E1',
+  'slice:E2',
+  'packet:E3-A',
+  'packet:E3-B',
+  'packet:E3-C',
+  'slice:E3',
+  'slice:F1',
+  'slice:F2',
+  'slice:F3',
+  'slice:F4',
+  'slice:G1',
+  'packet:G2-A',
+  'packet:G2-B+',
+  'slice:G2',
+  'packet:G3',
+  'slice:G3',
+  'slice:H1',
+  'slice:H2',
+  'slice:H3',
+  'slice:I1',
+  'slice:I2',
+  'slice:I3',
+  'slice:J',
+] as const;
+
+const nullableDateTime = z.string().datetime({ offset: true }).nullable();
+const nullableSha = z.string().regex(SHA_PATTERN).nullable();
+const issueRefSchema = z
+  .object({
+    number: z.number().int().positive(),
+    url: z.string().url(),
+  })
+  .strict();
+const prRefSchema = z
+  .object({
+    number: z.number().int().positive(),
+    url: z.string().url(),
+    head_sha: z.string().regex(SHA40_PATTERN),
+  })
+  .strict();
+const evidenceSchema = z
+  .object({
+    kind: z.string().min(1),
+    path_or_check: z.string().min(1),
+    sha256: z.string().regex(SHA256_PATTERN),
+    commit: z.string().regex(SHA40_PATTERN),
+    recorded_at: z.string().datetime({ offset: true }),
+  })
+  .strict();
+const ownershipSchema = z
+  .object({
+    claimant: z.string().nullable(),
+    session: z.string().nullable(),
+    source: z.enum(['none', 'parent-issue-bootstrap', 'child-issue-comment']),
+    scope: z.string().nullable(),
+    claimed_at: nullableDateTime,
+    lease_expires_at: nullableDateTime,
+    heartbeat_at: nullableDateTime,
+    base_commit: nullableSha,
+  })
+  .strict();
+const reconciliationSchema = z
+  .object({
+    last_audited_at: nullableDateTime,
+    observed_issue_state: z.enum(['open', 'closed']).nullable(),
+    observed_pr_state: z.enum(['OPEN', 'CLOSED', 'MERGED']).nullable(),
+    observed_head_sha: z.string().regex(SHA40_PATTERN).nullable(),
+    observed_merge_commit: z.string().regex(SHA40_PATTERN).nullable(),
+    drift: z.array(z.string()),
+  })
+  .strict();
+const nodeSchema = z
+  .object({
+    node_id: z.string().regex(NODE_ID_PATTERN),
+    display_id: z.string().min(1),
+    kind: z.enum(['slice', 'cloud_packet']),
+    parent_slice: z
+      .string()
+      .regex(/^slice:/)
+      .nullable(),
+    title: z.string().min(1),
+    summary: z.string().min(1),
+    execution_lane: z.enum([
+      'control',
+      'registry',
+      'catalog-balance',
+      'progression',
+      'economy',
+      'accessible-ux',
+      'world-integration',
+      'ai-settlement',
+      'verification',
+    ]),
+    persona: z.string().min(1),
+    dependencies: z.array(z.string().regex(NODE_ID_PATTERN)),
+    status: z.enum([
+      'blocked',
+      'ready',
+      'claimed',
+      'in_progress',
+      'pr_open',
+      'merged',
+      'validated',
+      'cancelled',
+      'superseded',
+    ]),
+    release_requirement: z.enum(['required', 'deferred']),
+    deferred_reason: z.string().nullable(),
+    status_changed_at: z.string().datetime({ offset: true }),
+    github: z
+      .object({
+        issue: issueRefSchema.nullable(),
+        pr: prRefSchema.nullable(),
+      })
+      .strict(),
+    ownership: ownershipSchema,
+    merge: z
+      .object({
+        commit: z.string().regex(SHA40_PATTERN).nullable(),
+        merged_at: nullableDateTime,
+      })
+      .strict(),
+    evidence_requirements: z.array(z.string().min(1)).min(1),
+    evidence: z.array(evidenceSchema),
+    reconciliation: reconciliationSchema,
+    superseded_by: z.string().regex(NODE_ID_PATTERN).nullable(),
+  })
+  .strict();
+
+const epicStateSchema = z
+  .object({
+    $schema: z.literal('./epic-state.schema.json'),
+    schema_version: z.literal('crawler-epic-state/v1'),
+    epic_id: z.literal('floor-2-equipment'),
+    title: z.string().min(1),
+    updated_at: z.string().datetime({ offset: true }),
+    plan: z
+      .object({
+        path: z.literal('docs/knowledge/epics/floor-2-equipment/PLAN.md'),
+        contract_version: z.literal('floor-2-equipment/v1'),
+        contract_sha256: z.string().regex(SHA256_PATTERN),
+      })
+      .strict(),
+    authority: z
+      .object({
+        state_role: z.literal('index-cache'),
+        sole_global_writer: z.literal('Producer'),
+        ordered_sources: z.tuple([
+          z.literal('merged-git-and-pr-facts'),
+          z.literal('deterministic-commit-addressed-evidence'),
+          z.literal('trusted-issue-ownership-and-comments'),
+          z.literal('epic-state-index-cache'),
+        ]),
+      })
+      .strict(),
+    lifecycle: z
+      .object({
+        normal: z.tuple([
+          z.literal('blocked'),
+          z.literal('ready'),
+          z.literal('claimed'),
+          z.literal('in_progress'),
+          z.literal('pr_open'),
+          z.literal('merged'),
+          z.literal('validated'),
+        ]),
+        terminal: z.tuple([z.literal('cancelled'), z.literal('superseded')]),
+      })
+      .strict(),
+    claim_policy: z
+      .object({
+        authority: z.literal('trusted-issue-comments'),
+        bootstrap_node: z.literal('slice:A0'),
+        default_lease_hours: z.literal(24),
+        maximum_without_heartbeat_hours: z.literal(48),
+        protocol_headings: z.tuple([
+          z.literal('CLAIMED'),
+          z.literal('BLOCKED'),
+          z.literal('UNBLOCKED'),
+          z.literal('SCOPE-CHANGE-REQUEST'),
+          z.literal('HANDOFF'),
+        ]),
+      })
+      .strict(),
+    github: z
+      .object({
+        repository: z.literal('nalfeo/Crawler'),
+        parent_issue: issueRefSchema.nullable(),
+      })
+      .strict(),
+    issue_materialization: z
+      .object({
+        mode: z.literal('deterministic-plan-only'),
+        parent_title: z.string().min(1),
+        child_title_prefix: z.string().min(1),
+        labels: z.array(z.string().min(1)),
+        late_bound_fields: z.array(z.enum(['parent_issue_number', 'child_issue_number'])),
+      })
+      .strict(),
+    release: z
+      .object({
+        required_node_status: z.literal('validated'),
+        all_required_nodes: z.literal(true),
+        flags: z.array(
+          z
+            .object({
+              name: z.string().min(1),
+              default: z.literal(false),
+              validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+            })
+            .strict(),
+        ),
+      })
+      .strict(),
+    nodes: z.array(nodeSchema),
+    reconciliation: z
+      .object({
+        mode: z.literal('read-only-proposal'),
+        last_offline_validation_at: nullableDateTime,
+        last_github_audit_at: nullableDateTime,
+        last_reconciled_by: z.string().nullable(),
+        drift: z.array(z.string()),
+      })
+      .strict(),
+  })
+  .strict();
+
+const planContractSchema = z
+  .object({
+    contract_version: z.literal('floor-2-equipment/v1'),
+    hard_gate: z
+      .object({
+        metric: z.literal('representative-build median aggregate DPS ratio'),
+        intervals: z.tuple([z.literal('level-1-to-6'), z.literal('level-6-to-11')]),
+        minimum: z.literal(1.7),
+        maximum: z.literal(2.3),
+        require_each_interval: z.literal(true),
+      })
+      .strict(),
+    rarities: z.tuple([z.literal('common'), z.literal('uncommon'), z.literal('rare')]),
+    deferred_rarities: z.tuple([z.literal('unique')]),
+    registry: z
+      .object({
+        versioned: z.literal(true),
+        generated_instance: z.literal(true),
+        consumers: z.tuple([
+          z.literal('inventory'),
+          z.literal('equip'),
+          z.literal('achievement-rewards'),
+          z.literal('chests'),
+          z.literal('merchant'),
+          z.literal('floor-carryover'),
+        ]),
+      })
+      .strict(),
+    progression: z
+      .object({
+        reward_resolution: z.literal('unlock-time-immutable'),
+        floor_1_equipment_free: z.literal(true),
+        floor_2_achievements: z.literal(30),
+        run_global_achievements: z.literal(6),
+      })
+      .strict(),
+    economy: z
+      .object({
+        boss_chest_rarity_percent: z
+          .object({
+            uncommon: z.literal(85),
+            rare: z.literal(15),
+          })
+          .strict(),
+        quartermaster_guaranteed: z.literal(1),
+        random_non_quartermaster_shops_min: z.literal(1),
+        random_non_quartermaster_shops_max: z.literal(2),
+        shop_rarities: z.tuple([z.literal('common'), z.literal('uncommon')]),
+      })
+      .strict(),
+    catalog: z
+      .object({
+        weapon_count: z.literal(50),
+        other_count: z.literal(20),
+        sprite_ids: z.array(z.string()).length(70),
+      })
+      .strict(),
+    ux: z
+      .object({
+        shared_chest_contract: z.literal(true),
+        keyboard_pointer_touch_parity: z.literal(true),
+        focus_managed: z.literal(true),
+        non_color_rarity_cues: z.literal(true),
+      })
+      .strict(),
+    ai: z
+      .object({
+        real_apis_only: z.literal(true),
+        existing_route_planner_only: z.literal(true),
+        settlement_maintenance_required: z.literal(true),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type EpicState = z.infer<typeof epicStateSchema>;
+export type EpicNode = EpicState['nodes'][number];
+
+export interface Diagnostic {
+  readonly code: string;
+  readonly message: string;
+  readonly node_id?: string;
+}
+
+export interface RepoPatchOperation {
+  readonly op: 'replace' | 'add' | 'remove';
+  readonly path: string;
+  readonly value?: unknown;
+  readonly reason: string;
+}
+
+export interface ReconciliationProposal {
+  readonly repo_patch: ReadonlyArray<RepoPatchOperation>;
+  readonly operator_actions: ReadonlyArray<string>;
+}
+
+export interface ValidationResult {
+  readonly state: EpicState | null;
+  readonly errors: ReadonlyArray<Diagnostic>;
+  readonly warnings: ReadonlyArray<Diagnostic>;
+  readonly blockers: ReadonlyArray<Diagnostic>;
+  readonly ready_queue: ReadonlyArray<string>;
+  readonly release_ready: boolean;
+  readonly proposal: ReconciliationProposal;
+}
+
+export interface ValidationOptions {
+  readonly repoRoot: string;
+  readonly now?: Date;
+  readonly planMarkdown?: string;
+  readonly schemaDocument?: unknown;
+}
+
+interface MutableValidation {
+  errors: Diagnostic[];
+  warnings: Diagnostic[];
+  blockers: Diagnostic[];
+  readyQueue: string[];
+  proposal: {
+    repo_patch: RepoPatchOperation[];
+    operator_actions: string[];
+  };
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function formatZodIssue(issue: z.core.$ZodIssue): string {
+  const path = issue.path.length > 0 ? issue.path.join('.') : '<root>';
+  return `${path}: ${issue.message}`;
+}
+
+export function extractPlanContract(markdown: string): {
+  readonly contract: z.infer<typeof planContractSchema>;
+  readonly sha256: string;
+} {
+  const begin = markdown.indexOf(PLAN_BEGIN);
+  const end = markdown.indexOf(PLAN_END);
+  if (begin < 0 || end < 0 || end <= begin) {
+    throw new Error('PLAN.md is missing the ordered EPIC-CONTRACT markers');
+  }
+  const section = markdown.slice(begin + PLAN_BEGIN.length, end).trim();
+  const match = /^```json\r?\n([\s\S]*?)\r?\n```$/.exec(section);
+  if (!match?.[1]) {
+    throw new Error('EPIC-CONTRACT must contain exactly one fenced JSON object');
+  }
+  const parsed = planContractSchema.parse(JSON.parse(match[1]) as unknown);
+  const ids = parsed.catalog.sprite_ids;
+  if (new Set(ids).size !== ids.length) {
+    throw new Error('EPIC-CONTRACT catalog sprite_ids must be unique');
+  }
+  const weapons = ids.filter((id) => id.startsWith('weapon.'));
+  if (weapons.length !== parsed.catalog.weapon_count) {
+    throw new Error(
+      `EPIC-CONTRACT expected ${parsed.catalog.weapon_count} weapon IDs, found ${weapons.length}`,
+    );
+  }
+  if (ids.length - weapons.length !== parsed.catalog.other_count) {
+    throw new Error(
+      `EPIC-CONTRACT expected ${parsed.catalog.other_count} non-weapon IDs, found ${ids.length - weapons.length}`,
+    );
+  }
+  return {
+    contract: parsed,
+    sha256: sha256(JSON.stringify(parsed)),
+  };
+}
+
+function validateCommittedSchema(schemaDocument: unknown, result: MutableValidation): void {
+  const schema = z
+    .object({
+      $schema: z.literal('https://json-schema.org/draft/2020-12/schema'),
+      $id: z.string().url(),
+      properties: z
+        .object({
+          schema_version: z.object({ const: z.literal('crawler-epic-state/v1') }),
+          epic_id: z.object({ const: z.literal('floor-2-equipment') }),
+        })
+        .passthrough(),
+      $defs: z
+        .object({
+          node: z.object({ type: z.literal('object') }).passthrough(),
+        })
+        .passthrough(),
+    })
+    .passthrough()
+    .safeParse(schemaDocument);
+  if (!schema.success) {
+    result.errors.push({
+      code: 'schema.invalid',
+      message: schema.error.issues.map(formatZodIssue).join('; '),
+    });
+  }
+}
+
+function isDependencySatisfied(
+  dependency: EpicNode,
+  nodesById: ReadonlyMap<string, EpicNode>,
+): boolean {
+  if (dependency.status === 'validated') return true;
+  if (dependency.status !== 'superseded' || !dependency.superseded_by) return false;
+  return nodesById.get(dependency.superseded_by)?.status === 'validated';
+}
+
+function hasIssueAuthority(state: EpicState, node: EpicNode): boolean {
+  if (node.github.issue) return true;
+  return node.node_id === state.claim_policy.bootstrap_node && state.github.parent_issue !== null;
+}
+
+function dependenciesSatisfied(node: EpicNode, nodesById: ReadonlyMap<string, EpicNode>): boolean {
+  return node.dependencies.every((id) => {
+    const dependency = nodesById.get(id);
+    return dependency ? isDependencySatisfied(dependency, nodesById) : false;
+  });
+}
+
+function computeReady(
+  state: EpicState,
+  node: EpicNode,
+  nodesById: ReadonlyMap<string, EpicNode>,
+): boolean {
+  return (
+    node.release_requirement === 'required' &&
+    !TERMINAL_STATUSES.has(node.status) &&
+    !POST_PR_STATUSES.has(node.status) &&
+    !ACTIVE_STATUSES.has(node.status) &&
+    dependenciesSatisfied(node, nodesById) &&
+    hasIssueAuthority(state, node)
+  );
+}
+
+function validateDag(
+  state: EpicState,
+  nodesById: ReadonlyMap<string, EpicNode>,
+  result: MutableValidation,
+): void {
+  const expected = new Set<string>(EXPECTED_NODE_IDS);
+  const actual = new Set<string>();
+  for (const node of state.nodes) {
+    if (actual.has(node.node_id)) {
+      result.errors.push({
+        code: 'dag.duplicate-node',
+        node_id: node.node_id,
+        message: `Duplicate node_id ${node.node_id}`,
+      });
+    }
+    actual.add(node.node_id);
+    if (!expected.has(node.node_id)) {
+      result.errors.push({
+        code: 'dag.unexpected-node',
+        node_id: node.node_id,
+        message: `Unexpected node ${node.node_id}`,
+      });
+    }
+    if (new Set(node.dependencies).size !== node.dependencies.length) {
+      result.errors.push({
+        code: 'dag.duplicate-dependency',
+        node_id: node.node_id,
+        message: `${node.node_id} repeats a dependency`,
+      });
+    }
+    for (const dependency of node.dependencies) {
+      if (!nodesById.has(dependency)) {
+        result.errors.push({
+          code: 'dag.missing-dependency',
+          node_id: node.node_id,
+          message: `${node.node_id} depends on missing ${dependency}`,
+        });
+      }
+      if (dependency === node.node_id) {
+        result.errors.push({
+          code: 'dag.self-dependency',
+          node_id: node.node_id,
+          message: `${node.node_id} depends on itself`,
+        });
+      }
+    }
+    if (node.kind === 'cloud_packet') {
+      if (!node.parent_slice || !nodesById.has(node.parent_slice)) {
+        result.errors.push({
+          code: 'dag.packet-parent',
+          node_id: node.node_id,
+          message: `${node.node_id} must name an existing parent slice`,
+        });
+      }
+    } else if (node.parent_slice !== null) {
+      result.errors.push({
+        code: 'dag.slice-parent',
+        node_id: node.node_id,
+        message: `${node.node_id} is a slice and cannot have parent_slice`,
+      });
+    }
+  }
+  for (const missing of expected) {
+    if (!actual.has(missing)) {
+      result.errors.push({
+        code: 'dag.missing-node',
+        node_id: missing,
+        message: `Required node ${missing} is missing`,
+      });
+    }
+  }
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (nodeId: string, trail: string[]): void => {
+    if (visiting.has(nodeId)) {
+      result.errors.push({
+        code: 'dag.cycle',
+        node_id: nodeId,
+        message: `Dependency cycle: ${[...trail, nodeId].join(' -> ')}`,
+      });
+      return;
+    }
+    if (visited.has(nodeId)) return;
+    visiting.add(nodeId);
+    const node = nodesById.get(nodeId);
+    for (const dependency of node?.dependencies ?? []) {
+      if (nodesById.has(dependency)) visit(dependency, [...trail, nodeId]);
+    }
+    visiting.delete(nodeId);
+    visited.add(nodeId);
+  };
+  for (const node of state.nodes) visit(node.node_id, []);
+}
+
+function isRepoFile(repoRoot: string, candidate: string): boolean {
+  if (isAbsolute(candidate)) return false;
+  const root = realpathSync(repoRoot);
+  const absolute = resolve(root, candidate);
+  const rel = relative(root, absolute);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+function validateEvidenceFiles(repoRoot: string, node: EpicNode, result: MutableValidation): void {
+  for (const kind of ['handoff', 'review-ledger']) {
+    const evidence = node.evidence.find((item) => item.kind === kind);
+    if (!evidence) {
+      result.errors.push({
+        code: `evidence.missing-${kind}`,
+        node_id: node.node_id,
+        message: `${node.node_id} at ${node.status} requires ${kind} evidence`,
+      });
+      continue;
+    }
+    if (!isRepoFile(repoRoot, evidence.path_or_check)) {
+      result.errors.push({
+        code: 'evidence.unsafe-path',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence path is outside the repository`,
+      });
+      continue;
+    }
+    const absolute = resolve(repoRoot, evidence.path_or_check);
+    if (!existsSync(absolute)) {
+      result.errors.push({
+        code: 'evidence.missing-file',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence file does not exist: ${evidence.path_or_check}`,
+      });
+      continue;
+    }
+    const actualHash = sha256(readFileSync(absolute, 'utf8'));
+    if (actualHash !== evidence.sha256) {
+      result.errors.push({
+        code: 'evidence.hash-drift',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence hash drifted: ${evidence.path_or_check}`,
+      });
+    }
+  }
+}
+
+function validateNodeLifecycle(
+  state: EpicState,
+  node: EpicNode,
+  nodesById: ReadonlyMap<string, EpicNode>,
+  now: Date,
+  repoRoot: string,
+  result: MutableValidation,
+): void {
+  if (
+    node.release_requirement === 'deferred' &&
+    (!node.deferred_reason || node.deferred_reason.trim().length === 0)
+  ) {
+    result.errors.push({
+      code: 'lifecycle.deferred-reason',
+      node_id: node.node_id,
+      message: `${node.node_id} is deferred without a reason`,
+    });
+  }
+  if (node.release_requirement === 'deferred' && ACTIVE_STATUSES.has(node.status)) {
+    result.errors.push({
+      code: 'lifecycle.deferred-active',
+      node_id: node.node_id,
+      message: `${node.node_id} is deferred but actively claimed`,
+    });
+  }
+  if (node.status === 'superseded') {
+    if (!node.superseded_by || !nodesById.has(node.superseded_by)) {
+      result.errors.push({
+        code: 'lifecycle.superseded-replacement',
+        node_id: node.node_id,
+        message: `${node.node_id} is superseded without a valid replacement`,
+      });
+    }
+  } else if (node.superseded_by !== null) {
+    result.errors.push({
+      code: 'lifecycle.unexpected-replacement',
+      node_id: node.node_id,
+      message: `${node.node_id} names superseded_by but is not superseded`,
+    });
+  }
+
+  const ready = computeReady(state, node, nodesById);
+  if (ready) result.readyQueue.push(node.node_id);
+  if (node.status === 'ready' && !ready) {
+    result.errors.push({
+      code: 'readiness.false-ready',
+      node_id: node.node_id,
+      message: `${node.node_id} is cached ready but does not satisfy readiness`,
+    });
+  }
+  if (node.status === 'blocked' && ready) {
+    result.warnings.push({
+      code: 'readiness.cached-blocked',
+      node_id: node.node_id,
+      message: `${node.node_id} is computed ready but cached blocked`,
+    });
+    result.proposal.repo_patch.push({
+      op: 'replace',
+      path: `/nodes/${state.nodes.indexOf(node)}/status`,
+      value: 'ready',
+      reason: `${node.node_id} satisfies deterministic readiness`,
+    });
+  }
+
+  if (
+    (ACTIVE_STATUSES.has(node.status) || POST_MERGE_STATUSES.has(node.status)) &&
+    !dependenciesSatisfied(node, nodesById)
+  ) {
+    result.errors.push({
+      code: 'readiness.active-lost-dependency',
+      node_id: node.node_id,
+      message: `${node.node_id} is ${node.status} but one or more dependencies are not validated`,
+    });
+    result.proposal.operator_actions.push(
+      `Post BLOCKED for ${node.node_id}, revoke its lease, and invalidate downstream evidence.`,
+    );
+  }
+
+  const owns = node.ownership;
+  if (ACTIVE_STATUSES.has(node.status)) {
+    const requiredOwnership = [
+      owns.claimant,
+      owns.session,
+      owns.scope,
+      owns.claimed_at,
+      owns.lease_expires_at,
+      owns.heartbeat_at,
+      owns.base_commit,
+    ];
+    if (
+      owns.source === 'none' ||
+      requiredOwnership.some((value) => value === null) ||
+      !hasIssueAuthority(state, node)
+    ) {
+      result.errors.push({
+        code: 'ownership.incomplete',
+        node_id: node.node_id,
+        message: `${node.node_id} is ${node.status} without complete trusted claim metadata`,
+      });
+    }
+    if (owns.lease_expires_at && Date.parse(owns.lease_expires_at) <= now.getTime()) {
+      result.errors.push({
+        code: 'ownership.stale-claim',
+        node_id: node.node_id,
+        message: `${node.node_id} claim expired at ${owns.lease_expires_at}`,
+      });
+      result.proposal.operator_actions.push(
+        `Verify ${node.node_id}'s claimant, post BLOCKED or a refreshed CLAIMED heartbeat, then update cached ownership.`,
+      );
+    }
+  } else if (
+    owns.source !== 'none' ||
+    [
+      owns.claimant,
+      owns.session,
+      owns.scope,
+      owns.claimed_at,
+      owns.lease_expires_at,
+      owns.heartbeat_at,
+      owns.base_commit,
+    ].some((value) => value !== null)
+  ) {
+    result.errors.push({
+      code: 'ownership.inactive-claim',
+      node_id: node.node_id,
+      message: `${node.node_id} has ownership metadata while status is ${node.status}`,
+    });
+  }
+
+  if (POST_PR_STATUSES.has(node.status)) {
+    if (!node.github.issue || !node.github.pr) {
+      result.errors.push({
+        code: 'github.pr-open-refs',
+        node_id: node.node_id,
+        message: `${node.node_id} at ${node.status} requires issue and PR refs`,
+      });
+    }
+    validateEvidenceFiles(repoRoot, node, result);
+  }
+  if (POST_MERGE_STATUSES.has(node.status)) {
+    if (!node.merge.commit || !node.merge.merged_at) {
+      result.errors.push({
+        code: 'merge.missing-facts',
+        node_id: node.node_id,
+        message: `${node.node_id} at ${node.status} requires merge commit and timestamp`,
+      });
+    }
+  }
+  if (node.status === 'validated') {
+    const kinds = new Set(node.evidence.map((item) => item.kind));
+    for (const requirement of node.evidence_requirements) {
+      if (!kinds.has(requirement)) {
+        result.errors.push({
+          code: 'evidence.missing-requirement',
+          node_id: node.node_id,
+          message: `${node.node_id} lacks required evidence kind ${requirement}`,
+        });
+      }
+    }
+  }
+  if (
+    node.status !== 'validated' &&
+    node.release_requirement === 'required' &&
+    !TERMINAL_STATUSES.has(node.status)
+  ) {
+    result.blockers.push({
+      code: 'release.node-not-validated',
+      node_id: node.node_id,
+      message: `${node.node_id} is ${node.status}, not validated`,
+    });
+  }
+  if (!hasIssueAuthority(state, node) && node.node_id !== 'slice:A0') {
+    result.blockers.push({
+      code: 'materialization.missing-child-issue',
+      node_id: node.node_id,
+      message: `${node.node_id} has no materialized child issue`,
+    });
+  }
+}
+
+function validateDuplicateOwnership(state: EpicState, result: MutableValidation): void {
+  const ownership = new Map<string, string>();
+  const issues = new Map<number, string>();
+  for (const node of state.nodes) {
+    if (ACTIVE_STATUSES.has(node.status) && node.ownership.claimant && node.ownership.session) {
+      const key = `${node.ownership.claimant}\u0000${node.ownership.session}`;
+      const prior = ownership.get(key);
+      if (prior) {
+        result.errors.push({
+          code: 'ownership.duplicate',
+          node_id: node.node_id,
+          message: `${node.ownership.claimant}/${node.ownership.session} owns both ${prior} and ${node.node_id}`,
+        });
+      } else {
+        ownership.set(key, node.node_id);
+      }
+    }
+    if (node.github.issue) {
+      const prior = issues.get(node.github.issue.number);
+      if (prior) {
+        result.errors.push({
+          code: 'github.duplicate-issue',
+          node_id: node.node_id,
+          message: `Issue #${node.github.issue.number} is assigned to both ${prior} and ${node.node_id}`,
+        });
+      } else {
+        issues.set(node.github.issue.number, node.node_id);
+      }
+    }
+  }
+}
+
+export function validateEpicState(input: unknown, options: ValidationOptions): ValidationResult {
+  const result: MutableValidation = {
+    errors: [],
+    warnings: [],
+    blockers: [],
+    readyQueue: [],
+    proposal: { repo_patch: [], operator_actions: [] },
+  };
+  const parsed = epicStateSchema.safeParse(input);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      result.errors.push({
+        code: 'state.schema',
+        message: formatZodIssue(issue),
+      });
+    }
+    return {
+      state: null,
+      errors: result.errors,
+      warnings: result.warnings,
+      blockers: result.blockers,
+      ready_queue: result.readyQueue,
+      release_ready: false,
+      proposal: result.proposal,
+    };
+  }
+  const state = parsed.data;
+  if (options.schemaDocument !== undefined) {
+    validateCommittedSchema(options.schemaDocument, result);
+  }
+
+  const planMarkdown =
+    options.planMarkdown ?? readFileSync(resolve(options.repoRoot, state.plan.path), 'utf8');
+  try {
+    const contract = extractPlanContract(planMarkdown);
+    if (contract.sha256 !== state.plan.contract_sha256) {
+      result.errors.push({
+        code: 'plan.contract-drift',
+        message: `PLAN contract hash is ${contract.sha256}, state records ${state.plan.contract_sha256}`,
+      });
+      result.proposal.repo_patch.push({
+        op: 'replace',
+        path: '/plan/contract_sha256',
+        value: contract.sha256,
+        reason: 'Synchronize state only after the plan-change protocol is complete',
+      });
+    }
+  } catch (error) {
+    result.errors.push({
+      code: 'plan.contract-invalid',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const nodesById = new Map(state.nodes.map((node) => [node.node_id, node]));
+  validateDag(state, nodesById, result);
+  const now = options.now ?? new Date();
+  for (const node of state.nodes) {
+    validateNodeLifecycle(state, node, nodesById, now, options.repoRoot, result);
+  }
+  validateDuplicateOwnership(state, result);
+
+  for (const flag of state.release.flags) {
+    for (const nodeId of flag.validating_nodes) {
+      if (!nodesById.has(nodeId)) {
+        result.errors.push({
+          code: 'release.flag-node',
+          message: `${flag.name} references missing validating node ${nodeId}`,
+        });
+      }
+    }
+  }
+  result.readyQueue.sort();
+  const releaseReady =
+    result.errors.length === 0 &&
+    state.nodes
+      .filter((node) => node.release_requirement === 'required')
+      .every((node) => node.status === 'validated');
+  return {
+    state,
+    errors: result.errors,
+    warnings: result.warnings,
+    blockers: result.blockers,
+    ready_queue: result.readyQueue,
+    release_ready: releaseReady,
+    proposal: result.proposal,
+  };
+}
+
+export function loadAndValidateEpic(
+  epicId: string,
+  repoRoot: string,
+  now?: Date,
+): ValidationResult {
+  if (epicId !== 'floor-2-equipment') {
+    return {
+      state: null,
+      errors: [
+        {
+          code: 'epic.unknown',
+          message: `Unknown epic ${epicId}; expected floor-2-equipment`,
+        },
+      ],
+      warnings: [],
+      blockers: [],
+      ready_queue: [],
+      release_ready: false,
+      proposal: { repo_patch: [], operator_actions: [] },
+    };
+  }
+  const directory = resolve(repoRoot, 'docs', 'knowledge', 'epics', epicId);
+  const state = JSON.parse(readFileSync(resolve(directory, 'epic-state.json'), 'utf8')) as unknown;
+  const schema = JSON.parse(
+    readFileSync(resolve(directory, 'epic-state.schema.json'), 'utf8'),
+  ) as unknown;
+  return validateEpicState(state, {
+    repoRoot,
+    now,
+    schemaDocument: schema,
+  });
+}
+
+export interface MaterializationPacket {
+  readonly node_id: string;
+  readonly title: string;
+  readonly labels: ReadonlyArray<string>;
+  readonly body: string;
+}
+
+function topoSort(nodes: ReadonlyArray<EpicNode>): EpicNode[] {
+  const byId = new Map(nodes.map((node) => [node.node_id, node]));
+  const visited = new Set<string>();
+  const ordered: EpicNode[] = [];
+  const visit = (node: EpicNode): void => {
+    if (visited.has(node.node_id)) return;
+    visited.add(node.node_id);
+    for (const dependency of node.dependencies) {
+      const dependencyNode = byId.get(dependency);
+      if (dependencyNode) visit(dependencyNode);
+    }
+    ordered.push(node);
+  };
+  for (const node of [...nodes].sort((a, b) => a.node_id.localeCompare(b.node_id))) {
+    visit(node);
+  }
+  return ordered;
+}
+
+export function buildMaterializationPlan(state: EpicState): ReadonlyArray<MaterializationPacket> {
+  const parent = state.github.parent_issue?.number ?? '<parent-issue-number>';
+  return topoSort(state.nodes)
+    .filter((node) => node.node_id !== 'slice:A0' && node.github.issue === null)
+    .map((node) => ({
+      node_id: node.node_id,
+      title: `${state.issue_materialization.child_title_prefix} ${node.display_id}: ${node.title}`,
+      labels: state.issue_materialization.labels,
+      body: [
+        `Parent: #${parent}`,
+        `Node: \`${node.node_id}\``,
+        `Lane: \`${node.execution_lane}\``,
+        `Persona: ${node.persona}`,
+        `Dependencies: ${
+          node.dependencies.length > 0
+            ? node.dependencies.map((dependency) => `\`${dependency}\``).join(', ')
+            : 'none'
+        }`,
+        '',
+        '## Objective',
+        node.summary,
+        '',
+        '## Acceptance evidence',
+        ...node.evidence_requirements.map((requirement) => `- \`${requirement}\``),
+        '',
+        '## Coordination protocol',
+        'Use structured CLAIMED, BLOCKED, UNBLOCKED, SCOPE-CHANGE-REQUEST, and HANDOFF comments.',
+        'Do not edit the global epic state; the Producer is the sole global-state writer.',
+      ].join('\n'),
+    }));
+}
+
+interface GithubIssue {
+  readonly number: number;
+  readonly state: 'open' | 'closed';
+  readonly html_url: string;
+}
+
+interface GithubPull {
+  readonly number: number;
+  readonly state: 'open' | 'closed';
+  readonly merged: boolean;
+  readonly merge_commit_sha: string | null;
+  readonly html_url: string;
+  readonly head: {
+    readonly sha: string;
+  };
+}
+
+interface GithubComment {
+  readonly body: string;
+  readonly author_association: string;
+  readonly html_url: string;
+}
+
+export interface GithubRunner {
+  get(path: string): unknown;
+}
+
+export function createGhRunner(): GithubRunner {
+  return {
+    get(path: string): unknown {
+      const output = execFileSync('gh', ['api', path], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return JSON.parse(output) as unknown;
+    },
+  };
+}
+
+interface ParsedClaim {
+  readonly nodeId: string;
+  readonly claimant: string;
+  readonly session: string;
+  readonly expiresAt: string;
+  readonly url: string;
+}
+
+function parseTrustedClaim(comment: GithubComment): ParsedClaim | null {
+  if (!['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association)) {
+    return null;
+  }
+  const lines = comment.body.split(/\r?\n/);
+  if (lines[0]?.trim() !== 'CLAIMED') return null;
+  const fields = new Map<string, string>();
+  for (const line of lines.slice(1)) {
+    const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
+    if (match?.[1] && match[2]) fields.set(match[1], match[2]);
+  }
+  const nodeId = fields.get('node');
+  const claimant = fields.get('claimant');
+  const session = fields.get('session');
+  const expiresAt = fields.get('expires_at');
+  if (!nodeId || !claimant || !session || !expiresAt || Number.isNaN(Date.parse(expiresAt))) {
+    return null;
+  }
+  return { nodeId, claimant, session, expiresAt, url: comment.html_url };
+}
+
+export function auditGithub(
+  state: EpicState,
+  runner: GithubRunner,
+  now = new Date(),
+): {
+  readonly errors: ReadonlyArray<Diagnostic>;
+  readonly warnings: ReadonlyArray<Diagnostic>;
+  readonly proposal: ReconciliationProposal;
+} {
+  const errors: Diagnostic[] = [];
+  const warnings: Diagnostic[] = [];
+  const repoPatch: RepoPatchOperation[] = [];
+  const operatorActions: string[] = [];
+  const [owner, repo] = state.github.repository.split('/');
+  if (!owner || !repo) {
+    return {
+      errors: [{ code: 'github.repository', message: 'Invalid owner/repository value' }],
+      warnings,
+      proposal: { repo_patch: repoPatch, operator_actions: operatorActions },
+    };
+  }
+  const issueClaims: ParsedClaim[] = [];
+  const auditedIssues = new Map<number, GithubIssue>();
+  const proposeIssueState = (issue: GithubIssue, expectedNode?: EpicNode): void => {
+    if (expectedNode && expectedNode.reconciliation.observed_issue_state !== issue.state) {
+      repoPatch.push({
+        op: 'replace',
+        path: `/nodes/${state.nodes.indexOf(expectedNode)}/reconciliation/observed_issue_state`,
+        value: issue.state,
+        reason: `Observed issue #${issue.number} state from GitHub`,
+      });
+    }
+  };
+  const auditIssue = (issueNumber: number, expectedNode?: EpicNode): void => {
+    const cached = auditedIssues.get(issueNumber);
+    if (cached) {
+      proposeIssueState(cached, expectedNode);
+      return;
+    }
+    try {
+      const issue = issueRefSchema
+        .extend({ state: z.enum(['open', 'closed']), html_url: z.string().url() })
+        .passthrough()
+        .parse(runner.get(`/repos/${owner}/${repo}/issues/${issueNumber}`)) as GithubIssue;
+      auditedIssues.set(issueNumber, issue);
+      proposeIssueState(issue, expectedNode);
+      const commentSchema = z
+        .object({
+          body: z.string(),
+          author_association: z.string(),
+          html_url: z.string().url(),
+        })
+        .passthrough();
+      const comments: GithubComment[] = [];
+      for (let page = 1; ; page += 1) {
+        const batch = z
+          .array(commentSchema)
+          .parse(
+            runner.get(
+              `/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100&page=${page}`,
+            ),
+          ) as GithubComment[];
+        comments.push(...batch);
+        if (batch.length < 100) break;
+      }
+      for (const comment of comments) {
+        const claim = parseTrustedClaim(comment);
+        if (claim && Date.parse(claim.expiresAt) > now.getTime()) issueClaims.push(claim);
+      }
+    } catch (error) {
+      errors.push({
+        code: 'github.issue-audit',
+        node_id: expectedNode?.node_id,
+        message: `Could not audit issue #${issueNumber}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+    }
+  };
+
+  if (state.github.parent_issue) auditIssue(state.github.parent_issue.number);
+  for (const node of state.nodes) {
+    if (node.github.issue) auditIssue(node.github.issue.number, node);
+    if (!node.github.pr) continue;
+    try {
+      const pull = z
+        .object({
+          number: z.number().int().positive(),
+          state: z.enum(['open', 'closed']),
+          merged: z.boolean(),
+          merge_commit_sha: z.string().nullable(),
+          html_url: z.string().url(),
+          head: z.object({ sha: z.string().regex(SHA40_PATTERN) }),
+        })
+        .passthrough()
+        .parse(runner.get(`/repos/${owner}/${repo}/pulls/${node.github.pr.number}`)) as GithubPull;
+      const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
+      if (pull.head.sha !== node.github.pr.head_sha) {
+        errors.push({
+          code: 'github.pr-head-drift',
+          node_id: node.node_id,
+          message: `${node.node_id} records ${node.github.pr.head_sha}, GitHub PR head is ${pull.head.sha}`,
+        });
+      }
+      if (node.status === 'merged' || node.status === 'validated') {
+        if (!pull.merged || pull.merge_commit_sha !== node.merge.commit) {
+          errors.push({
+            code: 'github.merge-drift',
+            node_id: node.node_id,
+            message: `${node.node_id} cached merge facts disagree with GitHub`,
+          });
+        }
+      }
+      if (node.reconciliation.observed_pr_state !== observedState) {
+        repoPatch.push({
+          op: 'replace',
+          path: `/nodes/${state.nodes.indexOf(node)}/reconciliation/observed_pr_state`,
+          value: observedState,
+          reason: `Observed PR #${pull.number} state from GitHub`,
+        });
+      }
+      if (node.reconciliation.observed_head_sha !== pull.head.sha) {
+        repoPatch.push({
+          op: 'replace',
+          path: `/nodes/${state.nodes.indexOf(node)}/reconciliation/observed_head_sha`,
+          value: pull.head.sha,
+          reason: `Observed PR #${pull.number} head from GitHub`,
+        });
+      }
+      if (node.reconciliation.observed_merge_commit !== pull.merge_commit_sha) {
+        repoPatch.push({
+          op: 'replace',
+          path: `/nodes/${state.nodes.indexOf(node)}/reconciliation/observed_merge_commit`,
+          value: pull.merge_commit_sha,
+          reason: `Observed PR #${pull.number} merge commit from GitHub`,
+        });
+      }
+    } catch (error) {
+      errors.push({
+        code: 'github.pr-audit',
+        node_id: node.node_id,
+        message: `Could not audit PR #${node.github.pr.number}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+    }
+  }
+
+  const claimsByNode = new Map<string, ParsedClaim[]>();
+  const claimsByOwner = new Map<string, ParsedClaim[]>();
+  for (const claim of issueClaims) {
+    const byNode = claimsByNode.get(claim.nodeId) ?? [];
+    byNode.push(claim);
+    claimsByNode.set(claim.nodeId, byNode);
+    const ownerKey = `${claim.claimant}\u0000${claim.session}`;
+    const byOwner = claimsByOwner.get(ownerKey) ?? [];
+    byOwner.push(claim);
+    claimsByOwner.set(ownerKey, byOwner);
+  }
+  for (const [nodeId, claims] of claimsByNode) {
+    if (claims.length > 1) {
+      errors.push({
+        code: 'github.duplicate-live-claims',
+        node_id: nodeId,
+        message: `${nodeId} has ${claims.length} live trusted CLAIMED comments`,
+      });
+      operatorActions.push(
+        `Resolve duplicate live claims for ${nodeId}: ${claims.map((claim) => claim.url).join(', ')}`,
+      );
+    }
+  }
+  for (const claims of claimsByOwner.values()) {
+    const nodes = new Set(claims.map((claim) => claim.nodeId));
+    if (nodes.size > 1) {
+      warnings.push({
+        code: 'github.owner-overlap',
+        message: `${claims[0]?.claimant}/${claims[0]?.session} has live claims on ${[...nodes].join(', ')}`,
+      });
+      operatorActions.push(
+        `Producer must confirm non-overlapping scope or release claims for ${[...nodes].join(', ')}.`,
+      );
+    }
+  }
+  return {
+    errors,
+    warnings,
+    proposal: { repo_patch: repoPatch, operator_actions: operatorActions },
+  };
+}
+
+export function findRepoRoot(start: string): string {
+  let current = resolve(start);
+  while (true) {
+    if (existsSync(resolve(current, 'package.json')) && existsSync(resolve(current, '.git'))) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      throw new Error(`Could not locate repository root from ${start}`);
+    }
+    current = parent;
+  }
+}
