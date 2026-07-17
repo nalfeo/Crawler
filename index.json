@@ -1,5 +1,16 @@
 [
   {
+    "commit": "95b42f29bc0a5b0c51e2c97914430556ea857f7a",
+    "commitDate": "2026-07-17T17:10:44Z",
+    "commitSubject": "feat(ci): file deduplicated PR recovery loop investigation issues on stale-automation-exhausted (#1257)",
+    "capturedAt": "2026-07-17T18:27:15.954Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29599677867",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/95b42f29bc0a5b0c51e2c97914430556ea857f7a.json"
+  },
+  {
     "commit": "6561bd1a030a2f98bc91524005d6704426fdca35",
     "commitDate": "2026-07-17T16:28:10Z",
     "commitSubject": "Canonicalize nightly balance issue bodies with exact issue numbers (#1254)",
