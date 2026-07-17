@@ -48,7 +48,7 @@ function relativeImportClosure(entryPaths, rootDir = repoRoot) {
     //   import './rel'              (side-effect)
     //   import('./rel')             (dynamic)
     for (const match of source.matchAll(
-      /(?:from\s+|import\s+|import\()['"](\.{1,2}\/[^'"]+)['"]/g,
+      /(?:from\s+|import\s+|import\s*\(\s*)['"`](\.{1,2}\/[^'"`]+)['"`]/g,
     )) {
       const dependency = path
         .relative(rootDir, path.resolve(path.dirname(absolutePath), match[1]))
@@ -218,17 +218,23 @@ test('relativeImportClosure follows side-effect and dynamic relative imports', (
       [
         "import './side-effect.mjs';",
         "const m = await import('./dynamic.mjs');",
+        "const spaced = await import( './dynamic-spaced.mjs' );",
+        'const template = await import(`./dynamic-template.mjs`);',
         "import { named } from './named.mjs';",
       ].join('\n'),
     );
     writeFileSync(path.join(tempDir, 'side-effect.mjs'), '');
     writeFileSync(path.join(tempDir, 'dynamic.mjs'), '');
+    writeFileSync(path.join(tempDir, 'dynamic-spaced.mjs'), '');
+    writeFileSync(path.join(tempDir, 'dynamic-template.mjs'), '');
     writeFileSync(path.join(tempDir, 'named.mjs'), '');
 
     const closure = relativeImportClosure(['entry.mjs'], tempDir);
     assert.equal(closure.has('entry.mjs'), true);
     assert.equal(closure.has('side-effect.mjs'), true, 'side-effect import not followed');
     assert.equal(closure.has('dynamic.mjs'), true, 'dynamic import not followed');
+    assert.equal(closure.has('dynamic-spaced.mjs'), true, 'spaced dynamic import not followed');
+    assert.equal(closure.has('dynamic-template.mjs'), true, 'template dynamic import not followed');
     assert.equal(closure.has('named.mjs'), true, 'named import not followed');
   } finally {
     rmSync(tempDir, { recursive: true, force: true });

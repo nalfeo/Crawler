@@ -41,7 +41,8 @@ kickoff comment that points Copilot at the normal repo instructions.
   `protected-workflow-modified`, while a stale branch that has identical old
   blobs—or predates a file at both points—remains eligible. A deterministic
   import-closure test prevents a new privileged relative import from escaping
-  this exact boundary without broadly locking unrelated scripts. Missing
+  this exact boundary, including static, side-effect, and literal dynamic
+  imports, without broadly locking unrelated scripts. Missing
   merge-base evidence fails closed as
   `missing-merge-base`. The bridge deliberately does not trust
   `/pulls/{number}/files`, because that endpoint follows the PR's current head
@@ -108,6 +109,8 @@ GitHub App token receives 403 responses from workflow-dispatch endpoints. The
 write-capable token is unavailable to the inspection job. Recursion is excluded
 by workflow identity: the bridge listens only to `CI Recovery Router`, while it
 dispatches `CI Recovery`, and bridge completion does not match its own trigger.
+Manual reruns remain inspection-only because the write-capable dispatch job
+requires `github.run_attempt == 1`.
 
 `workflow_run` listeners are registered only from the default branch. After this
 workflow reaches `main`, the first live `action_required` Copilot review run is
