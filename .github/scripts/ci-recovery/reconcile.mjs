@@ -45,6 +45,7 @@ const operation = process.env.RECOVERY_OPERATION || 'reconcile';
 const trigger = process.env.RECOVERY_TRIGGER || 'workflow_dispatch';
 const leaseId = (process.env.LEASE_ID || '').trim();
 const expectedHeadSha = (process.env.EXPECTED_HEAD_SHA || '').trim().toLowerCase();
+const expectedBaseRef = (process.env.EXPECTED_BASE_REF || '').trim();
 const mode = (process.env.CI_RECOVERY_MODE || 'dry-run').toLowerCase();
 const pat = process.env.CRAWLER_CI_PAT || '';
 const readToken = pat || process.env.GITHUB_TOKEN || '';
@@ -95,47 +96,72 @@ if (pr.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) {
   process.stdout.write(`skip pr=#${prNumber} reason=fork\n`);
   process.exit(0);
 }
-// Fail closed on a time-of-check/time-of-use race: when a caller (the trusted
-// review-wake bridge) validated a specific head SHA — including the
-// protected-workflow-file gate that only that caller performs — recovery must
-// operate on that exact head. If the live head moved after validation, the
-// trust decision no longer applies to this commit, so skip without mutating.
-// An empty EXPECTED_HEAD_SHA preserves normal manual/router behavior.
-if (expectedHeadSha) {
-  const liveHeadSha = String(pr.head?.sha || '').toLowerCase();
+function expectedMetadataRejection(candidate) {
+  const liveHeadSha = String(candidate?.head?.sha || '').toLowerCase();
   if (liveHeadSha !== expectedHeadSha) {
-    process.stdout.write(
-      `skip pr=#${prNumber} reason=head-sha-moved expected=${expectedHeadSha} actual=${liveHeadSha}\n`,
-    );
-    process.exit(0);
+    return { reason: 'head-sha-moved', expected: expectedHeadSha, actual: liveHeadSha };
   }
+  const liveState = String(candidate?.state || '').toLowerCase();
+  if (liveState !== 'open') {
+    return { reason: 'pr-state-moved', expected: 'open', actual: liveState };
+  }
+  const liveBaseRef = String(candidate?.base?.ref || '').trim();
+  if (expectedBaseRef && liveBaseRef !== expectedBaseRef) {
+    return { reason: 'base-ref-moved', expected: expectedBaseRef, actual: liveBaseRef };
+  }
+  const liveBaseRepository = String(candidate?.base?.repo?.full_name || '').toLowerCase();
+  if (liveBaseRepository !== repository.toLowerCase()) {
+    return {
+      reason: 'base-repository-moved',
+      expected: repository,
+      actual: liveBaseRepository,
+    };
+  }
+  const liveHeadRepository = String(candidate?.head?.repo?.full_name || '').toLowerCase();
+  if (liveHeadRepository !== repository.toLowerCase()) {
+    return {
+      reason: 'head-repository-moved',
+      expected: repository,
+      actual: liveHeadRepository,
+    };
+  }
+  return null;
 }
 
-// The initial guard above only proves the head matched at the *start* of
-// reconciliation. Several read phases (comments, labels, closing issues, review
-// threads, commit compares, check runs, workflow runs) run before the first
-// writes, so a synchronize landing mid-run could otherwise let a later mutation
-// (state comment, labels, the recovery task comment, Copilot assignment, or
-// auto-merge) act on a head that never passed the bridge's protected-workflow
-// gate. `enablePullRequestAutoMerge` is separately fenced by `expectedHeadOid`,
-// but the earlier metadata mutations are not. Re-fetch the live head and fail
-// closed immediately before each mutation phase. GitHub exposes no atomic
-// conditional metadata mutation, so this narrows — but cannot fully eliminate —
-// the window; the residual is a comment/label/assignment write racing a push in
+function skipForExpectedMetadata(rejection, phase = null) {
+  const reason = phase ? `${rejection.reason}-before-mutation` : rejection.reason;
+  const phaseField = phase ? ` phase=${phase}` : '';
+  process.stdout.write(
+    `skip pr=#${prNumber} reason=${reason}${phaseField} expected=${rejection.expected} actual=${rejection.actual}\n`,
+  );
+  process.exit(0);
+}
+
+// Fail closed on a time-of-check/time-of-use race: when a caller (the trusted
+// review-wake bridge) validated a specific head and base — including the
+// protected-workflow gate that only that caller performs — recovery must
+// operate on PR metadata satisfying that same trust decision. An empty
+// EXPECTED_HEAD_SHA preserves normal manual/router behavior.
+if (expectedHeadSha) {
+  const rejection = expectedMetadataRejection(pr);
+  if (rejection) skipForExpectedMetadata(rejection);
+}
+
+// The initial guard above only proves the metadata matched at the *start* of
+// reconciliation. Re-fetch the live PR and fail closed immediately before each
+// mutation phase so a same-head retarget, close, or repository change cannot
+// escape the bridge's trust decision. GitHub exposes no atomic conditional
+// metadata mutation, so this narrows — but cannot fully eliminate — the window;
+// the residual is a comment/label/assignment write racing a metadata change in
 // the sub-second gap between this check and the API call. An empty
 // EXPECTED_HEAD_SHA (normal manual/router/scheduled/lease flows) is a no-op, so
 // those paths keep their exact prior behavior and make no extra API calls.
-async function assertExpectedHeadUnchanged(phase) {
+async function assertExpectedMetadataUnchanged(phase) {
   if (!expectedHeadSha) return;
-  const liveHeadSha = String(
-    (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`)).data?.head?.sha || '',
-  ).toLowerCase();
-  if (liveHeadSha !== expectedHeadSha) {
-    process.stdout.write(
-      `skip pr=#${prNumber} reason=head-sha-moved-before-mutation phase=${phase} expected=${expectedHeadSha} actual=${liveHeadSha}\n`,
-    );
-    process.exit(0);
-  }
+  const livePullRequest = (await request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`))
+    .data;
+  const rejection = expectedMetadataRejection(livePullRequest);
+  if (rejection) skipForExpectedMetadata(rejection, phase);
 }
 const comments = await paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`);
 let approvalRejection = null;
@@ -180,7 +206,7 @@ async function updateState(nextState, { forceTimestamp = false } = {}) {
     state = nextState;
     return true;
   }
-  await assertExpectedHeadUnchanged('state-comment');
+  await assertExpectedMetadataUnchanged('state-comment');
   const body = renderStateComment(nextState);
   if (stateComments[0]) {
     await request(pat, `/repos/${owner}/${repo}/issues/comments/${stateComments[0].id}`, {
@@ -205,7 +231,7 @@ async function acquire(nextOwner, nextLeaseId = null) {
   }
   const waitingTransition = await prepareWaitingExit();
   if (shouldMutate) {
-    await assertExpectedHeadUnchanged('acquire-label');
+    await assertExpectedMetadataUnchanged('acquire-label');
     await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
       body: {
@@ -240,7 +266,7 @@ async function acquire(nextOwner, nextLeaseId = null) {
 async function removePrLabel(name, { skipIfMissing = false } = {}) {
   if (skipIfMissing && !(pr.labels || []).some((label) => label.name === name)) return false;
   if (!shouldMutate) return false;
-  await assertExpectedHeadUnchanged('remove-label');
+  await assertExpectedMetadataUnchanged('remove-label');
   try {
     await request(
       pat,
@@ -260,7 +286,7 @@ async function ensurePrLabel(name, color, description) {
     process.stdout.write(`dry-run would-add-label pr=#${prNumber} label=${name}\n`);
     return;
   }
-  await assertExpectedHeadUnchanged('add-label');
+  await assertExpectedMetadataUnchanged('add-label');
   try {
     await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
@@ -302,7 +328,7 @@ async function completeWaitingExit(prepared) {
 
 async function removeRepositoryLabel(name) {
   if (!shouldMutate) return false;
-  await assertExpectedHeadUnchanged('remove-repository-label');
+  await assertExpectedMetadataUnchanged('remove-repository-label');
   try {
     await request(pat, `/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`, {
       method: 'DELETE',
@@ -329,7 +355,7 @@ async function disableAutoMergeForHumanGate() {
     process.stdout.write(`dry-run would-disable-auto-merge pr=#${prNumber}\n`);
     return;
   }
-  await assertExpectedHeadUnchanged('disable-auto-merge');
+  await assertExpectedMetadataUnchanged('disable-auto-merge');
   await graphql(
     pat,
     `
@@ -375,7 +401,7 @@ async function release(reason, nextState = null) {
     });
   const waitingTransition = releasedState.status === 'waiting' ? false : await prepareWaitingExit();
   if (shouldMutate) {
-    await assertExpectedHeadUnchanged('release-label');
+    await assertExpectedMetadataUnchanged('release-label');
     const cleanup = await Promise.allSettled([
       removePrLabel(labelName),
       removeRepositoryLabel(labelName),
@@ -551,7 +577,7 @@ for (const thread of unresolvedThreads.filter((candidate) =>
   shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
 )) {
   if (live) {
-    await assertExpectedHeadUnchanged('resolve-thread');
+    await assertExpectedMetadataUnchanged('resolve-thread');
     await graphql(
       pat,
       `
@@ -924,7 +950,7 @@ if (normalized.length === 0) {
     await removePrLabel(BLOCKED_LABEL);
     await removePrLabel(NOOP_LABEL);
     await removePrLabel(VALIDATION_FAILED_LABEL);
-    await assertExpectedHeadUnchanged('queue-merge-train');
+    await assertExpectedMetadataUnchanged('queue-merge-train');
     try {
       await request(pat, `/repos/${owner}/${repo}/labels`, {
         method: 'POST',
@@ -946,7 +972,7 @@ if (normalized.length === 0) {
     process.exit(0);
   }
   if (live) {
-    await assertExpectedHeadUnchanged('arm-auto-merge');
+    await assertExpectedMetadataUnchanged('arm-auto-merge');
     await graphql(
       pat,
       `
@@ -1014,7 +1040,7 @@ const taskBody = [
 ].join('\n');
 
 if (live) {
-  await assertExpectedHeadUnchanged('post-task-comment');
+  await assertExpectedMetadataUnchanged('post-task-comment');
   await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
     method: 'POST',
     body: { body: taskBody },
@@ -1064,7 +1090,7 @@ if (live) {
     throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
   }
   const actorIds = [...new Set([...review.assignees.map((actor) => actor.id), copilot.id])];
-  await assertExpectedHeadUnchanged('assign-copilot');
+  await assertExpectedMetadataUnchanged('assign-copilot');
   await graphql(
     pat,
     `

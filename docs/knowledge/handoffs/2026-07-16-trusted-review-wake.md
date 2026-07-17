@@ -126,6 +126,13 @@ phase=<phase>`), failing closed with no mutation on a mismatch. An empty
   missing definitions fail closed as `protected-workflow-modified`. Base and
   head branch refs are also compared exactly (trim-only), preserving Git's
   case-sensitive branch identity.
+- **Same-head metadata changes escaped the SHA fence.** A PR can be retargeted
+  or closed without changing its head, so SHA-only rechecks could mutate a PR
+  whose live metadata no longer satisfied the bridge policy. Fix: the bridge
+  now passes `expected_base_ref`, and reconcile mirrors the validated state,
+  base ref, base repository, head repository, and head SHA both at startup and
+  immediately before each mutation. Same-head retargets fail closed with zero
+  mutations; empty expected inputs preserve normal recovery behavior.
 
 Residual risk: GitHub offers no atomic conditional metadata mutation, so the
 per-phase recheck narrows but cannot fully close the sub-second window between a

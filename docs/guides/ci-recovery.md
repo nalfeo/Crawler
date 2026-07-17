@@ -38,10 +38,11 @@ kickoff comment that points Copilot at the normal repo instructions.
   `protected-workflow-modified`. It deliberately does not trust
   `/pulls/{number}/files`, because that endpoint follows the PR's current head
   and could supply unrelated evidence during an A→B→A force-push race. It
-  threads the validated run head SHA into the dispatch (`expected_head_sha`) so
-  recovery is bound to the exact reviewed commit. Read-only inspection and
-  `actions: write` dispatch are separate jobs.
-- `ci-recovery.yml`'s optional `expected_head_sha` input closes a
+  threads the validated run head SHA and base ref into the dispatch
+  (`expected_head_sha`, `expected_base_ref`) so recovery is bound to the exact
+  reviewed commit and target. Read-only inspection and `actions: write`
+  dispatch are separate jobs.
+- `ci-recovery.yml`'s optional expected-head/base inputs close a
   time-of-check/time-of-use race: the bridge validates one head (including the
   protected-workflow-file gate that only the bridge performs), but reconcile
   re-fetches the live PR head, which a synchronize could move to a commit that
@@ -52,7 +53,8 @@ kickoff comment that points Copilot at the normal repo instructions.
   immediately before every mutation phase (state comment, labels, recovery task
   comment, Copilot assignment, thread resolution, merge-train queueing, and
   auto-merge). When the input is set and the live head no longer matches at any
-  of those points, reconcile fails closed — it skips without that mutation
+  of those points—or the PR is closed, retargeted, or moved across
+  repositories—reconcile fails closed without that mutation
   (`reason=head-sha-moved` at the opening guard, or
   `reason=head-sha-moved-before-mutation phase=<phase>` at a per-phase recheck).
   `enablePullRequestAutoMerge` additionally carries an `expectedHeadOid` fence.

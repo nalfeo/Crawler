@@ -25,8 +25,13 @@ on:
       expected_head_sha:
         description: >-
           Optional PR head SHA this dispatch was validated against. When set,
-          recovery fails closed (skips without mutating) if the live PR head no
-          longer matches. Empty preserves normal manual/router behavior.
+          recovery fails closed (skips without mutating) if the live PR metadata
+          no longer matches. Empty preserves normal manual/router behavior.
+        required: false
+        default: ''
+        type: string
+      expected_base_ref:
+        description: Optional base branch validated with expected_head_sha
         required: false
         default: ''
         type: string
@@ -67,5 +72,6 @@ jobs:
           RECOVERY_OPERATION: ${{ inputs.operation }}
           RECOVERY_TRIGGER: ${{ inputs.trigger }}
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_BASE_REF: ${{ inputs.expected_base_ref }}
           LEASE_ID: ${{ inputs.lease_id }}
         run: node .github/scripts/ci-recovery/reconcile.mjs

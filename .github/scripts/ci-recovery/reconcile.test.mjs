@@ -41,6 +41,7 @@ function basePr() {
     mergeable: true,
     mergeable_state: 'clean',
     html_url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
+    base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
     head: { sha: HEAD_SHA, repo: { full_name: `${OWNER}/${REPO}` } },
     labels: [],
     changed_files: 0,
@@ -1095,6 +1096,7 @@ test('expected_head_sha match: reconcile proceeds normally past the head guard',
     RECOVERY_OPERATION: 'reconcile',
     RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
     EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
     CI_RECOVERY_MODE: 'dry-run',
   });
 
@@ -1117,6 +1119,7 @@ test('expected_head_sha mismatch: reconcile fails closed before any mutation, ev
     RECOVERY_OPERATION: 'reconcile',
     RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
     EXPECTED_HEAD_SHA: movedHead,
+    EXPECTED_BASE_REF: 'main',
     CI_RECOVERY_MODE: 'live',
   });
 
@@ -1142,6 +1145,31 @@ test('empty expected_head_sha preserves normal reconcile behavior', async (t) =>
   assert.doesNotMatch(stdout, /head-sha-moved/, 'an empty expected SHA must not trip the guard');
   assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('same-head retarget before reconcile fails closed before any mutation', async (t) => {
+  const retargetedBase = 'release';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), base: { ...basePr().base, ref: retargetedBase } },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`skip pr=#${PR_NUM} reason=base-ref-moved expected=main actual=${retargetedBase}`),
+  );
+  assert.deepEqual(mutatingCalls, [], 'a retargeted PR must fail closed with no mutation');
 });
 
 test('moved head after initial fetch fails closed before the first mutation phase', async (t) => {
@@ -1181,6 +1209,7 @@ test('moved head after initial fetch fails closed before the first mutation phas
     RECOVERY_OPERATION: 'reconcile',
     RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
     EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
     CI_RECOVERY_MODE: 'live',
   });
 
@@ -1198,6 +1227,50 @@ test('moved head after initial fetch fails closed before the first mutation phas
     [],
     'a head moved before the first mutation must fail closed with no mutation',
   );
+});
+
+test('same-head retarget after initial fetch fails closed before the first mutation phase', async (t) => {
+  const retargetedBase = 'release';
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      const baseRef = pullFetches === 1 ? 'main' : retargetedBase;
+      return {
+        body: {
+          ...basePr(),
+          mergeable: false,
+          mergeable_state: 'clean',
+          base: { ...basePr().base, ref: baseRef },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=base-ref-moved-before-mutation phase=acquire-label expected=main actual=${retargetedBase}`,
+    ),
+  );
+  assert.equal(pullFetches, 2);
+  assert.deepEqual(mutatingCalls, [], 'a same-head retarget must fail closed with no mutation');
 });
 
 test('empty expected_head_sha makes no extra head re-fetch before mutations', async (t) => {

@@ -84,6 +84,7 @@ describe('CI Recovery trusted review wake bridge', () => {
     vi.stubEnv('PR_NUMBER', '42');
     vi.stubEnv('RECOVERY_TRIGGER', 'trusted-review-wake:pull_request_review:run-123');
     vi.stubEnv('EXPECTED_HEAD_SHA', 'a'.repeat(40));
+    vi.stubEnv('EXPECTED_BASE_REF', 'main');
     try {
       const execute = new Function(
         'github',
@@ -106,6 +107,7 @@ describe('CI Recovery trusted review wake bridge', () => {
         pr_number: '42',
         trigger: 'trusted-review-wake:pull_request_review:run-123',
         expected_head_sha: 'a'.repeat(40),
+        expected_base_ref: 'main',
         lease_id: '',
       },
     });
@@ -120,6 +122,8 @@ describe('CI Recovery trusted review wake bridge', () => {
       (candidate) => candidate.name === 'Dispatch exact PR recovery',
     );
     expect(step?.env?.EXPECTED_HEAD_SHA).toBe('${{ needs.inspect.outputs.head_sha }}');
+    expect(step?.env?.EXPECTED_BASE_REF).toBe('${{ github.event.repository.default_branch }}');
     expect(step?.with?.script).toContain('expected_head_sha: process.env.EXPECTED_HEAD_SHA');
+    expect(step?.with?.script).toContain('expected_base_ref: process.env.EXPECTED_BASE_REF');
   });
 });
