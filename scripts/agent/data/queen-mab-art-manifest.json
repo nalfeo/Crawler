@@ -1,0 +1,121 @@
+{
+  "schemaVersion": "mob-ability-art-manifest/v1",
+  "generatedArtScope": "queen-mab-only",
+  "lastReviewedAt": "2026-07-17",
+  "boss": {
+    "bossId": "queen-mab-tarnish",
+    "bossArchetypeId": "faerie-boss",
+    "familyId": "faeries"
+  },
+  "requiredVisualPhases": [
+    {
+      "phaseId": "cast-start-cue",
+      "description": "Readable cue at telegraph lock announcing a cast has begun.",
+      "proceduralFallback": "MobAbilityVfx spawns a hostile-red ring pulse collapsing onto the committed footprint.",
+      "renderer": "src/engine/MobAbilityVfx.ts"
+    },
+    {
+      "phaseId": "locked-telegraph-circle",
+      "description": "Hostile-red 12-foot danger circle locked to the committed origin, never re-tracking.",
+      "proceduralFallback": "MobAbilityVfx strokes the committed 12ft circle in hostile red with crown-point runes.",
+      "renderer": "src/engine/MobAbilityVfx.ts"
+    },
+    {
+      "phaseId": "anticipation-fill",
+      "description": "Readable countdown / fill communicating time-to-detonation during the 1.5s telegraph.",
+      "proceduralFallback": "MobAbilityVfx grows an interior fill proportional to telegraphProgress.",
+      "renderer": "src/engine/MobAbilityVfx.ts"
+    },
+    {
+      "phaseId": "resolution-burst",
+      "description": "Resolution burst with gratuitous particles when the circle detonates.",
+      "proceduralFallback": "MobAbilityVfx fires verdigris/bronze expanding rings and particle sparks once per resolved cast.",
+      "renderer": "src/engine/MobAbilityVfx.ts"
+    },
+    {
+      "phaseId": "tarnished-indicator",
+      "description": "Persistent Tarnished debuff indicator for its full 4-second duration.",
+      "proceduralFallback": "MobAbilityVfx draws a corroded verdigris ring under any mob-ability-debuffed entity while active.",
+      "renderer": "src/engine/MobAbilityVfx.ts"
+    },
+    {
+      "phaseId": "cleanup-expiry",
+      "description": "Cleanup / expiry effect when the debuff or cast state clears.",
+      "proceduralFallback": "MobAbilityVfx spawns a collapsing ring poof when the Tarnished ring is retired.",
+      "renderer": "src/engine/MobAbilityVfx.ts"
+    },
+    {
+      "phaseId": "announcement",
+      "description": "Exact announcement treatment: VERDIGRIS GLAMOUR — All that glitters will corrode!",
+      "proceduralFallback": "HudAnnouncementBanner renders the verbatim bossAbilityCast announcement text.",
+      "renderer": "src/engine/HudAnnouncementBanner.ts"
+    }
+  ],
+  "assets": [
+    {
+      "assetId": "queen-mab-verdigris-glamour-codex-icon",
+      "abilityId": "queen-mab-verdigris-glamour",
+      "bossId": "queen-mab-tarnish",
+      "kind": "codex-icon",
+      "dimensions": { "width": 64, "height": 64, "frames": 1 },
+      "state": "planned",
+      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "proceduralFallback": "Codex entry uses the procedural hostile-red circle glyph until a bespoke icon lands.",
+      "coversPhaseId": null,
+      "requiredFor": "production-enablement",
+      "blockingForArena": false
+    },
+    {
+      "assetId": "queen-mab-tarnished-status-icon",
+      "abilityId": "queen-mab-verdigris-glamour",
+      "bossId": "queen-mab-tarnish",
+      "kind": "status-icon",
+      "dimensions": { "width": 32, "height": 32, "frames": 1 },
+      "state": "planned",
+      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "proceduralFallback": "Tarnished uses the procedural corroded verdigris ring indicator (tarnished-indicator phase).",
+      "coversPhaseId": "tarnished-indicator",
+      "requiredFor": "production-enablement",
+      "blockingForArena": false
+    },
+    {
+      "assetId": "queen-mab-verdigris-glamour-cast-animation",
+      "abilityId": "queen-mab-verdigris-glamour",
+      "bossId": "queen-mab-tarnish",
+      "kind": "cast-animation",
+      "dimensions": { "width": 128, "height": 128, "frames": 8 },
+      "state": "not-requested",
+      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "proceduralFallback": "No authored cast animation required for this slice; the cast-start-cue phase reads without one.",
+      "coversPhaseId": "cast-start-cue",
+      "requiredFor": "optional-polish",
+      "blockingForArena": false
+    },
+    {
+      "assetId": "queen-mab-verdigris-glamour-telegraph-sprite",
+      "abilityId": "queen-mab-verdigris-glamour",
+      "bossId": "queen-mab-tarnish",
+      "kind": "vfx-sprite",
+      "dimensions": { "width": 256, "height": 256, "frames": 1 },
+      "state": "not-requested",
+      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "proceduralFallback": "Telegraph uses the procedural locked hostile-red circle with runes and anticipation fill.",
+      "coversPhaseId": "locked-telegraph-circle",
+      "requiredFor": "optional-polish",
+      "blockingForArena": false
+    },
+    {
+      "assetId": "queen-mab-verdigris-glamour-resolution-sprite",
+      "abilityId": "queen-mab-verdigris-glamour",
+      "bossId": "queen-mab-tarnish",
+      "kind": "vfx-sprite",
+      "dimensions": { "width": 256, "height": 256, "frames": 12 },
+      "state": "not-requested",
+      "references": { "issue": null, "briefPath": null, "approvedAssetId": null },
+      "proceduralFallback": "Resolution uses the procedural verdigris/bronze burst rings and particle sparks.",
+      "coversPhaseId": "resolution-burst",
+      "requiredFor": "optional-polish",
+      "blockingForArena": false
+    }
+  ]
+}
