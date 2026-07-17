@@ -44,7 +44,7 @@ kickoff comment that points Copilot at the normal repo instructions.
   (`expected_head_sha`, `expected_base_ref`) so recovery is bound to the exact
   reviewed commit and target. Read-only inspection and `actions: write`
   dispatch are separate jobs.
-- `ci-recovery.yml`'s optional expected-head/base inputs close a
+- `ci-recovery.yml`'s paired `expected_head_sha` and `expected_base_ref` inputs close a
   time-of-check/time-of-use race: the bridge validates one head (including the
   protected-workflow-file gate that only the bridge performs), but reconcile
   re-fetches the live PR head, which a synchronize could move to a commit that
@@ -59,10 +59,12 @@ kickoff comment that points Copilot at the normal repo instructions.
   across repositories—reconcile fails closed without that mutation
   (`reason=head-sha-moved` at the opening guard, or
   `reason=head-sha-moved-before-mutation phase=<phase>` at a per-phase recheck).
+  A dispatch that supplies the expected head without its validated base ref also
+  fails closed as `missing-expected-base-ref`.
   `enablePullRequestAutoMerge` additionally carries an `expectedHeadOid` fence.
   GitHub exposes no atomic conditional metadata mutation, so the per-phase
   recheck narrows but cannot fully eliminate the sub-second window between a
-  recheck and its immediately following write. An empty input is a no-op that
+  recheck and its immediately following write. An empty expected head is a no-op that
   preserves normal manual/router/scheduled/lease behavior and adds no extra API
   calls.
 - `ci-recovery.yml`, `ci-recovery-incidents.yml`, and `issue-copilot-intake.yml`

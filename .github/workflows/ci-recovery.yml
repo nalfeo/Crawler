@@ -31,7 +31,10 @@ on:
         default: ''
         type: string
       expected_base_ref:
-        description: Optional base branch validated with expected_head_sha
+        description: >-
+          Optional default-branch base ref the trusted dispatch was validated
+          against. Required when expected_head_sha is set; recovery fails closed
+          if it is missing or if the live PR base ref no longer matches.
         required: false
         default: ''
         type: string

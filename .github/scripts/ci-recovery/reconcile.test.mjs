@@ -1142,6 +1142,30 @@ test('expected_head_sha mismatch: reconcile fails closed before any mutation, ev
   assert.deepEqual(mutatingCalls, [], 'a mismatched head must fail closed with no mutation');
 });
 
+test('expected_head_sha without expected_base_ref fails closed before any mutation', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: trustedReviewWakePr(),
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: '',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`skip pr=#${PR_NUM} reason=missing-expected-base-ref expected=non-empty actual=`),
+  );
+  assert.deepEqual(mutatingCalls, [], 'an incomplete trust envelope must not mutate the PR');
+});
+
 test('empty expected_head_sha preserves normal reconcile behavior', async (t) => {
   const { server, port, mutatingCalls } = await startServer(cleanReconcileRoutes());
   t.after(() => server.close());

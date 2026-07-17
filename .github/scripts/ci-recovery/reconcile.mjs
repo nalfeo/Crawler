@@ -97,6 +97,10 @@ if (pr.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase()) {
   process.exit(0);
 }
 function expectedMetadataRejection(candidate) {
+  if (!expectedHeadSha) return null;
+  if (!expectedBaseRef) {
+    return { reason: 'missing-expected-base-ref', expected: 'non-empty', actual: '' };
+  }
   const liveHeadSha = String(candidate?.head?.sha || '').toLowerCase();
   if (liveHeadSha !== expectedHeadSha) {
     return { reason: 'head-sha-moved', expected: expectedHeadSha, actual: liveHeadSha };
@@ -105,11 +109,11 @@ function expectedMetadataRejection(candidate) {
   if (liveState !== 'open') {
     return { reason: 'pr-state-moved', expected: 'open', actual: liveState };
   }
-  if (candidate?.draft === true) {
+  if (candidate?.draft !== false) {
     return { reason: 'pr-drafted', expected: 'false', actual: 'true' };
   }
   const liveBaseRef = String(candidate?.base?.ref || '').trim();
-  if (expectedBaseRef && liveBaseRef !== expectedBaseRef) {
+  if (liveBaseRef !== expectedBaseRef) {
     return { reason: 'base-ref-moved', expected: expectedBaseRef, actual: liveBaseRef };
   }
   const liveBaseRepository = String(candidate?.base?.repo?.full_name || '').toLowerCase();
