@@ -1603,8 +1603,11 @@ export function auditGithub(
       for (const comment of comments) {
         const blockedNodeId = parseTrustedBlockedNode(comment, expectedNodeId);
         if (blockedNodeId) {
-          for (const [claimKey, claim] of liveClaims) {
-            if (claim.nodeId === blockedNodeId) liveClaims.delete(claimKey);
+          const claimKeysToDelete = [...liveClaims.entries()]
+            .filter(([, claim]) => claim.nodeId === blockedNodeId)
+            .map(([claimKey]) => claimKey);
+          for (const claimKey of claimKeysToDelete) {
+            liveClaims.delete(claimKey);
           }
           continue;
         }
