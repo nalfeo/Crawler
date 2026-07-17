@@ -96,16 +96,20 @@
       "execution_lane": "control",
       "persona": "Producer / DevOps Engineer",
       "dependencies": [],
-      "status": "in_progress",
+      "status": "pr_open",
       "release_requirement": "required",
       "deferred_reason": null,
-      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "status_changed_at": "2026-07-17T18:25:00.000Z",
       "github": {
         "issue": {
           "number": 1264,
           "url": "https://github.com/nalfeo/Crawler/issues/1264"
         },
-        "pr": null
+        "pr": {
+          "number": 1271,
+          "url": "https://github.com/nalfeo/Crawler/pull/1271",
+          "head_sha": "dd455404cb9de6231d28c5f35384453942281d21"
+        }
       },
       "ownership": {
         "claimant": "Producer",
@@ -119,12 +123,34 @@
       },
       "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["offline-validator-and-focused-tests"],
-      "evidence": [],
+      "evidence": [
+        {
+          "kind": "handoff",
+          "path_or_check": "docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md",
+          "sha256": "9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb",
+          "commit": "461b8a334a018ebbf6e81aa7b31f81c74e08aa6b",
+          "recorded_at": "2026-07-17T18:25:00.000Z"
+        },
+        {
+          "kind": "review-ledger",
+          "path_or_check": "docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json",
+          "sha256": "0a7ca7d8c1dc6765fa2d4c6ca094487d404e0f275b566f2376d8066a3717a2bc",
+          "commit": "dd455404cb9de6231d28c5f35384453942281d21",
+          "recorded_at": "2026-07-17T18:25:00.000Z"
+        },
+        {
+          "kind": "offline-validator-and-focused-tests",
+          "path_or_check": "tests/unit/agent/epic-status.test.ts",
+          "sha256": "3fe50e7141a4ab23446a5e0b236792d5aee4ab205fb53151ac49c0353e5f9efa",
+          "commit": "dd455404cb9de6231d28c5f35384453942281d21",
+          "recorded_at": "2026-07-17T18:25:00.000Z"
+        }
+      ],
       "reconciliation": {
-        "last_audited_at": "2026-07-17T18:17:00.000Z",
+        "last_audited_at": "2026-07-17T18:25:00.000Z",
         "observed_issue_state": "open",
-        "observed_pr_state": null,
-        "observed_head_sha": null,
+        "observed_pr_state": "OPEN",
+        "observed_head_sha": "dd455404cb9de6231d28c5f35384453942281d21",
         "observed_merge_commit": null,
         "drift": []
       },
