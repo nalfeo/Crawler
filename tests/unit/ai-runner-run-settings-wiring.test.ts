@@ -59,7 +59,9 @@ describe('AI runner run-settings wiring', () => {
 
     expect(source).toContain('recomposeFloorTransitionOptions: (nextFloorOptions) => {');
     expect(source).toContain('nextFloorOptions.floorId ?? currentFloor');
-    expect(source).toContain('resolveScenarioPresetForFloor(destinationFloorId, selectedScenarioPresetId)');
+    expect(source).toContain(
+      'resolveScenarioPresetForFloor(destinationFloorId, selectedScenarioPresetId)',
+    );
     expect(source).toContain('currentFloor = destinationFloorId');
     expect(source).toContain('selectedScenarioPresetId = resolved.presetId');
     expect(source).toContain('applyScenarioVisualProfile(selectedScenarioPresetId)');
