@@ -214,7 +214,8 @@ function parseJudgeResponse(
         {
           code: z.ZodIssueCode.custom,
           path: ['theme_adherence'],
-          message: 'theme_adherence is not allowed when no floor or theme design-language addendum applies',
+          message:
+            'theme_adherence is not allowed when no floor or theme design-language addendum applies',
         },
       ]),
     } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
@@ -308,7 +309,8 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     .slice(0, 3)
     .map((png) => ({ png, label: 'reference' as const }));
 
-  const hasAddendumForPrompt = designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
+  const hasAddendumForPrompt =
+    designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
   const request: EvaluateRequest = {
     systemInstructions: buildSystemInstructions(
       options.styleGuide,
@@ -325,7 +327,8 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
 
   const response = await options.provider.evaluate(request);
 
-  const hasAddendum = designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
+  const hasAddendum =
+    designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
   const parsed = parseJudgeResponse(normalizeLegacyJudgeResponse(response.json), hasAddendum);
   if (!parsed.success) {
     const issues = parsed.error.issues
@@ -472,7 +475,7 @@ function buildSystemInstructions(
           '                       5 = multiple specific addendum details are clearly visible.',
           '                       4 = at least one named addendum detail is unambiguous.',
           '                       3 = one named detail might be present but is ambiguous.',
-          '                       2 = the concept is on-vibe but none of the addendum\'s distinguishing',
+          "                       2 = the concept is on-vibe but none of the addendum's distinguishing",
           '                       details are legible — scores 2 or below auto-reject.',
           '                       1 = the candidate contradicts or ignores the addendum entirely.',
         ]
