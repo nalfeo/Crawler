@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fc4fecb88f68fd56817bbf285a64e7d3b2c93d7c",
+    "commitDate": "2026-07-17T00:29:39Z",
+    "commitSubject": "test(enemies): prove independent per-shot telegraph locks + real seed42 smoke evidence (#1215)",
+    "capturedAt": "2026-07-17T01:45:51.054Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29545416492",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/fc4fecb88f68fd56817bbf285a64e7d3b2c93d7c.json"
+  },
+  {
     "commit": "574552e8d98c2538a24ad973654f262f667aa2a8",
     "commitDate": "2026-07-16T21:42:01Z",
     "commitSubject": "feat(sprites): add asset-request size variants (#1213)",
