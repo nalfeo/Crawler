@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -5,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   auditGithub,
   buildMaterializationPlan,
+  createDefaultGitReader,
   EXPECTED_NODE_IDS,
   extractPlanContract,
   validateEpicState,
@@ -16,6 +18,9 @@ import {
 const REPO_ROOT = process.cwd();
 const EPIC_DIR = resolve(REPO_ROOT, 'docs', 'knowledge', 'epics', 'floor-2-equipment');
 const PLAN = readFileSync(resolve(EPIC_DIR, 'PLAN.md'), 'utf8');
+const SCHEMA = JSON.parse(
+  readFileSync(resolve(EPIC_DIR, 'epic-state.schema.json'), 'utf8'),
+) as unknown;
 const STATE = JSON.parse(readFileSync(resolve(EPIC_DIR, 'epic-state.json'), 'utf8')) as EpicState;
 const NOW = new Date('2026-07-17T18:00:00.000Z');
 const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
@@ -58,11 +63,12 @@ function cloneState(): EpicState {
   return state;
 }
 
-function validate(state: EpicState, planMarkdown = PLAN) {
+function validate(state: EpicState, planMarkdown = PLAN, schemaDocument: unknown = SCHEMA) {
   return validateEpicState(state, {
     repoRoot: REPO_ROOT,
     now: NOW,
     planMarkdown,
+    schemaDocument,
     gitReader: makeWorkingTreeGitReader(REPO_ROOT),
   });
 }
@@ -189,6 +195,25 @@ describe('Floor 2 equipment epic status', () => {
         value: 'ready',
       }),
     );
+  });
+
+  it('suppresses the ready queue when global validation errors exist', () => {
+    const state = cloneState();
+    validateA0(state);
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.github.issue = {
+        number: 9002,
+        url: 'https://github.com/nalfeo/Crawler/issues/9002',
+      };
+    }
+    state.plan.contract_sha256 = '0'.repeat(64);
+
+    const result = validate(state);
+
+    expect(result.errors.map((error) => error.code)).toContain('plan.contract-drift');
+    expect(result.ready_queue).toEqual([]);
   });
 
   it('rejects stale and duplicate active ownership', () => {
@@ -329,7 +354,7 @@ describe('Floor 2 equipment epic status', () => {
     expect(audit.proposal.operator_actions).toHaveLength(1);
   });
 
-  it('reconciles an advanced PR head without invalidating the state cache', () => {
+  it('flags advanced PR heads when head-bound evidence is still pinned to the older commit', () => {
     const state = cloneState();
     const a0 = state.nodes[0]!;
     a0.github.pr = {
@@ -366,16 +391,56 @@ describe('Floor 2 equipment epic status', () => {
 
     const audit = auditGithub(state, runner, NOW);
 
-    expect(audit.errors).toEqual([]);
+    expect(audit.errors.map((error) => error.code)).toContain('github.stale-pr-evidence');
     expect(audit.proposal.repo_patch).toContainEqual(
       expect.objectContaining({
-        path: '/nodes/0/github/pr/head_sha',
+        path: '/nodes/0/reconciliation/observed_head_sha',
         value: advancedHead,
       }),
     );
     expect(audit.proposal.repo_patch.map((patch) => patch.path)).not.toContain(
-      '/nodes/0/reconciliation/observed_merge_commit',
+      '/nodes/0/github/pr/head_sha',
     );
+  });
+
+  it('does not treat post-merge source-branch head drift as stale review evidence', () => {
+    const state = cloneState();
+    const a0 = state.nodes[0]!;
+    validateA0(state);
+    a0.status = 'merged';
+    a0.merge = {
+      commit: TEST_MERGE_COMMIT,
+      merged_at: '2026-07-17T17:50:00.000Z',
+    };
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/pulls/1271')) {
+          return {
+            number: 1271,
+            state: 'closed',
+            merged: true,
+            merge_commit_sha: TEST_MERGE_COMMIT,
+            merged_at: '2026-07-17T17:50:00.000Z',
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: 'b'.repeat(40) },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors.map((error) => error.code)).not.toContain('github.stale-pr-evidence');
   });
 
   it('rejects stale heartbeat (exceeds maximum_without_heartbeat_hours)', () => {
@@ -424,6 +489,35 @@ describe('Floor 2 equipment epic status', () => {
 
     const codes = validate(state).errors.map((error) => error.code);
     expect(codes).toContain('dag.dependency-contract-drift');
+  });
+
+  it('detects committed JSON Schema parity drift when node constraints are loosened', () => {
+    const loosened = structuredClone(SCHEMA) as {
+      $defs: { node: { additionalProperties: boolean; required?: string[] } };
+    };
+    loosened.$defs.node.additionalProperties = true;
+    delete loosened.$defs.node.required;
+
+    const codes = validate(cloneState(), PLAN, loosened).errors.map((error) => error.code);
+
+    expect(codes).toContain('schema.contract-parity');
+  });
+
+  it('detects committed JSON Schema drift in root consts and GitHub URL patterns', () => {
+    const drifted = structuredClone(SCHEMA) as {
+      properties: {
+        schema_version: { const: string };
+      };
+      $defs: {
+        issueRef: { properties: { url: { pattern: string } } };
+      };
+    };
+    drifted.properties.schema_version.const = 'crawler-epic-state/v2';
+    drifted.$defs.issueRef.properties.url.pattern = '^https://example.com/issues/[0-9]+$';
+
+    const codes = validate(cloneState(), PLAN, drifted).errors.map((error) => error.code);
+
+    expect(codes).toContain('schema.contract-parity');
   });
 
   it('includes required terminal nodes in release blockers', () => {
@@ -522,6 +616,101 @@ describe('Floor 2 equipment epic status', () => {
     // No duplicate-live-claims and no operator action for the revoked claim.
     expect(audit.errors.map((e) => e.code)).not.toContain('github.duplicate-live-claims');
     expect(audit.proposal.operator_actions.filter((a) => a.includes('session-z'))).toHaveLength(0);
+  });
+
+  it('does not collapse competing claimants that share a session id', () => {
+    const state = cloneState();
+    const makeClaim = (claimant: string): string =>
+      [
+        'CLAIMED',
+        'node: slice:A0',
+        `claimant: ${claimant}`,
+        'session: shared-session',
+        'expires_at: 2026-07-18T18:00:00.000Z',
+        'claimed_at: 2026-07-17T17:00:00.000Z',
+        `base_commit: ${HANDOFF_COMMIT}`,
+        'scope: Slice A0 control plane only',
+      ].join('\n');
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: makeClaim('agent-a'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-30',
+            },
+            {
+              body: makeClaim('agent-b'),
+              author_association: 'MEMBER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-31',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors.map((e) => e.code)).toContain('github.duplicate-live-claims');
+  });
+
+  it('lets a later expired replacement revoke an earlier live claim for the same claimant/session', () => {
+    const state = cloneState();
+    const makeClaim = (claimedAt: string, expiresAt: string): string =>
+      [
+        'CLAIMED',
+        'node: slice:A0',
+        'claimant: agent-a',
+        'session: session-x',
+        `expires_at: ${expiresAt}`,
+        `claimed_at: ${claimedAt}`,
+        `base_commit: ${HANDOFF_COMMIT}`,
+        'scope: Slice A0 control plane only',
+      ].join('\n');
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: makeClaim('2026-07-17T16:00:00.000Z', '2026-07-18T18:00:00.000Z'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-40',
+            },
+            {
+              body: makeClaim('2026-07-17T17:00:00.000Z', '2026-07-17T17:30:00.000Z'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-41',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors.map((e) => e.code)).not.toContain('github.duplicate-live-claims');
+    expect(audit.proposal.operator_actions.filter((a) => a.includes('session-x'))).toHaveLength(0);
   });
 
   it('keeps release_ready false when GitHub audit adds errors', () => {
@@ -672,6 +861,64 @@ describe('Floor 2 equipment epic status', () => {
     expect(audit.errors.map((e) => e.code)).toContain('github.duplicate-live-claims');
   });
 
+  it('audits speculative stacked-work PR head drift', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.stacked_work = {
+        session: 'spec-a1',
+        issue: {
+          number: 9002,
+          url: 'https://github.com/nalfeo/Crawler/issues/9002',
+        },
+        pr: {
+          number: 9004,
+          url: 'https://github.com/nalfeo/Crawler/pull/9004',
+          head_sha: 'a'.repeat(40),
+        },
+        stack_base: {
+          node_id: 'slice:A0',
+          pr: {
+            number: 1271,
+            url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head_sha: state.nodes[0]!.github.pr!.head_sha,
+          },
+        },
+        main_rebase_required: false,
+      };
+    }
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/pulls/9004')) {
+          return {
+            number: 9004,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/9004',
+            head: { sha: 'b'.repeat(40) },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors.map((e) => e.code)).toContain('github.stacked-pr-head-drift');
+  });
+
   it('proposes ownership reconciliation when live claim differs from cached', () => {
     const state = cloneState();
     // Change A0 to in_progress with a cached owner that differs from the live claim.
@@ -723,9 +970,223 @@ describe('Floor 2 equipment epic status', () => {
       ),
     ).toBe(true);
   });
+
+  it('requires stacked work to remain blocked', () => {
+    const state = cloneState();
+    validateA0(state);
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.status = 'ready';
+      a1.github.issue = {
+        number: 9002,
+        url: 'https://github.com/nalfeo/Crawler/issues/9002',
+      };
+      a1.stacked_work = {
+        session: 'spec-a1',
+        issue: {
+          number: 9002,
+          url: 'https://github.com/nalfeo/Crawler/issues/9002',
+        },
+        pr: null,
+        stack_base: {
+          node_id: 'slice:A0',
+          pr: structuredClone(state.nodes[0]!.github.pr)!,
+        },
+        main_rebase_required: false,
+      };
+    }
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('stacked-work.lifecycle-blocked');
+  });
+
+  it('rejects stacked work when the recorded base PR drifted', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.stacked_work = {
+        session: 'spec-a1',
+        issue: {
+          number: 9002,
+          url: 'https://github.com/nalfeo/Crawler/issues/9002',
+        },
+        pr: null,
+        stack_base: {
+          node_id: 'slice:A0',
+          pr: {
+            number: 1271,
+            url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head_sha: 'b'.repeat(40),
+          },
+        },
+        main_rebase_required: false,
+      };
+    }
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('stacked-work.stale-base');
+  });
+
+  it('keeps stacked work out of the ready queue until the speculative metadata is cleared', () => {
+    const state = cloneState();
+    validateA0(state);
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.github.issue = {
+        number: 9002,
+        url: 'https://github.com/nalfeo/Crawler/issues/9002',
+      };
+      a1.stacked_work = {
+        session: 'spec-a1',
+        issue: {
+          number: 9002,
+          url: 'https://github.com/nalfeo/Crawler/issues/9002',
+        },
+        pr: null,
+        stack_base: {
+          node_id: 'slice:A0',
+          pr: structuredClone(state.nodes[0]!.github.pr)!,
+        },
+        main_rebase_required: false,
+      };
+    }
+
+    const result = validate(state);
+
+    expect(result.ready_queue).not.toContain('slice:A1');
+  });
+
+  it('treats stacked_work: null as cleared metadata for readiness', () => {
+    const state = cloneState();
+    validateA0(state);
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.github.issue = {
+        number: 9002,
+        url: 'https://github.com/nalfeo/Crawler/issues/9002',
+      };
+      a1.stacked_work = null;
+    }
+
+    const result = validate(state);
+
+    expect(result.errors).toEqual([]);
+    expect(result.ready_queue).toContain('slice:A1');
+  });
+
+  it('flags stacked work that still needs a main rebase after its base merged', () => {
+    const state = cloneState();
+    validateA0(state);
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.github.issue = {
+        number: 9002,
+        url: 'https://github.com/nalfeo/Crawler/issues/9002',
+      };
+      a1.stacked_work = {
+        session: 'spec-a1',
+        issue: {
+          number: 9002,
+          url: 'https://github.com/nalfeo/Crawler/issues/9002',
+        },
+        pr: null,
+        stack_base: {
+          node_id: 'slice:A0',
+          pr: structuredClone(state.nodes[0]!.github.pr)!,
+        },
+        main_rebase_required: true,
+      };
+    }
+
+    const result = validate(state);
+
+    expect(result.errors.map((error) => error.code)).toContain('stacked-work.post-merge-unrebased');
+    expect(result.ready_queue).not.toContain('slice:A1');
+  });
+
+  it('rejects stacked work whose dependency does not have an open PR base', () => {
+    const state = cloneState();
+    state.nodes[0]!.status = 'blocked';
+    state.nodes[0]!.github.pr = null;
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.stacked_work = {
+        session: 'spec-a1',
+        issue: {
+          number: 9002,
+          url: 'https://github.com/nalfeo/Crawler/issues/9002',
+        },
+        pr: null,
+        stack_base: {
+          node_id: 'slice:A0',
+          pr: {
+            number: 1271,
+            url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head_sha: FULL_COMMIT,
+          },
+        },
+        main_rebase_required: false,
+      };
+    }
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('stacked-work.dep-not-pr-open');
+  });
+
+  it('rejects duplicate stacked-work sessions and issues across nodes', () => {
+    const state = cloneState();
+    const spec = {
+      session: 'shared-stack',
+      issue: {
+        number: 9002,
+        url: 'https://github.com/nalfeo/Crawler/issues/9002',
+      },
+      pr: null,
+      stack_base: {
+        node_id: 'slice:A0',
+        pr: structuredClone(state.nodes[0]!.github.pr)!,
+      },
+      main_rebase_required: false,
+    };
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    const c1 = state.nodes.find((node) => node.node_id === 'slice:C1');
+    expect(a1).toBeDefined();
+    expect(c1).toBeDefined();
+    if (a1) a1.stacked_work = structuredClone(spec);
+    if (c1) c1.stacked_work = structuredClone(spec);
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('stacked-work.duplicate-session');
+    expect(codes).toContain('stacked-work.duplicate-issue');
+  });
 });
 
 describe('validateEvidenceRequirements', () => {
+  it('production git reader rejects non-commit git objects', () => {
+    const reader = createDefaultGitReader(REPO_ROOT);
+    const commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    }).trim();
+    const blobSha = execFileSync('git', ['rev-parse', 'HEAD:package.json'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    }).trim();
+
+    expect(reader.commitExists(commitSha)).toBe(true);
+    expect(reader.commitExists(blobSha)).toBe(false);
+  });
+
   it('rejects a validated node with a fabricated commit for non-handoff evidence', () => {
     const state = cloneState();
     const node = state.nodes[0]!;

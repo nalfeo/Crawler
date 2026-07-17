@@ -41,11 +41,7 @@
     "plan": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "path",
-        "contract_version",
-        "contract_sha256"
-      ],
+      "required": ["path", "contract_version", "contract_sha256"],
       "properties": {
         "path": {
           "const": "docs/knowledge/epics/floor-2-equipment/PLAN.md"
@@ -61,11 +57,7 @@
     "authority": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "state_role",
-        "sole_global_writer",
-        "ordered_sources"
-      ],
+      "required": ["state_role", "sole_global_writer", "ordered_sources"],
       "properties": {
         "state_role": {
           "const": "index-cache"
@@ -97,10 +89,7 @@
     "lifecycle": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "normal",
-        "terminal"
-      ],
+      "required": ["normal", "terminal"],
       "properties": {
         "normal": {
           "type": "array",
@@ -198,10 +187,7 @@
     "github": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "repository",
-        "parent_issue"
-      ],
+      "required": ["repository", "parent_issue"],
       "properties": {
         "repository": {
           "const": "nalfeo/Crawler"
@@ -214,13 +200,7 @@
     "issue_materialization": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "mode",
-        "parent_title",
-        "child_title_prefix",
-        "labels",
-        "late_bound_fields"
-      ],
+      "required": ["mode", "parent_title", "child_title_prefix", "labels", "late_bound_fields"],
       "properties": {
         "mode": {
           "const": "deterministic-plan-only"
@@ -244,10 +224,7 @@
         "late_bound_fields": {
           "type": "array",
           "items": {
-            "enum": [
-              "parent_issue_number",
-              "child_issue_number"
-            ]
+            "enum": ["parent_issue_number", "child_issue_number"]
           },
           "uniqueItems": true
         }
@@ -256,11 +233,7 @@
     "release": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "required_node_status",
-        "all_required_nodes",
-        "flags"
-      ],
+      "required": ["required_node_status", "all_required_nodes", "flags"],
       "properties": {
         "required_node_status": {
           "const": "validated"
@@ -305,10 +278,7 @@
           "$ref": "#/$defs/nullableDateTime"
         },
         "last_reconciled_by": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "drift": {
           "type": "array",
@@ -333,10 +303,7 @@
       "pattern": "^[0-9a-f]{64}$"
     },
     "nullableDateTime": {
-      "type": [
-        "string",
-        "null"
-      ],
+      "type": ["string", "null"],
       "format": "date-time"
     },
     "nullableSha": {
@@ -362,10 +329,7 @@
     "issueRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "number",
-        "url"
-      ],
+      "required": ["number", "url"],
       "properties": {
         "number": {
           "type": "integer",
@@ -390,11 +354,7 @@
     "prRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "number",
-        "url",
-        "head_sha"
-      ],
+      "required": ["number", "url", "head_sha"],
       "properties": {
         "number": {
           "type": "integer",
@@ -422,13 +382,7 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "kind",
-        "path_or_check",
-        "sha256",
-        "commit",
-        "recorded_at"
-      ],
+      "required": ["kind", "path_or_check", "sha256", "commit", "recorded_at"],
       "properties": {
         "kind": {
           "type": "string",
@@ -465,29 +419,16 @@
       ],
       "properties": {
         "claimant": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "session": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "source": {
-          "enum": [
-            "none",
-            "parent-issue-bootstrap",
-            "child-issue-comment"
-          ]
+          "enum": ["none", "parent-issue-bootstrap", "child-issue-comment"]
         },
         "scope": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "claimed_at": {
           "$ref": "#/$defs/nullableDateTime"
@@ -506,16 +447,50 @@
     "merge": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "commit",
-        "merged_at"
-      ],
+      "required": ["commit", "merged_at"],
       "properties": {
         "commit": {
           "$ref": "#/$defs/nullableSha40"
         },
         "merged_at": {
           "$ref": "#/$defs/nullableDateTime"
+        }
+      }
+    },
+    "stackBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "pr"],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "pattern": "^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$"
+        },
+        "pr": {
+          "$ref": "#/$defs/prRef"
+        }
+      }
+    },
+    "stackedWork": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session", "issue", "pr", "stack_base", "main_rebase_required"],
+      "properties": {
+        "session": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issue": {
+          "$ref": "#/$defs/issueRef"
+        },
+        "pr": {
+          "$ref": "#/$defs/nullablePrRef"
+        },
+        "stack_base": {
+          "$ref": "#/$defs/stackBase"
+        },
+        "main_rebase_required": {
+          "type": "boolean"
         }
       }
     },
@@ -535,19 +510,10 @@
           "$ref": "#/$defs/nullableDateTime"
         },
         "observed_issue_state": {
-          "enum": [
-            "open",
-            "closed",
-            null
-          ]
+          "enum": ["open", "closed", null]
         },
         "observed_pr_state": {
-          "enum": [
-            "OPEN",
-            "CLOSED",
-            "MERGED",
-            null
-          ]
+          "enum": ["OPEN", "CLOSED", "MERGED", null]
         },
         "observed_head_sha": {
           "$ref": "#/$defs/nullableSha40"
@@ -598,16 +564,10 @@
           "pattern": "^[A-Z0-9][A-Z0-9+.-]*$"
         },
         "kind": {
-          "enum": [
-            "slice",
-            "cloud_packet"
-          ]
+          "enum": ["slice", "cloud_packet"]
         },
         "parent_slice": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "pattern": "^slice:[A-Z0-9][A-Z0-9+.-]*$"
         },
         "title": {
@@ -657,16 +617,10 @@
           ]
         },
         "release_requirement": {
-          "enum": [
-            "required",
-            "deferred"
-          ]
+          "enum": ["required", "deferred"]
         },
         "deferred_reason": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "status_changed_at": {
           "type": "string",
@@ -675,10 +629,7 @@
         "github": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "issue",
-            "pr"
-          ],
+          "required": ["issue", "pr"],
           "properties": {
             "issue": {
               "$ref": "#/$defs/nullableIssueRef"
@@ -713,10 +664,7 @@
           "$ref": "#/$defs/nodeReconciliation"
         },
         "superseded_by": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "pattern": "^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$"
         },
         "stacked_work": {
@@ -834,11 +782,7 @@
     "releaseFlag": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "default",
-        "validating_nodes"
-      ],
+      "required": ["name", "default", "validating_nodes"],
       "properties": {
         "name": {
           "type": "string",

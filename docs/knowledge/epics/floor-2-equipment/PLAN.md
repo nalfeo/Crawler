@@ -299,6 +299,9 @@ Use these exact structured headings in issue comments:
 - `UNBLOCKED`: resolving evidence and refreshed dependency snapshot.
 - `SCOPE-CHANGE-REQUEST`: requested delta, rationale, impacted nodes, evidence
   invalidation, apple/review impact. This never changes scope by itself.
+- `STACKED-WORK`: speculative child issue/session/PR, stacked base node/PR, and
+  whether a rebase onto `main` is now required before the node can re-enter the
+  authoritative ready queue.
 - `HANDOFF`: branch/PR, head SHA, handoff path/hash, ledger path/hash, tests,
   unresolved risks, and next owner.
 
