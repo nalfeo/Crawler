@@ -96,6 +96,12 @@ export type EpicState = z.infer<typeof EpicStateSchema>;
 /**
  * Parse and validate a raw JSON value against the EpicState schema.
  * Throws a descriptive error on validation failure.
+ * Also checks:
+ *   - Duplicate slice IDs
+ *   - Duplicate gate checkpoint IDs
+ *   - Referential integrity (all dep IDs exist)
+ *   - No self-references in dependencies
+ *   - No cycles in the dependency DAG
  */
 export function validateEpicState(raw: unknown): EpicState {
   const result = EpicStateSchema.safeParse(raw);
@@ -103,17 +109,76 @@ export function validateEpicState(raw: unknown): EpicState {
     const msgs = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');
     throw new Error(`Epic state validation failed:\n${msgs}`);
   }
-  // Validate referential integrity: every dependency ID must refer to an
-  // existing slice.
-  const ids = new Set(result.data.slices.map((s) => s.id));
-  for (const slice of result.data.slices) {
+  const data = result.data;
+
+  // Duplicate slice ID check
+  const ids = new Map<string, number>(); // id → first index
+  for (let i = 0; i < data.slices.length; i++) {
+    const id = data.slices[i]!.id;
+    if (ids.has(id)) {
+      throw new Error(`Duplicate slice id "${id}" at indices ${ids.get(id)} and ${i}`);
+    }
+    ids.set(id, i);
+  }
+
+  // Duplicate gate checkpoint ID check
+  const cpIds = new Map<string, number>();
+  for (let i = 0; i < data.hard_release_gate.checkpoints.length; i++) {
+    const cpId = data.hard_release_gate.checkpoints[i]!.id;
+    if (cpIds.has(cpId)) {
+      throw new Error(
+        `Duplicate gate checkpoint id "${cpId}" at indices ${cpIds.get(cpId)} and ${i}`,
+      );
+    }
+    cpIds.set(cpId, i);
+  }
+
+  // Referential integrity + self-reference check
+  for (const slice of data.slices) {
     for (const dep of slice.dependencies) {
+      if (dep === slice.id) {
+        throw new Error(`Slice ${slice.id} has a self-reference in its dependencies`);
+      }
       if (!ids.has(dep)) {
         throw new Error(`Slice ${slice.id} has unknown dependency: ${dep}`);
       }
     }
   }
-  return result.data;
+
+  // Cycle detection: topological sort (Kahn's algorithm)
+  const inDegree = new Map<string, number>();
+  const adjList = new Map<string, string[]>(); // dep → dependents
+  for (const slice of data.slices) {
+    if (!inDegree.has(slice.id)) inDegree.set(slice.id, 0);
+    if (!adjList.has(slice.id)) adjList.set(slice.id, []);
+    for (const dep of slice.dependencies) {
+      inDegree.set(slice.id, (inDegree.get(slice.id) ?? 0) + 1);
+      const dependents = adjList.get(dep) ?? [];
+      dependents.push(slice.id);
+      adjList.set(dep, dependents);
+    }
+  }
+  const queue: string[] = [];
+  for (const [id, degree] of inDegree) {
+    if (degree === 0) queue.push(id);
+  }
+  let processed = 0;
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    processed++;
+    for (const dependent of adjList.get(current) ?? []) {
+      const newDeg = (inDegree.get(dependent) ?? 0) - 1;
+      inDegree.set(dependent, newDeg);
+      if (newDeg === 0) queue.push(dependent);
+    }
+  }
+  if (processed < data.slices.length) {
+    throw new Error(
+      `Dependency cycle detected in epic state: only ${processed} of ${data.slices.length} slices could be topologically sorted`,
+    );
+  }
+
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,13 +189,15 @@ export function validateEpicState(raw: unknown): EpicState {
 const DONE_STATUSES: ReadonlySet<SliceStatus> = new Set(['validated', 'merged']);
 
 /**
- * Return the slices that are "computed-ready": their own status is `planned`
- * and every declared dependency is in a done status (`validated` or `merged`).
+ * Return the slices that are "computed-ready": their own status is `planned`,
+ * they are not deferred, and every declared dependency is in a done status
+ * (`validated` or `merged`).
  */
 export function computeReadySlices(state: EpicState): readonly SliceNode[] {
   const statusById = new Map<string, SliceStatus>(state.slices.map((s) => [s.id, s.status]));
   return state.slices.filter((slice) => {
     if (slice.status !== 'planned') return false;
+    if (slice.deferred) return false;
     return slice.dependencies.every((depId) => {
       const depStatus = statusById.get(depId);
       return depStatus !== undefined && DONE_STATUSES.has(depStatus);

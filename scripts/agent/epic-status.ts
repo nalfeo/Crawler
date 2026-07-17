@@ -15,7 +15,7 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import {
@@ -142,7 +142,14 @@ async function runGitHubReconcile(state: EpicState): Promise<void> {
         discrepancies++;
         continue;
       }
-      const data = (await resp.json()) as { state: string };
+      const data = (await resp.json()) as { state?: unknown };
+      if (typeof data.state !== 'string') {
+        process.stderr.write(
+          `  ⚠️  ${slice.id}: unexpected API response shape (missing state field)\n`,
+        );
+        discrepancies++;
+        continue;
+      }
       issueState = data.state;
     } catch (err) {
       process.stderr.write(`  ⚠️  ${slice.id}: fetch failed — ${String(err)}\n`);
@@ -212,7 +219,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`Unhandled error: ${String(err)}\n`);
-  process.exit(1);
-});
+// Only run when invoked directly (not when imported as a module in tests).
+const isMain =
+  process.argv[1] != null && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+if (isMain) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`Unhandled error: ${String(err)}\n`);
+    process.exit(1);
+  });
+}

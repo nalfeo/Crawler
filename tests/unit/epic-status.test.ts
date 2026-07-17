@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   validateEpicState,
   computeReadySlices,
@@ -7,6 +10,7 @@ import {
   type EpicState,
   type SliceNode,
 } from '../../scripts/agent/epic-status-lib.js';
+import { parseArgs } from '../../scripts/agent/epic-status.js';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -107,6 +111,40 @@ describe('validateEpicState', () => {
     expect(() => validateEpicState(makeMinimalState([slice as unknown as SliceNode]))).toThrow();
   });
 
+  it('rejects a state with duplicate slice IDs', () => {
+    const state = makeMinimalState([
+      makeSlice('slice:A0', 'validated'),
+      makeSlice('slice:A0', 'planned'), // duplicate
+    ]);
+    expect(() => validateEpicState(state)).toThrow(/Duplicate slice id/);
+  });
+
+  it('rejects a slice with a self-reference dependency', () => {
+    const state = makeMinimalState([makeSlice('slice:A0', 'planned', ['slice:A0'])]);
+    expect(() => validateEpicState(state)).toThrow(/self-reference/);
+  });
+
+  it('detects a cycle in the dependency graph', () => {
+    const state = makeMinimalState([
+      makeSlice('slice:A0', 'planned', ['slice:B1']),
+      makeSlice('slice:B1', 'planned', ['slice:A0']),
+    ]);
+    expect(() => validateEpicState(state)).toThrow(/cycle/);
+  });
+
+  it('rejects duplicate gate checkpoint IDs', () => {
+    const state = makeMinimalState([makeSlice('slice:A0', 'validated')]);
+    const dupCp = { ...state };
+    dupCp.hard_release_gate = {
+      ...state.hard_release_gate,
+      checkpoints: [
+        state.hard_release_gate.checkpoints[0]!,
+        state.hard_release_gate.checkpoints[0]!, // duplicate cp id
+      ],
+    };
+    expect(() => validateEpicState(dupCp)).toThrow(/Duplicate gate checkpoint id/);
+  });
+
   it('accepts all valid slice statuses', () => {
     const statuses: SliceNode['status'][] = [
       'planned',
@@ -164,6 +202,14 @@ describe('computeReadySlices', () => {
       makeSlice('slice:A0', 'claimed'),
       makeSlice('slice:B1', 'validated'),
       makeSlice('slice:B2', 'deferred'),
+    ]);
+    expect(computeReadySlices(state)).toHaveLength(0);
+  });
+
+  it('excludes deferred:true slices even when status is planned and all deps are validated', () => {
+    const state = makeMinimalState([
+      makeSlice('slice:A0', 'validated'),
+      makeSlice('slice:B1', 'planned', ['slice:A0'], { deferred: true }),
     ]);
     expect(computeReadySlices(state)).toHaveLength(0);
   });
@@ -274,5 +320,83 @@ describe('formatMaterializationPlan', () => {
     const state = makeMinimalState([makeSlice('slice:A0', 'in_progress')]);
     const out = formatMaterializationPlan(state);
     expect(out).toContain('No slices are currently computed-ready');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Smoke test: validate the checked-in floor-2-equipment epic-state.json
+// ---------------------------------------------------------------------------
+
+describe('floor-2-equipment epic-state.json smoke test', () => {
+  it('parses and validates against the live state file', () => {
+    const here = fileURLToPath(import.meta.url);
+    const stateFile = path.resolve(
+      here,
+      '../../../docs/knowledge/epics/floor-2-equipment/epic-state.json',
+    );
+    const raw = JSON.parse(readFileSync(stateFile, 'utf-8'));
+    const state = validateEpicState(raw);
+    // Structural sanity
+    expect(state.epic_id).toBe('floor-2-equipment');
+    expect(state.slices.length).toBeGreaterThanOrEqual(7);
+    // Every dep must reference an existing slice id
+    const ids = new Set(state.slices.map((s) => s.id));
+    for (const slice of state.slices) {
+      for (const dep of slice.dependencies) {
+        expect(ids.has(dep), `${slice.id} dep ${dep} missing`).toBe(true);
+      }
+    }
+    // Hard gate has at least 2 checkpoints
+    expect(state.hard_release_gate.checkpoints.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs
+// ---------------------------------------------------------------------------
+
+function argv(...args: string[]): string[] {
+  return ['node', 'epic-status.js', ...args];
+}
+
+describe('parseArgs', () => {
+  it('parses a valid epic-id with no flags', () => {
+    const result = parseArgs(argv('floor-2-equipment'));
+    expect(result).toEqual({
+      epicId: 'floor-2-equipment',
+      github: false,
+      reconcile: false,
+      materializationPlan: false,
+    });
+  });
+
+  it('parses --materialization-plan flag', () => {
+    const result = parseArgs(argv('floor-2-equipment', '--materialization-plan'));
+    expect(result.materializationPlan).toBe(true);
+    expect(result.epicId).toBe('floor-2-equipment');
+  });
+
+  it('parses --github --reconcile flags', () => {
+    const result = parseArgs(argv('floor-2-equipment', '--github', '--reconcile'));
+    expect(result.github).toBe(true);
+    expect(result.reconcile).toBe(true);
+  });
+
+  it('throws when no epic-id is provided', () => {
+    expect(() => parseArgs(argv())).toThrow(/Usage/);
+  });
+
+  it('throws when first arg is a flag (no positional epic-id)', () => {
+    expect(() => parseArgs(argv('--github'))).toThrow(/Usage/);
+  });
+
+  it('throws when epic-id is not kebab-case', () => {
+    expect(() => parseArgs(argv('Floor_2_Equipment'))).toThrow(/kebab-case/);
+  });
+
+  it('throws when --reconcile is used without --github', () => {
+    expect(() => parseArgs(argv('floor-2-equipment', '--reconcile'))).toThrow(
+      /--reconcile requires --github/,
+    );
   });
 });

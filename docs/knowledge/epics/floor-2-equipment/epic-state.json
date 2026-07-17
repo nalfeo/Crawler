@@ -36,14 +36,14 @@
       "title": "Bootstrap: Control plane",
       "tier": "A",
       "seq": 0,
-      "status": "validated",
+      "status": "in_progress",
       "scope": "Durable control plane only: PLAN.md, epic-state.json, schema, epic:status CLI, tests, handoff. No equipment gameplay changes.",
       "deferred": false,
       "github_issue": 1264,
       "pr": null,
       "commit_evidence": null,
       "dependencies": [],
-      "notes": "Claimed by Producer session 7b4a2e77. This slice is the current implementation target."
+      "notes": "Claimed by Producer session 7b4a2e77. Status advances to 'validated' when this PR merges; Producer fills commit_evidence with the merge SHA."
     },
     {
       "id": "slice:B1",
