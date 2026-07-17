@@ -158,11 +158,20 @@ export interface MainGameSceneOptions {
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /**
    * Called when Floor 1 is cleared (player descends the stairs).
-   * Typically navigates the browser to Floor 2. When provided, the floor
-   * completion screen shows a transitional message and then invokes this
-   * callback after a brief delay instead of displaying a dead-end message.
+   * When it returns next-floor options, the scene restarts in process with a
+   * fresh world after the transitional message.
    */
-  onFloor1Cleared?: () => void;
+  onFloor1Cleared?: (
+    world: GameWorld,
+    playerEid: number,
+  ) => MainGameSceneTransitionOptions | undefined;
+  /**
+   * Reapplies host-owned options (AI input, recording, lab presets) to the
+   * next floor's base options before an in-process restart.
+   */
+  recomposeFloorTransitionOptions?: (
+    nextFloorOptions: MainGameSceneTransitionOptions,
+  ) => MainGameSceneTransitionOptions;
   /** Shopkeeper errand callbacks (game-layer logic injected from main.ts). */
   shopkeeper?: {
     getIndicatorState?: (world: GameWorld) => NpcQuestIndicatorState;
@@ -246,6 +255,13 @@ export interface MainGameSceneOptions {
     victory: string;
     timeout?: string;
   };
+}
+
+export type MainGameSceneTransitionOptions = MainGameSceneOptions &
+  Required<Pick<MainGameSceneOptions, 'configureWorld' | 'preSystems' | 'postSystems'>>;
+
+interface MainGameSceneInitData {
+  readonly mainGameSceneOptions?: MainGameSceneOptions;
 }
 
 declare global {
@@ -569,8 +585,14 @@ export class MainGameScene extends Phaser.Scene {
 
   private fovLastComputeMs = 0;
 
-  constructor(private readonly options: MainGameSceneOptions = {}) {
+  constructor(private options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
+  }
+
+  init(data?: MainGameSceneInitData): void {
+    if (data?.mainGameSceneOptions) {
+      this.options = data.mainGameSceneOptions;
+    }
   }
 
   create(): void {
@@ -2850,7 +2872,14 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionMessagePending = false;
       this.floorCompletionMessageShown = true;
       this.floorCompletionScreen?.setVisible(true);
-      this.time.delayedCall(1500, () => this.options.onFloor1Cleared?.());
+      this.time.delayedCall(1500, () => {
+        const nextOptions = this.options.onFloor1Cleared?.(this.world, this.playerEid);
+        if (nextOptions) {
+          const composedNextOptions =
+            this.options.recomposeFloorTransitionOptions?.(nextOptions) ?? nextOptions;
+          this.scene.restart({ mainGameSceneOptions: composedNextOptions });
+        }
+      });
       return;
     } else {
       this.floorCompletionTitleText?.setText('Floor 1 Complete!');

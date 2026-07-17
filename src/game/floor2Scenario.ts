@@ -129,6 +129,7 @@ import {
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { applyStartPlayerLevel } from './scenarios/playerLevelProgression.js';
 import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolicy.js';
+import { restorePlayerCarryover, type PlayerCarryoverSnapshot } from './playerCarryover.js';
 
 const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
@@ -754,7 +755,11 @@ export function confirmFloor2StairDescend(world: GameWorld, _playerEid: number):
 /**
  * Floor 2 scenario initializer used by scenario wiring (Slice 8).
  */
-export function initializeFloor2Scenario(world: GameWorld, playerEid: number): void {
+export function initializeFloor2Scenario(
+  world: GameWorld,
+  playerEid: number,
+  options?: { readonly playerCarryover?: PlayerCarryoverSnapshot },
+): void {
   const manifest = getFloorManifest('floor2');
   if (!manifest) {
     throw new Error('Missing floor2 manifest');
@@ -840,10 +845,11 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   world.featureUnlocks.inventory = true;
   world.featureUnlocks.equipment = true;
   world.featureUnlocks.spells = true;
-  applyFloor2DirectStartPlayerState(world, playerEid);
-  // Initialize weapon skill states for the player so HUD and skill system track progress.
-  initializePlayerWeaponSkills(world, playerEid);
-  ensureBossBattleSpellReward(world, playerEid);
+  if (!options?.playerCarryover) {
+    applyFloor2DirectStartPlayerState(world, playerEid);
+    initializePlayerWeaponSkills(world, playerEid);
+    ensureBossBattleSpellReward(world, playerEid);
+  }
   setGoalFlag(world, 'floor1-drops-unlocked', true);
 
   removeStatModifiers(world, 'floor', 'floor2-manifest-player');
@@ -915,8 +921,10 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
   if (!hasComponent(world.ecs, playerEid, BroadcastScore)) {
     addComponent(world.ecs, playerEid, set(BroadcastScore, { current: 0 }));
   }
-  const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
-  setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
+  if (!options?.playerCarryover) {
+    const maxHp = (world.stores.health.max[playerEid] ?? 100) + manifest.player.hpBonus;
+    setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
+  }
 
   const objectives = initializeFloor2Bosses(
     world,
@@ -949,34 +957,39 @@ export function initializeFloor2Scenario(world: GameWorld, playerEid: number): v
     ...(settlementArchetypes ? { archetypes: settlementArchetypes } : {}),
   });
 
-  // Use seeded RNG to pick starter weapon, matching Floor 1 pattern
-  // so player gets the same weapon on the same seed for consistency
-  const starterWeaponPool = manifest.starterWeapons;
-  let selectedWeaponId: string | null = null;
-  if (starterWeaponPool && starterWeaponPool.length > 0) {
-    const weaponRng = new SeededRandomClass(
-      hashStringToSeed(`${world.seed}:floor2-starter-weapon`),
-    );
-    // Pick from the pool deterministically
-    const picked = starterWeaponPool[weaponRng.nextInt(0, starterWeaponPool.length - 1)];
-    if (picked) {
-      const weaponDef = getWeaponDef(picked);
-      if (weaponDef) {
-        selectedWeaponId = weaponDef.id;
-        equipStarterOrFallback(world, weaponDef.id, weaponDef);
+  if (!options?.playerCarryover) {
+    // Use seeded RNG to pick starter weapon, matching Floor 1 pattern
+    // so player gets the same weapon on the same seed for consistency.
+    const starterWeaponPool = manifest.starterWeapons;
+    let selectedWeaponId: string | null = null;
+    if (starterWeaponPool && starterWeaponPool.length > 0) {
+      const weaponRng = new SeededRandomClass(
+        hashStringToSeed(`${world.seed}:floor2-starter-weapon`),
+      );
+      const picked = starterWeaponPool[weaponRng.nextInt(0, starterWeaponPool.length - 1)];
+      if (picked) {
+        const weaponDef = getWeaponDef(picked);
+        if (weaponDef) {
+          selectedWeaponId = weaponDef.id;
+          equipStarterOrFallback(world, weaponDef.id, weaponDef);
+        }
+      }
+    }
+
+    if (!selectedWeaponId && manifest.starterWeapons && manifest.starterWeapons.length > 0) {
+      const fallbackId = manifest.starterWeapons[0];
+      if (fallbackId) {
+        const fallbackDef = getWeaponDef(fallbackId);
+        if (fallbackDef) {
+          equipStarterOrFallback(world, fallbackDef.id, fallbackDef);
+        }
       }
     }
   }
 
-  // Fallback if seeded pick failed
-  if (!selectedWeaponId && manifest.starterWeapons && manifest.starterWeapons.length > 0) {
-    const fallbackId = manifest.starterWeapons[0];
-    if (fallbackId) {
-      const fallbackDef = getWeaponDef(fallbackId);
-      if (fallbackDef) {
-        equipStarterOrFallback(world, fallbackDef.id, fallbackDef);
-      }
-    }
+  if (options?.playerCarryover) {
+    restorePlayerCarryover(world, playerEid, options.playerCarryover);
+    initializePlayerWeaponSkills(world, playerEid);
   }
 
   if (floor2Config?.governor?.autoVictoryOnStart === true) {

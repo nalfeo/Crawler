@@ -845,7 +845,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // scenario preset's world tweaks on top of the floor's own configureWorld.
   // Shared by the initial build and changeFloor so switching floors preserves
   // the active scenario preset instead of clobbering it.
-  const composeSceneOptions = (base: ReturnType<typeof createFloorMainSceneOptions>) => ({
+  const composeSceneOptions: (
+    base: ReturnType<typeof createFloorMainSceneOptions>,
+  ) => ReturnType<typeof createFloorMainSceneOptions> = (base) => ({
     ...base,
     configureWorld: (world: GameWorld, playerEid: number) => {
       base.configureWorld(world, playerEid);
@@ -860,6 +862,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         ? null
         : computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas),
     sessionRecorderFactory: recorderControls.factory,
+    recomposeFloorTransitionOptions: composeSceneOptions,
   });
 
   const sceneOptions = composeSceneOptions(createFloorMainSceneOptions(currentFloor));
