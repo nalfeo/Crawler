@@ -1003,6 +1003,29 @@ export async function runHeadless(
       }
     }
 
+    // Flush the final frame's combat events so the lethal hit is always attributed.
+    // When the run ends via death, `break` exits before the per-frame event-processing
+    // loop (lines 836–846), leaving the killing blow unattributed in damageTakenBySource.
+    // Processing remaining events here makes the attribution complete for all outcomes
+    // without risk of double-counting (on a normal exit combatEventCursor already points
+    // past the last processed event, so this loop is a no-op).
+    for (
+      let eventIndex = combatEventCursor;
+      eventIndex < world.combatEvents.length;
+      eventIndex += 1
+    ) {
+      const event = world.combatEvents[eventIndex]!;
+      if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
+        const source =
+          event.sourceEid === undefined
+            ? 'unknown'
+            : (world.enemyAppearanceKeys.get(event.sourceEid) ??
+              world.floorScenario?.enemyArchetypes.get(event.sourceEid) ??
+              'unknown');
+        damageTakenBySource[source] = (damageTakenBySource[source] ?? 0) + event.amount;
+      }
+    }
+
     // If still in combat at end, add remaining time
     if (inCombat) {
       const combatDurationFrames = frameCount - combatStartFrame;

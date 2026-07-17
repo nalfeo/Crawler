@@ -2,7 +2,7 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-16",
   "session_slug": "fix-bat-ranged-dodging",
-  "task_title": "Fix critical-health ranged-threat dodging",
+  "task_title": "Fix focused-hunt melee spacing (bat ranged-threat avoidance via cadence-aware planner)",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
