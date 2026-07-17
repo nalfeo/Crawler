@@ -354,6 +354,20 @@ describe('Verdigris Glamour — cleanup paths', () => {
     expect(h.world.announcements.filter((a) => a.kind === 'bossAbilityCast')).toHaveLength(0);
   });
 
+  it('treats a dead target as invalid — no telegraph or announcement', () => {
+    const h = buildHarness();
+    arm(h);
+    // The player is present but dead when eligibility fires: it must not anchor
+    // a telegraph. The boss re-arms instead of firing a phantom cast.
+    h.world.stores.health.current[h.player] = 0;
+    step(h.world, FIRST_TELEGRAPH_FRAME + 5);
+    const inst = h.world.mobAbilities.byEntity.get(h.queen)!;
+    expect(inst.phase).toBe('cooldown');
+    expect(inst.announcementsEmitted).toBe(0);
+    expect(h.world.mobAbilities.cues).toHaveLength(0);
+    expect(h.world.announcements.filter((a) => a.kind === 'bossAbilityCast')).toHaveLength(0);
+  });
+
   it('setMobAbilitiesEnabled(false) tears down the runtime', () => {
     const h = buildHarness();
     arm(h);

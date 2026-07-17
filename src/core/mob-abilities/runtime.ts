@@ -200,10 +200,17 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
   inst.committedTargetEid = null;
 }
 
-/** Default target selection: the player singleton (catalog `player-position`). */
+/** Default target selection: the living player singleton (catalog `player-position`). */
 function findDefaultTarget(world: GameWorld): number | null {
   const players = query(world.ecs, [Player, Position]);
-  return players.length > 0 ? players[0]! : null;
+  for (const eid of players) {
+    // A dead/invalid target must never anchor a telegraph — treat it as absent
+    // so beginTelegraph takes the skip-and-re-arm path.
+    if (!hasComponent(world.ecs, eid, Health)) continue;
+    if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+    return eid;
+  }
+  return null;
 }
 
 /**
