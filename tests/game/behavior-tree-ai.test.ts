@@ -1686,8 +1686,9 @@ describe('BehaviorTreeAI', () => {
     // every frame. The watchdog used to reset its no-progress baseline whenever
     // the tracked eid changed, so a flip-flopping pair reset the counter back to
     // 0 every single frame and giveup could never fire -- ENGAGE deadlocked
-    // forever against an oscillating RETREAT. The baseline must now persist
-    // across an eid swap so an unproductive flip still counts toward giveup.
+    // forever against an oscillating RETREAT. The shared no-progress counter must
+    // keep incrementing regardless of eid swaps while per-eid baselines ensure
+    // each target is measured against its own history.
     const world = createTestWorld({ seed: 5 });
     const player = spawnPlayer(world, 0, 0);
     world.stores.position.x[player] = 0;
@@ -1703,49 +1704,48 @@ describe('BehaviorTreeAI', () => {
     const internals = ai as unknown as {
       decision: { state: AIStateValue; targetEid: number | null };
       engageNoProgressFrames: number;
-      engageBestDistance: number;
-      engageBestHp: number;
+      engageBaselinesByEid: Map<number, { bestDistance: number; bestHp: number }>;
       updateEngageWatchdog: (world: GameWorld, playerX: number, playerY: number) => void;
     };
     internals.decision.state = AIState.ENGAGE;
 
-    // Frame 0 establishes the progress baseline (always "progress" vs. the
-    // initial Infinity sentinel).
+    // Pre-establish baselines for both enemies (first-sight is a neutral
+    // baseline-recording call that does not affect the counter).
     internals.decision.targetEid = enemyA;
     internals.updateEngageWatchdog(world, 0, 0);
     expect(internals.engageNoProgressFrames).toBe(0);
 
+    internals.decision.targetEid = enemyB;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageNoProgressFrames).toBe(0);
+
     // Flip the tracked target every frame for exactly ENGAGE_GIVEUP_FRAMES
-    // frames. None of these frames improve distance or HP, so under the fixed
-    // behavior the no-progress counter must keep incrementing regardless of
-    // the eid swap.
+    // frames. Both baselines are now established, so none of these frames show
+    // progress; the shared no-progress counter must keep incrementing regardless
+    // of the eid swap.
     for (let frame = 0; frame < ENGAGE_GIVEUP_FRAMES; frame += 1) {
-      internals.decision.targetEid = frame % 2 === 0 ? enemyB : enemyA;
+      internals.decision.targetEid = frame % 2 === 0 ? enemyA : enemyB;
       internals.updateEngageWatchdog(world, 0, 0);
     }
     expect(internals.engageNoProgressFrames).toBe(ENGAGE_GIVEUP_FRAMES);
     expect(internals.decision.targetEid).not.toBeNull();
 
-    // One more no-progress frame (after another flip) must trip giveup.
+    // One more no-progress frame must trip giveup.
     internals.decision.targetEid = enemyB;
     internals.updateEngageWatchdog(world, 0, 0);
     expect(internals.decision.targetEid).toBeNull();
 
-    // Giveup must also reset the progress baselines, not just the counter --
-    // otherwise the very next enemy the BT retargets to (same frame, at any
-    // distance) inherits an unreachable bar from the blacklisted enemy.
-    expect(internals.engageBestDistance).toBe(Number.POSITIVE_INFINITY);
-    expect(internals.engageBestHp).toBe(Number.POSITIVE_INFINITY);
+    // Giveup must clear the entire baseline map so the next enemy the BT
+    // retargets starts fresh rather than inheriting a stale bar.
+    expect(internals.engageBaselinesByEid.size).toBe(0);
   });
 
   it('resets the ENGAGE progress baseline when the tracked target dies', () => {
-    // Companion regression test for the eid-churn-persistence fix above: since
-    // the watchdog no longer resets its baseline on every eid change, the
-    // death/despawn branch is now the ONLY place that clears a dead target's
-    // best-distance/best-hp before the next enemy is tracked. Without this
-    // reset, a favorable baseline set against a target killed at close range
-    // would carry over and make it artificially hard to register "progress"
-    // against a fresh, distant enemy, causing a false-positive giveup.
+    // Companion regression test for the per-eid baseline design: the death/
+    // despawn branch removes the eid's entry from engageBaselinesByEid so that
+    // the next enemy is measured against its own starting position, not the
+    // tight bar the dead target had established (e.g. killed at 1 ft / 20 HP,
+    // fresh enemy at 30 ft would look like no progress without this reset).
     const world = createTestWorld({ seed: 6 });
     const player = spawnPlayer(world, 0, 0);
     world.stores.position.x[player] = 0;
@@ -1758,32 +1758,29 @@ describe('BehaviorTreeAI', () => {
     const internals = ai as unknown as {
       decision: { state: AIStateValue; targetEid: number | null };
       engageNoProgressFrames: number;
-      engageBestDistance: number;
-      engageBestHp: number;
+      engageBaselinesByEid: Map<number, { bestDistance: number; bestHp: number }>;
       updateEngageWatchdog: (world: GameWorld, playerX: number, playerY: number) => void;
     };
     internals.decision.state = AIState.ENGAGE;
 
-    // Establish a tight baseline against the first (soon-to-die) enemy.
+    // First-sight of nearlyDeadEnemy records its baseline (1 ft / 20 HP).
     internals.decision.targetEid = nearlyDeadEnemy;
     internals.updateEngageWatchdog(world, 0, 0);
-    expect(internals.engageBestDistance).toBeCloseTo(1, 5);
-    expect(internals.engageBestHp).toBe(20);
+    expect(internals.engageBaselinesByEid.get(nearlyDeadEnemy)?.bestDistance).toBeCloseTo(1, 5);
+    expect(internals.engageBaselinesByEid.get(nearlyDeadEnemy)?.bestHp).toBe(20);
 
-    // Kill it, and switch the tracked target to a distant fresh enemy -- this
-    // simulates the frame after a kill where retargeting has already picked
-    // the next nearest enemy.
+    // Kill it; the death branch removes its entry and resets the counter.
     world.stores.health.current[nearlyDeadEnemy] = 0;
     internals.updateEngageWatchdog(world, 0, 0);
-    expect(internals.engageBestDistance).toBe(Number.POSITIVE_INFINITY);
-    expect(internals.engageBestHp).toBe(Number.POSITIVE_INFINITY);
+    expect(internals.engageBaselinesByEid.has(nearlyDeadEnemy)).toBe(false);
 
-    // The fresh enemy at distance 30 must register as progress (baseline was
-    // reset to Infinity, not left at the old target's tight 1ft/20hp bar).
+    // Switch to a distant fresh enemy. First-sight establishes its baseline at
+    // 30 ft -- not the dead target's 1 ft bar -- so the next comparison frame
+    // will correctly detect that the fresh enemy is making progress.
     internals.decision.targetEid = freshEnemy;
     internals.updateEngageWatchdog(world, 0, 0);
     expect(internals.engageNoProgressFrames).toBe(0);
-    expect(internals.engageBestDistance).toBeCloseTo(30, 5);
+    expect(internals.engageBaselinesByEid.get(freshEnemy)?.bestDistance).toBeCloseTo(30, 5);
   });
 
   it('resets NPC threat-clear progress when the nearby-threat gate exits', () => {

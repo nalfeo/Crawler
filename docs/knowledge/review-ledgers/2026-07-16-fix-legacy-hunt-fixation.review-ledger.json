@@ -2,7 +2,7 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-16",
   "session_slug": "fix-legacy-hunt-fixation",
-  "task_title": "Fix legacy AI hunt-fixation deadlock and sword frozen-target watchdog gap",
+  "task_title": "Fix legacy AI hunt-fixation deadlock (eid-churn persistence fix)",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
