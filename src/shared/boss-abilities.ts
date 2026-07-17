@@ -155,7 +155,7 @@ const effectSchema = z
     }
   });
 
-export const bossAbilityDefSchema = z
+const bossAbilityDefSchema = z
   .object({
     id: idSchema,
     bossArchetypeId: idSchema,
