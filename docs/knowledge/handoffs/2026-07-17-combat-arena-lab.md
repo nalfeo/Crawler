@@ -14,7 +14,9 @@ labs, enemy-packs, ai
 
 ## What was built
 
-### `src/labs/combat-arena-lab/index.ts` (~900 lines)
+### `src/labs/combat-arena-lab/arena-data.ts` (~449 lines, Phaser-free)
+
+Pure data module safe to import in Node/headless tests. Contains:
 
 **Room Geometry Presets** (5 presets, exported as `ARENA_ROOM_PRESETS`):
 
@@ -28,31 +30,29 @@ Each preset implements `buildMap(): FloorMap` (TileMap + RoomGraph + terrain Uin
 
 **Enemy Presets** (exported as `ARENA_ENEMY_PRESETS`):
 
-- Floor 1: `f1-mixed` (2 rats + 2 slimes), `f1-rats` (5 rats), `f1-slimes` (4 slimes), `f1-boss` (boss + guards)
+- Floor 1: `f1-mixed` (2 rats + 2 slimes), `f1-rats` (5 rats), `f1-slimes` (4 slimes), `f1-boss` (real boss via `spawnFloor1BossesArena` — full canonical HP/speed/contact-damage/aggro/fireCooldown config)
 - Floor 2: one preset per family, dynamically generated from `floor2EnemyPack` (18+ families × boss + 2 trash)
 - `custom` blank preset (entries=[])
 
-**Custom Mob Placement Mode:**
+**Spawn helpers:** `spawnFromArchetype` (production-representative wiring, `attackRange = detectRange × 0.65` for ranged, `FamilyMembership` for floor-2), `findWalkablePosition` (validates against FloorMap.isPassableAt, tries 8 neighbors → 16 random interior → map center fallback), `spawnPresetAroundCenter`.
 
-- `customModeActive` toggle enables click-to-place
-- Phaser pointer events + `camera.getWorldPoint()` translate screen→world
-- `customMobId` dropdown selects which archetype from `ALL_ARCHETYPES`
+### `src/labs/combat-arena-lab/index.ts` (~602 lines)
+
+Thin Phaser scene wrapper:
 
 **Player Modes:**
 
-- `hero` — normal HP (100), full combat
-- `observer` — large HP (9999), fights but effectively immortal
-- `immortal` — HP locked to max each frame, can be killed in one shot but it resets
+- `hero` — normal HP (200), full combat
+- `observer` — large HP (5000), fights but effectively immortal
+- `immortal` — `Invincible` component attached so `healthSystem` never processes damage and can never set `world.state='game_over'`
 
 **Simulation Speed:**
 
-- Accumulator pattern: `accumulator += delta * speedMultiplier` with `MAX_STEPS_PER_FRAME = 32`
-- Speed options: 1x / 4x / 16x
-- `togglePause()` + `stepFrame()` (single-frame advance)
+- Accumulator pattern: `accumulator += delta * speedMultiplier` — paused check is at the top of `update()` (before accumulation), preventing backlog at all speeds
+- Speed options: 1x / 4x / 16x; `togglePause()` + `stepFrame()` (temporarily sets state to 'playing' for one tick, then restores)
+- Terrain rendered via `buildTerrainLayer(this, this.world.floorMap)`, RT depth -20, camera bounds set
 
-**Exports for headless use:**
-
-- `ARENA_ROOM_PRESETS`, `ARENA_ENEMY_PRESETS`, `ALL_ARCHETYPES`, `spawnFromArchetype(world, x, y, archetype)`
+**Seed display:** `seedCtrl` stores the lil-gui controller; `onSeedChanged` callback refreshes it immediately when `create()` auto-generates the seed; `newSeed` calls `seedCtrl.updateDisplay()` before respawning.
 
 ### `src/lab-main.ts`
 
@@ -60,33 +60,31 @@ Added `'combat-arena-lab': '/src/labs/combat-arena-lab/index.ts'` to `LAB_MODULE
 
 ### `tests/unit/combat-arena-lab-wiring.test.ts`
 
-15 tests covering:
+32 tests covering:
 
-- Lab registration in lab-main.ts
-- LAB_ID declaration
-- Room preset coverage (5 ids)
-- Enemy preset floor coverage (floor1 + floor2)
-- Custom placement mode wiring
-- Speed controls wiring
-- Player modes wiring
+- Lab registration in lab-main.ts and LAB_ID declaration
+- Room preset coverage (5 IDs), enemy preset floor coverage (floor1 + floor2)
+- Custom placement mode, speed controls, player modes wiring
 - Floor filter + preset dropdown wiring
-- Headless spawn: floor1 rat pack has valid entries
-- Headless spawn: floor2 boss archetypes have familyId
-- Headless spawn: spawnBehaviorEnemy + setComponent creates entity with correct HP/position
+- `archetypeToAiType` correctness for ranged/melee
+- `findWalkablePosition` snaps walls, preserves walkable positions
+- `spawnFromArchetype` HP/position/attackRange assertions
+- **Headless integration**: creates room + player + f1-rats preset, runs 10 simulation steps via `runCoreSimulationStep(preSystems=[weaponSystem, enemyAISystem])`, asserts no crash and valid HP values
 
-Tests follow the `readFileSync` + string assertion pattern (no direct Phaser imports), plus direct core API tests for headless simulation.
+All tests use `createTestWorld` from `tests/helpers/world-factory.ts` (not `createGameWorld` directly).
 
 ## Files touched
 
-- `src/labs/combat-arena-lab/index.ts` — new
+- `src/labs/combat-arena-lab/arena-data.ts` — new (Phaser-free data module)
+- `src/labs/combat-arena-lab/index.ts` — new (Phaser scene, ~602 lines)
 - `src/lab-main.ts` — +1 line
-- `tests/unit/combat-arena-lab-wiring.test.ts` — new
+- `tests/unit/combat-arena-lab-wiring.test.ts` — new (32 tests)
 - `docs/knowledge/handoffs/2026-07-17-combat-arena-lab.md` — this file
 - `docs/knowledge/review-ledgers/2026-07-17-combat-arena-lab.review-ledger.json` — review ledger
 
 ## Verification run
 
-`npm run verify:fast` — ✅ 339 unit + 87 integration test files, all passing.
+`npm run verify:fast` — all tests passing. Headless integration test confirmed arena pipeline is functional without Phaser.
 
 ## Unresolved issues
 
@@ -94,7 +92,6 @@ None.
 
 ## Recommended next steps
 
-- Visual validation: open `?lab=combat-arena-lab` in the browser, select a room preset and an enemy preset, verify enemies spawn and fight
 - Consider adding floor-3 enemy presets if/when floor3EnemyPack exists
 - Consider adding a "wave mode" preset that spawns enemies in waves
 - Consider a kill-counter HUD display in the GUI for combat testing metrics

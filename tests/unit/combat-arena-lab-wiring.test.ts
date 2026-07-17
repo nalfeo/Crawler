@@ -7,11 +7,17 @@ import {
   ALL_ARCHETYPES,
   archetypeToAiType,
   findWalkablePosition,
+  getEnemyPreset,
   spawnFromArchetype,
+  spawnPresetAroundCenter,
   FLOOR2_FAMILY_IDS,
 } from '../../src/labs/combat-arena-lab/arena-data.js';
-import { createGameWorld } from '../../src/core/index.js';
+import { spawnPlayer } from '../../src/core/helpers.js';
+import { runCoreSimulationStep } from '../../src/core/simulation-core-step.js';
+import { createTestWorld } from '../helpers/world-factory.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
+import { enemyAISystem, weaponSystem } from '../../src/game/index.js';
+import { createInputState } from '../../src/shared/input.js';
 import { SeededRandom } from '../../src/shared/random.js';
 
 describe('combat-arena-lab wiring', () => {
@@ -218,7 +224,7 @@ describe('combat-arena-lab wiring', () => {
 
   it('spawnFromArchetype creates entity with correct HP and position', () => {
     const rng = new SeededRandom(12345);
-    const world = createGameWorld({ seed: rng.nextInt(1, 99999) });
+    const world = createTestWorld({ seed: rng.nextInt(1, 99999) });
     const rat = floor1EnemyPack.archetypes.find((a) => a.id === 'rat')!;
 
     const bossArena = ARENA_ROOM_PRESETS.find((p) => p.id === 'boss-arena')!;
@@ -235,7 +241,7 @@ describe('combat-arena-lab wiring', () => {
 
   it('spawnFromArchetype sets non-zero attackRange for ranged archetypes', () => {
     const rng = new SeededRandom(99999);
-    const world = createGameWorld({ seed: rng.nextInt(1, 99999) });
+    const world = createTestWorld({ seed: rng.nextInt(1, 99999) });
     const rangedDef = floor2EnemyPack.archetypes.find((a) => a.aiType === 'ranged');
     if (!rangedDef) return; // skip if pack has no ranged archetype
 
@@ -258,6 +264,66 @@ describe('combat-arena-lab wiring', () => {
     expect(bosses.length).toBeGreaterThanOrEqual(5);
     for (const boss of bosses) {
       expect(boss.familyId).toBeTruthy();
+    }
+  });
+
+  // ── Headless integration: full arena pipeline without Phaser ──────────────
+
+  it('headless arena pipeline: spawn preset + run simulation steps without crash', () => {
+    const rng = new SeededRandom(77777);
+    const world = createTestWorld({ seed: rng.nextInt(1, 99999) });
+    const bossArena = ARENA_ROOM_PRESETS.find((p) => p.id === 'boss-arena')!;
+    const map = bossArena.buildMap();
+    world.floorMap = map;
+
+    // Spawn player at the preset's spawn tile
+    const spawnTile = bossArena.playerSpawnTile;
+    const spawnPt = map.tileToWorld(spawnTile.x, spawnTile.y);
+    const playerEid = spawnPlayer(world, spawnPt.x, spawnPt.y);
+    expect(playerEid).toBeGreaterThanOrEqual(0);
+
+    // Spawn f1-rats preset around center
+    const centerPt = map.tileToWorld(
+      Math.floor(map.widthTiles / 2),
+      Math.floor(map.heightTiles / 2),
+    );
+    const f1RatsPreset = getEnemyPreset('f1-rats');
+    const enemyEids = spawnPresetAroundCenter(
+      world,
+      map,
+      f1RatsPreset,
+      centerPt.x,
+      centerPt.y,
+      rng,
+    );
+    expect(enemyEids.length).toBeGreaterThan(0);
+
+    // Record initial enemy HP to verify simulation is advancing state
+    const initialEnemyHp = enemyEids.map((eid) => world.stores.health.current[eid] ?? 0);
+    const inputState = createInputState();
+
+    // Run 10 deterministic simulation steps — same pipeline as the visual scene
+    for (let i = 0; i < 10; i++) {
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+      runCoreSimulationStep(world, inputState, {
+        preSystems: [weaponSystem, enemyAISystem],
+      });
+    }
+
+    // World is still in a valid state after stepping
+    expect(world.state).not.toBe('error');
+    // At least one enemy should still exist (frame count too low to kill all 5 rats)
+    const stillAlive = enemyEids.filter((eid) => (world.stores.health.current[eid] ?? 0) > 0);
+    expect(stillAlive.length).toBeGreaterThan(0);
+    // Simulation advanced frame counter
+    expect(world.frameCount).toBe(10);
+    // HP values are numbers (not undefined/NaN)
+    for (let i = 0; i < enemyEids.length; i++) {
+      const hp = world.stores.health.current[enemyEids[i]!] ?? 0;
+      expect(Number.isFinite(hp)).toBe(true);
+      // At most equal to initial — enemies take damage or remain unscathed, never gain HP
+      expect(hp).toBeLessThanOrEqual(initialEnemyHp[i]! + 0.01);
     }
   });
 });

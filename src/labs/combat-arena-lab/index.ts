@@ -10,12 +10,13 @@
  * (room presets, enemy presets, spawn helpers) lives in `arena-data.ts` and is
  * safe to import in Node/headless tests.
  */
-import { query, removeEntity } from 'bitecs';
+import { addComponent, query, removeComponent, removeEntity } from 'bitecs';
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import {
   clearEntityStores,
   Enemy,
+  Invincible,
   createGameWorld,
   spawnPlayer,
   type GameWorld,
@@ -225,7 +226,9 @@ class CombatArenaScene extends Phaser.Scene {
 
     this.inputCapture.poll(this.inputState);
 
-    if (this.settings.simSpeed === 1 && this.world.state === 'paused') {
+    // Do not accumulate simulation time while paused — otherwise the backlog
+    // drains all at once on resume or step-frame regardless of speed setting.
+    if (this.world.state === 'paused') {
       return;
     }
 
@@ -234,27 +237,14 @@ class CombatArenaScene extends Phaser.Scene {
     let steps = 0;
 
     while (this.accumulator >= GAME.DELTA_MS && steps < MAX_STEPS_PER_FRAME) {
-      if (this.world.state === 'paused') break;
-
       this.world.frameCount += 1;
       this.world.elapsedMs += GAME.DELTA_MS;
 
       // Use the shared canonical pipeline (same ordering as visual + headless
       // floor simulations). weaponSystem runs before enemyAISystem to match
       // the main game's preSystems contract.
-      const playerEid = this.playerEid;
-      const playerMode = this.settings.playerMode;
       runCoreSimulationStep(this.world, this.inputState, {
         preSystems: [weaponSystem, enemyAISystem],
-        postSystems:
-          playerMode === 'immortal' && playerEid >= 0
-            ? [
-                (w) => {
-                  const maxHp = w.stores.health.max[playerEid] ?? PLAYER_HP_HERO;
-                  w.stores.health.current[playerEid] = maxHp;
-                },
-              ]
-            : [],
       });
 
       this.accumulator -= GAME.DELTA_MS;
@@ -318,9 +308,18 @@ class CombatArenaScene extends Phaser.Scene {
 
   applyPlayerMode(): void {
     if (this.playerEid < 0) return;
+    const isImmortal = this.settings.playerMode === 'immortal';
     const hp = this.settings.playerMode === 'hero' ? PLAYER_HP_HERO : PLAYER_HP_OBSERVER;
     this.world.stores.health.current[this.playerEid] = hp;
     this.world.stores.health.max[this.playerEid] = hp;
+    // Immortal mode: attach the Invincible component so healthSystem never
+    // processes damage and can't set world.state='game_over'. Remove it when
+    // switching away from immortal.
+    if (isImmortal) {
+      addComponent(this.world.ecs, this.playerEid, Invincible);
+    } else {
+      removeComponent(this.world.ecs, this.playerEid, Invincible);
+    }
   }
 
   togglePause(): void {
