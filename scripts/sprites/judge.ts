@@ -50,7 +50,7 @@ import { contentDirectionBlock } from './content-direction.js';
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v4';
+const PROMPT_TEMPLATE_VERSION = 'v5';
 
 export type Evaluator = 'design_language' | 'reference_style_match' | 'brief_match' | 'readability';
 
@@ -370,11 +370,14 @@ function buildSystemInstructions(styleGuide: string, floor: number): string {
     '                              resolution versus the references score <= 2. Do not require the same',
     '                              subject matter or palette.',
     '',
-    '  3. brief_match  — Does the candidate depict the subject described in the brief',
-    '                    and comply with EXPECTED PRESENTATION in the user prompt?',
-    '                    5 = unambiguously the requested subject and camera angle. An enemy shown in',
-    '                    strict profile when front-biased three-quarter is expected scores <= 2.',
+    '  3. brief_match  — Does the candidate depict the subject described in the brief,',
+    '                    comply with EXPECTED PRESENTATION, and comply with EFFECTIVE GEOMETRY',
+    '                    in the user prompt?',
+    '                    5 = unambiguously the requested subject, camera angle, and aspect ratio.',
+    '                    An enemy shown in strict profile when front-biased three-quarter is expected scores <= 2.',
     '                    Accidental faces or limbs on an inanimate item score <= 2.',
+    '                    A clearly wrong silhouette aspect — roughly square when 2:1 wide or 1:2 tall',
+    '                    is requested, or vice versa — scores <= 2. EFFECTIVE GEOMETRY compliance is required.',
     '',
     '  4. readability  — Inspect the READABILITY-COMPOSITE. Does the silhouette read clearly',
     '                    at game scale on a dark floor tile? 5 = silhouette pops; the subject',

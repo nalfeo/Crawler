@@ -60,12 +60,13 @@ export const SIZE_VARIANT_SHEET_LAYOUTS: Readonly<
  * Resize strategy for post-processing a sprite whose brief declares the given
  * sprite type and output dimensions. Tiles stretch to the exact frame after a
  * transparent slice so they ship edge-to-edge instead of letterboxed; non-tile
- * variants use axis-priority strategies so the dominant axis is fully occupied
- * rather than letterboxed:
+ * variants use axis-priority strategies so the dominant axis is fully occupied.
+ * Secondary-axis overflow remains visible for `dimensions-exact` to reject,
+ * rather than being hidden by letterboxing, cropping, or stretching:
  *
- *   wide   (w >= 2*h) → 'width'  — lock width, allow height growth
- *   tall   (h >= 2*w) → 'height' — lock height, allow width growth
- *   large  (square, w===h, >=128) → 'cover' — max occupancy, expand secondary axis
+ *   wide   (w >= 2*h) → 'width'  — lock width, expose excess height
+ *   tall   (h >= 2*w) → 'height' — lock height, expose excess width
+ *   large  (square, w===h, >=128) → 'cover' — expose non-square overflow
  *   tile              → 'stretch' — exact W×H frame, no transparent gutters
  *   other             → 'fit'     — nearest-fit inside frame (original behavior)
  *

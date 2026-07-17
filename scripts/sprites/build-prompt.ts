@@ -221,10 +221,9 @@ function sourceFootprint(brief: Brief): {
 
 /**
  * Tell the model the target final dimensions and, for non-square variants, the
- * proportion to draw. Most sprites resolve to exactly the brief W×H. Axis-
- * priority variants (wide/tall and large square occupancy targets) can expand
- * the secondary axis in postprocess to keep silhouette occupancy high, so the
- * prompt calls that out explicitly.
+ * proportion to draw. Axis-priority post-processing exposes wrong-aspect
+ * silhouettes by letting them exceed the secondary bound; the geometry sensor
+ * then rejects that overflow instead of hiding it through cropping or stretching.
  *
  * Tiles fill their frame edge-to-edge and keep an exact footprint.
  */
@@ -240,15 +239,15 @@ function outputSizeBlock(brief: Brief): string {
     );
   } else if (strategy === 'width') {
     lines.push(
-      `- Target final frame is ${width}x${height} with width as the main occupancy axis; post-processing may expand height beyond ${height}px to preserve silhouette fill.`,
+      `- EFFECTIVE GEOMETRY: the final output frame is exactly ${width}×${height} pixels. Width is locked to exactly ${width}px; height MUST NOT exceed ${height}px — there is no secondary-axis expansion. A subject drawn with a roughly square silhouette rather than the required ${aspectRatioText(width, height)} wide proportion is rejected; do NOT draw a square subject and rely on cropping or stretching into compliance.`,
     );
   } else if (strategy === 'height') {
     lines.push(
-      `- Target final frame is ${width}x${height} with height as the main occupancy axis; post-processing may expand width beyond ${width}px to preserve silhouette fill.`,
+      `- EFFECTIVE GEOMETRY: the final output frame is exactly ${width}×${height} pixels. Height is locked to exactly ${height}px; width MUST NOT exceed ${width}px — there is no secondary-axis expansion. A subject drawn with a roughly square silhouette rather than the required ${aspectRatioText(width, height)} tall proportion is rejected; do NOT draw a square subject and rely on cropping or stretching into compliance.`,
     );
   } else if (strategy === 'cover') {
     lines.push(
-      `- Target final frame is ${width}x${height}; post-processing may expand one axis to preserve large-sprite occupancy without letterboxing.`,
+      `- EFFECTIVE GEOMETRY: the final output frame is exactly ${width}×${height} pixels. Both axes are locked — do NOT rely on secondary-axis expansion.`,
     );
   } else {
     lines.push(
@@ -372,6 +371,7 @@ function singleConstraintsBlock(brief: Brief): string {
     subjectLine,
     clipLine,
     `- Transparent background, or a single flat high-contrast background color that is clearly distinct from the sprite palette. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Do NOT add any ground, cast, contact, or drop shadow beneath or around the subject — it must sit on a clean background with no shadow on the floor (shading and volume on the subject itself are fine). No decorative borders, gradients, or scene elements.`,
+    '- The subject must form one contiguous opaque silhouette: no enclosed transparent or background-colored interior holes punched through the body, and no detached or floating pixel fragments disconnected from the main shape.',
     '- No text, numbers, digits, captions, watermarks, signatures, or UI overlays anywhere in the image.',
   ].join('\n');
 }
@@ -460,6 +460,7 @@ function sheetConstraintsBlock(brief: Brief): string {
     aspectOf(brief.size.width, brief.size.height) === 'square'
       ? '- All variants are square, share the same dimensions, and use the same orientation and scale.'
       : `- Every grid cell is the same size; within each cell all subjects share the same ${aspectRatioText(brief.size.width, brief.size.height)} subject proportion, dimensions, orientation, and scale.`,
+    '- Each variant must have one contiguous opaque silhouette: no enclosed transparent or background-colored interior holes punched through the body, and no detached or floating pixel fragments disconnected from the main shape.',
     '- Do NOT add numbers, labels, captions, watermarks, signatures, borders, dividers, or any text anywhere on the sheet or in any individual cell.',
     `- Use a transparent background, or one flat high-contrast background color that is clearly distinct from the sprite palette, consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Do NOT add any ground, cast, contact, or drop shadow beneath or around any variant — every cell must sit on a clean background with no shadow on the floor (shading and volume on the subject itself are fine). No per-cell background variation, no decorative borders between cells.`,
     '- Do not draw a frame, header, or footer around the grid.',

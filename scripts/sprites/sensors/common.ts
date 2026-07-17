@@ -62,7 +62,13 @@ export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
     if (image.width !== brief.size.width) {
       return fail(
         sensor,
-        `expected width ${brief.size.width} for double-wide sprite, got ${image.width}x${image.height}`,
+        `expected width ${brief.size.width} for wide sprite, got ${image.width}x${image.height}`,
+      );
+    }
+    if (image.height > brief.size.height) {
+      return fail(
+        sensor,
+        `wide sprite height ${image.height} exceeds target ${brief.size.height} (EFFECTIVE GEOMETRY violation)`,
       );
     }
     return ok(sensor);
@@ -74,13 +80,19 @@ export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
         `expected height ${brief.size.height} for tall sprite, got ${image.width}x${image.height}`,
       );
     }
+    if (image.width > brief.size.width) {
+      return fail(
+        sensor,
+        `tall sprite width ${image.width} exceeds target ${brief.size.width} (EFFECTIVE GEOMETRY violation)`,
+      );
+    }
     return ok(sensor);
   }
   if (strategy === 'cover') {
-    if (image.width < brief.size.width || image.height < brief.size.height) {
+    if (image.width !== brief.size.width || image.height !== brief.size.height) {
       return fail(
         sensor,
-        `expected at least ${brief.size.width}x${brief.size.height} for large sprite occupancy, got ${image.width}x${image.height}`,
+        `expected exactly ${brief.size.width}x${brief.size.height} for large sprite, got ${image.width}x${image.height}`,
       );
     }
     return ok(sensor);

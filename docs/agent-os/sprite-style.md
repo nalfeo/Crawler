@@ -113,6 +113,12 @@ The corresponding sheet layouts are `default` 4×4, `large` 2×2, `wide` 3×2,
 and `tall` 2×3. Three-way axes use detected gutters and 341/342px cells on the
 fixed 1024px canvas.
 
+Processed geometry is a hard eligibility contract: `large` must remain exactly
+128×128, `wide` locks to 128px wide and may not exceed 64px tall, and `tall`
+locks to 128px tall and may not exceed 64px wide. Axis-priority resizing exposes
+wrong-aspect overflow so sensors and the VLM judge can reject it; the pipeline
+must not crop, stretch, or letterbox a square subject into apparent compliance.
+
 What you get:
 
 - `generated/brief-candidates/scythe/scythe-v{1,2,3}.yaml` — three minimal briefs with deliberately different silhouettes.

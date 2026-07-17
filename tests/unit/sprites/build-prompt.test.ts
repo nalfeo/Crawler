@@ -449,13 +449,15 @@ describe('output size block', () => {
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain(
-      'Target final frame is 128x64 with width as the main occupancy axis; post-processing may expand height beyond 64px to preserve silhouette fill.',
+      'EFFECTIVE GEOMETRY: the final output frame is exactly 128×64 pixels. Width is locked to exactly 128px; height MUST NOT exceed 64px',
     );
     expect(out).toContain('landscape (wider than tall) at a 2:1 aspect ratio');
     expect(out).toContain('span roughly 448-480 source pixels wide and 224-240 source pixels tall');
     expect(out).toContain('Within each 512x341 source cell');
     // The cell is no longer square — the wording must not call it square.
     expect(out).not.toContain('square 512x256');
+    // Old overflow wording must be gone.
+    expect(out).not.toMatch(/may expand height beyond/i);
   });
 
   it('describes a tall subject in an aspect-matched portrait cell', () => {
@@ -468,11 +470,13 @@ describe('output size block', () => {
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain(
-      'Target final frame is 64x128 with height as the main occupancy axis; post-processing may expand width beyond 64px to preserve silhouette fill.',
+      'EFFECTIVE GEOMETRY: the final output frame is exactly 64×128 pixels. Height is locked to exactly 128px; width MUST NOT exceed 64px',
     );
     expect(out).toContain('portrait (taller than wide) at a 1:2 aspect ratio');
     expect(out).toContain('span roughly 224-240 source pixels wide and 448-480 source pixels tall');
     expect(out).toContain('Within each 341x512 source cell');
+    // Old overflow wording must be gone.
+    expect(out).not.toMatch(/may expand width beyond/i);
   });
 
   it('treats a large (2x2) subject as square at the reshaped cell size', () => {
@@ -484,11 +488,13 @@ describe('output size block', () => {
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain(
-      'Target final frame is 128x128; post-processing may expand one axis to preserve large-sprite occupancy without letterboxing.',
+      'EFFECTIVE GEOMETRY: the final output frame is exactly 128×128 pixels. Both axes are locked',
     );
     expect(out).toContain(
       'Draw each subject at a 1:1 (square) proportion, centered within its square 512x512 source cell.',
     );
+    // Old overflow wording must be gone.
+    expect(out).not.toMatch(/may expand one axis/i);
   });
 
   it('tells tiles to fill a non-square frame edge-to-edge', () => {
@@ -640,5 +646,90 @@ describe('pickContrastingBackgroundColor — hue-aware selection', () => {
       FAKE_STYLE_GUIDE,
     );
     expect(out).toContain('Prefer neon lime (#39ff14)');
+  });
+});
+
+describe('EFFECTIVE GEOMETRY — hard bounds, no overflow', () => {
+  it('wide prompt contains hard lock language and rejection warning, not expansion permission', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      size: { width: 128, height: 64 },
+      generation: { sheet: { rows: 3, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
+    } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/EFFECTIVE GEOMETRY/);
+    expect(out).toMatch(/Width is locked to exactly 128px/);
+    expect(out).toMatch(/height MUST NOT exceed 64px/);
+    expect(out).toMatch(/rejected.*do NOT draw a square subject/i);
+    expect(out).not.toMatch(/may expand height beyond/i);
+    expect(out).not.toMatch(/post-processing.*expand/i);
+  });
+
+  it('tall prompt contains hard lock language and rejection warning, not expansion permission', () => {
+    const brief = makeBrief({
+      type: 'character',
+      size: { width: 64, height: 128 },
+      anchor: { x: 32, y: 126 },
+      generation: { sheet: { rows: 2, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
+    } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/EFFECTIVE GEOMETRY/);
+    expect(out).toMatch(/Height is locked to exactly 128px/);
+    expect(out).toMatch(/width MUST NOT exceed 64px/);
+    expect(out).toMatch(/rejected.*do NOT draw a square subject/i);
+    expect(out).not.toMatch(/may expand width beyond/i);
+    expect(out).not.toMatch(/post-processing.*expand/i);
+  });
+
+  it('large prompt contains exact-lock language, not secondary-axis expansion', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      size: { width: 128, height: 128 },
+      generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
+    } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/EFFECTIVE GEOMETRY/);
+    expect(out).toMatch(/exactly 128×128 pixels/);
+    expect(out).toMatch(/Both axes are locked/);
+    expect(out).not.toMatch(/may expand one axis/i);
+    expect(out).not.toMatch(/post-processing.*expand/i);
+  });
+});
+
+describe('silhouette integrity instruction — non-tile only', () => {
+  it('single non-tile prompt includes the contiguous silhouette instruction', () => {
+    const out = buildPrompt(makeBrief(), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/one contiguous opaque silhouette/i);
+    expect(out).toMatch(/no enclosed transparent.*interior holes/i);
+    expect(out).toMatch(/no detached or floating pixel fragments/i);
+  });
+
+  it('sheet non-tile prompt includes the contiguous silhouette instruction', () => {
+    const out = buildSheetPrompt(makeBrief(), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/one contiguous opaque silhouette/i);
+    expect(out).toMatch(/no enclosed transparent.*interior holes/i);
+    expect(out).toMatch(/no detached or floating pixel fragments/i);
+  });
+
+  it('tile single prompt does NOT include the silhouette instruction (tiles are edge-to-edge)', () => {
+    const tile = makeBrief({
+      type: 'tile',
+      size: { width: 64, height: 64 },
+      anchor: { x: 32, y: 63 },
+    });
+    const out = buildPrompt(tile, FAKE_STYLE_GUIDE);
+    expect(out).not.toMatch(/one contiguous opaque silhouette/i);
+    expect(out).not.toMatch(/no detached or floating pixel fragments/i);
+  });
+
+  it('tile sheet prompt does NOT include the silhouette instruction', () => {
+    const tile = makeBrief({
+      type: 'tile',
+      size: { width: 64, height: 64 },
+      anchor: { x: 32, y: 63 },
+    });
+    const out = buildSheetPrompt(tile, FAKE_STYLE_GUIDE);
+    expect(out).not.toMatch(/one contiguous opaque silhouette/i);
+    expect(out).not.toMatch(/no detached or floating pixel fragments/i);
   });
 });

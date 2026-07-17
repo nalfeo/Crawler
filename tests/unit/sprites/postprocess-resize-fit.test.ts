@@ -156,43 +156,50 @@ describe('postprocess resize fit', () => {
     expect(alphaAt(out, 3, 3)).toBe(255);
   });
 
-  it('scales double-wide briefs width-first even when output becomes taller', () => {
+  it('scales double-wide briefs width-first; overflow height is now rejected by dimensionsExact', () => {
+    // postprocessResize still locks width to target and scales proportionally —
+    // a tall input may produce height > target. Under the new EFFECTIVE GEOMETRY
+    // contract the sensor rejects that output so the pipeline can request a retake.
     const brief = makeBrief({ width: 12, height: 6 }, { x: 6, y: 3 });
     const processed = postprocess(makeTallFixture(), brief, PALETTE);
     const out = PNG.sync.read(processed);
 
     expect(out.width).toBe(12);
-    expect(out.height).toBeGreaterThan(6);
-    expect(dimensionsExact(decodeSprite(processed), brief)).toEqual({
-      ok: true,
+    expect(out.height).toBeGreaterThan(6); // postprocessResize still overflows — that's the bug it surfaces
+    expect(dimensionsExact(decodeSprite(processed), brief)).toMatchObject({
+      ok: false,
       sensor: 'dimensions-exact',
     });
     expectSensorOk(processed, brief, 'anchor-opaque');
   });
 
-  it('scales tall briefs height-first even when output becomes wider', () => {
+  it('scales tall briefs height-first; overflow width is now rejected by dimensionsExact', () => {
+    // Same as above: height strategy locks height, wide input may overflow width.
+    // The sensor now rejects it rather than silently passing.
     const brief = makeBrief({ width: 6, height: 12 }, { x: 3, y: 6 });
     const processed = postprocess(makeWideFixture(), brief, PALETTE);
     const out = PNG.sync.read(processed);
 
     expect(out.height).toBe(12);
-    expect(out.width).toBeGreaterThan(6);
-    expect(dimensionsExact(decodeSprite(processed), brief)).toEqual({
-      ok: true,
+    expect(out.width).toBeGreaterThan(6); // postprocessResize still overflows — that's the bug it surfaces
+    expect(dimensionsExact(decodeSprite(processed), brief)).toMatchObject({
+      ok: false,
       sensor: 'dimensions-exact',
     });
     expectSensorOk(processed, brief, 'anchor-opaque');
   });
 
-  it('scales large square briefs to keep strong 128x128 occupancy', () => {
+  it('scales large square briefs for occupancy; non-exact dimensions are now rejected by dimensionsExact', () => {
+    // cover/large strategy requires exactly target WxH. A proportional scale of a
+    // wide input hits target height but overshoots width — the sensor rejects it.
     const brief = makeBrief({ width: 128, height: 128 }, { x: 64, y: 64 });
     const processed = postprocess(makeWideFixture(), brief, PALETTE);
     const out = PNG.sync.read(processed);
 
     expect(out.width).toBeGreaterThanOrEqual(128);
-    expect(out.height).toBeGreaterThanOrEqual(128);
-    expect(dimensionsExact(decodeSprite(processed), brief)).toEqual({
-      ok: true,
+    expect(out.height).toBeGreaterThanOrEqual(128); // postprocessResize still overshoots — that's the bug it surfaces
+    expect(dimensionsExact(decodeSprite(processed), brief)).toMatchObject({
+      ok: false,
       sensor: 'dimensions-exact',
     });
     expectSensorOk(processed, brief, 'anchor-opaque');

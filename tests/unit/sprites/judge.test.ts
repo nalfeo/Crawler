@@ -734,4 +734,42 @@ describe('JudgeCache.computeKey — presentation / geometry sensitivity', () => 
     const cache = new JudgeCache({ cacheDir: 'unused', enabled: false });
     expect(cache.computeKey(baseInputs())).toBe(cache.computeKey(baseInputs()));
   });
+
+  it('produces different keys when promptTemplateVersion differs (version bump invalidates cache)', () => {
+    const cache = new JudgeCache({ cacheDir: 'unused', enabled: false });
+    const k1 = cache.computeKey({ ...baseInputs(), promptTemplateVersion: 'v4' });
+    const k2 = cache.computeKey({ ...baseInputs(), promptTemplateVersion: 'v5' });
+    expect(k1).not.toBe(k2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// brief_match rubric — EFFECTIVE GEOMETRY and wrong-aspect enforcement
+// ---------------------------------------------------------------------------
+describe('judgeVariant — brief_match geometry rubric', () => {
+  it('system prompt requires EFFECTIVE GEOMETRY compliance in brief_match and penalises wrong aspect', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 4, rationale: 'on theme' },
+        reference_style_match: { score: 4, rationale: 'matches style' },
+        brief_match: { score: 4, rationale: 'correct subject and aspect' },
+        readability: { score: 4, rationale: 'clear' },
+      },
+    });
+    await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief(),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+    const sys = calls[0]!.request.systemInstructions;
+    expect(sys).toMatch(/EFFECTIVE GEOMETRY/);
+    expect(sys).toMatch(/comply with EFFECTIVE GEOMETRY/i);
+    expect(sys).toMatch(/roughly square when 2:1 wide or 1:2 tall/i);
+    expect(sys).toMatch(/scores <= 2/i);
+  });
 });
