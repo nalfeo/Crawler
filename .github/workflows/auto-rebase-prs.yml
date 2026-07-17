@@ -21,6 +21,11 @@ on:
         required: false
         default: ''
         type: string
+      expected_base_ref:
+        description: Expected PR base ref for conflict-only recovery callbacks
+        required: false
+        default: ''
+        type: string
       trigger:
         description: Rebase dispatch source
         required: false
@@ -79,6 +84,7 @@ jobs:
           if [ "$train_enabled" = "true" ]; then
             target_pr='${{ inputs.pr_number }}'
             expected_head='${{ inputs.expected_head_sha }}'
+            expected_base='${{ inputs.expected_base_ref }}'
             if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ -z "$target_pr" ]; then
               echo "Merge train enabled; blanket rebase sweep disabled."
               exit 0
@@ -158,13 +164,25 @@ jobs:
             else
               git rebase --abort || true
               echo "  ⚠️ Rebase conflict on PR #$number; dispatching trusted CI recovery."
-              gh workflow run ci-recovery.yml \
-                --repo "$GITHUB_REPOSITORY" \
-                --ref main \
-                -f operation=reconcile \
-                -f pr_number="$number" \
-                -f trigger=auto-rebase-conflict \
-                -f lease_id=
+              if [ "$train_enabled" = "true" ]; then
+                gh workflow run ci-recovery.yml \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --ref main \
+                  -f operation=reconcile \
+                  -f pr_number="$number" \
+                  -f trigger=auto-rebase-conflict \
+                  -f expected_head_sha="$expected_head" \
+                  -f expected_base_ref="$expected_base" \
+                  -f lease_id=
+              else
+                gh workflow run ci-recovery.yml \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --ref main \
+                  -f operation=reconcile \
+                  -f pr_number="$number" \
+                  -f trigger=auto-rebase-conflict \
+                  -f lease_id=
+              fi
               conflicts=$((conflicts + 1))
             fi
           done < <(echo "$prs_json" | jq -c '.[]')
@@ -177,6 +195,8 @@ jobs:
               -f operation=reconcile \
               -f pr_number="$target_pr" \
               -f trigger=auto-rebase-failure \
+              -f expected_head_sha="$expected_head" \
+              -f expected_base_ref="$expected_base" \
               -f lease_id=
             exit 1
           fi

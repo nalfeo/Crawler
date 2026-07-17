@@ -751,9 +751,11 @@ if (
     await updateState(rebaseState);
     await completeWaitingExit(waitingTransition);
   }
+  await assertExpectedMetadataUnchanged('auto-rebase-dispatch');
   await dispatchWorkflow('auto-rebase-prs.yml', {
     pr_number: String(prNumber),
     expected_head_sha: pr.head.sha,
+    expected_base_ref: pr.base?.ref ?? '',
     trigger: 'ci-recovery-conflict',
   });
   process.stdout.write(`dispatched conflict-only rebase pr=#${prNumber}\n`);

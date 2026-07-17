@@ -72,6 +72,10 @@ kickoff comment that points Copilot at the normal repo instructions.
   A dispatch that supplies the expected head without its validated base ref also
   fails closed as `missing-expected-base-ref`.
   `enablePullRequestAutoMerge` additionally carries an `expectedHeadOid` fence.
+  The conflict-only auto-rebase dispatch has its own immediate metadata recheck,
+  and propagates the same paired head/base fence through both nested
+  `auto-rebase-conflict` and `auto-rebase-failure` recovery callbacks. Legacy
+  broad rebase sweeps retain their existing unbound callback behavior.
   GitHub exposes no atomic conditional metadata mutation, so the per-phase
   recheck narrows but cannot fully eliminate the sub-second window between a
   recheck and its immediately following write. An empty expected head is a no-op that

@@ -68,10 +68,10 @@ Router`, dispatches `CI Recovery`, and cannot match its own completion.
   `ci-recovery.yml`; success, non-review, untrusted actor, human rerun, fork,
   ambiguous PR, stale SHA, incomplete files, and protected-workflow changes
   dispatch nothing.
-- Full CI-recovery policy/router/state suite: 167 tests, 126 passed, 41 known
+- Full CI-recovery policy/router/state suite: 168 tests, 126 passed, 42 known
   Windows `UV_HANDLE_CLOSING` subprocess-shutdown skips, 0 failed.
-- Workflow wiring suite: 7/7 passed.
-- Combined policy/wiring validation: 174 tests, 133 passed, 41 known Windows
+- Workflow wiring suite: 8/8 passed.
+- Combined policy/wiring validation: 176 tests, 134 passed, 42 known Windows
   skips, 0 failed.
 - `npm run typecheck`
 - `npm run verify:fast`
@@ -148,6 +148,11 @@ phase=<phase>`), failing closed with no mutation on a mismatch. An empty
   its original trusted `workflow_run` payload, so provenance alone cannot
   distinguish the replay. The dispatch job now requires
   `github.run_attempt == 1`; later attempts remain read-only inspection runs.
+- **Conflict recovery lost the metadata fence across nested dispatch.** Reconcile
+  now rechecks trusted metadata immediately before dispatching
+  `auto-rebase-prs.yml`, and the targeted conflict/failure callbacks propagate
+  the paired expected head/base values back into `ci-recovery.yml`. Legacy broad
+  rebase sweeps retain their prior unbound behavior.
 - **Same-head metadata changes escaped the SHA fence.** A PR can be retargeted
   or closed without changing its head, so SHA-only rechecks could mutate a PR
   whose live metadata no longer satisfied the bridge policy. Fix: the bridge
@@ -173,6 +178,8 @@ recheck and its immediately following write. It is further fenced by
 rather than claimed eliminated.
 
 Validation (this amendment): the full CI-recovery policy/router/state suite
-reported 167 tests (126 passed, 41 known Windows subprocess-shutdown skips,
-0 failed); workflow wiring reported 7/7 passed; typecheck, `verify:fast`,
-PR prerequisites, and review-ledger validation passed.
+reported 168 tests (126 passed, 42 known Windows subprocess-shutdown skips,
+0 failed); workflow wiring reported 8/8 passed; typecheck, `verify:fast`,
+PR prerequisites, and review-ledger validation passed. A focused independent
+review of the nested dispatch fence found one incomplete happy-path fixture; it
+was corrected, and the second review round was clean.

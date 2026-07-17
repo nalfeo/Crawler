@@ -2112,7 +2112,7 @@ test('reconcile still emits merge-conflict blocker for dirty or mergeable=false 
 test('train mode dispatches exactly one conflict-only rebase', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: { ...basePr(), mergeable: false, mergeable_state: 'dirty' },
+      body: { ...trustedReviewWakePr(), mergeable: false, mergeable_state: 'dirty' },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
@@ -2159,6 +2159,62 @@ test('train mode dispatches exactly one conflict-only rebase', async (t) => {
       call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
   );
   assert.equal(dispatch.body.inputs.expected_head_sha, HEAD_SHA);
+  assert.equal(dispatch.body.inputs.expected_base_ref, 'main');
+});
+
+test('trusted metadata drift after conflict state write blocks auto-rebase dispatch', async (t) => {
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      const baseRef = pullFetches >= 3 ? 'release' : 'main';
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'dirty',
+          base: { ...trustedReviewWakePr().base, ref: baseRef },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /reason=base-ref-moved-before-mutation phase=auto-rebase-dispatch expected=main actual=release/,
+  );
+  assert.equal(pullFetches, 3);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    0,
+  );
 });
 
 /** A previously-dispatched conflict-only rebase state comment for HEAD_SHA. */
