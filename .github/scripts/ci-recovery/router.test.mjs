@@ -225,6 +225,103 @@ test('train schedule rechecks owned slots for expiry without widening the window
   );
 });
 
+test('train sweeps skip genuine waiting PRs while direct events preserve them', () => {
+  const pulls = Array.from({ length: 9 }, (_, index) => ({
+    number: index + 1,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: index + 1 === 9 ? [{ name: 'ci-recovery-waiting' }] : [],
+  }));
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [1, 2, 3, 4, 5, 6],
+  );
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: { pull_request: { number: 9 } },
+      eventName: 'pull_request_target',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [1, 2, 3, 4, 5, 9],
+  );
+});
+
+test('interrupted waiting transitions remain sweep-visible without admitting genuine waits', () => {
+  const interrupted = {
+    number: 42,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-recovery-waiting-transition' }],
+  };
+  const genuineWait = {
+    ...interrupted,
+    number: 43,
+    labels: [{ name: 'ci-recovery-waiting' }],
+  };
+
+  for (const trainEnabled of [true, false]) {
+    assert.deepEqual(
+      collectPrNumbers({
+        payload: {},
+        eventName: 'schedule',
+        repository: 'nalfeo/Crawler',
+        scheduledPulls: [interrupted, genuineWait],
+        trainEnabled,
+      }),
+      [42],
+    );
+  }
+});
+
+test('train sweeps retain waiting PRs that also carry dynamic ownership for cleanup retry', () => {
+  const ownedWaiting = {
+    number: 42,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-owner-pr-42' }],
+  };
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [ownedWaiting],
+      trainEnabled: true,
+    }),
+    [42],
+  );
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [ownedWaiting],
+      trainEnabled: false,
+    }),
+    [42],
+  );
+});
+
 test('eventPrNumbers identifies only PRs represented by the triggering event', () => {
   assert.deepEqual([...eventPrNumbers({ pull_request: { number: 42 } })], [42]);
   assert.deepEqual(
