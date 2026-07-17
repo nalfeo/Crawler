@@ -237,18 +237,22 @@ function createMobMotionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   const loadSelectedSprite = (): void => {
     selected = sprites.find((sprite) => sprite.textureKey === settings.spriteKey);
     if (!selected) return;
+    const requestedSprite = selected;
+    const requestedImage = new Image();
     imageReady = false;
-    image = new Image();
-    image.addEventListener('load', () => {
+    image = requestedImage;
+    requestedImage.addEventListener('load', () => {
+      if (image !== requestedImage || selected !== requestedSprite) return;
       imageReady = true;
       status.textContent =
-        `${selected!.label} · ${image!.width}×${image!.height}px · ` +
-        `${selected!.anchor ? 'manifest anchor' : 'bottom-center fallback'}`;
+        `${requestedSprite.label} · ${requestedImage.width}×${requestedImage.height}px · ` +
+        `${requestedSprite.anchor ? 'manifest anchor' : 'bottom-center fallback'}`;
     });
-    image.addEventListener('error', () => {
-      status.textContent = `Could not load ${selected!.assetPath}`;
+    requestedImage.addEventListener('error', () => {
+      if (image !== requestedImage || selected !== requestedSprite) return;
+      status.textContent = `Could not load ${requestedSprite.assetPath}`;
     });
-    image.src = imageUrl(selected.assetPath);
+    requestedImage.src = imageUrl(requestedSprite.assetPath);
     saveLabState(LAB_ID, settings);
   };
 
