@@ -48,15 +48,15 @@ describe('weapon AI personas', () => {
       computeAiStatAllocation(world, playerEid, 8, true),
     );
     expect(computeAiStatAllocation(world, playerEid, 8)).toEqual({
-      constitution: 6,
-      dexterity: 2,
+      constitution: 7,
+      dexterity: 1,
     });
     expect(computeAiStatAllocation(world, playerEid, 8)).not.toEqual(
       computeAutoStatAllocation(world, playerEid, 8),
     );
     expect(computeAiStatAllocation(world, playerEid, 8, true)).toEqual({
-      constitution: 6,
-      dexterity: 2,
+      constitution: 7,
+      dexterity: 1,
     });
     expect(computeAiStatAllocation(world, playerEid, 8, false)).toEqual(
       computeAutoStatAllocation(world, playerEid, 8),
