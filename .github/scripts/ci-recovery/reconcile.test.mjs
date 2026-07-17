@@ -363,7 +363,7 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
     }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
       repositoryLabelExists
-        ? { body: { name: LABEL } }
+        ? { body: { name: LABEL, node_id: 'LABEL_original' } }
         : { status: 404, body: { message: 'Not Found' } },
     [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
       body: {},
@@ -423,7 +423,7 @@ test('known stale-node 422 refetches ownership, retries detach once, and then co
     }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
       repositoryLabelExists
-        ? { body: { name: LABEL } }
+        ? { body: { name: LABEL, node_id: 'LABEL_original' } }
         : { status: 404, body: { message: 'Not Found' } },
     [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
       repositoryLabelExists = true;
@@ -450,6 +450,13 @@ test('known stale-node 422 refetches ownership, retries detach once, and then co
     [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
       stateComment.body = body.body;
       return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /graphql`]: (_url, body) => {
+      if (String(body?.query || '').includes('deleteLabel')) {
+        repositoryLabelExists = false;
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
     },
   });
   t.after(() => server.close());
@@ -478,6 +485,7 @@ test('known stale-node retry preserves a concurrently recreated atomic owner lab
   const stateComment = shepherdStateComment();
   let attached = true;
   let detachAttempts = 0;
+  let repositoryLabelNodeId = 'LABEL_original';
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
       body: { ...basePr(), labels: attached ? [{ name: LABEL }] : [] },
@@ -485,23 +493,14 @@ test('known stale-node retry preserves a concurrently recreated atomic owner lab
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: [stateComment],
     }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: { name: LABEL } }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      body: { name: LABEL, node_id: repositoryLabelNodeId },
+    }),
     [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
       detachAttempts += 1;
       if (detachAttempts === 2) {
         attached = false;
-        stateComment.body = renderStateComment(
-          makeState({
-            prNumber: PR_NUM,
-            headSha: HEAD_SHA,
-            fingerprint: blockerFingerprint([]),
-            owner: 'none',
-            status: 'idle',
-            trigger: 'concurrent-acquire-window',
-            blockers: [],
-            updatedAt: new Date().toISOString(),
-          }),
-        );
+        repositoryLabelNodeId = 'LABEL_recreated';
       }
       return {
         status: 422,
@@ -520,11 +519,60 @@ test('known stale-node retry preserves a concurrently recreated atomic owner lab
   });
 
   assert.notEqual(code, 0);
-  assert.match(stderr, /ownership changed after stale-node retry/);
+  assert.match(stderr, /owner label incarnation changed after stale-node retry/);
   assert.equal(detachAttempts, 2);
   assert.equal(
     mutatingCalls.some(
       (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+  );
+});
+
+test('known stale-node first refetch preserves a concurrently recreated atomic owner label', async (t) => {
+  const stateComment = shepherdStateComment();
+  let attached = true;
+  let repositoryLabelNodeId = 'LABEL_original';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: attached ? [{ name: LABEL }] : [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      body: { name: LABEL, node_id: repositoryLabelNodeId },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      attached = false;
+      repositoryLabelNodeId = 'LABEL_recreated';
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.notEqual(code, 0);
+  assert.match(stderr, /owner label incarnation changed during stale-node release/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'POST' && call.url === '/graphql' && call.body?.query,
     ),
     false,
   );

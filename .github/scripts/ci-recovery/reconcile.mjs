@@ -194,15 +194,9 @@ if (stateComments.length > 1) {
 }
 let state = stateComments.length === 1 ? parseStateComment(stateComments[0].body) : null;
 
-let labelExists = false;
-try {
-  await request(readToken, `/repos/${owner}/${repo}/labels/${encodeURIComponent(labelName)}`);
-  labelExists = true;
-} catch (error) {
-  if (error.status !== 404) {
-    throw error;
-  }
-}
+const startupRepositoryLabel = await repositoryLabelSnapshot(labelName);
+let labelExists = startupRepositoryLabel.present;
+let ownerLabelNodeId = startupRepositoryLabel.nodeId;
 const ownerLabelAttached = (pr.labels || []).some((label) => label.name === labelName);
 const staleOwningState =
   !labelExists && state && state.owner !== 'none' && !['idle', 'waiting'].includes(state.status);
@@ -337,7 +331,7 @@ async function acquire(
   const waitingTransition = await prepareWaitingExit();
   if (shouldMutate) {
     await assertExpectedMetadataUnchanged('acquire-label');
-    await request(pat, `/repos/${owner}/${repo}/labels`, {
+    const createdLabel = await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
       body: {
         name: labelName,
@@ -345,6 +339,7 @@ async function acquire(
         description: `CI recovery ownership for PR #${prNumber}`,
       },
     });
+    ownerLabelNodeId = repositoryLabelNodeId(createdLabel.data);
     await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
       method: 'POST',
       body: { labels: [labelName] },
@@ -479,19 +474,48 @@ async function removeRepositoryLabel(name) {
 }
 
 async function repositoryLabelExists(name) {
+  return (await repositoryLabelSnapshot(name)).present;
+}
+
+function repositoryLabelNodeId(label) {
+  return label?.node_id || label?.nodeId || null;
+}
+
+async function repositoryLabelSnapshot(name) {
   try {
-    await request(readToken, `/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`);
-    return true;
+    const response = await request(
+      readToken,
+      `/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`,
+    );
+    return { present: true, nodeId: repositoryLabelNodeId(response.data) };
   } catch (error) {
-    if (error.status === 404) return false;
+    if (error.status === 404) return { present: false, nodeId: null };
     throw error;
   }
+}
+
+async function removeRepositoryLabelById(nodeId) {
+  if (!nodeId) {
+    throw new Error(`PR #${prNumber} cannot verify repository owner label incarnation`);
+  }
+  await assertExpectedMetadataUnchanged('remove-repository-label-by-id');
+  await graphql(
+    pat,
+    `
+      mutation ($labelId: ID!) {
+        deleteLabel(input: { id: $labelId }) {
+          clientMutationId
+        }
+      }
+    `,
+    { labelId: nodeId },
+  );
 }
 
 async function claimRepositoryLabelFence(reason) {
   await assertExpectedMetadataUnchanged('claim-repository-label');
   try {
-    await request(pat, `/repos/${owner}/${repo}/labels`, {
+    const createdLabel = await request(pat, `/repos/${owner}/${repo}/labels`, {
       method: 'POST',
       body: {
         name: labelName,
@@ -499,6 +523,7 @@ async function claimRepositoryLabelFence(reason) {
         description: `CI recovery ownership for PR #${prNumber}`,
       },
     });
+    ownerLabelNodeId = repositoryLabelNodeId(createdLabel.data);
   } catch (error) {
     if (error.status !== 422) throw error;
     throw new Error(`PR #${prNumber} owner label was claimed during ${reason}`);
@@ -531,12 +556,12 @@ function sameOwnership(candidate, expected) {
 }
 
 async function fetchOwnershipFacts() {
-  const [livePullRequest, liveComments, repositoryLabelPresent] = await Promise.all([
+  const [livePullRequest, liveComments, repositoryLabel] = await Promise.all([
     request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`).then(
       (response) => response.data,
     ),
     paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`),
-    repositoryLabelExists(labelName),
+    repositoryLabelSnapshot(labelName),
   ]);
   const liveStateComments = liveComments.filter((comment) =>
     hasLeadingMarker(comment.body, STATE_MARKER),
@@ -549,7 +574,8 @@ async function fetchOwnershipFacts() {
   return {
     attached: (livePullRequest.labels || []).some((label) => label.name === labelName),
     labels: livePullRequest.labels || [],
-    repositoryLabelPresent,
+    repositoryLabelPresent: repositoryLabel.present,
+    repositoryLabelNodeId: repositoryLabel.nodeId,
     state: liveState,
   };
 }
@@ -682,6 +708,11 @@ async function release(reason, nextState = null) {
         if (!sameOwnership(facts.state, ownershipToRelease)) {
           throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
         }
+        if (!ownerLabelNodeId || facts.repositoryLabelNodeId !== ownerLabelNodeId) {
+          throw new Error(
+            `PR #${prNumber} owner label incarnation changed during stale-node release`,
+          );
+        }
         pr.labels = facts.labels.filter((label) => label.name !== labelName);
         needsPostReleaseCheck = true;
       } else if (sameOwnership(facts.state, ownershipToRelease)) {
@@ -702,6 +733,9 @@ async function release(reason, nextState = null) {
         if (facts.attached || !sameOwnership(facts.state, ownershipToRelease)) {
           throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
         }
+        if (!ownerLabelNodeId || facts.repositoryLabelNodeId !== ownerLabelNodeId) {
+          throw new Error(`PR #${prNumber} owner label incarnation changed after stale-node retry`);
+        }
         pr.labels = facts.labels.filter((label) => label.name !== labelName);
         needsPostReleaseCheck = true;
       } else {
@@ -709,8 +743,12 @@ async function release(reason, nextState = null) {
       }
     }
 
-    await removeRepositoryLabel(labelName);
-    if (await repositoryLabelExists(labelName)) {
+    if (needsPostReleaseCheck) {
+      await removeRepositoryLabelById(ownerLabelNodeId);
+    } else {
+      await removeRepositoryLabel(labelName);
+    }
+    if (!needsPostReleaseCheck && (await repositoryLabelExists(labelName))) {
       throw new Error(`PR #${prNumber} owner label was recreated during release`);
     }
     if (needsPostReleaseCheck) {
