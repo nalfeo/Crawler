@@ -42,13 +42,13 @@ describe('Queen Mab generated-art manifest', () => {
 
   it('rejects a blocking asset', () => {
     const bad = structuredClone(QUEEN_MAB_ART_MANIFEST) as unknown as Record<string, unknown>;
-    (bad.assets as Array<Record<string, unknown>>)[0].blockingForArena = true;
+    (bad.assets as Array<Record<string, unknown>>)[0]!.blockingForArena = true;
     expect(() => queenMabArtManifestSchema.parse(bad)).toThrow();
   });
 
   it('rejects an asset referencing an unknown visual phase', () => {
     const bad = structuredClone(QUEEN_MAB_ART_MANIFEST) as unknown as Record<string, unknown>;
-    (bad.assets as Array<Record<string, unknown>>)[0].coversPhaseId = 'no-such-phase';
+    (bad.assets as Array<Record<string, unknown>>)[0]!.coversPhaseId = 'no-such-phase';
     expect(() => queenMabArtManifestSchema.parse(bad)).toThrow();
   });
 

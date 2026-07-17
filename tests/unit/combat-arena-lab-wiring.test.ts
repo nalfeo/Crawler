@@ -47,6 +47,15 @@ describe('combat-arena-lab wiring', () => {
     expect(source).not.toContain('movementSystem(');
   });
 
+  it('runs statusEffectSystem before mobAbilitySystem so Tarnished expires', () => {
+    // Regression guard: the arena enables the mob-ability runtime, so its
+    // preSystems must also tick statusEffectSystem (and before mobAbilitySystem,
+    // matching the canonical floor order) or debuffs like Tarnished never expire.
+    const source = readFileSync('src/labs/combat-arena-lab/index.ts', 'utf-8');
+    const statusIdx = source.indexOf('statusEffectSystem, mobAbilitySystem');
+    expect(statusIdx).toBeGreaterThanOrEqual(0);
+  });
+
   it('uses crypto.getRandomValues instead of Date.now for RNG seed', () => {
     const source = readFileSync('src/labs/combat-arena-lab/index.ts', 'utf-8');
     expect(source).toContain('globalThis.crypto.getRandomValues(');

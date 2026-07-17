@@ -54,6 +54,12 @@ export function registerMobAbility(
   casterEid: number,
   definition: MobAbilityRuntimeDefinition,
 ): void {
+  // Re-registering an eid first releases any prior instance's cue + owned
+  // effects, so a recycled/re-used caster slot can never inherit stale
+  // telegraph cues or lingering debuffs from a previous registration.
+  if (world.mobAbilities.byEntity.has(casterEid)) {
+    clearMobAbility(world, casterEid);
+  }
   world.mobAbilities.byEntity.set(casterEid, {
     definition,
     phase: 'cooldown',

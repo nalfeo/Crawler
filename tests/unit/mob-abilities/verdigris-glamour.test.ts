@@ -409,7 +409,7 @@ describe('Verdigris Glamour — canonical simulation pipeline', () => {
       world.frameCount += 1;
       world.elapsedMs += DELTA;
       runCoreSimulationStep(world, inputState, {
-        preSystems: [weaponSystem, enemyAISystem, mobAbilitySystem],
+        preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
       });
       const inst = world.mobAbilities.byEntity.get(queen);
       if (inst && inst.resolvedCasts > prevResolved) {
@@ -420,5 +420,44 @@ describe('Verdigris Glamour — canonical simulation pipeline', () => {
 
     expect(resolutionFrames).toEqual([FIRST_RESOLUTION_FRAME, SECOND_RESOLUTION_FRAME]);
     expect(world.announcements.filter((a) => a.kind === 'bossAbilityCast')).toHaveLength(2);
+  });
+
+  it('ticks Tarnished to expiry through the arena preSystems ordering', () => {
+    // Guards the arena preSystems composition: statusEffectSystem MUST run in the
+    // same canonical loop as mobAbilitySystem, or Tarnished never expires in the
+    // live arena. Drive the exact arena ordering and prove the debuff both lands
+    // at resolution and clears after its 4s authored duration.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 40, 40);
+    world.stores.health.current[player] = 100_000;
+    world.stores.health.max[player] = 100_000;
+    const queen = spawnBehaviorEnemy(world, 40, 10, 200, AI_TYPE.CHASE, 0.17, 60, 0);
+    setEnemyAppearanceKey(world, queen, QUEEN_KEY);
+    setMobAbilitiesEnabled(world, true);
+    registerMobAbility(world, queen, createVerdigrisGlamourDefinition());
+    activateMobAbilityEncounter(world);
+    const inputState = createInputState();
+    const sourceId = mobAbilitySourceId(VERDIGRIS_GLAMOUR_ABILITY_ID, queen);
+    const tarnishedCount = (): number =>
+      getStatusEffects(world, player).filter((e) => e.sourceId === sourceId).length;
+
+    const stepArena = (frames: number): void => {
+      for (let i = 0; i < frames; i += 1) {
+        world.frameCount += 1;
+        world.elapsedMs += DELTA;
+        runCoreSimulationStep(world, inputState, {
+          preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
+        });
+      }
+    };
+
+    // Just past the first resolution (frame 630): Tarnished is applied.
+    stepArena(FIRST_RESOLUTION_FRAME + 1);
+    expect(tarnishedCount()).toBeGreaterThan(0);
+    // ~4,000ms (≈240 frames, +margin) after resolution the debuff must be gone,
+    // and this is comfortably before the second telegraph (frame 1170) so no
+    // re-application masks the expiry.
+    stepArena(245);
+    expect(tarnishedCount()).toBe(0);
   });
 });

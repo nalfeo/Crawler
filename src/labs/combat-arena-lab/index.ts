@@ -32,7 +32,7 @@ import {
 } from '../../engine/generatedAssets/index.js';
 import { SHEETS } from '../../engine/sprites/index.js';
 import { enemyAISystem, weaponSystem } from '../../game/index.js';
-import { mobAbilitySystem } from '../../core/index.js';
+import { mobAbilitySystem, statusEffectSystem } from '../../core/index.js';
 import { equipStarterOrFallback } from '../../game/scenarios/starterWeaponEquip.js';
 import { GAME } from '../../shared/constants.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
@@ -243,11 +243,15 @@ class CombatArenaScene extends Phaser.Scene {
 
       // Use the shared canonical pipeline (same ordering as visual + headless
       // floor simulations). weaponSystem runs before enemyAISystem to match
-      // the main game's preSystems contract. mobAbilitySystem is the canonical
-      // typed ability runtime (default-off in production; the Queen Mab preset
-      // enables it) — the lab does NOT re-dispatch a lab-only copy.
+      // the main game's preSystems contract. statusEffectSystem runs after
+      // enemyAISystem and before mobAbilitySystem — identical to the floor
+      // scene's canonical order — so Tarnished (and other) debuffs tick/expire
+      // correctly and a cast applied this frame lasts its full authored
+      // duration. mobAbilitySystem is the canonical typed ability runtime
+      // (default-off in production; the Queen Mab preset enables it) — the lab
+      // does NOT re-dispatch a lab-only copy.
       runCoreSimulationStep(this.world, this.inputState, {
-        preSystems: [weaponSystem, enemyAISystem, mobAbilitySystem],
+        preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
       });
 
       this.accumulator -= GAME.DELTA_MS;
