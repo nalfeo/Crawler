@@ -3433,6 +3433,19 @@ test('live reconcile resolves only a trusted backtick-wrapped current-head marke
       body: { message: 'Not Found' },
     }),
     [`POST /graphql`]: (_url, parsed) => {
+      if (String(parsed?.query || '').includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
       if (
         String(parsed?.query || '')
           .trimStart()

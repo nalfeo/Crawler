@@ -42,8 +42,9 @@ normalization plus focused state and mocked reconcile regressions.
 ## Verification
 
 - `node --test .github/scripts/ci-recovery/state.test.mjs .github/scripts/ci-recovery/reconcile.test.mjs`
-  (91 tests, 46 passed, 45 documented Windows subprocess teardown skips, 0 failed;
-  Linux CI executes the authoritative live subprocess case)
+  (91 tests, 47 passed, 44 documented Windows subprocess teardown skips, 0 failed)
+- `node --test --test-name-pattern "live reconcile resolves only a trusted backtick-wrapped current-head marker" .github/scripts/ci-recovery/reconcile.test.mjs`
+  (1 passed, 0 skipped)
 - `npx prettier --check .github/scripts/ci-recovery/state.mjs .github/scripts/ci-recovery/state.test.mjs .github/scripts/ci-recovery/reconcile.test.mjs`
 - `npm run verify:fast`
 
