@@ -1,5 +1,16 @@
 [
   {
+    "commit": "248795791752a56f1de528c67421af83d68e7729",
+    "commitDate": "2026-07-17T07:30:20Z",
+    "commitSubject": "fix(ai): preserve Floor 2 progress recovery targets (#1239)",
+    "capturedAt": "2026-07-17T08:52:38.941Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29563916948",
+    "winRate": 0.9483333333333334,
+    "totalWins": 569,
+    "totalRuns": 600,
+    "path": "by-sha/248795791752a56f1de528c67421af83d68e7729.json"
+  },
+  {
     "commit": "a2ca41bcd44ccc51920711523c57b6152c5a9acb",
     "commitDate": "2026-07-17T07:18:54Z",
     "commitSubject": "feat(sweep-viewer): extend Sweep Results Viewer for AI Sweep Eval with live phase progress and deep-link support (#1246)",
