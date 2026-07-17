@@ -47,11 +47,14 @@ or A0 PR #1271:
 
 ## Final State
 
-A0 PR #1271 is still open at
-`62ed78aa06240094f10e13bf47cdcc5fe569adbd`. A1 did not rebase before A0.1
-publication, so its stale speculative lease was revoked with a trusted
-`BLOCKED` comment and canonical A1 `stacked_work` was cleared. A1 remains
-lifecycle `blocked`, and downstream readiness remains empty.
+A0 PR #1271 is still open. After A0.1 publication, A0 advanced and A0.1 was
+resynced onto exact A0 head
+`90b6350ac82c835cf11802042d81f5547c6a96eb`. At initial publication A1 had
+not yet rebased, so its stale speculative lease was revoked with a trusted
+`BLOCKED` comment and canonical A1 `stacked_work` was cleared. A1's subsequent
+stack evidence remains owned by its dependent branch; A0.1 does not commit the
+mutable dependent head. A1 remains lifecycle `blocked`, and downstream
+readiness remains empty.
 
 A0.1 is independently finalizable: after its ready PR is open, A1 may rebase
 once onto the published A0.1 head, retarget PR #1276, and post fresh
