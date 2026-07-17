@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -18,6 +17,12 @@ const PLAN = readFileSync(resolve(EPIC_DIR, 'PLAN.md'), 'utf8');
 const STATE = JSON.parse(readFileSync(resolve(EPIC_DIR, 'epic-state.json'), 'utf8')) as EpicState;
 const NOW = new Date('2026-07-17T18:00:00.000Z');
 const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
+// Real commits in the branch that contain the canonical evidence files.
+const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
+const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
+// A real git commit used as the synthetic merge commit in tests that need
+// validated A0 state (any commit that exists in the repo works).
+const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
 
 function cloneState(): EpicState {
   const state = structuredClone(STATE);
@@ -34,20 +39,14 @@ function validate(state: EpicState, planMarkdown = PLAN) {
   });
 }
 
-function hashFile(path: string): string {
-  return createHash('sha256')
-    .update(readFileSync(resolve(REPO_ROOT, path), 'utf8'))
-    .digest('hex');
-}
-
 function validateA0(state: EpicState): void {
   const a0 = state.nodes.find((node) => node.node_id === 'slice:A0');
   expect(a0).toBeDefined();
   if (!a0) return;
   a0.status = 'validated';
   a0.github.pr = {
-    number: 9998,
-    url: 'https://github.com/nalfeo/Crawler/pull/9998',
+    number: 1271,
+    url: 'https://github.com/nalfeo/Crawler/pull/1271',
     head_sha: FULL_COMMIT,
   };
   a0.ownership = {
@@ -61,31 +60,30 @@ function validateA0(state: EpicState): void {
     base_commit: null,
   };
   a0.merge = {
-    commit: FULL_COMMIT,
+    commit: TEST_MERGE_COMMIT,
     merged_at: '2026-07-17T17:50:00.000Z',
   };
-  const planPath = 'docs/knowledge/epics/floor-2-equipment/PLAN.md';
-  const planHash = hashFile(planPath);
   a0.evidence = [
     {
       kind: 'handoff',
-      path_or_check: planPath,
-      sha256: planHash,
-      commit: FULL_COMMIT,
+      path_or_check: 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md',
+      sha256: '9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb',
+      commit: HANDOFF_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
     {
       kind: 'review-ledger',
-      path_or_check: planPath,
-      sha256: planHash,
-      commit: FULL_COMMIT,
+      path_or_check:
+        'docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json',
+      sha256: 'fa7d39e5a5e9dcc867ffdbc25ccf6b33c0f0ca86edc229cd8403b97df1316afa',
+      commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
     {
       kind: 'offline-validator-and-focused-tests',
-      path_or_check: 'test:epic-status',
-      sha256: planHash,
-      commit: FULL_COMMIT,
+      path_or_check: 'tests/unit/agent/epic-status.test.ts',
+      sha256: '76f6cf0816360cc4286fa89a1e810a938b8f0cc7e1a8f0dc3c8029cc4e251183',
+      commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
   ];
@@ -255,27 +253,31 @@ describe('Floor 2 equipment epic status', () => {
           return Array.from({ length: 100 }, (_, index) => ({
             body: `progress update ${index}`,
             author_association: 'OWNER',
-            html_url: `https://github.com/nalfeo/Crawler/issues/9999#issuecomment-${index}`,
+            html_url: `https://github.com/nalfeo/Crawler/issues/1264#issuecomment-${index}`,
           }));
         }
         if (path.includes('/comments?per_page=100&page=2')) {
-          const claim = [
-            'CLAIMED',
-            'node: slice:A1',
-            'claimant: test-agent',
-            'session: test-session',
-            'expires_at: 2026-07-18T18:00:00.000Z',
-          ].join('\n');
+          const makeCompleteClaim = (session: string): string =>
+            [
+              'CLAIMED',
+              'node: slice:A0',
+              'claimant: test-agent',
+              `session: ${session}`,
+              'expires_at: 2026-07-18T18:00:00.000Z',
+              'claimed_at: 2026-07-17T17:00:00.000Z',
+              `base_commit: ${HANDOFF_COMMIT}`,
+              'scope: Slice A0 control plane only',
+            ].join('\n');
           return [
             {
-              body: claim,
+              body: makeCompleteClaim('session-1'),
               author_association: 'OWNER',
-              html_url: 'https://github.com/nalfeo/Crawler/issues/9999#issuecomment-1',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-1',
             },
             {
-              body: claim,
+              body: makeCompleteClaim('session-2'),
               author_association: 'MEMBER',
-              html_url: 'https://github.com/nalfeo/Crawler/issues/9999#issuecomment-2',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-2',
             },
           ];
         }
@@ -321,6 +323,7 @@ describe('Floor 2 equipment epic status', () => {
             state: 'open',
             merged: false,
             merge_commit_sha: 'c'.repeat(40),
+            merged_at: null,
             html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
             head: { sha: advancedHead },
           };
@@ -341,5 +344,177 @@ describe('Floor 2 equipment epic status', () => {
     expect(audit.proposal.repo_patch.map((patch) => patch.path)).not.toContain(
       '/nodes/0/reconciliation/observed_merge_commit',
     );
+  });
+
+  it('rejects stale heartbeat (exceeds maximum_without_heartbeat_hours)', () => {
+    const state = cloneState();
+    // Set heartbeat_at 49 hours before NOW (exceeds 48-hour maximum)
+    const staleHeartbeat = new Date(NOW.getTime() - 49 * 3_600_000).toISOString();
+    state.nodes[0]!.ownership.heartbeat_at = staleHeartbeat;
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('ownership.stale-heartbeat');
+  });
+
+  it('rejects non-canonical evidence paths for handoff and review-ledger', () => {
+    const state = cloneState();
+    validateA0(state);
+    // Replace handoff with a non-canonical path (not in docs/knowledge/handoffs/)
+    state.nodes[0]!.evidence[0]!.path_or_check =
+      'docs/knowledge/epics/floor-2-equipment/PLAN.md';
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('evidence.non-canonical-path');
+  });
+
+  it('emits operator action when pr_open node has merged PR on GitHub', () => {
+    const state = cloneState();
+    const a0 = state.nodes[0]!;
+    a0.github.pr = {
+      number: 1271,
+      url: 'https://github.com/nalfeo/Crawler/pull/1271',
+      head_sha: FULL_COMMIT,
+    };
+    const mergeCommit = TEST_MERGE_COMMIT;
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/pulls/1271')) {
+          return {
+            number: 1271,
+            state: 'closed',
+            merged: true,
+            merge_commit_sha: mergeCommit,
+            merged_at: '2026-07-17T20:00:00.000Z',
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: FULL_COMMIT },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors).toEqual([]);
+    expect(audit.proposal.operator_actions.some((a) => a.includes('merged on GitHub'))).toBe(true);
+    expect(audit.proposal.operator_actions.some((a) => a.includes(mergeCommit))).toBe(true);
+  });
+
+  it('collapses replacement heartbeats for same node/claimant/session and detects competing claimants', () => {
+    const state = cloneState();
+    const makeCompleteClaim = (session: string, claimedAt: string): string =>
+      [
+        'CLAIMED',
+        'node: slice:A0',
+        'claimant: agent-a',
+        `session: ${session}`,
+        'expires_at: 2026-07-18T18:00:00.000Z',
+        `claimed_at: ${claimedAt}`,
+        `base_commit: ${HANDOFF_COMMIT}`,
+        'scope: Slice A0 control plane only',
+      ].join('\n');
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          // Two claims from same session (heartbeat replacement) + one from competing session.
+          return [
+            {
+              body: makeCompleteClaim('session-x', '2026-07-17T16:00:00.000Z'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-10',
+            },
+            {
+              body: makeCompleteClaim('session-x', '2026-07-17T17:00:00.000Z'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-11',
+            },
+            {
+              body: makeCompleteClaim('session-y', '2026-07-17T17:30:00.000Z'),
+              author_association: 'MEMBER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-12',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    // The two same-session claims collapse to one (newest heartbeat); session-y is a
+    // competing claimant → duplicate-live-claims error.
+    expect(audit.errors.map((e) => e.code)).toContain('github.duplicate-live-claims');
+  });
+
+  it('proposes ownership reconciliation when live claim differs from cached', () => {
+    const state = cloneState();
+    // Change A0 to in_progress with a cached owner that differs from the live claim.
+    state.nodes[0]!.status = 'in_progress';
+    state.nodes[0]!.github.pr = null;
+    state.nodes[0]!.ownership.claimant = 'old-agent';
+    state.nodes[0]!.ownership.session = 'old-session';
+    const makeCompleteClaim = (): string =>
+      [
+        'CLAIMED',
+        'node: slice:A0',
+        'claimant: new-agent',
+        'session: new-session',
+        'expires_at: 2026-07-18T18:00:00.000Z',
+        'claimed_at: 2026-07-17T17:00:00.000Z',
+        `base_commit: ${HANDOFF_COMMIT}`,
+        'scope: Slice A0 control plane only',
+      ].join('\n');
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: makeCompleteClaim(),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-99',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors).toEqual([]);
+    expect(
+      audit.proposal.operator_actions.some(
+        (a) => a.includes('new-agent') && a.includes('old-agent'),
+      ),
+    ).toBe(true);
   });
 });

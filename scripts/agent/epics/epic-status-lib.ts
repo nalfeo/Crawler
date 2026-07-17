@@ -57,6 +57,8 @@ export const EXPECTED_NODE_IDS = [
 
 const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const nullableSha = z.string().regex(SHA_PATTERN).nullable();
+const GITHUB_ISSUE_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/issues\/[1-9][0-9]*$/;
+const GITHUB_PR_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/pull\/[1-9][0-9]*$/;
 const issueRefSchema = z
   .object({
     number: z.number().int().positive(),
@@ -70,6 +72,12 @@ const prRefSchema = z
     head_sha: z.string().regex(SHA40_PATTERN),
   })
   .strict();
+const stateIssueRefSchema = issueRefSchema.extend({
+  url: z.string().regex(GITHUB_ISSUE_URL),
+});
+const statePrRefSchema = prRefSchema.extend({
+  url: z.string().regex(GITHUB_PR_URL),
+});
 const evidenceSchema = z
   .object({
     kind: z.string().min(1),
@@ -141,8 +149,8 @@ const nodeSchema = z
     status_changed_at: z.string().datetime({ offset: true }),
     github: z
       .object({
-        issue: issueRefSchema.nullable(),
-        pr: prRefSchema.nullable(),
+        issue: stateIssueRefSchema.nullable(),
+        pr: statePrRefSchema.nullable(),
       })
       .strict(),
     ownership: ownershipSchema,
@@ -217,7 +225,7 @@ const epicStateSchema = z
     github: z
       .object({
         repository: z.literal('nalfeo/Crawler'),
-        parent_issue: issueRefSchema.nullable(),
+        parent_issue: stateIssueRefSchema.nullable(),
       })
       .strict(),
     issue_materialization: z
@@ -233,15 +241,17 @@ const epicStateSchema = z
       .object({
         required_node_status: z.literal('validated'),
         all_required_nodes: z.literal(true),
-        flags: z.array(
-          z
-            .object({
-              name: z.string().min(1),
-              default: z.literal(false),
-              validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
-            })
-            .strict(),
-        ),
+        flags: z
+          .array(
+            z
+              .object({
+                name: z.string().min(1),
+                default: z.literal(false),
+                validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+              })
+              .strict(),
+          )
+          .min(7),
       })
       .strict(),
     nodes: z.array(nodeSchema),
@@ -385,6 +395,30 @@ function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function gitShowContent(repoRoot: string, commit: string, filePath: string): string | null {
+  try {
+    return execFileSync('git', ['show', `${commit}:${filePath}`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    return null;
+  }
+}
+
+function gitCommitExists(repoRoot: string, commit: string): boolean {
+  try {
+    execFileSync('git', ['cat-file', '-e', commit], {
+      cwd: repoRoot,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function formatZodIssue(issue: z.core.$ZodIssue): string {
   const path = issue.path.length > 0 ? issue.path.join('.') : '<root>';
   return `${path}: ${issue.message}`;
@@ -435,11 +469,69 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
         .object({
           schema_version: z.object({ const: z.literal('crawler-epic-state/v1') }),
           epic_id: z.object({ const: z.literal('floor-2-equipment') }),
+          nodes: z.object({ minItems: z.literal(37) }).passthrough(),
+          release: z
+            .object({
+              properties: z
+                .object({ flags: z.object({ minItems: z.literal(7) }).passthrough() })
+                .passthrough(),
+            })
+            .passthrough(),
+          authority: z
+            .object({
+              properties: z
+                .object({
+                  ordered_sources: z.object({ minItems: z.literal(4) }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+          lifecycle: z
+            .object({
+              properties: z
+                .object({
+                  normal: z.object({ minItems: z.literal(7) }).passthrough(),
+                  terminal: z.object({ minItems: z.literal(2) }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+          claim_policy: z
+            .object({
+              properties: z
+                .object({
+                  protocol_headings: z.object({ minItems: z.literal(5) }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
         })
         .passthrough(),
       $defs: z
         .object({
           node: z.object({ type: z.literal('object') }).passthrough(),
+          issueRef: z
+            .object({
+              properties: z
+                .object({
+                  url: z
+                    .object({ pattern: z.string().includes('nalfeo/Crawler/issues') })
+                    .passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+          prRef: z
+            .object({
+              properties: z
+                .object({
+                  url: z
+                    .object({ pattern: z.string().includes('nalfeo/Crawler/pull') })
+                    .passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
         })
         .passthrough(),
     })
@@ -592,6 +684,11 @@ function isRepoFile(repoRoot: string, candidate: string): boolean {
   return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
+const EVIDENCE_CANONICAL_DIRS: Readonly<Record<string, string>> = {
+  handoff: 'docs/knowledge/handoffs/',
+  'review-ledger': 'docs/knowledge/review-ledgers/',
+};
+
 function validateEvidenceFiles(repoRoot: string, node: EpicNode, result: MutableValidation): void {
   for (const kind of ['handoff', 'review-ledger']) {
     const evidence = node.evidence.find((item) => item.kind === kind);
@@ -603,6 +700,15 @@ function validateEvidenceFiles(repoRoot: string, node: EpicNode, result: Mutable
       });
       continue;
     }
+    const canonicalDir = EVIDENCE_CANONICAL_DIRS[kind];
+    if (canonicalDir && !evidence.path_or_check.startsWith(canonicalDir)) {
+      result.errors.push({
+        code: 'evidence.non-canonical-path',
+        node_id: node.node_id,
+        message: `${node.node_id} ${kind} evidence must be under ${canonicalDir}`,
+      });
+      continue;
+    }
     if (!isRepoFile(repoRoot, evidence.path_or_check)) {
       result.errors.push({
         code: 'evidence.unsafe-path',
@@ -611,21 +717,21 @@ function validateEvidenceFiles(repoRoot: string, node: EpicNode, result: Mutable
       });
       continue;
     }
-    const absolute = resolve(repoRoot, evidence.path_or_check);
-    if (!existsSync(absolute)) {
+    const content = gitShowContent(repoRoot, evidence.commit, evidence.path_or_check);
+    if (content === null) {
       result.errors.push({
-        code: 'evidence.missing-file',
+        code: 'evidence.commit-not-found',
         node_id: node.node_id,
-        message: `${node.node_id} evidence file does not exist: ${evidence.path_or_check}`,
+        message: `${node.node_id} evidence commit ${evidence.commit} does not contain ${evidence.path_or_check}`,
       });
       continue;
     }
-    const actualHash = sha256(readFileSync(absolute, 'utf8'));
+    const actualHash = sha256(content);
     if (actualHash !== evidence.sha256) {
       result.errors.push({
         code: 'evidence.hash-drift',
         node_id: node.node_id,
-        message: `${node.node_id} evidence hash drifted: ${evidence.path_or_check}`,
+        message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
       });
     }
   }
@@ -741,6 +847,20 @@ function validateNodeLifecycle(
         `Verify ${node.node_id}'s claimant, post BLOCKED or a refreshed CLAIMED heartbeat, then update cached ownership.`,
       );
     }
+    if (owns.heartbeat_at) {
+      const maxHeartbeatMs =
+        (state.claim_policy.maximum_without_heartbeat_hours ?? 48) * 3_600_000;
+      if (now.getTime() - Date.parse(owns.heartbeat_at) > maxHeartbeatMs) {
+        result.errors.push({
+          code: 'ownership.stale-heartbeat',
+          node_id: node.node_id,
+          message: `${node.node_id} heartbeat at ${owns.heartbeat_at} exceeds ${state.claim_policy.maximum_without_heartbeat_hours ?? 48}h maximum`,
+        });
+        result.proposal.operator_actions.push(
+          `Verify ${node.node_id}'s claimant, post BLOCKED or a refreshed CLAIMED heartbeat, then update cached ownership.`,
+        );
+      }
+    }
   } else if (
     owns.source !== 'none' ||
     [
@@ -776,6 +896,12 @@ function validateNodeLifecycle(
         code: 'merge.missing-facts',
         node_id: node.node_id,
         message: `${node.node_id} at ${node.status} requires merge commit and timestamp`,
+      });
+    } else if (!gitCommitExists(repoRoot, node.merge.commit)) {
+      result.errors.push({
+        code: 'merge.commit-not-found',
+        node_id: node.node_id,
+        message: `${node.node_id} merge commit ${node.merge.commit} does not exist in git`,
       });
     }
   }
@@ -870,6 +996,15 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
     };
   }
   const state = parsed.data;
+
+  // Enforce minimum node count (aligned with JSON Schema minItems: 37).
+  if (state.nodes.length < 37) {
+    result.errors.push({
+      code: 'state.min-nodes',
+      message: `Epic state must have at least 37 nodes; found ${state.nodes.length}`,
+    });
+  }
+
   if (options.schemaDocument !== undefined) {
     validateCommittedSchema(options.schemaDocument, result);
   }
@@ -916,11 +1051,15 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
     }
   }
   result.readyQueue.sort();
-  const releaseReady =
+  const allRequiredValidated =
     result.errors.length === 0 &&
     state.nodes
       .filter((node) => node.release_requirement === 'required')
       .every((node) => node.status === 'validated');
+  const allFlagNodesValidated = state.release.flags.every((flag) =>
+    flag.validating_nodes.every((nodeId) => nodesById.get(nodeId)?.status === 'validated'),
+  );
+  const releaseReady = allRequiredValidated && allFlagNodesValidated;
   return {
     state,
     errors: result.errors,
@@ -1034,6 +1173,7 @@ interface GithubPull {
   readonly state: 'open' | 'closed';
   readonly merged: boolean;
   readonly merge_commit_sha: string | null;
+  readonly merged_at: string | null;
   readonly html_url: string;
   readonly head: {
     readonly sha: string;
@@ -1067,10 +1207,17 @@ interface ParsedClaim {
   readonly claimant: string;
   readonly session: string;
   readonly expiresAt: string;
+  readonly claimedAt: string;
+  readonly baseCommit: string;
+  readonly scope: string;
   readonly url: string;
+  readonly postedAt: string;
 }
 
-function parseTrustedClaim(comment: GithubComment): ParsedClaim | null {
+function parseTrustedClaim(
+  comment: GithubComment,
+  expectedNodeId?: string,
+): ParsedClaim | null {
   if (!['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association)) {
     return null;
   }
@@ -1085,10 +1232,34 @@ function parseTrustedClaim(comment: GithubComment): ParsedClaim | null {
   const claimant = fields.get('claimant');
   const session = fields.get('session');
   const expiresAt = fields.get('expires_at');
-  if (!nodeId || !claimant || !session || !expiresAt || Number.isNaN(Date.parse(expiresAt))) {
+  const claimedAt = fields.get('claimed_at');
+  const baseCommit = fields.get('base_commit');
+  const scope = fields.get('scope');
+  if (
+    !nodeId ||
+    !claimant ||
+    !session ||
+    !expiresAt ||
+    !claimedAt ||
+    !baseCommit ||
+    !scope ||
+    Number.isNaN(Date.parse(expiresAt)) ||
+    Number.isNaN(Date.parse(claimedAt))
+  ) {
     return null;
   }
-  return { nodeId, claimant, session, expiresAt, url: comment.html_url };
+  if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
+  return {
+    nodeId,
+    claimant,
+    session,
+    expiresAt,
+    claimedAt,
+    baseCommit,
+    scope,
+    url: comment.html_url,
+    postedAt: claimedAt,
+  };
 }
 
 export function auditGithub(
@@ -1157,7 +1328,9 @@ export function auditGithub(
         if (batch.length < 100) break;
       }
       for (const comment of comments) {
-        const claim = parseTrustedClaim(comment);
+        const expectedNodeId =
+          expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
+        const claim = parseTrustedClaim(comment, expectedNodeId);
         if (claim && Date.parse(claim.expiresAt) > now.getTime()) issueClaims.push(claim);
       }
     } catch (error) {
@@ -1182,6 +1355,7 @@ export function auditGithub(
           state: z.enum(['open', 'closed']),
           merged: z.boolean(),
           merge_commit_sha: z.string().nullable(),
+          merged_at: z.string().nullable(),
           html_url: z.string().url(),
           head: z.object({ sha: z.string().regex(SHA40_PATTERN) }),
         })
@@ -1204,6 +1378,27 @@ export function auditGithub(
             node_id: node.node_id,
             message: `${node.node_id} cached merge facts disagree with GitHub`,
           });
+        } else if (pull.merged_at !== node.merge.merged_at) {
+          repoPatch.push({
+            op: 'replace',
+            path: `/nodes/${state.nodes.indexOf(node)}/merge/merged_at`,
+            value: pull.merged_at,
+            reason: `GitHub merge timestamp for PR #${pull.number}`,
+          });
+        }
+      }
+      if (node.status === 'pr_open') {
+        if (pull.merged && pull.merge_commit_sha) {
+          operatorActions.push(
+            `PR #${pull.number} for ${node.node_id} is merged on GitHub ` +
+              `(sha: ${pull.merge_commit_sha}, merged_at: ${pull.merged_at ?? 'unknown'}). ` +
+              `Producer must verify and update ${node.node_id} to merged status with these facts.`,
+          );
+        } else if (!pull.merged && pull.state === 'closed') {
+          operatorActions.push(
+            `PR #${pull.number} for ${node.node_id} is closed without merging. ` +
+              `Producer must investigate and update ${node.node_id} status accordingly.`,
+          );
         }
       }
       if (node.reconciliation.observed_pr_state !== observedState) {
@@ -1252,19 +1447,69 @@ export function auditGithub(
     byOwner.push(claim);
     claimsByOwner.set(ownerKey, byOwner);
   }
-  for (const [nodeId, claims] of claimsByNode) {
+  // Deduplicate: for same node+claimant+session, keep only the newest claim (heartbeat
+  // replacement pattern posts a new CLAIMED comment before the old one expires).
+  const deduplicatedClaims: ParsedClaim[] = [];
+  for (const [, claimsForNode] of claimsByNode) {
+    const uniqueSessions = new Map<string, ParsedClaim>();
+    for (const claim of claimsForNode) {
+      const key = `${claim.claimant}\u0000${claim.session}`;
+      const prior = uniqueSessions.get(key);
+      if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
+        uniqueSessions.set(key, claim);
+      }
+    }
+    deduplicatedClaims.push(...uniqueSessions.values());
+  }
+  // Rebuild per-node and per-owner maps from deduplicated claims.
+  const deduplicatedByNode = new Map<string, ParsedClaim[]>();
+  const deduplicatedByOwner = new Map<string, ParsedClaim[]>();
+  for (const claim of deduplicatedClaims) {
+    const byNode = deduplicatedByNode.get(claim.nodeId) ?? [];
+    byNode.push(claim);
+    deduplicatedByNode.set(claim.nodeId, byNode);
+    const ownerKey = `${claim.claimant}\u0000${claim.session}`;
+    const byOwner = deduplicatedByOwner.get(ownerKey) ?? [];
+    byOwner.push(claim);
+    deduplicatedByOwner.set(ownerKey, byOwner);
+  }
+  for (const [nodeId, claims] of deduplicatedByNode) {
     if (claims.length > 1) {
       errors.push({
         code: 'github.duplicate-live-claims',
         node_id: nodeId,
-        message: `${nodeId} has ${claims.length} live trusted CLAIMED comments`,
+        message: `${nodeId} has ${claims.length} live trusted CLAIMED comments from competing claimants`,
       });
       operatorActions.push(
         `Resolve duplicate live claims for ${nodeId}: ${claims.map((claim) => claim.url).join(', ')}`,
       );
     }
+    // Reconcile the single authoritative live claim against cached ownership.
+    if (claims.length === 1) {
+      const liveClaim = claims[0]!;
+      const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
+      const epicNode = nodesById.get(nodeId);
+      if (epicNode && ACTIVE_STATUSES.has(epicNode.status)) {
+        const owns = epicNode.ownership;
+        if (
+          liveClaim.claimant !== owns.claimant ||
+          liveClaim.session !== owns.session
+        ) {
+          operatorActions.push(
+            `Live claim on ${nodeId} (claimant: ${liveClaim.claimant}, session: ${liveClaim.session}) ` +
+              `differs from cached ownership (claimant: ${owns.claimant ?? 'none'}, session: ${owns.session ?? 'none'}). ` +
+              `Producer must verify and reconcile ${nodeId} ownership.`,
+          );
+        }
+      } else if (epicNode && !ACTIVE_STATUSES.has(epicNode.status)) {
+        operatorActions.push(
+          `Issue has a live CLAIMED comment for ${nodeId} but cached status is ${epicNode.status}. ` +
+            `Producer must verify whether this claim is stale or if the cache needs updating.`,
+        );
+      }
+    }
   }
-  for (const claims of claimsByOwner.values()) {
+  for (const claims of deduplicatedByOwner.values()) {
     const nodes = new Set(claims.map((claim) => claim.nodeId));
     if (nodes.size > 1) {
       warnings.push({
