@@ -24,9 +24,14 @@ interface WorkflowJob {
 
 interface WorkflowDoc {
   name: string;
-  on: Record<string, { workflows?: string[]; types?: string[]; branches?: string[] }>;
+  on: {
+    workflow_run: { workflows?: string[]; types?: string[]; branches?: string[] };
+  };
   permissions: Record<string, string>;
-  jobs: Record<string, WorkflowJob>;
+  jobs: {
+    inspect: WorkflowJob;
+    dispatch: WorkflowJob;
+  };
 }
 
 function loadWorkflow(): { doc: WorkflowDoc; raw: string } {
