@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -23,6 +24,11 @@ const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
 const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
 const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
 const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
+
+function sha256OfFile(repoRoot: string, repoRelPath: string): string {
+  const content = readFileSync(resolve(repoRoot, repoRelPath), 'utf8');
+  return createHash('sha256').update(content).digest('hex');
+}
 
 /**
  * A repository-independent GitReader for unit tests: reads evidence files
@@ -85,19 +91,21 @@ function validateA0(state: EpicState): void {
     commit: TEST_MERGE_COMMIT,
     merged_at: '2026-07-17T17:50:00.000Z',
   };
+  const HANDOFF_PATH = 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md';
+  const LEDGER_PATH =
+    'docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json';
   a0.evidence = [
     {
       kind: 'handoff',
-      path_or_check: 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md',
-      sha256: '9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb',
+      path_or_check: HANDOFF_PATH,
+      sha256: sha256OfFile(REPO_ROOT, HANDOFF_PATH),
       commit: HANDOFF_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
     {
       kind: 'review-ledger',
-      path_or_check:
-        'docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json',
-      sha256: 'fa7d39e5a5e9dcc867ffdbc25ccf6b33c0f0ca86edc229cd8403b97df1316afa',
+      path_or_check: LEDGER_PATH,
+      sha256: sha256OfFile(REPO_ROOT, LEDGER_PATH),
       commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
@@ -105,8 +113,8 @@ function validateA0(state: EpicState): void {
       // Use the handoff file as a stable stand-in for the offline-validator evidence
       // (avoids circular sha256 bootstrap when the test file itself changes).
       kind: 'offline-validator-and-focused-tests',
-      path_or_check: 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md',
-      sha256: '9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb',
+      path_or_check: HANDOFF_PATH,
+      sha256: sha256OfFile(REPO_ROOT, HANDOFF_PATH),
       commit: HANDOFF_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
