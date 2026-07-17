@@ -1,5 +1,16 @@
 [
   {
+    "commit": "a7c00f0665c8269b1861fd5f39f82204dd6de8f0",
+    "commitDate": "2026-07-17T22:32:09Z",
+    "commitSubject": "fix(ci): harden recovery ownership convergence (#1259)",
+    "capturedAt": "2026-07-17T23:49:52.685Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29618688833",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/a7c00f0665c8269b1861fd5f39f82204dd6de8f0.json"
+  },
+  {
     "commit": "6dc8c239f22940cd24643bc8f0c8a925d07fd903",
     "commitDate": "2026-07-17T18:48:14Z",
     "commitSubject": "feat(sprites): redesign cactusfolk-boss brief as Abuela Saguaro grandmother character (#1263)",
