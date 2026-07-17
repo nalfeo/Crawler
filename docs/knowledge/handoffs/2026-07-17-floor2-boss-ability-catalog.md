@@ -62,6 +62,9 @@ Queen Mab Tarnish is the first planned vertical slice:
 - Added `.specify/specs/boss-abilities.md` and ADR 0064, plus their indexes.
 - Repaired stale paths and malformed retrospective sections in historical docs
   that the existing documentation gate surfaced.
+- PR #1273 follow-up: removed the unused `bossAbilityDefSchema` export from
+  `src/shared/boss-abilities.ts`; the schema stays module-internal and the
+  public catalog API is unchanged.
 
 The current status report derives all 18 abilities as `blocked`. Queen is
 blocked by PRs #1237 and #1243. The other 17 are blocked by the reusable
