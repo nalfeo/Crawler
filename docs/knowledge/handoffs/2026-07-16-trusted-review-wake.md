@@ -66,9 +66,9 @@ Router`, dispatches `CI Recovery`, and cannot match its own completion.
   ambiguous PR, stale SHA, incomplete files, and protected-workflow changes
   dispatch nothing.
 - `node --test ".github/scripts/ci-recovery/review-wake-bridge.test.mjs"`
-  (15/15)
+  (17/17)
 - `npx vitest run --project unit
-tests/unit/ci-recovery-review-wake-bridge.test.ts` (3/3)
+tests/unit/ci-recovery-review-wake-bridge.test.ts` (4/4)
 - `npm run verify:fast`
 - Review harness: separate-model plan review produced three resolved concerns
   (`plan_divergence=minor`); code-review round 1 produced two resolved concerns,

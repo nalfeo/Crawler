@@ -127,6 +127,11 @@ for (const [name, mutate, expected] of [
   ['normal success', (run) => (run.conclusion = 'success'), 'conclusion=success'],
   ['non-review event', (run) => (run.event = 'pull_request_target'), 'event=pull_request_target'],
   ['different workflow', (run) => (run.path = '.github/workflows/ci.yml'), 'workflow-path'],
+  [
+    'case-variant router workflow path',
+    (run) => (run.path = '.github/workflows/CI-Recovery-Router.yml'),
+    'workflow-path',
+  ],
   ['untrusted actor', (run) => (run.actor = { id: 4, login: 'attacker', type: 'User' }), 'actor'],
   [
     'human rerun',

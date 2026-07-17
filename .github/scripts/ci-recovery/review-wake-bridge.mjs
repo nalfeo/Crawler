@@ -39,7 +39,7 @@ export function runRejection({ payload, run, repository }) {
   if (payload?.action !== 'completed') return `action=${payload?.action}`;
   if (positiveInteger(payloadRun?.id) !== positiveInteger(run?.id)) return 'run-id-mismatch';
   if (normalize(run?.name) !== normalize(ROUTER_WORKFLOW_NAME)) return 'workflow-name';
-  if (normalize(run?.path) !== normalize(ROUTER_WORKFLOW_PATH)) return 'workflow-path';
+  if (run?.path !== ROUTER_WORKFLOW_PATH) return 'workflow-path';
   if (normalize(run?.status) !== 'completed') return `status=${run?.status}`;
   if (normalize(run?.conclusion) !== 'action_required') {
     return `conclusion=${run?.conclusion}`;
