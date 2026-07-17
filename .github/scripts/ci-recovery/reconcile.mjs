@@ -247,6 +247,23 @@ if (staleOwningState) {
         ),
       );
     }
+    if (shouldMutate) {
+      await claimRepositoryLabelFence('exhausted interrupted-release completion');
+      const fencedReleaseFacts = await fetchOwnershipFacts();
+      if (!sameOwnership(fencedReleaseFacts.state, state)) {
+        if (!isConvergedElsewhereState(fencedReleaseFacts.state)) {
+          throw new Error(
+            `PR #${prNumber} ownership changed during exhausted interrupted-release completion`,
+          );
+        }
+        await removeRepositoryLabel(labelName);
+        labelExists = false;
+        process.stdout.write(
+          `completed-interrupted-exhausted-release pr=#${prNumber} result=converged-elsewhere\n`,
+        );
+        process.exit(0);
+      }
+    }
     await updateState(
       makeState({
         prNumber,
@@ -262,6 +279,15 @@ if (staleOwningState) {
         updatedAt: now.toISOString(),
       }),
     );
+    if (shouldMutate) {
+      await removeRepositoryLabel(labelName);
+      if (await repositoryLabelExists(labelName)) {
+        throw new Error(
+          `PR #${prNumber} owner label was recreated during exhausted interrupted-release completion`,
+        );
+      }
+    }
+    labelExists = false;
     process.stdout.write(
       `completed-interrupted-exhausted-release pr=#${prNumber} attempts=${state.attempt}\n`,
     );
@@ -457,6 +483,24 @@ async function repositoryLabelExists(name) {
     if (error.status === 404) return false;
     throw error;
   }
+}
+
+async function claimRepositoryLabelFence(reason) {
+  await assertExpectedMetadataUnchanged('claim-repository-label');
+  try {
+    await request(pat, `/repos/${owner}/${repo}/labels`, {
+      method: 'POST',
+      body: {
+        name: labelName,
+        color: '0969da',
+        description: `CI recovery ownership for PR #${prNumber}`,
+      },
+    });
+  } catch (error) {
+    if (error.status !== 422) throw error;
+    throw new Error(`PR #${prNumber} owner label was claimed during ${reason}`);
+  }
+  labelExists = true;
 }
 
 function isKnownStaleNodeLabelError(error) {

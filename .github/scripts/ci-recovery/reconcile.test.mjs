@@ -4546,7 +4546,7 @@ test('stale automation incomplete release at attempt=2 persists exhausted state 
     updatedAt: staleAt,
   });
   const stateComment = { id: 8901, body: renderStateComment(staleAutomationState) };
-  // Labels are absent (repo label was deleted by the interrupted release)
+  let repositoryLabelExists = false;
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
       body: { ...basePr(), labels: [] }, // no owner label attached
@@ -4554,11 +4554,18 @@ test('stale automation incomplete release at attempt=2 persists exhausted state 
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: [stateComment],
     }),
-    // Repository label is also absent (was deleted in the previous incomplete run)
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
-      status: 404,
-      body: { message: 'Not Found' },
-    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
     [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
       stateComment.body = body.body;
       return { body: { id: stateComment.id, body: body.body } };
@@ -4618,7 +4625,7 @@ test('stale automation incomplete release at attempt=2 persists exhausted state 
   );
 });
 
-test('exhausted interrupted-release live fence fails closed when owner label recreated after startup (Thread PRRT_kwDOSvo2Ms6R3FSl)', async (t) => {
+test('exhausted interrupted-release atomically fences ownership after its live refetch', async (t) => {
   // Regression: staleOwningState=true with owner=automation, progressKey set,
   // attempt=2 (exhausted). Between startup and the terminal idle updateState a
   // concurrent run re-creates the owner label (and writes an active state).
@@ -4641,7 +4648,6 @@ test('exhausted interrupted-release live fence fails closed when owner label rec
     updatedAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
   });
   const stateComment = { id: 9021, body: renderStateComment(exhaustedState) };
-  let labelEndpointCalls = 0;
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
       body: { ...basePr(), labels: [] }, // no owner label on PR
@@ -4649,15 +4655,20 @@ test('exhausted interrupted-release live fence fails closed when owner label rec
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: [stateComment],
     }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
-      labelEndpointCalls += 1;
-      // First call (startup): label absent — triggers staleOwningState=true and
-      // the exhausted interrupted-release branch.
-      // Second call onward (fetchOwnershipFacts inside the fence): label was
-      // re-created by a concurrent run — fence must detect this and fail closed.
-      return labelEndpointCalls === 1
-        ? { status: 404, body: { message: 'Not Found' } }
-        : { body: { name: LABEL } };
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      // A competing acquire wins after our live refetch but before our atomic
+      // claim. GitHub's unique label name rejects our claim with 422.
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Label', field: 'name', code: 'already_exists' }],
+        },
+      };
     },
   });
   t.after(() => server.close());
@@ -4671,9 +4682,9 @@ test('exhausted interrupted-release live fence fails closed when owner label rec
   assert.notEqual(
     code,
     0,
-    'must fail closed when owner label is re-created before exhausted interrupted-release completion',
+    'must fail closed when another acquire wins after the exhausted-release refetch',
   );
-  assert.match(stderr, /owner label re-created before exhausted interrupted-release completion/);
+  assert.match(stderr, /owner label was claimed during exhausted interrupted-release completion/);
   assert.equal(
     mutatingCalls.some(
       (call) =>
