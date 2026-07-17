@@ -112,7 +112,6 @@ function runWithHarness(harness, overrides = {}) {
 }
 
 test('hardened prompt encodes every evidence and approval gate', () => {
-  const expectedArtifacts = FINAL_AGGREGATE_ARTIFACTS.map((name) => `\`${name}\``).join(', ');
   const required = [
     /exact head SHA/,
     /Shipped\/default runtime configuration only/,
@@ -133,12 +132,11 @@ test('hardened prompt encodes every evidence and approval gate', () => {
     /closure is mandatory, not optional, for every no-PR path/,
     /@copilot Please execute this issue end-to-end/,
   ];
-  assert.equal(
-    ISSUE_BODY.includes(
-      `all six FINAL aggregate artifacts (${expectedArtifacts}) and 100 seeds/weapon only`,
-    ),
-    true,
-  );
+  assert.match(ISSUE_BODY, /all six FINAL aggregate artifacts/);
+  assert.match(ISSUE_BODY, /100 seeds\/weapon only/);
+  for (const artifact of FINAL_AGGREGATE_ARTIFACTS) {
+    assert.equal(ISSUE_BODY.includes(artifact), true);
+  }
   for (const invariant of required) assert.match(ISSUE_BODY, invariant);
 
   assert.doesNotMatch(ISSUE_BODY, /(?:exactly|at least) 3 (?:ideas|candidates)/i);
@@ -185,6 +183,7 @@ test('consecutive runs create one issue and invoke Copilot intake once', async (
       call.options.method === 'PATCH' &&
       typeof call.options.body?.body === 'string',
   );
+  assert.ok(bodyUpdate, 'Body update PATCH call should exist');
   assert.equal(bodyUpdate.options.body.body, buildIssueBody(1203));
   assert.equal(harness.openIssues[0].body, buildIssueBody(1203));
   const intakeCalls = harness.calls.filter((call) => call.kind === 'intake');

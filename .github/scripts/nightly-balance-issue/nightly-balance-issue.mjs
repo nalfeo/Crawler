@@ -75,6 +75,10 @@ function requireToken(value, name) {
   }
 }
 
+function describeError(error) {
+  return error?.message ?? String(error);
+}
+
 async function ensureHumanApprovalLabel({ requestFn, githubToken, owner, repo }) {
   const labelPath = `/repos/${owner}/${repo}/labels/${encodeURIComponent(HUMAN_APPROVAL_LABEL)}`;
   try {
@@ -162,7 +166,7 @@ async function intakeWithRollback({
     } catch (rollbackError) {
       throw new AggregateError(
         [intakeError, rollbackError],
-        `Issue intake failed for #${issue.number}: ${intakeError.message}; closing the issue also failed: ${rollbackError.message}`,
+        `Issue intake failed for #${issue.number}: ${describeError(intakeError)}; closing the issue also failed: ${describeError(rollbackError)}`,
         { cause: intakeError },
       );
     }
@@ -245,7 +249,7 @@ export async function runNightlyBalanceIssue({
     } catch (rollbackError) {
       throw new AggregateError(
         [updateError, rollbackError],
-        `Issue body update failed for #${issue.number}: ${updateError.message}; closing the issue also failed: ${rollbackError.message}`,
+        `Issue body update failed for #${issue.number}: ${describeError(updateError)}; closing the issue also failed: ${describeError(rollbackError)}`,
         { cause: updateError },
       );
     }
