@@ -723,18 +723,26 @@ export async function runHeadless(
       autoFloor2ProgressionSystem(world, playerEid);
       autoAllocateStatPoints(world, playerEid, config.weaponPersonas);
 
-      // Check win/loss conditions
+      // Check win/loss conditions — read HP before the guard so both early-exit
+      // paths can record the final frame's HP delta (otherwise the lethal frame
+      // is skipped and damageTaken under-counts on one-shot deaths).
+      const playerHealth = world.stores.health.current[playerEid] ?? 0;
       if (
         !hasComponent(world.ecs, playerEid, Player) ||
         !hasComponent(world.ecs, playerEid, Health)
       ) {
         outcome = 'death';
+        if (previousPlayerHealth > playerHealth) {
+          damageTaken += previousPlayerHealth - playerHealth;
+        }
         break;
       }
 
-      const playerHealth = world.stores.health.current[playerEid] ?? 0;
       if (playerHealth <= 0) {
         outcome = 'death';
+        if (previousPlayerHealth > playerHealth) {
+          damageTaken += previousPlayerHealth - playerHealth;
+        }
         break;
       }
 
