@@ -594,10 +594,7 @@ async function release(reason, nextState = null) {
         // reacquire from this stale snapshot if the state has not settled yet.
         return settleAbsentOwnerBit(facts, ownershipToRelease, waitingTransition);
       } else if (!facts.attached) {
-        if (
-          !sameOwnership(facts.state, ownershipToRelease) &&
-          !isConvergedElsewhereState(facts.state)
-        ) {
+        if (!sameOwnership(facts.state, ownershipToRelease)) {
           throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
         }
         pr.labels = facts.labels.filter((label) => label.name !== labelName);
@@ -612,11 +609,7 @@ async function release(reason, nextState = null) {
         if (!facts.repositoryLabelPresent) {
           return settleAbsentOwnerBit(facts, ownershipToRelease, waitingTransition);
         }
-        if (
-          facts.attached ||
-          (!sameOwnership(facts.state, ownershipToRelease) &&
-            !isConvergedElsewhereState(facts.state))
-        ) {
+        if (facts.attached || !sameOwnership(facts.state, ownershipToRelease)) {
           throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
         }
         pr.labels = facts.labels.filter((label) => label.name !== labelName);

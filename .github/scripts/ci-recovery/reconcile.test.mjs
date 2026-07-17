@@ -466,6 +466,62 @@ test('known stale-node 422 refetches ownership, retries detach once, and then co
   assert.ok(mutatingCalls.indexOf(issueDeletes[1]) < mutatingCalls.indexOf(repositoryDelete));
 });
 
+test('known stale-node retry preserves a concurrently recreated atomic owner label', async (t) => {
+  const stateComment = shepherdStateComment();
+  let attached = true;
+  let detachAttempts = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: attached ? [{ name: LABEL }] : [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: { name: LABEL } }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      detachAttempts += 1;
+      if (detachAttempts === 2) {
+        attached = false;
+        stateComment.body = renderStateComment(
+          makeState({
+            prNumber: PR_NUM,
+            headSha: HEAD_SHA,
+            fingerprint: blockerFingerprint([]),
+            owner: 'none',
+            status: 'idle',
+            trigger: 'concurrent-acquire-window',
+            blockers: [],
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+      }
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.notEqual(code, 0);
+  assert.match(stderr, /ownership changed after stale-node retry/);
+  assert.equal(detachAttempts, 2);
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+  );
+});
+
 test('known stale-node 422 fails closed when ownership is a newer incarnation', async (t) => {
   const stateComment = shepherdStateComment();
   let detachAttempts = 0;
@@ -4937,11 +4993,7 @@ test('interrupted automation release reacquires directly with its attempt budget
 // Thread PRRT_kwDOSvo2Ms6R18LO regressions: !facts.attached TOCTOU
 // ---------------------------------------------------------------------------
 
-test('stale-node 422 !facts.attached + converged state exits clean without writing releasedState', async (t) => {
-  // Regression: the !facts.attached branch must mirror the converged-elsewhere
-  // handling from the !repositoryLabelPresent branch. If another run already
-  // converged the PR to idle/waiting when our fetchOwnershipFacts() runs, we
-  // must NOT overwrite that state by proceeding to write our releasedState.
+test('stale-node 422 !facts.attached fails closed while the repository owner label remains', async (t) => {
   const initialShepherdState = makeState({
     prNumber: PR_NUM,
     headSha: HEAD_SHA,
@@ -5007,9 +5059,10 @@ test('stale-node 422 !facts.attached + converged state exits clean without writi
     RECOVERY_OPERATION: 'lease-release',
     CI_RECOVERY_MODE: 'dry-run',
   });
-  if (!assertSuccessfulExit(t, code, stderr, '!attached-converged-elsewhere', true)) return;
 
-  // Must not PATCH the state comment (converged elsewhere).
+  assert.notEqual(code, 0);
+  assert.match(stderr, /ownership changed during stale-node release/);
+  assert.equal(repositoryLabelPresent, true);
   assert.equal(
     mutatingCalls.some(
       (call) =>
@@ -5017,7 +5070,7 @@ test('stale-node 422 !facts.attached + converged state exits clean without writi
         call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
     ),
     false,
-    '!facts.attached converged-elsewhere must not overwrite newer idle state',
+    '!facts.attached must not overwrite newer idle state',
   );
 });
 
