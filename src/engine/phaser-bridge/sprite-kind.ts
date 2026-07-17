@@ -21,7 +21,10 @@ import {
 } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import { TeamId } from '../../shared/constants.js';
-import type { GeneratedSpriteRegistry } from '../../shared/generated-assets.js';
+import {
+  generatedBriefIdForEnemy,
+  type GeneratedSpriteRegistry,
+} from '../../shared/generated-assets.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../../shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
 import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
@@ -262,111 +265,6 @@ export function computeEnemyScale(
   return { scaleX, scaleY };
 }
 
-const GENERATED_BRIEF_BY_TYPE: Readonly<Record<string, string>> = {
-  enemy_rat: 'rat-v1',
-  enemy_slime: 'slime-v1',
-  enemy_spawner_rats_nest: 'rat-nest-v2',
-  enemy_spawner_slime_pool: 'slime-pool-v1',
-  enemy_boss_ratslime: 'rat-slime-v1',
-  enemy_boss_slimerat: 'slime-rat-boss',
-  enemy_family_boss: 'goblin-boss',
-};
-
-const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
-  rat: 'rat-v1',
-  'rat-brute': 'rat-v1',
-  'rat-king': 'rat-king-v1',
-  'rat-queen': 'rat-queen-v1',
-  'rats-nest': 'rats-nest-v1',
-  slime: 'slime-v1',
-  'slime-pool': 'slime-pool-v1',
-  'slime-mini': 'baby-slime-v1',
-  'rat-slime': 'rat-slime-v1',
-  // Floor 2 crime-family roster (18 bosses + 26 grunts/cave-ambient). Keyed by
-  // archetype id from enemies.floor2.json; all resolve to shipped generated art.
-  // Two plural remaps reconcile singular archetype ids to plural brief ids.
-  'goblin-boss': 'goblin-boss',
-  'goblin-grunt': 'goblin-grunt',
-  'goblin-elite-joyrider': 'goblin-grunt',
-  'goblin-junkshot': 'goblin-grunt',
-  'llama-boss': 'llama-boss',
-  'llama-spitter': 'llama-spitter',
-  'llama-elite-backlot-capo': 'llama-spitter',
-  'llama-curb-stomper': 'llama-spitter',
-  'panda-boss': 'panda-boss',
-  'panda-bruiser': 'panda-bruiser',
-  'panda-elite-red-envelope': 'panda-bruiser',
-  'panda-boba-sniper': 'panda-bruiser',
-  'faerie-boss': 'faerie-boss',
-  'faerie-blink': 'faerie-blink',
-  'faerie-elite-fae-driveby': 'faerie-blink',
-  'faerie-spark-caster': 'faerie-blink',
-  'kobold-boss': 'kobold-boss',
-  'kobold-torch': 'kobold-torch',
-  'kobold-elite-dragon-capo': 'kobold-torch',
-  'kobold-roman-candle': 'kobold-torch',
-  'myconid-boss': 'myconid-boss',
-  'myconid-spore': 'myconid-spore',
-  'myconid-elite-don-agaric': 'myconid-spore',
-  'myconid-clubcap': 'myconid-spore',
-  'toadkin-boss': 'toadkin-boss',
-  'toadkin-tongue': 'toadkin-tongue',
-  'toadkin-elite-swamp-consigliere': 'toadkin-tongue',
-  'toadkin-bouncer': 'toadkin-tongue',
-  'gnome-boss': 'gnome-boss',
-  'gnome-tinker': 'gnome-tinker',
-  'gnome-elite-pinstripe-artillerist': 'gnome-tinker',
-  'gnome-wheelman': 'gnome-tinker',
-  'ratfolk-boss': 'ratfolk-boss',
-  'ratfolk-plague': 'ratfolk-plague',
-  'ratfolk-elite-underboss': 'ratfolk-plague',
-  'ratfolk-sewer-sniper': 'ratfolk-plague',
-  'cactusfolk-boss': 'cactusfolk-boss',
-  'cactusfolk-spiny': 'cactusfolk-spiny',
-  'cactusfolk-elite-desert-capo': 'cactusfolk-spiny',
-  'cactusfolk-needle-gunner': 'cactusfolk-spiny',
-  'batfolk-boss': 'batfolk-boss',
-  'batfolk-diver': 'batfolk-diver',
-  'batfolk-elite-rave-don': 'batfolk-diver',
-  'batfolk-sonic-shooter': 'batfolk-diver',
-  'crabfolk-boss': 'crabfolk-boss',
-  'crabfolk-armored': 'crabfolk-armored',
-  'crabfolk-elite-shell-capo': 'crabfolk-armored',
-  'crabfolk-claw-gunner': 'crabfolk-armored',
-  'beetlefolk-boss': 'beetlefolk-boss',
-  'beetlefolk-charger': 'beetlefolk-charger',
-  'beetlefolk-elite-bugatti': 'beetlefolk-charger',
-  'beetlefolk-resin-gunner': 'beetlefolk-charger',
-  'molefolk-boss': 'molefolk-boss',
-  'molefolk-burrower': 'molefolk-burrower',
-  'molefolk-elite-pit-boss': 'molefolk-burrower',
-  'molefolk-gravel-slinger': 'molefolk-burrower',
-  'raccoon-boss': 'raccoons-boss',
-  'raccoon-thief': 'raccoon-thief',
-  'raccoon-elite-heist-capo': 'raccoon-thief',
-  'raccoon-bottle-rocketeer': 'raccoon-thief',
-  'geese-boss': 'geese-boss',
-  'geese-honker': 'geese-honker',
-  'geese-elite-goosefather': 'geese-honker',
-  'geese-gatling-gander': 'geese-honker',
-  'imp-boss': 'imps-boss',
-  'imp-flinger': 'imp-flinger',
-  'imp-elite-hellfire-capo': 'imp-flinger',
-  'imp-chain-brawler': 'imp-flinger',
-  'snailfolk-boss': 'snailfolk-boss',
-  'snailfolk-slimer': 'snailfolk-slimer',
-  'snailfolk-elite-slick-don': 'snailfolk-slimer',
-  'snailfolk-sludge-artillery': 'snailfolk-slimer',
-  'cave-slime': 'cave-slime',
-  'giant-cave-rat': 'giant-cave-rat',
-  'cave-bat-swarm': 'cave-bat-swarm',
-  'rock-lice': 'rock-lice',
-  'blind-cave-newt': 'blind-cave-newt',
-  'glow-worm': 'glow-worm',
-  'fungal-husk': 'fungal-husk',
-  'crystal-scuttler': 'crystal-scuttler',
-};
-
 function normalizeVariantRoll(variantRoll: number | undefined): number {
   if (variantRoll === undefined || !Number.isFinite(variantRoll)) {
     return 0;
@@ -374,15 +272,8 @@ function normalizeVariantRoll(variantRoll: number | undefined): number {
   return Math.min(0.999999, Math.max(0, variantRoll));
 }
 
-export function generatedBriefIdForEnemy(type: string, appearanceKey?: string): string | undefined {
-  if (appearanceKey !== undefined) {
-    const byAppearance = GENERATED_BRIEF_BY_APPEARANCE_KEY[appearanceKey];
-    if (byAppearance !== undefined) {
-      return byAppearance;
-    }
-  }
-  return GENERATED_BRIEF_BY_TYPE[type];
-}
+// generatedBriefIdForEnemy is re-exported from src/shared/generated-assets.ts.
+export { generatedBriefIdForEnemy };
 
 /**
  * Generated-sprite briefId for each Floor 1 harvestable node def id.

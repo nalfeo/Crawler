@@ -72,6 +72,10 @@ import type { SetPiecePropInstance } from '../shared/set-piece-render.js';
 import type { QuestState } from '../shared/quest-types.js';
 import type { QuestEvent } from '../shared/quest-events.js';
 import type {
+  GeneratedSpriteRegistry,
+  NormalizedWeaponAnchor,
+} from '../shared/generated-assets.js';
+import type {
   FamilyId,
   FactionRelationChangedEvent,
   FactionRelationDelta,
@@ -328,18 +332,31 @@ export interface GameWorld {
    */
   enemyAppearanceKeys: Map<number, string>;
   /**
-   * World-space weapon anchor offsets (feet, relative to entity ECS pivot) for
-   * entities whose generated sprite has an explicit weapon anchor authored in the
-   * sprite editor. Written by PhaserBridge when a generated enemy sprite is
-   * resolved; deleted when the entity's visual is destroyed. Game-layer systems
-   * (enemyAISystem, enemyTelegraph) read this to determine projectile / melee
-   * attachment origins without importing engine code.
-   *
-   * The offset is stored in canonical right-facing form (matching the art direction
-   * of generated sprites). Callers must negate the x component when the entity is
-   * facing left (velocity.x < 0).
+   * Generated sprite registry sourced from the approved-sprite manifest. Set by
+   * the engine layer (PhaserBridge) when the registry loads or changes, and used
+   * by game-layer helpers (see `getEntityNormalizedWeaponAnchor`) to resolve
+   * per-entity weapon-anchor offsets without importing Phaser or engine code.
+   * Null in headless runs and before the first registry load.
    */
-  entityWeaponAnchors: Map<number, { readonly x: number; readonly y: number }>;
+  generatedSpriteRegistry: GeneratedSpriteRegistry | null;
+  /**
+   * Per-entity normalized weapon-anchor offsets, keyed by entity id.
+   *
+   * Stores a {@link NormalizedWeaponAnchor}: dimensionless COG-relative offsets
+   * (`relX`, `relY`) and the art's canonical facing direction (`artFacing`).
+   * Populated lazily by {@link getEntityNormalizedWeaponAnchor} (game layer) on
+   * first access; cleared by PhaserBridge on entity visual removal.
+   *
+   * Consumers apply mirroring when the entity's current facing differs from
+   * `artFacing`, then multiply by the sprite's visual dimension in feet to
+   * get a world-space offset:
+   *
+   *   ```ts
+   *   const needsMirror = wa.artFacing !== (facingRight ? 'right' : 'left');
+   *   const offsetX = (needsMirror ? -wa.relX : wa.relX) * spriteWidthFt;
+   *   ```
+   */
+  entityWeaponAnchors: Map<number, NormalizedWeaponAnchor>;
   /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */
   questLog: Map<string, QuestState>;
   /** Quest progression events queued this frame. Drained by questSystem. */
@@ -511,6 +528,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     npcs: new Map(),
     setPieceProps: [],
     enemyAppearanceKeys: new Map(),
+    generatedSpriteRegistry: null,
     entityWeaponAnchors: new Map(),
     questLog: new Map(),
     questEvents: [],

@@ -15,7 +15,6 @@ import { MeleeSpriteId } from '../shared/constants.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 import {
   pickGeneratedVariant,
-  resolveWeaponAnchorWorldPos,
   type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
 } from '../shared/generated-assets.js';
@@ -62,8 +61,6 @@ const MOB_HEALTH_BAR_Y_GAP_PX = 2;
 /** Fallback half-height when a sprite's displayHeight is unavailable. */
 const MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX = 8;
 const ENEMY_RIGHTWARD_FLIP_EPSILON = 0.001;
-/** Fallback pixel frame dimension used when the generated texture has not yet loaded. */
-const DEFAULT_GENERATED_FRAME_SIZE_PX = 64;
 const logger = createLogger('engine:phaser-bridge');
 
 interface EntityVisual {
@@ -432,6 +429,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
         }
         cachedGeneratedRegistry = generatedRegistry;
+        // Expose the registry to the game layer so projectile-origin helpers can
+        // resolve per-entity weapon anchors without a Phaser scene reference.
+        world.generatedSpriteRegistry = generatedRegistry;
+        // Invalidate per-entity cached anchors so the next consumer access
+        // recomputes from the updated registry.
+        world.entityWeaponAnchors.clear();
       }
       const resolvePreferredTexture = (
         type: string,
@@ -911,53 +914,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = preferred.scale;
-          }
-          // Populate weapon anchor on the world so game-layer systems can find
-          // the muzzle / melee-attach origin without importing engine code.
-          // We do this every frame so it self-heals if the registry loads late.
-          const waBriefId = generatedBriefIdForEnemy(visualType, appearanceKey);
-          if (waBriefId !== undefined && generatedRegistry !== null) {
-            const waEntry = pickGeneratedVariant(
-              generatedRegistry,
-              waBriefId,
-              world.stores.sprite.variantRoll[eid] ?? eid,
-            );
-            if (waEntry?.weaponAnchor) {
-              // Sprite frame dimensions from the loaded texture.
-              const texSrc = scene.textures.exists(waEntry.textureKey)
-                ? (scene.textures.get(waEntry.textureKey).getSourceImage() as
-                    | { width?: number; height?: number }
-                    | undefined)
-                : undefined;
-              const frameW =
-                typeof texSrc?.width === 'number' && texSrc.width > 0
-                  ? texSrc.width
-                  : DEFAULT_GENERATED_FRAME_SIZE_PX;
-              const frameH =
-                typeof texSrc?.height === 'number' && texSrc.height > 0
-                  ? texSrc.height
-                  : DEFAULT_GENERATED_FRAME_SIZE_PX;
-              // Sprite world dimensions in feet for offset computation.
-              const spriteWidthFt = world.stores.sprite.width[eid] ?? 1;
-              const spriteHeightFt = world.stores.sprite.height[eid] ?? 1;
-              // Compute offset by passing entity position (0,0) — the return value
-              // is then purely the offset. Store in canonical right-facing form;
-              // callers negate X when the entity faces left.
-              const resolved = resolveWeaponAnchorWorldPos(
-                waEntry,
-                0,
-                0,
-                spriteWidthFt,
-                spriteHeightFt,
-                frameW,
-                frameH,
-                true, // canonical right-facing; callers handle mirroring
-              );
-              // resolved is { x: offsetX, y: offsetY } (entity pos was 0,0)
-              world.entityWeaponAnchors.set(eid, { x: resolved.x, y: resolved.y });
-            } else {
-              world.entityWeaponAnchors.delete(eid);
-            }
+            // Invalidate the cached weapon anchor so the next game-layer access
+            // recomputes from the updated variant entry.
+            world.entityWeaponAnchors.delete(eid);
           }
         }
         if (entityType === 'npc') {

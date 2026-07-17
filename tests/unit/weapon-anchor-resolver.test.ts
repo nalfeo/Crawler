@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  computeNormalizedWeaponAnchor,
+  DEFAULT_GENERATED_FRAME_SIZE_PX,
   resolveWeaponAnchorWorldPos,
   type GeneratedSpriteEntry,
 } from '../../src/shared/generated-assets.js';
@@ -62,7 +64,7 @@ describe('resolveWeaponAnchorWorldPos', () => {
 
   it('returns correct world position for explicit weapon anchor facing right', () => {
     // COG at center (32,32), weapon anchor at (40,32) — 8px right of center.
-    // For a 2ft-wide, 64px-wide sprite: 8/64 * 2 = 0.25ft offset in X; 0 in Y.
+    // relX = 8; offsetX = 8/64 * 2 = 0.25ft; Y offset = 0.
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 32 },
@@ -81,9 +83,10 @@ describe('resolveWeaponAnchorWorldPos', () => {
     expect(result.y).toBeCloseTo(ENTITY_Y + 0);
   });
 
-  it('mirrors X when art faces right but entity faces left', () => {
+  it('mirrors X by negating the relative offset when right-art entity faces left', () => {
     // COG at center (32,32), weapon anchor at (40,32).
-    // When facing left: wpX = 63 - 40 = 23; offset = (23-32)/64*2 = -0.28125ft
+    // Right-art, entity facing left → needsMirror=true → offsetX = -8/64*2 = -0.25ft.
+    // (No asymmetric -1 pixel; we negate the relative offset, not mirror the pixel coordinate.)
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 32 },
@@ -99,19 +102,19 @@ describe('resolveWeaponAnchorWorldPos', () => {
       FRAME_H,
       false, // entity facing left
     );
-    // mirrored wpX = 64 - 1 - 40 = 23; offset = (23-32)/64*2 = -18/64 = -0.28125
-    expect(result.x).toBeCloseTo(ENTITY_X - 0.28125);
+    expect(result.x).toBeCloseTo(ENTITY_X - 0.25);
     expect(result.y).toBeCloseTo(ENTITY_Y + 0);
   });
 
-  it('does not mirror X when art faces left (left-art entity facing left)', () => {
-    // Left-facing art: facingDirection='left', anchor stays as-is.
+  it('does not mirror X when art faces left and entity faces left', () => {
+    // Left-facing art, entity facing left: facingDirection='left', facingRight=false.
+    // needsMirror = ('left' !== 'left') = false → offsetX = relX/frameW * spriteW = +0.25ft.
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 32 },
       facingDirection: 'left',
     });
-    const resultLeft = resolveWeaponAnchorWorldPos(
+    const result = resolveWeaponAnchorWorldPos(
       entry,
       ENTITY_X,
       ENTITY_Y,
@@ -119,9 +122,21 @@ describe('resolveWeaponAnchorWorldPos', () => {
       SPRITE_H_FT,
       FRAME_W,
       FRAME_H,
-      false, // facing left — but art is already left-facing, no mirror
+      false, // facing left — same as art direction, no mirror
     );
-    const resultRight = resolveWeaponAnchorWorldPos(
+    expect(result.x).toBeCloseTo(ENTITY_X + 0.25);
+    expect(result.y).toBeCloseTo(ENTITY_Y + 0);
+  });
+
+  it('mirrors X when art faces left and entity faces right', () => {
+    // Left-facing art, entity facing right: needsMirror = ('left' !== 'right') = true.
+    // offsetX = -relX/frameW * spriteW = -0.25ft.
+    const entry = makeEntry({
+      centerOfGravity: { x: 32, y: 32 },
+      weaponAnchor: { x: 40, y: 32 },
+      facingDirection: 'left',
+    });
+    const result = resolveWeaponAnchorWorldPos(
       entry,
       ENTITY_X,
       ENTITY_Y,
@@ -129,13 +144,10 @@ describe('resolveWeaponAnchorWorldPos', () => {
       SPRITE_H_FT,
       FRAME_W,
       FRAME_H,
-      true,
+      true, // entity facing right — art is left, needs mirror
     );
-    // Both directions yield the same offset since the art is already left-facing
-    // and no mirroring occurs for non-right art.
-    expect(resultLeft.x).toBeCloseTo(resultRight.x);
-    expect(resultLeft.y).toBeCloseTo(resultRight.y);
-    expect(resultLeft.x).toBeCloseTo(ENTITY_X + 0.25);
+    expect(result.x).toBeCloseTo(ENTITY_X - 0.25);
+    expect(result.y).toBeCloseTo(ENTITY_Y + 0);
   });
 
   it('applies Y offset correctly', () => {
@@ -174,12 +186,13 @@ describe('resolveWeaponAnchorWorldPos', () => {
   });
 
   it('calling with entity position (0,0) yields the canonical right-facing offset', () => {
-    // This is how PhaserBridge stores the offset in entityWeaponAnchors.
+    // Game-layer consumers call resolveWeaponAnchorWorldPos with entity=(0,0) to get
+    // the pure offset, then apply facingRight/mirror at usage time.
     const entry = makeEntry({
       centerOfGravity: { x: 32, y: 32 },
       weaponAnchor: { x: 40, y: 28 },
     });
-    // offsetX = (40-32)/64*2 = 0.25; offsetY = (28-32)/64*2 = -0.125
+    // relX = 8, relY = -4; offsetX = 8/64*2 = 0.25; offsetY = -4/64*2 = -0.125
     const offset = resolveWeaponAnchorWorldPos(
       entry,
       0,
@@ -192,5 +205,50 @@ describe('resolveWeaponAnchorWorldPos', () => {
     );
     expect(offset.x).toBeCloseTo(0.25);
     expect(offset.y).toBeCloseTo(-0.125);
+  });
+});
+
+describe('computeNormalizedWeaponAnchor', () => {
+  it('returns null when entry has no weaponAnchor', () => {
+    const entry = makeEntry();
+    expect(computeNormalizedWeaponAnchor(entry)).toBeNull();
+  });
+
+  it('computes correct normalized offsets', () => {
+    // COG at (32,32), weapon at (40,28), frame 64×64.
+    // relX = (40-32)/64 = 0.125, relY = (28-32)/64 = -0.0625
+    const entry = makeEntry({
+      centerOfGravity: { x: 32, y: 32 },
+      weaponAnchor: { x: 40, y: 28 },
+      facingDirection: 'right',
+    });
+    const result = computeNormalizedWeaponAnchor(entry, 64, 64);
+    expect(result).not.toBeNull();
+    expect(result!.relX).toBeCloseTo(0.125);
+    expect(result!.relY).toBeCloseTo(-0.0625);
+    expect(result!.artFacing).toBe('right');
+  });
+
+  it('preserves left artFacing for left-art sprites', () => {
+    const entry = makeEntry({
+      centerOfGravity: { x: 32, y: 32 },
+      weaponAnchor: { x: 24, y: 32 },
+      facingDirection: 'left',
+    });
+    const result = computeNormalizedWeaponAnchor(entry, 64, 64);
+    expect(result!.artFacing).toBe('left');
+    expect(result!.relX).toBeCloseTo(-0.125); // weapon left of COG
+  });
+
+  it('uses DEFAULT_GENERATED_FRAME_SIZE_PX when no frame size provided', () => {
+    // COG at (32,32), weapon at (40,28). Default frame = DEFAULT_GENERATED_FRAME_SIZE_PX (64).
+    // Same calc as explicit 64x64.
+    const entry = makeEntry({
+      centerOfGravity: { x: 32, y: 32 },
+      weaponAnchor: { x: 40, y: 28 },
+    });
+    const withDefault = computeNormalizedWeaponAnchor(entry);
+    const withExplicit = computeNormalizedWeaponAnchor(entry, DEFAULT_GENERATED_FRAME_SIZE_PX, DEFAULT_GENERATED_FRAME_SIZE_PX);
+    expect(withDefault).toEqual(withExplicit);
   });
 });

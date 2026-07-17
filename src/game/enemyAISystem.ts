@@ -27,6 +27,10 @@ import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom } from '../shared/random.js';
 import { normalize } from '../shared/vec.js';
+import {
+  DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+  getEntityNormalizedWeaponAnchor,
+} from '../shared/generated-assets.js';
 import { getFamilyAIDecision, resolveHostileFallback } from './systems/familyFeudSystem.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
 
@@ -1319,14 +1323,15 @@ function tryFireEnemyProjectile(
   const delayMs = getEffectiveTelegraphMs(world, eid);
   if (delayMs <= 0) {
     // Apply weapon anchor offset for immediate fires (no telegraph, so no
-    // locked origin). Art faces right; negate X when entity faces left.
-    const weaponAnchor = world.entityWeaponAnchors.get(eid);
+    // locked origin). Use normalized anchor to correctly handle art facing.
+    const wa = getEntityNormalizedWeaponAnchor(world, eid);
     let originX = position.x[eid]!;
     let originY = position.y[eid]!;
-    if (weaponAnchor) {
+    if (wa) {
       const facingRight = (world.stores.velocity.x[eid] ?? 0) >= 0;
-      originX += facingRight ? weaponAnchor.x : -weaponAnchor.x;
-      originY += weaponAnchor.y;
+      const needsMirror = wa.artFacing !== (facingRight ? 'right' : 'left');
+      originX += (needsMirror ? -wa.relX : wa.relX) * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
+      originY += wa.relY * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
     }
     fireEnemyProjectileFrom(world, eid, originX, originY, direction.x, direction.y);
     return;

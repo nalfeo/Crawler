@@ -412,6 +412,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
       brief,
       options: effectiveOptions,
       manualAnchor: effectiveManualAnchor,
+      manualWeaponAnchor: effectiveManualWeaponAnchor ?? null,
       facing: effectiveFacingOverride,
       nowIso,
     });
@@ -444,6 +445,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
         optionsMode === 'reset' ? null : store.resolve(storeKey(EFFECTIVE_PIPELINE_YAML_KEY)),
       options: optionsMode === 'reset' ? null : effectiveOptions,
       manualAnchor: effectiveManualAnchor,
+      manualWeaponAnchor: effectiveManualWeaponAnchor ?? null,
       facing: effectiveFacingOverride,
       appliedMode: optionsMode,
       updatedAt: nowIso,

@@ -287,6 +287,253 @@ export function pickGeneratedVariant(
 }
 
 /**
+ * Default pixel frame size for generated enemy/NPC sprites produced by the
+ * asset pipeline. Used when deriving normalized weapon-anchor offsets without
+ * an actual loaded texture reference (e.g. in headless simulation or tests).
+ */
+export const DEFAULT_GENERATED_FRAME_SIZE_PX = 64;
+
+/**
+ * Default visual width (and height) in world feet for a generated enemy sprite
+ * rendered at the canonical 0.4 render scale: 64 px × 0.4 / 8 px-per-ft = 3.2 ft.
+ *
+ * Use this constant — not ECS physics-body dimensions — when converting a
+ * {@link NormalizedWeaponAnchor} fractional offset into a world-space foot
+ * displacement in game-layer consumers. It is correct for all standard enemies
+ * (sizeScale = 1); for rare scaled-up variants the offset will be proportionally
+ * approximate but still directionally correct.
+ */
+export const DEFAULT_GENERATED_VISUAL_WIDTH_FT = 3.2;
+
+/**
+ * Normalized weapon-anchor offset for an entity's generated sprite.
+ *
+ * `relX` / `relY` are dimensionless fractions of the sprite frame: positive X
+ * is toward the right of the canonical art, positive Y is downward.
+ * `artFacing` records whether the authored art faces right or left so
+ * consumers can mirror the sign of `relX` when the entity's current facing
+ * differs from the authored direction.
+ */
+export interface NormalizedWeaponAnchor {
+  /** (wpX − cogX) / frameWidth — dimensionless, canonical art orientation. */
+  readonly relX: number;
+  /** (wpY − cogY) / frameHeight — dimensionless. */
+  readonly relY: number;
+  /** Canonical art facing direction stored in the manifest entry. */
+  readonly artFacing: 'left' | 'right';
+}
+
+/**
+ * Compute a {@link NormalizedWeaponAnchor} from a manifest entry.
+ *
+ * Returns `null` when the entry is absent or has no explicit weapon anchor.
+ * Uses {@link DEFAULT_GENERATED_FRAME_SIZE_PX} as the denominator when no
+ * explicit frame size is supplied.
+ */
+export function computeNormalizedWeaponAnchor(
+  entry: GeneratedSpriteEntry | null | undefined,
+  frameW = DEFAULT_GENERATED_FRAME_SIZE_PX,
+  frameH = DEFAULT_GENERATED_FRAME_SIZE_PX,
+): NormalizedWeaponAnchor | null {
+  if (!entry?.weaponAnchor) return null;
+  return {
+    relX: (entry.weaponAnchor.x - entry.centerOfGravity.x) / frameW,
+    relY: (entry.weaponAnchor.y - entry.centerOfGravity.y) / frameH,
+    artFacing: entry.facingDirection,
+  };
+}
+
+// ─── Brief-ID lookup tables (engine-portable pure data) ─────────────────────
+
+/**
+ * Maps the renderer's canonical visual type key for each enemy to the
+ * generated-sprite brief that provides its art. Shared by game and engine
+ * layers so projectile-origin helpers can resolve briefs without a Phaser
+ * scene reference.
+ */
+export const GENERATED_BRIEF_BY_TYPE: Readonly<Record<string, string>> = {
+  enemy_rat: 'rat-v1',
+  enemy_slime: 'slime-v1',
+  enemy_spawner_rats_nest: 'rat-nest-v2',
+  enemy_spawner_slime_pool: 'slime-pool-v1',
+  enemy_boss_ratslime: 'rat-slime-v1',
+  enemy_boss_slimerat: 'slime-rat-boss',
+  enemy_family_boss: 'goblin-boss',
+};
+
+/**
+ * Maps per-enemy `appearanceKey` strings (set by spawners via
+ * `world.enemyAppearanceKeys`) to their generated-sprite brief IDs. Takes
+ * priority over {@link GENERATED_BRIEF_BY_TYPE}.
+ */
+export const GENERATED_BRIEF_BY_APPEARANCE_KEY: Readonly<Record<string, string>> = {
+  rat: 'rat-v1',
+  'rat-brute': 'rat-v1',
+  'rat-king': 'rat-king-v1',
+  'rat-queen': 'rat-queen-v1',
+  'rats-nest': 'rats-nest-v1',
+  slime: 'slime-v1',
+  'slime-pool': 'slime-pool-v1',
+  'slime-mini': 'baby-slime-v1',
+  'rat-slime': 'rat-slime-v1',
+  'goblin-boss': 'goblin-boss',
+  'goblin-grunt': 'goblin-grunt',
+  'goblin-elite-joyrider': 'goblin-grunt',
+  'goblin-junkshot': 'goblin-grunt',
+  'llama-boss': 'llama-boss',
+  'llama-spitter': 'llama-spitter',
+  'llama-elite-backlot-capo': 'llama-spitter',
+  'llama-curb-stomper': 'llama-spitter',
+  'panda-boss': 'panda-boss',
+  'panda-bruiser': 'panda-bruiser',
+  'panda-elite-red-envelope': 'panda-bruiser',
+  'panda-boba-sniper': 'panda-bruiser',
+  'faerie-boss': 'faerie-boss',
+  'faerie-blink': 'faerie-blink',
+  'faerie-elite-fae-driveby': 'faerie-blink',
+  'faerie-spark-caster': 'faerie-blink',
+  'kobold-boss': 'kobold-boss',
+  'kobold-torch': 'kobold-torch',
+  'kobold-elite-dragon-capo': 'kobold-torch',
+  'kobold-roman-candle': 'kobold-torch',
+  'myconid-boss': 'myconid-boss',
+  'myconid-spore': 'myconid-spore',
+  'myconid-elite-don-agaric': 'myconid-spore',
+  'myconid-clubcap': 'myconid-spore',
+  'toadkin-boss': 'toadkin-boss',
+  'toadkin-tongue': 'toadkin-tongue',
+  'toadkin-elite-swamp-consigliere': 'toadkin-tongue',
+  'toadkin-bouncer': 'toadkin-tongue',
+  'gnome-boss': 'gnome-boss',
+  'gnome-tinker': 'gnome-tinker',
+  'gnome-elite-pinstripe-artillerist': 'gnome-tinker',
+  'gnome-wheelman': 'gnome-tinker',
+  'ratfolk-boss': 'ratfolk-boss',
+  'ratfolk-plague': 'ratfolk-plague',
+  'ratfolk-elite-underboss': 'ratfolk-plague',
+  'ratfolk-sewer-sniper': 'ratfolk-plague',
+  'cactusfolk-boss': 'cactusfolk-boss',
+  'cactusfolk-spiny': 'cactusfolk-spiny',
+  'cactusfolk-elite-desert-capo': 'cactusfolk-spiny',
+  'cactusfolk-needle-gunner': 'cactusfolk-spiny',
+  'batfolk-boss': 'batfolk-boss',
+  'batfolk-diver': 'batfolk-diver',
+  'batfolk-elite-rave-don': 'batfolk-diver',
+  'batfolk-sonic-shooter': 'batfolk-diver',
+  'crabfolk-boss': 'crabfolk-boss',
+  'crabfolk-armored': 'crabfolk-armored',
+  'crabfolk-elite-shell-capo': 'crabfolk-armored',
+  'crabfolk-claw-gunner': 'crabfolk-armored',
+  'beetlefolk-boss': 'beetlefolk-boss',
+  'beetlefolk-charger': 'beetlefolk-charger',
+  'beetlefolk-elite-bugatti': 'beetlefolk-charger',
+  'beetlefolk-resin-gunner': 'beetlefolk-charger',
+  'molefolk-boss': 'molefolk-boss',
+  'molefolk-burrower': 'molefolk-burrower',
+  'molefolk-elite-pit-boss': 'molefolk-burrower',
+  'molefolk-gravel-slinger': 'molefolk-burrower',
+  'raccoon-boss': 'raccoons-boss',
+  'raccoon-thief': 'raccoon-thief',
+  'raccoon-elite-heist-capo': 'raccoon-thief',
+  'raccoon-bottle-rocketeer': 'raccoon-thief',
+  'geese-boss': 'geese-boss',
+  'geese-honker': 'geese-honker',
+  'geese-elite-goosefather': 'geese-honker',
+  'geese-gatling-gander': 'geese-honker',
+  'imp-boss': 'imps-boss',
+  'imp-flinger': 'imp-flinger',
+  'imp-elite-hellfire-capo': 'imp-flinger',
+  'imp-chain-brawler': 'imp-flinger',
+  'snailfolk-boss': 'snailfolk-boss',
+  'snailfolk-slimer': 'snailfolk-slimer',
+  'snailfolk-elite-slick-don': 'snailfolk-slimer',
+  'snailfolk-sludge-artillery': 'snailfolk-slimer',
+  'cave-slime': 'cave-slime',
+  'giant-cave-rat': 'giant-cave-rat',
+  'cave-bat-swarm': 'cave-bat-swarm',
+  'rock-lice': 'rock-lice',
+  'blind-cave-newt': 'blind-cave-newt',
+  'glow-worm': 'glow-worm',
+  'fungal-husk': 'fungal-husk',
+  'crystal-scuttler': 'crystal-scuttler',
+};
+
+/**
+ * Resolve the generated-sprite brief ID for an enemy entity given its
+ * renderer visual type and optional appearance key. Returns `undefined` when
+ * no generated brief is registered for the type/appearance combination —
+ * the entity uses placeholder art.
+ *
+ * Lives in `src/shared/` (no Phaser dep) so both the engine renderer and
+ * game-layer projectile-origin helpers can use it.
+ */
+export function generatedBriefIdForEnemy(
+  type: string,
+  appearanceKey?: string,
+): string | undefined {
+  if (appearanceKey !== undefined) {
+    const byAppearance = GENERATED_BRIEF_BY_APPEARANCE_KEY[appearanceKey];
+    if (byAppearance !== undefined) {
+      return byAppearance;
+    }
+  }
+  return GENERATED_BRIEF_BY_TYPE[type];
+}
+
+/**
+ * Minimal world slice required by {@link getEntityNormalizedWeaponAnchor}.
+ * Structural so core and shared helpers can stay free of the full `GameWorld`
+ * import cycle.
+ */
+export interface WeaponAnchorWorld {
+  readonly generatedSpriteRegistry: GeneratedSpriteRegistry | null;
+  readonly enemyAppearanceKeys: ReadonlyMap<number, string>;
+  readonly stores: {
+    readonly sprite: { readonly variantRoll: ArrayLike<number> };
+  };
+  readonly entityWeaponAnchors: Map<number, NormalizedWeaponAnchor>;
+}
+
+/**
+ * Return the cached {@link NormalizedWeaponAnchor} for `eid`, or compute and
+ * cache it on the first call.
+ *
+ * Resolution order:
+ *  1. Cache hit in `world.entityWeaponAnchors`.
+ *  2. Look up the entity's generated-sprite registry entry via
+ *     `world.generatedSpriteRegistry`, `world.enemyAppearanceKeys`, and the
+ *     entity's `variantRoll`. Store the result in the cache for future frames.
+ *  3. Return `null` when the registry is absent (headless) or the entity has
+ *     no weapon anchor authored in the manifest.
+ *
+ * Callers must apply mirroring themselves:
+ *   `const needsMirror = anchor.artFacing !== (facingRight ? 'right' : 'left');`
+ *   `const offsetX = (needsMirror ? -anchor.relX : anchor.relX) * spriteWidthFt;`
+ */
+export function getEntityNormalizedWeaponAnchor(
+  world: WeaponAnchorWorld,
+  eid: number,
+): NormalizedWeaponAnchor | null {
+  const cached = world.entityWeaponAnchors.get(eid);
+  if (cached !== undefined) return cached;
+
+  const registry = world.generatedSpriteRegistry;
+  if (!registry) return null;
+
+  const appearanceKey = world.enemyAppearanceKeys.get(eid);
+  const briefId = generatedBriefIdForEnemy('enemy', appearanceKey);
+  if (!briefId) return null;
+
+  const variantRoll = (world.stores.sprite.variantRoll as ArrayLike<number>)[eid] ?? eid;
+  const entry = pickGeneratedVariant(registry, briefId, variantRoll as number);
+  const anchor = computeNormalizedWeaponAnchor(entry);
+  if (!anchor) return null;
+
+  world.entityWeaponAnchors.set(eid, anchor);
+  return anchor;
+}
+
+/**
  * Resolve the world-space weapon-origin for an entity.
  *
  * When the registry entry has an explicit `weaponAnchor`, this converts the
@@ -295,10 +542,12 @@ export function pickGeneratedVariant(
  * the sprite's `centerOfGravity` (= the entity's ECS position in world-space),
  * then converted to feet and added to the entity position.
  *
- * **Facing:** Generated mob art defaults to right-facing (`facingDirection:
- * 'right'`). When `facingRight` is false and `entry.facingDirection` is
- * `'right'`, the anchor's X coordinate is mirrored: `framePixelWidth - 1 - wpX`.
- * This matches the render layer's horizontal-flip behavior for left-moving enemies.
+ * **Facing:** The offset is mirrored whenever the art's canonical facing
+ * (`entry.facingDirection`) differs from `facingRight`. Specifically the
+ * *relative* pixel offset `(wpX − cogX)` is negated — preserving the exact
+ * COG-relative magnitude while flipping the side. This handles all four
+ * combinations: right-art/right-entity, right-art/left-entity,
+ * left-art/right-entity, and left-art/left-entity.
  *
  * **Fallback:** When `entry` is absent or has no `weaponAnchor`, returns the
  * entity's ECS position unchanged — identical to pre-feature behavior.
@@ -306,11 +555,11 @@ export function pickGeneratedVariant(
  * @param entry           Registry entry for the entity's current sprite variant.
  * @param entityX         Entity world position X (feet).
  * @param entityY         Entity world position Y (feet).
- * @param spriteWidthFt   Entity sprite width in world feet (from `sprite.width`).
- * @param spriteHeightFt  Entity sprite height in world feet (from `sprite.height`).
- * @param framePixelWidth Width of the sprite frame in pixels (e.g. 64 for enemy sprites).
+ * @param spriteWidthFt   Entity sprite width in world feet.
+ * @param spriteHeightFt  Entity sprite height in world feet.
+ * @param framePixelWidth Width of the sprite frame in pixels (e.g. 64).
  * @param framePixelHeight Height of the sprite frame in pixels.
- * @param facingRight     True when the entity is facing / moving right.
+ * @param facingRight     True when the entity is currently facing / moving right.
  */
 export function resolveWeaponAnchorWorldPos(
   entry: GeneratedSpriteEntry | null | undefined,
@@ -327,15 +576,13 @@ export function resolveWeaponAnchorWorldPos(
   }
   const cogX = entry.centerOfGravity.x;
   const cogY = entry.centerOfGravity.y;
-  let wpX = entry.weaponAnchor.x;
-  const wpY = entry.weaponAnchor.y;
-  // Mirror X when the canonical art faces right but the entity currently faces left.
-  // Uses zero-indexed mirroring: for a framePixelWidth=64 frame, pixel 0 ↔ pixel 63
-  // (i.e. mirrored = framePixelWidth - 1 - original).
-  if (entry.facingDirection === 'right' && !facingRight) {
-    wpX = framePixelWidth - 1 - wpX;
-  }
-  const offsetX = ((wpX - cogX) / framePixelWidth) * spriteWidthFt;
-  const offsetY = ((wpY - cogY) / framePixelHeight) * spriteHeightFt;
+  const relX = entry.weaponAnchor.x - cogX;
+  const relY = entry.weaponAnchor.y - cogY;
+  // Mirror whenever the canonical art facing differs from the entity's current
+  // facing. We negate the *relative* offset (weapon − COG) rather than the
+  // absolute pixel coordinate so the magnitude is preserved symmetrically.
+  const needsMirror = entry.facingDirection !== (facingRight ? 'right' : 'left');
+  const offsetX = ((needsMirror ? -relX : relX) / framePixelWidth) * spriteWidthFt;
+  const offsetY = (relY / framePixelHeight) * spriteHeightFt;
   return { x: entityX + offsetX, y: entityY + offsetY };
 }

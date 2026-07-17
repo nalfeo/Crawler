@@ -59,6 +59,7 @@ export interface EffectivePipelineSnapshot {
   }>;
   readonly options: PostprocessOptions;
   readonly manualAnchor: ManualAnchorOverride | null;
+  readonly manualWeaponAnchor: ManualWeaponAnchorOverride | null;
   readonly facing: FacingOverride | null;
 }
 
@@ -284,6 +285,7 @@ export async function writeEffectivePipelineSnapshot(args: {
   brief: Brief;
   options: PostprocessOptions;
   manualAnchor: ManualAnchorOverride | null;
+  manualWeaponAnchor: ManualWeaponAnchorOverride | null;
   facing: FacingOverride | null;
   nowIso: string;
 }): Promise<void> {
@@ -301,6 +303,7 @@ export async function writeEffectivePipelineSnapshot(args: {
     })),
     options: args.options,
     manualAnchor: args.manualAnchor,
+    manualWeaponAnchor: args.manualWeaponAnchor,
     facing: args.facing,
   };
   const json = `${JSON.stringify(snapshot, null, 2)}\n`;

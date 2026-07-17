@@ -31,7 +31,7 @@ import type { DiversitySummary } from './diversity.js';
 import type { ExpansionSkipReason } from './expand-variations.js';
 import type { JudgeScorecard } from './judge.js';
 import type { PostprocessOptions } from './postprocess.js';
-import type { FacingOverride, ManualAnchorOverride } from './postprocess-overrides.js';
+import type { FacingOverride, ManualAnchorOverride, ManualWeaponAnchorOverride } from './postprocess-overrides.js';
 import type { Scorecard } from './score-candidate.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
 import type { SpriteType } from '../../src/shared/sprite-types.js';
@@ -274,6 +274,7 @@ export interface RunSummary {
     readonly snapshotYamlPath: string | null;
     readonly options: PostprocessOptions | null;
     readonly manualAnchor: ManualAnchorOverride | null;
+    readonly manualWeaponAnchor: ManualWeaponAnchorOverride | null;
     readonly facing: FacingOverride | null;
     readonly appliedMode: 'default' | 'persisted' | 'replace' | 'reset';
     readonly updatedAt: string | null;
