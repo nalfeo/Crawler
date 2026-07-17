@@ -4,12 +4,15 @@ import test from 'node:test';
 import {
   admissionWaitReasons,
   assertOwnershipInvariant,
+  automationProgressKey,
+  automationStallAction,
   blockerFingerprint,
   collapseCheckRunsByName,
   extractAddressedMarkerSha,
   hasSubstantiveCopilotReview,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
+  isHealthyRecoveryOwner,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
   isTrainFastPathPushRun,
@@ -25,6 +28,7 @@ import {
   shouldResolveThread,
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
+  shouldDispatchMergeTrainFill,
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
@@ -391,6 +395,126 @@ test('rejects duplicate dispatches for the same blocker fingerprint regardless o
   );
 });
 
+test('automation staleness waits, retries once, then releases without treating writes as progress', () => {
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
+  ]);
+  const progressKey = automationProgressKey('abc', fingerprint);
+  const state = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
+    attempt: 1,
+    progressKey,
+    progressAt: '2026-07-17T12:00:00.000Z',
+    updatedAt: '2026-07-17T12:20:00.000Z',
+  });
+
+  assert.equal(
+    automationStallAction({
+      state,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:29:59.000Z'),
+    }),
+    'wait',
+  );
+  assert.equal(
+    automationStallAction({
+      state,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    'retry',
+  );
+  assert.equal(
+    automationStallAction({
+      state: { ...state, attempt: 2 },
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    'release',
+  );
+  assert.equal(
+    automationStallAction({
+      state,
+      headSha: 'def',
+      fingerprint,
+      now: new Date('2026-07-17T13:00:00.000Z'),
+    }),
+    'progressed',
+  );
+});
+
+test('broad sweeps suppress only healthy consistent owners', () => {
+  const automation = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint: blockerFingerprint([]),
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [],
+    attempt: 1,
+    progressKey: automationProgressKey('abc', blockerFingerprint([])),
+    progressAt: '2026-07-17T12:00:00.000Z',
+    updatedAt: '2026-07-17T12:10:00.000Z',
+  });
+  const shepherd = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: 'lease-1',
+    blockers: [],
+    updatedAt: '2026-07-17T12:00:00.000Z',
+  });
+
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: automation,
+      now: new Date('2026-07-17T12:29:59.000Z'),
+    }),
+    true,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: automation,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    false,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: shepherd,
+      now: new Date('2026-07-17T12:34:59.000Z'),
+    }),
+    true,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: shepherd,
+      now: new Date('2026-07-17T12:35:01.000Z'),
+    }),
+    false,
+  );
+  assert.equal(isHealthyRecoveryOwner({ prNumber: 43, state: automation }), false);
+});
+
+test('merge-train fill dispatches only on queue admission edges', () => {
+  assert.equal(shouldDispatchMergeTrainFill(false), true);
+  assert.equal(shouldDispatchMergeTrainFill(true), false);
+});
+
 test('shouldResolveThread rejects old marker with later reviewer comment', () => {
   const thread = {
     comments: {
@@ -665,4 +789,40 @@ test('isTrainFastPathPushRun requires a push-triggered CI run carrying a trusted
     'no trusted check present',
   );
   assert.equal(isTrainFastPathPushRun(null, trustedAppId, trustedCheckRuns), false, 'missing run');
+});
+
+test('legacy v1 automation state without progressKey is never classified as exhausted', () => {
+  // Regression for Thread 3: before this PR `attempt` was a cumulative
+  // dispatch count in v1 comments that have no `progressKey`. Treating
+  // `attempt >= 2` as exhausted would silently skip the promised one retry
+  // on all in-flight tasks immediately after rollout.  Without a stored
+  // `progressKey`, the stall action must return 'retry' regardless of
+  // `attempt`.
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
+  ]);
+  const legacyState = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
+    attempt: 2,
+    // Deliberately omit progressKey — this simulates a legacy v1 comment.
+    updatedAt: '2026-07-01T12:00:00.000Z',
+  });
+  // Verify the fixture is actually missing progressKey.
+  assert.equal(legacyState.progressKey, undefined);
+
+  assert.equal(
+    automationStallAction({
+      state: legacyState,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-01T12:31:00.000Z'),
+    }),
+    'retry',
+    'legacy v1 state with attempt>=2 but no progressKey must be retried, not released',
+  );
 });

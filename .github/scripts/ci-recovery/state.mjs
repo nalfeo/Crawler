@@ -7,6 +7,7 @@ export const WAITING_LABEL = 'ci-recovery-waiting';
 export const WAITING_TRANSITION_LABEL = 'ci-recovery-waiting-transition';
 export const DEFAULT_LEASE_TTL_MINUTES = 30;
 export const DEFAULT_LEASE_GRACE_MINUTES = 5;
+export const AUTOMATION_STALE_MINUTES = 30;
 
 // A check-run named "merge-train" is only real promotion provenance when it
 // was published by the trusted repository App and its external_id is a
@@ -147,6 +148,12 @@ export function ownerLabel(prNumber) {
   return `${OWNER_LABEL_PREFIX}${prNumber}`;
 }
 
+export function automationProgressKey(headSha, fingerprint) {
+  return createHash('sha256')
+    .update(JSON.stringify({ headSha: compact(headSha), fingerprint: compact(fingerprint) }))
+    .digest('hex');
+}
+
 export function makeState({
   prNumber,
   headSha,
@@ -157,6 +164,8 @@ export function makeState({
   trigger = '',
   blockers = [],
   attempt = 0,
+  progressKey = null,
+  progressAt = null,
   updatedAt,
 }) {
   const state = {
@@ -170,6 +179,7 @@ export function makeState({
     trigger: compact(trigger),
     blockers: normalizeBlockers(blockers),
     attempt,
+    ...(progressKey ? { progressKey: compact(progressKey), progressAt: compact(progressAt) } : {}),
     updatedAt: compact(updatedAt),
   };
   validateState(state);
@@ -197,6 +207,12 @@ export function validateState(state) {
   }
   if (!Array.isArray(state.blockers) || !Number.isInteger(state.attempt)) {
     throw new Error('CI recovery state has invalid blockers or attempt count');
+  }
+  if (Boolean(state.progressKey) !== Boolean(state.progressAt)) {
+    throw new Error('CI recovery state must carry progress key and timestamp together');
+  }
+  if (state.progressAt && Number.isNaN(Date.parse(state.progressAt))) {
+    throw new Error('CI recovery progress timestamp is invalid');
   }
   if (Number.isNaN(Date.parse(state.updatedAt))) {
     throw new Error('CI recovery state timestamp is invalid');
@@ -246,6 +262,9 @@ export function renderStateComment(state) {
     `- Head: \`${state.headSha}\``,
     `- Fingerprint: \`${state.fingerprint}\``,
     `- Blockers: ${blockerSummary}`,
+    ...(state.progressAt
+      ? [`- Automation attempt: ${state.attempt}`, `- Progress observed: ${state.progressAt}`]
+      : []),
     `- Updated: ${state.updatedAt}`,
     '',
     '_This comment is managed by the trusted CI recovery workflow._',
@@ -301,6 +320,61 @@ export function isDuplicateDispatch(state, fingerprint) {
     ['active', 'dispatched', 'escalated'].includes(state.status) &&
     state.fingerprint === fingerprint,
   );
+}
+
+export function automationStallAction({
+  state,
+  headSha,
+  fingerprint,
+  now = new Date(),
+  staleMinutes = AUTOMATION_STALE_MINUTES,
+}) {
+  if (
+    !state ||
+    state.owner !== 'automation' ||
+    !['active', 'dispatched', 'escalated'].includes(state.status)
+  ) {
+    return 'new';
+  }
+
+  const currentProgressKey = automationProgressKey(headSha, fingerprint);
+  const storedProgressKey =
+    state.progressKey || automationProgressKey(state.headSha, state.fingerprint);
+  if (storedProgressKey !== currentProgressKey) {
+    return 'progressed';
+  }
+
+  const progressAt = Date.parse(state.progressAt || state.updatedAt);
+  if (now.getTime() - progressAt < staleMinutes * 60 * 1000) {
+    return 'wait';
+  }
+  // Legacy v1 automation comments pre-date `progressKey` and used `attempt`
+  // as a cumulative dispatch count (not a per-progress-key retry count).
+  // Treating legacy `attempt >= 2` as an exhausted retry would skip the
+  // promised one retry immediately after rollout.  Only count toward the
+  // exhaustion threshold when `progressKey` is present (written by the new
+  // stale-retry logic) so legacy states always receive a single retry.
+  const stallAttempt = state.progressKey ? state.attempt : 0;
+  return stallAttempt >= 2 ? 'release' : 'retry';
+}
+
+export function isHealthyRecoveryOwner({ prNumber, state, now = new Date() }) {
+  if (!state || state.prNumber !== prNumber) return false;
+  if (state.owner === 'shepherd') {
+    return state.status === 'active' && !isLeaseExpired(state, now);
+  }
+  if (
+    state.owner !== 'automation' ||
+    !['active', 'dispatched', 'escalated'].includes(state.status)
+  ) {
+    return false;
+  }
+  const progressAt = Date.parse(state.progressAt || state.updatedAt);
+  return now.getTime() - progressAt < AUTOMATION_STALE_MINUTES * 60 * 1000;
+}
+
+export function shouldDispatchMergeTrainFill(alreadyQueued) {
+  return !alreadyQueued;
 }
 
 export const TRUSTED_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
