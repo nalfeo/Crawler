@@ -58,7 +58,7 @@ const ARCHETYPE_MOVEMENT_STYLES: Readonly<Partial<Record<string, MobLocomotionSt
 
 const PROJECTILE_RENDER_KIND = 'enemy_aoe_proj' as const;
 
-export function locomotionStyleForArchetype(archetype: EnemyArchetypeDef): MobLocomotionStyle {
+function locomotionStyleForArchetype(archetype: EnemyArchetypeDef): MobLocomotionStyle {
   const explicit = ARCHETYPE_MOVEMENT_STYLES[archetype.id];
   if (explicit) return explicit;
 
@@ -70,7 +70,7 @@ export function locomotionStyleForArchetype(archetype: EnemyArchetypeDef): MobLo
   return archetype.isBoss === true ? 'stomp' : 'stride';
 }
 
-export function resolveMobPreviewSpec(
+function resolveMobPreviewSpec(
   archetype: EnemyArchetypeDef,
   floorLabel: string,
 ): MobPreviewSpec | null {

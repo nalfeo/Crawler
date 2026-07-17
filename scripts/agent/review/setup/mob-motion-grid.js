@@ -8,16 +8,21 @@
     throw new Error('Mob Motion Lab probe is unavailable.');
   }
 
-  const deadline = performance.now() + 10_000;
-  while (!probe.ready() && performance.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  if (!probe.ready()) {
-    throw new Error('Mob Motion Lab did not become ready.');
-  }
+  const waitForReady = async (timeoutMs = 10_000) => {
+    const deadline = performance.now() + timeoutMs;
+    while (!probe.ready() && performance.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (!probe.ready()) {
+      throw new Error('Mob Motion Lab did not become ready.');
+    }
+  };
+
+  await waitForReady();
 
   probe.selectEnemy('goblin-junkshot');
   probe.setTime(250);
+  await waitForReady();
 
   const header = document.getElementById('app-header');
   if (header) header.style.display = 'none';

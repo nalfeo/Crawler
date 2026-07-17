@@ -150,15 +150,21 @@ function anchoredSpritePivot(
   holdX: number,
   holdY: number,
   displayScale: number,
+  centerOverride?: { readonly x: number; readonly y: number },
 ): { readonly x: number; readonly y: number } {
   const hold = resolveAnchor(sprite.anchor, image, {
     x: image.width / 2,
     y: image.height - 2,
   });
-  const center = resolveAnchor(sprite.centerOfGravity, image, {
-    x: image.width / 2,
-    y: image.height / 2,
-  });
+  const center = centerOverride
+    ? resolveAnchor(centerOverride, image, {
+        x: image.width / 2,
+        y: image.height / 2,
+      })
+    : resolveAnchor(sprite.centerOfGravity, image, {
+        x: image.width / 2,
+        y: image.height / 2,
+      });
   const scaleX = displayScale * transform.scaleX;
   const scaleY = displayScale * transform.scaleY;
   const cos = Math.cos(transform.rotation);
@@ -566,6 +572,7 @@ function createMobMotionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
                 centerX,
                 baselineY,
                 settings.scale,
+                { x: image.width / 2, y: image.height / 2 },
               )
             : null;
         if (attackOrigin) {
