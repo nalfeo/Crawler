@@ -12,7 +12,12 @@ interface WorkflowDoc {
     pull_request_target?: { types?: string[] };
   };
   concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
-  jobs: { reconcile?: { if?: string } };
+  jobs: {
+    reconcile?: {
+      if?: string;
+      concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
+    };
+  };
 }
 
 function loadWorkflow(): WorkflowDoc {
@@ -70,7 +75,13 @@ function evaluatesPullRequestCondition(
 
 describe('merge-train workflow wake-ups', () => {
   it('keeps one active reconcile and only the latest pending wake', () => {
-    const concurrency = loadWorkflow().concurrency;
+    const workflow = loadWorkflow();
+    // Workflow-level concurrency applies before `jobs.<job>.if`. We must not use it,
+    // otherwise unrelated events could steal the `queue: single` slot and displace
+    // a valid wake, only to skip the job later.
+    expect(workflow.concurrency).toBeUndefined();
+
+    const concurrency = workflow.jobs.reconcile?.concurrency;
     expect(concurrency?.group).toBe('crawler-merge-train');
     expect(concurrency?.queue).toBe('single');
     expect(concurrency?.['cancel-in-progress']).not.toBe(true);

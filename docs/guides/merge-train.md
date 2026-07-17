@@ -22,9 +22,11 @@ for the architectural rationale.
    separately to avoid review churn for trivial updates.
    Once labeled, CI recovery and broad auto-rebase both leave the PR unchanged;
    the train exclusively owns freshness and promotion.
-2. `.github/workflows/merge-train.yml` serializes reconciliation with
-   `queue: single` (one active run plus only the latest pending wake), selects up
-   to six oldest admitted PRs, and creates one combined immutable candidate.
+2. `.github/workflows/merge-train.yml` serializes the gated `reconcile` job with
+   `queue: single` (one active job plus only the latest pending admitted wake),
+   selects up to six oldest admitted PRs, and creates one combined immutable
+   candidate. Job-level placement keeps rejected PR events out of the queue, so a
+   no-op wake cannot displace meaningful pending work.
 3. `.github/workflows/merge-train-validate.yml` runs every `verify:fast` gate
    plus the targeted security suite on that SHA as parallel read-only jobs.
    Complete unit and sprite projects use deterministic Vitest shards; no

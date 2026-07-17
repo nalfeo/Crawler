@@ -19,9 +19,10 @@ tests, and an amendment to the existing promotion ADR.
 
 ## What changed
 
-- Changed `merge-train.yml` concurrency from `queue: max` to `queue: single`.
-  Active reconciliation is never cancelled, and only the latest pending wake is
-  retained.
+- Changed `merge-train.yml` concurrency from workflow-level `queue: max` to
+  job-level `queue: single`. Active reconciliation is never cancelled, only the
+  latest pending admitted wake is retained, and rejected PR events never contend
+  for that slot.
 - Restricted `pull_request_target` reconcile jobs to same-repository PRs that
   currently carry or are transitioning the `merge-train` label. Label removal
   still wakes cleanup, and queued synchronize, edited, closed, and
@@ -68,6 +69,9 @@ tests, and an amendment to the existing promotion ADR.
 - Post-publish review round 2: `claude-sonnet-4.6` validated and resolved two
   findings: trigger-type coverage now consumes the workflow subscription, and
   scheduled-CI wake comments match completed-only main-health authority.
+- A subsequent PR review found the workflow-level concurrency race; independent
+  `gemini-3.1-pro-preview` validation moved serialization behind the job gate and
+  added a regression assertion that no workflow-level queue exists.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-16-merge-train-scheduling.review-ledger.json`.
 

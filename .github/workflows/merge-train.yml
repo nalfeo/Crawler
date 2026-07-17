@@ -15,10 +15,6 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
-concurrency:
-  group: crawler-merge-train
-  queue: single
-
 permissions:
   actions: write
   checks: write
@@ -28,6 +24,9 @@ permissions:
 
 jobs:
   reconcile:
+    concurrency:
+      group: crawler-merge-train
+      queue: single
     # Fail-closed job gate:
     #   - pull_request_target: only for PRs from this repo (not forks) that
     #     currently carry or are transitioning the merge-train queue label.
