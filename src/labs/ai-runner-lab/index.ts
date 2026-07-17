@@ -862,7 +862,20 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         ? null
         : computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas),
     sessionRecorderFactory: recorderControls.factory,
-    recomposeFloorTransitionOptions: composeSceneOptions,
+    recomposeFloorTransitionOptions: (nextFloorOptions) => {
+      // Synchronize lab state with the destination floor before composing.
+      // Mirrors the non-reseed portion of applyRunSettings so that currentFloor,
+      // selectedScenarioPresetId, and the visual profile stay consistent after an
+      // automatic in-process floor transition. resolveScenarioPresetForFloor
+      // forces the default for non-floor1 destinations, matching manual switching.
+      const destinationFloorId = nextFloorOptions.floorId ?? currentFloor;
+      const resolved = resolveScenarioPresetForFloor(destinationFloorId, selectedScenarioPresetId);
+      currentFloor = destinationFloorId;
+      selectedScenarioPresetId = resolved.presetId;
+      applyScenarioVisualProfile(selectedScenarioPresetId);
+      persistLabState();
+      return composeSceneOptions(nextFloorOptions);
+    },
   });
 
   const sceneOptions = composeSceneOptions(createFloorMainSceneOptions(currentFloor));

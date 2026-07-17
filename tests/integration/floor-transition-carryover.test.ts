@@ -75,4 +75,37 @@ describe('Floor 1 to Floor 2 production transition', () => {
     expect(floor2.goalFlags.get(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID)).toBe(false);
     expect(floor2.floorExtendedState?.settlement?.brokerEid).toBeDefined();
   });
+
+  it('preserves Floor 2 mandatory feature unlocks even when the snapshot has them false', () => {
+    // A valid Floor 1 run can reach the stairs without completing the
+    // inventory/equipment/spells progressive unlock paths. Carrying over that
+    // snapshot must not turn off the Floor 2 mandatory unlocks that
+    // initializeFloor2Scenario latches to true before restore runs.
+    const floor1Options = createFloorMainSceneOptions('floor1');
+    const floor1 = createTestWorld({ seed: 42 });
+    const floor1Player = spawnPlayer(floor1, 0, 0);
+    floor1Options.configureWorld?.(floor1, floor1Player);
+    floor1Options.selectLoadoutOption?.(floor1, 0);
+
+    // Player reached the stairs without ever triggering the progressive unlocks.
+    floor1.featureUnlocks = { inventory: false, equipment: false, spells: false };
+
+    const objective = floor1.floorScenario!.objective;
+    objective.staircaseSpawned = true;
+    objective.staircaseUnlocked = true;
+    objective.staircaseDiscovered = false;
+    expect(floor1Options.onStairDescend?.(floor1, floor1Player)).toBe(true);
+
+    const floor2Options = floor1Options.onFloor1Cleared?.(floor1, floor1Player);
+    expect(floor2Options).toBeDefined();
+    const floor2 = createTestWorld({ seed: 42, floor: 2 });
+    const floor2Player = spawnPlayer(floor2, 0, 0);
+    floor2Options?.configureWorld?.(floor2, floor2Player);
+
+    // All three mandatory Floor 2 unlocks must remain true regardless of the
+    // snapshot's values.
+    expect(floor2.featureUnlocks.inventory).toBe(true);
+    expect(floor2.featureUnlocks.equipment).toBe(true);
+    expect(floor2.featureUnlocks.spells).toBe(true);
+  });
 });

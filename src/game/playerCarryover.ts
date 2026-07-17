@@ -237,7 +237,15 @@ export function restorePlayerCarryover(
   world.playerGender = snapshot.playerGender;
   world.playerLevel = { ...snapshot.playerLevel };
   world.playerGold = snapshot.playerGold;
-  world.featureUnlocks = { ...snapshot.featureUnlocks };
+  // Merge with latch semantics: preserve any unlock the destination scenario
+  // has already forced to true (e.g. initializeFloor2Scenario sets inventory,
+  // equipment, and spells before calling this). A Floor 1 run that never
+  // triggered those progressive unlocks would otherwise turn them back off.
+  world.featureUnlocks = {
+    inventory: world.featureUnlocks.inventory || snapshot.featureUnlocks.inventory,
+    equipment: world.featureUnlocks.equipment || snapshot.featureUnlocks.equipment,
+    spells: world.featureUnlocks.spells || snapshot.featureUnlocks.spells,
+  };
   world.achievements = {
     unlockedIds: new Set(snapshot.achievements.unlockedIds),
     pendingUnlockIds: [...snapshot.achievements.pendingUnlockIds],

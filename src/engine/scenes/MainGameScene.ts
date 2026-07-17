@@ -172,6 +172,13 @@ export interface MainGameSceneOptions {
   recomposeFloorTransitionOptions?: (
     nextFloorOptions: MainGameSceneTransitionOptions,
   ) => MainGameSceneTransitionOptions;
+  /**
+   * Destination floor identifier set by {@link createFloorMainSceneOptions}.
+   * Carried through {@link recomposeFloorTransitionOptions} so host layers
+   * (e.g. the AI Runner lab) can synchronize their floor-tracking state when
+   * the scene transitions in-process to a new floor.
+   */
+  floorId?: string;
   /** Shopkeeper errand callbacks (game-layer logic injected from main.ts). */
   shopkeeper?: {
     getIndicatorState?: (world: GameWorld) => NpcQuestIndicatorState;

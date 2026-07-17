@@ -49,4 +49,21 @@ describe('AI runner run-settings wiring', () => {
       '\'button, input, select, textarea, summary, a, [contenteditable="true"], [role="button"]\'',
     );
   });
+
+  it('synchronizes currentFloor and selectedScenarioPresetId in recomposeFloorTransitionOptions', () => {
+    // After an automatic in-process floor transition the lab's tracked floor and
+    // scenario preset must match the new floor so "restart current run" lands on
+    // the correct floor and resolveScenarioPresetForFloor forces the default for
+    // non-floor1 destinations.
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
+
+    expect(source).toContain('recomposeFloorTransitionOptions: (nextFloorOptions) => {');
+    expect(source).toContain('nextFloorOptions.floorId ?? currentFloor');
+    expect(source).toContain('resolveScenarioPresetForFloor(destinationFloorId, selectedScenarioPresetId)');
+    expect(source).toContain('currentFloor = destinationFloorId');
+    expect(source).toContain('selectedScenarioPresetId = resolved.presetId');
+    expect(source).toContain('applyScenarioVisualProfile(selectedScenarioPresetId)');
+    expect(source).toContain('persistLabState()');
+    expect(source).toContain('return composeSceneOptions(nextFloorOptions)');
+  });
 });
