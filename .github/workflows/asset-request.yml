@@ -41,6 +41,12 @@ on:
     # (c) issues whose body was edited to fix a validation error.
     types: [labeled, edited, reopened]
   workflow_dispatch:
+    inputs:
+      floor2_boss_family_ab:
+        description: Run the five-boss prompt-only A/B replay
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -89,18 +95,39 @@ jobs:
     # Hard safety net so a stuck worker (e.g. a hung Azure/provider call that
     # never emits `idle` and doesn't respect SIGTERM) can't burn CI minutes.
     # Drain-mode is the soft exit for the empty-queue common case (~30s).
-    timeout-minutes: 25
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-node
 
+      - name: Prepare exact Floor 2 boss A/B inputs
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.floor2_boss_family_ab }}
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_QUEUE_NAME: ${{ secrets.AZURE_STORAGE_QUEUE_NAME }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+        run: |
+          node -e "const fs=require('fs'),cp=require('child_process');fs.writeFileSync('public/assets/generated/manifest.json',cp.execFileSync('git',['show','574552e8d98c2538a24ad973654f262f667aa2a8:public/assets/generated/manifest.json']))"
+          npx tsx scripts/sprites/ci-floor2-boss-ab-reprocess.ts --preflight
+          npm run sprites:enqueue -- --brief iron-sword-ab-warmup --path briefs/weapons/iron-sword.yaml --by floor2-boss-family-ab --priority high
+          npm run sprites:enqueue -- --brief batfolk-boss --path briefs/draft/enemies/batfolk-boss.yaml --by floor2-boss-family-ab --priority high
+          npm run sprites:enqueue -- --brief cactusfolk-boss --path briefs/draft/enemies/cactusfolk-boss.yaml --by floor2-boss-family-ab --priority high
+          npm run sprites:enqueue -- --brief beetlefolk-boss --path briefs/draft/enemies/beetlefolk-boss.yaml --by floor2-boss-family-ab --priority high
+          npm run sprites:enqueue -- --brief geese-boss --path briefs/draft/enemies/geese-boss.yaml --by floor2-boss-family-ab --priority high
+          npm run sprites:enqueue -- --brief faerie-boss --path briefs/draft/enemies/faerie-boss.yaml --by floor2-boss-family-ab --priority high
+
       # Step 1: scan open `asset-request` issues, enqueue any new ones into the
       # Azure queue (deduped by issueNumber+fingerprint via the blob state file).
       # Non-zero exit iff the poll itself failed (gh CLI error, Azure network
       # failure, etc). Zero enqueued is a normal outcome and returns 0.
       - name: Ingest asset-request issues
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.floor2_boss_family_ab) }}
         env:
           # gh CLI auth — used by scripts/sprites/sidecar/asset-request-issue-api.ts
           # (spawns `gh issue list`).
@@ -225,3 +252,28 @@ jobs:
           # synth + judge, which are the two calls the drain worker needs.
           SPRITES_ALLOW_CI_PIPELINE: 'true'
         run: npm run sprites:worker
+
+      - name: Reprocess, judge, and export Floor 2 boss A/B
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.floor2_boss_family_ab }}
+        env:
+          LOG_LEVEL: info
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION: ${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_VISION_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_VISION_DEPLOYMENT }}
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          AZURE_STORAGE_RUNS_CONTAINER: ${{ secrets.AZURE_STORAGE_RUNS_CONTAINER }}
+          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          SPRITES_ALLOW_CI_PIPELINE: 'true'
+        run: npx tsx scripts/sprites/ci-floor2-boss-ab-reprocess.ts
+
+      - name: Upload Floor 2 boss A/B artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.floor2_boss_family_ab }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor2-boss-family-ab-${{ github.run_id }}
+          path: generated/floor2-boss-family-ab
+          if-no-files-found: error
+          retention-days: 14
