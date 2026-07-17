@@ -1202,11 +1202,11 @@ function applyLegacySwarm(
 /**
  * Spawns the actual hostile projectile from a given (origin, direction) pair.
  * Shared by the legacy zero-telegraph path (origin/direction = the enemy's
- * CURRENT position/aim, computed fresh this frame — bit-identical to the
- * pre-telegraph behavior) and the telegraph-fire path (origin/direction = the
- * LOCKED values captured at telegraph start), so there is exactly one place
- * that turns "an aim solution" into "a projectile" and both callers get
- * identical accuracy-roll/spawn/cooldown semantics.
+ * CURRENT position/aim, computed fresh this frame) and the telegraph-fire path
+ * (origin/direction = the LOCKED values captured at telegraph start), so there
+ * is exactly one place that turns "an aim solution" into "a projectile." Both
+ * paths preserve immediate-fire timing, accuracy-roll timing, and cooldown
+ * semantics while spawning at the exact ECS/visual pivot.
  */
 function fireEnemyProjectileFrom(
   world: GameWorld,
@@ -1217,8 +1217,6 @@ function fireEnemyProjectileFrom(
   dirY: number,
 ): void {
   const { enemyBehavior } = world.stores;
-  const spawnX = originX + dirX * ENEMY_PROJECTILE.MUZZLE_OFFSET;
-  const spawnY = originY + dirY * ENEMY_PROJECTILE.MUZZLE_OFFSET;
   // rng.next() returns [0,1); if the roll exceeds ACCURACY, the shot misses.
   // This roll intentionally stays at actual-fire-time (post-telegraph, if any)
   // so the 0ms-telegraph path preserves the exact legacy RNG-draw timing; the
@@ -1232,8 +1230,8 @@ function fireEnemyProjectileFrom(
   if (FIREBALL_DEF) {
     const projectile = spawnAoeProjectile(
       world,
-      spawnX,
-      spawnY,
+      originX,
+      originY,
       dirX * FIREBALL_DEF.projectileSpeed,
       dirY * FIREBALL_DEF.projectileSpeed,
       FIREBALL_DEF.baseDamage,
@@ -1255,8 +1253,8 @@ function fireEnemyProjectileFrom(
   } else {
     spawnEnemyProjectile(
       world,
-      spawnX,
-      spawnY,
+      originX,
+      originY,
       dirX * ENEMY_PROJECTILE.SPEED,
       dirY * ENEMY_PROJECTILE.SPEED,
       ENEMY_PROJECTILE.DAMAGE,
@@ -1274,9 +1272,8 @@ function fireEnemyProjectileFrom(
  *    entirely — the aim is locked — and fire from the locked origin/direction
  *    once the resolved delay has elapsed.
  *  - Cooldown-ready, telegraph delay resolves to 0 (world/per-mob override):
- *    fire immediately using the current position/aim, in the exact same
- *    order of operations as the pre-telegraph implementation — bit-identical
- *    legacy parity.
+ *    fire immediately using the current position/aim with unchanged timing
+ *    and RNG-draw order.
  *  - Cooldown-ready, nonzero delay: lock the aim/origin now and start the
  *    telegraph; the actual shot fires on a later frame once ready.
  */
