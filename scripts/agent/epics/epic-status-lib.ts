@@ -1025,7 +1025,7 @@ function validateStackedWork(
   result: MutableValidation,
 ): void {
   const sw = node.stacked_work;
-  if (sw === null || sw === undefined) return;
+  if (!sw) return;
 
   // stacked_work is only allowed while lifecycle status is 'blocked'
   if (node.status !== 'blocked') {
@@ -1093,26 +1093,47 @@ function validateStackedWork(
     }
   }
 
-  // Premature rebase-to-main completion: complete only when all dependencies are satisfied
+  // Premature rebase-to-main completion: complete only when all dependencies are in
+  // merged or validated status (or superseded→validated). Matching the recovery doc:
+  // rebase-to-main is performed the moment the dependency PR lands, so 'merged' is
+  // a valid gate — full 'validated' status is not required.
   if (sw.rebase_to_main.state === 'complete') {
-    const allDepsSatisfied = dependenciesSatisfied(node, nodesById);
-    if (!allDepsSatisfied) {
+    const allDepsLanded = node.dependencies.every((depId) => {
+      const dep = nodesById.get(depId);
+      if (!dep) return false;
+      if (POST_MERGE_STATUSES.has(dep.status)) return true;
+      // Superseded node: check its replacement
+      if (dep.status === 'superseded' && dep.superseded_by) {
+        const replacement = nodesById.get(dep.superseded_by);
+        return replacement ? POST_MERGE_STATUSES.has(replacement.status) : false;
+      }
+      return false;
+    });
+    if (!allDepsLanded) {
       result.errors.push({
         code: 'stacked.premature-rebase-complete',
         node_id: node.node_id,
-        message: `${node.node_id} stacked_work marks rebase_to_main as complete but not all dependencies are validated/satisfied`,
+        message: `${node.node_id} stacked_work marks rebase_to_main as complete but not all dependencies are merged or validated`,
+      });
+    }
+    // completed_at must be populated when state is complete
+    if (sw.rebase_to_main.completed_at === null) {
+      result.errors.push({
+        code: 'stacked.rebase-complete-missing-timestamp',
+        node_id: node.node_id,
+        message: `${node.node_id} stacked_work rebase_to_main.state is 'complete' but completed_at is null`,
       });
     }
   }
 }
 
 function validateDuplicateStackedOwnership(state: EpicState, result: MutableValidation): void {
-  const stackedOwners = new Map<string, string>();
+  const stackedWorkByOwner = new Map<string, string>();
   for (const node of state.nodes) {
     const sw = node.stacked_work;
     if (!sw) continue;
     const key = `${sw.owner.claimant}\u0000${sw.owner.session}`;
-    const prior = stackedOwners.get(key);
+    const prior = stackedWorkByOwner.get(key);
     if (prior) {
       result.errors.push({
         code: 'stacked.duplicate-ownership',
@@ -1120,7 +1141,7 @@ function validateDuplicateStackedOwnership(state: EpicState, result: MutableVali
         message: `${sw.owner.claimant}/${sw.owner.session} has stacked_work on both ${prior} and ${node.node_id}; a session may only hold one stacked-work slot`,
       });
     } else {
-      stackedOwners.set(key, node.node_id);
+      stackedWorkByOwner.set(key, node.node_id);
     }
   }
 }

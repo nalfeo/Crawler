@@ -770,11 +770,80 @@ describe('Floor 2 equipment epic status', () => {
       expect(a1Errors).not.toContain('stacked.premature-rebase-complete');
     });
 
+    it('allows rebase_to_main complete when dependency is merged (not yet validated)', () => {
+      const state = cloneState();
+      // Put A0 into merged status (PR landed but not yet validated)
+      const a0 = state.nodes.find((n) => n.node_id === 'slice:A0')!;
+      a0.status = 'merged';
+      a0.github.pr = {
+        number: 1271,
+        url: 'https://github.com/nalfeo/Crawler/pull/1271',
+        head_sha: FULL_COMMIT,
+      };
+      a0.ownership = {
+        claimant: null,
+        session: null,
+        source: 'none',
+        scope: null,
+        claimed_at: null,
+        lease_expires_at: null,
+        heartbeat_at: null,
+        base_commit: null,
+      };
+      a0.merge = { commit: TEST_MERGE_COMMIT, merged_at: '2026-07-17T17:50:00.000Z' };
+      a0.evidence = [
+        {
+          kind: 'handoff',
+          path_or_check: 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md',
+          sha256: '9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb',
+          commit: HANDOFF_COMMIT,
+          recorded_at: '2026-07-17T17:55:00.000Z',
+        },
+        {
+          kind: 'review-ledger',
+          path_or_check:
+            'docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json',
+          sha256: 'fa7d39e5a5e9dcc867ffdbc25ccf6b33c0f0ca86edc229cd8403b97df1316afa',
+          commit: LEDGER_COMMIT,
+          recorded_at: '2026-07-17T17:55:00.000Z',
+        },
+        {
+          kind: 'offline-validator-and-focused-tests',
+          path_or_check: 'tests/unit/agent/epic-status.test.ts',
+          sha256: '76f6cf0816360cc4286fa89a1e810a938b8f0cc7e1a8f0dc3c8029cc4e251183',
+          commit: LEDGER_COMMIT,
+          recorded_at: '2026-07-17T17:55:00.000Z',
+        },
+      ];
+      // A1 with rebase_to_main complete — dependency is merged, not validated
+      setA1Stacked(state, {
+        rebase_to_main: { state: 'complete', completed_at: '2026-07-17T18:00:00.000Z' },
+      });
+
+      const a1Errors = validate(state)
+        .errors.filter((e) => e.node_id === 'slice:A1')
+        .map((e) => e.code);
+
+      // merged status should satisfy the rebase gate; no premature error
+      expect(a1Errors).not.toContain('stacked.premature-rebase-complete');
+    });
+
+    it('rejects rebase_to_main complete with null completed_at', () => {
+      const state = cloneState();
+      validateA0(state);
+      setA1Stacked(state, {
+        rebase_to_main: { state: 'complete', completed_at: null },
+      });
+
+      const codes = validate(state).errors.map((e) => e.code);
+
+      expect(codes).toContain('stacked.rebase-complete-missing-timestamp');
+    });
+
     it('GitHub audit proposes reconciliation for dependency head drift', () => {
       const state = cloneState();
       setA1Stacked(state);
       const a1Idx = state.nodes.findIndex((n) => n.node_id === 'slice:A1');
-      const _advancedDepHead = 'd'.repeat(40);
       const runner: GithubRunner = {
         get(path) {
           if (path.endsWith('/issues/1264')) {

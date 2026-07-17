@@ -94,15 +94,16 @@ Confirm no `stacked.*` errors.
 
 ---
 
-## Normal-Lifecycle Handoff (After Prerequisite Validates)
+## Normal-Lifecycle Handoff (After Prerequisite Merges or Validates)
 
-When the dependency node reaches `validated` status (not just merged), the stacked node
-is eligible for normal progression. The Producer executes:
+When the dependency node reaches `merged` status (PR landed on main) the stacked node is
+eligible for rebase-to-main. When the dependency reaches `validated` status, the stacked
+node is eligible for full normal lifecycle progression. The Producer executes:
 
 ### Step 1 — Confirm readiness
 
 Run `npm run epic:status -- floor-2-equipment`.  
-The target node should appear in `ready_queue` after A0 (or its dependency) validates.
+The target node should appear in `ready_queue` after its dependency reaches `validated` status.
 
 ### Step 2 — Promote stacked work into normal lifecycle
 
