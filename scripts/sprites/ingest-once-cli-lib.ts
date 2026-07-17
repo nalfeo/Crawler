@@ -111,6 +111,10 @@ export function resolveTargetIssueNumber(env: NodeJS.ProcessEnv): number | null 
   return parsed;
 }
 
+export function resolveTargetIssueOnly(env: NodeJS.ProcessEnv): boolean {
+  return env['SPRITES_INGESTER_TARGET_ONLY'] === 'true';
+}
+
 /**
  * Parses `SPRITES_INGESTER_STALE_CLAIM_TTL_MS` to a positive integer number of
  * milliseconds. Returns `null` when unset / empty / non-integer / non-positive

@@ -117,6 +117,8 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   return [
     styleGuide,
     '',
+    scaleGranularityBlock(brief),
+    '',
     floorContextBlock(brief.floor),
     '',
     briefSubjectBlock(brief),
@@ -163,6 +165,31 @@ function cellDims(brief: Brief): { cellW: number; cellH: number } {
   const native = brief.generation.sheet.nativeCanvas;
   const { rows, cols } = brief.generation.sheet;
   return { cellW: Math.round(native / cols), cellH: Math.round(native / rows) };
+}
+
+function cellAxisRange(total: number, divisions: number): string {
+  const low = Math.floor(total / divisions);
+  const high = Math.ceil(total / divisions);
+  return low === high ? String(low) : `${low}-${high}`;
+}
+
+function scaleGranularityBlock(brief: Brief): string {
+  const native = brief.generation.sheet.nativeCanvas;
+  const { rows, cols } = brief.generation.sheet;
+  const cellW = native / cols;
+  const cellH = native / rows;
+  const sourcePerOutputX = cellW / brief.size.width;
+  const sourcePerOutputY = cellH / brief.size.height;
+  return [
+    '## Pixel granularity',
+    `- Each cell is approximately ${formatRatio(cellW)}x${formatRatio(cellH)} source pixels and resolves to ${brief.size.width}x${brief.size.height} output pixels.`,
+    `- One output pixel therefore spans about ${formatRatio(sourcePerOutputX)}x${formatRatio(sourcePerOutputY)} source pixels. Use roughly that source-pixel cluster scale for 1-pixel outlines and fine features.`,
+    '- Match the attached references at final output scale. Avoid oversized block clusters that make the sprite look like lower-resolution art enlarged to fit the frame.',
+  ].join('\n');
+}
+
+function formatRatio(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 /**
@@ -261,10 +288,10 @@ function typeRulesBlock(brief: Brief): string | null {
   if (brief.type === 'enemy') {
     const { cellW, cellH } = cellDims(brief);
     const { loH, hiH } = sourceFootprint(brief);
-    const facing = brief.sensors.enemy?.facing ?? 'left';
+    const facing = brief.sensors.enemy?.facing ?? 'front';
     const facingLine =
       facing === 'front'
-        ? '- Draw the mob facing straight forward toward the camera, not angled or in three-quarter view.'
+        ? '- Draw the mob in a front-biased three-quarter presentation: roughly two-thirds facing the camera with the face plane and both eyes readable. A slight turn is welcome; do not use a strict side profile.'
         : facing === 'left'
           ? '- Draw the mob in profile facing left (body and head oriented toward the left edge of the frame). Keep the pose consistent across every variant on the sheet.'
           : facing === 'right'
@@ -350,20 +377,28 @@ function singleConstraintsBlock(brief: Brief): string {
 }
 
 function sheetLayoutBlock(brief: Brief, count: number): string {
-  const { rows, cols, emptyCells } = brief.generation.sheet;
+  const { rows, cols, emptyCells, nativeCanvas } = brief.generation.sheet;
   const { cellW, cellH } = cellDims(brief);
+  const widthRange = cellAxisRange(nativeCanvas, cols);
+  const heightRange = cellAxisRange(nativeCanvas, rows);
+  const hasUnevenAxis = nativeCanvas % rows !== 0 || nativeCanvas % cols !== 0;
   const cellShape =
     cellW === cellH
       ? 'perfectly square'
-      : `the same ${aspectRatioText(cellW, cellH)} ${cellW > cellH ? 'landscape' : 'portrait'} rectangle (${cellW}×${cellH} source pixels), matching the sprite proportion`;
+      : `the same nominal ${cellW > cellH ? 'landscape' : 'portrait'} rectangle (approximately ${cellW}×${cellH} source pixels); the subject inside follows the requested sprite proportion`;
   const lines: string[] = [];
   lines.push('## Sheet layout');
   lines.push(
     `Generate exactly ${count} variants on a single sheet, arranged in a regular ${rows}×${cols} grid (${rows} rows, ${cols} columns).`,
   );
   lines.push(
-    `Each grid cell must be the same size, ${cellShape}, and the variants must be laid out left-to-right, top-to-bottom in reading order.`,
+    `Each grid cell must have the same nominal shape, ${cellShape}, and the variants must be laid out left-to-right, top-to-bottom in reading order.`,
   );
+  if (hasUnevenAxis) {
+    lines.push(
+      `The ${nativeCanvas}x${nativeCanvas} canvas does not divide evenly on every axis: actual cells may differ by one source pixel (${widthRange}px wide and ${heightRange}px tall). Preserve the exact ${rows}x${cols} grid with straight full-length background gutters; do not add, merge, or crop a row or column to force equal integer dimensions.`,
+    );
+  }
   if (brief.type !== 'tile') {
     lines.push(
       'Separate every adjacent row and column with a uniform, flat, background-only gutter: a consistent strip of the sheet background color running the full width between rows and the full height between columns, so no two cells touch and a clean background channel divides every neighbouring cell. This gutter is empty background, NOT a drawn line, border, or divider — keep each subject well inside its own cell so nothing bleeds across a gutter into the next cell.',

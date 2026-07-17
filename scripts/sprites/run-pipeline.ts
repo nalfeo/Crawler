@@ -94,8 +94,16 @@ export async function postprocessScoreAndStoreVariant(
       ? args.manualAnchor
       : null;
   const processed = traced.finalPng;
+  const sourceStep = traced.steps.find((step) => step.id === 'background-removal');
+  if (!sourceStep && brief.type !== 'tile') {
+    throw new Error(
+      `postprocessScoreAndStoreVariant: non-tile pipeline for "${brief.name}" did not emit the required background-removal trace step`,
+    );
+  }
   const scorecard = applyManualAnchorToScorecard(
-    scoreCandidate(processed, brief, palette),
+    scoreCandidate(processed, brief, palette, {
+      ...(sourceStep ? { sourcePng: sourceStep.png } : {}),
+    }),
     manualAnchorForVariant,
   );
   const id = pad2(index);

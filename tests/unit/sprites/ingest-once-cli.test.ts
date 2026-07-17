@@ -12,6 +12,7 @@ import {
   resolveRequestedBy,
   resolveRunUrl,
   resolveStaleClaimTtlMs,
+  resolveTargetIssueOnly,
   resolveTargetIssueNumber,
   withAuthorAllowList,
 } from '../../../scripts/sprites/ingest-once-cli-lib.js';
@@ -210,6 +211,14 @@ describe('withAuthorAllowList', () => {
 describe('resolveTargetIssueNumber', () => {
   it('returns null when the env var is unset', () => {
     expect(resolveTargetIssueNumber({})).toBeNull();
+  });
+
+  describe('resolveTargetIssueOnly', () => {
+    it('requires the exact true opt-in', () => {
+      expect(resolveTargetIssueOnly({})).toBe(false);
+      expect(resolveTargetIssueOnly({ SPRITES_INGESTER_TARGET_ONLY: 'false' })).toBe(false);
+      expect(resolveTargetIssueOnly({ SPRITES_INGESTER_TARGET_ONLY: 'true' })).toBe(true);
+    });
   });
 
   it('returns null when the env var is an empty string', () => {

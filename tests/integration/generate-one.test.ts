@@ -442,6 +442,29 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
     expect(result.summary.candidates).toEqual([]);
   });
 
+  it('rejects an honest sliced grid that does not match the commanded layout', async () => {
+    const mismatch = tileVariantsIntoSheet(
+      Array.from({ length: 3 }, () => buildGoodSwordFixture()),
+      1,
+      3,
+    );
+    await expect(
+      generateOne({
+        briefPath,
+        preloaded,
+        provider: makeMockProvider(mismatch),
+        repoRoot: root,
+        outputRoot,
+        maxAttempts: 1,
+        now: fixedClock,
+        ...refInjection,
+      }),
+    ).rejects.toMatchObject({
+      kind: 'bad-grid',
+      message: expect.stringMatching(/expected commanded 2x2 with 4 variants/),
+    });
+  });
+
   it('does not retry on a non-retryable error (auth)', async () => {
     const { provider, callCount } = makeFailingProvider(new ProviderError('auth', 'bad key'));
     await expect(

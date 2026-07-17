@@ -412,6 +412,52 @@ describe('issue ingester controller', () => {
       expect(status.enqueued).toBe(1);
       expect(enqueued).toHaveLength(1);
     });
+
+    it('restricts a targeted review rerun to the REST-fetched issue without sweeping', async () => {
+      const enqueued: AssetRequest[] = [];
+      const queue = {
+        backend: 'azure-queue' as const,
+        enqueue: async (r: AssetRequest) => void enqueued.push(r),
+        dequeue: async () => null,
+        peek: async () => [],
+      };
+      const list = vi.fn(async () => [{ number: 100, body: bodyFor('bone-dagger') }]);
+      const get = vi.fn(async () => ({ number: 999, body: bodyFor('angry-roomba') }));
+      const controller = createIssueIngesterController({
+        queue,
+        store: memStore(),
+        issues: issuesMock({ list, get }),
+        requestedBy: 'test',
+        targetIssueNumber: 999,
+        targetIssueOnly: true,
+        now: () => new Date('2026-07-03T00:00:00.000Z'),
+      });
+
+      const status = await controller.pollOnce();
+      expect(status.enqueued).toBe(1);
+      expect(list).not.toHaveBeenCalled();
+      expect(get).toHaveBeenCalledWith(999);
+      expect(enqueued[0]).toMatchObject({ kind: 'issue-request', issueNumber: 999 });
+    });
+
+    it('fails closed when target-only mode has no target issue number', async () => {
+      const controller = createIssueIngesterController({
+        queue: {
+          backend: 'noop' as const,
+          enqueue: async () => {},
+          dequeue: async () => null,
+          peek: async () => [],
+        },
+        store: memStore(),
+        issues: issuesMock(),
+        requestedBy: 'test',
+        targetIssueOnly: true,
+      });
+
+      await expect(controller.pollOnce()).resolves.toMatchObject({
+        lastError: 'targetIssueOnly requires targetIssueNumber',
+      });
+    });
   });
 
   describe('postEnqueueComment', () => {

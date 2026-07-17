@@ -185,6 +185,51 @@ describe('scoreCandidate', () => {
     expect(card.breakdown.map((r) => r.sensor)).not.toContain('silhouette-orientation-axis');
   });
 
+  it('rejects source-cell clipping that final trim and re-padding would hide', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      anchor: { x: 8, y: 8 },
+      sensors: {
+        edge: {
+          allowMainTouch: false,
+          allowDetachedEdgeComponents: false,
+          maxDetachedEdgePixels: 0,
+        },
+        enemy: { facing: 'front' },
+        anchor: { mode: 'center-of-mass' },
+      } as Brief['sensors'],
+    });
+    const source = buildProcessedFixture(16, 16, rectPixels(0, 3, 7, 12));
+    const normalized = buildProcessedFixture(16, 16, rectPixels(4, 3, 11, 12));
+    const card = scoreCandidate(normalized, brief, PALETTE, { sourcePng: source });
+
+    expect(card.breakdown.find((r) => r.sensor === 'opaque-bbox-fits')?.ok).toBe(true);
+    const sourceEdge = card.breakdown.find((r) => r.sensor === 'source-opaque-bbox-fits');
+    expect(sourceEdge?.ok).toBe(false);
+    expect(sourceEdge && !sourceEdge.ok ? sourceEdge.reason : '').toMatch(
+      /main silhouette touches frame edge/,
+    );
+  });
+
+  it('exempts tiles from the source-cell edge gate', () => {
+    const brief = makeBrief({
+      type: 'tile',
+      sensors: {
+        edge: {
+          allowMainTouch: true,
+          allowDetachedEdgeComponents: true,
+          maxDetachedEdgePixels: 0,
+        },
+      } as Brief['sensors'],
+    });
+    const edgeToEdge = buildProcessedFixture(16, 16, rectPixels(0, 0, 15, 15));
+    const card = scoreCandidate(edgeToEdge, brief, PALETTE, { sourcePng: edgeToEdge });
+    expect(card.breakdown.find((r) => r.sensor === 'source-opaque-bbox-fits')).toEqual({
+      ok: true,
+      sensor: 'source-opaque-bbox-fits',
+    });
+  });
+
   it('character briefs stay front-facing when an enemy sensor block omits facing', () => {
     const brief = briefSchema.parse({
       type: 'character',

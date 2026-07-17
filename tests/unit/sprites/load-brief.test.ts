@@ -395,7 +395,7 @@ describe('mergeMinimalIntoDefaults — size variants', () => {
     );
     expect(merged.size).toEqual({ width: 128, height: 64 });
     expect(merged.anchor).toEqual({ x: 64, y: 32 });
-    expect(sheetOf(merged.generation)).toMatchObject({ rows: 4, cols: 2, nativeCanvas: 1024 });
+    expect(sheetOf(merged.generation)).toMatchObject({ rows: 3, cols: 2, nativeCanvas: 1024 });
   });
 
   it('scales height and reshapes the grid for tall', () => {
@@ -405,7 +405,7 @@ describe('mergeMinimalIntoDefaults — size variants', () => {
     );
     expect(merged.size).toEqual({ width: 64, height: 128 });
     expect(merged.anchor).toEqual({ x: 32, y: 64 });
-    expect(sheetOf(merged.generation)).toMatchObject({ rows: 2, cols: 4, nativeCanvas: 1024 });
+    expect(sheetOf(merged.generation)).toMatchObject({ rows: 2, cols: 3, nativeCanvas: 1024 });
   });
 
   it('scales both axes and reshapes the grid for large', () => {

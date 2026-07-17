@@ -13,7 +13,7 @@
       "allowDetachedEdgeComponents": false,
       "maxDetachedEdgePixels": 0
     },
-    "enemy": { "facing": "right" },
+    "enemy": { "facing": "front" },
     "anchor": { "mode": "center-of-mass" }
   },
   "minVariations": 4,

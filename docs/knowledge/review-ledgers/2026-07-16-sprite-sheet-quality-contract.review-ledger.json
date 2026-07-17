@@ -1,0 +1,28 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "sprite-sheet-quality-contract",
+  "task_title": "Sprite sheet quality contract",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alternatives: divisible larger canvas rejected as excessive provider-wide blast radius; hard fixed crop maps rejected because missing gutters would cut art; deterministic global pixel-density sensor deferred because it would be brittle without approved-reference calibration. Adopted review changes: exact commanded-grid hard gate; verify explicit issue sizes; targeted force-retry input; local run-store plus Actions artifact export for branch review; remove redundant review-only semantics; one enemy-orientation source of truth; known coarse-sheet cloud regression check; 1024/3 generate-slice-rerun coverage."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

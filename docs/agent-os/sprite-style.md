@@ -14,7 +14,7 @@ The generator MUST follow every constraint below. Each is also enforced by a det
 2. **Palette:** use bold, distinct colors. The pipeline can optionally snap pixels to a locked project palette (controlled by `postprocessing.paletteMode` in the brief — default is `'none'`, meaning no snapping). Regardless of mode: no gradients, no airbrush blending. Bold color boundaries, not smooth transitions.
 3. **Alpha:** every pixel is fully opaque (alpha 255) or fully transparent (alpha 0). No partial transparency, no anti-aliased fringes.
 4. **Background:** transparent — or, if the model insists on solid, a flat high-contrast color that is visibly distinct from the sprite palette (for example bright magenta `#ff00ff`, electric cyan `#00ffff`, neon lime `#39ff14`, vivid yellow `#fff200`) and reachable from the frame corners so the post-processor can flood-fill it away. **Do not use black backgrounds.** No decorative backgrounds, no checkerboards, no gradients, no shadows under the subject.
-5. **Composition:** a **single subject**, **centered**, **square aspect**, **fully inside the frame** with at least 1 pixel of breathing room on every side at the final output size (typically 64×64).
+5. **Composition:** a **single subject**, **centered**, at the brief's requested aspect, **fully inside the frame** with at least 1 pixel of breathing room on every side at the final output size.
 6. **No text of any kind.** No numbers, no digits, no labels, no captions, no signatures, no watermarks, no UI chrome. The pipeline rejects sheets where the model added a number on each cell — this happens often enough that it must be called out explicitly in the prompt.
 7. **No multiple subjects per cell.** If the brief asks for a sword, the cell shows one sword — not "a sword on a shield" or "a sword next to a coin".
 8. **No anti-aliasing.** Edges are hard. Color transitions are 1-pixel boundaries between palette entries.
@@ -27,14 +27,14 @@ These are softer guidelines — the model should follow them, but downstream sen
 - **Shading:** 3–5 stops inside the silhouette — a base mid-tone, a shadow, a deep shadow, and optionally a highlight and a bright accent. Pixel dithering is allowed and encouraged for fabric, stone, and metal texture — use it to suggest material without relying on gradients. Avoid going below 3 stops per material; flat single-fill reads as unfinished.
 - **Grungy character:** worn edges on metal, stitching on fabric, scuffs on boots. Equipment looks like it's been in a dungeon. Color choices should be bold and memorable, not drab. Allow pops of saturated color even in an otherwise earthy palette.
 - **Silhouette first:** the shape should read clearly at 64×64 and remain legible when scaled down in-engine. Test mentally: "if I painted the whole sprite black, would I still know what it is?"
-- **Orientation:** weapons stand **vertical** by default — held upright with the grip at the bottom and the business end at the top. This is what `data/sprite-types/weapon.json` sets, so the in-game renderer can rotate any weapon around a single known axis. Briefs that genuinely need a side-profile / diagonal shape (e.g. `iron-sword.yaml`) override with `sensors.weapon.orientation: diagonal`. Characters face the viewer. Items sit grounded as if on a surface.
+- **Orientation:** weapons stand **vertical** by default — held upright with the grip at the bottom and the business end at the top. This is what `data/sprite-types/weapon.json` sets, so the in-game renderer can rotate any weapon around a single known axis. Briefs that genuinely need a side-profile / diagonal shape (e.g. `iron-sword.yaml`) override with `sensors.weapon.orientation: diagonal`. Characters face the viewer. Enemies use a front-biased three-quarter view (roughly two-thirds toward camera, both eyes readable) unless a brief explicitly requests left/right profile. Items sit grounded as if on a surface.
 - **Anchor pixel:** every brief declares an `anchor` (typically the grip on a weapon, the feet on a character, the base on an item). That pixel must be opaque in the final sprite — the engine uses it to attach effects, hands, etc.
 
 ## Sheet-mode layout
 
-Default sheet-mode generation asks for a **4×4 grid of 16 distinct variants** on a 1024×1024 canvas (configurable per brief). 1024 ÷ 4 = 256, so every cell is a clean integer 256×256 source tile, and the post-processor nearest-neighbor resamples to the brief size (default 64×64). 16 variants per call gives the scoring loop plenty of headroom to reject low-quality candidates without paying for a second provider round-trip. Each variant occupies one cell. Constraints for the grid:
+Default sheet-mode generation asks for a **4×4 grid of 16 distinct variants** on a 1024×1024 canvas. Size variants use an explicit density contract: `large` is 2×2, `wide` is 3×2, and `tall` is 2×3. A three-way axis on 1024px naturally produces 341/342px cells; full-length background gutters define the honest integer cuts. Each variant occupies one cell. Constraints for the grid:
 
-- Cells are equal-sized squares, arranged left-to-right, top-to-bottom.
+- Cells share one nominal shape and differ by at most one source pixel where the canvas does not divide evenly, arranged left-to-right, top-to-bottom.
 - Each variant fits **fully** within its cell — no cropping, no overflow into the adjacent cell.
 - Variants are **distinct**: different silhouette / proportions / hilt-shape / shading choices. Diversity is the entire point of sheet mode.
 - All variants share the same orientation, same scale, same subject type. They are siblings, not "a sword, then a dagger, then an axe".
@@ -55,7 +55,7 @@ The preamble below is the authoritative structure that `scripts/sprites/build-pr
 > 1. Hard 1-pixel outlines on silhouettes. No anti-aliasing. No partial transparency. Edges are crisp 1-pixel transitions between solid colors.
 > 2. Use 3–5 distinct color stops per material — base mid-tone, shadow, deep shadow, optional highlight, optional accent. Keep readable contrast between stops (avoid clusters of near-identical mid-tones), but do not flatten materials to only 2 tones. Pixel dithering is allowed for fabric/stone/metal texture where it adds detail; avoid heavy checkerboard noise. No airbrush blending.
 > 3. **Grungy detail with readability first:** worn edges on weapons and armor, stitching lines on fabric, scuffs on boots, cracks in stone. Characters must keep clear facial structure and clear hair silhouette/volume (hairline + shape must remain readable, not merged into skin/background). Colors are bold and varied — not drab, not monochrome earthy. Include pops of saturated hue even in an otherwise earthy palette.
-> 4. **Scale granularity:** the full sheet is 1024×1024 with each cell rendered at 256×256 source pixels. The post-processor nearest-neighbor resamples to 64×64. This means **4 source pixels = 1 output pixel**. Draw using 4-pixel strokes for 1-pixel outlines, 8-pixel strokes for 2-pixel features. A character face needs individually readable eyes, nose, and mouth each rendered across 4–8 source pixels. Chunky 32-pixel blocks produce sprites that look like 16×16 scaled up — avoid this.
+> 4. **Scale granularity:** use the effective source-cell-to-output ratio supplied later in the prompt. Draw 1-output-pixel outlines and fine features at roughly that source-pixel span. Match attached references at final output scale; avoid oversized clusters that look like lower-resolution art enlarged to fill the frame.
 > 5. **Single subject per cell**, fully inside its cell. Subject must not be clipped at any edge.
 > 6. **Transparent or flat high-contrast background** that is clearly distinct from the sprite palette (prefer bright magenta `#ff00ff`, electric cyan `#00ffff`, neon lime `#39ff14`, or vivid yellow `#fff200`). Do not use black backgrounds. No decorative backgrounds, no shadows under the subject, no scene props.
 > 7. **No text, numbers, digits, labels, captions, watermarks, signatures, or UI chrome** unless the brief explicitly identifies a sign or text-bearing object and makes lettering essential. Never invent incidental text.
@@ -108,6 +108,10 @@ all other assets remain `default`.
 | `wide`    | 2×    | 1×     |
 | `tall`    | 1×    | 2×     |
 | `large`   | 2×    | 2×     |
+
+The corresponding sheet layouts are `default` 4×4, `large` 2×2, `wide` 3×2,
+and `tall` 2×3. Three-way axes use detected gutters and 341/342px cells on the
+fixed 1024px canvas.
 
 What you get:
 

@@ -86,19 +86,18 @@ describe('applySizeVariantToDefaults', () => {
     expect(out).toBe(defaults);
   });
 
-  it('doubles width and reshapes the grid to 4 rows × 2 cols for wide', () => {
+  it('doubles width and applies the 3 rows × 2 cols contract for wide', () => {
     const out = applySizeVariantToDefaults(enemyDefaults(), 'wide');
     expect(out.size).toEqual({ width: 128, height: 64 });
     expect(out.anchor).toEqual({ x: 64, y: 32 });
-    // Grid reshapes (cols ÷2) to 8 aspect-matched cells; canvas is NOT inflated.
-    expect(sheetOf(out.generation)).toMatchObject({ rows: 4, cols: 2, nativeCanvas: 1024 });
+    expect(sheetOf(out.generation)).toMatchObject({ rows: 3, cols: 2, nativeCanvas: 1024 });
   });
 
-  it('doubles height and reshapes the grid to 2 rows × 4 cols for tall', () => {
+  it('doubles height and applies the 2 rows × 3 cols contract for tall', () => {
     const out = applySizeVariantToDefaults(enemyDefaults(), 'tall');
     expect(out.size).toEqual({ width: 64, height: 128 });
     expect(out.anchor).toEqual({ x: 32, y: 64 });
-    expect(sheetOf(out.generation)).toMatchObject({ rows: 2, cols: 4, nativeCanvas: 1024 });
+    expect(sheetOf(out.generation)).toMatchObject({ rows: 2, cols: 3, nativeCanvas: 1024 });
   });
 
   it('doubles both axes and reshapes to a 2×2 grid for large', () => {
@@ -121,15 +120,14 @@ describe('applySizeVariantToDefaults', () => {
     expect(tall.size).toEqual({ width: 64, height: 128 });
   });
 
-  it('reshapes from a base of 4 when the defaults omit rows/cols', () => {
+  it('applies the explicit layout when defaults omit rows/cols', () => {
     const partial = {
       size: { width: 64, height: 64 },
       anchor: { x: 32, y: 32 },
       generation: { sheet: { emptyCells: [], nativeCanvas: 1024 } },
     };
     const out = applySizeVariantToDefaults(partial, 'wide');
-    // Absent rows/cols fall back to the schema default of 4 before reshaping.
-    expect(sheetOf(out.generation)).toMatchObject({ rows: 4, cols: 2, nativeCanvas: 1024 });
+    expect(sheetOf(out.generation)).toMatchObject({ rows: 3, cols: 2, nativeCanvas: 1024 });
   });
 
   it('does not mutate the input defaults', () => {

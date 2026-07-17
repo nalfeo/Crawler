@@ -173,6 +173,11 @@ export interface CreateIssueIngesterOptions {
    */
   readonly targetIssueNumber?: number;
   /**
+   * Restrict the poll to `targetIssueNumber` instead of sweeping all open
+   * requests. Intended for explicit workflow-dispatch review reruns.
+   */
+  readonly targetIssueOnly?: boolean;
+  /**
    * When set and a claim's `claimedAt` is older than this many milliseconds,
    * the claim is treated as stale and dropped IFF the pipeline never wrote a
    * `completed` status doc for that issueNumber+fingerprint. Dropping the
@@ -424,7 +429,10 @@ export function createIssueIngesterController(
 
   async function pollOnce(): Promise<void> {
     lastPollAt = now().toISOString();
-    const swept = await options.issues.listOpenAssetRequestIssues();
+    if (options.targetIssueOnly && typeof options.targetIssueNumber !== 'number') {
+      throw new Error('targetIssueOnly requires targetIssueNumber');
+    }
+    const swept = options.targetIssueOnly ? [] : await options.issues.listOpenAssetRequestIssues();
     // Prepend the workflow-triggering issue (fetched via REST for
     // immediate consistency) so a fresh issue that hasn't propagated to the
     // GraphQL search index yet still gets enqueued in this run. Deduped by
@@ -437,7 +445,7 @@ export function createIssueIngesterController(
       if (!alreadyInSweep) {
         const priority = await options.issues.getIssue(targetNumber);
         if (priority) {
-          issuesToProcess = [priority, ...swept];
+          issuesToProcess = options.targetIssueOnly ? [priority] : [priority, ...swept];
         }
       }
     }

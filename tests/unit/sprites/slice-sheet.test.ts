@@ -70,6 +70,7 @@ function encodeContentGrid(
     png.data[i + 2] = BG.b;
     png.data[i + 3] = 255;
   }
+
   const origin = (idx: number): number => margin + idx * (block + gutter);
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -82,6 +83,35 @@ function encodeContentGrid(
           png.data[i] = col.r;
           png.data[i + 1] = col.g;
           png.data[i + 2] = col.b;
+        }
+      }
+    }
+  }
+  return PNG.sync.write(png);
+}
+
+function encodeUneven1024Grid(rows: number, cols: number): Buffer {
+  const size = 1024;
+  const margin = 12;
+  const png = new PNG({ width: size, height: size });
+  for (let i = 0; i < png.data.length; i += 4) {
+    png.data[i] = BG.r;
+    png.data[i + 1] = BG.g;
+    png.data[i + 2] = BG.b;
+    png.data[i + 3] = 255;
+  }
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x0 = Math.floor((c * size) / cols) + margin;
+      const x1 = Math.floor(((c + 1) * size) / cols) - margin;
+      const y0 = Math.floor((r * size) / rows) + margin;
+      const y1 = Math.floor(((r + 1) * size) / rows) - margin;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = (y * size + x) * 4;
+          png.data[i] = 30 + r * 50;
+          png.data[i + 1] = 40 + c * 70;
+          png.data[i + 2] = 120;
         }
       }
     }
@@ -503,6 +533,29 @@ describe('Bug B regression: inter-cell gutters govern the recovered grid', () =>
     expect(map.rows).toBe(4);
     expect(map.cols).toBe(4);
     expect(map.cells).toHaveLength(16);
+  });
+
+  it('recovers and deterministically re-slices a 3x2 grid on a 1024px canvas', () => {
+    const sheet = encodeUneven1024Grid(3, 2);
+    const brief = {
+      generation: {
+        sheet: {
+          rows: 3,
+          cols: 2,
+          emptyCells: [] as ReadonlyArray<readonly [number, number]>,
+        },
+      },
+    } as unknown as Brief;
+
+    const generated = sliceSheetFromBrief(sheet, brief);
+    expect(generated.grid).toEqual({ rows: 3, cols: 2, emptyCells: [] });
+    expect(generated.cells).toHaveLength(6);
+
+    const rerun = sliceSheetWithGrid(sheet, generated.grid);
+    expect(rerun.grid).toEqual(generated.grid);
+    expect(rerun.cells.map((cell, index) => cell.equals(generated.cells[index]!))).toEqual(
+      Array(6).fill(true),
+    );
   });
 
   // The incident: gpt-image-1 drew a 4×4 character sheet but adjacent columns

@@ -77,6 +77,15 @@ export interface Scorecard {
   };
 }
 
+export interface ScoreCandidateOptions {
+  /**
+   * Background-removed source cell captured before transparent trim/re-padding.
+   * When present, edge clipping is evaluated here so normalization cannot hide
+   * a figure that was cut off by the generated sheet cell.
+   */
+  readonly sourcePng?: Buffer;
+}
+
 /**
  * Score one post-processed PNG against its brief.
  *
@@ -88,15 +97,31 @@ export function scoreCandidate(
   processedPng: Buffer,
   brief: Brief,
   palette: PaletteColors,
+  options: ScoreCandidateOptions = {},
 ): Scorecard {
   const image = decodeSprite(processedPng);
   const breakdown: SensorResult[] = [];
+
+  if (options.sourcePng) {
+    breakdown.push(resolveSourceOpaqueBboxFits(decodeSprite(options.sourcePng), brief));
+  }
 
   // Universal sensors. opaqueRatio honors the brief override; the anchor
   // sensor is swapped between `anchor-opaque` (static brief pixel) and
   // `anchor-derivable` (derived per variant) based on `brief.sensors.anchor`.
   for (const result of runUniversal(image, brief, palette)) {
     breakdown.push(result);
+  }
+
+  function resolveSourceOpaqueBboxFits(image: RgbaImage, brief: Brief): SensorResult {
+    if (brief.type === 'tile') return { ok: true, sensor: 'source-opaque-bbox-fits' };
+    const edge = brief.sensors.edge;
+    const result = opaqueBboxFitsWithOptions(image, {
+      allowMainTouch: edge?.allowMainTouch,
+      allowDetachedEdgeComponents: edge?.allowDetachedEdgeComponents,
+      maxDetachedEdgePixels: edge?.maxDetachedEdgePixels,
+    });
+    return { ...result, sensor: 'source-opaque-bbox-fits' };
   }
 
   // Family-specific sensors.

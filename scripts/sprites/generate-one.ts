@@ -341,17 +341,26 @@ export async function generateSheetCore(
       });
       await store.put(storeKey(`sheet-${pad2(attempt)}.png`), sheet);
       const slice = sliceSheetFromBrief(sheet, brief);
-      // Structural-only gate (ADR 0052): the slicer
-      // is data-driven and never invents cuts, so it emits the sheet's HONEST
-      // grid at its real count — which may differ from the brief's commanded
-      // count when the model drew a runt edge or a gappy subject. We therefore
-      // NO LONGER reject on a count mismatch (that reversed 2026-07-07 decision
-      // force-fit the count by cutting through art). We reject only a structural
-      // failure — zero cells — and carry the honest grid to human gallery review.
+      // The slicer remains data-driven and never invents cuts. A different
+      // honest grid therefore means the provider did not satisfy the commanded
+      // sheet contract; retry the provider rather than cutting through art or
+      // accepting a missing/extra row.
       if (slice.cells.length === 0) {
         throw new ProviderError(
           'bad-grid',
           `slicer produced 0 cells from the generated sheet (structural failure)`,
+        );
+      }
+      const commanded = brief.generation.sheet;
+      if (
+        slice.grid.rows !== commanded.rows ||
+        slice.grid.cols !== commanded.cols ||
+        slice.variantCount !== expected
+      ) {
+        throw new ProviderError(
+          'bad-grid',
+          `slicer found ${slice.grid.rows}x${slice.grid.cols} with ${slice.variantCount} variants; ` +
+            `expected commanded ${commanded.rows}x${commanded.cols} with ${expected} variants`,
         );
       }
       sliceResult = slice;

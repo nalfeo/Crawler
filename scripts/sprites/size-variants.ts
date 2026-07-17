@@ -9,16 +9,14 @@
  * on each brief:
  *
  *   default — 1× width, 1× height → 4×4 = 16 cells (256×256 each)
- *   wide    — 2× width, 1× height → 4 rows × 2 cols = 8 cells (512×256, 2:1)
- *   tall    — 1× width, 2× height → 2 rows × 4 cols = 8 cells (256×512, 1:2)
+ *   wide    — 2× width, 1× height → 3 rows × 2 cols = 6 cells (~512×341, 2:1)
+ *   tall    — 1× width, 2× height → 2 rows × 3 cols = 6 cells (~341×512, 1:2)
  *   large   — 2× width, 2× height → 2 rows × 2 cols = 4 cells (512×512, 1:1)
  *
- * The transform scales `size`/`anchor` AND **reshapes the sheet grid by the
- * same multiplier on a fixed 1024² canvas** (a 2× wider cell ⇒ half the
- * columns). It does NOT inflate `nativeCanvas`: the sheet keeps a fixed pixel
- * budget and yields fewer, aspect-matched cells, so a "wide" request produces
- * one sheet of 8 double-width options rather than 16 square ones. See
- * ADR 0029.
+ * The transform scales `size`/`anchor` and applies the explicit review-density
+ * contract on a fixed 1024² canvas. Three-way axes use 341/342px cells separated
+ * by detected background gutters; they are intentionally not represented as
+ * falsely equal fractional cells. It does NOT inflate `nativeCanvas`.
  *
  * The transform is applied to the per-type DEFAULTS *before* the minimal
  * brief's explicit overrides are merged on top (see `mergeMinimalIntoDefaults`),
@@ -47,6 +45,15 @@ export const SIZE_VARIANT_MULTIPLIERS: Readonly<Record<SizeVariant, SizeMultipli
   wide: { width: 2, height: 1 },
   tall: { width: 1, height: 2 },
   large: { width: 2, height: 2 },
+};
+
+export const SIZE_VARIANT_SHEET_LAYOUTS: Readonly<
+  Record<SizeVariant, { readonly rows: number; readonly cols: number }>
+> = {
+  default: { rows: 4, cols: 4 },
+  wide: { rows: 3, cols: 2 },
+  tall: { rows: 2, cols: 3 },
+  large: { rows: 2, cols: 2 },
 };
 
 /**
@@ -102,10 +109,9 @@ export function coerceSizeVariant(value: unknown): SizeVariant {
  * - `size` and `anchor` scale by the same per-axis multiplier, so the schema
  *   invariant `anchor.x < size.width` (and the `.y` equivalent) is preserved:
  *   strict integer inequality survives multiplication by a positive integer.
- * - `generation.sheet.{rows,cols}` are **reshaped** by the same multiplier
- *   (cols ÷ width, rows ÷ height, floored at 1) so the sheet keeps a fixed
- *   pixel budget but yields fewer, aspect-matched cells. `nativeCanvas` is left
- *   untouched — wide/tall/large no longer supersample to a larger canvas.
+ * - `generation.sheet.{rows,cols}` use the explicit size-layout contract.
+ *   `nativeCanvas` is left untouched — wide/tall/large do not supersample to a
+ *   larger canvas.
  * - Only fields that exist and are finite numbers are touched, so legacy or
  *   partial defaults (and `{}` for types without a defaults file) pass through
  *   unchanged.
@@ -135,27 +141,12 @@ export function applySizeVariantToDefaults<T extends Record<string, unknown>>(
   const generation = scaled.generation;
   if (isPlainObject(generation) && isPlainObject(generation.sheet)) {
     const sheet = generation.sheet;
-    // Reshape the grid by the SAME multiplier instead of inflating the canvas:
-    // a 2× wider cell means half as many columns, so the sheet stays a fixed
-    // pixel budget (nativeCanvas untouched) but yields fewer, aspect-matched
-    // cells — e.g. wide → 4 rows × 2 cols = 8 cells of 512×256. See ADR 0029.
-    sheet.cols = reshapeAxis(sheet.cols, mult.width);
-    sheet.rows = reshapeAxis(sheet.rows, mult.height);
+    const layout = SIZE_VARIANT_SHEET_LAYOUTS[variant];
+    sheet.rows = layout.rows;
+    sheet.cols = layout.cols;
   }
 
   return scaled;
-}
-
-/**
- * Divide a base grid axis (rows or cols) by a size multiplier, flooring at 1.
- * A non-numeric/absent base falls back to the schema default of 4, so a
- * defaults file that omits the grid still reshapes correctly. The brief
- * schema's divisibility check fails loud if a pathological base/multiplier
- * combo would leave `nativeCanvas` non-divisible by the reshaped grid.
- */
-function reshapeAxis(base: unknown, divisor: number): number {
-  const n = typeof base === 'number' && Number.isFinite(base) && base > 0 ? base : 4;
-  return Math.max(1, Math.round(n / divisor));
 }
 
 function scaleNumberField(obj: Record<string, unknown>, key: string, factor: number): void {

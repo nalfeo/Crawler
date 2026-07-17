@@ -311,8 +311,39 @@ describe('judgeVariant — happy path', () => {
     expect(call.request.systemInstructions).toContain('below 3');
     expect(call.request.systemInstructions).toContain('transparency holes');
     expect(call.request.systemInstructions).toContain('disconnected/floating pixel islands');
+    expect(call.request.systemInstructions).toContain('pixel-cluster granularity');
+    expect(call.request.systemInstructions).toContain('coarser blocks');
+    expect(call.request.userPrompt).toContain('EFFECTIVE GEOMETRY:');
     // System prompt must embed the (truncated) style guide.
     expect(call.request.systemInstructions).toContain('pixel art style guide content');
+  });
+
+  it('tells the judge to reject profile enemies when three-quarter is expected', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        style_match: { score: 4, rationale: 'same family' },
+        brief_match: { score: 4, rationale: 'correct subject' },
+        readability: { score: 4, rationale: 'clear' },
+      },
+    });
+    const brief = briefSchema.parse({
+      ...makeBrief(),
+      type: 'enemy',
+      sensors: { enemy: { facing: 'front' } },
+    });
+    await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [makeRefPng()],
+      brief,
+      styleGuide: 'style',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+    expect(calls[0]!.request.userPrompt).toMatch(/front-biased three-quarter/i);
+    expect(calls[0]!.request.userPrompt).toMatch(/both eyes/i);
+    expect(calls[0]!.request.systemInstructions).toMatch(/strict profile[\s\S]*score <= 2/i);
   });
 
   it('caps references at 3 to control cost', async () => {

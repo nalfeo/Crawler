@@ -72,6 +72,7 @@ import {
   resolveRequestedBy,
   resolveRunUrl,
   resolveStaleClaimTtlMs,
+  resolveTargetIssueOnly,
   resolveTargetIssueNumber,
   withAuthorAllowList,
 } from './ingest-once-cli-lib.js';
@@ -90,6 +91,7 @@ async function main(): Promise<number> {
   const issues = allowedAuthors ? withAuthorAllowList(rawIssues, allowedAuthors) : rawIssues;
   const requestedBy = resolveRequestedBy(process.env);
   const targetIssueNumber = resolveTargetIssueNumber(process.env);
+  const targetIssueOnly = resolveTargetIssueOnly(process.env);
   const staleClaimTtlMs = resolveStaleClaimTtlMs(process.env);
   const runUrl = resolveRunUrl(process.env);
 
@@ -97,6 +99,7 @@ async function main(): Promise<number> {
     `ingest-once starting (queue=${queue.backend}, store=${store.backend}, requestedBy=${requestedBy}, ` +
       `allowedAuthors=${allowedAuthors ? [...allowedAuthors].join(',') : 'ALL'}, ` +
       `targetIssue=${targetIssueNumber ?? 'none'}, ` +
+      `targetOnly=${targetIssueOnly}, ` +
       `staleClaimTtlMs=${staleClaimTtlMs ?? 'disabled'}, ` +
       `runUrl=${runUrl ?? 'none'})`,
   );
@@ -112,6 +115,7 @@ async function main(): Promise<number> {
     // belt-and-suspenders default for anyone who refactors this later.
     pollIntervalMs: 24 * 60 * 60 * 1000,
     ...(typeof targetIssueNumber === 'number' ? { targetIssueNumber } : {}),
+    ...(targetIssueOnly ? { targetIssueOnly: true } : {}),
     ...(typeof staleClaimTtlMs === 'number' ? { staleClaimTtlMs } : {}),
     issueStatusPrefix: ISSUE_STATUS_KEY_PREFIX,
     postEnqueueComment: (context) => formatEnqueueCommentBody({ context, runUrl }),

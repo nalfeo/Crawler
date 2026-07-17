@@ -73,9 +73,9 @@ const referenceSchema = z
  * 4-ways yields 256x256 cells, which resample cleanly by an integer factor
  * to the default 64x64 output (and any larger integer multiples); 16 variants per call gives the
  * scoring loop enough headroom to reject low-quality candidates without
- * paying for a second provider round-trip. The slicer requires `nativeCanvas`
- * to be evenly divisible by both `rows` and `cols`, which the defaults
- * satisfy by construction.
+ * paying for a second provider round-trip. Non-divisible axes are supported:
+ * real background gutters define slightly uneven integer cells (for example
+ * 341/342px thirds on a 1024px canvas).
  *
  * - `rows` x `cols` defines the grid. Variant count equals `rows * cols` minus
  *   the number of declared `emptyCells`.
@@ -155,9 +155,9 @@ const sensorOverridesSchema = z
          *   only for `facing: 'front'`).
          * - Enemy scoring no longer uses orientation-axis gating, but the
          *   value flows into the mob-rules prompt so authors can pin the
-         *   sideways direction the mob should face. The enemy sprite-type
-         *   template pins `right` by default so mobs land consistently
-         *   oriented instead of drifting between left/right runs.
+         *   presentation. The enemy sprite-type template pins `front` by default,
+         *   which prompt generation interprets as front-biased three-quarter.
+         *   Explicit left/right values remain strict profile overrides.
          */
         facing: z.enum(['front', 'left', 'right', 'any']).optional(),
         toleranceDeg: z.number().min(0).max(45).default(2),
@@ -354,17 +354,6 @@ export const briefSchema = z
         code: 'custom',
         path: ['generation', 'sheet'],
         message: `grid produces ${variantCount} variants — must be at least 1`,
-      });
-    }
-    // The slicer requires nativeCanvas to be evenly divisible by both rows
-    // and cols so every cell is an integer pixel grid. We catch this at
-    // brief-load time so we fail before a (slow, expensive) provider call.
-    const { nativeCanvas } = brief.generation.sheet;
-    if (nativeCanvas % rows !== 0 || nativeCanvas % cols !== 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['generation', 'sheet'],
-        message: `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${nativeCanvas / cols}x${nativeCanvas / rows})`,
       });
     }
   });

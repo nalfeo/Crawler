@@ -267,10 +267,10 @@ describe('synthesizeBrief — size variants', () => {
   });
 
   it.each([
-    ['wide', { width: 128, height: 64 }, { rows: 4, cols: 2 }],
-    ['tall', { width: 64, height: 128 }, { rows: 2, cols: 4 }],
-    ['large', { width: 128, height: 128 }, { rows: 2, cols: 2 }],
-  ] as const)('produces the documented %s geometry', async (sizeVariant, size, sheet) => {
+    ['wide', { width: 128, height: 64 }, { rows: 3, cols: 2 }, { x: 4, y: 16 / 3 }],
+    ['tall', { width: 64, height: 128 }, { rows: 2, cols: 3 }, { x: 16 / 3, y: 4 }],
+    ['large', { width: 128, height: 128 }, { rows: 2, cols: 2 }, { x: 4, y: 4 }],
+  ] as const)('produces the documented %s geometry', async (sizeVariant, size, sheet, scale) => {
     const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));
     const { hooks, files } = makeFsWrites();
     const result = await synthesizeBrief({
@@ -294,8 +294,8 @@ describe('synthesizeBrief — size variants', () => {
     };
     expect(merged.size).toEqual(size);
     expect(generation.sheet).toMatchObject(sheet);
-    expect(1024 / generation.sheet.cols).toBe(size.width * 4);
-    expect(1024 / generation.sheet.rows).toBe(size.height * 4);
+    expect(1024 / generation.sheet.cols / size.width).toBeCloseTo(scale.x);
+    expect(1024 / generation.sheet.rows / size.height).toBeCloseTo(scale.y);
   });
 
   it('omits baseline floor 1 from YAML and writes explicit deeper floors', async () => {

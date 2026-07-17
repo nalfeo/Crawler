@@ -111,21 +111,23 @@ describe('buildPrompt (single)', () => {
 
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
     expect(out).toMatch(/Mob rules/i);
-    expect(out).toMatch(/straight forward/i);
+    expect(out).toMatch(/front-biased three-quarter/i);
+    expect(out).toMatch(/two-thirds facing the camera/i);
+    expect(out).toMatch(/both eyes readable/i);
     expect(out).toMatch(/no held weapons/i);
     expect(out).toMatch(/no shields/i);
     expect(out).toMatch(/no spell effects/i);
   });
 
-  it('defaults enemy briefs to profile facing left when facing is omitted', () => {
+  it('defaults enemy briefs to front-biased three-quarter when facing is omitted', () => {
     const enemy = makeBrief({
       type: 'enemy',
       anchor: { x: 8, y: 8 },
       sensors: { anchor: { mode: 'center-of-mass' } } as Brief['sensors'],
     });
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
-    expect(out).toMatch(/profile facing left/i);
-    expect(out).not.toMatch(/profile facing right/i);
+    expect(out).toMatch(/front-biased three-quarter/i);
+    expect(out).not.toMatch(/profile facing (left|right)/i);
   });
 
   it('honors an explicit left-facing enemy brief', () => {
@@ -205,13 +207,15 @@ describe('buildSheetPrompt', () => {
     expect(out).toMatch(/exactly 4 variants/i);
   });
 
-  it('honors a non-default grid (4x2 = 8)', () => {
+  it('honors a non-default grid (3x2 = 6)', () => {
     const brief = makeBrief({
-      generation: { sheet: { rows: 4, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
+      generation: { sheet: { rows: 3, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
-    expect(out).toMatch(/exactly 8 variants/i);
-    expect(out).toMatch(/4 rows.*2 columns/i);
+    expect(out).toMatch(/exactly 6 variants/i);
+    expect(out).toMatch(/3 rows.*2 columns/i);
+    expect(out).toMatch(/341-342px wide and 341-342px tall|512px wide and 341-342px tall/i);
+    expect(out).toMatch(/do not add, merge, or crop a row or column/i);
   });
 
   it('communicates empty cells with 1-based human-friendly coordinates', () => {
@@ -437,11 +441,11 @@ describe('output size block', () => {
   });
 
   it('describes a wide subject in an aspect-matched landscape cell', () => {
-    // wide reshapes the grid to 4 rows × 2 cols on a fixed 1024 canvas → 512×256.
+    // Wide uses 3 rows × 2 cols on a fixed 1024 canvas → 512×341/342.
     const brief = makeBrief({
       type: 'enemy',
       size: { width: 128, height: 64 },
-      generation: { sheet: { rows: 4, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
+      generation: { sheet: { rows: 3, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain(
@@ -449,18 +453,18 @@ describe('output size block', () => {
     );
     expect(out).toContain('landscape (wider than tall) at a 2:1 aspect ratio');
     expect(out).toContain('span roughly 448-480 source pixels wide and 224-240 source pixels tall');
-    expect(out).toContain('Within each 512x256 source cell');
+    expect(out).toContain('Within each 512x341 source cell');
     // The cell is no longer square — the wording must not call it square.
     expect(out).not.toContain('square 512x256');
   });
 
   it('describes a tall subject in an aspect-matched portrait cell', () => {
-    // tall reshapes the grid to 2 rows × 4 cols → 256×512 cells.
+    // Tall uses 2 rows × 3 cols → 341/342×512 cells.
     const brief = makeBrief({
       type: 'character',
       size: { width: 64, height: 128 },
       anchor: { x: 32, y: 126 },
-      generation: { sheet: { rows: 2, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
+      generation: { sheet: { rows: 2, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain(
@@ -468,7 +472,7 @@ describe('output size block', () => {
     );
     expect(out).toContain('portrait (taller than wide) at a 1:2 aspect ratio');
     expect(out).toContain('span roughly 224-240 source pixels wide and 448-480 source pixels tall');
-    expect(out).toContain('Within each 256x512 source cell');
+    expect(out).toContain('Within each 341x512 source cell');
   });
 
   it('treats a large (2x2) subject as square at the reshaped cell size', () => {
@@ -521,17 +525,30 @@ describe('type rules scale with the brief size', () => {
   });
 
   it('scales the enemy band for a tall variant', () => {
-    // tall enemy reshapes to 2 rows × 4 cols → 256×512 cells.
+    // Tall enemy uses 2 rows × 3 cols → 341/342×512 cells.
     const brief = makeBrief({
       type: 'enemy',
       size: { width: 64, height: 128 },
       anchor: { x: 32, y: 64 },
-      generation: { sheet: { rows: 2, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
+      generation: { sheet: { rows: 2, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain(
-      'roughly a full 128px-tall in-game sprite (about 448-480 source pixels tall in a 256x512 cell)',
+      'roughly a full 128px-tall in-game sprite (about 448-480 source pixels tall in a 341x512 cell)',
     );
+  });
+
+  it('adds effective source-to-output granularity to sheet prompts', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      size: { width: 128, height: 64 },
+      generation: { sheet: { rows: 3, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
+    } as Partial<Brief>);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('## Pixel granularity');
+    expect(out).toContain('approximately 512x341.3 source pixels');
+    expect(out).toContain('about 4x5.3 source pixels');
+    expect(out).toMatch(/Avoid oversized block clusters/i);
   });
 });
 

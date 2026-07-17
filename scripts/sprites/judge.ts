@@ -50,7 +50,7 @@ import { contentDirectionBlock } from './content-direction.js';
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v3';
+const PROMPT_TEMPLATE_VERSION = 'v4';
 
 export type Evaluator = 'design_language' | 'reference_style_match' | 'brief_match' | 'readability';
 
@@ -357,12 +357,16 @@ function buildSystemInstructions(styleGuide: string, floor: number): string {
     '',
     '  2. reference_style_match — Does the rendering belong beside the approved references?',
     '                              Compare outline weight, palette depth, shading stops, dithering,',
-    '                              edge treatment, scale, and production finish. Do not require the',
-    '                              same subject matter or palette.',
+    '                              edge treatment, final-output pixel-cluster granularity, scale, and',
+    '                              production finish. Obvious coarser blocks or inconsistent effective',
+    '                              resolution versus the references score <= 2. Do not require the same',
+    '                              subject matter or palette.',
     '',
     '  3. brief_match  — Does the candidate depict the subject described in the brief',
-    '                    (provided in the user prompt)? 5 = unambiguously the requested',
-    '                    subject. Accidental faces or limbs on an inanimate item score <= 2.',
+    '                    and comply with EXPECTED PRESENTATION in the user prompt?',
+    '                    5 = unambiguously the requested subject and camera angle. An enemy shown in',
+    '                    strict profile when front-biased three-quarter is expected scores <= 2.',
+    '                    Accidental faces or limbs on an inanimate item score <= 2.',
     '',
     '  4. readability  — Inspect the READABILITY-COMPOSITE. Does the silhouette read clearly',
     '                    at game scale on a dark floor tile? 5 = silhouette pops; the subject',
@@ -402,6 +406,8 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
     `BRIEF TYPE: ${brief.type}`,
     `BRIEF PROMPT: ${brief.prompt}`,
     `FLOOR: ${brief.floor} of 20`,
+    `EXPECTED PRESENTATION: ${expectedPresentation(brief)}`,
+    `EFFECTIVE GEOMETRY: ${effectiveGeometry(brief)}`,
     brief.tags.length > 0 ? `BRIEF TAGS: ${brief.tags.join(', ')}` : '',
     '',
     'Attached images, in order:',
@@ -413,6 +419,37 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
       '  3+. reference-N            — our approved in-game sprites; the style ground truth.',
       '                               The candidate must read as same-family with them.',
     );
+  }
+
+  function expectedPresentation(brief: Brief): string {
+    if (brief.type !== 'enemy') return 'follow the brief and type conventions';
+    const facing = brief.sensors.enemy?.facing ?? 'front';
+    if (facing === 'front') {
+      return 'front-biased three-quarter, roughly two-thirds toward camera, with both eyes and the face plane readable; not strict profile';
+    }
+    if (facing === 'left' || facing === 'right') return `strict profile facing ${facing}`;
+    return 'consistent across variants';
+  }
+
+  function effectiveGeometry(brief: Brief): string {
+    const sheet = brief.generation?.sheet ?? {
+      nativeCanvas: 1024,
+      rows: 4,
+      cols: 4,
+    };
+    const { nativeCanvas, rows, cols } = sheet;
+    const size = brief.size ?? { width: 64, height: 64 };
+    const sourceWidth = nativeCanvas / cols;
+    const sourceHeight = nativeCanvas / rows;
+    return (
+      `${rows} rows x ${cols} columns on ${nativeCanvas}x${nativeCanvas}; ` +
+      `approximately ${formatDimension(sourceWidth)}x${formatDimension(sourceHeight)} source pixels ` +
+      `to ${size.width}x${size.height} output pixels`
+    );
+  }
+
+  function formatDimension(value: number): string {
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
   }
   lines.push('', refSummary, '', 'Return your four scores and rationales as a strict JSON object.');
   return lines.filter((s) => s !== '').join('\n');

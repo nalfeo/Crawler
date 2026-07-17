@@ -225,16 +225,13 @@ describe('briefSchema', () => {
     }
   });
 
-  it('rejects a sheet whose nativeCanvas is not divisible by both rows and cols', () => {
+  it('accepts non-divisible axes for gutter-defined uneven integer cells', () => {
     const result = briefSchema.safeParse({
       ...validBrief,
       generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
     });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map((i) => i.message);
-      expect(messages.some((m) => m.includes('not evenly divisible'))).toBe(true);
-    }
+    expect(result.success).toBe(true);
+    if (result.success) expect(variantCount(result.data)).toBe(9);
   });
 
   it('rejects empty-cell coordinates outside the declared grid', () => {

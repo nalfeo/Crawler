@@ -41,6 +41,17 @@ on:
     # (c) issues whose body was edited to fix a validation error.
     types: [labeled, edited, reopened]
   workflow_dispatch:
+    inputs:
+      target_issue:
+        description: Exact asset-request issue number (0 = normal sweep)
+        required: false
+        type: number
+        default: 0
+      export_review_artifacts:
+        description: Force a fresh targeted run into downloadable Actions artifacts
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -129,7 +140,10 @@ jobs:
           # Force Azure backends. The default CLI falls back to `noop`/`local`
           # if unset, which would silently no-op the workflow.
           SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
-          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          SPRITES_RUN_STORE: >-
+            ${{ inputs.export_review_artifacts && 'local'
+                || secrets.SPRITES_RUN_STORE
+                || 'azure-blob' }}
 
           # Trust boundary: even though the workflow-level `if:` gate blocks
           # untrusted authors from triggering a run, the ingester scans EVERY
@@ -146,9 +160,18 @@ jobs:
 
           # Kill the GraphQL search-indexing lag: force-fetch the triggering
           # issue by number (REST-backed, immediately consistent) so a
-          # freshly-labeled issue is never missed by the sweep. Empty on
-          # `workflow_dispatch` runs — the sweep alone handles that case.
-          SPRITES_INGESTER_TARGET_ISSUE: ${{ github.event.issue.number }}
+          # freshly-labeled issue is never missed by the sweep. A manual
+          # target runs only that issue; review-artifact mode uses a fresh
+          # local run store, which intentionally bypasses persisted dedup.
+          SPRITES_INGESTER_TARGET_ISSUE: >-
+            ${{ github.event_name == 'workflow_dispatch'
+                && inputs.target_issue
+                || github.event.issue.number }}
+          SPRITES_INGESTER_TARGET_ONLY: >-
+            ${{ github.event_name == 'workflow_dispatch'
+                && inputs.target_issue > 0
+                && 'true'
+                || 'false' }}
 
           # Stale-claim recovery: if a prior run enqueued an issue but the
           # worker never wrote a `completed` status doc within this many ms,
@@ -204,7 +227,10 @@ jobs:
 
           # Force Azure backends.
           SPRITES_ASSET_QUEUE: ${{ secrets.SPRITES_ASSET_QUEUE || 'azure-queue' }}
-          SPRITES_RUN_STORE: ${{ secrets.SPRITES_RUN_STORE || 'azure-blob' }}
+          SPRITES_RUN_STORE: >-
+            ${{ inputs.export_review_artifacts && 'local'
+                || secrets.SPRITES_RUN_STORE
+                || 'azure-blob' }}
 
           # Drain-mode: exit after 3 consecutive idle polls (~15s at 5s poll
           # interval). Without this the worker CLI idles forever and burns the
@@ -225,3 +251,12 @@ jobs:
           # synth + judge, which are the two calls the drain worker needs.
           SPRITES_ALLOW_CI_PIPELINE: 'true'
         run: npm run sprites:worker
+
+      - name: Upload review artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.export_review_artifacts }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: asset-request-${{ inputs.target_issue }}-review
+          path: generated/runs
+          if-no-files-found: error
+          retention-days: 14
