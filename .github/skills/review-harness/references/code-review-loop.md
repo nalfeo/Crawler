@@ -15,6 +15,31 @@ unless a human explicitly requests a local run or targeted diagnosis requires it
 Each agent is stateless — give it the full context (branch, what changed, how to
 run things) in the prompt.
 
+## Canonical review prompt
+
+Every general code-review invocation must tell the agent to read and follow
+`.github/instructions/review.instructions.md` and
+`docs/agent-os/personas/reviewer.md`. Those files are the canonical persona and
+completeness contract shared with native Copilot pull-request review. Do not copy a
+shortened checklist into an invocation: that lets review paths drift.
+
+The harness can explicitly select models with the `task` tool's `model` parameter.
+Native GitHub Copilot pull-request review uses GitHub's selected model and does not expose
+a repository-controlled model selector, so repository instructions influence its persona
+and method, not its underlying model.
+
+Use this prompt for each general reviewer:
+
+```
+Review this branch against main. Before reviewing, read and follow
+`.github/instructions/review.instructions.md`,
+`docs/agent-os/personas/reviewer.md`, and every path-specific instruction that applies
+to the changed files. Inspect the complete diff plus relevant callers and tests. Follow
+the contract's category matrix and second-pass root-cause search. Return all validated
+findings together; do not stop at the first issue or defer discoveries to another round.
+Repo: Crawler. Run `git --no-pager diff main...HEAD` to inspect the diff.
+```
+
 ---
 
 ## Code-review loop (≥3🍎)
@@ -26,9 +51,7 @@ remain**.
 
    ```
    task(agent_type="code-review", model="claude-sonnet-4.6", name="cr-1",
-        prompt="Review the changes on this branch vs main. Focus on real bugs,
-                logic errors, and design flaws — skip style/nits. Repo: Crawler.
-                Run `git --no-pager diff main...HEAD` to see the diff.")
+        prompt="<canonical review prompt above>")
    ```
 
 2. Address every valid concern (push fixes). Re-run `npm run verify:fast`.
@@ -70,6 +93,9 @@ final reasoning model decides which concerns are valid and the remedy, you
    task(agent_type="code-review", model="gemini-3.1-pro-preview", name="mcr-gemini", prompt="<diff review prompt>")
    task(agent_type="security-review", model="gpt-5.4", name="mcr-sec", prompt="<security review prompt>")
    ```
+
+   Give every general reviewer the canonical prompt above. Add trust-boundary context to
+   the security-review prompt without weakening or replacing its specialist instructions.
 
 2. Adjudicate. Give a final reasoning model all the raw findings; it decides which
    are valid (de-dupes, rejects false positives) and the right fix for each:
