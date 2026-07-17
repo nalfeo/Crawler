@@ -6235,18 +6235,6 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
 
-    if (progressSuppressed) {
-      // progressSuppressed is true when combat or navigation stalls have
-      // temporarily blocked quest-progress navigation (frameCount <
-      // progressGoalSuppressedUntilFrame). Still notify the committed hunt so
-      // the suppression-recovery branch in updateFloor2HuntProgress fires
-      // (advances patrol) even while suppressed.
-      if (this.floor2HuntFamilyId) {
-        this.updateFloor2HuntProgress(world, this.floor2HuntFamilyId);
-      }
-      return null;
-    }
-
     const huntFamilyId = this.selectFloor2HuntFamily(world);
     if (!huntFamilyId) {
       return null;
@@ -6263,23 +6251,36 @@ export class BehaviorTreeAI implements AIInputProvider {
           Number.POSITIVE_INFINITY,
           false,
         );
-      return boss
-        ? this.createFloor2BossProgressTarget(
-            world,
-            huntFamilyId,
-            boss,
-            playerX,
-            playerY,
-            `Entering the ${huntFamilyId} den to confront its boss`,
-          )
-        : null;
+      if (!boss) return null;
+      // When progress is suppressed, only navigate to a reachable boss.  An
+      // unreachable pre-encounter boss (eid: -1 EXPLORE target) would be
+      // immediately reselected as the same fixed goal the watchdog is pausing,
+      // causing the no-path clear/reselect loop to continue.
+      if (progressSuppressed && !this.isTargetReachable(world, playerX, playerY, boss)) {
+        return null;
+      }
+      return this.createFloor2BossProgressTarget(
+        world,
+        huntFamilyId,
+        boss,
+        playerX,
+        playerY,
+        `Entering the ${huntFamilyId} den to confront its boss`,
+      );
     }
 
     const quest = world.questLog.get(`floor2-den-${huntFamilyId}-unlock`);
     if (!quest || quest.status !== 'active') {
       return null;
     }
-    return this.findFloor2QuestProgressTarget(world, playerEid, playerX, playerY, quest);
+    return this.findFloor2QuestProgressTarget(
+      world,
+      playerEid,
+      playerX,
+      playerY,
+      quest,
+      progressSuppressed,
+    );
   }
 
   private findFloor2QuestProgressTarget(
@@ -6288,6 +6289,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     activeQuest: QuestState,
+    progressSuppressed: boolean,
   ): ProgressTarget | null {
     const parsedFamilyId = this.parseFloor2FamilyId(activeQuest.questId);
     const familyId = world.floorExtendedState?.familyState?.presentFamilies.find(
@@ -6303,17 +6305,18 @@ export class BehaviorTreeAI implements AIInputProvider {
       objectiveViews.find((view) => !view.complete);
     if (!activeView) {
       const unlockedBoss = this.findNearestFloor2Boss(world, playerX, playerY, familyId);
-      if (unlockedBoss) {
-        return this.createFloor2BossProgressTarget(
-          world,
-          familyId,
-          unlockedBoss,
-          playerX,
-          playerY,
-          `Hunting the ${familyId} boss`,
-        );
+      if (!unlockedBoss) return null;
+      if (progressSuppressed && !this.isTargetReachable(world, playerX, playerY, unlockedBoss)) {
+        return null;
       }
-      return null;
+      return this.createFloor2BossProgressTarget(
+        world,
+        familyId,
+        unlockedBoss,
+        playerX,
+        playerY,
+        `Hunting the ${familyId} boss`,
+      );
     }
 
     const objective = activeView.def;
@@ -6360,7 +6363,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const territoryTarget = territoryZone
       ? this.resolveFloor2HuntPatrolTarget(world, familyId, territoryZone, playerX, playerY)
       : null;
-    if (territoryTarget && this.isFloor2HuntRecoveryWindow(world)) {
+    if (!progressSuppressed && territoryTarget && this.isFloor2HuntRecoveryWindow(world)) {
       return {
         ...territoryTarget,
         reason: `Patrolling the ${familyId} territory between engagements`,
@@ -6391,7 +6394,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             'focused',
           );
         }
-        return territoryClearTarget ?? territoryTarget;
+        return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
       case 'collect':
         if (objective.itemId) {
           const itemTarget = this.findNearestQuestItem(world, objective.itemId, playerX, playerY);
@@ -6417,20 +6420,24 @@ export class BehaviorTreeAI implements AIInputProvider {
             'focused',
           );
         }
-        return territoryClearTarget ?? territoryTarget;
+        return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
       case 'goal':
       case 'talk':
       case 'haveEquippable':
       case 'equip':
         if (bossTarget) {
-          return this.createFloor2BossProgressTarget(
-            world,
-            familyId,
-            bossTarget,
-            playerX,
-            playerY,
-            `Closing on the ${familyId} boss den`,
-          );
+          if (progressSuppressed && !this.isTargetReachable(world, playerX, playerY, bossTarget)) {
+            // Fall through to familyEnemy / territoryClearTarget / territoryTarget.
+          } else {
+            return this.createFloor2BossProgressTarget(
+              world,
+              familyId,
+              bossTarget,
+              playerX,
+              playerY,
+              `Closing on the ${familyId} boss den`,
+            );
+          }
         }
         if (familyEnemy) {
           return this.createProgressTarget(
@@ -6443,7 +6450,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             'focused',
           );
         }
-        return territoryClearTarget ?? territoryTarget;
+        return territoryClearTarget ?? (progressSuppressed ? null : territoryTarget);
       default:
         return null;
     }

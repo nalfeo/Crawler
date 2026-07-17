@@ -131,6 +131,17 @@ function makeSealedRoom(widthTiles: number, heightTiles: number, wallColumnX: nu
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
 }
 
+function suppressProgressGoals(
+  ai: BehaviorTreeAI,
+  untilFrame: number = Number.MAX_SAFE_INTEGER,
+): void {
+  (
+    ai as unknown as {
+      progressGoalSuppressedUntilFrame: number;
+    }
+  ).progressGoalSuppressedUntilFrame = untilFrame;
+}
+
 /**
  * Build a 1-tile-tall horizontal corridor split into two A*-disconnected floor
  * segments by a full-height wall column at `wallColumnX`. An entity standing on
@@ -1309,6 +1320,7 @@ describe('BehaviorTreeAI', () => {
 
     world.goalFlags.set(denUnlockGoalId(familyId), true);
     const unlockedButInactiveAi = new BehaviorTreeAI({ seed: 57 });
+    suppressProgressGoals(unlockedButInactiveAi);
     unlockedButInactiveAi.poll(createInputState(), world);
     expect(unlockedButInactiveAi.getDecision()).toMatchObject({
       state: AIState.EXPLORE,
@@ -1323,6 +1335,64 @@ describe('BehaviorTreeAI', () => {
       state: AIState.ENGAGE,
       targetEid: bossEid,
     });
+  });
+
+  it('does not navigate to a sealed (unreachable) boss den while progress is suppressed', () => {
+    // Regression: when progress is suppressed and the boss den is sealed behind
+    // a wall, findNearestFloor2Boss falls back to the nearest candidate regardless
+    // of reachability.  createFloor2BossProgressTarget then builds an eid:-1
+    // EXPLORE goal that the watchdog immediately re-selects after the no-path
+    // clear, perpetuating the clear/reselect loop.  The guard must return null
+    // when suppressed and the boss is not reachable.
+    const world = createTestWorld({ seed: 64, floor: 2 });
+    // Wall at tile x=14 (feet x=56) splits the map: player on the left, boss on the right.
+    world.floorMap = makeSealedRoom(40, 20, 14);
+    // spawnPlayer is required for the AI to have a valid subject; the eid is not asserted.
+    spawnPlayer(world, 10, 10);
+    const familyId = asFamilyId('imps');
+    const bossEid = spawnEnemy(world, 66, 10, 100);
+    addComponent(world.ecs, bossEid, FamilyMembership);
+    world.stores.familyMembership.familyId[bossEid] = 0;
+    world.stores.familyMembership.isBoss[bossEid] = 1;
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [familyId],
+        contestedResource: 'gold-veins' as never,
+        betrayerFlag: false,
+        reputationSystemActive: true,
+        trashKillsByFamily: new Map([[familyId, 0]]),
+        bossEncounters: new Map([
+          [
+            familyId,
+            {
+              familyId,
+              roomId: -1,
+              doorEids: [],
+              activeGoalId: 'floor2-den-imps-boss-active',
+              started: false,
+              bossEid,
+              defeated: false,
+              displayName: 'Imp Boss',
+              lootTableId: 'boss',
+            },
+          ],
+        ]),
+      },
+    };
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    world.goalFlags.set(denUnlockGoalId(familyId), true);
+
+    const ai = new BehaviorTreeAI({ seed: 64 });
+    suppressProgressGoals(ai);
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    // When suppressed, the unreachable sealed boss must not become an EXPLORE
+    // target — it would immediately re-create the same fixed goal the watchdog
+    // just paused, keeping the no-path clear/reselect loop alive.
+    expect(decision.targetEid).not.toBe(bossEid);
+    expect(decision.reason).not.toContain('boss');
   });
 
   it('selects reachable live trash from the committed Floor 2 family', () => {
@@ -1364,6 +1434,51 @@ describe('BehaviorTreeAI', () => {
     ).findNearestFloor2HuntEnemy(world, familyId, 14, 14, 100, false);
 
     expect(target?.eid).toBe(reachableTrash);
+  });
+
+  it('keeps Floor 2 family enemy progress available while fixed goals are suppressed', () => {
+    const world = createTestWorld({ seed: 61, floor: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor2Scenario(world, player);
+    world.goalFlags.set(FLOOR2_SETTLEMENT_FOUND_GOAL_ID, true);
+    world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
+    const familyId = world.floorExtendedState!.familyState!.presentFamilies[0]!;
+    const familyIndex = 0;
+    world.floorMap = makeOpenRoom(40, 20);
+    (
+      world.floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [{ familyIndex, centerX: 10, centerY: 10, radius: 8 }];
+    const playerPos = world.floorMap.tileToWorld(10, 10);
+    world.stores.position.x[player] = playerPos.x;
+    world.stores.position.y[player] = playerPos.y;
+    const familyEnemy = spawnEnemy(world, playerPos.x + 8, playerPos.y, 20);
+    addComponent(world.ecs, familyEnemy, FamilyMembership);
+    world.stores.familyMembership.familyId[familyEnemy] = familyIndex;
+    world.stores.familyMembership.isBoss[familyEnemy] = 0;
+    const quest = world.questLog.get(`floor2-den-${familyId}-unlock`);
+    expect(quest?.status).toBe('active');
+
+    const target = (
+      new BehaviorTreeAI({ seed: 61 }) as unknown as {
+        findFloor2QuestProgressTarget(
+          world: GameWorld,
+          playerEid: number,
+          playerX: number,
+          playerY: number,
+          activeQuest: NonNullable<typeof quest>,
+          progressSuppressed: boolean,
+        ): { eid: number } | null;
+      }
+    ).findFloor2QuestProgressTarget(world, player, playerPos.x, playerPos.y, quest!, true);
+
+    expect(target?.eid).toBe(familyEnemy);
   });
 
   it('selects the nearest unresolved Floor 2 territory before kill-count tiebreaks', () => {
@@ -1636,9 +1751,7 @@ describe('BehaviorTreeAI', () => {
     const ai = new BehaviorTreeAI({ seed: 60 });
     // Simulate the DwellTracker having just fired: suppress all fixed-position
     // progress goals far into the future.
-    (
-      ai as unknown as { progressGoalSuppressedUntilFrame: number }
-    ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+    suppressProgressGoals(ai);
 
     ai.poll(createInputState(), world);
 
@@ -1667,9 +1780,7 @@ describe('BehaviorTreeAI', () => {
     world.goalFlags.set(FLOOR2_BROKER_INTRO_COMPLETE_GOAL_ID, true);
 
     const ai = new BehaviorTreeAI({ seed: 59 });
-    (
-      ai as unknown as { progressGoalSuppressedUntilFrame: number }
-    ).progressGoalSuppressedUntilFrame = Number.MAX_SAFE_INTEGER;
+    suppressProgressGoals(ai);
 
     for (let frame = 0; frame < 8; frame++) {
       world.frameCount = frame;
