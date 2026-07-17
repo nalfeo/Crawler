@@ -4217,7 +4217,7 @@ test('stale automation incomplete release at attempt=2 persists exhausted state 
   assert.equal(finalState?.owner, 'none', 'must write owner=none terminal state');
   assert.equal(finalState?.status, 'idle', 'must write status=idle');
   assert.equal(finalState?.attempt, 2, 'must preserve the exhausted attempt=2 count');
-  assert.match(stdout, /completed interrupted release pr=#42 attempt=2/);
+  assert.match(stdout, /completed-interrupted-exhausted-release pr=#42 attempts=2/);
 
   // Must NOT dispatch a new Copilot task (no label creation or comment posting)
   assert.equal(
@@ -4238,10 +4238,7 @@ test('stale automation incomplete release at attempt=2 persists exhausted state 
   );
 });
 
-test('stale automation incomplete release at attempt=1 persists state and re-dispatches with correct attempt', async (t) => {
-  // Same scenario but attempt=1: the interrupted run only consumed one attempt,
-  // so we should complete the terminal state write and then re-dispatch normally
-  // with attempt=dispatchAttemptBase (carry forward, not reset to 0).
+test('legacy stale automation incomplete release gets one retry despite its cumulative attempt count', async (t) => {
   const failedCheck = {
     id: 2,
     name: 'ci',
@@ -4261,8 +4258,7 @@ test('stale automation incomplete release at attempt=1 persists state and re-dis
     owner: 'automation',
     status: 'dispatched',
     blockers,
-    attempt: 1,
-    progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+    attempt: 5,
     progressAt: staleAt,
     updatedAt: staleAt,
   });
@@ -4329,19 +4325,17 @@ test('stale automation incomplete release at attempt=1 persists state and re-dis
     RECOVERY_TRIGGER: 'schedule:sweep',
     CI_RECOVERY_MODE: 'live',
   });
-  if (!assertSuccessfulExit(t, code, stderr, 'thread9 attempt=1', true)) return;
+  if (!assertSuccessfulExit(t, code, stderr, 'legacy interrupted release', true)) return;
 
-  assert.match(stdout, /completed interrupted release pr=#42 attempt=1/);
+  assert.match(stdout, /completed interrupted release pr=#42 attempt=5/);
   assert.match(stdout, /assigned copilot pr=#42/);
 
-  // The final written state should reflect the re-dispatch at attempt=2
-  // (dispatching from base=1, so acquire writes attempt=1+1=2 via normal acquire).
   const finalState = parseStateComment(stateComment.body);
   assert.equal(finalState?.owner, 'automation');
   assert.equal(finalState?.status, 'dispatched');
   assert.equal(
     finalState?.attempt,
-    2,
-    're-dispatch after incomplete release must carry forward the attempt budget (1→2)',
+    6,
+    'the one compatible retry must preserve the legacy cumulative attempt count',
   );
 });

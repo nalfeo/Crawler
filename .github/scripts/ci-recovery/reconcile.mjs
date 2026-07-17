@@ -1313,11 +1313,6 @@ if (!labelExists && staleOwningState && state?.owner === 'automation') {
     }),
   );
   process.stdout.write(`completed interrupted release pr=#${prNumber} attempt=${staleAttempt}\n`);
-  if (staleAttempt >= 2) {
-    // Automation was exhausted. Labels are already removed; state is now persisted.
-    // Do not re-dispatch a fresh Copilot task for an already-exhausted PR.
-    process.exit(0);
-  }
   dispatchAttemptBase = staleAttempt;
 }
 await acquire('automation', null, {
