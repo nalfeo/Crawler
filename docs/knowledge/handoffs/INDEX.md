@@ -39,6 +39,7 @@ _…and 14 older, see `archive/`._
 ## ai-combat-balance
 
 - [2026-07-16-cloud-sweep-viewer](2026-07-16-cloud-sweep-viewer.md) — Extended the project-scoped Sweep Results Viewer canvas to load weapon-sweep
+- [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
 - [2026-07-16-legacy-floor1-deaths](2026-07-16-legacy-floor1-deaths.md) — Investigated all seven deaths from Weapon Sweep run `29453994290` and reproduced
 - [2026-07-16-overhaul-primary-stats](2026-07-16-overhaul-primary-stats.md) — Handoff: Primary stat-system overhaul
@@ -57,13 +58,13 @@ _…and 14 older, see `archive/`._
 - [2026-07-10-sweep-win-definition-safe-room](2026-07-10-sweep-win-definition-safe-room.md) — Handoff — Sweep win-definition safe-room credit + Floor-1 slack-cap alignment
 - [2026-07-09-ai-sweep-eval-pipeline](2026-07-09-ai-sweep-eval-pipeline.md) — Built the **measurement-only** eval mechanism the maintainer asked for: a
 - [2026-07-08-fused-seam-pathing](2026-07-08-fused-seam-pathing.md) — Implemented the real **`RISK_REWARD_FUSED`** pathing mode — the previously-inert
-- [2026-07-08-navmesh-fused-pathing](2026-07-08-navmesh-fused-pathing.md) — Added `AIPathingMode.NAVMESH_FUSED` (`'navmeshFused'`) as a FOURTH selectable AI pathing mode (**default-OFF**), giving a clean 4-way A/B: …
 
-_…and 35 older, see `archive/`._
+_…and 36 older, see `archive/`._
 
 ## ai-behavior-tree
 
 - [2026-07-16-ai-invariant-harness](2026-07-16-ai-invariant-harness.md) — Added a reusable AI invariant fixture that defines the hard-gate invariant
+- [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
 - [2026-07-16-fix-safe-room-doorway-livelock](2026-07-16-fix-safe-room-doorway-livelock.md) — Addressed the **second-largest failure bucket** (`outcome=timeout`, 14/95 failures, 14.7%) from
 - [2026-07-16-legacy-floor1-deaths](2026-07-16-legacy-floor1-deaths.md) — Investigated all seven deaths from Weapon Sweep run `29453994290` and reproduced
@@ -82,9 +83,8 @@ _…and 35 older, see `archive/`._
 - [2026-07-11-headless-sweep-performance](2026-07-11-headless-sweep-performance.md) — Profiled the canonical Floor 1 headless runner and identified redundant FOV
 - [2026-07-11-merchant-weapon-purchase](2026-07-11-merchant-weapon-purchase.md) — Optional AI merchant weapon purchase
 - [2026-07-10-floor1-class-d-prechain-lock](2026-07-10-floor1-class-d-prechain-lock.md) — Reproduced the class-D lock signature in the real headless pipeline (seed21 sword/baseball-bat, seed69 sword family): `floor1-find-welcome`…
-- [2026-07-10-floor1-safe-room-egress](2026-07-10-floor1-safe-room-egress.md) — Handoff — Floor 1 safe-room egress deadlock (seed2 + bow)
 
-_…and 29 older, see `archive/`._
+_…and 30 older, see `archive/`._
 
 ## sprite-pipeline
 
@@ -108,8 +108,10 @@ _…and 29 older, see `archive/`._
 - [2026-07-08-welcome-npc-sprite-wiring](2026-07-08-welcome-npc-sprite-wiring.md) — Follow-up to the merged welcome-room set piece (PRs #853/#905) now that the 3 NPC
 - [2026-07-08-welcome-room-art-wiring-lab](2026-07-08-welcome-room-art-wiring-lab.md) — Follow-up to the merged welcome-room set piece (PR #853). Two deliverables:
 - [2026-07-08-welcome-room-no-stretch-art-defects](2026-07-08-welcome-room-no-stretch-art-defects.md) — Follow-up to the merged welcome-room set-piece arc (#853 → #905 → #907 → #916)
+- [2026-07-08-welcome-room-npcs](2026-07-08-welcome-room-npcs.md) — Generated, judged, approved, and shipped \*\*3 distinct Floor-1 welcome-room NPC
+- [2026-07-08-welcome-room-sprite-reprocess](2026-07-08-welcome-room-sprite-reprocess.md) — Handoff: Reprocess welcome-room generated sprites with fixed slicer
 
-_…and 46 older, see `archive/`._
+_…and 44 older, see `archive/`._
 
 ## sprite-workflow
 
@@ -133,8 +135,12 @@ _…and 46 older, see `archive/`._
 - [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built \*\*on top of the existing pipeline i…
 - [2026-07-08-slicer-never-cut-art](2026-07-08-slicer-never-cut-art.md) — Handoff: Slicer cuts only at real gutters — data-driven grid salvage (never chop art)
 - [2026-07-08-welcome-room-no-stretch-art-defects](2026-07-08-welcome-room-no-stretch-art-defects.md) — Follow-up to the merged welcome-room set-piece arc (#853 → #905 → #907 → #916)
+- [2026-07-08-welcome-room-npcs](2026-07-08-welcome-room-npcs.md) — Generated, judged, approved, and shipped \*\*3 distinct Floor-1 welcome-room NPC
+- [2026-07-08-welcome-room-sprite-reprocess](2026-07-08-welcome-room-sprite-reprocess.md) — Handoff: Reprocess welcome-room generated sprites with fixed slicer
+- [2026-07-07-clean-triage-fixes-pr](2026-07-07-clean-triage-fixes-pr.md) — clean-triage-fixes-pr
+- [2026-07-07-slicer-variance-select-grid](2026-07-07-slicer-variance-select-grid.md) — Handoff: Slicer variance-select grid reconciliation + F1 asset burndown
 
-_…and 21 older, see `archive/`._
+_…and 17 older, see `archive/`._
 
 ## mapgen
 
@@ -290,6 +296,7 @@ _…and 25 older, see `archive/`._
 
 ## weapons
 
+- [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
 - [2026-07-16-overhaul-primary-stats](2026-07-16-overhaul-primary-stats.md) — Handoff: Primary stat-system overhaul
 - [2026-07-16-stats-overhaul-pr-recovery](2026-07-16-stats-overhaul-pr-recovery.md) — Handoff: PR #1203 blocker recovery
@@ -309,12 +316,12 @@ _…and 25 older, see `archive/`._
 - [2026-07-10-floor2-family-boss-progression](2026-07-10-floor2-family-boss-progression.md) — Handoff — Floor 2 Family Boss Progression
 - [2026-07-10-pr1009-review-fixes](2026-07-10-pr1009-review-fixes.md) — Fixed Copilot review blocker #1 by separating percent and flat damage contracts:
 - [2026-07-08-asset-name-normalization](2026-07-08-asset-name-normalization.md) — Handoff: Item-sprite asset-name normalization (retire `ItemDef.icon`, bare-key item art)
-- [2026-07-07-equipment-review-harness-fixes](2026-07-07-equipment-review-harness-fixes.md) — Closed out the equipment paper-doll overhaul branch by fixing the two VALID
 
-_…and 26 older, see `archive/`._
+_…and 27 older, see `archive/`._
 
 ## enemies
 
+- [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
 - [2026-07-15-floor2-ai-hunt-progression](2026-07-15-floor2-ai-hunt-progression.md) — Handoff - Floor 2 AI Hunt Progression
 - [2026-07-11-pipeline-unification](2026-07-11-pipeline-unification.md) — Resolved the two known ordering divergences between the visual and headless
@@ -334,9 +341,8 @@ _…and 26 older, see `archive/`._
 - [2026-07-06-postprocess-facing-anchor-workflow](2026-07-06-postprocess-facing-anchor-workflow.md) — Converted the postprocess override path from image mirroring to explicit facing direction metadata and completed the wiring through debugge…
 - [2026-07-06-rendering-blood-mob-facing](2026-07-06-rendering-blood-mob-facing.md) — Three player-facing bugs fixed together:
 - [2026-07-05-corpse-step-effects-shepherd](2026-07-05-corpse-step-effects-shepherd.md) — Took over PR #782 ("feat: corpse step burst chance + player movement
-- [2026-07-05-enemy-sprite-facing-left](2026-07-05-enemy-sprite-facing-left.md) — Handoff: enemy sprites face left by default
 
-_…and 69 older, see `archive/`._
+_…and 70 older, see `archive/`._
 
 ## boss-rooms
 
