@@ -23,6 +23,7 @@ validation, and the full 3-apple review harness.
 - Base branch: `nalfeo-floor-2-epic-control`
 - Latest rebased A0 commit: `de709e08e1be83472bc7ecfe5e35a9d959e78fe2`
 - A0 PR: #1271
+- A1 child issue: #1279
 - A1 branch: `nalfeo-floor-2-equipment-contracts`
 - A1 PR: #1276, ready-for-review against A0
 
@@ -75,23 +76,42 @@ without adding runtime gameplay:
 ## Epic-state truthfulness
 
 The state manifest still records A1 as `blocked`, with null ownership, issue, and
-PR. That is intentional and truthful: the committed A0 protocol makes A1
-unclaimable until A0 is `validated` and the A1 child issue is materialized. A
-stacked ready-for-review PR may exist as a Git artifact, but it does not create a
-trusted issue claim or permit fabricated `claimed`, `in_progress`, or `pr_open`
-state.
+PR. The A1 child issue is now materialized, but A0 is not validated, so A1
+remains unclaimable under the normal lifecycle. The state manifest will retain
+its current canonical lifecycle fields until A0 lands the orthogonal speculative
+stacked-work schema. A stacked ready-for-review PR does not create a trusted
+issue claim or permit fabricated `claimed`, `in_progress`, or `pr_open` state.
+
+Until that schema lands, the child issue and this handoff record the durable
+speculative facts:
+
+```text
+status: stacked_pr_open
+issue: #1279
+session: 6f852b99-3c14-4037-b6b2-7ec3947fe4fc
+branch: nalfeo-floor-2-equipment-contracts
+pr: #1276
+head_sha: 185296cab2ff955979100d07b3bac1e380311bbc
+a0_pr: #1271
+a0_branch: nalfeo-floor-2-epic-control
+a0_head_sha: de709e08e1be83472bc7ecfe5e35a9d959e78fe2
+last_resynced_a0_head_sha: de709e08e1be83472bc7ecfe5e35a9d959e78fe2
+last_resynced_at: 2026-07-17T14:33:00.9948565-07:00
+rebase_to_main_required: true
+```
+
+These fields are progress evidence only and do not satisfy A0.
 
 After A0 validates, the Producer must follow the exact sequence:
 
-1. materialize the A1 child issue;
-2. let the validator compute A1 `ready`;
-3. post a structured `CLAIMED` lease with session, scope, and base commit;
-4. record heartbeat / `in_progress`;
-5. attach the existing PR and immutable HANDOFF/ledger evidence;
-6. advance cached state to `pr_open`.
+1. let the validator compute A1 `ready`;
+2. post a structured `CLAIMED` lease with session, scope, and base commit;
+3. record heartbeat / `in_progress`;
+4. attach the existing PR and immutable HANDOFF/ledger evidence;
+5. advance cached normal-lifecycle state to `pr_open`.
 
-The coordinator was messaged at kickoff and after the A0 resync about this
-protocol conflict.
+The coordinator authorized this speculative protocol and requested that state be
+updated only after A0 pushes the schema amendment.
 
 ## Review
 
@@ -119,7 +139,9 @@ docs/knowledge/review-ledgers/2026-07-17-floor-2-equipment-contracts.review-ledg
 
 ## Follow-up
 
+- When A0 pushes the speculative schema amendment, fetch/rebase A1 onto the new
+  A0 head and update `epic-state.json` with the permitted orthogonal facts.
 - When A0 merges, fetch and rebase A1 onto `origin/main`, retarget the A1 PR to
-  `main`, rerun focused validation, and then perform the protocol-compliant A1
-  claim/state reconciliation above.
+  `main`, rerun focused validation, and then perform the protocol-compliant
+  normal-lifecycle A1 claim/state reconciliation above.
 - Do not merge A1 without explicit authorization.
