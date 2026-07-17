@@ -1,6 +1,7 @@
 import { CORPSE } from '../../shared/constants.js';
 import { computeCorpseDecay, type CorpseDecay } from '../../engine/corpse-decay.js';
 import {
+  CONTACT_ATTACK_MOTION_MS,
   NEUTRAL_MOB_MOTION,
   sampleAttackPreview,
   sampleContactAttackMotion,
@@ -124,7 +125,32 @@ function sampleMovement(elapsedMs: number, style: MobLocomotionStyle): MobMotion
 
 function sampleMeleeAttack(elapsedMs: number): MobMotionTransform {
   const phaseMs = elapsedWithin(elapsedMs, MELEE_ATTACK_CYCLE_MS);
-  return sampleContactAttackMotion(phaseMs);
+  const windupMs = 320;
+  const strikeMs = 220;
+  const recoveryMs = MELEE_ATTACK_CYCLE_MS - windupMs - strikeMs;
+
+  if (phaseMs < windupMs) {
+    const progress = phaseMs / windupMs;
+    return {
+      offsetX: -0.18 * progress,
+      offsetY: 0.04 * progress,
+      scaleX: 1 - 0.06 * progress,
+      scaleY: 1 + 0.07 * progress,
+      rotation: -0.09 * progress,
+      alpha: 1,
+      flash: 0,
+    };
+  }
+
+  if (phaseMs < windupMs + strikeMs) {
+    return sampleContactAttackMotion((phaseMs - windupMs) * (CONTACT_ATTACK_MOTION_MS / strikeMs));
+  }
+
+  const recoveryElapsedMs = phaseMs - windupMs - strikeMs;
+  const contactElapsedMs =
+    CONTACT_ATTACK_MOTION_MS -
+    recoveryElapsedMs * (CONTACT_ATTACK_MOTION_MS / Math.max(1, recoveryMs));
+  return sampleContactAttackMotion(Math.max(0, contactElapsedMs));
 }
 
 function sampleRangedAttack(elapsedMs: number, telegraphMs: number): MobMotionTransform {

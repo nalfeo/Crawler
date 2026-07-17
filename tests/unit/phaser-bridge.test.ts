@@ -39,6 +39,8 @@ import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piec
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTelegraph.js';
+import { sampleContactAttackMotion } from '../../src/shared/mob-motion.js';
+import { ftToPx } from '../../src/shared/units.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -1365,6 +1367,41 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
     expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
     expect(enemyImg.flipX).toBe(true);
+  });
+
+  it('mirrors contact motion offset and rotation for left-facing enemies', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const enemy = addEntity(world.ecs);
+
+    addComponent(world.ecs, enemy, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, enemy, set(Velocity, { x: -1, y: 0 }));
+    addComponent(world.ecs, enemy, Enemy);
+    addComponent(world.ecs, enemy, set(Sprite, { textureId: 1, width: 2, height: 2 }));
+    world.floorScenario = {
+      enemyArchetypes: new Map([[enemy, 'rat']]),
+      objective: { bossBattles: new Map() },
+    } as unknown as NonNullable<typeof world.floorScenario>;
+    bridge.sync(world, 0);
+    world.combatEvents.push({
+      type: 'hit',
+      x: 10,
+      y: 10,
+      amount: 2,
+      targetType: 'player',
+      sourceEid: enemy,
+      delivery: 'contact',
+      timestamp: 1_000,
+    });
+
+    bridge.sync(world, 1_000);
+
+    const enemyImg = images[0]!;
+    const expected = sampleContactAttackMotion(0);
+    expect(enemyImg.flipX).toBe(true);
+    expect(enemyImg.x).toBeCloseTo(ftToPx(10) - ftToPx(expected.offsetX));
+    expect(enemyImg.rotation).toBeCloseTo(-expected.rotation);
   });
 
   // A welcome sign is a Sprite+Position entity whose textureId is the welcome

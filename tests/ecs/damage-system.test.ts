@@ -8,7 +8,13 @@ import {
   Size,
   Sprite,
 } from '../../src/core/components.js';
-import { createEntity, spawnEnemy, spawnPlayer, spawnXpGem } from '../../src/core/helpers.js';
+import {
+  createEntity,
+  spawnEnemy,
+  spawnEnemyProjectile,
+  spawnPlayer,
+  spawnXpGem,
+} from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { SHAPE_CIRCLE } from '../../src/core/physics-defs.js';
@@ -127,6 +133,23 @@ describe('damageSystem', () => {
     expect(world.combatEvents[0]).toMatchObject({
       type: 'hit',
       targetType: 'player',
+      delivery: 'contact',
+    });
+    expect(world.combatEvents[0]!.amount).toBeGreaterThan(0);
+  });
+
+  it('emits projectile delivery when an enemy projectile damages the player', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemyProjectile(world, 0.5, 0, 0, 0, 7);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.combatEvents).toHaveLength(1);
+    expect(world.combatEvents[0]).toMatchObject({
+      type: 'hit',
+      targetType: 'player',
+      delivery: 'projectile',
     });
     expect(world.combatEvents[0]!.amount).toBeGreaterThan(0);
   });

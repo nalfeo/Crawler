@@ -1349,15 +1349,17 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               const { scaleX, scaleY } = computeEnemyScale(world, eid, visual.baseScale);
               const movingRight = (velocity.x[eid] ?? 0) > ENEMY_RIGHTWARD_FLIP_EPSILON;
               const baseFacing = generatedFacingByTexture.get(img.texture.key) ?? 'right';
-              img.setPosition(x + mobMotion.offsetX, y + mobMotion.offsetY);
+              const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
+              const signedOffsetX = shouldMirror ? -mobMotion.offsetX : mobMotion.offsetX;
+              const signedRotation = shouldMirror ? -mobMotion.rotation : mobMotion.rotation;
+              img.setPosition(x + ftToPx(signedOffsetX), y + ftToPx(mobMotion.offsetY));
               img.setScale(
                 Math.abs(scaleX) * mobMotion.scaleX,
                 Math.abs(scaleY) * mobMotion.scaleY,
               );
-              img.setRotation(mobMotion.rotation);
+              img.setRotation(signedRotation);
               img.setAlpha(enemyVisibilityAlpha * mobMotion.alpha);
               if (typeof img.setFlipX === 'function') {
-                const shouldMirror = baseFacing === 'right' ? !movingRight : movingRight;
                 img.setFlipX(shouldMirror);
               }
             } else {

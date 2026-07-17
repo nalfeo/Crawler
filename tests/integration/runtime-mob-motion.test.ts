@@ -110,15 +110,11 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   const spawned = RUNTIME_MOB_MOTION_PROFILES.map((profile, index) => {
     const x = 10 + index * 4;
     const eid = spawnBehaviorEnemy(world, x, 20, 100, 0, 1, 30, 8);
-    setComponent(
-      world.ecs,
-      eid,
-      set(Sprite, {
-        textureId: profile.spriteTexture,
-        width: 3,
-        height: 3,
-      }),
-    );
+    setComponent(world.ecs, eid, Sprite, {
+      textureId: profile.spriteTexture,
+      width: 3,
+      height: 3,
+    });
     addComponent(world.ecs, eid, set(Damage, { amount: 7 }));
     setEnemyAppearanceKey(world, eid, profile.archetypeId);
     return { eid, x, profile };
@@ -149,6 +145,8 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
     bridge.sync(world, renderMs);
     expect(gameplaySnapshot(world, allEids), `${state} mutated gameplay state`).toEqual(before);
   };
+  const signedMotionOffsetX = (img: MockImage, offsetFt: number) =>
+    (img.flipX ? -1 : 1) * ftToPx(offsetFt);
 
   syncWithoutGameplayDelta('spawn', 0);
   expect(images).toHaveLength(spawned.length + 1);
@@ -182,8 +180,9 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   const expectedEarlyContact = sampleContactAttackMotion(MINI_SLIME_SPAWN_ANIM_MS - 100);
   expect(MINI_SLIME_SPAWN_ANIM_MS - 100).toBeLessThan(CONTACT_ATTACK_MOTION_MS);
   for (const { eid, x, profile } of spawned) {
-    expect(imageByEid.get(eid)!.x, `${profile.archetypeId}:early contact`).toBeCloseTo(
-      ftToPx(x) + expectedEarlyContact.offsetX,
+    const img = imageByEid.get(eid)!;
+    expect(img.x, `${profile.archetypeId}:early contact`).toBeCloseTo(
+      ftToPx(x) + signedMotionOffsetX(img, expectedEarlyContact.offsetX),
     );
     coverage.get(profile.archetypeId)!.add('contact');
   }
@@ -195,8 +194,12 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   for (const { eid, x, profile } of spawned) {
     const expected = sampleMovementMotion(700, profile.movementStyle);
     const img = imageByEid.get(eid)!;
-    expect(img.x, `${profile.archetypeId}:movement x`).toBeCloseTo(ftToPx(x) + expected.offsetX);
-    expect(img.y, `${profile.archetypeId}:movement y`).toBeCloseTo(ftToPx(20) + expected.offsetY);
+    expect(img.x, `${profile.archetypeId}:movement x`).toBeCloseTo(
+      ftToPx(x) + signedMotionOffsetX(img, expected.offsetX),
+    );
+    expect(img.y, `${profile.archetypeId}:movement y`).toBeCloseTo(
+      ftToPx(20) + ftToPx(expected.offsetY),
+    );
     expect(img.rotation, `${profile.archetypeId}:movement rotation`).toBeCloseTo(expected.rotation);
     coverage.get(profile.archetypeId)!.add('movement');
   }
@@ -214,8 +217,9 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   syncWithoutGameplayDelta('ranged windup', 900);
   const expectedWindup = sampleRangedWindupMotion(0.5);
   for (const { eid, x, profile } of ranged) {
-    expect(imageByEid.get(eid)!.x, `${profile.archetypeId}:ranged windup`).toBeCloseTo(
-      ftToPx(x) + expectedWindup.offsetX,
+    const img = imageByEid.get(eid)!;
+    expect(img.x, `${profile.archetypeId}:ranged windup`).toBeCloseTo(
+      ftToPx(x) + signedMotionOffsetX(img, expectedWindup.offsetX),
     );
     coverage.get(profile.archetypeId)!.add('ranged-windup');
   }
@@ -230,7 +234,7 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   for (const { eid, x, profile } of ranged) {
     const baseImage = imageByEid.get(eid)!;
     expect(baseImage.x, `${profile.archetypeId}:ranged release`).toBeCloseTo(
-      ftToPx(x) + expectedRelease.offsetX,
+      ftToPx(x) + signedMotionOffsetX(baseImage, expectedRelease.offsetX),
     );
     const flashOverlay = images.find(
       (image, index) =>
@@ -279,7 +283,7 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   for (const { eid, x, profile } of spawned) {
     const baseImage = imageByEid.get(eid)!;
     expect(baseImage.x, `${profile.archetypeId}:hit reaction`).toBeCloseTo(
-      ftToPx(x) + expectedHit.offsetX,
+      ftToPx(x) + signedMotionOffsetX(baseImage, expectedHit.offsetX),
     );
     const flashOverlay = images.find(
       (image, index) =>
@@ -337,7 +341,7 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
     const img = imageByEid.get(eid)!;
     expect(img.x, `${profile.archetypeId}:corpse x`).toBe(ftToPx(x));
     expect(img.y, `${profile.archetypeId}:corpse y`).toBe(ftToPx(20));
-    expect(img.rotation, `${profile.archetypeId}:corpse rotation`).toBe(0);
+    expect(img.rotation, `${profile.archetypeId}:corpse rotation`).toBeCloseTo(0);
     expect(img.depth, `${profile.archetypeId}:corpse depth`).toBe(WORLD_VFX_DEPTH.corpse);
     coverage.get(profile.archetypeId)!.add('death');
   }
@@ -367,7 +371,7 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   } as typeof reuseWorld.floorScenario;
   reuseWorld.floorExtendedState = { ambientEnemyArchetypes: new Map() };
   const oldEid = spawnBehaviorEnemy(reuseWorld, 10, 10, 100, 0, 1, 30, 8);
-  setComponent(reuseWorld.ecs, oldEid, set(Sprite, { textureId: 1, width: 3, height: 3 }));
+  setComponent(reuseWorld.ecs, oldEid, Sprite, { textureId: 1, width: 3, height: 3 });
   setEnemyAppearanceKey(reuseWorld, oldEid, 'glow-worm');
   reuseWorld.floorScenario!.enemyArchetypes.set(oldEid, 'snailfolk-boss');
   reuseWorld.floorExtendedState!.ambientEnemyArchetypes!.set(oldEid, 'glow-worm');
@@ -384,7 +388,7 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   expect(recycledEid).toBe(oldEid);
   expect(reuseWorld.floorScenario!.enemyArchetypes.has(recycledEid)).toBe(false);
   expect(reuseWorld.floorExtendedState!.ambientEnemyArchetypes!.has(recycledEid)).toBe(false);
-  setComponent(reuseWorld.ecs, recycledEid, set(Sprite, { textureId: 2, width: 3, height: 3 }));
+  setComponent(reuseWorld.ecs, recycledEid, Sprite, { textureId: 2, width: 3, height: 3 });
   setEnemyAppearanceKey(reuseWorld, recycledEid, 'slime');
   reuseWorld.stores.velocity.x[recycledEid] = 1;
   before = gameplaySnapshot(reuseWorld, [recycledEid]);
@@ -399,8 +403,9 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
     gameplaySnapshot(reuseWorld, [recycledEid]),
     'recycled movement sync mutated gameplay',
   ).toEqual(before);
+  const recycledImage = [...reuseStub.images].reverse().find((image) => !image.destroyed)!;
   const expectedRecycledMotion = sampleMovementMotion(800, 'hop');
-  expect(reuseStub.images[0]!.x, 'recycled EID resolves the new slime profile').toBeCloseTo(
-    ftToPx(20) + expectedRecycledMotion.offsetX,
+  expect(recycledImage.x, 'recycled EID resolves the new slime profile').toBeCloseTo(
+    ftToPx(20) + (recycledImage.flipX ? -1 : 1) * ftToPx(expectedRecycledMotion.offsetX),
   );
 });

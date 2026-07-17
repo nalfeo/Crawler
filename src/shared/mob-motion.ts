@@ -34,6 +34,15 @@ export interface RuntimeMobMotionProfile {
   readonly spriteTexture: number;
 }
 
+// Shared motion is authored in feet (ADR 0023). These constants keep the prior
+// visual tuning by expressing legacy pixel amplitudes in feet.
+const MOTION_RENDER_PIXELS_PER_FOOT = 8;
+const MOTION_OFFSET_STEP_FT = 0.5 / MOTION_RENDER_PIXELS_PER_FOOT;
+
+function legacyPixelsToFeet(pixels: number): number {
+  return pixels / MOTION_RENDER_PIXELS_PER_FOOT;
+}
+
 const FAMILY_MOVEMENT_STYLES: Readonly<Partial<Record<string, MobLocomotionStyle>>> = {
   batfolk: 'hover',
   faeries: 'hover',
@@ -102,8 +111,8 @@ export function scaleMobMotion(
 ): MobMotionTransform {
   const amount = Math.max(0, Number.isFinite(intensity) ? intensity : 0);
   return {
-    offsetX: quantize(transform.offsetX * amount, 0.5),
-    offsetY: quantize(transform.offsetY * amount, 0.5),
+    offsetX: quantize(transform.offsetX * amount, MOTION_OFFSET_STEP_FT),
+    offsetY: quantize(transform.offsetY * amount, MOTION_OFFSET_STEP_FT),
     scaleX: quantize(1 + (transform.scaleX - 1) * amount, 0.005),
     scaleY: quantize(1 + (transform.scaleY - 1) * amount, 0.005),
     rotation: quantize(transform.rotation * amount, 0.005),
@@ -135,7 +144,7 @@ export function sampleSpawnMotion(elapsedMs: number): MobMotionTransform {
   const scale = computeSpawnPopScale(progress);
   return {
     offsetX: 0,
-    offsetY: quantize((1 - progress) * 6, 0.5),
+    offsetY: quantize(legacyPixelsToFeet((1 - progress) * 6), MOTION_OFFSET_STEP_FT),
     scaleX: quantize(scale.x, 0.005),
     scaleY: quantize(scale.y, 0.005),
     rotation: quantize(Math.sin(progress * Math.PI * 3) * 0.04 * (1 - progress), 0.005),
@@ -153,8 +162,8 @@ export function sampleMovementMotion(
     const arc = Math.sin(phase * Math.PI);
     const lean = Math.sin(phase * TAU);
     return {
-      offsetX: lean * 0.75,
-      offsetY: -arc * 5,
+      offsetX: legacyPixelsToFeet(lean * 0.75),
+      offsetY: legacyPixelsToFeet(-arc * 5),
       scaleX: 1 - arc * 0.05,
       scaleY: 1 + arc * 0.08,
       rotation: lean * 0.035,
@@ -166,8 +175,8 @@ export function sampleMovementMotion(
     const phase = normalizedPhase(elapsedMs, 1_100);
     const wave = Math.sin(phase * TAU);
     return {
-      offsetX: Math.cos(phase * TAU) * 0.75,
-      offsetY: -2.5 - wave * 2,
+      offsetX: legacyPixelsToFeet(Math.cos(phase * TAU) * 0.75),
+      offsetY: legacyPixelsToFeet(-2.5 - wave * 2),
       scaleX: 1 + wave * 0.015,
       scaleY: 1 - wave * 0.015,
       rotation: wave * 0.025,
@@ -180,8 +189,8 @@ export function sampleMovementMotion(
     const sway = Math.sin(phase * TAU);
     const compression = Math.abs(Math.cos(phase * TAU));
     return {
-      offsetX: sway * 1.5,
-      offsetY: -Math.abs(sway) * 0.5,
+      offsetX: legacyPixelsToFeet(sway * 1.5),
+      offsetY: legacyPixelsToFeet(-Math.abs(sway) * 0.5),
       scaleX: 1 + compression * 0.06,
       scaleY: 1 - compression * 0.04,
       rotation: sway * 0.055,
@@ -195,7 +204,7 @@ export function sampleMovementMotion(
     const impact = phase >= 0.35 && phase < 0.52 ? 1 - (phase - 0.35) / 0.17 : 0;
     return {
       offsetX: 0,
-      offsetY: -lift * 2.5,
+      offsetY: legacyPixelsToFeet(-lift * 2.5),
       scaleX: 1 + impact * 0.11,
       scaleY: 1 - impact * 0.13,
       rotation: Math.sin(phase * TAU) * 0.01,
@@ -207,8 +216,8 @@ export function sampleMovementMotion(
   const stride = Math.sin(phase * TAU);
   const lift = Math.abs(stride);
   return {
-    offsetX: stride,
-    offsetY: -lift * 2,
+    offsetX: legacyPixelsToFeet(stride),
+    offsetY: legacyPixelsToFeet(-lift * 2),
     scaleX: 1 + lift * 0.04,
     scaleY: 1 - lift * 0.06,
     rotation: stride * 0.025,
@@ -220,8 +229,8 @@ export function sampleMovementMotion(
 export function sampleRangedWindupMotion(progress: number): MobMotionTransform {
   const windup = smoothstep(progress);
   return {
-    offsetX: -2.5 * windup,
-    offsetY: windup,
+    offsetX: legacyPixelsToFeet(-2.5 * windup),
+    offsetY: legacyPixelsToFeet(windup),
     scaleX: 1 - 0.05 * windup,
     scaleY: 1 + 0.06 * windup,
     rotation: -0.06 * windup,
@@ -236,8 +245,8 @@ export function sampleRangedReleaseMotion(elapsedMs: number): MobMotionTransform
   }
   const recoil = 1 - smoothstep(elapsedMs / RANGED_RELEASE_MOTION_MS);
   return {
-    offsetX: 4 * recoil,
-    offsetY: -recoil,
+    offsetX: legacyPixelsToFeet(4 * recoil),
+    offsetY: legacyPixelsToFeet(-recoil),
     scaleX: 1 + recoil * 0.08,
     scaleY: 1 - recoil * 0.05,
     rotation: 0.08 * recoil,
@@ -253,8 +262,8 @@ export function sampleContactAttackMotion(elapsedMs: number): MobMotionTransform
   const progress = smoothstep(elapsedMs / CONTACT_ATTACK_MOTION_MS);
   const active = 1 - progress;
   return {
-    offsetX: 8 * active,
-    offsetY: -Math.sin(progress * Math.PI),
+    offsetX: legacyPixelsToFeet(8 * active),
+    offsetY: legacyPixelsToFeet(-Math.sin(progress * Math.PI)),
     scaleX: 1 + active * 0.1,
     scaleY: 1 - active * 0.06,
     rotation: 0.12 * active,
@@ -270,8 +279,8 @@ export function sampleHitReactionMotion(elapsedMs: number): MobMotionTransform {
   const active = 1 - elapsedMs / HIT_REACTION_MOTION_MS;
   const shake = Math.floor(elapsedMs / 21) % 2 === 0 ? -1 : 1;
   return {
-    offsetX: -6 * active + shake * 1.5 * active,
-    offsetY: -active,
+    offsetX: legacyPixelsToFeet(-6 * active + shake * 1.5 * active),
+    offsetY: legacyPixelsToFeet(-active),
     scaleX: 1 + active * 0.08,
     scaleY: 1 - active * 0.08,
     rotation: -active * 0.07,
@@ -284,7 +293,7 @@ export function sampleSpeedStatusMotion(elapsedMs: number): MobMotionTransform {
   const phase = normalizedPhase(elapsedMs, STATUS_TREATMENT_MS);
   const shake = Math.floor(phase * 16) % 2 === 0 ? -1 : 1;
   return {
-    offsetX: shake * 0.75,
+    offsetX: legacyPixelsToFeet(shake * 0.75),
     offsetY: 0,
     scaleX: 0.98,
     scaleY: 1.02,
@@ -349,7 +358,7 @@ export function sampleStatusPreviewMotion(elapsedMs: number): MobMotionTransform
     const flicker = Math.abs(Math.sin(localPhase * TAU * 3));
     return {
       offsetX: 0,
-      offsetY: -flicker,
+      offsetY: legacyPixelsToFeet(-flicker),
       scaleX: 1 + flicker * 0.04,
       scaleY: 1 - flicker * 0.03,
       rotation: Math.sin(localPhase * TAU * 2) * 0.015,
@@ -359,8 +368,8 @@ export function sampleStatusPreviewMotion(elapsedMs: number): MobMotionTransform
   }
   const wobble = Math.sin(localPhase * TAU * 2);
   return {
-    offsetX: wobble,
-    offsetY: -Math.abs(wobble),
+    offsetX: legacyPixelsToFeet(wobble),
+    offsetY: legacyPixelsToFeet(-Math.abs(wobble)),
     scaleX: 1,
     scaleY: 1,
     rotation: wobble * 0.12,
