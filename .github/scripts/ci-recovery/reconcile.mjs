@@ -5,6 +5,7 @@ import {
   collapseCheckRunsByName,
   isDuplicateDispatch,
   isLeaseExpired,
+  isRecoveryStateSemanticallyEqual,
   makeState,
   normalizeBlockers,
   reviewThreadBlockerId,
@@ -15,6 +16,7 @@ import {
   renderStateComment,
   shouldResolveThread,
   STATE_MARKER,
+  WAITING_LABEL,
 } from './state.mjs';
 import { workflowApprovalRejection, REQUIRED_CHECK_WORKFLOW_PATHS } from './approval.mjs';
 import { graphql, listClosingIssues, listReviewThreads, paginate, request } from './github.mjs';
@@ -109,13 +111,30 @@ try {
     throw error;
   }
 }
-assertOwnershipInvariant({ labelExists, state });
+const ownerLabelAttached = (pr.labels || []).some((label) => label.name === labelName);
+const staleOwningState =
+  !labelExists && state && state.owner !== 'none' && !['idle', 'waiting'].includes(state.status);
+if (staleOwningState) {
+  const matchingLeaseRelease =
+    operation === 'lease-release' && state.owner === 'shepherd' && state.leaseId === leaseId;
+  if (state.owner === 'shepherd' && !matchingLeaseRelease && !isLeaseExpired(state, now)) {
+    throw new Error(
+      `PR #${prNumber} has an unexpired shepherd lease with a missing owner label; refusing automatic cleanup`,
+    );
+  }
+} else {
+  assertOwnershipInvariant({ labelExists, state });
+}
 
-async function updateState(nextState) {
-  state = nextState;
+async function updateState(nextState, { forceTimestamp = false } = {}) {
+  if (stateComments[0] && !forceTimestamp && isRecoveryStateSemanticallyEqual(state, nextState)) {
+    process.stdout.write(`state unchanged pr=#${prNumber} status=${nextState.status}\n`);
+    return false;
+  }
   if (!shouldMutate) {
     process.stdout.write(`dry-run state=${JSON.stringify(nextState)}\n`);
-    return;
+    state = nextState;
+    return true;
   }
   const body = renderStateComment(nextState);
   if (stateComments[0]) {
@@ -123,13 +142,16 @@ async function updateState(nextState) {
       method: 'PATCH',
       body: { body },
     });
+    stateComments[0] = { ...stateComments[0], body };
   } else {
     const created = await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
       method: 'POST',
       body: { body },
     });
-    stateComments.push(created.data);
+    stateComments.push({ ...created.data, body });
   }
+  state = nextState;
+  return true;
 }
 
 async function acquire(nextOwner, nextLeaseId = null) {
@@ -166,8 +188,9 @@ async function acquire(nextOwner, nextLeaseId = null) {
   );
 }
 
-async function removePrLabel(name) {
-  if (!shouldMutate) return;
+async function removePrLabel(name, { force = false } = {}) {
+  if (!force && !(pr.labels || []).some((label) => label.name === name)) return false;
+  if (!shouldMutate) return false;
   try {
     await request(
       pat,
@@ -177,6 +200,8 @@ async function removePrLabel(name) {
   } catch (error) {
     if (error.status !== 404) throw error;
   }
+  pr.labels = (pr.labels || []).filter((label) => label.name !== name);
+  return true;
 }
 
 async function ensurePrLabel(name, color, description) {
@@ -198,6 +223,28 @@ async function ensurePrLabel(name, color, description) {
     body: { labels: [name] },
   });
   pr.labels = [...(pr.labels || []), { name }];
+}
+
+async function removeRepositoryLabel(name) {
+  if (!shouldMutate) return false;
+  try {
+    await request(pat, `/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    });
+  } catch (error) {
+    if (error.status !== 404) throw error;
+  }
+  return true;
+}
+
+async function repositoryLabelExists(name) {
+  try {
+    await request(readToken, `/repos/${owner}/${repo}/labels/${encodeURIComponent(name)}`);
+    return true;
+  } catch (error) {
+    if (error.status === 404) return false;
+    throw error;
+  }
 }
 
 async function disableAutoMergeForHumanGate() {
@@ -236,19 +283,21 @@ async function dispatchWorkflow(workflow, inputs) {
 }
 
 async function release(reason, nextState = null) {
-  if (!labelExists) {
-    return;
-  }
-
   if (shouldMutate) {
-    await request(
-      pat,
-      `/repos/${owner}/${repo}/issues/${prNumber}/labels/${encodeURIComponent(labelName)}`,
-      { method: 'DELETE' },
-    );
-    await request(pat, `/repos/${owner}/${repo}/labels/${encodeURIComponent(labelName)}`, {
-      method: 'DELETE',
-    });
+    const cleanup = await Promise.allSettled([
+      removePrLabel(labelName, { force: true }),
+      removeRepositoryLabel(labelName),
+    ]);
+    const failures = cleanup.filter((result) => result.status === 'rejected');
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures.map((result) => result.reason),
+        `Failed to fully release CI recovery ownership for PR #${prNumber}`,
+      );
+    }
+    if (await repositoryLabelExists(labelName)) {
+      throw new Error(`PR #${prNumber} owner label was recreated during release`);
+    }
   }
   labelExists = false;
   if (nextState) {
@@ -271,7 +320,7 @@ async function release(reason, nextState = null) {
 }
 
 if (pr.state !== 'open') {
-  if (labelExists) {
+  if (labelExists || staleOwningState || ownerLabelAttached) {
     await release(`pr-${pr.state}`);
   }
   process.stdout.write(`skip pr=#${prNumber} state=${pr.state}\n`);
@@ -296,9 +345,12 @@ if (operation.startsWith('lease-')) {
     if (state?.owner !== 'shepherd' || state.leaseId !== leaseId || !labelExists) {
       throw new Error(`PR #${prNumber} shepherd lease does not match`);
     }
-    await updateState({ ...state, updatedAt: now.toISOString(), trigger: 'lease-heartbeat' });
+    await updateState(
+      { ...state, updatedAt: now.toISOString(), trigger: 'lease-heartbeat' },
+      { forceTimestamp: true },
+    );
   } else if (operation === 'lease-release') {
-    if (state?.owner !== 'shepherd' || state.leaseId !== leaseId || !labelExists) {
+    if (state?.owner !== 'shepherd' || state.leaseId !== leaseId) {
       throw new Error(`PR #${prNumber} shepherd lease does not match`);
     }
     await release('lease-release');
@@ -469,6 +521,7 @@ if (
         updatedAt: now.toISOString(),
       }),
     );
+    await removePrLabel(WAITING_LABEL);
   }
   const predecessor = (
     await request(readToken, `/repos/${owner}/${repo}/pulls/${conflictPredecessor}`)
@@ -569,6 +622,7 @@ if (
   } else {
     await updateState(rebaseState);
   }
+  await removePrLabel(WAITING_LABEL);
   await dispatchWorkflow('auto-rebase-prs.yml', {
     pr_number: String(prNumber),
     expected_head_sha: pr.head.sha,
@@ -722,6 +776,35 @@ const fingerprint =
     : blockerFingerprint(normalized);
 
 if (normalized.length === 0) {
+  const waiting = [
+    ...admissionWaitReasons(waitingRequiredChecks, review.reviews),
+    ...(pendingHumanApproval ? [`human-approval:${approvalRejection}`] : []),
+  ];
+  if (waiting.length > 0) {
+    await ensurePrLabel(
+      WAITING_LABEL,
+      'bf8700',
+      'CI recovery is waiting for admission checks or explicit approval',
+    );
+    const waitingState = makeState({
+      prNumber,
+      headSha: pr.head.sha,
+      fingerprint,
+      owner: 'none',
+      status: 'waiting',
+      trigger: 'admission-wait',
+      blockers: [],
+      attempt: state?.attempt || 0,
+      updatedAt: now.toISOString(),
+    });
+    if (labelExists || staleOwningState || ownerLabelAttached) {
+      await release('admission-wait', waitingState);
+    } else {
+      await updateState(waitingState);
+    }
+    process.stdout.write(`wait pr=#${prNumber} admission=${waiting.join(',')}\n`);
+    process.exit(0);
+  }
   const convergedState = makeState({
     prNumber,
     headSha: pr.head.sha,
@@ -733,23 +816,12 @@ if (normalized.length === 0) {
     attempt: state?.attempt || 0,
     updatedAt: now.toISOString(),
   });
-  if (labelExists) {
+  if (labelExists || staleOwningState || ownerLabelAttached) {
     await release('converged', convergedState);
   } else if (stateComments.length > 0) {
-    // Update an existing state comment to reflect convergence, but do not
-    // create a brand-new comment for a PR that is simply waiting for required
-    // checks to complete — no mutation is needed until checks pass and the
-    // router re-invokes reconcile.
+    // Reuse the managed comment when transitioning out of waiting or a prior
+    // recovery state. Semantically identical idle state is left untouched.
     await updateState(convergedState);
-  }
-  const waiting = admissionWaitReasons(waitingRequiredChecks, review.reviews);
-  if (waiting.length > 0) {
-    process.stdout.write(`wait pr=#${prNumber} admission=${waiting.join(',')}\n`);
-    process.exit(0);
-  }
-  if (pendingHumanApproval) {
-    process.stdout.write(`wait pr=#${prNumber} reason=${approvalRejection}\n`);
-    process.exit(0);
   }
   // Required checks are satisfied. If this PR never went through recovery (no
   // state comment exists), persist convergedState now so merge-train/eligible()
@@ -757,6 +829,7 @@ if (normalized.length === 0) {
   if (!labelExists && stateComments.length === 0) {
     await updateState(convergedState);
   }
+  await removePrLabel(WAITING_LABEL);
   if (live && mergeTrainEnabled) {
     await removePrLabel(BLOCKED_LABEL);
     await removePrLabel(NOOP_LABEL);
@@ -828,6 +901,7 @@ if (labelExists) {
   await release('blocker-fingerprint-changed');
 }
 await acquire('automation');
+await removePrLabel(WAITING_LABEL);
 
 const taskBody = [
   `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,

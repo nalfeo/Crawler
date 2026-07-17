@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
+import { WAITING_LABEL } from './state.mjs';
 import {
   BLOCKED_LABEL,
   NOOP_LABEL,
@@ -140,13 +141,15 @@ export function collectPrNumbers({
 }) {
   if (trainEnabled) {
     const directlyTriggeredPrs = eventPrNumbers(payload);
-    return scheduledPulls
+    const eligiblePulls = scheduledPulls
       .filter((pullRequest) => {
         const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
         const labels = pullRequest.labels || [];
         const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
         const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
-        const shouldExcludeByLabels = hasQueueLabel || (!directlyTriggered && hasOptOutLabel);
+        const waiting = labels.some((label) => label.name === WAITING_LABEL);
+        const shouldExcludeByLabels =
+          hasQueueLabel || (!directlyTriggered && (hasOptOutLabel || waiting));
         return (
           pullRequest.state === 'open' &&
           !pullRequest.draft &&
@@ -159,16 +162,25 @@ export function collectPrNumbers({
         (left, right) =>
           new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
           left.number - right.number,
-      )
-      .slice(0, REPAIR_WINDOW_SIZE)
-      .filter(
-        (pullRequest) =>
-          directlyTriggeredPrs.has(pullRequest.number) ||
-          eventName === 'schedule' ||
+      );
+    const direct = eligiblePulls.filter((pullRequest) =>
+      directlyTriggeredPrs.has(pullRequest.number),
+    );
+    const sweep = eligiblePulls.filter(
+      (pullRequest) =>
+        !directlyTriggeredPrs.has(pullRequest.number) &&
+        (eventName === 'schedule' ||
           eventName === 'workflow_dispatch' ||
           !(pullRequest.labels || []).some((label) =>
             String(label.name || '').startsWith('ci-owner-pr-'),
-          ),
+          )),
+    );
+    return [...direct, ...sweep]
+      .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
+      .sort(
+        (left, right) =>
+          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+          left.number - right.number,
       )
       .map((pullRequest) => pullRequest.number);
   }
@@ -184,8 +196,11 @@ export function collectPrNumbers({
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
     const normalizedRepo = repository.toLowerCase();
     for (const pullRequest of scheduledPulls) {
+      const directlyTriggered = directNumbers.has(pullRequest.number);
+      const waiting = (pullRequest.labels || []).some((label) => label.name === WAITING_LABEL);
       if (
         !pullRequest.draft &&
+        (directlyTriggered || !waiting) &&
         pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
       ) {
         const number = Number.parseInt(String(pullRequest.number ?? ''), 10);

@@ -11,6 +11,7 @@ import {
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
   isLeaseExpired,
+  isRecoveryStateSemanticallyEqual,
   isTrainFastPathPushRun,
   isTrustedTrainPromotionCheck,
   makeState,
@@ -24,6 +25,7 @@ import {
   shouldResolveThread,
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
+  WAITING_LABEL,
 } from './state.mjs';
 
 test('requires a submitted substantive Copilot code review', () => {
@@ -199,6 +201,55 @@ test('round trips sticky state comments', () => {
   });
 
   assert.deepEqual(parseStateComment(renderStateComment(state)), state);
+});
+
+test('waiting state is non-owning and semantic equality ignores timestamp and trigger churn', () => {
+  const waiting = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint: blockerFingerprint([]),
+    owner: 'none',
+    status: 'waiting',
+    trigger: 'schedule:sweep',
+    blockers: [],
+    updatedAt: '2026-07-11T12:00:00.000Z',
+  });
+  const directRecheck = makeState({
+    ...waiting,
+    trigger: 'workflow_run:completed',
+    updatedAt: '2026-07-11T12:10:00.000Z',
+  });
+
+  assert.equal(WAITING_LABEL, 'ci-recovery-waiting');
+  assert.equal(isRecoveryStateSemanticallyEqual(waiting, directRecheck), true);
+  assert.throws(
+    () => makeState({ ...waiting, owner: 'automation' }),
+    /waiting recovery state cannot own/,
+  );
+});
+
+test('empty idle state ignores non-behavioral trigger churn but preserves behavioral fields', () => {
+  const idle = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint: blockerFingerprint([]),
+    owner: 'none',
+    status: 'idle',
+    trigger: 'converged',
+    blockers: [],
+    attempt: 1,
+    updatedAt: '2026-07-11T12:00:00.000Z',
+  });
+
+  assert.equal(
+    isRecoveryStateSemanticallyEqual(idle, {
+      ...idle,
+      trigger: 'pr-open',
+      updatedAt: '2026-07-11T12:10:00.000Z',
+    }),
+    true,
+  );
+  assert.equal(isRecoveryStateSemanticallyEqual(idle, { ...idle, attempt: 2 }), false);
 });
 
 test('enforces ownership label and state consistency', () => {

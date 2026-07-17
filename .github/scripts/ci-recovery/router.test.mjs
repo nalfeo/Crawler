@@ -225,6 +225,39 @@ test('train schedule rechecks owned slots for expiry without widening the window
   );
 });
 
+test('train sweeps skip waiting PRs but a direct event preserves one outside the repair window', () => {
+  const pulls = Array.from({ length: 9 }, (_, index) => ({
+    number: index + 1,
+    state: 'open',
+    draft: false,
+    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: index + 1 === 9 ? [{ name: 'ci-recovery-waiting' }] : [],
+  }));
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [1, 2, 3, 4, 5, 6],
+  );
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: { pull_request: { number: 9 } },
+      eventName: 'pull_request_target',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+    }),
+    [1, 2, 3, 4, 5, 9],
+  );
+});
+
 test('eventPrNumbers identifies only PRs represented by the triggering event', () => {
   assert.deepEqual([...eventPrNumbers({ pull_request: { number: 42 } })], [42]);
   assert.deepEqual(

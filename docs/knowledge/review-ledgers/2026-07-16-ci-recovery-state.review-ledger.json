@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "ci-recovery-state",
+  "task_title": "fix: make CI recovery waiting and cleanup idempotent",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Adopted explicit repository-label versus PR-attachment cleanup matrix; unexpired missing-label shepherd leases fail closed while matching release and expired leases may converge; both 404 cleanup orders are independently safe with ownership recheck. Direct waiting PRs are preserved before repair windowing and waiting markers remain until a terminal transition is persisted. Semantic no-op comparison ignores timestamps and non-behavioral waiting/empty-idle triggers; heartbeat forces persistence."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
