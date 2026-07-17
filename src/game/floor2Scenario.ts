@@ -130,12 +130,66 @@ import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { applyStartPlayerLevel } from './scenarios/playerLevelProgression.js';
 import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolicy.js';
 
-const FLOOR2_BOSS_HP_SCALE = 0.03;
-const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const FLOOR2_DIRECT_START_LEVEL = 5;
 export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
 export const FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE = 0.25;
 const floor2CombatEventCursor = new WeakMap<GameWorld, { cursor: number; lastEvent?: object }>();
+
+export interface Floor2BossTuning {
+  readonly hpScale: number;
+  readonly contactDamage: number;
+}
+
+const FLOOR2_BOSS_TUNING_ANCHORS = [
+  { level: 5, hpScale: 1, contactDamage: 18 },
+  { level: 10, hpScale: 0.6, contactDamage: 12 },
+  { level: 12, hpScale: 0.3, contactDamage: 8 },
+] as const;
+
+export function resolveFloor2BossTuning(playerLevel: number): Floor2BossTuning {
+  const normalizedLevel = Number.isFinite(playerLevel) ? Math.floor(playerLevel) : 5;
+  const level = Math.min(12, Math.max(5, normalizedLevel));
+  const upperIndex = FLOOR2_BOSS_TUNING_ANCHORS.findIndex((anchor) => anchor.level >= level);
+  const upper = FLOOR2_BOSS_TUNING_ANCHORS[Math.max(0, upperIndex)]!;
+  const lower = FLOOR2_BOSS_TUNING_ANCHORS[Math.max(0, upperIndex - 1)]!;
+  if (lower.level === upper.level) {
+    return { hpScale: lower.hpScale, contactDamage: lower.contactDamage };
+  }
+
+  const progress = (level - lower.level) / (upper.level - lower.level);
+  return {
+    hpScale: lower.hpScale + (upper.hpScale - lower.hpScale) * progress,
+    contactDamage: Math.round(
+      lower.contactDamage + (upper.contactDamage - lower.contactDamage) * progress,
+    ),
+  };
+}
+
+function resolveFloor2BossCombatStats(
+  archetype: EnemyArchetypeDef,
+  playerLevel: number,
+): { maxHp: number; contactDamage: number } {
+  const tuning = resolveFloor2BossTuning(playerLevel);
+  return {
+    maxHp: Math.max(1, Math.round(archetype.hp * tuning.hpScale)),
+    contactDamage: tuning.contactDamage,
+  };
+}
+
+function applyFloor2BossTuning(
+  world: GameWorld,
+  bossEid: number,
+  familyId: FamilyId,
+  playerLevel: number,
+): void {
+  const archetype = getFloor2BossArchetype(familyId);
+  if (!archetype) {
+    throw new Error(`No boss archetype registered for family "${familyId}"`);
+  }
+  const stats = resolveFloor2BossCombatStats(archetype, playerLevel);
+  setComponent(world.ecs, bossEid, Health, { current: stats.maxHp, max: stats.maxHp });
+  setComponent(world.ecs, bossEid, Damage, { amount: stats.contactDamage });
+}
 
 export function resolveFloor2ArchetypeAIType(archetype: EnemyArchetypeDef): number {
   if (archetype.aiType === 'ranged') return AI_TYPE.RANGED;
@@ -331,11 +385,12 @@ export function spawnFamilyBoss(
     throw new Error(`No boss archetype registered for family "${familyId}"`);
   }
   const behaviorType = resolveFloor2ArchetypeAIType(archetype);
+  const combatStats = resolveFloor2BossCombatStats(archetype, world.playerLevel.level);
   const eid = spawnBehaviorEnemy(
     world,
     x,
     y,
-    Math.max(1, Math.round(archetype.hp * FLOOR2_BOSS_HP_SCALE)),
+    combatStats.maxHp,
     behaviorType,
     archetype.speed,
     archetype.detectRange,
@@ -358,8 +413,7 @@ export function spawnFamilyBoss(
     shape: SHAPE_CIRCLE,
   });
   addComponent(world.ecs, eid, set(FamilyMembership, { familyId: familyIdIndex, isBoss: 1 }));
-  // Bosses hit hard on contact; ranged behaviour is layered later.
-  setComponent(world.ecs, eid, Damage, { amount: FLOOR2_BOSS_CONTACT_DAMAGE });
+  setComponent(world.ecs, eid, Damage, { amount: combatStats.contactDamage });
   return eid;
 }
 
@@ -581,11 +635,17 @@ export function floor2ObjectiveTick(world: GameWorld): void {
       ) {
         continue;
       }
-      encounter.started = true;
       if (encounter.bossEid !== null) {
+        applyFloor2BossTuning(
+          world,
+          encounter.bossEid,
+          encounter.familyId,
+          world.playerLevel.level,
+        );
         removeComponent(world.ecs, encounter.bossEid, Invincible);
         world.stores.enemyBehavior.aggroedPermanently[encounter.bossEid] = 1;
       }
+      encounter.started = true;
       setGoalFlag(world, encounter.activeGoalId, true);
     }
   }

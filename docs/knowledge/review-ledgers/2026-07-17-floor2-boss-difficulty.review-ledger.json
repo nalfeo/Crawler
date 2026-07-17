@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "floor2-boss-difficulty",
+  "task_title": "Tune Floor 2 boss difficulty by player level",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A static authored stats rejected because the existing level/stat curve does not guarantee the requested three distinct tiers. Alt B effective-DPS scaling rejected because it couples boss balance to weapons/builds instead of the explicit player-level contract. Alt C spawn-time scaling rejected because all bosses initialize before later level gains. Review changed the plan by making exact all-roster HP/damage anchors the hard gate, keeping hit counts as sanity evidence, adding absolute/idempotent application and first-entry lock tests, and quantifying runtime TTK/survival observations."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}
