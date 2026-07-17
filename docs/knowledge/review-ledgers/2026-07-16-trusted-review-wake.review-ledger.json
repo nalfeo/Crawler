@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "trusted-review-wake",
+  "task_title": "Recover parked trusted Copilot review wakes",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Adopted two-job least-privilege split: read-only canonical inspection first, then one actions:write GITHUB_TOKEN workflow_dispatch because workflow_dispatch is the supported recursion exception and repository App tokens are documented to 403. Removed any branch/head-branch filter. Candidate PR associations are filtered by open/main/same-repo/current-head/protected-workflow policy before requiring exactly one survivor."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

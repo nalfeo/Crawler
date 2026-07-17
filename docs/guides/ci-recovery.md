@@ -11,6 +11,13 @@ kickoff comment that points Copilot at the normal repo instructions.
 
 - `ci-recovery-router.yml` has no PAT. It translates events and the 10-minute
   backstop into per-PR `workflow_dispatch` runs.
+- `ci-recovery-review-wake-bridge.yml` is a trusted `workflow_run` bridge for
+  router runs that GitHub parks as `action_required` when Copilot authors a
+  review event. It re-fetches the immutable run, accepts only the exact router
+  path and review events from the production-proven `Copilot` bot identity
+  (`id=175728472`), filters to exactly one open same-repository PR on the current
+  head SHA, and rejects PRs that modify any workflow in the recovery chain.
+  Read-only inspection and `actions: write` dispatch are separate jobs.
 - `ci-recovery.yml`, `ci-recovery-incidents.yml`, and `issue-copilot-intake.yml`
   are the workflows that receive `CRAWLER_CI_PAT`.
 - Explicit shepherd lease operations persist even while automated recovery is in
@@ -30,10 +37,34 @@ kickoff comment that points Copilot at the normal repo instructions.
   and a PR that modifies a matched workflow definition is skipped rather than
   escalated. The retrigger fix is one commit under a different identity (e.g.
   `git commit --allow-empty -m "chore: retrigger CI"`).
-- Non-required infrastructure runs (e.g. the CI Recovery Router) in
-  `action_required` are logged and skipped; they re-trigger naturally on the
-  next qualifying review or scheduled event.
+- Non-required infrastructure runs other than the exact trusted review-wake
+  case are logged and skipped. A parked CI Recovery Router review wake is
+  recovered by one targeted `ci-recovery.yml` dispatch for its exact PR; the
+  bridge never dispatches the router or a sweep.
 - The system has no Azure dependency.
+
+The bridge intentionally uses `GITHUB_TOKEN` for the final dispatch. GitHub
+allows `workflow_dispatch` as an exception to `GITHUB_TOKEN` recursion
+suppression, the existing router uses the same path, and this repository's
+GitHub App token receives 403 responses from workflow-dispatch endpoints. The
+write-capable token is unavailable to the inspection job. Recursion is excluded
+by workflow identity: the bridge listens only to `CI Recovery Router`, while it
+dispatches `CI Recovery`, and bridge completion does not match its own trigger.
+
+`workflow_run` listeners are registered only from the default branch. After this
+workflow reaches `main`, the first live `action_required` Copilot review run is
+the platform-delivery smoke proof; branch-local testing cannot register that
+listener. If GitHub does not deliver that event, use the narrow operator fallback
+instead of waiting for cron:
+
+```powershell
+gh workflow run ci-recovery.yml --repo nalfeo/Crawler --ref main `
+  -f operation=reconcile -f pr_number=<PR> `
+  -f trigger=operator:parked-review-wake -f lease_id=
+```
+
+Never invoke `ci-recovery-router.yml` manually for this case because its
+`workflow_dispatch` entry point is a sweep.
 
 ## State
 
