@@ -25,8 +25,10 @@ for the architectural rationale.
 2. `.github/workflows/merge-train.yml` serializes reconciliation with
    `queue: max`, selects up to six oldest admitted PRs, and creates one combined
    immutable candidate.
-3. `.github/workflows/merge-train-validate.yml` runs `verify:fast` plus the
-   targeted security suite on that SHA.
+3. `.github/workflows/merge-train-validate.yml` runs every `verify:fast` gate
+   plus the targeted security suite on that SHA as parallel read-only jobs.
+   Complete unit and sprite projects use deterministic Vitest shards; no
+   affected-only filtering is used.
    Candidate-executing jobs have read-only permissions. The final publisher job
    does not check out candidate code and writes the
    `merge-train-candidate` result.
