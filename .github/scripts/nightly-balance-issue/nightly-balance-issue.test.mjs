@@ -5,6 +5,7 @@ import test from 'node:test';
 import { HUMAN_APPROVAL_LABEL } from '../merge-train/human-approval.mjs';
 import {
   buildIssueBody,
+  FINAL_AGGREGATE_ARTIFACTS,
   ISSUE_BODY,
   ISSUE_LABELS,
   ISSUE_TITLE,
@@ -111,8 +112,8 @@ function runWithHarness(harness, overrides = {}) {
 }
 
 test('hardened prompt encodes every evidence and approval gate', () => {
+  const expectedArtifacts = FINAL_AGGREGATE_ARTIFACTS.map((name) => `\`${name}\``).join(', ');
   const required = [
-    /all six FINAL aggregate artifacts \(`weapon-sweep-sword`, `weapon-sweep-bow`, `weapon-sweep-baseball-bat`, `weapon-sweep-pistol`, `weapon-sweep-throwing-knife`, `weapon-sweep-fireball`\) and 100 seeds\/weapon only/,
     /exact head SHA/,
     /Shipped\/default runtime configuration only/,
     /telemetry-backed causal attribution/,
@@ -125,13 +126,19 @@ test('hardened prompt encodes every evidence and approval gate', () => {
     /local smoke never accepts\/rejects/,
     /never substitute 10-seed indicative results/,
     /inability to run independent canonical sweep => no implementation\/PR/,
-    /Gameplay PR contains `Closes #{this issue number}`/,
+    /Gameplay PR contains `Closes #<this issue number>`/,
     /labels `human-approval-required` \+ `merge-train-blocked`/,
     /Only exact standalone trimmed owner `nalfeo` comment `APPROVED FOR CHECK-IN` unlocks/,
     /Every terminal outcome that produces no implementation PR .* is not complete until you post a final rationale\/ledger comment .* then close this issue/,
     /closure is mandatory, not optional, for every no-PR path/,
     /@copilot Please execute this issue end-to-end/,
   ];
+  assert.equal(
+    ISSUE_BODY.includes(
+      `all six FINAL aggregate artifacts (${expectedArtifacts}) and 100 seeds/weapon only`,
+    ),
+    true,
+  );
   for (const invariant of required) assert.match(ISSUE_BODY, invariant);
 
   assert.doesNotMatch(ISSUE_BODY, /(?:exactly|at least) 3 (?:ideas|candidates)/i);

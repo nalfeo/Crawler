@@ -14,7 +14,7 @@ ci-policy
 
 ## Apples
 
-2🍎 estimated. Actual pending final validation, but the diff remained a small two-file automation/test fix with no wider scope expansion.
+2🍎 estimated, 2🍎 actual (exact). The diff stayed a small automation/test fix plus the required handoff/ledger artifacts with no wider scope expansion.
 
 ## What changed
 

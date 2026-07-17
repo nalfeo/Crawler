@@ -16,7 +16,7 @@ export const ISSUE_LABELS = Object.freeze([
   HUMAN_APPROVAL_LABEL,
 ]);
 
-const FINAL_AGGREGATE_ARTIFACTS = Object.freeze([
+export const FINAL_AGGREGATE_ARTIFACTS = Object.freeze([
   'weapon-sweep-sword',
   'weapon-sweep-bow',
   'weapon-sweep-baseball-bat',
@@ -25,7 +25,7 @@ const FINAL_AGGREGATE_ARTIFACTS = Object.freeze([
   'weapon-sweep-fireball',
 ]);
 
-export function buildIssueBody(issueNumber = '{this issue number}') {
+export function buildIssueBody(issueNumber = '<this issue number>') {
   return `## Objective
 Examine eligible current telemetry, identify and rank up to 3 evidence-backed game-balance improvements, evaluate each independently with canonical sweeps, and ship only treatments supported by comparable aggregate evidence. Zero eligible ideas is valid and produces no implementation PR.
 
