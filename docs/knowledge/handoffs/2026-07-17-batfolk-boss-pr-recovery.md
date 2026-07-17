@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-17
 **Persona:** Graphics Designer
-**Apples:** estimated 🍎 / actual 🍎
+**Apples:** estimated 1🍎 / actual 1🍎
 
 ## Systems touched
 
