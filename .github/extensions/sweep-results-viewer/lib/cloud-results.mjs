@@ -252,12 +252,15 @@ export function isLeaderboardArtifact(artifact) {
 /**
  * Produce a user-facing warning/status string for an AI Sweep Eval run.
  *
- * @param {{ run: object, jobPhases: object | null, hasLeaderboard: boolean }} options
+ * @param {{ run: object, jobPhases: object | null, hasLeaderboard: boolean, expiredArtifactCount?: number }} options
  * @returns {string | null}
  */
-export function aiSweepWarning({ run, jobPhases, hasLeaderboard }) {
+export function aiSweepWarning({ run, jobPhases, hasLeaderboard, expiredArtifactCount = 0 }) {
   if (isTerminalRun(run)) {
     if (!hasLeaderboard) {
+      if (expiredArtifactCount > 0) {
+        return 'Leaderboard artifact has expired and is no longer available.';
+      }
       if (run.conclusion && run.conclusion !== 'success') {
         return `Run concluded ${run.conclusion}; no leaderboard artifact is available.`;
       }

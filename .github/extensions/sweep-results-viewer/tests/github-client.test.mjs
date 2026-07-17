@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createLruCache, parseGitHubRepository, sanitizeErrorText } from '../lib/github-client.mjs';
+import {
+  createLruCache,
+  mergeSweepRunResults,
+  parseGitHubRepository,
+  sanitizeErrorText,
+} from '../lib/github-client.mjs';
 import { tokensMatch } from '../lib/http-security.mjs';
 
 test('parses supported GitHub origin URL forms', () => {
@@ -86,4 +91,61 @@ test('listWeaponSweepRuns tags all returned runs with workflowType weapon-sweep'
   const tagged = { ...normalized, workflowType: 'ai-sweep' };
   assert.equal(tagged.workflowType, 'ai-sweep');
   assert.equal(tagged.id, 123);
+});
+
+test('mergeSweepRunResults returns combined runs from both fulfilled listings', () => {
+  const weaponRun = { id: 1, workflowType: 'weapon-sweep' };
+  const aiRun = { id: 2, workflowType: 'ai-sweep' };
+  const result = mergeSweepRunResults(
+    { status: 'fulfilled', value: [weaponRun] },
+    { status: 'fulfilled', value: [aiRun] },
+  );
+  assert.equal(result.length, 2);
+});
+
+test('mergeSweepRunResults returns partial list when one workflow fails but other has runs', () => {
+  const aiRun = { id: 2, workflowType: 'ai-sweep' };
+  const result = mergeSweepRunResults(
+    { status: 'rejected', reason: new Error('weapon-sweep 404') },
+    { status: 'fulfilled', value: [aiRun] },
+  );
+  assert.equal(result.length, 1);
+  assert.equal(result[0].workflowType, 'ai-sweep');
+});
+
+test('mergeSweepRunResults throws weapon-sweep error when combined is empty and weapon listing failed', () => {
+  const weaponError = new Error('weapon-sweep not found');
+  assert.throws(
+    () =>
+      mergeSweepRunResults(
+        { status: 'rejected', reason: weaponError },
+        { status: 'fulfilled', value: [] },
+      ),
+    (err) => err === weaponError,
+  );
+});
+
+test('mergeSweepRunResults throws ai-sweep error when combined is empty and only AI listing failed', () => {
+  const aiError = new Error('ai-sweep not found');
+  assert.throws(
+    () =>
+      mergeSweepRunResults(
+        { status: 'fulfilled', value: [] },
+        { status: 'rejected', reason: aiError },
+      ),
+    (err) => err === aiError,
+  );
+});
+
+test('mergeSweepRunResults throws weapon-sweep error when both listings fail', () => {
+  const weaponError = new Error('weapon-sweep 500');
+  const aiError = new Error('ai-sweep 500');
+  assert.throws(
+    () =>
+      mergeSweepRunResults(
+        { status: 'rejected', reason: weaponError },
+        { status: 'rejected', reason: aiError },
+      ),
+    (err) => err === weaponError,
+  );
 });

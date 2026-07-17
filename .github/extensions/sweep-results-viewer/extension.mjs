@@ -224,6 +224,8 @@ async function refreshCloudState(instanceId, options = {}) {
         isTerminalRun,
         loadSnapshot: (signal) =>
           loadAiSweepRun(state.context.repository, state.selectedRun.id, signal),
+        isComplete: (snapshot) =>
+          Boolean(snapshot.leaderboardData) || snapshot.expiredArtifactCount > 0,
       });
       if (state.closed || state.generation !== generation || state.source !== 'cloud') {
         return state;
@@ -247,6 +249,7 @@ async function refreshCloudState(instanceId, options = {}) {
         run: updatedRun,
         jobPhases: cloud.jobPhases,
         hasLeaderboard: Boolean(cloud.leaderboardData),
+        expiredArtifactCount: cloud.expiredArtifactCount,
       });
       state.error = null;
     } else {

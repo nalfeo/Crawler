@@ -318,3 +318,14 @@ test('aiSweepWarning reports missing leaderboard on a failed terminal run', () =
   assert.match(result, /failure/i);
   assert.match(result, /leaderboard/i);
 });
+
+test('aiSweepWarning reports expired artifact when leaderboard is missing and expiredArtifactCount > 0', () => {
+  const result = aiSweepWarning({
+    run: { status: 'completed', conclusion: 'success' },
+    jobPhases: null,
+    hasLeaderboard: false,
+    expiredArtifactCount: 1,
+  });
+  assert.match(result, /expired/i);
+  assert.match(result, /leaderboard/i);
+});

@@ -371,16 +371,9 @@ export function renderHtml(instanceId) {
     return html;
   }
 
-  function renderAiSweepLeaderboard(state) {
-    const data = state.data;
-    if (!data) return '';
-    const rows = data.byComposite || [];
-    if (!rows.length) return '<div class="empty-state">Leaderboard is empty.</div>';
-
-    let html = '<section><h2>Leaderboard — composite score (by-combo, tuned finalist)</h2>';
-    if (data.winnersDiverge) {
-      html += '<div class="message warning">⚠️ Composite-score winner differs from win-count winner — check both orderings.</div>';
-    }
+  function renderLeaderboardTable(rows, headingText) {
+    if (!rows || !rows.length) return '<div class="empty-state">Leaderboard is empty.</div>';
+    let html = '<section><h2>' + esc(headingText) + '</h2>';
     html += '<div class="table-wrap"><table><thead><tr>'
       + '<th>Rank</th><th>Combo</th><th>Runs</th><th>Wins</th><th>Win rate</th>'
       + '<th>Σ score</th><th>Mean score</th><th>Mean clear</th><th>Mean XP</th>'
@@ -407,6 +400,20 @@ export function renderHtml(instanceId) {
       html += '</tr>';
     }
     html += '</tbody></table></div></section>';
+    return html;
+  }
+
+  function renderAiSweepLeaderboard(state) {
+    const data = state.data;
+    if (!data) return '';
+    let html = '';
+    if (data.winnersDiverge) {
+      html += '<div class="message warning">⚠️ Composite-score winner differs from win-count winner — both orderings are shown below.</div>';
+      html += renderLeaderboardTable(data.byComposite, 'Leaderboard — composite score ordering');
+      html += renderLeaderboardTable(data.byLexicographic, 'Leaderboard — win-count ordering');
+    } else {
+      html += renderLeaderboardTable(data.byComposite, 'Leaderboard — composite score (by-combo, tuned finalist)');
+    }
     return html;
   }
 

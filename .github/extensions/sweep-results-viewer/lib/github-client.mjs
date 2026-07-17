@@ -168,6 +168,33 @@ export async function listAiSweepRuns(repository, signal) {
 }
 
 /**
+ * Merges two allSettled results for weapon and AI runs. Exported for testing.
+ * Throws when the combined list is empty and at least one listing failed,
+ * so callers see a real diagnostic instead of a misleading "no runs" message.
+ *
+ * @param {{ status: string, value?: object[], reason?: Error }} weaponResult
+ * @param {{ status: string, value?: object[], reason?: Error }} aiResult
+ * @returns {object[]}
+ */
+export function mergeSweepRunResults(weaponResult, aiResult) {
+  const combined = [
+    ...(weaponResult.status === 'fulfilled' ? weaponResult.value : []),
+    ...(aiResult.status === 'fulfilled' ? aiResult.value : []),
+  ];
+  // Surface an error when combined is empty and at least one workflow listing failed,
+  // so callers see a real diagnostic instead of a misleading "No runs found" message.
+  if (combined.length === 0) {
+    if (weaponResult.status === 'rejected' && aiResult.status === 'rejected') {
+      // Both failed — surface weapon-sweep error (primary workflow) as the thrown error.
+      throw weaponResult.reason;
+    }
+    if (weaponResult.status === 'rejected') throw weaponResult.reason;
+    if (aiResult.status === 'rejected') throw aiResult.reason;
+  }
+  return combined;
+}
+
+/**
  * Lists all sweep runs (weapon-sweep + AI Sweep Eval) combined, newest first.
  * Each run carries a `workflowType` field indicating its source workflow.
  * Errors from either workflow are surfaced; if one workflow has no runs the
@@ -178,15 +205,7 @@ export async function listAllSweepRuns(repository, signal) {
     listWeaponSweepRuns(repository, signal),
     listAiSweepRuns(repository, signal),
   ]);
-  const combined = [
-    ...(weaponRuns.status === 'fulfilled' ? weaponRuns.value : []),
-    ...(aiRuns.status === 'fulfilled' ? aiRuns.value : []),
-  ];
-  // If both failed, surface the weapon-sweep error (it's the primary workflow).
-  if (combined.length === 0 && weaponRuns.status === 'rejected') {
-    throw weaponRuns.reason;
-  }
-  return sortRunsNewestFirst(combined);
+  return sortRunsNewestFirst(mergeSweepRunResults(weaponRuns, aiRuns));
 }
 
 async function getRun(repository, runId, signal) {
