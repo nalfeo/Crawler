@@ -745,13 +745,6 @@ async function release(reason, nextState = null) {
 
     if (needsPostReleaseCheck) {
       await removeRepositoryLabelById(ownerLabelNodeId);
-    } else {
-      await removeRepositoryLabel(labelName);
-    }
-    if (!needsPostReleaseCheck && (await repositoryLabelExists(labelName))) {
-      throw new Error(`PR #${prNumber} owner label was recreated during release`);
-    }
-    if (needsPostReleaseCheck) {
       const verifyFacts = await fetchOwnershipFacts();
       return completeReleaseHandoff(
         verifyFacts,
@@ -761,9 +754,15 @@ async function release(reason, nextState = null) {
       );
     }
   }
-  labelExists = false;
   await updateState(releasedState);
   await completeWaitingExit(waitingTransition);
+  if (shouldMutate) {
+    await removeRepositoryLabel(labelName);
+    if (await repositoryLabelExists(labelName)) {
+      throw new Error(`PR #${prNumber} owner label was recreated during release`);
+    }
+  }
+  labelExists = false;
   return RELEASE_COMPLETED;
 }
 

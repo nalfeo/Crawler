@@ -407,6 +407,66 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
     mutatingCalls.indexOf(labelDetach) < mutatingCalls.indexOf(labelDelete),
     'the PR label attachment must be detached before the repository label definition is deleted',
   );
+  assert.ok(
+    mutatingCalls.indexOf(commentUpdate) < mutatingCalls.indexOf(labelDelete),
+    'the terminal state must be persisted before the repository ownership fence is released',
+  );
+});
+
+test('lease-release does not overwrite an owner that acquires after fence deletion', async (t) => {
+  const stateComment = shepherdStateComment();
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL, node_id: 'LABEL_original' } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = true;
+      stateComment.body = renderStateComment(
+        makeState({
+          prNumber: PR_NUM,
+          headSha: HEAD_SHA,
+          fingerprint: blockerFingerprint([]),
+          owner: 'automation',
+          status: 'active',
+          trigger: 'concurrent-acquire',
+          blockers: [],
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+      return { body: {} };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.notEqual(code, 0);
+  assert.match(stderr, /owner label was recreated during release/);
+  assert.equal(parseStateComment(stateComment.body)?.owner, 'automation');
+  const commentUpdates = mutatingCalls.filter(
+    (call) =>
+      call.method === 'PATCH' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+  );
+  assert.equal(
+    commentUpdates.length,
+    1,
+    'release must not PATCH after deleting its ownership fence',
+  );
 });
 
 test('known stale-node 422 refetches ownership, retries detach once, and then converges', async (t) => {
@@ -4363,7 +4423,7 @@ test('duplicate stale-node convergence to waiting stops retry reacquire and keep
   if (!assertSuccessfulExit(t, code, stderr, 'converged waiting retry', true)) return;
 
   assert.match(stdout, /reason=converged-elsewhere/);
-  assert.equal(parseStateComment(stateComment.body)?.status, 'idle');
+  assert.equal(parseStateComment(stateComment.body)?.status, 'waiting');
   assert.equal(
     mutatingCalls.some(
       (call) =>

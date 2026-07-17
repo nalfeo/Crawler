@@ -18,6 +18,12 @@ stale-automation release is resumable: progress-key-scoped exhausted ownership
 finishes at idle, while legacy cumulative attempt state receives its promised
 single compatible retry.
 
+Repository-label cleanup is incarnation-safe: stale-node recovery deletes only
+the original label node, and ordinary release persists terminal state plus
+waiting cleanup while the original repository label still fences acquisition.
+The repository fence is deleted last, so a new owner cannot be overwritten by
+the releasing run.
+
 Broad sweep ownership hydration now processes oldest-first and stops only when
 the fully resolved prefix contains six PRs that the real sweep policy can
 dispatch. This avoids both full-backlog hydration and premature stopping on
@@ -36,8 +42,8 @@ queued, waiting, opted-out, or otherwise ineligible candidates.
 
 ## Verification
 
-- Focused state/router/reconcile/replay Node suite: 95 passed, 49 documented
-  Windows subprocess skips, 0 failed.
+- Focused CI Recovery Node suite: 178 passed, 52 documented Windows subprocess
+  skips, 0 failed.
 - `npm run verify:fast`
 - `npm run verify:pr-prereqs`
 - Corrective 3-apple ledger: `gpt-5.4` plan review plus a two-round
