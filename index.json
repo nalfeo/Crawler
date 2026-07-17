@@ -1,5 +1,16 @@
 [
   {
+    "commit": "300bd33c3286322621dd02f584d1b19a852eb609",
+    "commitDate": "2026-07-17T15:02:59Z",
+    "commitSubject": "feat: expand mob motion lab and align projectile origins (#1251)",
+    "capturedAt": "2026-07-17T16:22:37.963Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29591252814",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/300bd33c3286322621dd02f584d1b19a852eb609.json"
+  },
+  {
     "commit": "b8f1170e23a4db2b08abfd3c2f5e190013596f51",
     "commitDate": "2026-07-17T14:36:21Z",
     "commitSubject": "fix(ci): reduce recovery runner fan-out (#1255)",
