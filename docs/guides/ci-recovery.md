@@ -51,10 +51,13 @@ set. The same fingerprint is never assigned twice.
 When `MERGE_TRAIN_ENABLED=true`, the router orders non-ready PRs by creation time
 and keeps at most six in the repair window. Active recovery/shepherd ownership
 counts toward the window; a ready `merge-train` PR leaves it and immediately
-opens the next slot. Recovery and train sticky comments are ignored as router
-triggers so state persistence cannot dispatch more recovery work. Owned slots
-are rechecked only for their own direct PR events and the bounded scheduled
-sweep, which lets completed or expired ownership advance without recreating the
+opens the next slot through the trusted fill-window dispatch. PR-scoped events
+route only their represented PRs; schedule/manual fills, closed-PR fills, and
+default-branch CI events without an associated PR may scan the bounded window.
+Recovery and train sticky comments are rejected before runner allocation and
+ignored again by the router script, so state persistence cannot dispatch more
+recovery work. Owned slots are rechecked only for their own direct PR events and
+bounded global sweeps, which lets completed or expired ownership advance without recreating the
 event fan-out.
 
 Green evidence is bound to the PR head SHA plus its latest required-check and
