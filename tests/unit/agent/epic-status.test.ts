@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -104,7 +105,10 @@ function validateA0(state: EpicState): void {
     {
       kind: 'offline-validator-and-focused-tests',
       path_or_check: 'tests/unit/agent/epic-status.test.ts',
-      sha256: '76f6cf0816360cc4286fa89a1e810a938b8f0cc7e1a8f0dc3c8029cc4e251183',
+      // Computed at test-run time so the hash stays correct when this file changes.
+      sha256: createHash('sha256')
+        .update(readFileSync(resolve(REPO_ROOT, 'tests/unit/agent/epic-status.test.ts'), 'utf8'))
+        .digest('hex'),
       commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
