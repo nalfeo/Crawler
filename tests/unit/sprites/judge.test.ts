@@ -36,7 +36,7 @@ import {
   type VisionProvider,
 } from '../../../scripts/sprites/provider/vision-types.js';
 
-function makeBrief(): Brief {
+function makeBrief(overrides: Partial<Brief> = {}): Brief {
   return briefSchema.parse({
     type: 'weapon',
     name: 'judge-sword',
@@ -48,6 +48,7 @@ function makeBrief(): Brief {
     references: [{ path: 'docs/refs/sword-1.png' }, { path: 'docs/refs/sword-2.png' }],
     generation: { sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
     judge: { enabled: true, maxVariants: 16 },
+    ...overrides,
   });
 }
 
@@ -323,6 +324,7 @@ describe('judgeVariant — happy path', () => {
         readability: { score: 4, rationale: 'z' },
       },
     });
+
     await judgeVariant({
       processed: makeTinyPng(),
       referencePngs: [makeRefPng(), makeRefPng(), makeRefPng(), makeRefPng(), makeRefPng()],
@@ -342,6 +344,31 @@ describe('judgeVariant — happy path', () => {
       'reference-2',
       'reference-3',
     ]);
+  });
+
+  it('includes Floor 2 and family direction in the design-language rubric', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'family fit' },
+        reference_style_match: { score: 5, rationale: 'style fit' },
+        brief_match: { score: 5, rationale: 'brief fit' },
+        readability: { score: 5, rationale: 'readable' },
+      },
+    });
+
+    await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [makeRefPng()],
+      brief: makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
+      styleGuide: 'pixel art style guide content',
+      provider,
+      variantIndex: 0,
+      env: {},
+      now: FIXED_NOW,
+    });
+
+    expect(calls[0]?.request.systemInstructions).toContain('Family Matters');
+    expect(calls[0]?.request.systemInstructions).toContain('The Snaggle Cartel');
   });
 
   it('writes a `NN.judge.json` artifact when processedDir is supplied', async () => {

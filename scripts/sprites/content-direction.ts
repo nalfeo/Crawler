@@ -1,3 +1,5 @@
+import type { DesignLanguageAddenda } from './design-language-addenda.js';
+
 export const DEFAULT_FLOOR = 1;
 export const MAX_FLOOR = 20;
 
@@ -42,6 +44,20 @@ export function floorContextBlock(floor: number): string {
   ].join('\n');
 }
 
-export function contentDirectionBlock(floor: number): string {
-  return [CRAWLER_DESIGN_LANGUAGE, '', floorContextBlock(floor)].join('\n');
+export function designLanguageAddendaBlock(addenda: DesignLanguageAddenda = {}): string {
+  return [
+    ...(addenda.floor ? ['## Floor design language', addenda.floor] : []),
+    ...(addenda.floor && addenda.theme ? [''] : []),
+    ...(addenda.theme ? ['## Theme design language', addenda.theme] : []),
+  ].join('\n');
+}
+
+export function contentDirectionBlock(floor: number, addenda: DesignLanguageAddenda = {}): string {
+  const optionalAddenda = designLanguageAddendaBlock(addenda);
+  return [
+    CRAWLER_DESIGN_LANGUAGE,
+    '',
+    floorContextBlock(floor),
+    ...(optionalAddenda ? ['', optionalAddenda] : []),
+  ].join('\n');
 }

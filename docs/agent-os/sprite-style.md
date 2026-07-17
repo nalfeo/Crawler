@@ -42,7 +42,7 @@ Default sheet-mode generation asks for a **4×4 grid of 16 distinct variants** o
 
 ## The prompt preamble
 
-The preamble below is the authoritative structure that `scripts/sprites/build-prompt.ts` concatenates at the top of every prompt. At runtime, `{{CRAWLER_DESIGN_LANGUAGE}}` expands from `scripts/sprites/content-direction.ts`, the canonical shared design-language source. Keep it short — the model has a finite attention budget and the brief-specific subject description is what we want it to spend it on.
+The preamble below is the authoritative structure that `scripts/sprites/build-prompt.ts` concatenates at the top of every prompt. At runtime, `{{CRAWLER_DESIGN_LANGUAGE}}` expands from `scripts/sprites/content-direction.ts`, the canonical shared design-language source. Optional floor and theme/family addenda are composed after the floor-intensity block; either may appear alone, and known Floor 2 family mobs and bosses resolve both from `scripts/sprites/design-language-addenda.ts`. Keep the shared preamble short — the model has a finite attention budget and the brief-specific subject description is what we want it to spend it on.
 
 > --- STYLE PREAMBLE (do not deviate) ---
 >

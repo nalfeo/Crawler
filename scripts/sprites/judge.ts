@@ -39,6 +39,11 @@ import { isCiPipelineBypassed } from './ci-bypass.js';
 import { JudgeCache } from './judge-cache.js';
 import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js';
 import { contentDirectionBlock } from './content-direction.js';
+import { designLanguageAddendaBlock } from './content-direction.js';
+import {
+  resolveDesignLanguageAddenda,
+  type DesignLanguageAddenda,
+} from './design-language-addenda.js';
 
 /**
  * Version of the system prompt + user prompt structure built below.
@@ -50,7 +55,7 @@ import { contentDirectionBlock } from './content-direction.js';
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v3';
+const PROMPT_TEMPLATE_VERSION = 'v4';
 
 export type Evaluator = 'design_language' | 'reference_style_match' | 'brief_match' | 'readability';
 
@@ -193,6 +198,10 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
   }
 
   const now = options.now ?? (() => new Date());
+  const designLanguageAddenda = resolveDesignLanguageAddenda(
+    options.brief.name,
+    options.brief.floor,
+  );
 
   // Cache lookup runs BEFORE building previews / images — a hit
   // avoids both the provider call AND the (cheap-but-not-free) PNG
@@ -207,6 +216,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
         referencePngs: options.referencePngs,
         briefMatchInstructions: options.brief.prompt,
         floor: options.brief.floor,
+        designLanguageAddenda: designLanguageAddendaBlock(designLanguageAddenda),
       })
     : null;
   if (options.cache && cacheKey) {
@@ -235,7 +245,11 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     .map((png) => ({ png, label: 'reference' as const }));
 
   const request: EvaluateRequest = {
-    systemInstructions: buildSystemInstructions(options.styleGuide, options.brief.floor),
+    systemInstructions: buildSystemInstructions(
+      options.styleGuide,
+      options.brief.floor,
+      designLanguageAddenda,
+    ),
     userPrompt: buildUserPrompt(options.brief, referencePreviews.length),
     images: [
       { png: candidatePreview, label: 'candidate' },
@@ -337,7 +351,11 @@ function buildScorecard(args: {
   };
 }
 
-function buildSystemInstructions(styleGuide: string, floor: number): string {
+function buildSystemInstructions(
+  styleGuide: string,
+  floor: number,
+  addenda: DesignLanguageAddenda,
+): string {
   return [
     'You are a strict quality judge for pixel-art sprites generated for a top-down roguelike game.',
     '',
@@ -347,7 +365,7 @@ function buildSystemInstructions(styleGuide: string, floor: number): string {
     'the canonical Crawler art style, not off-style stock art — so the candidate should look',
     'like it belongs in the same shipped set.',
     '',
-    contentDirectionBlock(floor),
+    contentDirectionBlock(floor, addenda),
     '',
     'Score the candidate on four independent 1-5 ordinal axes:',
     '',
