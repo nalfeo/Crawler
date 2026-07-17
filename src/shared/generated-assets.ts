@@ -330,6 +330,8 @@ export function resolveWeaponAnchorWorldPos(
   let wpX = entry.weaponAnchor.x;
   const wpY = entry.weaponAnchor.y;
   // Mirror X when the canonical art faces right but the entity currently faces left.
+  // Uses zero-indexed mirroring: for a framePixelWidth=64 frame, pixel 0 ↔ pixel 63
+  // (i.e. mirrored = framePixelWidth - 1 - original).
   if (entry.facingDirection === 'right' && !facingRight) {
     wpX = framePixelWidth - 1 - wpX;
   }

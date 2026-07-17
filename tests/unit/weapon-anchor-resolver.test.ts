@@ -7,6 +7,7 @@ import {
 /** Build a minimal GeneratedSpriteEntry for testing. */
 function makeEntry(overrides: Partial<GeneratedSpriteEntry> = {}): GeneratedSpriteEntry {
   return {
+    briefId: 'test-enemy-v1',
     textureKey: 'test-enemy-v1-var-00',
     assetPath: 'assets/generated/test-enemy-v1/var-00.png',
     anchor: { x: 32, y: 32 },

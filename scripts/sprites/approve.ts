@@ -653,6 +653,10 @@ function resolveSingleAnchor(
  * editor's weapon-anchor flow. Returns the anchor when the file is present and
  * valid, `null` when the file explicitly records a cleared anchor, and
  * `undefined` when the file is absent (= anchor was never authored).
+ *
+ * @returns `ManifestAnchor` when an explicit anchor is present and valid;
+ *   `null` when the file contains `{ cleared: true }` (intentional removal);
+ *   `undefined` when the file is absent (anchor was never set).
  */
 function resolveWeaponAnchorSidecar(
   fs: ApproveFs,
