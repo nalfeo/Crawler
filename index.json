@@ -11,6 +11,17 @@
     "path": "by-sha/1174363f4fd60920cfeee3fdee55c55892a7f09d.json"
   },
   {
+    "commit": "383bcc546ad3f9ef595d9c484e9d34df3ed7f601",
+    "commitDate": "2026-07-17T08:19:53Z",
+    "commitSubject": "fix(floors): preserve player state entering Floor 2 (#1233)",
+    "capturedAt": "2026-07-17T09:33:38.900Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29566427306",
+    "winRate": 0.9483333333333334,
+    "totalWins": 569,
+    "totalRuns": 600,
+    "path": "by-sha/383bcc546ad3f9ef595d9c484e9d34df3ed7f601.json"
+  },
+  {
     "commit": "248795791752a56f1de528c67421af83d68e7729",
     "commitDate": "2026-07-17T07:30:20Z",
     "commitSubject": "fix(ai): preserve Floor 2 progress recovery targets (#1239)",
