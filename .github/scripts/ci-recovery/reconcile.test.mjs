@@ -434,6 +434,7 @@ for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] o
       [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
         body: { id: 999, body: '' },
       }),
+      [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
     });
     t.after(() => server.close());
 

@@ -34,11 +34,15 @@ kickoff comment that points Copilot at the normal repo instructions.
   original immutable creation/submission time is outside the window use the
   exact operator fallback. The selected PR must then still match the immutable
   run head SHA and exact `run.head_branch`.
-  The protected-workflow gate compares every recovery
-  workflow blob at the branch's immutable merge base and `run.head_sha`; unequal
-  presence or content fails closed as `protected-workflow-modified`, while a
-  stale branch that has identical old blobs—or predates a file at both
-  points—remains eligible. Missing merge-base evidence fails closed as
+  The protected-execution gate compares the four privileged workflow wrappers,
+  every transitive JavaScript module they execute, and the dispatched
+  `auto-rebase-prs.yml` sink at the branch's immutable merge base and
+  `run.head_sha`; unequal presence or content fails closed as
+  `protected-workflow-modified`, while a stale branch that has identical old
+  blobs—or predates a file at both points—remains eligible. A deterministic
+  import-closure test prevents a new privileged relative import from escaping
+  this exact boundary without broadly locking unrelated scripts. Missing
+  merge-base evidence fails closed as
   `missing-merge-base`. The bridge deliberately does not trust
   `/pulls/{number}/files`, because that endpoint follows the PR's current head
   and could supply unrelated evidence during an A→B→A force-push race. It

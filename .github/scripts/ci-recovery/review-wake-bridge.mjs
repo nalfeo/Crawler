@@ -13,10 +13,19 @@ const TRUSTED_REVIEWER_LOGINS = new Set([
   'copilot-pull-request-reviewer[bot]',
 ]);
 const REVIEW_EVENT_MAX_DELAY_MS = 30_000;
-const PROTECTED_WORKFLOW_PATHS = new Set([
+export const PROTECTED_WORKFLOW_PATHS = new Set([
   '.github/workflows/ci-recovery-router.yml',
   '.github/workflows/ci-recovery-review-wake-bridge.yml',
   '.github/workflows/ci-recovery.yml',
+  '.github/workflows/auto-rebase-prs.yml',
+  '.github/scripts/ci-recovery/review-wake-bridge.mjs',
+  '.github/scripts/ci-recovery/router.mjs',
+  '.github/scripts/ci-recovery/reconcile.mjs',
+  '.github/scripts/ci-recovery/github.mjs',
+  '.github/scripts/ci-recovery/state.mjs',
+  '.github/scripts/ci-recovery/approval.mjs',
+  '.github/scripts/merge-train/state.mjs',
+  '.github/scripts/merge-train/human-approval.mjs',
 ]);
 
 function normalize(value) {
@@ -201,7 +210,7 @@ export async function inspectReviewWake({
   const mergeBaseSha = String(comparison?.merge_base_commit?.sha || '').toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(mergeBaseSha)) return { reason: 'missing-merge-base' };
 
-  const workflowSnapshots = await Promise.all(
+  const protectedSnapshots = await Promise.all(
     [...PROTECTED_WORKFLOW_PATHS].map(async (path) => {
       const [baseFile, headFile] = await Promise.all([
         api.getWorkflowFile(path, mergeBaseSha),
@@ -210,7 +219,7 @@ export async function inspectReviewWake({
       return { path, baseFile, headFile };
     }),
   );
-  const routerSnapshot = workflowSnapshots.find(({ path }) => path === ROUTER_WORKFLOW_PATH);
+  const routerSnapshot = protectedSnapshots.find(({ path }) => path === ROUTER_WORKFLOW_PATH);
   if (
     !routerSnapshot ||
     !workflowBlobMatchesBase(routerSnapshot.baseFile, routerSnapshot.headFile)
@@ -218,7 +227,9 @@ export async function inspectReviewWake({
     return { reason: 'router-workflow-untrusted' };
   }
   if (
-    workflowSnapshots.some(({ baseFile, headFile }) => !workflowBlobMatchesBase(baseFile, headFile))
+    protectedSnapshots.some(
+      ({ baseFile, headFile }) => !workflowBlobMatchesBase(baseFile, headFile),
+    )
   ) {
     return { reason: 'protected-workflow-modified' };
   }

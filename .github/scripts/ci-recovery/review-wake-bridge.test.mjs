@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-import { inspectReviewWake } from './review-wake-bridge.mjs';
+import { inspectReviewWake, PROTECTED_WORKFLOW_PATHS } from './review-wake-bridge.mjs';
 
 const repository = 'nalfeo/Crawler';
 const trustedActor = { id: 175728472, login: 'Copilot', type: 'Bot' };
@@ -13,6 +16,41 @@ const trustedReviewAlias = {
 const mergeBaseSha = 'd'.repeat(40);
 const runCreatedAt = '2026-07-17T04:36:29Z';
 const evidenceSince = '2026-07-17T04:35:59.000Z';
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const protectedPaths = [
+  '.github/workflows/ci-recovery-router.yml',
+  '.github/workflows/ci-recovery-review-wake-bridge.yml',
+  '.github/workflows/ci-recovery.yml',
+  '.github/workflows/auto-rebase-prs.yml',
+  '.github/scripts/ci-recovery/review-wake-bridge.mjs',
+  '.github/scripts/ci-recovery/router.mjs',
+  '.github/scripts/ci-recovery/reconcile.mjs',
+  '.github/scripts/ci-recovery/github.mjs',
+  '.github/scripts/ci-recovery/state.mjs',
+  '.github/scripts/ci-recovery/approval.mjs',
+  '.github/scripts/merge-train/state.mjs',
+  '.github/scripts/merge-train/human-approval.mjs',
+];
+const addedProtectedPaths = protectedPaths.slice(3);
+
+function relativeImportClosure(entryPaths) {
+  const pending = [...entryPaths];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const relativePath = pending.pop();
+    if (visited.has(relativePath)) continue;
+    visited.add(relativePath);
+    const absolutePath = path.join(repoRoot, relativePath);
+    const source = readFileSync(absolutePath, 'utf8');
+    for (const match of source.matchAll(/from\s+['"](\.{1,2}\/[^'"]+)['"]/g)) {
+      const dependency = path
+        .relative(repoRoot, path.resolve(path.dirname(absolutePath), match[1]))
+        .replaceAll('\\', '/');
+      pending.push(dependency);
+    }
+  }
+  return visited;
+}
 
 function fixture() {
   // Parked-run shape and timing are captured from production runs 29555271824
@@ -132,18 +170,35 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
     ['listReviewEvidence', 42, 'pull_request_review_comment', evidenceSince],
     ['getPull', 42],
   ]);
-  assert.equal(fake.workflowCalls.length, 6);
-  for (const path of [
-    '.github/workflows/ci-recovery-router.yml',
-    '.github/workflows/ci-recovery-review-wake-bridge.yml',
-    '.github/workflows/ci-recovery.yml',
-  ]) {
+  assert.equal(fake.workflowCalls.length, protectedPaths.length * 2);
+  for (const path of protectedPaths) {
     assert.deepEqual(
       fake.workflowCalls.filter(([candidate]) => candidate === path),
       [
         [path, mergeBaseSha],
         [path, 'a'.repeat(40)],
       ],
+    );
+  }
+});
+
+test('protected paths are the exact privileged recovery execution boundary', () => {
+  assert.deepEqual([...PROTECTED_WORKFLOW_PATHS].sort(), [...protectedPaths].sort());
+  assert.equal(
+    [...PROTECTED_WORKFLOW_PATHS].some((candidate) => candidate.includes('*')),
+    false,
+  );
+
+  const closure = relativeImportClosure([
+    '.github/scripts/ci-recovery/router.mjs',
+    '.github/scripts/ci-recovery/review-wake-bridge.mjs',
+    '.github/scripts/ci-recovery/reconcile.mjs',
+  ]);
+  for (const dependency of closure) {
+    assert.equal(
+      PROTECTED_WORKFLOW_PATHS.has(dependency),
+      true,
+      `privileged dependency must be protected: ${dependency}`,
     );
   }
 });
@@ -260,14 +315,16 @@ test('fails closed before source-PR selection when the run used a modified route
     ['getRun', 123],
     ['compareCommits', 'main', data.run.head_sha],
   ]);
-  assert.deepEqual(fake.workflowCalls, [
-    ['.github/workflows/ci-recovery-router.yml', mergeBaseSha],
-    ['.github/workflows/ci-recovery-router.yml', data.run.head_sha],
-    ['.github/workflows/ci-recovery-review-wake-bridge.yml', mergeBaseSha],
-    ['.github/workflows/ci-recovery-review-wake-bridge.yml', data.run.head_sha],
-    ['.github/workflows/ci-recovery.yml', mergeBaseSha],
-    ['.github/workflows/ci-recovery.yml', data.run.head_sha],
-  ]);
+  assert.equal(fake.workflowCalls.length, protectedPaths.length * 2);
+  for (const protectedPath of protectedPaths) {
+    assert.deepEqual(
+      fake.workflowCalls.filter(([candidate]) => candidate === protectedPath),
+      [
+        [protectedPath, mergeBaseSha],
+        [protectedPath, data.run.head_sha],
+      ],
+    );
+  }
 });
 
 test('selects the trusted-event source PR even when extra PRs are associated', async () => {
@@ -497,6 +554,24 @@ test('rejects changed or missing protected workflows using immutable run-head bl
   }
 });
 
+test('rejects script-only and auto-rebase changes in the privileged execution boundary', async () => {
+  for (const protectedPath of addedProtectedPaths) {
+    const data = fixture();
+    const fake = fakeApi({
+      run: data.run,
+      workflowFiles: {
+        [`${protectedPath}@${mergeBaseSha}`]: 'trusted-at-fork-point',
+        [`${protectedPath}@${data.run.head_sha}`]: 'modified-at-run-head',
+      },
+    });
+    assert.deepEqual(
+      await inspectReviewWake({ payload: data.payload, repository, api: fake.api }),
+      { reason: 'protected-workflow-modified' },
+      protectedPath,
+    );
+  }
+});
+
 test('rejects ABA changes from immutable run-head evidence without reading mutable PR files', async () => {
   const data = fixture();
   const fake = fakeApi({
@@ -520,24 +595,25 @@ test('rejects ABA changes from immutable run-head evidence without reading mutab
 });
 
 test('accepts a stale branch that predates a protected workflow addition', async () => {
-  const data = fixture();
-  const bridgePath = '.github/workflows/ci-recovery-review-wake-bridge.yml';
-  const fake = fakeApi({
-    run: data.run,
-    pulls: { 42: data.pullRequest },
-    workflowFiles: {
-      [`${bridgePath}@${mergeBaseSha}`]: null,
-      [`${bridgePath}@${data.run.head_sha}`]: null,
-    },
-  });
+  for (const protectedPath of addedProtectedPaths) {
+    const data = fixture();
+    const fake = fakeApi({
+      run: data.run,
+      pulls: { 42: data.pullRequest },
+      workflowFiles: {
+        [`${protectedPath}@${mergeBaseSha}`]: null,
+        [`${protectedPath}@${data.run.head_sha}`]: null,
+      },
+    });
 
-  const result = await inspectReviewWake({ payload: data.payload, repository, api: fake.api });
-  assert.equal(result.prNumber, 42);
-  assert.equal(
-    fake.workflowCalls.some(([, ref]) => ref === 'main'),
-    false,
-    'protected blobs must never be compared to the mutable default-branch tip',
-  );
+    const result = await inspectReviewWake({ payload: data.payload, repository, api: fake.api });
+    assert.equal(result.prNumber, 42, protectedPath);
+    assert.equal(
+      fake.workflowCalls.some(([, ref]) => ref === 'main'),
+      false,
+      'protected blobs must never be compared to the mutable default-branch tip',
+    );
+  }
 });
 
 test('fails closed when GitHub does not provide an immutable merge base', async () => {

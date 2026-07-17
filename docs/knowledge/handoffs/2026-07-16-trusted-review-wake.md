@@ -68,10 +68,10 @@ Router`, dispatches `CI Recovery`, and cannot match its own completion.
   `ci-recovery.yml`; success, non-review, untrusted actor, human rerun, fork,
   ambiguous PR, stale SHA, incomplete files, and protected-workflow changes
   dispatch nothing.
-- Full CI-recovery policy/router/state suite: 164 tests, 123 passed, 41 known
+- Full CI-recovery policy/router/state suite: 166 tests, 125 passed, 41 known
   Windows `UV_HANDLE_CLOSING` subprocess-shutdown skips, 0 failed.
 - Workflow wiring suite: 7/7 passed.
-- Combined policy/wiring validation: 171 tests, 130 passed, 41 known Windows
+- Combined policy/wiring validation: 173 tests, 132 passed, 41 known Windows
   skips, 0 failed.
 - `npm run typecheck`
 - `npm run verify:fast`
@@ -79,7 +79,9 @@ Router`, dispatches `CI Recovery`, and cannot match its own completion.
   the production evidence forced a `plan_divergence=major_fork`. Code-review
   round 1 produced two resolved concerns. Round 2 found one live-state ownership
   concern spanning two release call sites; both were fixed, and focused
-  independent follow-up validation was clean.
+  independent follow-up validation was clean. A later PR security review found
+  the privileged execution boundary omitted scripts and the auto-rebase sink;
+  the exact 12-path boundary was added and independently reviewed clean.
 
 ## GitHub platform caveat
 
@@ -133,11 +135,14 @@ phase=<phase>`), failing closed with no mutation on a mismatch. An empty
 - **Default-tip blob equality rejected legitimate stale branches.** Comparing
   `run.head_sha` to today's default branch treated trusted workflow additions or
   edits made only on `main` as if the PR authored them. Fix: the bridge obtains
-  the immutable merge base of the default branch and run head, then compares
-  only the three protected blobs at that fork point and the run head. Equal old
-  blobs and files absent at both points pass; branch additions, modifications,
-  deletions, and renames fail closed. Missing merge-base evidence also fails
-  closed. The mutable/truncated compare `files` list is never trusted.
+  the immutable merge base of the default branch and run head, then compares the
+  exact 12-file privileged boundary: four workflow sinks, the three recovery
+  entrypoints, and their five transitive policy/API modules. Equal old blobs and
+  files absent at both points pass; branch additions, modifications, deletions,
+  and renames fail closed. A deterministic import-closure test prevents new
+  privileged relative imports from escaping the boundary without locking
+  unrelated scripts. Missing merge-base evidence also fails closed. The
+  mutable/truncated compare `files` list is never trusted.
 - **Same-head metadata changes escaped the SHA fence.** A PR can be retargeted
   or closed without changing its head, so SHA-only rechecks could mutate a PR
   whose live metadata no longer satisfied the bridge policy. Fix: the bridge
@@ -163,6 +168,6 @@ recheck and its immediately following write. It is further fenced by
 rather than claimed eliminated.
 
 Validation (this amendment): the full CI-recovery policy/router/state suite
-reported 164 tests (123 passed, 41 known Windows subprocess-shutdown skips,
+reported 166 tests (125 passed, 41 known Windows subprocess-shutdown skips,
 0 failed); workflow wiring reported 7/7 passed; typecheck, `verify:fast`,
 PR prerequisites, and review-ledger validation passed.
