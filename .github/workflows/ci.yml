@@ -75,24 +75,31 @@ jobs:
             # head must not keep shortcutting full CI — rollback must
             # restore full CI unconditionally.
             if [ "${{ vars.MERGE_TRAIN_ENABLED }}" = "true" ]; then
-              promotion_checks="$(
-                gh api \
-                  "/repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" |
-                  jq --arg app_id "$MERGE_TRAIN_APP_ID" \
-                  '($app_id | tonumber?) as $trusted_id |
-                    ([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
-                    if ($check != null and
-                        $check.status == "completed" and
-                        $check.conclusion == "success" and
-                        $trusted_id != null and
-                        $check.app.id == $trusted_id and
-                        ($check.external_id | type == "string" and test("^[0-9a-f]{64}$")))
-                    then 1 else 0 end'
-              )"
-              if [ "$promotion_checks" -gt 0 ]; then
-                docs_only=true
-                train_promoted=true
-                echo "Train-promoted head has an attested successful merge-train check."
+              check_runs_json="$(gh api "/repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" 2>/dev/null || true)"
+              if [ -n "$check_runs_json" ]; then
+                promotion_checks="$(
+                  printf '%s' "$check_runs_json" |
+                    jq --arg app_id "$MERGE_TRAIN_APP_ID" \
+                      '($app_id | tonumber?) as $trusted_id |
+                        ([.check_runs[] | select(.name == "merge-train")] | sort_by(.id) | last) as $check |
+                        if ($check != null and
+                            $check.status == "completed" and
+                            $check.conclusion == "success" and
+                            $trusted_id != null and
+                            $check.app.id == $trusted_id and
+                            ($check.external_id | type == "string" and test("^[0-9a-f]{64}$")))
+                        then 1 else 0 end' \
+                      2>/dev/null || true
+                )"
+                if [[ "$promotion_checks" =~ ^[0-9]+$ ]] && [ "$promotion_checks" -gt 0 ]; then
+                  docs_only=true
+                  train_promoted=true
+                  echo "Train-promoted head has an attested successful merge-train check."
+                elif [ -z "$promotion_checks" ]; then
+                  echo "Could not parse check-runs JSON for ${TARGET_SHA}; leaving train_promoted=false." >&2
+                fi
+              else
+                echo "Could not fetch check-runs for ${TARGET_SHA}; leaving train_promoted=false." >&2
               fi
             fi
           fi
