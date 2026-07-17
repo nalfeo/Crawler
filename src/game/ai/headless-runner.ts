@@ -163,7 +163,7 @@ export interface HeadlessRunnerConfig {
    * unaffected.
    */
   recordWeaponTelemetry?: boolean;
-  /** Opt into weapon-specific stat and gear personas. Default false until balanced. */
+  /** Use weapon-specific stat and gear personas. Default true; false preserves the legacy control. */
   weaponPersonas?: boolean;
   /** Enable the optional seeded post-quest merchant weapon purchase. Default false. */
   merchantWeaponPurchase?: boolean;
@@ -184,7 +184,7 @@ const DEFAULT_CONFIG: Required<
   floorId: 'floor1',
   startPlayerLevel: 1,
   recordWeaponTelemetry: false,
-  weaponPersonas: false,
+  weaponPersonas: true,
   merchantWeaponPurchase: false,
 };
 

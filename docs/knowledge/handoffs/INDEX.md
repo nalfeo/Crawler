@@ -377,6 +377,7 @@ _…and 70 older, see `archive/`._
 - [2026-07-16-batch-merge-baseline-comment](2026-07-16-batch-merge-baseline-comment.md) — Handoff: Fix batch-merge PRs missing baseline win-rate comment
 - [2026-07-16-candidate-validation-latency](2026-07-16-candidate-validation-latency.md) — Handoff: Candidate validation latency
 - [2026-07-16-ci-recovery-state](2026-07-16-ci-recovery-state.md) — CI recovery state idempotency
+- [2026-07-16-ci-recovery-trigger-hygiene](2026-07-16-ci-recovery-trigger-hygiene.md) — Handoff: CI Recovery Router trigger hygiene
 - [2026-07-16-docs-update-2026-07-13-findings](2026-07-16-docs-update-2026-07-13-findings.md) — Resolved all blocking and non-blocking findings from the 2026-07-13 docs-update scheduled report (issue #1120, closes #1120).
 - [2026-07-16-enforce-balance-human-approval](2026-07-16-enforce-balance-human-approval.md) — Enforce human approval for nightly balance PRs
 - [2026-07-16-legacy-floor1-deaths](2026-07-16-legacy-floor1-deaths.md) — Investigated all seven deaths from Weapon Sweep run `29453994290` and reproduced

@@ -23,7 +23,7 @@ Examine eligible current telemetry, identify and rank up to 3 evidence-backed ga
 - Latest successful current-main \`weapon-sweep.yml\` with all six FINAL \`weapon-sweep-<weapon>\` aggregate artifacts and 100 seeds/weapon only.
 - Record run ID, UTC timestamp, exact head SHA, seed range/count, max frames/time budget, weapon list, every behavior/config flag.
 - Never use individual/selected shards, partial artifacts, local smoke, hand-picked seeds, or mixed runs.
-- Shipped/default runtime configuration only for shipped changes. Default-off/experimental flags (e.g. \`weapon_personas=true\`) may only support explicitly experiment-scoped work.
+- Shipped/default runtime configuration only for shipped changes. Default-off/experimental flags may only support explicitly experiment-scoped work.
 - Prove baseline SHA still represents current main; gameplay commits after it require fresh canonical GitHub Actions sweep. Missing/unavailable artifacts => stop, no implementation/PR.
 - No new eligible aggregate run since prior analysis => stop duplicate work.
 - State releases/tags and real-player telemetry honestly; never call headless data release/player telemetry or invent lookback.
