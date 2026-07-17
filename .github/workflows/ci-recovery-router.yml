@@ -9,11 +9,12 @@ name: CI Recovery Router
 # actually emitted the review event, rather than trusting
 # `workflow_run.pull_requests` (a head-SHA/branch association that is explicitly
 # NOT event-to-PR provenance).
-# All other events fall back to the plain workflow name, preserving behavior.
+# Whitespace on all other events preserves GitHub's native event-specific run
+# titles instead of flattening high-volume router runs to one display value.
 run-name: >-
   ${{ (github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment')
       && format('CI Recovery Router: review-wake pr-{0}', github.event.pull_request.number)
-      || 'CI Recovery Router' }}
+      || ' ' }}
 
 on:
   pull_request_target:

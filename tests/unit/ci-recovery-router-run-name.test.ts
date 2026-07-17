@@ -22,7 +22,7 @@ function loadWorkflow(): { doc: WorkflowDoc; raw: string } {
  * `display_title`, which GitHub derives from this `run-name`. These assertions
  * pin the exact wiring the bridge depends on: the trusted event PR number is
  * encoded for review/review-comment events, and every other event falls back to
- * the plain workflow name so existing router behavior is unchanged.
+ * GitHub's native event-specific title.
  */
 describe('CI Recovery Router run-name source-PR binding', () => {
   it('keeps the workflow name stable so the bridge run.name gate still matches', () => {
@@ -31,7 +31,7 @@ describe('CI Recovery Router run-name source-PR binding', () => {
   });
 
   it('encodes the trusted event PR number into run-name for review events only', () => {
-    const { doc } = loadWorkflow();
+    const { doc, raw } = loadWorkflow();
     const runName = doc['run-name'];
     expect(runName, 'router must define run-name').toBeTruthy();
     const collapsed = String(runName).replace(/\s+/g, ' ').trim();
@@ -47,8 +47,8 @@ describe('CI Recovery Router run-name source-PR binding', () => {
       "format('CI Recovery Router: review-wake pr-{0}', github.event.pull_request.number)",
     );
 
-    // Everything else falls back to the plain workflow name.
-    expect(collapsed).toContain("|| 'CI Recovery Router'");
+    // Whitespace tells GitHub to retain its native event-specific run title.
+    expect(raw).toMatch(/\|\|\s*' '\s*\}\}/);
   });
 
   it('marker prefix matches the bridge parser exactly', () => {

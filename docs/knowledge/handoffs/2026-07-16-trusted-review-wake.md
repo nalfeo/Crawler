@@ -105,7 +105,9 @@ Review of the original bridge surfaced two real gaps, both hardened here:
   (`source-pr-not-associated`), the run head SHA, and `run.head_branch`
   (`head-branch-mismatch`). It fails closed on a missing binding
   (`missing-source-pr-binding`) or empty association (`no-associated-pr`). The
-  workflow `name:` is unchanged so the existing `run.name` gate still matches.
+  workflow `name:` is unchanged so the existing `run.name` gate still matches;
+  non-review events use a whitespace `run-name` fallback so GitHub retains their
+  native event-specific display titles.
 - **The `expected_head_sha` fence was checked only once.** Reconcile validated
   the head at its opening PR fetch, but several read phases run before the first
   write, so a synchronize could still move the head before a state comment,
