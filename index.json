@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4edba83597e6a5df827d3a95397d9e20f673671b",
+    "commitDate": "2026-07-17T01:16:44Z",
+    "commitSubject": "fix(merge-train): collapse stale scheduling wakes (#1226)",
+    "capturedAt": "2026-07-17T02:19:44.077Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29547541621",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/4edba83597e6a5df827d3a95397d9e20f673671b.json"
+  },
+  {
     "commit": "d34cfeed75ab2740de922fd960b1409e7d67de85",
     "commitDate": "2026-07-17T00:55:02Z",
     "commitSubject": "perf(ci): parallelize merge-train candidate validation (#1228)",
