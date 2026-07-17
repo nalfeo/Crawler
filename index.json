@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6dc8c239f22940cd24643bc8f0c8a925d07fd903",
+    "commitDate": "2026-07-17T18:48:14Z",
+    "commitSubject": "feat(sprites): redesign cactusfolk-boss brief as Abuela Saguaro grandmother character (#1263)",
+    "capturedAt": "2026-07-17T20:04:49.508Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29605860786",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/6dc8c239f22940cd24643bc8f0c8a925d07fd903.json"
+  },
+  {
     "commit": "41c5f2aac025f128591fb48575bb6f28e831d085",
     "commitDate": "2026-07-17T17:21:20Z",
     "commitSubject": "fix(ci-recovery): accept Markdown inline-code addressed markers (#1258)",
