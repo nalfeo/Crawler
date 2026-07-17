@@ -666,10 +666,17 @@ if (operation.startsWith('lease-')) {
 
 if (
   state &&
-  state.owner === 'none' &&
   state.status !== 'waiting' &&
-  (hasPrLabel(WAITING_LABEL) || hasPrLabel(WAITING_TRANSITION_LABEL))
+  (hasPrLabel(WAITING_LABEL) || hasPrLabel(WAITING_TRANSITION_LABEL)) &&
+  (state.owner === 'none' || hasPrLabel(WAITING_TRANSITION_LABEL))
 ) {
+  // For owner==='none': clean up orphaned waiting markers (existing path).
+  // For owner!=='none' with WAITING_TRANSITION_LABEL present: a prior run
+  // already committed to leaving waiting (added the transition sentinel) but
+  // was interrupted before it could remove both markers.  Complete that
+  // cleanup now so the owner release is never issued before it.  When only
+  // WAITING_LABEL is present with an active owner, skip cleanup to preserve
+  // the concurrent-waiting race protection.
   await completeWaitingExit(await prepareWaitingExit());
 }
 
