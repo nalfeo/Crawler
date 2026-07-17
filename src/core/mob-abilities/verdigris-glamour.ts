@@ -23,7 +23,7 @@
 import { hasComponent, query } from 'bitecs';
 import { Enemy, Health, Position } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
-import { applyStatusEffect } from '../status-effects.js';
+import { applyStatusEffect, clearStatusEffects } from '../status-effects.js';
 import type { StatusEffectSpec } from '../../shared/status-effect-types.js';
 import {
   formatBossAbilityAnnouncement,
@@ -121,6 +121,23 @@ function applyTarnished(
   const stackRule = tuning.stacking
     ? ({ mode: 'refresh' } as const)
     : ({ mode: 'replace' } as const);
+  if (!tuning.stacking) {
+    // `replace` only overwrites effects sharing this exact sourceId. Tarnished is
+    // a singleton debuff by identity, so a DIFFERENT caster (recycled slot, a
+    // second boss in a future multi-boss preset) must not compound its own
+    // Tarnished on top of ours. Clear any sibling Tarnished from other casters of
+    // the same ability first so multipliers never stack (0.70 * 0.70, etc.).
+    const abilityPrefix = sourceId.slice(0, sourceId.lastIndexOf(':') + 1);
+    clearStatusEffects(
+      world,
+      targetEid,
+      (e) =>
+        e.sourceType === 'ability' &&
+        e.sourceId !== sourceId &&
+        e.sourceId.startsWith(abilityPrefix) &&
+        (e.stat === 'speed' || e.stat === 'attackSpeed'),
+    );
+  }
   const move: StatusEffectSpec = {
     stat: 'speed',
     op: 'multiply',
@@ -153,9 +170,11 @@ function makeResolveHandler(ability: BossAbilityDef) {
     // takes moderate damage and is Tarnished. Entities outside are untouched.
     for (const eid of query(world.ecs, [Position, Health])) {
       if (eid === casterEid) continue;
-      if (hasComponent(world.ecs, eid, Enemy) && eid !== ctx.targetEid) {
-        // Only the locked target + non-enemy victims (the player) are affected;
-        // other enemies standing in the circle are not friendly-fired.
+      if (hasComponent(world.ecs, eid, Enemy)) {
+        // Never friendly-fire enemies. The ability targets the player; skipping
+        // ALL enemies (not just `!== targetEid`) also closes a recycled-ID hole:
+        // if the player dies mid-telegraph and its id is reassigned to a freshly
+        // spawned enemy, that enemy must not inherit the lock and take damage.
         continue;
       }
       const dx = (world.stores.position.x[eid] ?? 0) - geometry.x;

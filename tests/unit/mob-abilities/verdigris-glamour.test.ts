@@ -230,6 +230,24 @@ describe('Verdigris Glamour — damage resolution', () => {
     expect(h.world.stores.health.current[h.player]!).toBe(before);
     expect(getStatusEffects(h.world, h.player)).toHaveLength(0);
   });
+
+  it('does not friendly-fire another enemy standing inside the committed circle', () => {
+    const h = buildHarness();
+    // A second enemy shares the player's tile — inside the circle — but must not
+    // take ability damage even if it occupied the recycled target id.
+    const other = spawnBehaviorEnemy(h.world, 40, 40, 200, AI_TYPE.CHASE, 0.17, 60, 0);
+    const before = h.world.stores.health.current[other]!;
+    h.def.resolve(h.world, {
+      abilityId: h.def.abilityId,
+      casterEid: h.queen,
+      sourceId: mobAbilitySourceId(h.def.abilityId, h.queen),
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+      // Even when the recycled id points at an enemy, resolution must skip it.
+      targetEid: other,
+    });
+    expect(h.world.stores.health.current[other]!).toBe(before);
+    expect(getStatusEffects(h.world, other)).toHaveLength(0);
+  });
 });
 
 describe('Verdigris Glamour — Tarnished status effect', () => {
@@ -257,6 +275,29 @@ describe('Verdigris Glamour — Tarnished status effect', () => {
     applyOnce(h);
     const effects = getStatusEffects(h.world, h.player);
     // Exactly one speed effect and one attackSpeed effect — never four.
+    expect(effects.filter((e) => e.stat === 'speed')).toHaveLength(1);
+    expect(effects.filter((e) => e.stat === 'attackSpeed')).toHaveLength(1);
+    expect(computeEffectiveValue(1, effects, 'speed')).toBeCloseTo(0.7, 10);
+    expect(computeEffectiveValue(1, effects, 'attackSpeed')).toBeCloseTo(0.75, 10);
+  });
+
+  it('does not stack across different casters of the same ability', () => {
+    const h = buildHarness();
+    // A second Queen casts the same ability at the same player. Tarnished is a
+    // singleton debuff by identity, so the second cast must REPLACE the first's
+    // multipliers, never compound them (0.70 * 0.70 would be a stacking bug).
+    const queen2 = spawnBehaviorEnemy(h.world, 60, 10, 200, AI_TYPE.CHASE, 0.17, 60, 0);
+    const applyFrom = (caster: number): void =>
+      h.def.resolve(h.world, {
+        abilityId: h.def.abilityId,
+        casterEid: caster,
+        sourceId: mobAbilitySourceId(h.def.abilityId, caster),
+        geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+        targetEid: h.player,
+      });
+    applyFrom(h.queen);
+    applyFrom(queen2);
+    const effects = getStatusEffects(h.world, h.player);
     expect(effects.filter((e) => e.stat === 'speed')).toHaveLength(1);
     expect(effects.filter((e) => e.stat === 'attackSpeed')).toHaveLength(1);
     expect(computeEffectiveValue(1, effects, 'speed')).toBeCloseTo(0.7, 10);
