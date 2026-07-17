@@ -32,7 +32,7 @@ The approved bounded spec requires:
 - A per-mob overridable delay (`mob.telegraphMs ?? configuredDefaultTelegraphMs`),
   defaulting to 250ms in both production and the headless CLI, with a new
   `--enemy-telegraph-ms <n>` flag.
-- Exact legacy parity at `0`: no cue, no added delay, identical aim/fire timing.
+- At `0`: no cue or added delay, with identical aim/fire timing and RNG order.
 - `BehaviorTreeAI` must dodge the locked trajectory using only the same public,
   deterministic combat state the renderer reads (no privileged prediction),
   and must size its ranged danger evaluation off the enemy's actual attack
@@ -71,8 +71,8 @@ telegraph window.
    through.
 3. **Fire logic** (`src/game/enemyAISystem.ts`): `tryFireEnemyProjectile()`
    becomes a 3-path state machine — already-telegraphing (wait/fire when
-   ready), zero-effective-delay (fire immediately, byte-for-byte the old
-   behavior), or nonzero-delay (lock origin/direction now, start telegraph).
+   ready), zero-effective-delay (fire immediately with unchanged timing/RNG
+   order), or nonzero-delay (lock origin/direction now, start telegraph).
    The aim/accuracy roll stays at actual fire time (not telegraph start) so
    the RNG draw sequence at `0`ms is identical to today's — an accepted
    consequence is that some telegraphs show a locked trajectory that never
@@ -125,14 +125,13 @@ telegraph window.
    exactly `0` (e.g. `1e-50`, which `Math.fround` collapses to the same
    Float32 store value as an intentional legacy override, silently discarding
    the requested nonzero delay). `0` itself is still a fully legal, explicit
-   override (legacy parity), not treated as "unset."
+   override (immediate-fire timing), not treated as "unset."
 7. **Test harness default** (`tests/helpers/world-factory.ts`): `createTestWorld()`
    sets `world.enemyTelegraphMs = 0` by default. Production leaves it unset (so
    it falls through to the 250ms constant); the headless CLI defaults to 250
    explicitly. Unit tests default to `0` so the hundreds of pre-existing tests
    that assert immediate enemy-fire behavior continue to exercise exactly
-   that legacy path without modification — this **is** the "0 reproduces
-   today's behavior" contract being exercised at scale. Tests targeting the
+   that immediate-fire path without modification. Tests targeting the
    telegraph feature itself explicitly opt in with
    `createTestWorld({ ... }); world.enemyTelegraphMs = 250;` (or a per-mob
    `telegraphMs` override).
@@ -149,15 +148,16 @@ telegraph window.
 - Every hostile shot is now readable and reactable to, in both the real game
   and the production AI, using one shared, deterministic contract instead of
   privileged prediction.
-- `0`ms is exact legacy parity by construction (same fire-time accuracy roll,
-  same immediate-fire code path) **only when explicitly passed** — a headless
+- `0`ms preserves fire timing and RNG-draw order by construction (same
+  fire-time accuracy roll and immediate-fire code path) **only when explicitly
+  passed** — a headless
   baseline that omits `--enemy-telegraph-ms` (or otherwise leaves
   `world.enemyTelegraphMs` unset) now defaults to 250ms via
   `ENEMY_PROJECTILE.TELEGRAPH_MS`, changing hostile-fire cadence/AI dodge
   behavior versus pre-PR runs. Only a caller that explicitly passes `0`
-  preserves byte-identical legacy behavior; this is an accepted,
-  intentional consequence of shipping a non-zero default, not a regression
-  in the resolver's `0`-means-legacy contract.
+  preserves immediate-fire timing; this is an accepted, intentional
+  consequence of shipping a non-zero default, not a regression in the
+  resolver's `0`-means-immediate contract.
 - Per-mob overrides and the configured default share one resolver function,
   so future mobs/bosses opt into custom pacing without touching fire logic.
 - Ranged danger evaluation now scales with actual attack range instead of a
@@ -199,9 +199,23 @@ telegraph window.
   correctness guarantee that survives any future system touching enemy
   position.
 - **Re-roll accuracy/aim at telegraph start instead of fire time.** Rejected:
-  this would change the RNG draw order/timing versus today, breaking exact
-  `0`ms legacy parity (the spec's hardest constraint) since the accuracy
+  this would change the RNG draw order/timing versus today, breaking the
+  `0`ms timing/RNG parity constraint since the accuracy
   check currently happens inline with the fire call.
+
+## 2026-07-17 Amendment: Pivot-Based Projectile Origin
+
+Hostile projectiles now spawn at the exact locked ECS/visual pivot rather than
+`origin + direction * 1.5ft`. The telegraph already starts at that locked pivot,
+and `BehaviorTreeAI` now models its virtual projectile from the same point, so
+rendering, simulation, and dodge prediction share one origin without drift.
+
+The scalar `enemyProjectile.muzzleOffset` tuning was removed. A generic optional
+per-sprite weapon anchor is tracked separately for the sprite editor, generated
+manifest, ranged projectiles, and future visible melee weapons. Until that
+metadata exists, the deterministic fallback is the ECS/visual pivot; no hidden
+forward nudge is applied.
+
 - **Give `BehaviorTreeAI` direct access to `telegraphMs`/internal AI-only
   state instead of the same public store fields the renderer reads.**
   Rejected per the spec's explicit "no privileged prediction" requirement —

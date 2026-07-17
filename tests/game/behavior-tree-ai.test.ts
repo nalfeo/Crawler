@@ -2670,31 +2670,14 @@ describe('BehaviorTreeAI', () => {
     expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
   });
 
-  it('applies the muzzle offset to the telegraphed virtual-projectile dodge, matching the real fire-time spawn point (regression: gpt-5.3-codex + gemini-3.1-pro-preview finding)', () => {
-    // The real shot spawns at `telegraphOrigin + telegraphDir * MUZZLE_OFFSET`
-    // (see enemyAISystem.ts's fireEnemyProjectileFrom), not at the raw locked
-    // origin. If the AI's virtual-projectile dodge math ever regresses back to
-    // using the raw origin, its impact-time estimate drifts by
-    // MUZZLE_OFFSET/projectileSpeed frames. The runtime source of truth for
-    // `projectileSpeed` is `getWeaponDef('fireball')` (src/shared/weaponDefs.ts),
-    // which both the real fire path and this dodge math call — NOT the raw
-    // `src/shared/data/weapons.json` value, which is unused stale data here.
-    // getWeaponDef('fireball').projectileSpeed === 0.5 ft/frame, so the drift
-    // is 1.5ft / 0.5ft-per-frame = 3 frames for the fireball def used here.
-    //
-    // Geometry is tuned so that drift is the ONLY thing separating "candidate
-    // accepted" from "candidate silently skipped" at the dodge horizon gate
-    // (PROJECTILE_DODGE_HORIZON_FRAMES = 90):
-    //   - player sits at x = MUZZLE_OFFSET (1.5), so the FIXED spawn point
-    //     (origin + dir * MUZZLE_OFFSET) lands exactly on the player's x —
-    //     impactFramesAfterSpawn = 0, totalImpactFrames = remainingFrames.
-    //   - remainingFrames = 89.8 (comfortably <= 90 with the fix).
-    //   - WITHOUT the fix, the virtual shot spawns 1.5ft "behind" (at the raw
-    //     origin), adding exactly 3 impact frames -> totalImpactFrames =
-    //     92.8 (> 90) -> the candidate is skipped and dodgeY stays 0.
+  it('uses the raw locked pivot for the telegraphed virtual-projectile dodge, matching the real fire-time spawn point', () => {
+    // The real and virtual shots both spawn at the raw locked origin. Geometry
+    // puts the player directly above that pivot so impactFramesAfterSpawn is 0.
+    // Reintroducing a forward offset would put the projectile past the player
+    // and moving away, causing this threat candidate to be skipped.
     const world = createTestWorld({ seed: 42 });
     world.elapsedMs = 0;
-    spawnPlayer(world, 1.5, 1);
+    spawnPlayer(world, 0, 1);
     const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
@@ -2712,9 +2695,7 @@ describe('BehaviorTreeAI', () => {
     ai.poll(createInputState(), world);
     const dodge = ai.getOpportunisticDebug();
 
-    // Only reachable if the dodge math offsets the spawn point by
-    // MUZZLE_OFFSET before computing impact time; otherwise this candidate is
-    // skipped for exceeding the dodge horizon and dodgeY stays 0.
+    // Only reachable when dodge math uses the same raw pivot as real fire.
     expect(dodge.dodgeY).toBeGreaterThan(2);
   });
 
@@ -2731,9 +2712,9 @@ describe('BehaviorTreeAI', () => {
     // exactly one step; the correct count is
     // ceil(remainingMs / DELTA_MS) - 1.
     //
-    // Geometry mirrors the muzzle-offset test above: the player sits exactly
-    // at the virtual shot's spawn point (origin + dir * MUZZLE_OFFSET) with
-    // zero velocity, so impactFramesAfterSpawn = 0 and
+    // Geometry mirrors the pivot-origin test above: the player sits exactly
+    // at the virtual shot's raw-origin spawn x with zero velocity, so
+    // impactFramesAfterSpawn = 0 and
     // totalImpactFrames = remainingFrames exactly — isolating the horizon
     // gate (PROJECTILE_DODGE_HORIZON_FRAMES = 90) to the remainingFrames
     // formula alone, independent of projected player position.
@@ -2746,7 +2727,7 @@ describe('BehaviorTreeAI', () => {
     //     > 0.
     const world = createTestWorld({ seed: 42 });
     world.elapsedMs = 0;
-    spawnPlayer(world, 1.5, 1);
+    spawnPlayer(world, 0, 1);
     const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
