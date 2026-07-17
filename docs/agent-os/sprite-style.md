@@ -172,14 +172,15 @@ Verify any non-trivial prompt change with a **real round-trip** against the depl
 
 ## VLM judge (spec §F4, local-only)
 
-After the deterministic sensors (palette/silhouette/edges/bbox) pass, an **optional** VLM judge can score each sensor-passing variant on four axes that pixel-level sensors can't measure:
+After the deterministic sensors (palette/silhouette/edges/bbox) pass, an **optional** VLM judge can score each sensor-passing variant on four always-on axes that pixel-level sensors can't measure, plus one conditional fifth axis when the brief resolves a floor or theme design-language addendum:
 
 1. **`design_language`** (1–5) — does the concept feel specifically like Crawler, with one readable identity and one authored contradiction at the requested floor intensity?
 2. **`reference_style_match`** (1–5) — does the rendering read as same-family with approved same-`type` reference sprites?
 3. **`brief_match`** (1–5) — does the variant depict what the brief asks for, including orientation and animate/inanimate category?
 4. **`readability`** (1–5) — at 1× over a dark floor tile, is the subject still legible?
+5. **`theme_adherence`** (1–5, conditional) — when the brief resolves a floor or theme/family addendum, does the variant visibly incorporate the specific nouns, materials, garments, or iconography named in that addendum? Score 2 and below auto-reject. Only active when an addendum is present; omitting it on a plain brief is correct.
 
-Any score `< 3` on **any** evaluator auto-rejects the variant (`combinedPassed = false`). Within the passing set, the chosen variant is the one with the highest minimum judge score; sensor score breaks ties.
+Any score `< 3` on **any** active evaluator auto-rejects the variant (`combinedPassed = false`). Within the passing set, the chosen variant is the one with the highest minimum judge score; sensor score breaks ties.
 
 ### Enabling the judge on a brief
 
@@ -191,7 +192,7 @@ judge:
   maxVariants: 16 # optional; caps how many sensor-passing variants get judged per run
 ```
 
-When enabled, `generate-one` issues **one** vision call per judged variant — all four evaluators in a single structured-JSON response, by design (cost discipline). Each call hits the deployment in `AZURE_OPENAI_VISION_DEPLOYMENT` from `.env`.
+When enabled, `generate-one` issues **one** vision call per judged variant — all active evaluators (four, or five when an addendum is present) in a single structured-JSON response, by design (cost discipline). Each call hits the deployment in `AZURE_OPENAI_VISION_DEPLOYMENT` from `.env`.
 
 > **Env alias.** Synth and variation expansion read `AZURE_OPENAI_CHAT_DEPLOYMENT`, but the provider factory falls back to `AZURE_OPENAI_VISION_DEPLOYMENT` (with a one-shot warning) when the chat var is missing. The deployments we provision today are the same gpt-4o-class model serving both endpoints, so this fallback is safe. To silence the warning, mirror your vision deployment value into `AZURE_OPENAI_CHAT_DEPLOYMENT` in the env file.
 
@@ -232,7 +233,7 @@ What the gallery shows, per candidate:
   transparent so the gallery still has a file to fetch.
 - A colour-coded **sensor** pass/fail badge.
 - A colour-coded **judge** pass/fail badge with the lowest of
-  `style_match` / `brief_match` / `readability` when the brief opts in.
+  `design_language` / `reference_style_match` / `brief_match` / `readability` (plus `theme_adherence` when active) when the brief opts in.
 - The **chosen** variant has a yellow border + badge.
 
 Clicking a tile loads the full per-candidate JSON (sensor scorecard,

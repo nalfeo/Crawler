@@ -4,7 +4,7 @@
  * Coverage:
  *   - CI refusal (Constitutional §3): explicit env injection so the
  *     real `process.env.CI` isn't required.
- *   - Happy path: all three evaluators score 5 → `passed: true`.
+ *   - Happy path: all four evaluators score 5 → `passed: true`.
  *   - Threshold rejection: any score < 3 → `passed: false` with the
  *     failing evaluator surfaced in `rejectedBy`.
  *   - Malformed provider response: extra/missing fields surface as
@@ -15,6 +15,8 @@
  *     is supplied; not written otherwise.
  *   - Images include the labelled candidate, readability composite, and
  *     references (capped at 3).
+ *   - Fifth `theme_adherence` axis activates for floor OR theme addendum;
+ *     absent when neither applies. Score <= 2 auto-rejects.
  *
  * The judge is provider-agnostic; we stub `VisionProvider` directly so
  * tests run without any HTTP machinery.
@@ -372,7 +374,7 @@ describe('judgeVariant — happy path', () => {
     expect(calls[0]?.request.systemInstructions).toContain('The Snaggle Cartel');
   });
 
-  it('requests a fifth theme_adherence axis only when a theme addendum applies, and scores/gates on it', async () => {
+  it('requests a fifth theme_adherence axis when a floor or theme addendum applies (goblin-grunt has both)', async () => {
     const { provider, calls } = stubProvider({
       responseJson: {
         design_language: { score: 4, rationale: 'a' },
@@ -398,6 +400,38 @@ describe('judgeVariant — happy path', () => {
     expect(calls[0]?.request.systemInstructions).toContain('theme_adherence');
     expect(calls[0]?.request.userPrompt).toContain('Return your five scores');
     expect(scorecard.themeAdherence).toEqual({ score: 5, rationale: 'cartel details visible' });
+  });
+
+  it('requests a fifth theme_adherence axis for a floor-only addendum (cave-slime has no family theme)', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 4, rationale: 'a' },
+        reference_style_match: { score: 4, rationale: 'b' },
+        brief_match: { score: 4, rationale: 'c' },
+        readability: { score: 4, rationale: 'd' },
+        theme_adherence: { score: 4, rationale: 'floor Family Matters vibe present' },
+      },
+    });
+
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({ type: 'enemy', name: 'cave-slime', floor: 2 }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+
+    expect(calls[0]?.request.systemInstructions).toContain('five independent 1-5 ordinal axes');
+    expect(calls[0]?.request.systemInstructions).toContain('theme_adherence');
+    expect(calls[0]?.request.userPrompt).toContain('Return your five scores');
+    expect(scorecard.passed).toBe(true);
+    expect(scorecard.themeAdherence).toEqual({
+      score: 4,
+      rationale: 'floor Family Matters vibe present',
+    });
   });
 
   it('does not request theme_adherence and leaves it undefined when no theme addendum applies', async () => {
@@ -577,6 +611,31 @@ describe('judgeVariant — threshold rejection', () => {
     expect(scorecard.rejectedBy).toEqual(['theme_adherence']);
     expect(scorecard.minScore).toBe(1);
   });
+
+  it('auto-rejects score 2 theme_adherence (on-vibe but no addendum details legible)', async () => {
+    const { provider } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'a' },
+        reference_style_match: { score: 5, rationale: 'b' },
+        brief_match: { score: 5, rationale: 'c' },
+        readability: { score: 5, rationale: 'd' },
+        theme_adherence: { score: 2, rationale: 'on-vibe but no addendum details visible' },
+      },
+    });
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+    expect(scorecard.passed).toBe(false);
+    expect(scorecard.rejectedBy).toEqual(['theme_adherence']);
+    expect(scorecard.minScore).toBe(2);
+  });
 });
 
 describe('judgeVariant — malformed responses', () => {
@@ -644,7 +703,7 @@ describe('judgeVariant — malformed responses', () => {
     ).rejects.toMatchObject({ kind: 'malformed' });
   });
 
-  it('throws JudgeError(malformed) when theme_adherence is missing but a theme addendum applies', async () => {
+  it('throws JudgeError(malformed) when theme_adherence is missing but a floor or theme addendum applies', async () => {
     const { provider } = stubProvider({
       responseJson: {
         design_language: { score: 5, rationale: 'a' },
@@ -667,7 +726,30 @@ describe('judgeVariant — malformed responses', () => {
     ).rejects.toMatchObject({ name: 'JudgeError', kind: 'malformed' });
   });
 
-  it('throws JudgeError(malformed) when theme_adherence is present but no theme addendum applies', async () => {
+  it('throws JudgeError(malformed) when theme_adherence is missing for a floor-only addendum (cave-slime)', async () => {
+    const { provider } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'a' },
+        reference_style_match: { score: 5, rationale: 'b' },
+        brief_match: { score: 5, rationale: 'c' },
+        readability: { score: 5, rationale: 'd' },
+        // theme_adherence deliberately omitted — floor addendum means it is required
+      },
+    });
+    await expect(
+      judgeVariant({
+        processed: makeTinyPng(),
+        referencePngs: [],
+        brief: makeBrief({ type: 'enemy', name: 'cave-slime', floor: 2 }),
+        styleGuide: '',
+        provider,
+        variantIndex: 0,
+        env: {},
+      }),
+    ).rejects.toMatchObject({ name: 'JudgeError', kind: 'malformed' });
+  });
+
+  it('throws JudgeError(malformed) when theme_adherence is present but no addendum applies', async () => {
     const { provider } = stubProvider({
       responseJson: {
         design_language: { score: 5, rationale: 'a' },

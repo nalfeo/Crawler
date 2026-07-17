@@ -2,7 +2,7 @@
 
 ## Systems touched
 
-sprite-pipeline, judge-rubric, content-direction, cactusfolk-family
+sprite-pipeline, sprite-workflow
 
 ## Context
 

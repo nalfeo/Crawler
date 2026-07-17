@@ -171,7 +171,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
   }
 }
 
-export function buildSystemPrompt(brief: ExpandVariationsRequest['brief']): string {
+function buildSystemPrompt(brief: ExpandVariationsRequest['brief']): string {
   return [
     'You design visual variations for 256x256-source pixel-art sprites that resolve cleanly at game scale.',
     contentDirectionBlock(brief.floor, resolveDesignLanguageAddenda(brief.name, brief.floor)),

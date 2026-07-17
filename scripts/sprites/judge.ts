@@ -60,7 +60,7 @@ import {
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v5';
+const PROMPT_TEMPLATE_VERSION = 'v6';
 
 export type Evaluator =
   | 'design_language'
@@ -185,16 +185,16 @@ const baseJudgeResponseSchema = z
  * resolves a theme addendum (Floor 2 family design language), and must
  * be absent otherwise. Requiring rather than merely allowing it is
  * deliberate — an optional field the model can silently skip would let
- * a sheet that ignores the family addendum still pass on the other
+ * a sheet that ignores the floor or family addendum still pass on the other
  * four axes, exactly the failure mode this dimension exists to catch.
  */
 function parseJudgeResponse(
   value: unknown,
-  hasThemeAddendum: boolean,
+  hasAddendum: boolean,
 ): ReturnType<typeof baseJudgeResponseSchema.safeParse> {
   const parsed = baseJudgeResponseSchema.safeParse(value);
   if (!parsed.success) return parsed;
-  if (hasThemeAddendum && parsed.data.theme_adherence === undefined) {
+  if (hasAddendum && parsed.data.theme_adherence === undefined) {
     return {
       success: false,
       error: new z.ZodError([
@@ -202,19 +202,19 @@ function parseJudgeResponse(
           code: z.ZodIssueCode.custom,
           path: ['theme_adherence'],
           message:
-            'theme_adherence is required when the brief resolves a theme design-language addendum',
+            'theme_adherence is required when the brief resolves a floor or theme design-language addendum',
         },
       ]),
     } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
   }
-  if (!hasThemeAddendum && parsed.data.theme_adherence !== undefined) {
+  if (!hasAddendum && parsed.data.theme_adherence !== undefined) {
     return {
       success: false,
       error: new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
           path: ['theme_adherence'],
-          message: 'theme_adherence is not allowed when no theme design-language addendum applies',
+          message: 'theme_adherence is not allowed when no floor or theme design-language addendum applies',
         },
       ]),
     } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
@@ -308,14 +308,14 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     .slice(0, 3)
     .map((png) => ({ png, label: 'reference' as const }));
 
-  const hasThemeAddendumForPrompt = designLanguageAddenda.theme !== undefined;
+  const hasAddendumForPrompt = designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
   const request: EvaluateRequest = {
     systemInstructions: buildSystemInstructions(
       options.styleGuide,
       options.brief.floor,
       designLanguageAddenda,
     ),
-    userPrompt: buildUserPrompt(options.brief, referencePreviews.length, hasThemeAddendumForPrompt),
+    userPrompt: buildUserPrompt(options.brief, referencePreviews.length, hasAddendumForPrompt),
     images: [
       { png: candidatePreview, label: 'candidate' },
       { png: readabilityComposite, label: 'readability-composite' },
@@ -325,8 +325,8 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
 
   const response = await options.provider.evaluate(request);
 
-  const hasThemeAddendum = designLanguageAddenda.theme !== undefined;
-  const parsed = parseJudgeResponse(normalizeLegacyJudgeResponse(response.json), hasThemeAddendum);
+  const hasAddendum = designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
+  const parsed = parseJudgeResponse(normalizeLegacyJudgeResponse(response.json), hasAddendum);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
@@ -426,7 +426,7 @@ function buildSystemInstructions(
   floor: number,
   addenda: DesignLanguageAddenda,
 ): string {
-  const hasThemeAddendum = addenda.theme !== undefined;
+  const hasAddendum = addenda.floor !== undefined || addenda.theme !== undefined;
   return [
     'You are a strict quality judge for pixel-art sprites generated for a top-down roguelike game.',
     '',
@@ -438,7 +438,7 @@ function buildSystemInstructions(
     '',
     contentDirectionBlock(floor, addenda),
     '',
-    `Score the candidate on ${hasThemeAddendum ? 'five' : 'four'} independent 1-5 ordinal axes:`,
+    `Score the candidate on ${hasAddendum ? 'five' : 'four'} independent 1-5 ordinal axes:`,
     '',
     '  1. design_language — Does the concept feel specifically like Crawler: one readable',
     '                       identity plus one authored contradiction, darkly funny rather than',
@@ -461,20 +461,20 @@ function buildSystemInstructions(
     '                    punched through the body, disconnected/floating pixel islands,',
     '                    detached limbs/fragments, and broken contiguous silhouette.',
     '                    These defects should score readability <= 2.',
-    ...(hasThemeAddendum
+    ...(hasAddendum
       ? [
           '',
           '  5. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,',
           '                       materials, garments, props, colors, or iconography named in the',
-          '                       "Theme design language" section above — not just the general',
-          "                       floor/Crawler vibe (that is design_language's job)? Look for",
+          '                       floor or theme design language sections above — not just the general',
+          "                       Crawler vibe (that is design_language's job)? Look for",
           '                       concrete, named details, not a vague thematic gesture.',
-          '                       5 = multiple specific theme details are clearly visible.',
-          '                       3 = the theme is plausible but generic — the pre-existing',
-          "                       subject reads fine, but none of the theme's distinguishing",
-          '                       details are legible. 1 = the candidate contradicts or ignores',
-          '                       the theme design language entirely, even though it appeared',
-          '                       in the prompt.',
+          '                       5 = multiple specific addendum details are clearly visible.',
+          '                       4 = at least one named addendum detail is unambiguous.',
+          '                       3 = one named detail might be present but is ambiguous.',
+          '                       2 = the concept is on-vibe but none of the addendum\'s distinguishing',
+          '                       details are legible — scores 2 or below auto-reject.',
+          '                       1 = the candidate contradicts or ignores the addendum entirely.',
         ]
       : []),
     '',
@@ -492,15 +492,15 @@ function buildSystemInstructions(
     '  "design_language": { "score": 1-5, "rationale": "..." },',
     '  "reference_style_match": { "score": 1-5, "rationale": "..." },',
     '  "brief_match": { "score": 1-5, "rationale": "..." },',
-    hasThemeAddendum
+    hasAddendum
       ? '  "readability": { "score": 1-5, "rationale": "..." },'
       : '  "readability": { "score": 1-5, "rationale": "..." }',
-    ...(hasThemeAddendum ? ['  "theme_adherence": { "score": 1-5, "rationale": "..." }'] : []),
+    ...(hasAddendum ? ['  "theme_adherence": { "score": 1-5, "rationale": "..." }'] : []),
     '}',
   ].join('\n');
 }
 
-function buildUserPrompt(brief: Brief, referenceCount: number, hasThemeAddendum: boolean): string {
+function buildUserPrompt(brief: Brief, referenceCount: number, hasAddendum: boolean): string {
   const hasReferences = referenceCount > 0;
   const refSummary = hasReferences
     ? `${referenceCount} reference image(s) attached, labelled reference-1 .. reference-${referenceCount}.`
@@ -526,7 +526,7 @@ function buildUserPrompt(brief: Brief, referenceCount: number, hasThemeAddendum:
     '',
     refSummary,
     '',
-    `Return your ${hasThemeAddendum ? 'five' : 'four'} scores and rationales as a strict JSON object.`,
+    `Return your ${hasAddendum ? 'five' : 'four'} scores and rationales as a strict JSON object.`,
   );
   return lines.filter((s) => s !== '').join('\n');
 }

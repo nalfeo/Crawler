@@ -113,4 +113,28 @@ describe('resolveDesignLanguageAddenda', () => {
       FAMILY_DESIGN_LANGUAGE.faeries,
     );
   });
+
+  describe('cactusfolk-boss Abuela Saguaro grandmother cues', () => {
+    it('includes concrete grandmother visual cues in the cactusfolk family blurb', () => {
+      const blurb = FAMILY_DESIGN_LANGUAGE.cactusfolk;
+      expect(blurb).toContain('wire-rimmed spectacles');
+      expect(blurb).toContain('wrinkled');
+      expect(blurb).toContain('rebozo');
+    });
+
+    it('resolved cactusfolk-boss addendum at floor 2 carries the grandmother cues', () => {
+      const addenda = resolveDesignLanguageAddenda('cactusfolk-boss', 2);
+      expect(addenda.theme).toContain('wire-rimmed spectacles');
+      expect(addenda.theme).toContain('wrinkled');
+      expect(addenda.theme).toContain('rebozo');
+    });
+
+    it('composed contentDirectionBlock for cactusfolk-boss at floor 2 carries the grandmother cues', () => {
+      const addenda = resolveDesignLanguageAddenda('cactusfolk-boss', 2);
+      const block = contentDirectionBlock(2, addenda);
+      expect(block).toContain('wire-rimmed spectacles');
+      expect(block).toContain('wrinkled');
+      expect(block).toContain('rebozo');
+    });
+  });
 });
