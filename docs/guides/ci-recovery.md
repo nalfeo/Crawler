@@ -15,9 +15,12 @@ kickoff comment that points Copilot at the normal repo instructions.
   router runs that GitHub parks as `action_required` when Copilot authors a
   review event. It re-fetches the immutable run, accepts only the exact router
   path and review events from the production-proven `Copilot` bot identity
-  (`id=175728472`), filters to exactly one open same-repository PR on the current
-  head SHA, and rejects PRs that modify any workflow in the recovery chain.
-  Read-only inspection and `actions: write` dispatch are separate jobs.
+  (`id=175728472`), requires `workflow_run.pull_requests` to be non-empty (fails
+  closed if GitHub does not populate it — commit-to-PR association is not used
+  as a fallback because it does not preserve event-to-PR provenance), filters to
+  exactly one open same-repository PR on the current head SHA, and rejects PRs
+  that modify any workflow in the recovery chain. Read-only inspection and
+  `actions: write` dispatch are separate jobs.
 - `ci-recovery.yml`, `ci-recovery-incidents.yml`, and `issue-copilot-intake.yml`
   are the workflows that receive `CRAWLER_CI_PAT`.
 - Explicit shepherd lease operations persist even while automated recovery is in
@@ -54,7 +57,9 @@ dispatches `CI Recovery`, and bridge completion does not match its own trigger.
 `workflow_run` listeners are registered only from the default branch. After this
 workflow reaches `main`, the first live `action_required` Copilot review run is
 the platform-delivery smoke proof; branch-local testing cannot register that
-listener. If GitHub does not deliver that event, use the narrow operator fallback
+listener. If GitHub does not deliver that event, or if GitHub delivers the event
+but leaves `workflow_run.pull_requests` empty (the bridge logs
+`reason=no-associated-pr` in that case), use the narrow operator fallback
 instead of waiting for cron:
 
 ```powershell

@@ -26,9 +26,9 @@ deterministic policy/wiring coverage and a two-round review-harness loop.
   router name/path, `completed/action_required`, review/review-comment source,
   the production-proven Copilot bot ID/login/type for both actor fields, and a
   same-repository open PR on `main` at the exact run head SHA.
-- When GitHub omits `workflow_run.pull_requests`, the bridge queries commit
-  associations, filters every candidate through the same policy, and requires
-  exactly one eligible survivor.
+- The bridge requires `workflow_run.pull_requests` to identify the exact source
+  PR. When GitHub omits that association, it fails closed; commit-to-PR lookup
+  is not a safe fallback because another PR can share the same head commit.
 - PRs that modify or rename the router, bridge, or recovery workflows are
   rejected. The accepted path emits one PR number and the write-only job makes
   one targeted `ci-recovery.yml` reconciliation dispatch; it never invokes the
@@ -73,5 +73,6 @@ GitHub registers `workflow_run` listeners only from the default branch, so this
 feature branch cannot produce the final live delivery proof. After merge, the
 first Copilot-authored parked router review run must create one bridge run and
 one targeted CI Recovery run. If GitHub does not emit that `workflow_run`
-event, use the documented targeted `gh workflow run ci-recovery.yml` fallback;
-do not wait for cron or manually dispatch the router sweep.
+event, or emits it without a PR association, use the documented targeted
+`gh workflow run ci-recovery.yml` fallback; do not wait for cron or manually
+dispatch the router sweep.

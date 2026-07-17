@@ -39,7 +39,7 @@ function fixture() {
   };
 }
 
-function fakeApi({ run, pulls = {}, files = {}, commitPulls = [] }) {
+function fakeApi({ run, pulls = {}, files = {} }) {
   const calls = [];
   return {
     calls,
@@ -47,10 +47,6 @@ function fakeApi({ run, pulls = {}, files = {}, commitPulls = [] }) {
       async getRun(id) {
         calls.push(['getRun', id]);
         return run;
-      },
-      async listCommitPulls(sha) {
-        calls.push(['listCommitPulls', sha]);
-        return commitPulls;
       },
       async getPull(number) {
         calls.push(['getPull', number]);
@@ -83,43 +79,24 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
   ]);
 });
 
-test('filters commit associations before requiring one exact fallback PR', async () => {
+test('fails closed when run.pull_requests is empty without calling any commit API', async () => {
   const data = fixture();
   data.run.pull_requests = [];
-  const fork = {
-    ...data.pullRequest,
-    number: 41,
-    head: { ...data.pullRequest.head, repo: { full_name: 'attacker/Crawler' } },
-  };
-  const fake = fakeApi({
-    run: data.run,
-    commitPulls: [{ number: 41 }, { number: 42 }],
-    pulls: { 41: fork, 42: data.pullRequest },
-    files: { 42: data.changedFiles },
-  });
+  const fake = fakeApi({ run: data.run });
 
-  const result = await inspectReviewWake({
-    payload: data.payload,
-    repository,
-    api: fake.api,
+  assert.deepEqual(await inspectReviewWake({ payload: data.payload, repository, api: fake.api }), {
+    reason: 'no-associated-pr',
   });
-  assert.equal(result.prNumber, 42);
-  assert.deepEqual(fake.calls, [
-    ['getRun', 123],
-    ['listCommitPulls', data.run.head_sha],
-    ['getPull', 41],
-    ['getPull', 42],
-    ['listPullFiles', 42],
-  ]);
+  // Must not reach any PR or commit lookup — only the run fetch is allowed.
+  assert.deepEqual(fake.calls, [['getRun', 123]]);
 });
 
 test('fails closed when two PR associations remain eligible', async () => {
   const data = fixture();
-  data.run.pull_requests = [];
+  data.run.pull_requests = [{ number: 42 }, { number: 43 }];
   const second = { ...data.pullRequest, number: 43 };
   const fake = fakeApi({
     run: data.run,
-    commitPulls: [{ number: 42 }, { number: 43 }],
     pulls: { 42: data.pullRequest, 43: second },
     files: { 42: data.changedFiles, 43: data.changedFiles },
   });

@@ -93,20 +93,6 @@ export function changedFilesRejection({ pullRequest, changedFiles }) {
   return null;
 }
 
-function associatedPullNumbers(run, commitPulls) {
-  const associations =
-    Array.isArray(run?.pull_requests) && run.pull_requests.length > 0
-      ? run.pull_requests
-      : commitPulls;
-  return [
-    ...new Set(
-      associations
-        .map((pullRequest) => positiveInteger(pullRequest?.number))
-        .filter((number) => number !== null),
-    ),
-  ];
-}
-
 export async function inspectReviewWake({ payload, repository, api }) {
   const runId = positiveInteger(payload?.workflow_run?.id);
   if (!runId) return { reason: 'missing-run-id' };
@@ -118,11 +104,21 @@ export async function inspectReviewWake({ payload, repository, api }) {
   const defaultBranch = String(payload?.repository?.default_branch || '');
   if (!defaultBranch) return { reason: 'missing-default-branch' };
 
-  const commitPulls =
-    Array.isArray(run.pull_requests) && run.pull_requests.length > 0
-      ? []
-      : await api.listCommitPulls(run.head_sha);
-  const pullNumbers = associatedPullNumbers(run, commitPulls);
+  // Fail closed: commit-to-PR association does not preserve event-to-PR
+  // provenance. If GitHub did not populate run.pull_requests, we cannot
+  // identify the exact PR that emitted the trusted review event without
+  // risking associating the run with a different PR that merely shares the
+  // same commit. Use the targeted operator fallback in that case.
+  if (!Array.isArray(run.pull_requests) || run.pull_requests.length === 0) {
+    return { reason: 'no-associated-pr' };
+  }
+  const pullNumbers = [
+    ...new Set(
+      run.pull_requests
+        .map((pullRequest) => positiveInteger(pullRequest?.number))
+        .filter((number) => number !== null),
+    ),
+  ];
   if (pullNumbers.length === 0) return { reason: 'no-associated-pr' };
 
   const eligible = [];
@@ -184,9 +180,6 @@ export async function runFromEnv(env = process.env) {
     api: {
       async getRun(runId) {
         return (await request(token, `/repos/${owner}/${repo}/actions/runs/${runId}`)).data;
-      },
-      async listCommitPulls(sha) {
-        return paginate(token, `/repos/${owner}/${repo}/commits/${sha}/pulls`);
       },
       async getPull(number) {
         return (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
