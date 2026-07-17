@@ -273,3 +273,9 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0056 | [GitHub-First Broad-Sweep Execution and Investigation Session Process Boundary](0056-github-first-broad-sweep-and-investigation-session-policy.md) | Accepted                 | 2026-07-10 |
 | 0059 | [Floor 2 Settlement Progression Contract](0059-floor2-settlement-progression-contract.md)                                                          | Accepted                 | 2026-07-11 |
 | 0060 | [Repository-Managed Speculative Merge Train](0060-repository-managed-speculative-merge-train.md)                                                   | Accepted                 | 2026-07-11 |
+| 0061 | [Game Intro Screen — Player Identity Before Run Start](0061-game-intro-screen-player-identity.md)                                                  | Accepted                 | 2026-07-13 |
+| 0062 | [Merge-Train Ruleset App Bypass (Fixing GH006 Under Classic Protection)](0062-merge-train-ruleset-app-bypass.md)                                   | Accepted                 | 2026-07-15 |
+| 0062 | [Unlock-aware objective route planning](0062-unlock-aware-objective-route-planning.md)                                                             | Accepted                 | 2026-07-15 |
+| 0063 | [Merge-Train Real GitHub Squash-Merge Promotion (MERGED Completion Semantics)](0063-merge-train-real-squash-merge-promotion.md)                    | Accepted                 | 2026-07-15 |
+| 0064 | [In-Process Floor Transition Carryover](0064-in-process-floor-transition-carryover.md)                                                             | Accepted                 | 2026-07-17 |
+| 0065 | [Versioned Frozen Floor 2 Equipment Instances](0065-versioned-frozen-floor2-equipment-instances.md)                                                | Accepted                 | 2026-07-17 |

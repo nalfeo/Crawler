@@ -54,6 +54,20 @@ Neither layer may call `Math.random()` or `Date.now()`.
 
 These are aspirational per-layer targets. Mechanical enforcement currently uses per-file thresholds in `vitest.config.ts`; see `docs/agent-os/policies/ci-policy.md` for the gate stack and enforcement details.
 
+### 9. Rapid Five-Level Build Growth
+
+Equipment and other build progression must preserve Crawler's high-stakes feel.
+Every representative build must grow meaningfully stronger every five levels.
+The quantitative gate is a **median aggregate realized-DPS ratio of 1.7×–2.3×**,
+measured independently at each five-level representative-build band
+(initially Level 1 → 6 and Level 6 → 11 for the Floor 2 equipment epic).
+
+Measurement authority: `computeEffectiveStatsFromLoadout` in
+`src/core/effective-stats.ts` and `computeTypedPrimaryMultiplier` in
+`src/shared/stats.ts`. Deviating from these helpers risks tuning against the
+wrong formula. The deterministic representative-build fixture is the release
+authority — not hand-picked examples or visual feel estimates.
+
 ### 10. Hashimoto's Loop
 
 Every agent failure becomes a permanent fix: observe → classify → decide fix type → implement → add regression test → audit. Never "fix the prompt" — encode rules as sensors.

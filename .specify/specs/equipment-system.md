@@ -571,10 +571,126 @@ Visual sandbox showing:
 
 ## Constitutional Compliance
 
-| Principle                    | Compliance                                                                 |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| **Lab-Gated Development**    | Equipment lab required before shipping. CI-enforced.                       |
-| **Deterministic Game Logic** | No `Math.random()` or `Date.now()`. Pure functions only.                   |
-| **ECS-Phaser Bridge**        | Equipment logic in `src/core/`, types in `src/shared/`. No Phaser imports. |
-| **Coverage Requirements**    | `src/core/` and `src/shared/` target 90%+ line coverage.                   |
-| **Conventional Commits**     | `feat: add equipment system`, `lab: equipment-lab`, etc.                   |
+| Principle                         | Compliance                                                                         |
+| --------------------------------- | ---------------------------------------------------------------------------------- |
+| **Lab-Gated Development**         | Equipment lab required before shipping. CI-enforced.                               |
+| **Deterministic Game Logic**      | No `Math.random()` or `Date.now()`. Pure functions only.                           |
+| **ECS-Phaser Bridge**             | Equipment logic in `src/core/`, types in `src/shared/`. No Phaser imports.         |
+| **Coverage Requirements**         | `src/core/` and `src/shared/` target 90%+ line coverage.                           |
+| **Conventional Commits**          | `feat: add equipment system`, `lab: equipment-lab`, etc.                           |
+| **Rapid Five-Level Build Growth** | Floor 2 item stats must be tuned so representative builds meet the 1.7×–2.3× gate. |
+
+---
+
+## Floor 2 Generated Equipment Contract (A1 Implementation Lock)
+
+> This section locks the implementation contracts for Floor 2 generated equipment.
+> It is normative for all downstream implementation slices (B1–C2).
+> Authority: ADR 0065 (`docs/knowledge/adr/0065-versioned-frozen-floor2-equipment-instances.md`).
+
+### Instance Identity and Registry
+
+- **One versioned generated-equipment registry** spans all Floor 2 equipment consumers.
+  Every generated instance is assigned a stable UUID at creation and stored exactly once in
+  the registry.
+- **Containers** (bag slots, equipped slots, reward bundles, boss chests, Quartermaster stock,
+  floor-carryover manifests) store only the instance ID — never the full record.
+- No consumer may define a parallel item shape or store a subset of resolved fields.
+- The registry schema is versioned. Unknown future versions fail closed; supported migration
+  is deterministic and idempotent.
+
+### Resolution Order (immutable after freeze)
+
+Generated instances are resolved exactly once in this sequence:
+
+1. Base template selection (static `EquipmentItemDef`)
+2. Item level (floor zone band)
+3. Inherent scaling (rarity scalar applied to base stats)
+4. Rarity: Common (1.00×, 0 effect units), Uncommon (1.05×, 1 minor unit), Rare (1.10×, 2 units)
+5. Enhancement: +0..+5, adds 5% post-rarity inherent damage or armor per step
+6. Affixes and effect-unit budget allocated from rarity
+7. **Freeze:** stats, name, art handle, weapon snapshot (if applicable), and fingerprint
+
+The only permitted post-freeze content operation is an atomic enhancement revision
+(step 5 incremented by one); it never rerolls prior choices.
+
+### Fingerprinting
+
+- Fingerprints are versioned SHA-256 digests of canonical immutable instance fields.
+- Excluded from fingerprint: ownership container, merchant price, claim state.
+- Fingerprint mismatch signals a bug (stale clone or field omission) — not an expected
+  upgrade path.
+
+### Weapon Snapshots
+
+Weapon-bearing instances freeze an `ActiveWeaponSnapshotV1` record after full instance
+resolution (see `weapon-system.md` for the snapshot contract). Runtime weapon-firing selects
+the snapshot by equipped instance ID rather than reading or mutating the global
+static `WeaponDef` template.
+
+### Ability and Passive Ownership
+
+- Every ability or passive granted by equipment records a source key:
+  `equipment:<instanceId>:<effectOrdinal>`.
+- A grant remains active while at least one source with that key exists.
+- Unequipping removes only the originating source keys.
+- The existing ten-slot active-ability limit remains authoritative.
+
+### Achievement Reward Contracts
+
+- Reward instances resolve atomically at unlock time and are immutable inside the reward bundle.
+- A `claim` operation transfers the whole bundle and marks it claimed in one transaction,
+  or performs no mutation (no partial state).
+- Claimed state is excluded from the instance fingerprint.
+
+### Shop and Economy Contracts
+
+- Player purchases and AI purchases share one atomic public purchase API.
+- A purchase either succeeds (item moves from merchant stock to buyer bag, price debited) or
+  fails completely — no partial transfer.
+- Quartermaster rules: Floor 2 merchant stock rotates within the unlocked catalog;
+  Tier 1 items appear at the 25/50 zone shops; Tier 2 items at the 50/75 zone shops.
+- Boss chest rarity distribution: 85% Uncommon-or-higher, 15% Common fallback.
+- The normalized catalog floor is 70 base entries before enhancement or affixes.
+
+### Floor Carryover
+
+- Floor 1 equipment entries are excluded from the Floor 2 registry and must not appear in
+  Floor 2 shop or loot pools.
+- Floor 2 carryover serializes the registry plus ID references — not resolved records.
+- Carryover deserialization is idempotent; repeated loads produce identical registry state.
+
+### Deterministic AI Scoring
+
+- AI agents score generated instances by expected run value: a function of resolved stats,
+  current build, and floor-zone context.
+- AI may pursue an optional settlement-maintenance goal only through the existing objective
+  route planner and public inventory / equip / purchase APIs.
+- AI scoring is deterministic: same inputs produce same score. No `Math.random()`.
+
+### Feature Flags
+
+Seven independently staged Floor 2 equipment feature flags govern rollout.
+All default to `false` (off). Each flag must not expose equipment on Floor 1.
+
+| Flag ID                        | Enables                                        |
+| ------------------------------ | ---------------------------------------------- |
+| `floor2EquipmentRegistry`      | Versioned instance registry and resolution     |
+| `floor2EquipmentCatalog`       | Tier 1 and Tier 2 item catalog entries         |
+| `floor2EquipmentRewards`       | Achievement reward bundles and boss chest loot |
+| `floor2EquipmentEconomy`       | Quartermaster stock and purchase API           |
+| `floor2EquipmentUX`            | HUD slots, paper doll, and tooltip rendering   |
+| `floor2EquipmentWorldInteg`    | World-simulation equipment queries and effects |
+| `floor2EquipmentAIMaintenance` | AI scoring and settlement-maintenance goal     |
+
+Dependency closure: each flag may be enabled only after all flags it depends on are enabled.
+Disabling a flag with persisted items preserves existing instances (no forced unequip or data loss).
+
+### Migration
+
+- Instance migration is deterministic and idempotent: applying the migration to an already-migrated
+  record produces the same result as applying it once.
+- Records with an unknown `schema_version` fail closed — they are not silently discarded or
+  coerced. The runtime logs a structured error and keeps the record as-is until a supported
+  migration is available.
+- Migration never rerolls frozen content (no new RNG draws on existing fields).

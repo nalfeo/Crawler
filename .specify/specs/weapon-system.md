@@ -158,3 +158,68 @@ Build worlds with `createTestWorld({ seed: 42 })`; never construct one manually.
   sandboxes alongside its game/ecs/integration suites. ✅
 - **Data-driven balance:** tuning lives in `WEAPON_DEFS`; this spec documents the
   contract without restating per-weapon numbers.
+
+---
+
+## Floor 2 Frozen Weapon Snapshot Contract (A1 Implementation Lock)
+
+> This section locks the weapon-snapshot contract for Floor 2 generated weapon instances.
+> It is normative for downstream implementation slices (B2–C2).
+> Authority: ADR 0065 (`docs/knowledge/adr/0065-versioned-frozen-floor2-equipment-instances.md`).
+
+### Static WeaponDef Immutability
+
+Static `WeaponDef` records remain immutable catalog templates. They must not be cloned and
+mutated per instance; all per-instance customization lives in the generated equipment registry
+(see `equipment-system.md`).
+
+### ActiveWeaponSnapshotV1
+
+Every generated weapon-bearing equipment instance freezes an `ActiveWeaponSnapshotV1` record
+immediately after full instance resolution (rarity + enhancement + affixes applied).
+
+```typescript
+interface ActiveWeaponSnapshotV1 {
+  readonly schemaVersion: 1;
+  /** Instance ID from the generated equipment registry. */
+  readonly instanceId: string;
+  /** The base WeaponDef template this instance derives from. */
+  readonly baseWeaponDefId: string;
+  /** Resolved damage after inherent scaling, rarity, and enhancement. */
+  readonly resolvedBaseDamage: number;
+  /** Resolved attack speed modifier (additive to base). */
+  readonly resolvedAttackSpeedBonus: number;
+  /** Resolved crit chance (0.0–1.0). */
+  readonly resolvedCritChance: number;
+  /** Resolved crit multiplier (e.g. 1.5 = 150%). */
+  readonly resolvedCritMultiplier: number;
+  /** Resolved projectile count (≥1). */
+  readonly resolvedProjectileCount: number;
+  /** Resolved range modifier (additive). */
+  readonly resolvedRangeBonus: number;
+  /** Ability IDs granted by this weapon (sourced via equipment ownership). */
+  readonly grantedAbilityIds: readonly string[];
+  /** Passive IDs granted by this weapon (sourced via equipment ownership). */
+  readonly grantedPassiveIds: readonly string[];
+  /** Snapshot creation timestamp (wall clock, for debugging only — not used in game logic). */
+  readonly frozenAt: string;
+}
+```
+
+### Snapshot Dispatch
+
+- Runtime weapon-firing reads the `ActiveWeaponSnapshotV1` for the currently equipped weapon
+  by looking up the equipped instance ID in the generated equipment registry.
+- The firing pipeline must not read fields directly from the base `WeaponDef` for a generated
+  weapon — it uses only the frozen snapshot fields.
+- If no snapshot is found for the equipped instance ID, the runtime falls back to the base
+  `WeaponDef` template (covers Floor 1 static weapons that have no generated instance).
+
+### Snapshot Immutability
+
+- A snapshot is frozen at instance resolution and must not be mutated thereafter.
+- The only legal post-freeze operation that touches a snapshot is an atomic enhancement revision:
+  the old snapshot is discarded and a new `ActiveWeaponSnapshotV1` is written for the same
+  instance ID with the updated resolved values and a new `frozenAt` timestamp.
+- Snapshot fields are excluded from the instance fingerprint computation — the fingerprint
+  covers canonical content fields, not derived runtime behavior.
