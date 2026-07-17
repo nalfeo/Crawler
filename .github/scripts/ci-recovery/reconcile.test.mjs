@@ -712,6 +712,163 @@ test('direct state-change event persists convergence before clearing the waiting
   assert.ok(waitingDeleteIndex > statePatchIndex);
 });
 
+test('failed waiting-marker cleanup remains sweep-retryable after automation ownership is acquired', async (t) => {
+  const waitingComment = waitingStateComment(784);
+  const failedCheck = {
+    id: 7,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/7`,
+  };
+  let acquiredStateBody = null;
+  const first = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [waitingComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${waitingComment.id}`]: (_url, body) => {
+      acquiredStateBody = body.body;
+      return { body: { id: waitingComment.id } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`]: () => ({
+      status: 500,
+      body: { message: 'temporary label API failure' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => first.server.close());
+
+  const failed = await runScript(first.port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (isWindowsAsyncCloseCrash(failed.code, failed.stderr)) {
+    t.skip('Node subprocess hit the known Windows UV_HANDLE_CLOSING shutdown assertion');
+    return;
+  }
+  assert.notEqual(failed.code, 0);
+  assert.match(failed.stderr, /temporary label API failure/);
+  assert.equal(parseStateComment(acquiredStateBody).status, 'active');
+  assert.equal(parseStateComment(acquiredStateBody).owner, 'automation');
+  assert.equal(
+    first.mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'the recovery task is not posted before waiting-marker cleanup succeeds',
+  );
+
+  let repositoryOwnerExists = true;
+  const followupComment = { id: waitingComment.id, body: acquiredStateBody };
+  const second = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: WAITING_LABEL }, { name: LABEL }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [followupComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryOwnerExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`]: () => ({
+      body: {},
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      body: {},
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryOwnerExists = false;
+      return { body: {} };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryOwnerExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${followupComment.id}`]: (_url, body) => {
+      followupComment.body = body.body;
+      return { body: { id: followupComment.id } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 785 },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => second.server.close());
+
+  const retried = await runScript(second.port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, retried.code, retried.stderr, '', true)) return;
+  assert.match(retried.stdout, /assigned copilot pr=#42/);
+  const waitingCleanupIndex = second.mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`,
+  );
+  const ownerReleaseIndex = second.mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+  );
+  assert.ok(waitingCleanupIndex >= 0);
+  assert.ok(ownerReleaseIndex > waitingCleanupIndex);
+});
+
 // ---------------------------------------------------------------------------
 // reconcile (automated recovery) — must be shadow-only in dry-run
 // ---------------------------------------------------------------------------

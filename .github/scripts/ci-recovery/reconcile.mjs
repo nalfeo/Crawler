@@ -188,8 +188,8 @@ async function acquire(nextOwner, nextLeaseId = null) {
   );
 }
 
-async function removePrLabel(name, { force = false } = {}) {
-  if (!force && !(pr.labels || []).some((label) => label.name === name)) return false;
+async function removePrLabel(name, { skipIfMissing = false } = {}) {
+  if (skipIfMissing && !(pr.labels || []).some((label) => label.name === name)) return false;
   if (!shouldMutate) return false;
   try {
     await request(
@@ -285,7 +285,7 @@ async function dispatchWorkflow(workflow, inputs) {
 async function release(reason, nextState = null) {
   if (shouldMutate) {
     const cleanup = await Promise.allSettled([
-      removePrLabel(labelName, { force: true }),
+      removePrLabel(labelName),
       removeRepositoryLabel(labelName),
     ]);
     const failures = cleanup.filter((result) => result.status === 'rejected');
@@ -359,6 +359,14 @@ if (operation.startsWith('lease-')) {
   }
   process.stdout.write(`${operation} complete for PR #${prNumber}\n`);
   process.exit(0);
+}
+
+if (
+  state &&
+  state.status !== 'waiting' &&
+  (pr.labels || []).some((label) => label.name === WAITING_LABEL)
+) {
+  await removePrLabel(WAITING_LABEL);
 }
 
 const closingIssues = await listClosingIssues(readToken, owner, repo, prNumber);
@@ -521,7 +529,7 @@ if (
         updatedAt: now.toISOString(),
       }),
     );
-    await removePrLabel(WAITING_LABEL);
+    await removePrLabel(WAITING_LABEL, { skipIfMissing: true });
   }
   const predecessor = (
     await request(readToken, `/repos/${owner}/${repo}/pulls/${conflictPredecessor}`)
@@ -622,7 +630,7 @@ if (
   } else {
     await updateState(rebaseState);
   }
-  await removePrLabel(WAITING_LABEL);
+  await removePrLabel(WAITING_LABEL, { skipIfMissing: true });
   await dispatchWorkflow('auto-rebase-prs.yml', {
     pr_number: String(prNumber),
     expected_head_sha: pr.head.sha,
@@ -829,7 +837,7 @@ if (normalized.length === 0) {
   if (!labelExists && stateComments.length === 0) {
     await updateState(convergedState);
   }
-  await removePrLabel(WAITING_LABEL);
+  await removePrLabel(WAITING_LABEL, { skipIfMissing: true });
   if (live && mergeTrainEnabled) {
     await removePrLabel(BLOCKED_LABEL);
     await removePrLabel(NOOP_LABEL);
@@ -901,7 +909,7 @@ if (labelExists) {
   await release('blocker-fingerprint-changed');
 }
 await acquire('automation');
-await removePrLabel(WAITING_LABEL);
+await removePrLabel(WAITING_LABEL, { skipIfMissing: true });
 
 const taskBody = [
   `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,

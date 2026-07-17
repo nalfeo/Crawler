@@ -148,8 +148,9 @@ export function collectPrNumbers({
         const hasQueueLabel = labels.some((label) => label.name === QUEUE_LABEL);
         const hasOptOutLabel = labels.some((label) => label.name === 'ci-recovery-opt-out');
         const waiting = labels.some((label) => label.name === WAITING_LABEL);
+        const owned = labels.some((label) => String(label.name || '').startsWith('ci-owner-pr-'));
         const shouldExcludeByLabels =
-          hasQueueLabel || (!directlyTriggered && (hasOptOutLabel || waiting));
+          hasQueueLabel || (!directlyTriggered && (hasOptOutLabel || (waiting && !owned)));
         return (
           pullRequest.state === 'open' &&
           !pullRequest.draft &&
@@ -198,9 +199,12 @@ export function collectPrNumbers({
     for (const pullRequest of scheduledPulls) {
       const directlyTriggered = directNumbers.has(pullRequest.number);
       const waiting = (pullRequest.labels || []).some((label) => label.name === WAITING_LABEL);
+      const owned = (pullRequest.labels || []).some((label) =>
+        String(label.name || '').startsWith('ci-owner-pr-'),
+      );
       if (
         !pullRequest.draft &&
-        (directlyTriggered || !waiting) &&
+        (directlyTriggered || !waiting || owned) &&
         pullRequest.head?.repo?.full_name?.toLowerCase() === normalizedRepo
       ) {
         const number = Number.parseInt(String(pullRequest.number ?? ''), 10);

@@ -35,6 +35,9 @@ recovery state machine, router, and deterministic tests.
 - Added deterministic state, router, and mocked GitHub API regressions for the
   PR #1208 cleanup shape, both 404 cleanup orders, waiting repetition/reactivation,
   direct-event windowing, lease expiry/release/heartbeat, and no-op persistence.
+- Made a failed waiting-marker transition sweep-retryable: waiting-only PRs remain
+  excluded, while a PR carrying both waiting and dynamic ownership is rechecked
+  and cleans the stale marker before duplicate/lease early exits.
 - No merge-train scheduling or candidate-validation files changed.
 
 ## Observe before done
@@ -54,16 +57,20 @@ recovery state machine, router, and deterministic tests.
 
 - `node --test ".github/scripts/ci-recovery/*.test.mjs"`: 97 tests, 68 passed,
   29 skipped by the documented Windows `UV_HANDLE_CLOSING` subprocess exemption,
-  0 failed. The pure state/router regressions executed locally; Linux CI owns the
-  authoritative subprocess execution.
+  0 failed. Linux CI executed the subprocess matrix and exposed one over-broad
+  missing-label optimization; the follow-up restores unconditional train-label
+  cleanup while limiting missing-label suppression to the waiting marker.
 - `npm run verify:fast`
 - `npx prettier --check` on all six changed recovery source/test files
 - Review harness: `gpt-5.4` plan review approved with three adopted tightenings
   (`plan_divergence: minor`); `claude-sonnet-4.6` code review was clean in round 1.
+  A second-model review-thread validation accepted the stale waiting-marker concern
+  and confirmed the retry fix plus two-run regression in round 2.
 
 ## Risks
 
-- Waiting wake-up depends on the existing direct CI/review/approval event routes;
-  the scheduled backstop intentionally does not consume waiting PRs.
+- Waiting-only wake-up depends on the existing direct CI/review/approval event
+  routes. The scheduled backstop intentionally skips genuine waiting state but
+  consumes inconsistent waiting-plus-owner state until cleanup succeeds.
 - A non-404 cleanup failure remains fail-closed after both cleanup operations are
   attempted; terminal state is not fabricated while atomic ownership is uncertain.

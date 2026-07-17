@@ -258,6 +258,39 @@ test('train sweeps skip waiting PRs but a direct event preserves one outside the
   );
 });
 
+test('train sweeps retain waiting PRs that also carry dynamic ownership for cleanup retry', () => {
+  const ownedWaiting = {
+    number: 42,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [{ name: 'ci-recovery-waiting' }, { name: 'ci-owner-pr-42' }],
+  };
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [ownedWaiting],
+      trainEnabled: true,
+    }),
+    [42],
+  );
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [ownedWaiting],
+      trainEnabled: false,
+    }),
+    [42],
+  );
+});
+
 test('eventPrNumbers identifies only PRs represented by the triggering event', () => {
   assert.deepEqual([...eventPrNumbers({ pull_request: { number: 42 } })], [42]);
   assert.deepEqual(
