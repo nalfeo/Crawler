@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b8f1170e23a4db2b08abfd3c2f5e190013596f51",
+    "commitDate": "2026-07-17T14:36:21Z",
+    "commitSubject": "fix(ci): reduce recovery runner fan-out (#1255)",
+    "capturedAt": "2026-07-17T15:53:06.973Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29589409450",
+    "winRate": 0.95,
+    "totalWins": 570,
+    "totalRuns": 600,
+    "path": "by-sha/b8f1170e23a4db2b08abfd3c2f5e190013596f51.json"
+  },
+  {
     "commit": "db1576d7b5ffa83387fa6616969c1b12948825b1",
     "commitDate": "2026-07-17T09:18:49Z",
     "commitSubject": "ci: recover parked trusted Copilot review wakes (#1227)",
