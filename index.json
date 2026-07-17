@@ -1,5 +1,16 @@
 [
   {
+    "commit": "db1576d7b5ffa83387fa6616969c1b12948825b1",
+    "commitDate": "2026-07-17T09:18:49Z",
+    "commitSubject": "ci: recover parked trusted Copilot review wakes (#1227)",
+    "capturedAt": "2026-07-17T10:32:38.834Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29570178416",
+    "winRate": 0.95,
+    "totalWins": 570,
+    "totalRuns": 600,
+    "path": "by-sha/db1576d7b5ffa83387fa6616969c1b12948825b1.json"
+  },
+  {
     "commit": "0f99c4aa0f02212e870be6f6f1b01f7d80b0d75d",
     "commitDate": "2026-07-17T08:20:11Z",
     "commitSubject": "feat: add generic weapon anchors to mob sprite metadata, editor, and runtime resolver (#1248)",
