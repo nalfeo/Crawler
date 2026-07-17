@@ -963,7 +963,6 @@ export class BehaviorTreeAI implements AIInputProvider {
   private rangedDefensiveSpacing: boolean = false;
   private readonly ignoredLootUntilFrame = new Map<number, number>();
   private readonly ignoredEnemyUntilFrame = new Map<number, number>();
-  private engageTargetEid: number | null = null;
   private engageNoProgressFrames: number = 0;
   private engageBestDistance: number = Number.POSITIVE_INFINITY;
   private engageBestHp: number = Number.POSITIVE_INFINITY;
@@ -2753,11 +2752,21 @@ export class BehaviorTreeAI implements AIInputProvider {
    * neither improves for {@link ENGAGE_GIVEUP_FRAMES}, the enemy is effectively
    * unreachable (e.g. behind a wall); blacklist it briefly so the behavior tree
    * retargets a reachable enemy instead of fixating forever.
+   *
+   * Progress baselines ({@link engageBestDistance}/{@link engageBestHp}) are
+   * intentionally NOT reset when the nearest-enemy target flips to a different
+   * eid (e.g. two enemies at near-tied distance repeatedly swapping "nearest").
+   * Resetting on every eid churn let a flip-flopping pair of enemies restart the
+   * no-progress counter every frame forever, so the watchdog's giveup threshold
+   * was never reached and ENGAGE deadlocked permanently against an oscillating
+   * RETREAT (confirmed via headless repro: weapon-sweep run 29453994290,
+   * bow-seed91/throwing-knife-seed14/throwing-knife-seed18). Carrying the
+   * baseline across a target swap means an unproductive flip still counts
+   * toward giveup, so the watchdog can escape the deadlock.
    */
   private updateEngageWatchdog(world: GameWorld, playerX: number, playerY: number): void {
     const eid = this.decision.targetEid;
     if (this.decision.state !== AIState.ENGAGE || eid === null) {
-      this.engageTargetEid = null;
       this.engageNoProgressFrames = 0;
       this.engageBestDistance = Number.POSITIVE_INFINITY;
       this.engageBestHp = Number.POSITIVE_INFINITY;
@@ -2770,18 +2779,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     // the no-progress counter here prevents the watchdog from blacklisting the
     // entire wave (which would collapse Engage into a COLLECT wiggle deadlock).
     if (world.playerInSafeRoom) {
-      this.engageTargetEid = eid;
       this.engageNoProgressFrames = 0;
       this.engageBestDistance = Number.POSITIVE_INFINITY;
       this.engageBestHp = Number.POSITIVE_INFINITY;
       return;
-    }
-
-    if (eid !== this.engageTargetEid) {
-      this.engageTargetEid = eid;
-      this.engageNoProgressFrames = 0;
-      this.engageBestDistance = Number.POSITIVE_INFINITY;
-      this.engageBestHp = Number.POSITIVE_INFINITY;
     }
 
     const ex = world.stores.position.x[eid];
@@ -2789,8 +2790,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     const hp = world.stores.health.current[eid];
     if (typeof ex !== 'number' || typeof ey !== 'number' || typeof hp !== 'number' || hp <= 0) {
       // Target despawned or died; let normal retargeting take over next tick.
-      this.engageTargetEid = null;
+      // Baselines must reset here too: with the eid-churn reset removed above,
+      // every remaining early-exit branch (this one, giveup below, safe room,
+      // and non-ENGAGE) must independently clear best-distance/best-hp so a
+      // fresh target isn't held to an unreachable bar set by whatever it
+      // replaced.
       this.engageNoProgressFrames = 0;
+      this.engageBestDistance = Number.POSITIVE_INFINITY;
+      this.engageBestHp = Number.POSITIVE_INFINITY;
       return;
     }
 
@@ -2819,8 +2826,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.pathWaypoints = [];
       this.pathIndex = 0;
       this.pathGoalKey = null;
-      this.engageTargetEid = null;
       this.engageNoProgressFrames = 0;
+      this.engageBestDistance = Number.POSITIVE_INFINITY;
+      this.engageBestHp = Number.POSITIVE_INFINITY;
       if (this.config.debug) {
         logger.debug(`AI abandoning unreachable enemy ${String(eid)} (no progress)`);
       }
@@ -3155,7 +3163,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.pathWaypoints = [];
     this.pathIndex = 0;
     this.pathGoalKey = null;
-    this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
 
     return blacklisted;
@@ -3289,7 +3296,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.smoothMoveY = 0;
     this.ignoredEnemyUntilFrame.clear();
     this.targetReachableCache.clear();
-    this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
     this.engageBestDistance = Number.POSITIVE_INFINITY;
     this.engageBestHp = Number.POSITIVE_INFINITY;
@@ -8933,7 +8939,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.ignoredEnemyUntilFrame.clear();
     this.targetReachableCache.clear();
     this.npcInteractionAnchorCache.clear();
-    this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
     this.engageBestDistance = Number.POSITIVE_INFINITY;
     this.engageBestHp = Number.POSITIVE_INFINITY;

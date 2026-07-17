@@ -49,6 +49,7 @@ import {
   AINpcInteractionAction,
   AIProgressSuppressionSource,
   AIState,
+  type AIStateValue,
 } from '../../src/game/ai/types.js';
 import {
   ENGAGE_GIVEUP_FRAMES,
@@ -1675,6 +1676,114 @@ describe('BehaviorTreeAI', () => {
 
     expect(ai.getDecision().state).toBe(AIState.ENGAGE);
     expect(ai.getDecision().reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it('persists the ENGAGE no-progress baseline across a flipping nearest-enemy target', () => {
+    // Regression test for a legacy AI deadlock found via headless weapon-sweep
+    // repro (GitHub Actions run 29453994290, bow-seed91 / throwing-knife-seed14 /
+    // throwing-knife-seed18): two enemies sitting at a near-tied distance can
+    // cause the behavior tree's "nearest enemy" target to flip between them
+    // every frame. The watchdog used to reset its no-progress baseline whenever
+    // the tracked eid changed, so a flip-flopping pair reset the counter back to
+    // 0 every single frame and giveup could never fire -- ENGAGE deadlocked
+    // forever against an oscillating RETREAT. The baseline must now persist
+    // across an eid swap so an unproductive flip still counts toward giveup.
+    const world = createTestWorld({ seed: 5 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.position.x[player] = 0;
+    world.stores.position.y[player] = 0;
+
+    // Both enemies sit at the exact same distance/HP so neither swap ever looks
+    // like progress -- isolates the eid-churn behavior from ordinary distance/HP
+    // improvement, which already correctly resets the baseline.
+    const enemyA = spawnEnemy(world, 20, 0, 20);
+    const enemyB = spawnEnemy(world, 20, 0, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 5 });
+    const internals = ai as unknown as {
+      decision: { state: AIStateValue; targetEid: number | null };
+      engageNoProgressFrames: number;
+      engageBestDistance: number;
+      engageBestHp: number;
+      updateEngageWatchdog: (world: GameWorld, playerX: number, playerY: number) => void;
+    };
+    internals.decision.state = AIState.ENGAGE;
+
+    // Frame 0 establishes the progress baseline (always "progress" vs. the
+    // initial Infinity sentinel).
+    internals.decision.targetEid = enemyA;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageNoProgressFrames).toBe(0);
+
+    // Flip the tracked target every frame for exactly ENGAGE_GIVEUP_FRAMES
+    // frames. None of these frames improve distance or HP, so under the fixed
+    // behavior the no-progress counter must keep incrementing regardless of
+    // the eid swap.
+    for (let frame = 0; frame < ENGAGE_GIVEUP_FRAMES; frame += 1) {
+      internals.decision.targetEid = frame % 2 === 0 ? enemyB : enemyA;
+      internals.updateEngageWatchdog(world, 0, 0);
+    }
+    expect(internals.engageNoProgressFrames).toBe(ENGAGE_GIVEUP_FRAMES);
+    expect(internals.decision.targetEid).not.toBeNull();
+
+    // One more no-progress frame (after another flip) must trip giveup.
+    internals.decision.targetEid = enemyB;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.decision.targetEid).toBeNull();
+
+    // Giveup must also reset the progress baselines, not just the counter --
+    // otherwise the very next enemy the BT retargets to (same frame, at any
+    // distance) inherits an unreachable bar from the blacklisted enemy.
+    expect(internals.engageBestDistance).toBe(Number.POSITIVE_INFINITY);
+    expect(internals.engageBestHp).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('resets the ENGAGE progress baseline when the tracked target dies', () => {
+    // Companion regression test for the eid-churn-persistence fix above: since
+    // the watchdog no longer resets its baseline on every eid change, the
+    // death/despawn branch is now the ONLY place that clears a dead target's
+    // best-distance/best-hp before the next enemy is tracked. Without this
+    // reset, a favorable baseline set against a target killed at close range
+    // would carry over and make it artificially hard to register "progress"
+    // against a fresh, distant enemy, causing a false-positive giveup.
+    const world = createTestWorld({ seed: 6 });
+    const player = spawnPlayer(world, 0, 0);
+    world.stores.position.x[player] = 0;
+    world.stores.position.y[player] = 0;
+
+    const nearlyDeadEnemy = spawnEnemy(world, 1, 0, 20);
+    const freshEnemy = spawnEnemy(world, 30, 0, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 6 });
+    const internals = ai as unknown as {
+      decision: { state: AIStateValue; targetEid: number | null };
+      engageNoProgressFrames: number;
+      engageBestDistance: number;
+      engageBestHp: number;
+      updateEngageWatchdog: (world: GameWorld, playerX: number, playerY: number) => void;
+    };
+    internals.decision.state = AIState.ENGAGE;
+
+    // Establish a tight baseline against the first (soon-to-die) enemy.
+    internals.decision.targetEid = nearlyDeadEnemy;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageBestDistance).toBeCloseTo(1, 5);
+    expect(internals.engageBestHp).toBe(20);
+
+    // Kill it, and switch the tracked target to a distant fresh enemy -- this
+    // simulates the frame after a kill where retargeting has already picked
+    // the next nearest enemy.
+    world.stores.health.current[nearlyDeadEnemy] = 0;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageBestDistance).toBe(Number.POSITIVE_INFINITY);
+    expect(internals.engageBestHp).toBe(Number.POSITIVE_INFINITY);
+
+    // The fresh enemy at distance 30 must register as progress (baseline was
+    // reset to Infinity, not left at the old target's tight 1ft/20hp bar).
+    internals.decision.targetEid = freshEnemy;
+    internals.updateEngageWatchdog(world, 0, 0);
+    expect(internals.engageNoProgressFrames).toBe(0);
+    expect(internals.engageBestDistance).toBeCloseTo(30, 5);
   });
 
   it('resets NPC threat-clear progress when the nearby-threat gate exits', () => {

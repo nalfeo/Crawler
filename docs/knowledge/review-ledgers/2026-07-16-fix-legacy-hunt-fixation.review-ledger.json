@@ -1,0 +1,46 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "fix-legacy-hunt-fixation",
+  "task_title": "Fix legacy AI hunt-fixation deadlock and sword frozen-target watchdog gap",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Bug A convergent (no better alternative found for health-gating unbounded scan). Bug B major_fork: rejected stuckFrames-based new abandon path (weak signal, bypasses safe-room guard) in favor of repairing updateEngageWatchdog itself to persist progress-tracking across target-identity churn, mirroring the existing shouldClearThreatBeforeNpc precedent. Added churn-regression + no-false-positive test cases. Softened Bug A risk-note overclaim per concern 4. POST-IMPLEMENTATION CORRECTION (isolated A/B repro after initial validation conflated both fixes): Bug B (the churn-reset removal) is the code that actually resolves bow-seed91/throwing-knife-seed14/throwing-knife-seed18 (3/6 sweep repro cases), NOT sword-seed14 as originally hypothesized -- sword-14 has a separate, unfixed root cause (updateEngageWatchdog playerInSafeRoom bypass has no timeout of its own) explicitly deferred as follow-up. Bug A (health-gating Hunt/LeaveSafeRoom unbounded scan radius) was implemented, plan-reviewed, and empirically tested via isolated repro against all 6 cases -- it produced zero measurable effect on any of them, so it was reverted and is NOT part of the shipped diff. Final shipped diff = Bug B only (updateEngageWatchdog churn-persistence fix), proven 3/6."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Concern 1 VALID: death/despawn early-return branch reset only engageNoProgressFrames, not engageBestDistance/engageBestHp -- fixed with explicit resets + new regression test. Concern 2 (hasThreatFromBehind missing Health/isEnemyCombatEligible filter) was a FALSE POSITIVE caused by reviewing a stale branch 37 commits behind origin/main before it had been rebased; confirmed via git show origin/main that the filter already existed upstream and this diff never touched that function. Branch was rebased onto origin/main immediately after this round to fix diff scope for subsequent rounds."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Confirmed round-1 concern 2 was a false positive and diff scope is now accurate post-rebase. Found 1 NEW valid concern of the same class as round 1: the giveup/blacklist branch also reset only engageNoProgressFrames, not engageBestDistance/engageBestHp. Fixed with explicit resets + extended the flip-flop regression test with assertions on baseline reset after giveup fires."
+        },
+        {
+          "round": 3,
+          "models": ["claude-opus-4.7"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "CLEAN. Independently enumerated every early-return/branch in updateEngageWatchdog (non-ENGAGE/null target, safe room, death/despawn, progressed, giveup) and confirmed every transition branch resets all three baseline fields except the intentional partial reset on progress (correct, since baselines were just tightened to better values). Confirmed engageTargetEid fully removed repo-wide. Confirmed both regression tests trace correctly against production logic. Full test file 101/101 pass, tsc --noEmit clean. Noted relocateFromStall (line ~3166) only resets engageNoProgressFrames directly but is harmless/pre-existing since it also nulls targetEid, which the very next updateEngageWatchdog call catches via the null-target branch -- not a regression from this diff."
+        }
+      ]
+    }
+  }
+}
