@@ -587,5 +587,12 @@ describe('Floor 2 equipment epic status', () => {
     };
 
     const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors).toEqual([]);
+    expect(
+      audit.proposal.operator_actions.some(
+        (a) => a.includes('new-agent') && a.includes('old-agent'),
+      ),
+    ).toBe(true);
   });
 });
