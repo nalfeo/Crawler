@@ -458,6 +458,7 @@ export interface ValidationResult {
 export interface GitReader {
   showContent(commit: string, filePath: string): string | null;
   commitExists(commit: string): boolean;
+  commitStatus?(commit: string): 'missing' | 'not-a-commit' | 'commit';
 }
 
 export interface ValidationOptions {
@@ -495,17 +496,17 @@ function gitShowContent(repoRoot: string, commit: string, filePath: string): str
   }
 }
 
-function gitCommitExists(repoRoot: string, commit: string): boolean {
+function gitCommitStatus(repoRoot: string, commit: string): 'missing' | 'not-a-commit' | 'commit' {
   try {
-    return (
-      execFileSync('git', ['cat-file', '-t', commit], {
-        cwd: repoRoot,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim() === 'commit'
-    );
+    return execFileSync('git', ['cat-file', '-t', commit], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim() === 'commit'
+      ? 'commit'
+      : 'not-a-commit';
   } catch {
-    return false;
+    return 'missing';
   }
 }
 
@@ -566,7 +567,10 @@ export function createDefaultGitReader(repoRoot: string): GitReader {
       return gitShowContent(repoRoot, commit, filePath);
     },
     commitExists(commit: string): boolean {
-      return gitCommitExists(repoRoot, commit);
+      return gitCommitStatus(repoRoot, commit) === 'commit';
+    },
+    commitStatus(commit: string): 'missing' | 'not-a-commit' | 'commit' {
+      return gitCommitStatus(repoRoot, commit);
     },
   };
 }
@@ -1022,12 +1026,24 @@ function validateNodeLifecycle(
         node_id: node.node_id,
         message: `${node.node_id} at ${node.status} requires merge commit and timestamp`,
       });
-    } else if (!gitReader.commitExists(node.merge.commit)) {
-      result.errors.push({
-        code: 'merge.commit-not-found',
-        node_id: node.node_id,
-        message: `${node.node_id} merge commit ${node.merge.commit} does not exist in git`,
-      });
+    } else {
+      const commitStatus = gitReader.commitStatus?.(node.merge.commit);
+      if (commitStatus === 'not-a-commit') {
+        result.errors.push({
+          code: 'merge.not-a-commit',
+          node_id: node.node_id,
+          message: `${node.node_id} merge commit ${node.merge.commit} exists in git but is not a commit object`,
+        });
+      } else if (
+        commitStatus === 'missing' ||
+        (commitStatus === undefined && !gitReader.commitExists(node.merge.commit))
+      ) {
+        result.errors.push({
+          code: 'merge.commit-not-found',
+          node_id: node.node_id,
+          message: `${node.node_id} merge commit ${node.merge.commit} does not exist in git`,
+        });
+      }
     }
   }
   if (node.status === 'validated') {
@@ -1613,6 +1629,8 @@ export function auditGithub(
         }
         const claim = parseTrustedClaim(comment, expectedNodeId);
         if (!claim || Date.parse(claim.expiresAt) <= now.getTime()) continue;
+        // Use NUL as the compound-key separator because these structured text fields
+        // cannot contain U+0000, so the joined key remains unambiguous.
         liveClaims.set(`${claim.nodeId}\u0000${claim.claimant}\u0000${claim.session}`, claim);
       }
       issueClaims.push(...liveClaims.values());

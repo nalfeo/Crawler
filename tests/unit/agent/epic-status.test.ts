@@ -310,7 +310,7 @@ describe('Floor 2 equipment epic status', () => {
   it('rejects merge facts that point at a non-commit git object', () => {
     const state = cloneState();
     validateA0(state);
-    const treeObject = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
+    const treeObject = execFileSync('git', ['rev-parse', `${HANDOFF_COMMIT}^{tree}`], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
     }).trim();
@@ -326,7 +326,7 @@ describe('Floor 2 equipment epic status', () => {
       planMarkdown: PLAN,
     });
 
-    expect(result.errors.map((error) => error.code)).toContain('merge.commit-not-found');
+    expect(result.errors.map((error) => error.code)).toContain('merge.not-a-commit');
   });
 
   it('renders stable child issue packets with late-bound parent substitution', () => {
