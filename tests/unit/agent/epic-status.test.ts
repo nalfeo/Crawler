@@ -861,64 +861,6 @@ describe('Floor 2 equipment epic status', () => {
     expect(audit.errors.map((e) => e.code)).toContain('github.duplicate-live-claims');
   });
 
-  it('audits speculative stacked-work PR head drift', () => {
-    const state = cloneState();
-    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
-    expect(a1).toBeDefined();
-    if (a1) {
-      a1.stacked_work = {
-        session: 'spec-a1',
-        issue: {
-          number: 9002,
-          url: 'https://github.com/nalfeo/Crawler/issues/9002',
-        },
-        pr: {
-          number: 9004,
-          url: 'https://github.com/nalfeo/Crawler/pull/9004',
-          head_sha: 'a'.repeat(40),
-        },
-        stack_base: {
-          node_id: 'slice:A0',
-          pr: {
-            number: 1271,
-            url: 'https://github.com/nalfeo/Crawler/pull/1271',
-            head_sha: state.nodes[0]!.github.pr!.head_sha,
-          },
-        },
-        main_rebase_required: false,
-      };
-    }
-    const runner: GithubRunner = {
-      get(path) {
-        if (path.endsWith('/issues/1264')) {
-          return {
-            number: 1264,
-            state: 'open',
-            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
-            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
-          };
-        }
-        if (path.includes('/comments?per_page=100&page=1')) return [];
-        if (path.endsWith('/pulls/9004')) {
-          return {
-            number: 9004,
-            state: 'open',
-            merged: false,
-            merge_commit_sha: null,
-            merged_at: null,
-            html_url: 'https://github.com/nalfeo/Crawler/pull/9004',
-            head: { sha: 'b'.repeat(40) },
-          };
-        }
-        throw new Error(`Unexpected GitHub path ${path}`);
-      },
-    };
-
-    const audit = auditGithub(state, runner, NOW);
-
-    expect(audit.errors.map((e) => e.code)).toContain('github.stacked-pr-head-drift');
-  });
-
   it('proposes ownership reconciliation when live claim differs from cached', () => {
     const state = cloneState();
     // Change A0 to in_progress with a cached owner that differs from the live claim.
@@ -971,96 +913,6 @@ describe('Floor 2 equipment epic status', () => {
     ).toBe(true);
   });
 
-  it('requires stacked work to remain blocked', () => {
-    const state = cloneState();
-    validateA0(state);
-    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
-    expect(a1).toBeDefined();
-    if (a1) {
-      a1.status = 'ready';
-      a1.github.issue = {
-        number: 9002,
-        url: 'https://github.com/nalfeo/Crawler/issues/9002',
-      };
-      a1.stacked_work = {
-        session: 'spec-a1',
-        issue: {
-          number: 9002,
-          url: 'https://github.com/nalfeo/Crawler/issues/9002',
-        },
-        pr: null,
-        stack_base: {
-          node_id: 'slice:A0',
-          pr: structuredClone(state.nodes[0]!.github.pr)!,
-        },
-        main_rebase_required: false,
-      };
-    }
-
-    const codes = validate(state).errors.map((error) => error.code);
-
-    expect(codes).toContain('stacked-work.lifecycle-blocked');
-  });
-
-  it('rejects stacked work when the recorded base PR drifted', () => {
-    const state = cloneState();
-    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
-    expect(a1).toBeDefined();
-    if (a1) {
-      a1.stacked_work = {
-        session: 'spec-a1',
-        issue: {
-          number: 9002,
-          url: 'https://github.com/nalfeo/Crawler/issues/9002',
-        },
-        pr: null,
-        stack_base: {
-          node_id: 'slice:A0',
-          pr: {
-            number: 1271,
-            url: 'https://github.com/nalfeo/Crawler/pull/1271',
-            head_sha: 'b'.repeat(40),
-          },
-        },
-        main_rebase_required: false,
-      };
-    }
-
-    const codes = validate(state).errors.map((error) => error.code);
-
-    expect(codes).toContain('stacked-work.stale-base');
-  });
-
-  it('keeps stacked work out of the ready queue until the speculative metadata is cleared', () => {
-    const state = cloneState();
-    validateA0(state);
-    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
-    expect(a1).toBeDefined();
-    if (a1) {
-      a1.github.issue = {
-        number: 9002,
-        url: 'https://github.com/nalfeo/Crawler/issues/9002',
-      };
-      a1.stacked_work = {
-        session: 'spec-a1',
-        issue: {
-          number: 9002,
-          url: 'https://github.com/nalfeo/Crawler/issues/9002',
-        },
-        pr: null,
-        stack_base: {
-          node_id: 'slice:A0',
-          pr: structuredClone(state.nodes[0]!.github.pr)!,
-        },
-        main_rebase_required: false,
-      };
-    }
-
-    const result = validate(state);
-
-    expect(result.ready_queue).not.toContain('slice:A1');
-  });
-
   it('treats stacked_work: null as cleared metadata for readiness', () => {
     const state = cloneState();
     validateA0(state);
@@ -1078,96 +930,6 @@ describe('Floor 2 equipment epic status', () => {
 
     expect(result.errors).toEqual([]);
     expect(result.ready_queue).toContain('slice:A1');
-  });
-
-  it('flags stacked work that still needs a main rebase after its base merged', () => {
-    const state = cloneState();
-    validateA0(state);
-    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
-    expect(a1).toBeDefined();
-    if (a1) {
-      a1.github.issue = {
-        number: 9002,
-        url: 'https://github.com/nalfeo/Crawler/issues/9002',
-      };
-      a1.stacked_work = {
-        session: 'spec-a1',
-        issue: {
-          number: 9002,
-          url: 'https://github.com/nalfeo/Crawler/issues/9002',
-        },
-        pr: null,
-        stack_base: {
-          node_id: 'slice:A0',
-          pr: structuredClone(state.nodes[0]!.github.pr)!,
-        },
-        main_rebase_required: true,
-      };
-    }
-
-    const result = validate(state);
-
-    expect(result.errors.map((error) => error.code)).toContain('stacked-work.post-merge-unrebased');
-    expect(result.ready_queue).not.toContain('slice:A1');
-  });
-
-  it('rejects stacked work whose dependency does not have an open PR base', () => {
-    const state = cloneState();
-    state.nodes[0]!.status = 'blocked';
-    state.nodes[0]!.github.pr = null;
-    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
-    expect(a1).toBeDefined();
-    if (a1) {
-      a1.stacked_work = {
-        session: 'spec-a1',
-        issue: {
-          number: 9002,
-          url: 'https://github.com/nalfeo/Crawler/issues/9002',
-        },
-        pr: null,
-        stack_base: {
-          node_id: 'slice:A0',
-          pr: {
-            number: 1271,
-            url: 'https://github.com/nalfeo/Crawler/pull/1271',
-            head_sha: FULL_COMMIT,
-          },
-        },
-        main_rebase_required: false,
-      };
-    }
-
-    const codes = validate(state).errors.map((error) => error.code);
-
-    expect(codes).toContain('stacked-work.dep-not-pr-open');
-  });
-
-  it('rejects duplicate stacked-work sessions and issues across nodes', () => {
-    const state = cloneState();
-    const spec = {
-      session: 'shared-stack',
-      issue: {
-        number: 9002,
-        url: 'https://github.com/nalfeo/Crawler/issues/9002',
-      },
-      pr: null,
-      stack_base: {
-        node_id: 'slice:A0',
-        pr: structuredClone(state.nodes[0]!.github.pr)!,
-      },
-      main_rebase_required: false,
-    };
-    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
-    const c1 = state.nodes.find((node) => node.node_id === 'slice:C1');
-    expect(a1).toBeDefined();
-    expect(c1).toBeDefined();
-    if (a1) a1.stacked_work = structuredClone(spec);
-    if (c1) c1.stacked_work = structuredClone(spec);
-
-    const codes = validate(state).errors.map((error) => error.code);
-
-    expect(codes).toContain('stacked-work.duplicate-session');
-    expect(codes).toContain('stacked-work.duplicate-issue');
   });
 });
 
@@ -1351,9 +1113,7 @@ describe('speculative stacked-work metadata', () => {
     const codes = result.errors.filter((e) => e.code.startsWith('stacked.')).map((e) => e.code);
     expect(codes).toContain('stacked.requires-main-rebase');
     // Operator action must be emitted.
-    expect(
-      result.proposal.operator_actions.some((a) => a.includes('slice:A1')),
-    ).toBe(true);
+    expect(result.proposal.operator_actions.some((a) => a.includes('slice:A1'))).toBe(true);
   });
 
   it('rejects stale dep head: last_resynced_head does not match dep PR head_sha', () => {

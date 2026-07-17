@@ -193,21 +193,6 @@ const statePrRefSchema = prRefSchema
       });
     }
   });
-const stackBaseSchema = z
-  .object({
-    node_id: z.string().regex(NODE_ID_PATTERN),
-    pr: statePrRefSchema,
-  })
-  .strict();
-const stackedWorkSchema = z
-  .object({
-    session: z.string().min(1),
-    issue: stateIssueRefSchema,
-    pr: statePrRefSchema.nullable(),
-    stack_base: stackBaseSchema,
-    main_rebase_required: z.boolean(),
-  })
-  .strict();
 const evidenceSchema = z
   .object({
     kind: z.string().min(1),
@@ -897,14 +882,22 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
   }
   const stackedWorkProps =
     stackedWork && isRecord(stackedWork.properties) ? stackedWork.properties : null;
+  const stackedWorkPrAnyOf =
+    stackedWorkProps && isRecord(stackedWorkProps.pr) && Array.isArray(stackedWorkProps.pr.anyOf)
+      ? stackedWorkProps.pr.anyOf
+      : null;
+  const hasStackedPrRef =
+    stackedWorkPrAnyOf?.some((entry) => isRecord(entry) && entry.$ref === '#/$defs/prRef') ?? false;
+  const hasStackedPrNull =
+    stackedWorkPrAnyOf?.some((entry) => isRecord(entry) && entry.type === 'null') ?? false;
   if (
     !stackedWorkProps ||
     !isRecord(stackedWorkProps.mode) ||
     !Array.isArray(stackedWorkProps.mode.enum) ||
     !isRecord(stackedWorkProps.issue) ||
     stackedWorkProps.issue.$ref !== '#/$defs/issueRef' ||
-    !isRecord(stackedWorkProps.pr) ||
-    stackedWorkProps.pr.$ref !== '#/$defs/nullablePrRef' ||
+    !hasStackedPrRef ||
+    !hasStackedPrNull ||
     !isRecord(stackedWorkProps.stack_bases) ||
     !isRecord(stackedWorkProps.stack_bases.items) ||
     stackedWorkProps.stack_bases.items.$ref !== '#/$defs/stackBase'
