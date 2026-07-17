@@ -3,7 +3,7 @@
   "schema_version": "crawler-epic-state/v1",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-17T21:51:06.000Z",
+  "updated_at": "2026-07-17T21:53:46.000Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
@@ -178,7 +178,11 @@
           "number": 1279,
           "url": "https://github.com/nalfeo/Crawler/issues/1279"
         },
-        "pr": null
+        "pr": {
+          "number": 1280,
+          "url": "https://github.com/nalfeo/Crawler/pull/1280",
+          "head_sha": "92ae2da0614f1e81fe7c4740b6cd7f7827942e81"
+        }
       },
       "ownership": {
         "claimant": null,
