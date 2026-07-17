@@ -335,8 +335,10 @@ export interface GameWorld {
    * so `apply-damage` can emit a stable attribution without re-resolving a
    * potentially-recycled `sourceEid` at impact time.
    *
-   * Entries are implicitly managed: a new spawn overwrites a recycled EID entry,
-   * keeping the map bounded without requiring explicit cleanup on projectile death.
+   * Entries are explicitly managed: `clearEntityStores` deletes the entry on
+   * every entity removal or EID recycle, and each enemy-projectile spawn sets a
+   * fresh entry when the owner archetype is known. This ensures `damageSystem`
+   * never reads a stale snapshot from a previous occupant of the same EID.
    */
   enemyProjectileArchetypeKeys: Map<number, string>;
   /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */

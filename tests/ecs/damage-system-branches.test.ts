@@ -190,3 +190,31 @@ describe('damageSystem hit-gated weapon-skill XP', () => {
     );
   });
 });
+
+describe('damageSystem archetype-key EID-recycling safety', () => {
+  it('attributes a projectile hit to the original shooter archetype even after the shooter EID is recycled', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+
+    // Spawn an enemy far away (no contact damage), then label it 'bat'.
+    const ownerEid = spawnEnemy(world, 100, 100, 10);
+    world.enemyAppearanceKeys.set(ownerEid, 'bat');
+
+    // Spawn an enemy projectile with that owner — snapshot captures 'bat'.
+    const projectile = spawnEnemyProjectile(world, 0.5, 0, 0, 0, 7, ownerEid);
+    expect(world.enemyProjectileArchetypeKeys.get(projectile)).toBe('bat');
+
+    // Simulate owner death + EID recycled by a different archetype ('orc').
+    // clearEntityStores would delete enemyAppearanceKeys[ownerEid]; replicate
+    // that here, then overwrite to mimic reuse of the same slot by another mob.
+    world.enemyAppearanceKeys.delete(ownerEid);
+    world.enemyAppearanceKeys.set(ownerEid, 'orc');
+
+    damageSystem(world, collisionSystem(world));
+
+    const hit = world.combatEvents.find((e) => e.type === 'hit' && e.targetType === 'player');
+    expect(hit).toBeDefined();
+    // Must use the snapshot 'bat', NOT the recycled EID's new archetype 'orc'.
+    expect(hit!.sourceArchetypeKey).toBe('bat');
+  });
+});
