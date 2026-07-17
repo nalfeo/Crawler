@@ -131,6 +131,10 @@ function gqlNoThreads(reviews = [substantiveCopilotReview()]) {
         pullRequest: {
           id: 'PR_test_id',
           assignees: { nodes: [] },
+          closingIssuesReferences: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [],
+          },
           reviews: reviewConnection(reviews),
           reviewThreads: {
             pageInfo: { hasNextPage: false, endCursor: null },
@@ -280,6 +284,7 @@ test('lease-acquire in dry-run writes the owner label and state comment', async 
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: { id: 999, body: '' },
     }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
   });
 
   t.after(() => server.close());

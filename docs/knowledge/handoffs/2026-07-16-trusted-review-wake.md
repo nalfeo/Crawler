@@ -14,8 +14,10 @@ ci-policy
 
 ## Apples
 
-3🍎 estimated and actual — a new trusted workflow bridge and policy module with
-deterministic policy/wiring coverage and a two-round review-harness loop.
+3🍎 estimated and actual — the explicit human cap for one `ci-policy` subsystem:
+a new trusted workflow bridge and policy module with deterministic policy/wiring
+coverage and a two-round review-harness loop. The raw file count includes
+required audit artifacts and shepherding cleanup rather than a second system.
 
 ## What changed
 
