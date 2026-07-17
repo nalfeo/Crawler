@@ -521,7 +521,13 @@ export function getEntityNormalizedWeaponAnchor(
   if (!registry) return null;
 
   const appearanceKey = world.enemyAppearanceKeys.get(eid);
-  const briefId = generatedBriefIdForEnemy('enemy', appearanceKey);
+  // Resolve brief via appearance key only; GENERATED_BRIEF_BY_TYPE is not
+  // available here (entity kind string is outside the WeaponAnchorWorld
+  // contract) and all generated-sprite entities always carry an appearance key.
+  const briefId =
+    appearanceKey !== undefined
+      ? GENERATED_BRIEF_BY_APPEARANCE_KEY[appearanceKey]
+      : undefined;
   if (!briefId) return null;
 
   const variantRoll = (world.stores.sprite.variantRoll as ArrayLike<number>)[eid] ?? eid;
