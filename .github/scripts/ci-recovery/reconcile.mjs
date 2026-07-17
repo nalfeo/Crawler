@@ -1192,8 +1192,9 @@ if (labelExists && isDuplicateDispatch(state, fingerprint)) {
           `loop-incident pr=#${prNumber} issue=#${loopResult.issueNumber} action=${loopResult.action}\n`,
         );
       } catch (err) {
+        const safeMsg = String(err.message || err).replace(/[\r\n]/g, ' ').slice(0, 500);
         process.stderr.write(
-          `loop-incident-filing-failed pr=#${prNumber} err=${String(err.message || err).replace(/[\r\n]/g, ' ')}\n`,
+          `loop-incident-filing-failed pr=#${prNumber} err=${safeMsg}\n`,
         );
       }
     } else {

@@ -84,10 +84,15 @@ export function buildLoopIncidentBody({
       : (blockers || []).map((blocker, index) => {
           const safeKind = String(blocker.kind || 'unknown').replace(/[`]/g, "'");
           const safeId = String(blocker.id || '').replace(/[`]/g, "'");
-          // Only embed the URL if it is a safe https:// link to avoid
-          // Markdown injection via javascript: or data: schemes.
-          const rawUrl = String(blocker.url || '').trim();
-          const safeUrl = /^https:\/\//i.test(rawUrl) ? rawUrl : null;
+          // Only embed the URL if it is a valid https:// link.  Parse with the
+          // URL constructor to reject malformed values and non-https schemes.
+          let safeUrl = null;
+          try {
+            const parsed = new URL(String(blocker.url || ''));
+            if (parsed.protocol === 'https:') safeUrl = parsed.href;
+          } catch {
+            // Not a valid URL — omit it.
+          }
           return `${index + 1}. **${safeKind}** \`${safeId}\`${safeUrl ? `  \n   ${safeUrl}` : ''}`;
         });
 
