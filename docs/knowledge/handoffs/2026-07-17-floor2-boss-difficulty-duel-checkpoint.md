@@ -123,16 +123,52 @@ Scratch logs are in the originating session artifacts:
 No broad sweep was run; the request called for three deterministic level anchors,
 and broad runs over 10 belong on GitHub infrastructure.
 
+## Honesty caveat (reconciliation)
+
+This PR only replaces the temporary `3%`-authored-HP/`2`-contact-damage
+shortcut with deterministic first-den-entry anchors (L5 100% HP / 18 damage,
+L10 60% HP / 12 damage, L12+ 30% HP / 8 damage; intermediate levels
+interpolate linearly and clamp outside 5-12). It does **not** implement, or
+stand in for, recurring boss abilities.
+
+The ability-less seed-42 durations recorded above (2.0-6.3s at L5, 1.3-8.4s
+at L10, 1.5-2.9s at L12) are base-stat time-to-kill observations only. They
+are **not** recurring-cast proof and do **not** satisfy Queen Mab's later
+two-resolved-cast gate (`docs/knowledge/game-design/floor2-families-and-resources.md`) —
+no ability ever fires in these runs. The downstream ability slice (design
+branch `nalfeo-design-floor-2-boss-abilities`, commit `71c27eeb`) owns
+ability-active broad GitHub-backed TTK/win-rate evaluation once abilities
+exist. Never tune a specific boss or seed to green that future gate.
+
+Preserved for the downstream ability slice: future ability clocks must start
+only on the one-time `floor2ObjectiveTick` den-activation / `encounter.started`
+transition — the same point where this PR's tuning locks and `Invincible` is
+removed — never at initialization spawn. Ability damage, effects, and
+cooldowns remain catalog-defined and must **not** inherit this PR's
+level-scaled contact `Damage` absent a new spec.
+
 ## Review state
 
 - 4-apple adversarial plan review: complete.
 - Code-review round (`claude-sonnet-4.6`): clean.
-- Multi-model raw reviews (`gpt-5.3-codex`,
-  `gemini-3.1-pro-preview`): both clean.
-- Multi-model adjudication: interrupted and not complete.
-- Ledger validation / PR prerequisites: not run because the ledger is intentionally
-  incomplete pending reconciliation.
-- PR title/body update, ready-for-review transition, push, and merge: not done.
+- Multi-model raw reviews (`gpt-5.3-codex`, `gemini-3.1-pro-preview`): both clean.
+- Multi-model adjudication: complete. Independent `claude-opus-4.8` adjudication
+  confirmed zero actionable findings across both raw reviews.
+- Ledger validation / PR prerequisites: ledger is complete and validated
+  (`npm run review:ledger -- validate`); `npm run verify:pr-prereqs` run.
+- PR title/body update and ready-for-review confirmation: done (see
+  Reconciliation resolution below). Push and merge remain gated by normal PR
+  automation — no merge was performed by this reconciliation.
+
+## Reconciliation resolution
+
+**Retained**: this checkpoint's deterministic level-based base-stat tuning,
+bounded to issue #1234, is the fix landed on PR #1237. Recurring boss
+abilities are explicitly **out of scope** here and remain a separate
+downstream slice on design branch `nalfeo-design-floor-2-boss-abilities`
+(commit `71c27eeb`). That design work was not cherry-picked or implemented in
+this reconciliation. See the Honesty caveat section above for the exact
+boundary between what this PR proves and what the ability slice still owes.
 
 ## Reconciliation prompt
 
