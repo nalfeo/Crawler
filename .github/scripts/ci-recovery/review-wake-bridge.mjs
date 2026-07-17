@@ -1,17 +1,18 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-import { request } from './github.mjs';
+import { paginate, request } from './github.mjs';
 
 const ROUTER_WORKFLOW_NAME = 'CI Recovery Router';
 const ROUTER_WORKFLOW_PATH = '.github/workflows/ci-recovery-router.yml';
-// The router encodes the trusted source PR number into its run-name for review
-// events (see ci-recovery-router.yml). GitHub surfaces run-name as the run
-// object's `display_title` (the `name` field stays the workflow name), so the
-// bridge reads it back to select the exact PR that emitted the review event.
-const REVIEW_RUN_NAME_PR_PREFIX = `${ROUTER_WORKFLOW_NAME}: review-wake pr-`;
 const ALLOWED_SOURCE_EVENTS = new Set(['pull_request_review', 'pull_request_review_comment']);
 const TRUSTED_COPILOT_ACTORS = new Map([[175728472, { login: 'copilot', type: 'bot' }]]);
+const TRUSTED_REVIEWER_LOGINS = new Set([
+  'copilot',
+  'copilot-pull-request-reviewer',
+  'copilot-pull-request-reviewer[bot]',
+]);
+const REVIEW_EVENT_MAX_DELAY_MS = 30_000;
 const PROTECTED_WORKFLOW_PATHS = new Set([
   '.github/workflows/ci-recovery-router.yml',
   '.github/workflows/ci-recovery-review-wake-bridge.yml',
@@ -79,20 +80,73 @@ export function runRejection({ payload, run, repository }) {
   // derived from a workflow file), used below as a trusted anchor to the exact
   // branch the reviewed run executed on.
   if (!String(run?.head_branch ?? '').trim()) return 'head-branch';
+  if (!Number.isFinite(Date.parse(String(run?.created_at ?? '')))) return 'run-created-at';
   return null;
 }
 
-/**
- * Extract the source PR number the router encoded into its run-name for review
- * events, surfaced by GitHub as the run object's `display_title`. Returns null
- * when the marker is absent (e.g. a non-review router run, or run-name not yet
- * deployed), so callers fail closed.
- */
-export function sourcePrFromRunName(run) {
-  const prefix = normalize(REVIEW_RUN_NAME_PR_PREFIX);
-  const value = normalize(run?.display_title);
-  if (!value.startsWith(prefix)) return null;
-  return positiveInteger(value.slice(prefix.length));
+function reviewerIsTrusted(reviewer) {
+  return (
+    positiveInteger(reviewer?.id) === 175728472 &&
+    normalize(reviewer?.type) === 'bot' &&
+    TRUSTED_REVIEWER_LOGINS.has(normalize(reviewer?.login))
+  );
+}
+
+function reviewEvidenceMatchesRun({ evidence, event, run, repository, prNumber, apiBaseUrl }) {
+  if (!reviewerIsTrusted(evidence?.user)) return false;
+  if (normalize(evidence?.commit_id) !== normalize(run.head_sha)) return false;
+
+  const evidenceTimestamp =
+    event === 'pull_request_review_comment' ? evidence?.created_at : evidence?.submitted_at;
+  const evidenceAt = Date.parse(String(evidenceTimestamp ?? ''));
+  const runAt = Date.parse(String(run.created_at));
+  const delayMs = runAt - evidenceAt;
+  if (!Number.isFinite(evidenceAt) || delayMs < 0 || delayMs > REVIEW_EVENT_MAX_DELAY_MS) {
+    return false;
+  }
+
+  if (event === 'pull_request_review_comment') {
+    const expectedUrl = `${apiBaseUrl.replace(/\/$/, '')}/repos/${repository}/pulls/${prNumber}`;
+    if (normalize(evidence?.pull_request_url) !== normalize(expectedUrl)) return false;
+  }
+  return true;
+}
+
+async function sourcePrFromTrustedReviewEvidence({ run, repository, api, apiBaseUrl }) {
+  const associatedNumbers = [
+    ...new Set(run.pull_requests.map((pullRequest) => positiveInteger(pullRequest?.number))),
+  ];
+  if (associatedNumbers.some((number) => number === null)) {
+    return { reason: 'invalid-associated-pr' };
+  }
+
+  const since = new Date(Date.parse(run.created_at) - REVIEW_EVENT_MAX_DELAY_MS).toISOString();
+  const candidatesWithEvidence = [];
+  for (const prNumber of associatedNumbers) {
+    const evidenceRecords = await api.listReviewEvidence(prNumber, run.event, since);
+    if (
+      evidenceRecords.some((evidence) =>
+        reviewEvidenceMatchesRun({
+          evidence,
+          event: run.event,
+          run,
+          repository,
+          prNumber,
+          apiBaseUrl,
+        }),
+      )
+    ) {
+      candidatesWithEvidence.push(prNumber);
+    }
+  }
+
+  if (candidatesWithEvidence.length === 0) {
+    return { reason: 'missing-review-event-provenance' };
+  }
+  if (candidatesWithEvidence.length > 1) {
+    return { reason: 'ambiguous-review-event-provenance' };
+  }
+  return { sourcePr: candidatesWithEvidence[0] };
 }
 
 export function pullRequestMetadataRejection({ pullRequest, run, repository, defaultBranch }) {
@@ -119,7 +173,12 @@ export function pullRequestMetadataRejection({ pullRequest, run, repository, def
   return null;
 }
 
-export async function inspectReviewWake({ payload, repository, api }) {
+export async function inspectReviewWake({
+  payload,
+  repository,
+  api,
+  apiBaseUrl = 'https://api.github.com',
+}) {
   const runId = positiveInteger(payload?.workflow_run?.id);
   if (!runId) return { reason: 'missing-run-id' };
 
@@ -164,31 +223,14 @@ export async function inspectReviewWake({ payload, repository, api }) {
     return { reason: 'protected-workflow-modified' };
   }
 
-  // Select the source PR from the trusted run-name binding, NOT from the
-  // head-SHA/branch association in run.pull_requests. GitHub documents
-  // run.pull_requests as open PRs matching the run head SHA or branch and warns
-  // they do not necessarily indicate the PR that triggered the run. If the
-  // reviewed PR's head moves after the run, an unrelated PR sitting at
-  // run.head_sha could otherwise become the sole "eligible" candidate and be
-  // recovered in its place. Instead we recover exactly the PR the router
-  // encoded into its run-name (from the trusted event payload), require the
-  // association to corroborate it, and re-validate that PR against the immutable
-  // run head SHA and branch.
-  const sourcePr = sourcePrFromRunName(run);
-  if (!sourcePr) return { reason: 'missing-source-pr-binding' };
-
-  // Corroborate the trusted run-name against GitHub's PR association rather
-  // than using that head-SHA/branch association to select a recovery target.
-  const associatedNumbers = new Set(
-    run.pull_requests
-      .map((pullRequest) => positiveInteger(pullRequest?.number))
-      .filter((number) => number !== null),
-  );
-  if (!associatedNumbers.has(sourcePr)) {
-    // The trusted run-name and GitHub's own association disagree on the source
-    // PR; do not dispatch.
-    return { reason: 'source-pr-not-associated' };
-  }
+  // GitHub parks these runs before evaluating workflow YAML, so run-name is not
+  // available. Treat run.pull_requests only as a bounded candidate set, then
+  // select exactly one PR using the immutable trusted review/comment record that
+  // immediately preceded this run and names the same commit. Missing or
+  // cross-PR-ambiguous evidence fails closed to the exact operator fallback.
+  const source = await sourcePrFromTrustedReviewEvidence({ run, repository, api, apiBaseUrl });
+  if (!source.sourcePr) return { reason: source.reason };
+  const sourcePr = source.sourcePr;
 
   const pullRequest = await api.getPull(sourcePr);
   const metadataRejection = pullRequestMetadataRejection({
@@ -234,6 +276,7 @@ export async function runFromEnv(env = process.env) {
   const result = await inspectReviewWake({
     payload,
     repository,
+    apiBaseUrl: env.GITHUB_API_URL || 'https://api.github.com',
     api: {
       async getRun(runId) {
         return (await request(token, `/repos/${owner}/${repo}/actions/runs/${runId}`)).data;
@@ -261,6 +304,15 @@ export async function runFromEnv(env = process.env) {
       },
       async getPull(number) {
         return (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
+      },
+      async listReviewEvidence(number, event, since) {
+        if (event === 'pull_request_review_comment') {
+          return paginate(
+            token,
+            `/repos/${owner}/${repo}/pulls/${number}/comments?sort=created&direction=desc&since=${encodeURIComponent(since)}`,
+          );
+        }
+        return paginate(token, `/repos/${owner}/${repo}/pulls/${number}/reviews`);
       },
     },
   });

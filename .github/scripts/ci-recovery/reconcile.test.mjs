@@ -397,6 +397,174 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
   assert.ok(commentUpdate, 'expected PATCH to write idle state into the state comment');
 });
 
+for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] of [
+  ['repository label only', true, false],
+  ['PR attachment only', false, true],
+]) {
+  test(`interrupted acquire cleans an orphaned ${name} before invariant checks`, async (t) => {
+    let repositoryLabelExists = repositoryLabelInitiallyExists;
+    const prLabels = [{ name: 'ci-recovery-opt-out' }];
+    if (ownerLabelInitiallyAttached) prLabels.push({ name: LABEL });
+
+    const { server, port, mutatingCalls } = await startServer({
+      [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+        body: { ...basePr(), labels: prLabels },
+      }),
+      [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+      [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+        repositoryLabelExists
+          ? { body: { name: LABEL } }
+          : { status: 404, body: { message: 'Not Found' } },
+      [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () =>
+        ownerLabelInitiallyAttached
+          ? { body: {} }
+          : { status: 404, body: { message: 'Label does not exist' } },
+      [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+        if (!repositoryLabelExists) {
+          return { status: 404, body: { message: 'Not Found' } };
+        }
+        repositoryLabelExists = false;
+        return { body: {} };
+      },
+      [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+        body: { id: 999, body: '' },
+      }),
+    });
+    t.after(() => server.close());
+
+    const { code, stdout, stderr } = await runScript(port, {
+      RECOVERY_OPERATION: 'reconcile',
+      RECOVERY_TRIGGER: 'workflow_dispatch',
+      CI_RECOVERY_MODE: 'live',
+    });
+
+    if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+    assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+    assert.match(stdout, /skip pr=#42 reason=opt-out/);
+    assert.ok(
+      mutatingCalls.some(
+        (call) =>
+          call.method === 'DELETE' &&
+          call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+      ),
+    );
+    assert.ok(
+      mutatingCalls.some(
+        (call) =>
+          call.method === 'POST' &&
+          call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+      ),
+    );
+  });
+}
+
+test('closed PR orphan cleanup releases ownership exactly once', async (t) => {
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed', labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_dispatch',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+  assert.match(stdout, /skip pr=#42 state=closed/);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ).length,
+    1,
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ).length,
+    1,
+  );
+});
+
+test('admission wait after orphan cleanup does not release ownership twice', async (t) => {
+  const stateCommentId = 999;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: stateCommentId, body: '' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateCommentId}`]: () => ({
+      body: { id: stateCommentId, body: '' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+  assert.match(stdout, /wait pr=#42 admission=/);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ).length,
+    1,
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ).length,
+    1,
+  );
+});
+
 test('PR #1208 partial cleanup converges when both owner-label deletes return 404', async (t) => {
   const stateComment = automationStateComment();
   const { server, port, mutatingCalls } = await startServer({
@@ -1140,6 +1308,35 @@ test('expected_head_sha mismatch: reconcile fails closed before any mutation, ev
     new RegExp(`skip pr=#${PR_NUM} reason=head-sha-moved expected=${movedHead} actual=${HEAD_SHA}`),
   );
   assert.deepEqual(mutatingCalls, [], 'a mismatched head must fail closed with no mutation');
+});
+
+test('trusted metadata mismatch does not clean a pre-existing ownership artifact', async (t) => {
+  const movedHead = 'b'.repeat(40);
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...trustedReviewWakePr(),
+        labels: [{ name: LABEL }],
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: movedHead,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /reason=head-sha-moved/);
+  assert.deepEqual(
+    mutatingCalls,
+    [],
+    'orphan cleanup must remain behind the opening trusted-metadata fence',
+  );
 });
 
 test('expected_head_sha without expected_base_ref fails closed before any mutation', async (t) => {

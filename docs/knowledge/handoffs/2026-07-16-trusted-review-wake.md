@@ -66,14 +66,18 @@ Router`, dispatches `CI Recovery`, and cannot match its own completion.
   `ci-recovery.yml`; success, non-review, untrusted actor, human rerun, fork,
   ambiguous PR, stale SHA, incomplete files, and protected-workflow changes
   dispatch nothing.
-- `node --test ".github/scripts/ci-recovery/review-wake-bridge.test.mjs"`
-  (17/17)
-- `npx vitest run --project unit
-tests/unit/ci-recovery-review-wake-bridge.test.ts` (4/4)
+- Full CI-recovery policy/router/state suite: 164 tests, 123 passed, 41 known
+  Windows `UV_HANDLE_CLOSING` subprocess-shutdown skips, 0 failed.
+- Workflow wiring suite: 7/7 passed.
+- Combined policy/wiring validation: 171 tests, 130 passed, 41 known Windows
+  skips, 0 failed.
+- `npm run typecheck`
 - `npm run verify:fast`
-- Review harness: separate-model plan review produced three resolved concerns
-  (`plan_divergence=minor`); code-review round 1 produced two resolved concerns,
-  and round 2 was clean.
+- Review harness: separate-model plan review produced four resolved concerns and
+  the production evidence forced a `plan_divergence=major_fork`. Code-review
+  round 1 produced two resolved concerns. Round 2 found one live-state ownership
+  concern spanning two release call sites; both were fixed, and focused
+  independent follow-up validation was clean.
 
 ## GitHub platform caveat
 
@@ -89,25 +93,23 @@ dispatch the router sweep.
 
 Review of the original bridge surfaced two real gaps, both hardened here:
 
-- **`workflow_run.pull_requests` is association, not provenance.** GitHub
+- **`workflow_run.pull_requests` is association, not provenance, and parked
+  runs never evaluate `run-name`.** GitHub
   documents that array as open PRs whose head SHA or head branch matches the
   run and warns they did not necessarily trigger it. If the reviewed PR's head
   moved (so it no longer matched the run head SHA) while an unrelated PR still
   sat on the run head SHA, the old "exactly one associated PR" selection could
-  dispatch recovery onto that unrelated PR. Fix: `ci-recovery-router.yml` now
-  sets a `run-name` that encodes the trusted `github.event.pull_request.number`
-  for review/review-comment events (`CI Recovery Router: review-wake pr-<N>`),
-  surfaced back as the run's `display_title`. Before parsing the title, the
-  bridge proves the branch did not author a router change by comparing blobs at
-  its immutable merge base and run head (`router-workflow-untrusted` on
-  mismatch). It then evaluates only that source PR, cross-checking it against
-  the association
-  (`source-pr-not-associated`), the run head SHA, and `run.head_branch`
-  (`head-branch-mismatch`). It fails closed on a missing binding
-  (`missing-source-pr-binding`) or empty association (`no-associated-pr`). The
-  workflow `name:` is unchanged so the existing `run.name` gate still matches;
-  non-review events use a whitespace `run-name` fallback so GitHub retains their
-  native event-specific display titles.
+  dispatch recovery onto that unrelated PR. Production run `29555271824`
+  proved a second constraint: GitHub parks Copilot review runs before evaluating
+  workflow YAML, so its `display_title` remained the native PR title and the
+  encoded `run-name` design could never bind a parked wake. Fix: the bridge now
+  treats associations only as a bounded candidate set and selects one PR from
+  trusted REST review/comment records carrying Copilot's immutable ID, the run
+  head commit, and a creation/submission time within 30 seconds before run
+  creation. Matching evidence on zero or multiple PRs fails closed; multiple
+  records on one PR collapse to that one target. The selected live PR must still
+  match the run head SHA and exact `run.head_branch`. Edited or dismissed events
+  without fresh immutable evidence use the exact operator fallback.
 - **The `expected_head_sha` fence was checked only once.** Reconcile validated
   the head at its opening PR fetch, but several read phases run before the first
   write, so a synchronize could still move the head before a state comment,
@@ -142,6 +144,15 @@ phase=<phase>`), failing closed with no mutation on a mismatch. An empty
   startup and immediately before each mutation. Same-head retarget and
   draft-conversion races fail closed with zero mutations; empty expected inputs
   preserve normal recovery behavior.
+- **An interrupted ownership acquire could strand the invariant.** Label
+  creation/attachment occurs before the state comment write. If a metadata
+  recheck exited between them, the next run saw an owner-label artifact with no
+  active state and threw forever. Reconcile now detects either one-sided label
+  artifact after the opening trust fence and converges it through the existing
+  guarded idempotent release path before asserting ownership consistency. Every
+  later release decision reads the live in-memory PR label state rather than the
+  opening snapshot, preventing duplicate ownership deletion during closed,
+  admission-wait, and converged paths.
 
 Residual risk: GitHub offers no atomic conditional metadata mutation, so the
 per-phase recheck narrows but cannot fully close the sub-second window between a
@@ -149,9 +160,7 @@ recheck and its immediately following write. It is further fenced by
 `expected_head_sha` and the auto-merge `expectedHeadOid`, and is documented
 rather than claimed eliminated.
 
-Validation (this amendment): `node --test
-".github/scripts/ci-recovery/review-wake-bridge.test.mjs"` (26/26) and
-`reconcile.test.mjs` (added moved-head-before-mutation + empty-input coverage);
-`npx vitest run --project unit tests/unit/ci-recovery-review-wake-bridge.test.ts
-tests/unit/ci-recovery-router-run-name.test.ts` (7/7); `npm run typecheck`;
-`npm run verify:fast`.
+Validation (this amendment): the full CI-recovery policy/router/state suite
+reported 164 tests (123 passed, 41 known Windows subprocess-shutdown skips,
+0 failed); workflow wiring reported 7/7 passed; typecheck, `verify:fast`,
+PR prerequisites, and review-ledger validation passed.

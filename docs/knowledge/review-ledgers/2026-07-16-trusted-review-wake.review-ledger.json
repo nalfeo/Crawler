@@ -8,10 +8,10 @@
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.4",
-      "concerns_count": 3,
-      "resolved_count": 3,
-      "plan_divergence": "minor",
-      "notes": "Adopted two-job least-privilege split: read-only canonical inspection first, then one actions:write GITHUB_TOKEN workflow_dispatch because workflow_dispatch is the supported recursion exception and repository App tokens are documented to 403. Removed any branch/head-branch filter. Candidate PR associations are filtered by open/main/same-repo/current-head/protected-workflow policy before requiring exactly one survivor."
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "major_fork",
+      "notes": "Production run 29555271824 proved parked workflows never evaluate run-name, forcing a major fork from title binding to immutable REST review-event evidence. Resolved plan review: fresh submitted/created evidence only (edited/dismissed without reconstructable evidence fail closed to operator dispatch); cleanup remains behind expected metadata; either half of a partial owner-label write is cleaned; 30-second correlation is an availability heuristic with local immutable-time filtering."
     },
     "code_review": {
       "clean": true,
@@ -25,9 +25,9 @@
         },
         {
           "round": 2,
-          "models": ["claude-sonnet-4.6"],
-          "concerns_count": 0,
-          "resolved_count": 0,
+          "models": ["claude-sonnet-4.6", "claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
           "clean": true
         }
       ]

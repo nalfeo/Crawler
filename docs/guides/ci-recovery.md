@@ -19,20 +19,22 @@ kickoff comment that points Copilot at the normal repo instructions.
   trusted signal rather than treating the `workflow_run.pull_requests`
   association as provenance. GitHub documents that array as open PRs that merely
   match the run's head SHA or head branch and warns that they did not
-  necessarily trigger the run, so it is never used to _select_ the PR. Instead
-  the router encodes the trusted `github.event.pull_request.number` webhook
-  field into its `run-name` (surfaced back on the run object as `display_title`).
-  Before parsing that title, the bridge proves the branch did not author a router
-  change by comparing its Git blob at the immutable merge base and
-  `run.head_sha` (`router-workflow-untrusted` on mismatch). The bridge then
-  evaluates only that source PR and cross-checks it against three immutable run
-  attributes: it must
-  appear in `workflow_run.pull_requests` (`source-pr-not-associated` otherwise),
-  its head SHA must equal the run head SHA, and its head ref must equal
-  `run.head_branch` (an unconditionally GitHub-set run attribute, so branch reuse
-  by an unrelated PR cannot substitute). It fails closed when the run-name
-  binding is absent (`missing-source-pr-binding`) or the association is empty
-  (`no-associated-pr`). The protected-workflow gate compares every recovery
+  necessarily trigger the run, so it is used only to bound candidate lookups,
+  never to _select_ the PR. For each associated candidate, the bridge reads the
+  event-specific REST records: review comments for
+  `pull_request_review_comment`, submitted reviews for `pull_request_review`.
+  Evidence must carry the immutable Copilot reviewer ID, the run head commit,
+  and a creation/submission timestamp no later than and within 30 seconds of the
+  run creation time. Comment evidence must also name that candidate's API URL.
+  All matching evidence must resolve to exactly one PR; zero matches
+  (`missing-review-event-provenance`) or matches on multiple PRs
+  (`ambiguous-review-event-provenance`) fail closed. Multiple matching records
+  on the same PR are safe and collapse to one target. The 30-second bound is an
+  availability heuristic, not a trust relaxation: edited/dismissed events whose
+  original immutable creation/submission time is outside the window use the
+  exact operator fallback. The selected PR must then still match the immutable
+  run head SHA and exact `run.head_branch`.
+  The protected-workflow gate compares every recovery
   workflow blob at the branch's immutable merge base and `run.head_sha`; unequal
   presence or content fails closed as `protected-workflow-modified`, while a
   stale branch that has identical old blobs—or predates a file at both
@@ -108,9 +110,9 @@ workflow reaches `main`, the first live `action_required` Copilot review run is
 the platform-delivery smoke proof; branch-local testing cannot register that
 listener. If GitHub does not deliver that event, or if GitHub delivers the event
 but the bridge fails closed on it — for example an empty
-`workflow_run.pull_requests` (`reason=no-associated-pr`), an absent run-name
-source-PR binding (`reason=missing-source-pr-binding`), or a source PR that is
-not in the association (`reason=source-pr-not-associated`), or an untrusted
+`workflow_run.pull_requests` (`reason=no-associated-pr`), missing or ambiguous
+trusted REST evidence (`reason=missing-review-event-provenance` or
+`reason=ambiguous-review-event-provenance`), or an untrusted
 router/protected workflow blob (`reason=router-workflow-untrusted` or
 `reason=protected-workflow-modified`) — use the narrow operator fallback instead
 of waiting for cron:
@@ -129,10 +131,13 @@ Never invoke `ci-recovery-router.yml` manually for this case because its
 Each PR has one concurrency group, `crawler-ci-pr-N`, with `queue: max`. Recovery
 and shepherd lease operations therefore execute one at a time in FIFO order.
 
-An atomically created temporary label, `ci-owner-pr-N`, is the ownership bit.
-Exactly one `<!-- crawler-ci-state:v1 -->` comment stores the complete state.
-Zero or multiple state comments while ownership is active, or any label/comment
-disagreement, fails closed.
+A temporary label, `ci-owner-pr-N`, is the ownership bit. Exactly one
+`<!-- crawler-ci-state:v1 -->` comment stores the complete state. Acquisition
+writes those artifacts in sequence; if an interrupted acquire leaves either
+half of the owner-label artifact without active state, the next trusted
+reconciliation uses the existing guarded, idempotent release path to clean it
+before enforcing the ownership invariant. Other label/comment disagreements
+fail closed.
 
 The task fingerprint hashes the latest head SHA and normalized complete blocker
 set. The same fingerprint is never assigned twice.

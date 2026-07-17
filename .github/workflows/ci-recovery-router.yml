@@ -1,21 +1,5 @@
 name: CI Recovery Router
 
-# Encode the exact source PR number for review/review-comment events into the
-# run's display title (run-name -> REST `display_title`). The value comes from
-# the trusted webhook field `github.event.pull_request.number`. Before trusting
-# that title, the bridge requires protected workflow blobs at the immutable
-# merge base and run head to match, so a PR-modified run-name cannot forge a
-# source PR. The bridge reads the title back to bind recovery to the PR that
-# actually emitted the review event, rather than trusting
-# `workflow_run.pull_requests` (a head-SHA/branch association that is explicitly
-# NOT event-to-PR provenance).
-# Whitespace on all other events preserves GitHub's native event-specific run
-# titles instead of flattening high-volume router runs to one display value.
-run-name: >-
-  ${{ (github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment')
-      && format('CI Recovery Router: review-wake pr-{0}', github.event.pull_request.number)
-      || ' ' }}
-
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review, closed]

@@ -191,6 +191,8 @@ try {
 const ownerLabelAttached = (pr.labels || []).some((label) => label.name === labelName);
 const staleOwningState =
   !labelExists && state && state.owner !== 'none' && !['idle', 'waiting'].includes(state.status);
+const activeOwnershipState = state && state.owner !== 'none' && state.status !== 'idle';
+const orphanedOwnershipArtifact = (labelExists || ownerLabelAttached) && !activeOwnershipState;
 if (staleOwningState) {
   const matchingLeaseRelease =
     operation === 'lease-release' && state.owner === 'shepherd' && state.leaseId === leaseId;
@@ -199,7 +201,7 @@ if (staleOwningState) {
       `PR #${prNumber} has an unexpired shepherd lease with a missing owner label; refusing automatic cleanup`,
     );
   }
-} else {
+} else if (!orphanedOwnershipArtifact) {
   assertOwnershipInvariant({ labelExists, state });
 }
 
@@ -429,8 +431,13 @@ async function release(reason, nextState = null) {
   await completeWaitingExit(waitingTransition);
 }
 
+if (orphanedOwnershipArtifact) {
+  process.stdout.write(`cleanup pr=#${prNumber} reason=orphaned-owner-label\n`);
+  await release('orphaned-label-cleanup');
+}
+
 if (pr.state !== 'open') {
-  if (labelExists || staleOwningState || ownerLabelAttached) {
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
     await release(`pr-${pr.state}`);
   }
   process.stdout.write(`skip pr=#${prNumber} state=${pr.state}\n`);
@@ -918,7 +925,7 @@ if (normalized.length === 0) {
       attempt: state?.attempt || 0,
       updatedAt: now.toISOString(),
     });
-    if (labelExists || staleOwningState || ownerLabelAttached) {
+    if (labelExists || staleOwningState || hasPrLabel(labelName)) {
       await release('admission-wait', waitingState);
     } else {
       await updateState(waitingState);
@@ -938,7 +945,7 @@ if (normalized.length === 0) {
     attempt: state?.attempt || 0,
     updatedAt: now.toISOString(),
   });
-  if (labelExists || staleOwningState || ownerLabelAttached) {
+  if (labelExists || staleOwningState || hasPrLabel(labelName)) {
     await release('converged', convergedState);
   } else {
     const waitingTransition = await prepareWaitingExit();
