@@ -36,7 +36,7 @@ queued, waiting, opted-out, or otherwise ineligible candidates.
 
 ## Verification
 
-- Focused state/router/reconcile/replay Node suite: 85 passed, 48 documented
+- Focused state/router/reconcile/replay Node suite: 85 passed, 50 documented
   Windows subprocess skips, 0 failed.
 - `npm run verify:fast`
 - `npm run verify:pr-prereqs`
