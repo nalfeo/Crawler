@@ -13,6 +13,7 @@ their front matter; legacy handoffs are classified heuristically by filename.
 
 ## ai-pathfinding
 
+- [2026-07-17-floor2-progress-suppression-recovery](2026-07-17-floor2-progress-suppression-recovery.md) — Floor 2 progress suppression recovery
 - [2026-07-16-ai-invariant-harness](2026-07-16-ai-invariant-harness.md) — Added a reusable AI invariant fixture that defines the hard-gate invariant
 - [2026-07-16-fix-safe-room-doorway-livelock](2026-07-16-fix-safe-room-doorway-livelock.md) — Addressed the **second-largest failure bucket** (`outcome=timeout`, 14/95 failures, 14.7%) from
 - [2026-07-16-safe-room-livelock-pr-recovery](2026-07-16-safe-room-livelock-pr-recovery.md) — Handoff: PR #1212 blocker recovery
@@ -32,9 +33,8 @@ their front matter; legacy handoffs are classified heuristically by filename.
 - [2026-07-06-spatial-scoping-perf](2026-07-06-spatial-scoping-perf.md) — Handoff: Spatial-Scoping Performance Optimizations
 - [2026-07-05-headless-sweep-speedup](2026-07-05-headless-sweep-speedup.md) — Handoff: Headless sweep speedup (Tier A + B)
 - [2026-07-03-progress-nav-instrumentation](2026-07-03-progress-nav-instrumentation.md) — Progress navigation suppression instrumentation
-- [2026-07-02-ai-nav-wedge-cluster](2026-07-02-ai-nav-wedge-cluster.md) — Root-caused and fixed a Floor-1 "nav-wedge": the AI runner wedges ~tens of seconds
 
-_…and 14 older, see `archive/`._
+_…and 15 older, see `archive/`._
 
 ## ai-combat-balance
 
@@ -63,6 +63,7 @@ _…and 37 older, see `archive/`._
 
 ## ai-behavior-tree
 
+- [2026-07-17-floor2-progress-suppression-recovery](2026-07-17-floor2-progress-suppression-recovery.md) — Floor 2 progress suppression recovery
 - [2026-07-16-ai-invariant-harness](2026-07-16-ai-invariant-harness.md) — Added a reusable AI invariant fixture that defines the hard-gate invariant
 - [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
@@ -82,9 +83,8 @@ _…and 37 older, see `archive/`._
 - [2026-07-11-floor2-progression-ux-fixes](2026-07-11-floor2-progression-ux-fixes.md) — Handoff — Floor 2 Progression UX Fixes
 - [2026-07-11-headless-sweep-performance](2026-07-11-headless-sweep-performance.md) — Profiled the canonical Floor 1 headless runner and identified redundant FOV
 - [2026-07-11-merchant-weapon-purchase](2026-07-11-merchant-weapon-purchase.md) — Optional AI merchant weapon purchase
-- [2026-07-10-floor1-class-d-prechain-lock](2026-07-10-floor1-class-d-prechain-lock.md) — Reproduced the class-D lock signature in the real headless pipeline (seed21 sword/baseball-bat, seed69 sword family): `floor1-find-welcome`…
 
-_…and 30 older, see `archive/`._
+_…and 31 older, see `archive/`._
 
 ## sprite-pipeline
 
@@ -130,7 +130,7 @@ _…and 50 older, see `archive/`._
 - [2026-07-09-sprite-editor-canvas-ux](2026-07-09-sprite-editor-canvas-ux.md) — 2026-07-09 - Sprite editor canvas UX upgrades
 - [2026-07-09-sprite-review-canvas-ext](2026-07-09-sprite-review-canvas-ext.md) — Slice A of the DevTool-canvas epic: the **pattern-proof + shared-harness slice** that unblocks slices B–E. Adds, **alongside** the untouche…
 - [2026-07-08-floor2-family-mobs-spawn-zones](2026-07-08-floor2-family-mobs-spawn-zones.md) — Handoff: Floor 2 family mobs, generic spawn-zone union, and placeholder-art tracking
-- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built **on top of the existing pipeline i…
+- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built \*\*on top of the existing pipeline i…
 - [2026-07-08-slicer-never-cut-art](2026-07-08-slicer-never-cut-art.md) — Handoff: Slicer cuts only at real gutters — data-driven grid salvage (never chop art)
 - [2026-07-08-welcome-room-no-stretch-art-defects](2026-07-08-welcome-room-no-stretch-art-defects.md) — Follow-up to the merged welcome-room set-piece arc (#853 → #905 → #907 → #916)
 
@@ -363,7 +363,7 @@ _…and 70 older, see `archive/`._
 - [2026-07-01-pages-generated-sprite-basepath](2026-07-01-pages-generated-sprite-basepath.md) — Made generated sprite manifest and PNG URLs resolve against the Vite/GitHub Pages base path in `src/engine/generatedAssets/preload.ts`.
 - [2026-06-30-codex-repair-azure-bounce-gate](2026-06-30-codex-repair-azure-bounce-gate.md) — Three bundled features on this branch, plus review-harness hardening:
 - [2026-06-30-sidecar-shared-selector-deployment](2026-06-30-sidecar-shared-selector-deployment.md) — Handoff - sidecar shared selector deployment
-- [2026-06-29-azure-foundry-content-gen](2026-06-29-azure-foundry-content-gen.md) — Authored **ADR 0033 — Migrate Content Generation from Direct Azure OpenAI to
+- [2026-06-29-azure-foundry-content-gen](2026-06-29-azure-foundry-content-gen.md) — Authored \*\*ADR 0033 — Migrate Content Generation from Direct Azure OpenAI to
 - [2026-06-29-azure-openai-provider](2026-06-29-azure-openai-provider.md) — Added a third provider, **`azure`** (Azure OpenAI), to the codex-repair autonomous
 - [2026-06-29-azure-sheet-triage-controls](2026-06-29-azure-sheet-triage-controls.md) — Handoff: Azure sheet triage controls
 - [2026-06-29-azure-sidecar-policy-and-sprite-checkin](2026-06-29-azure-sidecar-policy-and-sprite-checkin.md) — Built and launched devtools/sidecar, then corrected sidecar launch behavior to Azure-first.
@@ -449,7 +449,7 @@ _…and 27 older, see `archive/`._
 
 - [2026-07-11-stop-pre-pr-full-verify](2026-07-11-stop-pre-pr-full-verify.md) — Removed the unconditional instruction to run full `npm run verify` before committing or creating a PR. The top-level agent instructions, re…
 - [2026-07-09-sprite-editor-canvas-ux](2026-07-09-sprite-editor-canvas-ux.md) — 2026-07-09 - Sprite editor canvas UX upgrades
-- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built **on top of the existing pipeline i…
+- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built \*\*on top of the existing pipeline i…
 - [2026-07-05-session-plans-chat](2026-07-05-session-plans-chat.md) — Updated the top-level session instructions in `AGENTS.md` and `.github/copilot-instructions.md` so new sessions must explicitly say whether…
 
 ## docs-tooling
