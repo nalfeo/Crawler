@@ -61,11 +61,14 @@ export interface CombatEvent {
    */
   spriteTextureId?: number;
   /**
-   * Snapshot of the attacker's stable archetype identity captured at event
-   * creation time. Safe to consume after the source entity is removed or its
-   * EID is recycled. Populated only for player-targeted hit events where the
-   * source entity ID is known. When present, prefer this over resolving
-   * `sourceEid` at consumption time.
+   * Snapshot of the attacker's stable archetype identity, captured at
+   * spawn time (in `spawnEnemyProjectile`/`spawnAoeProjectile`) while the
+   * source entity is still live. The snapshot survives source removal and
+   * EID recycling and is propagated through the AoE explosion chain so both
+   * direct hits and AoE splash hits carry stable attribution. Safe to consume
+   * after the source entity is removed or its EID is recycled. Populated only
+   * for player-targeted hit events where the source entity ID is known. When
+   * present, prefer this over resolving `sourceEid` at consumption time.
    */
   sourceArchetypeKey?: string;
   /** Stable spawned mob identity used to resolve generated-art families. */
