@@ -168,44 +168,79 @@ export async function listAiSweepRuns(repository, signal) {
 }
 
 /**
- * Merges two allSettled results for weapon and AI runs. Exported for testing.
- * Throws when the combined list is empty and at least one listing failed,
- * so callers see a real diagnostic instead of a misleading "no runs" message.
- *
- * @param {{ status: string, value?: object[], reason?: Error }} weaponResult
- * @param {{ status: string, value?: object[], reason?: Error }} aiResult
- * @returns {object[]}
- */
-export function mergeSweepRunResults(weaponResult, aiResult) {
-  const combined = [
-    ...(weaponResult.status === 'fulfilled' ? weaponResult.value : []),
-    ...(aiResult.status === 'fulfilled' ? aiResult.value : []),
-  ];
-  // Surface an error when combined is empty and at least one workflow listing failed,
-  // so callers see a real diagnostic instead of a misleading "No runs found" message.
-  if (combined.length === 0) {
-    if (weaponResult.status === 'rejected' && aiResult.status === 'rejected') {
-      // Both failed — surface weapon-sweep error (primary workflow) as the thrown error.
-      throw weaponResult.reason;
-    }
-    if (weaponResult.status === 'rejected') throw weaponResult.reason;
-    if (aiResult.status === 'rejected') throw aiResult.reason;
-  }
-  return combined;
-}
-
-/**
  * Lists all sweep runs (weapon-sweep + AI Sweep Eval) combined, newest first.
  * Each run carries a `workflowType` field indicating its source workflow.
- * Errors from either workflow are surfaced; if one workflow has no runs the
- * other's results are returned alone.
+ * Any rejection from either workflow request is propagated immediately.
  */
 export async function listAllSweepRuns(repository, signal) {
-  const [weaponRuns, aiRuns] = await Promise.allSettled([
+  const [weaponRuns, aiRuns] = await Promise.all([
     listWeaponSweepRuns(repository, signal),
     listAiSweepRuns(repository, signal),
   ]);
-  return sortRunsNewestFirst(mergeSweepRunResults(weaponRuns, aiRuns));
+  return sortRunsNewestFirst([...weaponRuns, ...aiRuns]);
+}
+
+/**
+ * Creates bound list functions that use the provided `runGhJsonFn` as the
+ * GitHub API boundary. Exported for unit tests that need to inject a mock.
+ */
+export function _createListClient(runGhJsonFn) {
+  async function paginateWith(repo, path, collectionName, signal) {
+    const values = [];
+    for (let page = 1; ; page += 1) {
+      const separator = path.includes('?') ? '&' : '?';
+      const response = await runGhJsonFn(
+        ['api', '--method', 'GET', `repos/${repo}/${path}${separator}per_page=100&page=${page}`],
+        { signal },
+      );
+      const pageValues = response?.[collectionName];
+      if (!Array.isArray(pageValues)) {
+        throw new Error(`GitHub API response did not contain "${collectionName}".`);
+      }
+      values.push(...pageValues);
+      if (pageValues.length < 100) {
+        return values;
+      }
+    }
+  }
+
+  async function clientListWeaponSweepRuns(repository, signal) {
+    const rawRuns = await paginateWith(
+      repository,
+      'actions/workflows/weapon-sweep.yml/runs',
+      'workflow_runs',
+      signal,
+    );
+    return sortRunsNewestFirst(
+      rawRuns.map((raw) => ({ ...normalizeRun(raw), workflowType: 'weapon-sweep' })),
+    );
+  }
+
+  async function clientListAiSweepRuns(repository, signal) {
+    const rawRuns = await paginateWith(
+      repository,
+      'actions/workflows/ai-sweep.yml/runs',
+      'workflow_runs',
+      signal,
+    );
+    return sortRunsNewestFirst(
+      rawRuns.map((raw) => ({ ...normalizeRun(raw), workflowType: 'ai-sweep' })),
+    );
+  }
+
+  async function clientListAllSweepRuns(repository, signal) {
+    const [weaponRuns, aiRuns] = await Promise.all([
+      clientListWeaponSweepRuns(repository, signal),
+      clientListAiSweepRuns(repository, signal),
+    ]);
+    return sortRunsNewestFirst([...weaponRuns, ...aiRuns]);
+  }
+
+  return {
+    listWeaponSweepRuns: clientListWeaponSweepRuns,
+    listAiSweepRuns: clientListAiSweepRuns,
+    listAllSweepRuns: clientListAllSweepRuns,
+  };
 }
 
 async function getRun(repository, runId, signal) {

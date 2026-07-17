@@ -392,7 +392,7 @@ export function renderHtml(instanceId) {
       html += '<td>' + fmtMs(row.meanClearTimeMsWins) + '</td>';
       html += '<td>' + fmtNum(row.meanXp, 0) + '</td>';
       const flips = row.flipsVsIncumbent;
-      const flipCell = flips == null ? '—' : (flips > 0 ? '<span class="flip-negative">-' + flips + '</span>' : (flips < 0 ? '<span class="flip-positive">+' + Math.abs(flips) + '</span>' : '0'));
+      const flipCell = flips == null ? '—' : (flips > 0 ? '<span class="flip-negative">' + flips + '</span>' : '0');
       html += '<td>' + flipCell + '</td>';
       const delta = row.winRateDeltaVsIncumbent;
       const deltaCell = delta == null ? '—' : (delta > 0 ? '<span class="flip-positive">+' + fmtPct(delta) + '</span>' : (delta < 0 ? '<span class="flip-negative">' + fmtPct(delta) + '</span>' : '0%'));

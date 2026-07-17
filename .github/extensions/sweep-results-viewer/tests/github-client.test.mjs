@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  _createListClient,
   createLruCache,
-  mergeSweepRunResults,
   parseGitHubRepository,
   sanitizeErrorText,
 } from '../lib/github-client.mjs';
@@ -67,85 +67,113 @@ test('LRU cache set overwrites existing entry without growing over max', () => {
 });
 
 test('listWeaponSweepRuns tags all returned runs with workflowType weapon-sweep', async () => {
-  // parseGitHubRepository is pure — test the helper used by listWeaponSweepRuns
-  // and listAiSweepRuns to verify workflowType is set correctly.
-  // We verify this via the import + normalizeRun call pattern (pure unit check).
-  const { normalizeRun } = await import('../lib/cloud-results.mjs');
   const raw = {
-    id: 123,
+    id: 1,
     status: 'completed',
     conclusion: 'success',
     head_branch: 'main',
     head_sha: 'abc',
     created_at: '2026-07-17T00:00:00Z',
     updated_at: '2026-07-17T01:00:00Z',
-    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/123',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/1',
     event: 'workflow_dispatch',
     run_attempt: 1,
   };
-  const normalized = normalizeRun(raw);
-  // workflowType is not set by normalizeRun itself; it is set by the callers.
-  // Verify the normalized shape does not already carry workflowType.
-  assert.equal(Object.prototype.hasOwnProperty.call(normalized, 'workflowType'), false);
-  // Spread tagging works correctly.
-  const tagged = { ...normalized, workflowType: 'ai-sweep' };
-  assert.equal(tagged.workflowType, 'ai-sweep');
-  assert.equal(tagged.id, 123);
+  const mockRunGhJson = async (args) => {
+    assert.ok(args.some((a) => a.includes('weapon-sweep.yml/runs')));
+    return { workflow_runs: [raw] };
+  };
+  const { listWeaponSweepRuns } = _createListClient(mockRunGhJson);
+  const runs = await listWeaponSweepRuns('nalfeo/Crawler', new AbortController().signal);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].workflowType, 'weapon-sweep');
+  assert.equal(runs[0].id, 1);
 });
 
-test('mergeSweepRunResults returns combined runs from both fulfilled listings', () => {
-  const weaponRun = { id: 1, workflowType: 'weapon-sweep' };
-  const aiRun = { id: 2, workflowType: 'ai-sweep' };
-  const result = mergeSweepRunResults(
-    { status: 'fulfilled', value: [weaponRun] },
-    { status: 'fulfilled', value: [aiRun] },
+test('listAiSweepRuns tags all returned runs with workflowType ai-sweep', async () => {
+  const raw = {
+    id: 2,
+    status: 'in_progress',
+    conclusion: null,
+    head_branch: 'main',
+    head_sha: 'def',
+    created_at: '2026-07-17T00:00:00Z',
+    updated_at: '2026-07-17T01:00:00Z',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/2',
+    event: 'workflow_dispatch',
+    run_attempt: 1,
+  };
+  const mockRunGhJson = async (args) => {
+    assert.ok(args.some((a) => a.includes('ai-sweep.yml/runs')));
+    return { workflow_runs: [raw] };
+  };
+  const { listAiSweepRuns } = _createListClient(mockRunGhJson);
+  const runs = await listAiSweepRuns('nalfeo/Crawler', new AbortController().signal);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].workflowType, 'ai-sweep');
+  assert.equal(runs[0].id, 2);
+});
+
+test('listAllSweepRuns combines weapon and AI runs sorted newest first', async () => {
+  const weaponRaw = {
+    id: 10,
+    status: 'completed',
+    conclusion: 'success',
+    head_branch: 'main',
+    head_sha: 'aaa',
+    created_at: '2026-07-16T00:00:00Z',
+    updated_at: '2026-07-16T01:00:00Z',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/10',
+    event: 'workflow_dispatch',
+    run_attempt: 1,
+  };
+  const aiRaw = {
+    id: 20,
+    status: 'completed',
+    conclusion: 'success',
+    head_branch: 'main',
+    head_sha: 'bbb',
+    created_at: '2026-07-17T00:00:00Z',
+    updated_at: '2026-07-17T01:00:00Z',
+    html_url: 'https://github.com/nalfeo/Crawler/actions/runs/20',
+    event: 'workflow_dispatch',
+    run_attempt: 1,
+  };
+  const mockRunGhJson = async (args) => {
+    if (args.some((a) => a.includes('weapon-sweep.yml/runs'))) return { workflow_runs: [weaponRaw] };
+    if (args.some((a) => a.includes('ai-sweep.yml/runs'))) return { workflow_runs: [aiRaw] };
+    throw new Error('Unexpected endpoint');
+  };
+  const { listAllSweepRuns } = _createListClient(mockRunGhJson);
+  const runs = await listAllSweepRuns('nalfeo/Crawler', new AbortController().signal);
+  assert.equal(runs.length, 2);
+  // Newest first: ai run (2026-07-17) before weapon run (2026-07-16)
+  assert.equal(runs[0].id, 20);
+  assert.equal(runs[0].workflowType, 'ai-sweep');
+  assert.equal(runs[1].id, 10);
+  assert.equal(runs[1].workflowType, 'weapon-sweep');
+});
+
+test('listAllSweepRuns propagates weapon-sweep endpoint rejection', async () => {
+  const mockRunGhJson = async (args) => {
+    if (args.some((a) => a.includes('weapon-sweep.yml/runs'))) throw new Error('network error');
+    return { workflow_runs: [] };
+  };
+  const { listAllSweepRuns } = _createListClient(mockRunGhJson);
+  await assert.rejects(
+    listAllSweepRuns('nalfeo/Crawler', new AbortController().signal),
+    /network error/,
   );
-  assert.equal(result.length, 2);
 });
 
-test('mergeSweepRunResults returns partial list when one workflow fails but other has runs', () => {
-  const aiRun = { id: 2, workflowType: 'ai-sweep' };
-  const result = mergeSweepRunResults(
-    { status: 'rejected', reason: new Error('weapon-sweep 404') },
-    { status: 'fulfilled', value: [aiRun] },
-  );
-  assert.equal(result.length, 1);
-  assert.equal(result[0].workflowType, 'ai-sweep');
-});
-
-test('mergeSweepRunResults throws weapon-sweep error when combined is empty and weapon listing failed', () => {
-  const weaponError = new Error('weapon-sweep not found');
-  assert.throws(
-    () =>
-      mergeSweepRunResults(
-        { status: 'rejected', reason: weaponError },
-        { status: 'fulfilled', value: [] },
-      ),
-    (err) => err === weaponError,
-  );
-});
-
-test('mergeSweepRunResults throws ai-sweep error when combined is empty and only AI listing failed', () => {
-  const aiError = new Error('ai-sweep not found');
-  assert.throws(
-    () =>
-      mergeSweepRunResults(
-        { status: 'fulfilled', value: [] },
-        { status: 'rejected', reason: aiError },
-      ),
-    (err) => err === aiError,
-  );
-});
-
-test('mergeSweepRunResults throws weapon-sweep error when both listings fail', () => {
-  const weaponError = new Error('weapon-sweep 500');
-  const aiError = new Error('ai-sweep 500');
-  assert.throws(
-    () =>
-      mergeSweepRunResults(
-        { status: 'rejected', reason: weaponError },
-        { status: 'rejected', reason: aiError },
-      ),
-    (err) => err === weaponError,
+test('listAllSweepRuns propagates ai-sweep endpoint rejection', async () => {
+  const mockRunGhJson = async (args) => {
+    if (args.some((a) => a.includes('ai-sweep.yml/runs'))) throw new Error('ai endpoint error');
+    return { workflow_runs: [] };
+  };
+  const { listAllSweepRuns } = _createListClient(mockRunGhJson);
+  await assert.rejects(
+    listAllSweepRuns('nalfeo/Crawler', new AbortController().signal),
+    /ai endpoint error/,
   );
 });
