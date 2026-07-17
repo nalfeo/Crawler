@@ -62,6 +62,41 @@ function workflowBlobMatchesBase(baseFile, headFile) {
   );
 }
 
+function workflowTreeMatchesBase(baseTree, headTree) {
+  return (
+    typeof baseTree?.sha === 'string' &&
+    typeof headTree?.sha === 'string' &&
+    baseTree.sha === headTree.sha
+  );
+}
+
+export async function getWorkflowTreeSnapshot({ token, owner, repo, ref, requestFn = request }) {
+  const commit = (
+    await requestFn(token, `/repos/${owner}/${repo}/git/commits/${encodeURIComponent(ref)}`)
+  ).data;
+  const rootTreeSha = String(commit?.tree?.sha || '');
+  if (!/^[0-9a-f]{40}$/i.test(rootTreeSha)) return null;
+  const rootTree = (
+    await requestFn(token, `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(rootTreeSha)}`)
+  ).data;
+  if (rootTree?.truncated === true || !Array.isArray(rootTree?.tree)) return null;
+  const githubTree = rootTree.tree.find(
+    (entry) => entry?.path === '.github' && entry?.type === 'tree',
+  );
+  if (!/^[0-9a-f]{40}$/i.test(String(githubTree?.sha || ''))) return null;
+  const githubEntries = (
+    await requestFn(
+      token,
+      `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(githubTree.sha)}`,
+    )
+  ).data;
+  if (githubEntries?.truncated === true || !Array.isArray(githubEntries?.tree)) return null;
+  const workflowTree = githubEntries.tree.find(
+    (entry) => entry?.path === 'workflows' && entry?.type === 'tree',
+  );
+  return /^[0-9a-f]{40}$/i.test(String(workflowTree?.sha || '')) ? { sha: workflowTree.sha } : null;
+}
+
 export function runRejection({ payload, run, repository }) {
   const payloadRun = payload?.workflow_run;
   if (payload?.action !== 'completed') return `action=${payload?.action}`;
@@ -201,14 +236,22 @@ export async function inspectReviewWake({
     return { reason: 'no-associated-pr' };
   }
 
-  // Compare each protected path between the branch's immutable fork point and
-  // the immutable run head. This detects branch-authored modifications,
-  // additions, deletions, and renames without comparing against today's default
-  // tip (which would incorrectly reject stale branches that merely predate a
-  // trusted workflow addition/edit).
+  // Compare the protected execution boundary between the branch's immutable
+  // fork point and run head without consulting today's mutable default tip.
   const comparison = await api.compareCommits(defaultBranch, run.head_sha);
   const mergeBaseSha = String(comparison?.merge_base_commit?.sha || '').toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(mergeBaseSha)) return { reason: 'missing-merge-base' };
+
+  // Protect the complete Actions definition tree, not only the recovery
+  // workflows below. Any branch-authored workflow addition, edit, deletion, or
+  // rename could otherwise execute with repository credentials after merge.
+  const [baseWorkflowTree, headWorkflowTree] = await Promise.all([
+    api.getWorkflowTree(mergeBaseSha),
+    api.getWorkflowTree(run.head_sha),
+  ]);
+  if (!workflowTreeMatchesBase(baseWorkflowTree, headWorkflowTree)) {
+    return { reason: 'workflow-tree-modified' };
+  }
 
   const protectedSnapshots = await Promise.all(
     [...PROTECTED_WORKFLOW_PATHS].map(async (path) => {
@@ -304,6 +347,9 @@ export async function runFromEnv(env = process.env) {
           if (error.status === 404) return null;
           throw error;
         }
+      },
+      async getWorkflowTree(ref) {
+        return getWorkflowTreeSnapshot({ token, owner, repo, ref });
       },
       async compareCommits(base, head) {
         return (

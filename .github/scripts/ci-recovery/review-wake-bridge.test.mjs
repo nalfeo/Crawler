@@ -5,7 +5,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { inspectReviewWake, PROTECTED_WORKFLOW_PATHS } from './review-wake-bridge.mjs';
+import {
+  getWorkflowTreeSnapshot,
+  inspectReviewWake,
+  PROTECTED_WORKFLOW_PATHS,
+} from './review-wake-bridge.mjs';
 
 const repository = 'nalfeo/Crawler';
 const trustedActor = { id: 175728472, login: 'Copilot', type: 'Bot' };
@@ -119,15 +123,18 @@ function fakeApi({
   run,
   pulls = {},
   workflowFiles = {},
+  workflowTrees = {},
   comparison = { merge_base_commit: { sha: mergeBaseSha } },
   reviewEvidence = null,
 }) {
   const calls = [];
   const workflowCalls = [];
+  const workflowTreeCalls = [];
   const evidenceByPr = reviewEvidence ?? { 42: [trustedEvidence(run)] };
   return {
     calls,
     workflowCalls,
+    workflowTreeCalls,
     api: {
       async getRun(id) {
         calls.push(['getRun', id]);
@@ -141,6 +148,13 @@ function fakeApi({
           : Object.hasOwn(workflowFiles, ref)
             ? workflowFiles[ref]
             : `trusted-workflow-blob:${path}`;
+        return sha === null ? null : { sha };
+      },
+      async getWorkflowTree(ref) {
+        workflowTreeCalls.push(ref);
+        const sha = Object.hasOwn(workflowTrees, ref)
+          ? workflowTrees[ref]
+          : 'trusted-workflow-tree';
         return sha === null ? null : { sha };
       },
       async compareCommits(base, head) {
@@ -177,6 +191,7 @@ test('accepts one parked trusted Copilot review wake for one exact PR', async ()
     ['listReviewEvidence', 42, 'pull_request_review_comment', evidenceSince],
     ['getPull', 42],
   ]);
+  assert.deepEqual(fake.workflowTreeCalls, [mergeBaseSha, 'a'.repeat(40)]);
   assert.equal(fake.workflowCalls.length, protectedPaths.length * 2);
   for (const path of protectedPaths) {
     assert.deepEqual(
@@ -208,6 +223,59 @@ test('protected paths are the exact privileged recovery execution boundary', () 
       `privileged dependency must be protected: ${dependency}`,
     );
   }
+});
+
+test('resolves the immutable Actions subtree and rejects incomplete tree evidence', async () => {
+  const rootTreeSha = '1'.repeat(40);
+  const githubTreeSha = '2'.repeat(40);
+  const workflowTreeSha = '3'.repeat(40);
+  const calls = [];
+  const requestFn = async (_token, path) => {
+    calls.push(path);
+    if (path.endsWith(`/git/commits/${mergeBaseSha}`)) {
+      return { data: { tree: { sha: rootTreeSha } } };
+    }
+    if (path.endsWith(`/git/trees/${rootTreeSha}`)) {
+      return {
+        data: { truncated: false, tree: [{ path: '.github', type: 'tree', sha: githubTreeSha }] },
+      };
+    }
+    if (path.endsWith(`/git/trees/${githubTreeSha}`)) {
+      return {
+        data: {
+          truncated: false,
+          tree: [{ path: 'workflows', type: 'tree', sha: workflowTreeSha }],
+        },
+      };
+    }
+    throw new Error(`unexpected request: ${path}`);
+  };
+
+  assert.deepEqual(
+    await getWorkflowTreeSnapshot({
+      token: 'test-token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      ref: mergeBaseSha,
+      requestFn,
+    }),
+    { sha: workflowTreeSha },
+  );
+  assert.deepEqual(calls, [
+    `/repos/nalfeo/Crawler/git/commits/${mergeBaseSha}`,
+    `/repos/nalfeo/Crawler/git/trees/${rootTreeSha}`,
+    `/repos/nalfeo/Crawler/git/trees/${githubTreeSha}`,
+  ]);
+  assert.equal(
+    await getWorkflowTreeSnapshot({
+      token: 'test-token',
+      owner: 'nalfeo',
+      repo: 'Crawler',
+      ref: mergeBaseSha,
+      requestFn: async () => ({ data: { truncated: true, tree: [] } }),
+    }),
+    null,
+  );
 });
 
 test('relativeImportClosure follows side-effect and dynamic relative imports', () => {
@@ -589,6 +657,30 @@ test('rejects changed or missing protected workflows using immutable run-head bl
       await inspectReviewWake({ payload: data.payload, repository, api: fake.api }),
       { reason: 'protected-workflow-modified' },
     );
+  }
+});
+
+test('rejects any workflow-tree addition, edit, deletion, rename, or missing evidence', async () => {
+  for (const [name, baseTree, headTree] of [
+    ['addition or edit', 'trusted-workflow-tree', 'branch-authored-workflow-tree'],
+    ['missing base evidence', null, 'branch-authored-workflow-tree'],
+    ['missing head evidence', 'trusted-workflow-tree', null],
+    ['missing both snapshots', null, null],
+  ]) {
+    const data = fixture();
+    const fake = fakeApi({
+      run: data.run,
+      workflowTrees: {
+        [mergeBaseSha]: baseTree,
+        [data.run.head_sha]: headTree,
+      },
+    });
+    assert.deepEqual(
+      await inspectReviewWake({ payload: data.payload, repository, api: fake.api }),
+      { reason: 'workflow-tree-modified' },
+      name,
+    );
+    assert.deepEqual(fake.workflowCalls, [], name);
   }
 });
 

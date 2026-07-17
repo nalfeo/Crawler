@@ -34,17 +34,18 @@ kickoff comment that points Copilot at the normal repo instructions.
   original immutable creation/submission time is outside the window use the
   exact operator fallback. The selected PR must then still match the immutable
   run head SHA and exact `run.head_branch`.
-  The protected-execution gate compares the four privileged workflow wrappers,
-  every transitive JavaScript module they execute, and the dispatched
-  `auto-rebase-prs.yml` sink at the branch's immutable merge base and
-  `run.head_sha`; unequal presence or content fails closed as
-  `protected-workflow-modified`, while a stale branch that has identical old
-  blobs—or predates a file at both points—remains eligible. A deterministic
-  import-closure test prevents a new privileged relative import from escaping
-  this exact boundary, including static, side-effect, and literal dynamic
-  imports, without broadly locking unrelated scripts. Missing
-  merge-base evidence fails closed as
-  `missing-merge-base`. The bridge deliberately does not trust
+  The protected-execution gate compares the complete `.github/workflows/**`
+  subtree plus every transitive JavaScript module executed by the recovery
+  entrypoints at the branch's immutable merge base and `run.head_sha`. Any
+  workflow addition, edit, deletion, or rename fails closed as
+  `workflow-tree-modified`; unequal privileged script presence or content fails
+  closed as `protected-workflow-modified`. A stale branch with an identical old
+  subtree remains eligible, and both-absent script snapshots are allowed for
+  protected scripts added after its fork point. A deterministic import-closure
+  test prevents a new privileged relative import from escaping this boundary,
+  including static, side-effect, and literal dynamic imports, without broadly
+  locking unrelated scripts. Missing merge-base or workflow-tree evidence
+  fails closed. The bridge deliberately does not trust
   `/pulls/{number}/files`, because that endpoint follows the PR's current head
   and could supply unrelated evidence during an A→B→A force-push race. It
   threads the validated run head SHA and base ref into the dispatch
