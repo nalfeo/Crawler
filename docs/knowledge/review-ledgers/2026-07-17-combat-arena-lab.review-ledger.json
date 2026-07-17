@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "combat-arena-lab",
+  "task_title": "Create combat arena lab",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": false,
+      "reviewer_model": "",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "plan_divergence": "",
+      "notes": ""
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}
