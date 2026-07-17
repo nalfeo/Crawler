@@ -95,6 +95,20 @@ describe('buildPrompt (single)', () => {
     expect(out).toContain('The Snaggle Cartel');
   });
 
+  it('states the theme > floor > Crawler design language conflict-resolution priority when family addenda are present', () => {
+    const out = buildPrompt(
+      makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toContain('## Design language priority');
+    expect(out).toContain(
+      'theme design language > floor design language > general Crawler design language',
+    );
+    const priorityIdx = out.indexOf('## Design language priority');
+    expect(out.indexOf('## Floor design language')).toBeGreaterThan(priorityIdx);
+    expect(out.indexOf('## Theme design language')).toBeGreaterThan(priorityIdx);
+  });
+
   it('adds the Floor 2 language without a family blurb for neutral enemies', () => {
     const out = buildPrompt(
       makeBrief({ type: 'enemy', name: 'cave-slime', floor: 2 }),

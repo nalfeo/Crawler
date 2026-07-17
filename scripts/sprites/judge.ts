@@ -55,9 +55,14 @@ import {
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v4';
+const PROMPT_TEMPLATE_VERSION = 'v5';
 
-export type Evaluator = 'design_language' | 'reference_style_match' | 'brief_match' | 'readability';
+export type Evaluator =
+  | 'design_language'
+  | 'reference_style_match'
+  | 'brief_match'
+  | 'readability'
+  | 'theme_adherence';
 
 /** Per-evaluator result on the 1-5 ordinal scale. */
 export interface EvaluatorResult {
@@ -84,6 +89,17 @@ export interface JudgeScorecard {
   readonly styleMatch: EvaluatorResult;
   readonly briefMatch: EvaluatorResult;
   readonly readability: EvaluatorResult;
+  /**
+   * Family/theme design-language adherence. Only present (and only
+   * scored) when the brief resolves a THEME addendum (Floor 2 family
+   * design language) — see `resolveDesignLanguageAddenda`. Sprites with
+   * no theme addendum have nothing to adhere to, so this is omitted
+   * entirely for them rather than defaulting to a pass. When present,
+   * it participates in `passed`/`minScore`/`rejectedBy` exactly like
+   * the other evaluators, so a sheet that ignores the theme addendum
+   * fails review instead of passing on the other four axes alone.
+   */
+  readonly themeAdherence?: EvaluatorResult;
   /** True iff every evaluator scored >= 3. */
   readonly passed: boolean;
   /** Lowest of the three scores. Convenient for ranking. */
@@ -149,14 +165,57 @@ const evaluatorPayloadSchema = z
   })
   .strict();
 
-const judgeResponseSchema = z
+const baseJudgeResponseSchema = z
   .object({
     design_language: evaluatorPayloadSchema,
     reference_style_match: evaluatorPayloadSchema,
     brief_match: evaluatorPayloadSchema,
     readability: evaluatorPayloadSchema,
+    theme_adherence: evaluatorPayloadSchema.optional(),
   })
   .strict();
+
+/**
+ * `theme_adherence` is REQUIRED in the parsed response when the brief
+ * resolves a theme addendum (Floor 2 family design language), and must
+ * be absent otherwise. Requiring rather than merely allowing it is
+ * deliberate — an optional field the model can silently skip would let
+ * a sheet that ignores the family addendum still pass on the other
+ * four axes, exactly the failure mode this dimension exists to catch.
+ */
+function parseJudgeResponse(
+  value: unknown,
+  hasThemeAddendum: boolean,
+): ReturnType<typeof baseJudgeResponseSchema.safeParse> {
+  const parsed = baseJudgeResponseSchema.safeParse(value);
+  if (!parsed.success) return parsed;
+  if (hasThemeAddendum && parsed.data.theme_adherence === undefined) {
+    return {
+      success: false,
+      error: new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          path: ['theme_adherence'],
+          message:
+            'theme_adherence is required when the brief resolves a theme design-language addendum',
+        },
+      ]),
+    } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
+  }
+  if (!hasThemeAddendum && parsed.data.theme_adherence !== undefined) {
+    return {
+      success: false,
+      error: new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          path: ['theme_adherence'],
+          message: 'theme_adherence is not allowed when no theme design-language addendum applies',
+        },
+      ]),
+    } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
+  }
+  return parsed;
+}
 
 /**
  * Error thrown when a judge call fails for any non-provider reason —
@@ -260,7 +319,8 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
 
   const response = await options.provider.evaluate(request);
 
-  const parsed = judgeResponseSchema.safeParse(normalizeLegacyJudgeResponse(response.json));
+  const hasThemeAddendum = designLanguageAddenda.theme !== undefined;
+  const parsed = parseJudgeResponse(normalizeLegacyJudgeResponse(response.json), hasThemeAddendum);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
@@ -318,7 +378,7 @@ function writeSidecar(processedDir: string, variantIndex: number, card: JudgeSco
 
 function buildScorecard(args: {
   variantIndex: number;
-  payload: z.infer<typeof judgeResponseSchema>;
+  payload: z.infer<typeof baseJudgeResponseSchema>;
   modelDeployment: string;
   usage: {
     readonly promptTokens: number;
@@ -332,6 +392,9 @@ function buildScorecard(args: {
     ['reference_style_match', args.payload.reference_style_match],
     ['brief_match', args.payload.brief_match],
     ['readability', args.payload.readability],
+    ...(args.payload.theme_adherence
+      ? ([['theme_adherence', args.payload.theme_adherence]] as const)
+      : []),
   ];
   const rejectedBy = evaluators.filter(([, r]) => r.score < 3).map(([name]) => name);
   const minScore = Math.min(...evaluators.map(([, r]) => r.score));
@@ -344,6 +407,7 @@ function buildScorecard(args: {
     styleMatch: args.payload.reference_style_match,
     briefMatch: args.payload.brief_match,
     readability: args.payload.readability,
+    themeAdherence: args.payload.theme_adherence,
     passed: rejectedBy.length === 0,
     minScore,
     rejectedBy,
@@ -356,6 +420,7 @@ function buildSystemInstructions(
   floor: number,
   addenda: DesignLanguageAddenda,
 ): string {
+  const hasThemeAddendum = addenda.theme !== undefined;
   return [
     'You are a strict quality judge for pixel-art sprites generated for a top-down roguelike game.',
     '',
@@ -367,7 +432,7 @@ function buildSystemInstructions(
     '',
     contentDirectionBlock(floor, addenda),
     '',
-    'Score the candidate on four independent 1-5 ordinal axes:',
+    `Score the candidate on ${hasThemeAddendum ? 'five' : 'four'} independent 1-5 ordinal axes:`,
     '',
     '  1. design_language — Does the concept feel specifically like Crawler: one readable',
     '                       identity plus one authored contradiction, darkly funny rather than',
@@ -390,6 +455,22 @@ function buildSystemInstructions(
     '                    punched through the body, disconnected/floating pixel islands,',
     '                    detached limbs/fragments, and broken contiguous silhouette.',
     '                    These defects should score readability <= 2.',
+    ...(hasThemeAddendum
+      ? [
+          '',
+          '  5. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,',
+          '                       materials, garments, props, colors, or iconography named in the',
+          '                       "Theme design language" section above — not just the general',
+          "                       floor/Crawler vibe (that is design_language's job)? Look for",
+          '                       concrete, named details, not a vague thematic gesture.',
+          '                       5 = multiple specific theme details are clearly visible.',
+          '                       3 = the theme is plausible but generic — the pre-existing',
+          "                       subject reads fine, but none of the theme's distinguishing",
+          '                       details are legible. 1 = the candidate contradicts or ignores',
+          '                       the theme design language entirely, even though it appeared',
+          '                       in the prompt.',
+        ]
+      : []),
     '',
     'Anything scoring below 3 auto-rejects the variant. Use the full 1-5 scale; do not',
     'default to 3 for borderline cases — pick 2 (fail) or 4 (pass) and justify briefly.',
@@ -405,7 +486,10 @@ function buildSystemInstructions(
     '  "design_language": { "score": 1-5, "rationale": "..." },',
     '  "reference_style_match": { "score": 1-5, "rationale": "..." },',
     '  "brief_match": { "score": 1-5, "rationale": "..." },',
-    '  "readability": { "score": 1-5, "rationale": "..." }',
+    hasThemeAddendum
+      ? '  "readability": { "score": 1-5, "rationale": "..." },'
+      : '  "readability": { "score": 1-5, "rationale": "..." }',
+    ...(hasThemeAddendum ? ['  "theme_adherence": { "score": 1-5, "rationale": "..." }'] : []),
     '}',
   ].join('\n');
 }

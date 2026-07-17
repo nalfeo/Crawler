@@ -353,6 +353,7 @@ describe('judgeVariant — happy path', () => {
         reference_style_match: { score: 5, rationale: 'style fit' },
         brief_match: { score: 5, rationale: 'brief fit' },
         readability: { score: 5, rationale: 'readable' },
+        theme_adherence: { score: 5, rationale: 'goblin cartel details visible' },
       },
     });
 
@@ -369,6 +370,59 @@ describe('judgeVariant — happy path', () => {
 
     expect(calls[0]?.request.systemInstructions).toContain('Family Matters');
     expect(calls[0]?.request.systemInstructions).toContain('The Snaggle Cartel');
+  });
+
+  it('requests a fifth theme_adherence axis only when a theme addendum applies, and scores/gates on it', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 4, rationale: 'a' },
+        reference_style_match: { score: 4, rationale: 'b' },
+        brief_match: { score: 4, rationale: 'c' },
+        readability: { score: 4, rationale: 'd' },
+        theme_adherence: { score: 5, rationale: 'cartel details visible' },
+      },
+    });
+
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+
+    expect(calls[0]?.request.systemInstructions).toContain('five independent 1-5 ordinal axes');
+    expect(calls[0]?.request.systemInstructions).toContain('theme_adherence');
+    expect(scorecard.themeAdherence).toEqual({ score: 5, rationale: 'cartel details visible' });
+  });
+
+  it('does not request theme_adherence and leaves it undefined when no theme addendum applies', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 4, rationale: 'a' },
+        reference_style_match: { score: 4, rationale: 'b' },
+        brief_match: { score: 4, rationale: 'c' },
+        readability: { score: 4, rationale: 'd' },
+      },
+    });
+
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief(),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+
+    expect(calls[0]?.request.systemInstructions).toContain('four independent 1-5 ordinal axes');
+    expect(calls[0]?.request.systemInstructions).not.toContain('theme_adherence');
+    expect(scorecard.themeAdherence).toBeUndefined();
   });
 
   it('writes a `NN.judge.json` artifact when processedDir is supplied', async () => {
@@ -496,6 +550,31 @@ describe('judgeVariant — threshold rejection', () => {
     expect(scorecard.passed).toBe(true);
     expect(scorecard.rejectedBy).toEqual([]);
   });
+
+  it('auto-rejects on a low theme_adherence score even when the other four axes pass', async () => {
+    const { provider } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'a' },
+        reference_style_match: { score: 5, rationale: 'b' },
+        brief_match: { score: 5, rationale: 'c' },
+        readability: { score: 5, rationale: 'd' },
+        theme_adherence: { score: 1, rationale: 'ignores the family addendum entirely' },
+      },
+    });
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      now: FIXED_NOW,
+      env: {},
+    });
+    expect(scorecard.passed).toBe(false);
+    expect(scorecard.rejectedBy).toEqual(['theme_adherence']);
+    expect(scorecard.minScore).toBe(1);
+  });
 });
 
 describe('judgeVariant — malformed responses', () => {
@@ -561,6 +640,52 @@ describe('judgeVariant — malformed responses', () => {
         env: {},
       }),
     ).rejects.toMatchObject({ kind: 'malformed' });
+  });
+
+  it('throws JudgeError(malformed) when theme_adherence is missing but a theme addendum applies', async () => {
+    const { provider } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'a' },
+        reference_style_match: { score: 5, rationale: 'b' },
+        brief_match: { score: 5, rationale: 'c' },
+        readability: { score: 5, rationale: 'd' },
+        // theme_adherence deliberately omitted
+      },
+    });
+    await expect(
+      judgeVariant({
+        processed: makeTinyPng(),
+        referencePngs: [],
+        brief: makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
+        styleGuide: '',
+        provider,
+        variantIndex: 0,
+        env: {},
+      }),
+    ).rejects.toMatchObject({ name: 'JudgeError', kind: 'malformed' });
+  });
+
+  it('throws JudgeError(malformed) when theme_adherence is present but no theme addendum applies', async () => {
+    const { provider } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'a' },
+        reference_style_match: { score: 5, rationale: 'b' },
+        brief_match: { score: 5, rationale: 'c' },
+        readability: { score: 5, rationale: 'd' },
+        theme_adherence: { score: 5, rationale: 'unrequested axis' },
+      },
+    });
+    await expect(
+      judgeVariant({
+        processed: makeTinyPng(),
+        referencePngs: [],
+        brief: makeBrief(),
+        styleGuide: '',
+        provider,
+        variantIndex: 0,
+        env: {},
+      }),
+    ).rejects.toMatchObject({ name: 'JudgeError', kind: 'malformed' });
   });
 
   it('propagates VisionProviderError unchanged (does not wrap)', async () => {

@@ -44,6 +44,31 @@ describe('contentDirectionBlock', () => {
     for (const text of present) expect(block).toContain(text);
     for (const text of absent) expect(block).not.toContain(text);
   });
+
+  it('omits the design language priority hierarchy when no addendum is supplied', () => {
+    expect(contentDirectionBlock(1)).not.toContain('## Design language priority');
+  });
+
+  it.each([
+    { label: 'floor only', addenda: { floor: 'FLOOR_ADDENDUM' } },
+    { label: 'theme only', addenda: { theme: 'THEME_ADDENDUM' } },
+    { label: 'floor and theme', addenda: { floor: 'FLOOR_ADDENDUM', theme: 'THEME_ADDENDUM' } },
+  ])(
+    'states theme > floor > Crawler design language priority when any addendum is present ($label)',
+    ({ addenda }) => {
+      const block = contentDirectionBlock(1, addenda);
+      expect(block).toContain('## Design language priority');
+      expect(block).toContain(
+        'theme design language > floor design language > general Crawler design language',
+      );
+      // The priority statement must precede any addendum section it governs.
+      const priorityIdx = block.indexOf('## Design language priority');
+      if (addenda.floor)
+        expect(block.indexOf('## Floor design language')).toBeGreaterThan(priorityIdx);
+      if (addenda.theme)
+        expect(block.indexOf('## Theme design language')).toBeGreaterThan(priorityIdx);
+    },
+  );
 });
 
 describe('resolveDesignLanguageAddenda', () => {

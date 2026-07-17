@@ -45,7 +45,21 @@ export function floorContextBlock(floor: number): string {
 }
 
 export function designLanguageAddendaBlock(addenda: DesignLanguageAddenda = {}): string {
+  const hasAnyAddendum = addenda.floor !== undefined || addenda.theme !== undefined;
   return [
+    ...(hasAnyAddendum
+      ? [
+          '## Design language priority',
+          'These addenda refine, and may override, the general Crawler design language above. ' +
+            'If any instruction here conflicts with another, resolve it in this priority order: ' +
+            'theme design language > floor design language > general Crawler design language. ' +
+            'When a conflict exists, ignore the lower-priority directive rather than blending it in. ' +
+            'In particular, general Crawler dark-fantasy/dungeon-dressing motifs (armor, salvage, decay) ' +
+            'must coordinate with — and never mask or bury — the higher-priority floor/theme-specific ' +
+            'details; if a dressing element cannot coordinate without obscuring those details, omit it.',
+          '',
+        ]
+      : []),
     ...(addenda.floor ? ['## Floor design language', addenda.floor] : []),
     ...(addenda.floor && addenda.theme ? [''] : []),
     ...(addenda.theme ? ['## Theme design language', addenda.theme] : []),
