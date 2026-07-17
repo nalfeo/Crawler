@@ -729,6 +729,11 @@ for (const attempt of [1, 2]) {
         body: { check_runs: [failedCheck] },
       }),
       [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+      // Loop incident routes (used only on attempt=2 / stale-automation-exhausted path).
+      [`GET /repos/${OWNER}/${REPO}/issues`]: () => ({ body: [] }),
+      [`POST /repos/${OWNER}/${REPO}/issues`]: () => ({
+        body: { number: 999, node_id: 'ISSUE_999' },
+      }),
     });
     t.after(() => server.close());
 
@@ -753,6 +758,14 @@ for (const attempt of [1, 2]) {
             call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
         ),
       );
+      // Loop incident must NOT be filed on a normal retry (attempt=1).
+      assert.equal(
+        mutatingCalls.filter(
+          (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+        ).length,
+        0,
+        'must not file a loop incident on a non-exhausted retry',
+      );
     } else {
       assert.match(stdout, /released stale automation pr=#42 attempts=2/);
       assert.equal(finalState.owner, 'none');
@@ -775,16 +788,102 @@ for (const attempt of [1, 2]) {
         ),
         false,
       );
+      // Loop incident must be filed on exhausted release (attempt=2).
+      assert.match(
+        stdout,
+        /loop-incident pr=#42 issue=#999 action=created/,
+        'must log loop-incident creation on stale-automation-exhausted release',
+      );
+      assert.equal(
+        mutatingCalls.filter(
+          (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+        ).length,
+        1,
+        'must create exactly one loop incident issue on exhausted release',
+      );
     }
   });
 }
+
+test('stale-automation-exhausted in dry-run logs would-file message without creating an issue', async (t) => {
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const staleAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+  const stateComment = {
+    id: 885,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'automation',
+        status: 'dispatched',
+        blockers,
+        attempt: 2,
+        progressKey: automationProgressKey(HEAD_SHA, fingerprint),
+        progressAt: staleAt,
+        updatedAt: staleAt,
+      }),
+    ),
+  };
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    /dry-run would-file-loop-incident pr=#42/,
+    'dry-run must log the would-file message',
+  );
+  // No issue mutations in dry-run.
+  assert.equal(
+    mutatingCalls.filter(
+      (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues`,
+    ).length,
+    0,
+    'dry-run must not create any loop incident issues',
+  );
+});
 
 test('interrupted exhausted release completes when staleOwningState carries attempt>=2 with progressKey', async (t) => {
   // Regression for Thread 9: if the state-comment PATCH fails after
   // removePrLabel succeeds (label deleted but state not updated), the next
   // reconcile run sees the old automation state (attempt>=2) with no owner
   // label (staleOwningState=true).  Before this fix, labelExists=false caused
-  // the stale-automation branch to be skipped entirely, and the run fell
   // through to a fresh attempt-1 dispatch, silently resetting the exhausted
   // retry budget.  Now the staleOwningState handler detects this pattern and
   // writes the terminal idle state before exiting.
