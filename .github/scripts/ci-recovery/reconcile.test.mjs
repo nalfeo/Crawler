@@ -4562,6 +4562,73 @@ test('stale automation incomplete release at attempt=2 persists exhausted state 
   );
 });
 
+test('exhausted interrupted-release live fence fails closed when owner label recreated after startup (Thread PRRT_kwDOSvo2Ms6R3FSl)', async (t) => {
+  // Regression: staleOwningState=true with owner=automation, progressKey set,
+  // attempt=2 (exhausted). Between startup and the terminal idle updateState a
+  // concurrent run re-creates the owner label (and writes an active state).
+  // Before this fix the exhausted block had no live fence and would silently
+  // overwrite the newer active state with idle. Now it must fail closed.
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:fence', summary: 'CI failed' },
+  ]);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  const exhaustedState = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:fence', summary: 'CI failed' }],
+    attempt: 2,
+    progressKey,
+    progressAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+  });
+  const stateComment = { id: 9021, body: renderStateComment(exhaustedState) };
+  let labelEndpointCalls = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [] }, // no owner label on PR
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      labelEndpointCalls += 1;
+      // First call (startup): label absent — triggers staleOwningState=true and
+      // the exhausted interrupted-release branch.
+      // Second call onward (fetchOwnershipFacts inside the fence): label was
+      // re-created by a concurrent run — fence must detect this and fail closed.
+      return labelEndpointCalls === 1
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL } };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  assert.notEqual(
+    code,
+    0,
+    'must fail closed when owner label is re-created before exhausted interrupted-release completion',
+  );
+  assert.match(stderr, /owner label re-created before exhausted interrupted-release completion/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'must not write idle state when exhausted-release live fence detected label re-creation',
+  );
+});
+
 test('legacy stale automation incomplete release gets one retry despite its cumulative attempt count', async (t) => {
   const failedCheck = {
     id: 2,

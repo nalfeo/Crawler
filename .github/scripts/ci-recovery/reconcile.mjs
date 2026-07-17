@@ -223,6 +223,30 @@ if (staleOwningState) {
   // resetting the exhausted retry budget.  Complete the pending state update
   // now so the next reconciliation starts from a clean idle baseline.
   if (state.owner === 'automation' && state.progressKey && state.attempt >= 2) {
+    // Live ownership fence: re-fetch before writing the terminal idle state so
+    // a concurrent run that re-acquired ownership after our startup cannot be
+    // silently overwritten.  Mirror the fence used in the non-exhausted
+    // interrupted-release path (see further below).
+    const exhaustedReleaseFacts = await fetchOwnershipFacts();
+    if (exhaustedReleaseFacts.repositoryLabelPresent) {
+      throw new Error(
+        `PR #${prNumber} owner label re-created before exhausted interrupted-release completion`,
+      );
+    }
+    if (!sameOwnership(exhaustedReleaseFacts.state, state)) {
+      if (!isConvergedElsewhereState(exhaustedReleaseFacts.state)) {
+        throw new Error(
+          `PR #${prNumber} ownership changed before exhausted interrupted-release completion`,
+        );
+      }
+      stopIfReleaseConvergedElsewhere(
+        await preserveConvergedElsewhereState(
+          exhaustedReleaseFacts.state,
+          false,
+          exhaustedReleaseFacts.labels,
+        ),
+      );
+    }
     await updateState(
       makeState({
         prNumber,
