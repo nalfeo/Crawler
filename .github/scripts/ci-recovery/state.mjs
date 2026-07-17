@@ -390,12 +390,17 @@ const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {
   // Marker replies often leave copied SHAs/URLs with trailing Markdown
-  // punctuation such as `abc1234)` or `<https://...>).` Strip those trailing
-  // wrappers before parsing.
-  const token = String(rawToken ?? '')
+  // punctuation or balanced inline-code wrappers. Normalize only those outer
+  // delimiters before applying the existing strict SHA/commit-URL validation.
+  let token = String(rawToken ?? '')
     .replace(/[):.,;!?]+$/g, '')
     .trim();
   if (!token) return null;
+  if (token.startsWith('`') || token.endsWith('`')) {
+    const inlineCode = token.match(/^(`+)([^`\r\n]+)\1$/);
+    if (!inlineCode) return null;
+    token = inlineCode[2].trim();
+  }
   if (hexShaPattern.test(token)) {
     return token.toLowerCase();
   }
