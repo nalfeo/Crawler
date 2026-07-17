@@ -24,7 +24,7 @@ validation, and the full 3-apple review harness.
 - Latest rebased A0 commit: `de709e08e1be83472bc7ecfe5e35a9d959e78fe2`
 - A0 PR: #1271
 - A1 branch: `nalfeo-floor-2-equipment-contracts`
-- A1 PR: pending at handoff authoring; open ready-for-review against A0
+- A1 PR: #1276, ready-for-review against A0
 
 ## Summary
 
