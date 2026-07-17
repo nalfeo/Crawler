@@ -70,8 +70,10 @@ squash auto-merge:
   auto-merge.
 - Only the repository App may bypass protection, and only to fast-forward
   `main` to the exact validated candidate SHA.
-- Candidate validation runs `verify:fast` plus the targeted security suite; the
-  full functional suite runs hourly on `main`.
+- Candidate validation runs the complete `verify:fast` gate set plus the targeted
+  security suite as parallel, deterministic jobs. Unit and sprite projects are
+  sharded without affected-only filtering; the full functional suite runs hourly
+  on `main`.
 - The reconciler repairs only the six oldest non-ready PRs. A train-detected
   conflict returns the affected PR for a conflict-only rebase and fresh head
   validation.
