@@ -456,7 +456,8 @@ Generation resolves in this exact order:
    `1 + (0.05 * N)`.
 6. **Affixes/effects** - select legal effects using only `SeededRandom`, consuming
    exactly the rarity budget.
-7. **Freeze** - write final stats, display name, art key, grants,
+7. **Freeze** - allocate the generated instance identity, write final stats,
+   display name, art key, grants, a finalized identity-bearing
    `ActiveWeaponSnapshot` when applicable, and fingerprint.
 
 No intermediate stage rounds. Freeze applies the existing normalization rule for
@@ -496,9 +497,10 @@ Enhancement is bounded and separate from the rarity effect budget:
 
 Static equipment and `WeaponDef` registries are immutable templates. A
 weapon-bearing instance captures `ActiveWeaponSnapshotV1` only at step 7 after all
-level, inherent, rarity, enhancement, and effect resolution. Equipped runtime
-selection uses the instance ID and its snapshot; it never mutates the static
-definition. The snapshot fields and fingerprint contract are in
+level, inherent, rarity, enhancement, and effect resolution and after deterministic
+instance-ID allocation. Equipped runtime selection resolves the instance ID through
+the registry and consumes its validated snapshot; it never accepts a caller-authored
+snapshot or mutates the static definition. The snapshot fields and fingerprint contract are in
 `weapon-system.md`.
 
 Equipment ability and passive grants are source-owned:

@@ -1,12 +1,11 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
-  ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION,
-  type ActiveWeaponSnapshotV1,
-  type FrozenEquipmentFieldsV1,
+  type ActiveWeaponSnapshotInputV1,
+  type FrozenEquipmentFieldsInputV1,
   type GeneratedEquipmentCreateInputV1,
   type GeneratedEquipmentGenerationPolicyV1,
   type GeneratedEquipmentRarity,
@@ -18,6 +17,7 @@ import {
   DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
   GeneratedEquipmentRegistryError,
   computeEquipmentFingerprint,
+  createActiveWeaponSnapshotInput,
   createGeneratedEquipmentInstance,
   generatedEquipmentInstanceKey,
   getGeneratedEquipmentInstance,
@@ -30,39 +30,8 @@ import {
 } from '../../src/core/generated-equipment-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
-function weaponSnapshot(): ActiveWeaponSnapshotV1 {
-  const def = getWeaponDef('sword');
-  if (!def) throw new Error('Expected sword weapon definition');
-  return {
-    schemaVersion: ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
-    sourceWeaponDefId: def.id,
-    name: def.name,
-    weaponType: def.weaponType,
-    baseDamage: def.baseDamage,
-    cooldownMs: def.cooldownMs,
-    range: def.range,
-    projectileSpeed: def.projectileSpeed,
-    aoeRadius: def.aoeRadius,
-    durationMs: def.durationMs,
-    beamTickMs: def.beamTickMs,
-    beamLength: def.beamLength,
-    trapArmMs: def.trapArmMs,
-    trapTriggerRadius: def.trapTriggerRadius,
-    trapExplosionRadius: def.trapExplosionRadius,
-    returnSpeed: def.returnSpeed,
-    maxRange: def.maxRange,
-    swingArcDeg: def.swingArcDeg,
-    meleeStyle: def.meleeStyle,
-    headRadius: def.headRadius,
-    shaftDamageMult: def.shaftDamageMult,
-    knockback: def.knockback,
-    pierce: def.pierce,
-    bounceCount: def.bounceCount,
-    goreFactor: def.goreFactor,
-    baseAccuracy: def.baseAccuracy,
-    weaponClassSkillId: def.weaponClassSkillId,
-    weaponTypeSkillId: def.weaponTypeSkillId,
-  };
+function weaponSnapshot(): ActiveWeaponSnapshotInputV1 {
+  return createActiveWeaponSnapshotInput('sword');
 }
 
 function effectsFor(rarity: GeneratedEquipmentRarity): readonly ResolvedEquipmentEffectV1[] {
@@ -102,8 +71,8 @@ function effectsFor(rarity: GeneratedEquipmentRarity): readonly ResolvedEquipmen
 }
 
 function frozenFields(
-  activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null = null,
-): FrozenEquipmentFieldsV1 {
+  activeWeaponSnapshot: ActiveWeaponSnapshotInputV1 | null = null,
+): FrozenEquipmentFieldsInputV1 {
   return {
     schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
     displayName: 'Ashen Sword',
@@ -120,7 +89,7 @@ function frozenFields(
 
 function createInput(
   rarity: GeneratedEquipmentRarity = 'common',
-  activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null = null,
+  activeWeaponSnapshot: ActiveWeaponSnapshotInputV1 | null = null,
 ): GeneratedEquipmentCreateInputV1 {
   return {
     baseId: 'weapon.iron-cleaver',

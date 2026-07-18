@@ -7,6 +7,8 @@ export const GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION = 'floor2-equipment-ins
 export const GENERATED_EQUIPMENT_BASE_SCHEMA_VERSION = 'floor2-equipment-base/v1' as const;
 export const GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION = 'floor2-equipment-effect/v1' as const;
 export const FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION = 'floor2-equipment-frozen/v1' as const;
+export const ACTIVE_WEAPON_SNAPSHOT_INPUT_SCHEMA_VERSION =
+  'active-weapon-snapshot-input/v1' as const;
 export const ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION = 'active-weapon-snapshot/v1' as const;
 export const GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION =
   'floor2-equipment-generation/v1' as const;
@@ -57,9 +59,41 @@ export type ResolvedEquipmentEffectV1 =
   | ResolvedEquipmentStatEffectV1
   | ResolvedEquipmentGrantEffectV1;
 
+export interface ActiveWeaponCombatOverridesV1 {
+  readonly baseDamage?: number;
+  readonly cooldownMs?: number;
+  readonly range?: number;
+  readonly projectileSpeed?: number;
+  readonly aoeRadius?: number;
+  readonly durationMs?: number;
+  readonly beamTickMs?: number;
+  readonly beamLength?: number;
+  readonly trapArmMs?: number;
+  readonly trapTriggerRadius?: number;
+  readonly trapExplosionRadius?: number;
+  readonly returnSpeed?: number;
+  readonly maxRange?: number;
+  readonly swingArcDeg?: number;
+  readonly meleeStyle?: MeleeStyleValue;
+  readonly headRadius?: number;
+  readonly shaftDamageMult?: number;
+  readonly knockback?: number;
+  readonly pierce?: number;
+  readonly bounceCount?: number;
+  readonly goreFactor?: number;
+  readonly baseAccuracy?: number;
+}
+
+export interface ActiveWeaponSnapshotInputV1 {
+  readonly schemaVersion: typeof ACTIVE_WEAPON_SNAPSHOT_INPUT_SCHEMA_VERSION;
+  readonly baseWeaponId: string;
+  readonly overrides: ActiveWeaponCombatOverridesV1;
+}
+
 export interface ActiveWeaponSnapshotV1 {
   readonly schemaVersion: typeof ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION;
-  readonly sourceWeaponDefId: string;
+  readonly generatedEquipmentInstanceId: GeneratedEquipmentInstanceId;
+  readonly baseWeaponId: string;
   readonly name: string;
   readonly weaponType: WeaponTypeValue;
   readonly baseDamage: number;
@@ -86,6 +120,7 @@ export interface ActiveWeaponSnapshotV1 {
   readonly baseAccuracy: number;
   readonly weaponClassSkillId: WeaponClassSkillId;
   readonly weaponTypeSkillId: WeaponTypeSkillId;
+  readonly fingerprint: EquipmentFingerprintV1;
 }
 
 export interface FrozenEquipmentFieldsV1 {
@@ -100,6 +135,10 @@ export interface FrozenEquipmentFieldsV1 {
   readonly passiveGrants: readonly string[];
   readonly activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null;
 }
+
+export type FrozenEquipmentFieldsInputV1 = Omit<FrozenEquipmentFieldsV1, 'activeWeaponSnapshot'> & {
+  readonly activeWeaponSnapshot: ActiveWeaponSnapshotInputV1 | null;
+};
 
 export interface GeneratedEquipmentGenerationPolicyV1 {
   readonly schemaVersion: typeof GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION;
@@ -139,7 +178,7 @@ export interface GeneratedEquipmentCreateInputV1 {
   readonly rarity: GeneratedEquipmentRarity;
   readonly enhancementLevel: GeneratedEquipmentEnhancementLevel;
   readonly resolvedEffects: readonly ResolvedEquipmentEffectV1[];
-  readonly frozen: FrozenEquipmentFieldsV1;
+  readonly frozen: FrozenEquipmentFieldsInputV1;
 }
 
 export interface GeneratedEquipmentRegistrySnapshotV1 {
