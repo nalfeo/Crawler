@@ -11,6 +11,17 @@
     "path": "by-sha/72efe9dd1ae576d02f92bc332f81f40927ac658d.json"
   },
   {
+    "commit": "09f6c1ba199371a78fbc375c2d28b0aa5b2016d3",
+    "commitDate": "2026-07-18T00:42:41Z",
+    "commitSubject": "fix(ci-recovery): include explicit review-thread reply targets in recovery task prompts (#1298)",
+    "capturedAt": "2026-07-18T02:05:43.057Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29624271723",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/09f6c1ba199371a78fbc375c2d28b0aa5b2016d3.json"
+  },
+  {
     "commit": "a7c00f0665c8269b1861fd5f39f82204dd6de8f0",
     "commitDate": "2026-07-17T22:32:09Z",
     "commitSubject": "fix(ci): harden recovery ownership convergence (#1259)",
