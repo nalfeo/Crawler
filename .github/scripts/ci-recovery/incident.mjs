@@ -166,7 +166,7 @@ const body = [
   })(),
   '',
   '@copilot Diagnose this repository-level failure, implement the smallest correct fix on a branch from `main`, run the required verification, open a non-draft PR, and arm squash auto-merge. Do not weaken a gate or explicit requirement.',
-  'Carry the `ci-repair` label onto the resulting PR so it is admitted ahead of ordinary merge-train work.',
+  'Manually apply the `ci-repair` label to the resulting PR; issue labels are not automatically propagated, and this label is required for priority admission ahead of ordinary merge-train work.',
 ].join('\n');
 
 let issue;

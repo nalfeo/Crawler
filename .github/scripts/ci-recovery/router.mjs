@@ -24,7 +24,7 @@ const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
 const REPAIR_WINDOW_SIZE = 6;
 const NORMAL_PRIORITY_MODE = 'normal';
 const PRIORITY_ONLY_MODE = 'priority-only';
-const PRIORITY_LABELS = new Set([CI_REPAIR_LABEL, 'ci-incident']);
+const PRIORITY_LABELS = new Set([CI_REPAIR_LABEL]);
 const MANAGED_COMMENT_MARKERS = [
   '<!-- crawler-ci-state:v1 -->',
   '<!-- crawler-ci-task:v1',
