@@ -144,6 +144,9 @@ function readRadiusFt(ability: BossAbilityDef): number {
   if (metric === undefined || typeof metric.value !== 'number' || metric.unit !== 'feet') {
     throw new Error('Verdigris Glamour telegraph is missing a numeric "radius" metric in feet');
   }
+  if (metric.value <= 0) {
+    throw new Error('Verdigris Glamour telegraph radius must be > 0 feet');
+  }
   return metric.value;
 }
 
