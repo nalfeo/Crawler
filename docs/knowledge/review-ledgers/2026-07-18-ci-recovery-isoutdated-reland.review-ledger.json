@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-isoutdated-reland",
+  "task_title": "fix(ci-recovery): annotate isOutdated in task body and include in normalizeBlockers fingerprint",
+  "estimated_apples": 2,
+  "stages": {}
+}
