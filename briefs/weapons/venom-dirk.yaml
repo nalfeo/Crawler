@@ -20,6 +20,6 @@ description: |
 # Anchor at (32, 56) — grip-bottom centre — inherited.
 # No sensor overrides needed: this is a true vertical blade.
 variations:
-  - blade with venomous green channels carved lengthwise along both edges, oozing dark ichor dried into the grooves
+  - blade with venomous green channels carved lengthwise along both edges, dark ichor dried as matte residue in the grooves
   - dark purple crystalline venom deposits crusted along the fuller, glinting faintly
 minVariations: 8
