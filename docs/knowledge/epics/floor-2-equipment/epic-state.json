@@ -3,7 +3,7 @@
   "schema_version": "crawler-epic-state/v1",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-17T17:32:38.205Z",
+  "updated_at": "2026-07-18T10:06:00.000Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
@@ -144,9 +144,9 @@
         {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
-          "sha256": "bbb2912c21ab7db87494372da1efa2b14e6e5fc7cc40453ee8a879077449408e",
-          "commit": "8cc19153bb8881a4faba5b696eb117c7abc820c2",
-          "recorded_at": "2026-07-17T18:25:00.000Z"
+          "sha256": "1e433e5756691f204cb5f5e21ee2ebd080072411dfc628cce81d4249958e2ec3",
+          "commit": "8e9bb3208e8a4b4307401441525cfc76b3ac6d7d",
+          "recorded_at": "2026-07-18T10:06:00.000Z"
         }
       ],
       "reconciliation": {
