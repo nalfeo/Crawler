@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "equipment-carryover-persistence",
+  "task_title": "Persist generated equipment through save/load and Floor 2 carryover",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Initial review rejected missing production run identity, B3-capable generated equip, sourced grant ownership, static equipped migration, concrete reward-bundle ownership, and production-path coverage. Revised plan adopted all six: deterministic run-key plumbing, extension of B2 equipFromBag, explicit source maps with retained ownership, static plus generated equipped lanes, reference-only world bundle map, and real Floor 1 clear to Floor 2 configure integration."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

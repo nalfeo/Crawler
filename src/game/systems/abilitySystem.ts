@@ -13,16 +13,10 @@ import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
+import { createEmptyAbilityState } from '../../shared/abilities.js';
 
 export function createAbilityState(): AbilityState {
-  return {
-    learnedSpellIds: [],
-    equippedActiveAbilityIds: [],
-    passiveAbilityIds: [],
-    cooldownByAbilityId: new Map(),
-    cooldownFramesByAbilityId: new Map(),
-    appliedPassiveAbilityIds: new Set(),
-  };
+  return createEmptyAbilityState();
 }
 
 export function getOrCreateAbilityState(world: GameWorld, holderEid: number): AbilityState {

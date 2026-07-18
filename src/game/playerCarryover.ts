@@ -1,7 +1,9 @@
 import type { GameWorld } from '../core/world.js';
 import {
+  addGeneratedEquipmentToBag,
   clearEquipmentState,
   equip,
+  equipFromBag,
   getEquipmentState,
   initializeBaseStats,
 } from '../core/systems/equipmentSystem.js';
@@ -9,8 +11,32 @@ import { statSystem } from '../core/systems/statSystem.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
-import type { AbilityState } from '../shared/abilities.js';
+import type { AbilityState, EquipmentGrantOwnership } from '../shared/abilities.js';
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
+import {
+  createGeneratedEquipmentRegistry,
+  listGeneratedEquipmentInstances,
+  restoreGeneratedEquipmentRegistry,
+  snapshotGeneratedEquipmentRegistry,
+} from '../core/generated-equipment-registry.js';
+import {
+  GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+  type EquipmentGrantSourceId,
+  type GeneratedEquipmentInstanceKey,
+  type GeneratedEquipmentInstanceV1,
+  type GeneratedEquipmentRegistrySnapshotV1,
+  type GeneratedEquipmentRewardBundleV1,
+} from '../shared/generated-equipment-types.js';
+import { clearActiveWeaponDef } from '../core/active-weapon.js';
+
+export const PLAYER_CARRYOVER_SCHEMA_VERSION = 'player-carryover/v1' as const;
+
+export class PlayerCarryoverSnapshotError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PlayerCarryoverSnapshotError';
+  }
+}
 
 interface SkillStateSnapshot {
   readonly level: number;
@@ -26,6 +52,19 @@ interface AbilityStateSnapshot {
   readonly cooldownElapsedFramesByAbilityId: readonly (readonly [string, number])[];
   readonly cooldownFramesByAbilityId: readonly (readonly [string, number])[];
   readonly appliedPassiveAbilityIds: readonly string[];
+  readonly activeEquipmentGrantOwnershipById?: readonly (readonly [
+    string,
+    EquipmentGrantOwnershipSnapshot,
+  ])[];
+  readonly passiveEquipmentGrantOwnershipById?: readonly (readonly [
+    string,
+    EquipmentGrantOwnershipSnapshot,
+  ])[];
+}
+
+interface EquipmentGrantOwnershipSnapshot {
+  readonly retainedWithoutEquipment: boolean;
+  readonly sourceIds: readonly EquipmentGrantSourceId[];
 }
 
 interface StatModifierSnapshot extends Omit<StatModifier, 'expiresFrame'> {
@@ -33,6 +72,7 @@ interface StatModifierSnapshot extends Omit<StatModifier, 'expiresFrame'> {
 }
 
 export interface PlayerCarryoverSnapshot {
+  readonly schemaVersion: typeof PLAYER_CARRYOVER_SCHEMA_VERSION;
   readonly sourcePlayerEid: number;
   readonly playerName: string;
   readonly playerGender: GameWorld['playerGender'];
@@ -50,6 +90,10 @@ export interface PlayerCarryoverSnapshot {
     readonly quantity: number;
   }[];
   readonly equippedItemIds: readonly string[];
+  readonly generatedInventoryInstanceKeys: readonly GeneratedEquipmentInstanceKey[];
+  readonly generatedEquippedInstanceKeys: readonly GeneratedEquipmentInstanceKey[];
+  readonly generatedEquipmentRegistry?: GeneratedEquipmentRegistrySnapshotV1;
+  readonly generatedEquipmentRewardBundles: readonly GeneratedEquipmentRewardBundleV1[];
   readonly disabledEquipmentSlots: readonly EquipmentSlotId[];
   readonly playerSkills: readonly (readonly [string, SkillStateSnapshot])[];
   readonly abilityState?: AbilityStateSnapshot;
@@ -61,6 +105,15 @@ export interface PlayerCarryoverSnapshot {
     readonly claimedIds: readonly string[];
   };
 }
+
+type LegacyPlayerCarryoverSnapshot = Omit<
+  PlayerCarryoverSnapshot,
+  | 'schemaVersion'
+  | 'generatedInventoryInstanceKeys'
+  | 'generatedEquippedInstanceKeys'
+  | 'generatedEquipmentRegistry'
+  | 'generatedEquipmentRewardBundles'
+>;
 
 function snapshotSkillState(state: SkillState): SkillStateSnapshot {
   return {
@@ -95,14 +148,57 @@ function snapshotAbilityState(
     ),
     cooldownFramesByAbilityId: [...state.cooldownFramesByAbilityId],
     appliedPassiveAbilityIds: [...state.appliedPassiveAbilityIds],
+    ...(state.activeEquipmentGrantOwnershipById
+      ? {
+          activeEquipmentGrantOwnershipById: snapshotGrantOwnership(
+            state.activeEquipmentGrantOwnershipById,
+          ),
+        }
+      : {}),
+    ...(state.passiveEquipmentGrantOwnershipById
+      ? {
+          passiveEquipmentGrantOwnershipById: snapshotGrantOwnership(
+            state.passiveEquipmentGrantOwnershipById,
+          ),
+        }
+      : {}),
   };
 }
 
-function restoreAbilityState(snapshot: AbilityStateSnapshot, frameCount: number): AbilityState {
+function snapshotGrantOwnership(
+  ownershipById: ReadonlyMap<string, EquipmentGrantOwnership>,
+): readonly (readonly [string, EquipmentGrantOwnershipSnapshot])[] {
+  return [...ownershipById].map(([grantId, ownership]) => [
+    grantId,
+    {
+      retainedWithoutEquipment: ownership.retainedWithoutEquipment,
+      sourceIds: [...ownership.sourceIds],
+    },
+  ]);
+}
+
+function restoreAbilityStateForEquipmentReplay(
+  snapshot: AbilityStateSnapshot,
+  frameCount: number,
+): AbilityState {
+  const equipmentOnlyActive = new Set(
+    (snapshot.activeEquipmentGrantOwnershipById ?? [])
+      .filter(([, ownership]) => !ownership.retainedWithoutEquipment)
+      .map(([grantId]) => grantId),
+  );
+  const equipmentOnlyPassive = new Set(
+    (snapshot.passiveEquipmentGrantOwnershipById ?? [])
+      .filter(([, ownership]) => !ownership.retainedWithoutEquipment)
+      .map(([grantId]) => grantId),
+  );
   return {
     learnedSpellIds: [...snapshot.learnedSpellIds],
-    equippedActiveAbilityIds: [...snapshot.equippedActiveAbilityIds],
-    passiveAbilityIds: [...snapshot.passiveAbilityIds],
+    equippedActiveAbilityIds: snapshot.equippedActiveAbilityIds.filter(
+      (abilityId) => !equipmentOnlyActive.has(abilityId),
+    ),
+    passiveAbilityIds: snapshot.passiveAbilityIds.filter(
+      (abilityId) => !equipmentOnlyPassive.has(abilityId),
+    ),
     cooldownByAbilityId: new Map(
       snapshot.cooldownElapsedFramesByAbilityId.map(
         ([abilityId, elapsedFrames]) => [abilityId, frameCount - elapsedFrames] as const,
@@ -111,6 +207,271 @@ function restoreAbilityState(snapshot: AbilityStateSnapshot, frameCount: number)
     cooldownFramesByAbilityId: new Map(snapshot.cooldownFramesByAbilityId),
     appliedPassiveAbilityIds: new Set(snapshot.appliedPassiveAbilityIds),
   };
+}
+
+function assertArray(value: unknown, path: string): asserts value is readonly unknown[] {
+  if (!Array.isArray(value)) {
+    throw new PlayerCarryoverSnapshotError(`Expected array at ${path}`);
+  }
+}
+
+function normalizePlayerCarryoverSnapshot(input: unknown): PlayerCarryoverSnapshot {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    throw new PlayerCarryoverSnapshotError('Player carryover snapshot must be an object');
+  }
+  const record = input as Record<string, unknown>;
+  if ('schemaVersion' in record && record.schemaVersion !== PLAYER_CARRYOVER_SCHEMA_VERSION) {
+    throw new PlayerCarryoverSnapshotError(
+      `Unsupported player carryover schema version: ${String(record.schemaVersion)}`,
+    );
+  }
+  if (
+    !('schemaVersion' in record) &&
+    ('generatedEquipmentRegistry' in record ||
+      'generatedInventoryInstanceKeys' in record ||
+      'generatedEquippedInstanceKeys' in record ||
+      'generatedEquipmentRewardBundles' in record)
+  ) {
+    throw new PlayerCarryoverSnapshotError(
+      'Unversioned player carryover cannot contain generated equipment state',
+    );
+  }
+  const legacy = record as unknown as LegacyPlayerCarryoverSnapshot;
+  const normalized =
+    record.schemaVersion === PLAYER_CARRYOVER_SCHEMA_VERSION
+      ? (input as PlayerCarryoverSnapshot)
+      : ({
+          ...legacy,
+          schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
+          generatedInventoryInstanceKeys: [],
+          generatedEquippedInstanceKeys: [],
+          generatedEquipmentRewardBundles: [],
+        } satisfies PlayerCarryoverSnapshot);
+  assertArray(normalized.inventorySlots, 'inventorySlots');
+  assertArray(normalized.equippedItemIds, 'equippedItemIds');
+  assertArray(normalized.generatedInventoryInstanceKeys, 'generatedInventoryInstanceKeys');
+  assertArray(normalized.generatedEquippedInstanceKeys, 'generatedEquippedInstanceKeys');
+  assertArray(normalized.generatedEquipmentRewardBundles, 'generatedEquipmentRewardBundles');
+  assertArray(normalized.disabledEquipmentSlots, 'disabledEquipmentSlots');
+  return normalized;
+}
+
+interface ValidatedGeneratedCarryover {
+  readonly snapshot: PlayerCarryoverSnapshot;
+  readonly instancesByKey: ReadonlyMap<GeneratedEquipmentInstanceKey, GeneratedEquipmentInstanceV1>;
+}
+
+function assertUniqueStrings(values: readonly string[], path: string): void {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (typeof value !== 'string' || value.length === 0) {
+      throw new PlayerCarryoverSnapshotError(`Expected non-empty string at ${path}`);
+    }
+    if (seen.has(value)) {
+      throw new PlayerCarryoverSnapshotError(`Duplicate value at ${path}: ${value}`);
+    }
+    seen.add(value);
+  }
+}
+
+function validateGrantOwnership(
+  abilityState: AbilityStateSnapshot | undefined,
+  equippedInstances: readonly GeneratedEquipmentInstanceV1[],
+): void {
+  const expected = new Map<
+    EquipmentGrantSourceId,
+    { readonly grantId: string; readonly kind: 'abilityGrant' | 'passiveGrant' }
+  >();
+  for (const instance of equippedInstances) {
+    const abilityGrantIds = instance.resolvedEffects.flatMap((effect) =>
+      effect.kind === 'abilityGrant' ? [effect.grantId] : [],
+    );
+    const passiveGrantIds = instance.resolvedEffects.flatMap((effect) =>
+      effect.kind === 'passiveGrant' ? [effect.grantId] : [],
+    );
+    if (
+      abilityGrantIds.join('\0') !== instance.frozen.abilityGrants.join('\0') ||
+      passiveGrantIds.join('\0') !== instance.frozen.passiveGrants.join('\0')
+    ) {
+      throw new PlayerCarryoverSnapshotError(
+        `Generated grant projection mismatch: ${instance.instanceId}`,
+      );
+    }
+    for (const effect of instance.resolvedEffects) {
+      if (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant') continue;
+      const sourceId =
+        `equipment:${instance.instanceId}:${effect.effectOrdinal}` as EquipmentGrantSourceId;
+      expected.set(sourceId, { grantId: effect.grantId, kind: effect.kind });
+    }
+  }
+
+  const observed = new Set<EquipmentGrantSourceId>();
+  const validateLane = (
+    lane: readonly (readonly [string, EquipmentGrantOwnershipSnapshot])[] | undefined,
+    kind: 'abilityGrant' | 'passiveGrant',
+    ownedGrantIds: readonly string[],
+  ): void => {
+    const seenGrantIds = new Set<string>();
+    for (const [grantId, ownership] of lane ?? []) {
+      if (seenGrantIds.has(grantId)) {
+        throw new PlayerCarryoverSnapshotError(`Duplicate sourced grant ownership: ${grantId}`);
+      }
+      seenGrantIds.add(grantId);
+      if (typeof ownership.retainedWithoutEquipment !== 'boolean') {
+        throw new PlayerCarryoverSnapshotError(
+          `Expected boolean at grantOwnership.${grantId}.retainedWithoutEquipment`,
+        );
+      }
+      if (!ownedGrantIds.includes(grantId)) {
+        throw new PlayerCarryoverSnapshotError(
+          `Sourced grant is absent from ability state: ${grantId}`,
+        );
+      }
+      assertUniqueStrings(ownership.sourceIds, `grantOwnership.${grantId}.sourceIds`);
+      for (const sourceId of ownership.sourceIds) {
+        const expectedSource = expected.get(sourceId);
+        if (!expectedSource || expectedSource.kind !== kind || expectedSource.grantId !== grantId) {
+          throw new PlayerCarryoverSnapshotError(
+            `Dangling or mismatched generated grant source: ${sourceId}`,
+          );
+        }
+        if (observed.has(sourceId)) {
+          throw new PlayerCarryoverSnapshotError(`Duplicate generated grant source: ${sourceId}`);
+        }
+        observed.add(sourceId);
+      }
+    }
+  };
+
+  validateLane(
+    abilityState?.activeEquipmentGrantOwnershipById,
+    'abilityGrant',
+    abilityState?.equippedActiveAbilityIds ?? [],
+  );
+  validateLane(
+    abilityState?.passiveEquipmentGrantOwnershipById,
+    'passiveGrant',
+    abilityState?.passiveAbilityIds ?? [],
+  );
+  for (const sourceId of expected.keys()) {
+    if (!observed.has(sourceId)) {
+      throw new PlayerCarryoverSnapshotError(`Missing generated grant source: ${sourceId}`);
+    }
+  }
+}
+
+function validateGeneratedCarryover(world: GameWorld, input: unknown): ValidatedGeneratedCarryover {
+  const snapshot = normalizePlayerCarryoverSnapshot(input);
+  const hasGeneratedReferences =
+    snapshot.generatedInventoryInstanceKeys.length > 0 ||
+    snapshot.generatedEquippedInstanceKeys.length > 0 ||
+    snapshot.generatedEquipmentRewardBundles.length > 0 ||
+    (snapshot.abilityState?.activeEquipmentGrantOwnershipById?.length ?? 0) > 0 ||
+    (snapshot.abilityState?.passiveEquipmentGrantOwnershipById?.length ?? 0) > 0;
+  if (!snapshot.generatedEquipmentRegistry) {
+    if (hasGeneratedReferences) {
+      throw new PlayerCarryoverSnapshotError(
+        'Generated equipment references require a registry snapshot',
+      );
+    }
+    return { snapshot, instancesByKey: new Map() };
+  }
+
+  const validationWorld = {
+    generatedEquipmentRegistry: createGeneratedEquipmentRegistry({
+      runKey: world.generatedEquipmentRegistry.runKey ?? undefined,
+      generationPolicy: world.generatedEquipmentRegistry.generationPolicy,
+    }),
+  };
+  restoreGeneratedEquipmentRegistry(validationWorld, snapshot.generatedEquipmentRegistry);
+  const instances = listGeneratedEquipmentInstances(validationWorld);
+  const instancesByKey = new Map(instances.map((instance) => [instance.instanceId, instance]));
+
+  const owners = new Map<GeneratedEquipmentInstanceKey, string>();
+  const claim = (instanceKey: GeneratedEquipmentInstanceKey, owner: string): void => {
+    if (!instancesByKey.has(instanceKey)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Dangling generated equipment reference ${instanceKey} from ${owner}`,
+      );
+    }
+    const existing = owners.get(instanceKey);
+    if (existing) {
+      throw new PlayerCarryoverSnapshotError(
+        `Duplicate generated equipment owner for ${instanceKey}: ${existing}, ${owner}`,
+      );
+    }
+    owners.set(instanceKey, owner);
+  };
+
+  assertUniqueStrings(snapshot.generatedInventoryInstanceKeys, 'generatedInventoryInstanceKeys');
+  assertUniqueStrings(snapshot.generatedEquippedInstanceKeys, 'generatedEquippedInstanceKeys');
+  for (const key of snapshot.generatedInventoryInstanceKeys) claim(key, 'inventory');
+  for (const key of snapshot.generatedEquippedInstanceKeys) claim(key, 'equipped');
+
+  const bundleIds = new Set<string>();
+  for (const bundle of snapshot.generatedEquipmentRewardBundles) {
+    if (bundle.schemaVersion !== GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION) {
+      throw new PlayerCarryoverSnapshotError(
+        `Unsupported generated reward bundle version: ${String(bundle.schemaVersion)}`,
+      );
+    }
+    if (bundleIds.has(bundle.achievementId)) {
+      throw new PlayerCarryoverSnapshotError(
+        `Duplicate generated reward bundle: ${bundle.achievementId}`,
+      );
+    }
+    if (typeof bundle.achievementId !== 'string' || bundle.achievementId.length === 0) {
+      throw new PlayerCarryoverSnapshotError('Generated reward bundle requires an achievement id');
+    }
+    bundleIds.add(bundle.achievementId);
+    assertUniqueStrings(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
+    for (const key of bundle.instanceKeys) claim(key, `reward-bundle:${bundle.achievementId}`);
+  }
+
+  const occupiedSlots = new Map<EquipmentSlotId, string>();
+  for (const itemId of snapshot.equippedItemIds) {
+    const def = getEquipmentDefForItem(itemId);
+    if (!def) {
+      throw new PlayerCarryoverSnapshotError(
+        `Unknown equipped item in player carryover: ${itemId}`,
+      );
+    }
+    for (const slotId of def.slots) {
+      const existing = occupiedSlots.get(slotId);
+      if (existing) {
+        throw new PlayerCarryoverSnapshotError(
+          `Duplicate equipped slot ${slotId}: ${existing}, ${itemId}`,
+        );
+      }
+      occupiedSlots.set(slotId, itemId);
+    }
+  }
+  const equippedInstances = snapshot.generatedEquippedInstanceKeys.map((key) => {
+    const instance = instancesByKey.get(key);
+    if (!instance) {
+      throw new PlayerCarryoverSnapshotError(`Dangling generated equipped reference: ${key}`);
+    }
+    for (const slotId of instance.frozen.slots) {
+      const existing = occupiedSlots.get(slotId);
+      if (existing) {
+        throw new PlayerCarryoverSnapshotError(
+          `Duplicate equipped slot ${slotId}: ${existing}, ${key}`,
+        );
+      }
+      occupiedSlots.set(slotId, key);
+    }
+    return instance;
+  });
+  const generatedWeapons = equippedInstances.filter(
+    (instance) => instance.frozen.activeWeaponSnapshot !== null,
+  );
+  if (generatedWeapons.length > 1) {
+    throw new PlayerCarryoverSnapshotError(
+      'Multiple generated active weapon snapshots are equipped',
+    );
+  }
+  validateGrantOwnership(snapshot.abilityState, equippedInstances);
+  return { snapshot, instancesByKey };
 }
 
 function getModifierHolderIndex(modifier: StatModifierSnapshot): number | undefined {
@@ -169,15 +530,12 @@ export function capturePlayerCarryover(
   }
 
   const inventory = world.inventories.get(playerEid);
-  if ((inventory?.generatedEquipment?.length ?? 0) > 0) {
-    throw new Error(
-      'Generated equipment carryover is not supported until the B3 persistence slice lands',
-    );
-  }
 
   const equipment = getEquipmentState(world, playerEid);
   const equippedItemIds: string[] = [];
+  const generatedEquippedInstanceKeys: GeneratedEquipmentInstanceKey[] = [];
   const seenInstances = new Set<number>();
+  const seenGeneratedInstances = new Set<GeneratedEquipmentInstanceKey>();
   if (equipment) {
     for (const slot of SLOT_REGISTRY) {
       const instanceId = equipment.equipped[slot.id];
@@ -185,9 +543,11 @@ export function capturePlayerCarryover(
         continue;
       }
       if (typeof instanceId !== 'number') {
-        throw new Error(
-          'Generated equipment carryover is not supported until the B3 persistence slice lands',
-        );
+        if (!seenGeneratedInstances.has(instanceId)) {
+          seenGeneratedInstances.add(instanceId);
+          generatedEquippedInstanceKeys.push(instanceId);
+        }
+        continue;
       }
       if (seenInstances.has(instanceId)) {
         continue;
@@ -205,8 +565,13 @@ export function capturePlayerCarryover(
     world.abilityStatesByEntity.get(playerEid),
     world.frameCount,
   );
+  const generatedEquipmentRegistry =
+    world.generatedEquipmentRegistry.runKey === null
+      ? undefined
+      : snapshotGeneratedEquipmentRegistry(world);
 
-  return {
+  const snapshot: PlayerCarryoverSnapshot = {
+    schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
     sourcePlayerEid: playerEid,
     playerName: world.playerName,
     playerGender: world.playerGender,
@@ -221,6 +586,17 @@ export function capturePlayerCarryover(
     coreStatPoints,
     inventorySlots: inventory?.slots.map((slot) => ({ ...slot })) ?? [],
     equippedItemIds,
+    generatedInventoryInstanceKeys:
+      inventory?.generatedEquipment?.map((entry) => entry.instanceKey) ?? [],
+    generatedEquippedInstanceKeys,
+    ...(generatedEquipmentRegistry ? { generatedEquipmentRegistry } : {}),
+    generatedEquipmentRewardBundles: [...world.generatedEquipmentRewardBundles.values()].map(
+      (bundle) => ({
+        schemaVersion: bundle.schemaVersion,
+        achievementId: bundle.achievementId,
+        instanceKeys: [...bundle.instanceKeys],
+      }),
+    ),
     disabledEquipmentSlots: equipment ? [...equipment.disabledSlots] : [],
     playerSkills: [...world.playerSkills].map(([id, state]) => [id, snapshotSkillState(state)]),
     ...(abilityState ? { abilityState } : {}),
@@ -242,13 +618,12 @@ export function capturePlayerCarryover(
       claimedIds: [...world.achievements.claimedIds],
     },
   };
+  validateGeneratedCarryover(world, snapshot);
+  return snapshot;
 }
 
-export function restorePlayerCarryover(
-  world: GameWorld,
-  playerEid: number,
-  snapshot: PlayerCarryoverSnapshot,
-): void {
+export function restorePlayerCarryover(world: GameWorld, playerEid: number, input: unknown): void {
+  const { snapshot } = validateGeneratedCarryover(world, input);
   world.playerName = snapshot.playerName;
   world.playerGender = snapshot.playerGender;
   world.playerLevel = { ...snapshot.playerLevel };
@@ -269,6 +644,7 @@ export function restorePlayerCarryover(
   };
 
   clearEquipmentState(world, playerEid);
+  clearActiveWeaponDef(world);
   initializeBaseStats(world, playerEid, snapshot.baseStats);
   for (const statId of PRIMARY_STATS) {
     world.stores.coreStatPoints[statId][playerEid] = snapshot.coreStatPoints[statId];
@@ -287,6 +663,28 @@ export function restorePlayerCarryover(
   ];
   statSystem(world);
 
+  world.inventories.set(playerEid, {
+    slots: snapshot.inventorySlots.map((slot) => ({ ...slot })),
+  });
+  const restoredSkills = new Map(
+    snapshot.playerSkills.map(([id, state]) => [id, restoreSkillState(state)]),
+  );
+  world.playerSkills = restoredSkills;
+  world.skillStatesByEntity.set(playerEid, new Map(restoredSkills));
+  if (snapshot.abilityState) {
+    world.abilityStatesByEntity.set(
+      playerEid,
+      restoreAbilityStateForEquipmentReplay(snapshot.abilityState, world.frameCount),
+    );
+  } else {
+    world.abilityStatesByEntity.delete(playerEid);
+  }
+
+  if (snapshot.generatedEquipmentRegistry) {
+    restoreGeneratedEquipmentRegistry(world, snapshot.generatedEquipmentRegistry);
+  }
+  world.generatedEquipmentRewardBundles = new Map();
+
   for (const itemId of snapshot.equippedItemIds) {
     const itemDef = getEquipmentDefForItem(itemId);
     if (!itemDef) {
@@ -301,6 +699,30 @@ export function restorePlayerCarryover(
       );
     }
   }
+  for (const instanceKey of snapshot.generatedInventoryInstanceKeys) {
+    const result = addGeneratedEquipmentToBag(world, playerEid, instanceKey);
+    if (!result.ok) {
+      throw new PlayerCarryoverSnapshotError(
+        `Failed to restore generated inventory ${instanceKey}: ${result.reason.type}`,
+      );
+    }
+  }
+  for (const instanceKey of snapshot.generatedEquippedInstanceKeys) {
+    const added = addGeneratedEquipmentToBag(world, playerEid, instanceKey);
+    if (!added.ok) {
+      throw new PlayerCarryoverSnapshotError(
+        `Failed to stage generated equipment ${instanceKey}: ${added.reason.type}`,
+      );
+    }
+    const equipped = equipFromBag(world, playerEid, added.entry, { force: true });
+    if (!equipped.ok) {
+      throw new PlayerCarryoverSnapshotError(
+        `Failed to restore generated equipment ${instanceKey}: ${equipped.reasons
+          .map((reason) => reason.type)
+          .join('; ')}`,
+      );
+    }
+  }
   const equipment = getEquipmentState(world, playerEid);
   if (!equipment) {
     throw new Error('Equipment state missing after player carryover restore');
@@ -309,22 +731,16 @@ export function restorePlayerCarryover(
     equipment.disabledSlots.add(slotId);
   }
 
-  world.inventories.set(playerEid, {
-    slots: snapshot.inventorySlots.map((slot) => ({ ...slot })),
-  });
-  const restoredSkills = new Map(
-    snapshot.playerSkills.map(([id, state]) => [id, restoreSkillState(state)]),
+  world.generatedEquipmentRewardBundles = new Map(
+    snapshot.generatedEquipmentRewardBundles.map((bundle) => [
+      bundle.achievementId,
+      Object.freeze({
+        schemaVersion: bundle.schemaVersion,
+        achievementId: bundle.achievementId,
+        instanceKeys: Object.freeze([...bundle.instanceKeys]),
+      }),
+    ]),
   );
-  world.playerSkills = restoredSkills;
-  world.skillStatesByEntity.set(playerEid, new Map(restoredSkills));
-  if (snapshot.abilityState) {
-    world.abilityStatesByEntity.set(
-      playerEid,
-      restoreAbilityState(snapshot.abilityState, world.frameCount),
-    );
-  } else {
-    world.abilityStatesByEntity.delete(playerEid);
-  }
 
   statSystem(world);
   world.stores.health.current[playerEid] = snapshot.health.current;

@@ -13,9 +13,12 @@ export const GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION =
 export const GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION =
   'floor2-equipment-generation-policy/v1' as const;
 export const GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION = 'floor2-equipment-registry/v1' as const;
+export const GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION =
+  'floor2-equipment-reward-bundle/v1' as const;
 
 export type GeneratedEquipmentInstanceId = `gei:v1:${string}:${number}`;
 export type GeneratedEquipmentInstanceKey = GeneratedEquipmentInstanceId;
+export type EquipmentGrantSourceId = `equipment:${GeneratedEquipmentInstanceId}:${number}`;
 export type EquipmentFingerprintV1 = `sha256:${string}`;
 export type GeneratedEquipmentRarity = 'common' | 'uncommon' | 'rare';
 export type GeneratedEquipmentEnhancementLevel = 0 | 1 | 2 | 3 | 4 | 5;
@@ -149,4 +152,17 @@ export interface GeneratedEquipmentRegistrySnapshotV1 {
   readonly generationPolicyFingerprint: EquipmentFingerprintV1;
   readonly nextOrdinal: number;
   readonly instances: readonly GeneratedEquipmentInstanceV1[];
+}
+
+export interface GeneratedEquipmentRewardBundleV1 {
+  readonly schemaVersion: typeof GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION;
+  readonly achievementId: string;
+  readonly instanceKeys: readonly GeneratedEquipmentInstanceKey[];
+}
+
+export function generatedEquipmentRunKeyFromSeed(seed: number): string {
+  if (!Number.isFinite(seed)) {
+    throw new Error(`Generated equipment run seed must be finite: ${seed}`);
+  }
+  return `run-seed-${String(seed).replace('+', 'p')}`;
 }

@@ -1,4 +1,5 @@
 import type { UsageMetric } from './skills.js';
+import type { EquipmentGrantSourceId } from './generated-equipment-types.js';
 
 export const ACTIVE_ABILITY_SLOT_LIMIT = 10;
 export const FLOOR1_BOSS_REWARD_SPELL_OFFER_COUNT = 3;
@@ -74,4 +75,22 @@ export interface AbilityState {
   cooldownByAbilityId: Map<string, number>;
   cooldownFramesByAbilityId: Map<string, number>;
   appliedPassiveAbilityIds: Set<string>;
+  activeEquipmentGrantOwnershipById?: Map<string, EquipmentGrantOwnership>;
+  passiveEquipmentGrantOwnershipById?: Map<string, EquipmentGrantOwnership>;
+}
+
+export interface EquipmentGrantOwnership {
+  retainedWithoutEquipment: boolean;
+  sourceIds: Set<EquipmentGrantSourceId>;
+}
+
+export function createEmptyAbilityState(): AbilityState {
+  return {
+    learnedSpellIds: [],
+    equippedActiveAbilityIds: [],
+    passiveAbilityIds: [],
+    cooldownByAbilityId: new Map(),
+    cooldownFramesByAbilityId: new Map(),
+    appliedPassiveAbilityIds: new Set(),
+  };
 }
