@@ -73,6 +73,7 @@ const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
+const ADDRESSED_MARKER_REPLY = '`✅ Addressed in <sha>: <one-line note>`';
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -1593,9 +1594,9 @@ const taskBody = [
   '',
   '**Review-thread protocol:** For every listed review thread, invoke a separate review agent using a model different from your primary model to validate whether the comment is still applicable to the current head. Fix valid findings. Resolve only deterministic non-applicability (outdated/removed line or file, duplicate already addressed) or a validated `✅ Addressed` result. For substantive disagreement, reply with the validator evidence and leave the thread unresolved for escalation.',
   '',
-  'A top-level PR comment is never sufficient for a review-thread blocker; post the `✅ Addressed in <sha>: <one-line note>` reply in the exact thread comment listed above.',
+  `A top-level PR comment is never sufficient for a review-thread blocker; post the ${ADDRESSED_MARKER_REPLY} reply in the exact thread comment listed above.`,
   '',
-  'When a thread is addressed, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>` and resolve it. Run the repository-required verification and push one consolidated repair commit.',
+  `When a thread is addressed, reply in that exact thread with ${ADDRESSED_MARKER_REPLY} and resolve it. Run the repository-required verification and push one consolidated repair commit.`,
 ].join('\n');
 
 if (live) {

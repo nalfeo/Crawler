@@ -3834,8 +3834,8 @@ test('live reconcile task comment includes explicit review-thread reply comment 
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'A top-level PR comment is never sufficient for a review-thread blocker;',
-    ),
+      'A top-level PR comment is never sufficient for a review-thread blocker',
+    ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
     'task comment should explicitly reject top-level PR comments for review-thread blockers',
   );
 });
