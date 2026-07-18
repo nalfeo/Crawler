@@ -19,6 +19,8 @@ import {
   renderStateComment,
   shouldResolveThread,
   STATE_MARKER,
+  TRUSTED_ASSOCIATIONS,
+  TRUSTED_BOT_LOGINS,
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
@@ -986,6 +988,33 @@ for (const thread of unresolvedThreads.filter((candidate) =>
   process.stdout.write(`${live ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
 }
 
+// Detect threads whose last trusted comment carries a ✅ Addressed marker that
+// points to a SHA not reachable from the current head (e.g. a local commit
+// created by a recovery agent before it was pushed, later abandoned or squashed
+// into a different commit). The reconciler cannot auto-resolve these threads
+// because the compare API returns 404 for the stale SHA — correctly treating it
+// as non-reachable. Including the stale SHA in the blocker summary lets the
+// next recovery agent identify these threads quickly and reply with the correct
+// current-head SHA rather than re-investigating the underlying concern from
+// scratch.
+const staleAddressedMarkerByThread = new Map();
+for (const thread of unresolvedThreads) {
+  // Skip threads the reconciler will auto-resolve in the loop above.
+  if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) continue;
+  const last = comments[comments.length - 1];
+  const markerSha = extractAddressedMarkerSha(last?.body);
+  if (!markerSha) continue;
+  // Reachable markers are handled by shouldResolveThread; only stale ones land here.
+  if (headSha.startsWith(markerSha) || reachableMarkerShas.has(markerSha)) continue;
+  const authorLogin = String(last?.author?.login ?? '').toLowerCase();
+  const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
+  if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
+    staleAddressedMarkerByThread.set(thread.id, markerSha);
+  }
+}
+
 const blockers = [];
 const hasMergeConflict = pr.mergeable === false || pr.mergeable_state === 'dirty';
 const labels = new Set((pr.labels || []).map((label) => label.name));
@@ -1257,13 +1286,22 @@ for (const run of actionRequiredRuns) {
 
 for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
   const root = thread.comments?.nodes?.[0];
+  const staleSha = staleAddressedMarkerByThread.get(thread.id);
+  const reviewerSummary = `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 450)}`;
+  // When the thread already has a trusted ✅ Addressed marker but the referenced
+  // commit is not reachable from the current head, prepend a targeted hint so
+  // the recovery agent knows it only needs to re-post the marker with the
+  // correct current-head SHA — not re-investigate the underlying concern.
+  const summary = staleSha
+    ? `[Stale marker: ✅ Addressed in ${staleSha} exists but that commit is not reachable from current head — verify fix is present in the current head and reply to this thread with ✅ Addressed in <head-sha>: <note> to close the marker.] ${reviewerSummary}`
+    : reviewerSummary;
   blockers.push({
     kind: 'review-thread',
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
     path: thread.path || undefined,
     line: thread.line || undefined,
-    summary: `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 500)}`,
+    summary,
     url: root?.url,
   });
 }
