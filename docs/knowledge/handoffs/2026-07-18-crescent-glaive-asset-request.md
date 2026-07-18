@@ -14,7 +14,7 @@ sprite-pipeline, sprite-workflow
 
 ## Apples
 
-Estimated 🍎, actual 🍎 (art-surface-only check-in).
+Estimated 🍎, actual 🍎. Exact: art-surface-only check-in.
 
 ## What changed
 
@@ -32,7 +32,7 @@ Estimated 🍎, actual 🍎 (art-surface-only check-in).
 - `npx vitest run tests/unit/generated-asset-preload.test.ts`
 - `npx vitest run tests/unit/item-sprites.test.ts`
 - `npm run verify:fast`
-- `npm run verify:pr-prereqs` _(fails only on missing handoff before this file existed; review-ledger guard reports art-only exemption)_
+- `npm run verify:pr-prereqs` — passes; review-ledger guard reports the docs/art-only exemption for this change
 
 ## Unresolved issues
 
