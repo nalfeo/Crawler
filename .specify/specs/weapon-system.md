@@ -124,6 +124,64 @@ Both share the same `elapsedMs - lastFire >= effectiveCooldownMs` gate and
 accuracy model.
 `emitWeaponSkillEvents` records a `weapon_fired` metric for telemetry.
 
+### Generated equipment weapon seam
+
+> **Status:** Normative Floor 2 contract; implementation is deferred to the
+> generated-instance slices. See ADR 0065 and `equipment-system.md`.
+
+`WEAPON_DEFS` remains an immutable static template registry. Generated equipment
+must not mutate a `WeaponDef`, store a mutable clone as authority, or re-read a
+later `WeaponDef` revision to execute an already-generated item.
+
+A weapon-bearing generated instance captures this value at the final freeze step:
+
+```typescript
+interface ActiveWeaponSnapshotV1 {
+  readonly schemaVersion: 'active-weapon-snapshot/v1';
+  readonly sourceWeaponDefId: string;
+  readonly name: string;
+  readonly weaponType: WeaponTypeValue;
+  readonly baseDamage: number;
+  readonly cooldownMs: number;
+  readonly range: number;
+  readonly projectileSpeed: number;
+  readonly aoeRadius: number;
+  readonly durationMs: number;
+  readonly beamTickMs: number;
+  readonly beamLength: number;
+  readonly trapArmMs: number;
+  readonly trapTriggerRadius: number;
+  readonly trapExplosionRadius: number;
+  readonly returnSpeed: number;
+  readonly maxRange: number;
+  readonly swingArcDeg: number;
+  readonly meleeStyle: MeleeStyleValue;
+  readonly headRadius: number;
+  readonly shaftDamageMult: number;
+  readonly knockback: number;
+  readonly pierce: number;
+  readonly bounceCount: number;
+  readonly goreFactor: number;
+  readonly baseAccuracy: number;
+  readonly weaponClassSkillId: WeaponClassSkillId;
+  readonly weaponTypeSkillId: WeaponTypeSkillId;
+}
+```
+
+- Capture occurs once after base template, item level, inherent scaling, rarity,
+  enhancement, and effects resolve. Every field used by runtime firing is copied,
+  including fields whose value is zero for that weapon type.
+- `sourceWeaponDefId` is provenance only. Runtime attack dispatch, AI ERV scoring,
+  details UI, save/load, and carryover use the frozen snapshot selected by
+  generated equipment instance ID.
+- The parent equipment fingerprint includes the complete snapshot and snapshot
+  schema version. A legal enhancement creates a new immutable content revision
+  and fingerprint under the same equipment instance ID.
+- Unknown snapshot versions fail closed. A loader may not substitute the current
+  static `WeaponDef`, because doing so could change earned behavior.
+- The existing `ACTIVE_ABILITY_SLOT_LIMIT` remains authoritative at 10. A weapon
+  snapshot and equipment-granted abilities do not add active slots.
+
 ## Test Plan
 
 | Concern                                         | Suite                                                                                                     |

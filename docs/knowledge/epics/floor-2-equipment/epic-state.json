@@ -1,0 +1,1799 @@
+{
+  "$schema": "./epic-state.schema.json",
+  "schema_version": "crawler-epic-state/v1",
+  "epic_id": "floor-2-equipment",
+  "title": "Floor 2 equipment",
+  "updated_at": "2026-07-17T17:32:38.205Z",
+  "plan": {
+    "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
+    "contract_version": "floor-2-equipment/v1",
+    "contract_sha256": "ac20446720e2f3f0d14345a49679630b2cf97f194c8bfea98694a6b514d3a8c8"
+  },
+  "authority": {
+    "state_role": "index-cache",
+    "sole_global_writer": "Producer",
+    "ordered_sources": [
+      "merged-git-and-pr-facts",
+      "deterministic-commit-addressed-evidence",
+      "trusted-issue-ownership-and-comments",
+      "epic-state-index-cache"
+    ]
+  },
+  "lifecycle": {
+    "normal": ["blocked", "ready", "claimed", "in_progress", "pr_open", "merged", "validated"],
+    "terminal": ["cancelled", "superseded"]
+  },
+  "claim_policy": {
+    "authority": "trusted-issue-comments",
+    "bootstrap_node": "slice:A0",
+    "default_lease_hours": 24,
+    "maximum_without_heartbeat_hours": 48,
+    "protocol_headings": ["CLAIMED", "BLOCKED", "UNBLOCKED", "SCOPE-CHANGE-REQUEST", "HANDOFF"]
+  },
+  "github": {
+    "repository": "nalfeo/Crawler",
+    "parent_issue": {
+      "number": 1264,
+      "url": "https://github.com/nalfeo/Crawler/issues/1264"
+    }
+  },
+  "issue_materialization": {
+    "mode": "deterministic-plan-only",
+    "parent_title": "Epic: Floor 2 equipment",
+    "child_title_prefix": "[Floor 2 equipment]",
+    "labels": ["epic-child", "floor-2", "equipment"],
+    "late_bound_fields": ["parent_issue_number", "child_issue_number"]
+  },
+  "release": {
+    "required_node_status": "validated",
+    "all_required_nodes": true,
+    "flags": [
+      {
+        "name": "floor2EquipmentRegistry",
+        "default": false,
+        "validating_nodes": ["slice:B3", "slice:I1"]
+      },
+      {
+        "name": "floor2EquipmentCatalog",
+        "default": false,
+        "validating_nodes": ["slice:C2", "slice:I2"]
+      },
+      {
+        "name": "floor2EquipmentRewards",
+        "default": false,
+        "validating_nodes": ["slice:D3", "slice:I1"]
+      },
+      {
+        "name": "floor2EquipmentEconomy",
+        "default": false,
+        "validating_nodes": ["slice:E3", "slice:I1"]
+      },
+      {
+        "name": "floor2EquipmentUx",
+        "default": false,
+        "validating_nodes": ["slice:F4", "slice:I3"]
+      },
+      {
+        "name": "floor2EquipmentWorld",
+        "default": false,
+        "validating_nodes": ["slice:G3", "slice:I1"]
+      },
+      {
+        "name": "floor2EquipmentAiMaintenance",
+        "default": false,
+        "validating_nodes": ["slice:H3", "slice:I2"]
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "node_id": "slice:A0",
+      "display_id": "A0",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Durable epic control plane",
+      "summary": "Canonical plan, state/schema, deterministic status tooling, audit workflow, recovery, and issue bootstrap.",
+      "execution_lane": "control",
+      "persona": "Producer / DevOps Engineer",
+      "dependencies": [],
+      "status": "pr_open",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T18:25:00.000Z",
+      "github": {
+        "issue": {
+          "number": 1264,
+          "url": "https://github.com/nalfeo/Crawler/issues/1264"
+        },
+        "pr": {
+          "number": 1271,
+          "url": "https://github.com/nalfeo/Crawler/pull/1271",
+          "head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6"
+        }
+      },
+      "ownership": {
+        "claimant": "Producer",
+        "session": "7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd",
+        "source": "parent-issue-bootstrap",
+        "scope": "Slice A0 control plane only; no gameplay",
+        "claimed_at": "2026-07-17T17:32:38.205Z",
+        "lease_expires_at": "2026-07-18T17:32:38.205Z",
+        "heartbeat_at": "2026-07-17T17:32:38.205Z",
+        "base_commit": "41c5f2aa"
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["offline-validator-and-focused-tests"],
+      "evidence": [
+        {
+          "kind": "handoff",
+          "path_or_check": "docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md",
+          "sha256": "9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb",
+          "commit": "461b8a334a018ebbf6e81aa7b31f81c74e08aa6b",
+          "recorded_at": "2026-07-17T18:25:00.000Z"
+        },
+        {
+          "kind": "review-ledger",
+          "path_or_check": "docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json",
+          "sha256": "fa7d39e5a5e9dcc867ffdbc25ccf6b33c0f0ca86edc229cd8403b97df1316afa",
+          "commit": "065591b1717588fd7acdb8e28936946e4a7e63e6",
+          "recorded_at": "2026-07-17T18:25:00.000Z"
+        },
+        {
+          "kind": "offline-validator-and-focused-tests",
+          "path_or_check": "tests/unit/agent/epic-status.test.ts",
+          "sha256": "fb5415de4d9d32769f767454bc9e36c7415a88432591e3403bbdeff5cf2ad1fc",
+          "commit": "8fbea1c701e5d536891489c7b8bf0f1715df0ca1",
+          "recorded_at": "2026-07-17T18:25:00.000Z"
+        }
+      ],
+      "reconciliation": {
+        "last_audited_at": "2026-07-17T18:25:00.000Z",
+        "observed_issue_state": "open",
+        "observed_pr_state": "OPEN",
+        "observed_head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6",
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:A1",
+      "display_id": "A1",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Implementation contract lock",
+      "summary": "Lock registry APIs, release flags, migration boundaries, and implementation acceptance contracts.",
+      "execution_lane": "control",
+      "persona": "Producer / Systems Engineer",
+      "dependencies": ["slice:A0"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["reviewed-contract-specification"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:B1",
+      "display_id": "B1",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Generated-instance model",
+      "summary": "Add the versioned generated-equipment instance types, IDs, and constructors.",
+      "execution_lane": "registry",
+      "persona": "Systems Engineer",
+      "dependencies": ["slice:A1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["instance-schema-and-constructor-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:B2",
+      "display_id": "B2",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Inventory and equip registry APIs",
+      "summary": "Route inventory and equip mutations through the one generated-instance registry.",
+      "execution_lane": "registry",
+      "persona": "Systems Engineer",
+      "dependencies": ["slice:B1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["inventory-equip-registry-integration-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:B3",
+      "display_id": "B3",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Persistence and carryover registry",
+      "summary": "Persist versioned generated instances through save/load and Floor 2 carryover.",
+      "execution_lane": "registry",
+      "persona": "Systems Engineer",
+      "dependencies": ["slice:B2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["save-load-carryover-compatibility-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:C1",
+      "display_id": "C1",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Stable 70-base catalog",
+      "summary": "Implement the 50-weapon and 20-other base catalog with immutable sprite IDs.",
+      "execution_lane": "catalog-balance",
+      "persona": "Game Designer / Graphics Designer",
+      "dependencies": ["slice:A1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["catalog-count-and-sprite-coverage-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:C2",
+      "display_id": "C2",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Affix generation and DPS benchmark",
+      "summary": "Implement Common-Uncommon-Rare generation and the representative-build DPS harness.",
+      "execution_lane": "catalog-balance",
+      "persona": "Game Designer / QA Engineer",
+      "dependencies": ["slice:C1", "slice:B3"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["rarity-invariants-and-representative-dps-harness"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:D1",
+      "display_id": "D1",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Achievement reward contract",
+      "summary": "Define immutable unlock-time equipment reward resolution and achievement data contracts.",
+      "execution_lane": "progression",
+      "persona": "Content Designer / Game Designer",
+      "dependencies": ["slice:A1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["immutable-reward-resolution-contract-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:D2-A",
+      "display_id": "D2-A",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:D2",
+      "title": "Floor 2 achievements 1-15",
+      "summary": "Author and validate the first 15 Floor 2 achievement equipment rewards.",
+      "execution_lane": "progression",
+      "persona": "Content Designer",
+      "dependencies": ["slice:D1", "slice:B1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["achievement-definitions-1-through-15-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:D2-B",
+      "display_id": "D2-B",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:D2",
+      "title": "Floor 2 achievements 16-30",
+      "summary": "Author and validate the second 15 Floor 2 achievement equipment rewards.",
+      "execution_lane": "progression",
+      "persona": "Content Designer",
+      "dependencies": ["slice:D1", "slice:C1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["achievement-definitions-16-through-30-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:D2",
+      "display_id": "D2",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Floor 2 achievement integration",
+      "summary": "Integrate all 30 Floor 2 achievements and immutable equipment rewards.",
+      "execution_lane": "progression",
+      "persona": "Content Designer / Systems Engineer",
+      "dependencies": ["packet:D2-A", "packet:D2-B"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["exactly-30-floor2-achievements-integration-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:D3-A",
+      "display_id": "D3-A",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:D3",
+      "title": "Run-global achievements 1-3",
+      "summary": "Author and validate the first three run-global equipment achievements.",
+      "execution_lane": "progression",
+      "persona": "Content Designer",
+      "dependencies": ["slice:D2", "slice:B2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["run-global-achievements-1-through-3-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:D3-B",
+      "display_id": "D3-B",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:D3",
+      "title": "Run-global achievements 4-6",
+      "summary": "Author and validate the final three run-global equipment achievements.",
+      "execution_lane": "progression",
+      "persona": "Content Designer",
+      "dependencies": ["slice:D2", "slice:C1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["run-global-achievements-4-through-6-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:D3",
+      "display_id": "D3",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Run-global achievement integration",
+      "summary": "Integrate all six run-global achievements and immutable equipment rewards.",
+      "execution_lane": "progression",
+      "persona": "Content Designer / Systems Engineer",
+      "dependencies": ["packet:D3-A", "packet:D3-B"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["exactly-six-run-global-achievements-integration-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:E1",
+      "display_id": "E1",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Equipment economy contract",
+      "summary": "Define stock, pricing, rarity, chest, and settlement economy rules.",
+      "execution_lane": "economy",
+      "persona": "Game Designer",
+      "dependencies": ["slice:A1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["reviewed-equipment-economy-contract"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:E2",
+      "display_id": "E2",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Settlement shop selection",
+      "summary": "Guarantee one Quartermaster and select one or two non-Quartermaster shops.",
+      "execution_lane": "economy",
+      "persona": "Game Designer / Content Designer",
+      "dependencies": ["slice:E1", "slice:C1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["deterministic-shop-count-and-quartermaster-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:E3-A",
+      "display_id": "E3-A",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:E3",
+      "title": "Quartermaster equipment stock",
+      "summary": "Integrate Common and Uncommon equipment stock into the guaranteed Quartermaster.",
+      "execution_lane": "economy",
+      "persona": "Game Designer",
+      "dependencies": ["slice:E2", "slice:B2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["quartermaster-stock-rarity-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:E3-B",
+      "display_id": "E3-B",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:E3",
+      "title": "Random-shop equipment stock",
+      "summary": "Integrate Common and Uncommon equipment stock into eligible random shops.",
+      "execution_lane": "economy",
+      "persona": "Game Designer",
+      "dependencies": ["slice:E2", "slice:D2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["random-shop-stock-rarity-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:E3-C",
+      "display_id": "E3-C",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:E3",
+      "title": "Boss chest rarity integration",
+      "summary": "Integrate the Floor 2 boss chest with exact 85% Uncommon and 15% Rare weights.",
+      "execution_lane": "economy",
+      "persona": "Game Designer / QA Engineer",
+      "dependencies": ["slice:E2", "slice:C1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["boss-chest-85-15-table-and-selection-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:E3",
+      "display_id": "E3",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Equipment economy integration",
+      "summary": "Integrate all merchant and chest equipment reward paths through the registry.",
+      "execution_lane": "economy",
+      "persona": "Game Designer / Systems Engineer",
+      "dependencies": ["packet:E3-A", "packet:E3-B", "packet:E3-C"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["merchant-and-chest-registry-integration-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:F1",
+      "display_id": "F1",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Shared item presentation",
+      "summary": "Add deterministic item details and accessible non-color rarity presentation.",
+      "execution_lane": "accessible-ux",
+      "persona": "UX Designer",
+      "dependencies": ["slice:B1", "slice:C1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["item-details-and-rarity-accessibility-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:F2",
+      "display_id": "F2",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Inventory and equip UX",
+      "summary": "Add keyboard, pointer, and touch-equivalent inventory/equip interactions.",
+      "execution_lane": "accessible-ux",
+      "persona": "UX Designer",
+      "dependencies": ["slice:F1", "slice:B2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["inventory-equip-input-and-focus-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:F3",
+      "display_id": "F3",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Merchant equipment UX",
+      "summary": "Expose merchant equipment stock through the shared accessible item contract.",
+      "execution_lane": "accessible-ux",
+      "persona": "UX Designer",
+      "dependencies": ["slice:F2", "slice:E2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["merchant-equipment-accessibility-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:F4",
+      "display_id": "F4",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Shared accessible chest UX",
+      "summary": "Ship one accessible chest interaction and details flow for all equipment chests.",
+      "execution_lane": "accessible-ux",
+      "persona": "UX Designer / QA Engineer",
+      "dependencies": ["slice:F3", "slice:C2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["shared-chest-keyboard-pointer-touch-focus-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:G1",
+      "display_id": "G1",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Floor equipment boundaries",
+      "summary": "Establish Floor 2 equipment generation boundaries while keeping Floor 1 equipment-free.",
+      "execution_lane": "world-integration",
+      "persona": "Content Designer / Systems Engineer",
+      "dependencies": ["slice:A1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["floor1-off-floor2-boundary-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:G2-A",
+      "display_id": "G2-A",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:G2",
+      "title": "Shared chest placements",
+      "summary": "Author deterministic Floor 2 shared-chest placements and interaction anchors.",
+      "execution_lane": "world-integration",
+      "persona": "Content Designer",
+      "dependencies": ["slice:G1", "slice:C1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["deterministic-chest-placement-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:G2-B+",
+      "display_id": "G2-B+",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:G2",
+      "title": "Drops and registry world integration",
+      "summary": "Integrate equipment drops, pickup, overflow, and registry edge cases.",
+      "execution_lane": "world-integration",
+      "persona": "Systems Engineer",
+      "dependencies": ["slice:G1", "slice:B2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["drop-pickup-overflow-registry-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:G2",
+      "display_id": "G2",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "World equipment integration",
+      "summary": "Integrate authored chests, generated drops, pickup, and registry ownership.",
+      "execution_lane": "world-integration",
+      "persona": "Content Designer / Systems Engineer",
+      "dependencies": ["packet:G2-A", "packet:G2-B+"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["world-equipment-end-to-end-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "packet:G3",
+      "display_id": "G3",
+      "kind": "cloud_packet",
+      "parent_slice": "slice:G3",
+      "title": "Carryover and transition packet",
+      "summary": "Implement equipment carryover data handoff and Floor 1-to-2 transition boundaries.",
+      "execution_lane": "world-integration",
+      "persona": "Systems Engineer",
+      "dependencies": ["slice:G2", "slice:D3"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["floor-transition-carryover-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:G3",
+      "display_id": "G3",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Carryover integration",
+      "summary": "Integrate equipment carryover through the real floor-transition and persistence paths.",
+      "execution_lane": "world-integration",
+      "persona": "Systems Engineer",
+      "dependencies": ["packet:G3"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["real-transition-and-persistence-integration-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:H1",
+      "display_id": "H1",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "AI equipment evaluation",
+      "summary": "Define deterministic equipment evaluation using the shared item and registry APIs.",
+      "execution_lane": "ai-settlement",
+      "persona": "AI Content Engineer / Systems Engineer",
+      "dependencies": ["slice:C1", "slice:F1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["deterministic-ai-equipment-evaluation-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:H2",
+      "display_id": "H2",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "AI settlement maintenance",
+      "summary": "Perform extensive settlement equipment maintenance through real inventory, equip, chest, and merchant APIs.",
+      "execution_lane": "ai-settlement",
+      "persona": "AI Content Engineer / Systems Engineer",
+      "dependencies": ["slice:H1", "slice:G2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["real-api-ai-settlement-maintenance-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:H3",
+      "display_id": "H3",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "AI routed settlement execution",
+      "summary": "Execute and recover settlement maintenance using only the existing route planner.",
+      "execution_lane": "ai-settlement",
+      "persona": "AI Content Engineer / Systems Engineer",
+      "dependencies": ["slice:H2", "slice:G3"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["existing-route-planner-ai-maintenance-tests"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:I1",
+      "display_id": "I1",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "End-to-end deterministic integration",
+      "summary": "Exercise registry, catalog, rewards, economy, UX, world, carryover, and AI together.",
+      "execution_lane": "verification",
+      "persona": "QA Engineer",
+      "dependencies": [
+        "slice:B3",
+        "slice:C2",
+        "slice:D3",
+        "slice:E3",
+        "slice:F4",
+        "slice:G3",
+        "slice:H3"
+      ],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["deterministic-equipment-end-to-end-suite"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:I2",
+      "display_id": "I2",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "DPS and regression gates",
+      "summary": "Prove both representative-build median aggregate DPS intervals and existing regressions.",
+      "execution_lane": "verification",
+      "persona": "QA Engineer / Playtester",
+      "dependencies": ["slice:I1"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["median-aggregate-dps-ratios-1.7-to-2.3-for-both-intervals"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:I3",
+      "display_id": "I3",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Release evidence",
+      "summary": "Collect accessibility, compatibility, deterministic, and rollout evidence for release.",
+      "execution_lane": "verification",
+      "persona": "QA Engineer / Reviewer",
+      "dependencies": ["slice:I2"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["complete-commit-addressed-release-evidence"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    },
+    {
+      "node_id": "slice:J",
+      "display_id": "J",
+      "kind": "slice",
+      "parent_slice": null,
+      "title": "Flag rollout and epic closure",
+      "summary": "Enable reviewed flags, verify production rollout, validate all required nodes, and close the epic.",
+      "execution_lane": "control",
+      "persona": "Producer / DevOps Engineer",
+      "dependencies": ["slice:I3"],
+      "status": "blocked",
+      "release_requirement": "required",
+      "deferred_reason": null,
+      "status_changed_at": "2026-07-17T17:32:38.205Z",
+      "github": {
+        "issue": null,
+        "pr": null
+      },
+      "ownership": {
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
+      },
+      "merge": {
+        "commit": null,
+        "merged_at": null
+      },
+      "evidence_requirements": ["all-required-nodes-validated-and-flags-observed"],
+      "evidence": [],
+      "reconciliation": {
+        "last_audited_at": null,
+        "observed_issue_state": null,
+        "observed_pr_state": null,
+        "observed_head_sha": null,
+        "observed_merge_commit": null,
+        "drift": []
+      },
+      "superseded_by": null,
+      "stacked_work": null
+    }
+  ],
+  "reconciliation": {
+    "mode": "read-only-proposal",
+    "last_offline_validation_at": null,
+    "last_github_audit_at": null,
+    "last_reconciled_by": null,
+    "drift": ["child issues have not been materialized"]
+  }
+}
