@@ -217,3 +217,11 @@ assets:
     integration:
       kind: sprite-registry
       id: ember-wand
+  - id: sun-hammer
+    type: weapon
+    label: 'Sun Hammer'
+    brief: 'Sun Hammer — a single centered bludgeon weapon icon on a transparent background. Oversized rectangular hammer head plated in scorched gold with a sunburst relief on the striking face; thick shaft with wrapped grip and copper bands; silhouette reads unmistakably as a massive hammer at a glance. Floor 2 equipment. Hammer head plated in scorched gold. Hits like a solar flare.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: sun-hammer
