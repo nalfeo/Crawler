@@ -110,7 +110,12 @@ export function normalizeBlockers(blockers) {
       ...(blocker.url ? { url: compact(blocker.url) } : {}),
       ...(blocker.threadId ? { threadId: compact(blocker.threadId) } : {}),
       ...(blocker.path ? { path: compact(blocker.path) } : {}),
-      ...(Number.isFinite(blocker.line) ? { line: blocker.line } : {}),
+      // NOTE: `line` is intentionally excluded — diff-position line numbers drift
+      // whenever surrounding code is modified (e.g. INDEX.md is regenerated).
+      // Including `line` in the fingerprint caused spurious attempt-counter resets:
+      // a cosmetic line-shift would produce a new fingerprint, automationStallAction
+      // would return 'progressed', reset attempt to 0, and grant a fresh retry budget
+      // for the same underlying blocker — creating an infinite recovery loop.
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }

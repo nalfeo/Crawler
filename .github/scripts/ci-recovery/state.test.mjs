@@ -111,6 +111,29 @@ test('normalizes blocker order before fingerprinting', () => {
   assert.equal(blockerFingerprint(left), blockerFingerprint(right));
 });
 
+test('line-number drift does not change the blocker fingerprint', () => {
+  // Regression: diff-position line numbers drift whenever surrounding code is
+  // modified (e.g. INDEX.md regenerated).  Including `line` in normalizeBlockers
+  // previously caused a new fingerprint on every line-shift, which
+  // automationStallAction interpreted as 'progressed' and reset the attempt
+  // counter — granting a fresh retry budget for the same underlying blocker and
+  // creating an infinite recovery loop (CI recovery loop incident pattern).
+  const base = {
+    kind: 'review-thread',
+    id: 'review-thread:PRRT_test:abcdef1234',
+    summary: 'reviewer: handoff landing in _unclassified_',
+    path: 'docs/knowledge/handoffs/INDEX.md',
+    line: 488,
+  };
+  const shifted = { ...base, line: 497 };
+  const noLine = { ...base, line: undefined };
+
+  assert.equal(blockerFingerprint([base]), blockerFingerprint([shifted]));
+  assert.equal(blockerFingerprint([base]), blockerFingerprint([noLine]));
+  // line must not appear in the normalized form used for fingerprinting
+  assert.equal(Object.prototype.hasOwnProperty.call(normalizeBlockers([base])[0], 'line'), false);
+});
+
 test('review-thread blocker identity changes when comments change', () => {
   const baseThread = {
     id: 'thread-1',
