@@ -1154,27 +1154,19 @@ function validateStackedWork(
     }
   }
 
-  // Premature rebase-to-main completion: complete only when all dependencies are in
-  // merged or validated status (or superseded→validated). Matching the recovery doc:
-  // rebase-to-main is performed the moment the dependency PR lands, so 'merged' is
-  // a valid gate — full 'validated' status is not required.
+  // Premature rebase-to-main completion: complete only when every dependency
+  // satisfies the same validated/superseded→validated contract used by readiness.
   if (sw.rebase_to_main.state === 'complete') {
-    const allDepsLanded = node.dependencies.every((depId) => {
+    const allDepsValidated = node.dependencies.every((depId) => {
       const dep = nodesById.get(depId);
       if (!dep) return false;
-      if (POST_MERGE_STATUSES.has(dep.status)) return true;
-      // Superseded node: check its replacement
-      if (dep.status === 'superseded' && dep.superseded_by) {
-        const replacement = nodesById.get(dep.superseded_by);
-        return replacement ? POST_MERGE_STATUSES.has(replacement.status) : false;
-      }
-      return false;
+      return isDependencySatisfied(dep, nodesById);
     });
-    if (!allDepsLanded) {
+    if (!allDepsValidated) {
       result.errors.push({
         code: 'stacked.premature-rebase-complete',
         node_id: node.node_id,
-        message: `${node.node_id} stacked_work marks rebase_to_main as complete but not all dependencies are merged or validated`,
+        message: `${node.node_id} stacked_work marks rebase_to_main as complete but not all dependencies are validated`,
       });
     }
     // completed_at must be populated when state is complete

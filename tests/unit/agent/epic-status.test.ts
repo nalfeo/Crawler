@@ -922,7 +922,7 @@ describe('Floor 2 equipment epic status', () => {
       expect(a1Errors).not.toContain('stacked.premature-rebase-complete');
     });
 
-    it('allows rebase_to_main complete when dependency is merged (not yet validated)', () => {
+    it('rejects rebase_to_main complete when dependency is merged but not yet validated', () => {
       const state = cloneState();
       // Put A0 into merged status (PR landed but not yet validated)
       const a0 = state.nodes.find((n) => n.node_id === 'slice:A0')!;
@@ -976,8 +976,7 @@ describe('Floor 2 equipment epic status', () => {
         .errors.filter((e) => e.node_id === 'slice:A1')
         .map((e) => e.code);
 
-      // merged status should satisfy the rebase gate; no premature error
-      expect(a1Errors).not.toContain('stacked.premature-rebase-complete');
+      expect(a1Errors).toContain('stacked.premature-rebase-complete');
     });
 
     it('rejects rebase_to_main complete with null completed_at', () => {
