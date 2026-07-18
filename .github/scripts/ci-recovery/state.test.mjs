@@ -699,6 +699,40 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
   }
 });
 
+test('extractAddressedMarkerSha parses slash-separated SHA pair by taking the first SHA', () => {
+  // Agents sometimes write two SHAs when a fix spans multiple commits, e.g.
+  // "✅ Addressed in 9adef25/28f3d0f: ...". The first SHA should be extracted.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in 9adef25/28f3d0f: note'), '9adef25');
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/def5678abc: note'), 'abc1234def');
+  // Non-SHA first component should still be rejected.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in not-a-sha/abc1234def: note'), null);
+});
+
+test('shouldResolveThread accepts slash-separated SHA pair when first SHA is a reachable ancestor', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Needs fixing.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed in 9adef25/28f3d0f: Handoff and PR description fully reconciled.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  // First SHA in the pair is a reachable ancestor of head → should resolve.
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set(['9adef25'])), true);
+  // Not in reachable set and not head prefix → should not resolve.
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
+  // First SHA matches head prefix → should resolve.
+  assert.equal(shouldResolveThread(thread, '9adef25abc123456'), true);
+});
+
 test('shouldResolveThread accepts latest trusted commit URL marker on head lineage', () => {
   const thread = {
     comments: {
