@@ -26,15 +26,26 @@ const labStateSchema = z.enum([
   'verified',
 ]);
 
-const externalRefSchema = z
-  .object({
-    kind: z.enum(['issue', 'pull-request']),
-    number: z.number().int().positive(),
-    state: z.enum(['closed', 'merged', 'open']),
-    title: z.string().min(1),
-    url: z.string().url(),
-  })
-  .strict();
+const externalRefSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('issue'),
+      number: z.number().int().positive(),
+      state: z.enum(['closed', 'open']),
+      title: z.string().min(1),
+      url: z.string().url(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('pull-request'),
+      number: z.number().int().positive(),
+      state: z.enum(['closed', 'merged', 'open']),
+      title: z.string().min(1),
+      url: z.string().url(),
+    })
+    .strict(),
+]);
 
 const gateSchema = z
   .object({

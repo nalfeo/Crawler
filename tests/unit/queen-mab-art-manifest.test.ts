@@ -65,6 +65,12 @@ describe('Queen Mab generated-art manifest', () => {
     expect(() => queenMabArtManifestSchema.parse(extended)).not.toThrow();
   });
 
+  it('rejects unsupported generated-art scopes', () => {
+    const bad = structuredClone(QUEEN_MAB_ART_MANIFEST) as unknown as Record<string, unknown>;
+    bad.generatedArtScope = 'queen-mab-onyl';
+    expect(() => queenMabArtManifestSchema.parse(bad)).toThrow();
+  });
+
   it('rejects a blocking asset', () => {
     const bad = structuredClone(QUEEN_MAB_ART_MANIFEST) as unknown as Record<string, unknown>;
     (bad.assets as Array<Record<string, unknown>>)[0]!.blockingForArena = true;

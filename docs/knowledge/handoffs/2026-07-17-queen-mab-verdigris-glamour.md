@@ -131,8 +131,7 @@ mobAbilitySystem]` so Tarnished ticks and expires in the live arena.
   High-severity bug — the arena omitted `statusEffectSystem`, so Tarnished never
   expired; fixed. Final round clean.
 - Multi-model review (gpt-5.3-codex + gemini-3.1-pro-preview, adjudicated by
-  claude-opus-4.8): 3 bounded rounds. Fixed dead-target lock, cross-caster
-  stacking, and recycled-id friendly fire; final round clean.
+  claude-opus-4.8): bounded to 2 rounds with escalation when concerns remain.
 
 ## Verification
 
@@ -149,12 +148,10 @@ mobAbilitySystem]` so Tarnished ticks and expires in the live arena.
     announcement string. Gate cadence 540/630/1170/1260 → PASS.
   - DEFAULT NORMAL GAME: runtime disabled, 0 registered casters, 0 casts. → PASS.
 
-Real browser observation was not run in this headless environment; observation
-relied on the deterministic headless harness driving the **same** canonical
-simulation-step pipeline the arena uses, printing the phase timestamps as
-textual evidence. The Phaser renderer (`MobAbilityVfx`) is a pure state consumer
-and is exercised via `PhaserBridge` wiring; its visual phases are covered by the
-committed-cue contract the harness validates.
+Deterministic arena/runtime observation is recorded by the canonical simulation
+harness (`scripts/agent/queen-mab-arena-evidence.ts`) and deterministic visual
+guards in unit coverage (`tests/unit/mob-ability-vfx.test.ts`,
+`tests/unit/combat-arena-lab-wiring.test.ts`).
 
 ## Follow-ups
 
@@ -164,4 +161,5 @@ committed-cue contract the harness validates.
    executor (still blocked; not promoted by this slice).
 3. Optional: upgrade the procedural Queen VFX with generated art per the manifest
    (non-blocking).
-4. Do not merge this stacked PR before PR #1243.
+4. Keep production activation off until `floor2-boss-production-enable` is
+   resolved.

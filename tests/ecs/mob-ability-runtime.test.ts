@@ -13,6 +13,7 @@ import {
   spawnPlayer,
   spawnBehaviorEnemy,
   setEnemyAppearanceKey,
+  clearEntityStores,
   mobAbilitySystem,
   registerMobAbility,
   clearMobAbility,
@@ -139,6 +140,32 @@ describe('recycled-ID generation-token guard', () => {
     expect(staleToken).toBeGreaterThanOrEqual(0); // just to use the variable
 
     void player; // suppress unused-variable lint
+  });
+
+  it('clears runtime state from the central entity teardown/recycle path', () => {
+    const world = makeWorld();
+    const player = spawnPlayer(world, 40, 40);
+    const queen = spawnQueen(world, 40, 10);
+    arm(world, queen);
+
+    tick(world, 630); // first resolution applies owned Tarnished effects
+    const sourceId = `mob-ability:queen-mab-verdigris-glamour:${queen}`;
+    expect(
+      (world.statusEffectsByEntity.get(player) ?? []).some(
+        (effect) => effect.sourceId === sourceId,
+      ),
+    ).toBe(true);
+
+    clearEntityStores(world, queen);
+
+    expect(world.mobAbilities.byEntity.has(queen)).toBe(false);
+    expect(world.mobAbilities.registrationTokens.has(queen)).toBe(false);
+    expect(world.mobAbilities.cues.some((cue) => cue.casterEid === queen)).toBe(false);
+    expect(
+      (world.statusEffectsByEntity.get(player) ?? []).some(
+        (effect) => effect.sourceId === sourceId,
+      ),
+    ).toBe(false);
   });
 });
 

@@ -165,6 +165,22 @@ export function createHudAnnouncementBanner(
     }
   }
 
+  function pruneCanceledBossAbilityAnnouncements(world: GameWorld): void {
+    const liveBossEventIds = new Set(
+      world.announcements
+        .filter((event) => event.kind === 'bossAbilityCast' && event.eventId !== undefined)
+        .map((event) => event.eventId!),
+    );
+    for (let i = queue.length - 1; i >= 0; i -= 1) {
+      const event = queue[i]!;
+      if (event.kind !== 'bossAbilityCast') continue;
+      if (event.eventId === undefined) continue;
+      if (!liveBossEventIds.has(event.eventId)) {
+        queue.splice(i, 1);
+      }
+    }
+  }
+
   function show(event: AnnouncementEvent): void {
     // Boss-ability casts carry a full authored string that must render exactly
     // (never ellipsized or rebuilt from an archetype index). The panel is 420px
@@ -216,6 +232,7 @@ export function createHudAnnouncementBanner(
 
   function sync(world: GameWorld): void {
     drainWorldAnnouncements(world);
+    pruneCanceledBossAbilityAnnouncements(world);
     // Drop expired heads until we find one still in its lifespan.
     while (queue.length > 0) {
       const head = queue[0]!;

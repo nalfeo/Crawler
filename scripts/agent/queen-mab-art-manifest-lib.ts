@@ -63,6 +63,8 @@ const assetSchema = z
   })
   .strict();
 
+const generatedArtScopeSchema = z.enum(['queen-mab-only', 'floor2-abilities']);
+
 /**
  * Per-boss identity entry in the manifest. Stored as an extensible collection
  * so that future manifests can cover multiple bosses (e.g. all 18 Floor 2
@@ -86,7 +88,7 @@ export const queenMabArtManifestSchema = z
      *   use a different scope string (e.g. `"floor2-abilities"`) and will need
      *   their own scope validation.
      */
-    generatedArtScope: z.string().min(1),
+    generatedArtScope: generatedArtScopeSchema,
     lastReviewedAt: z.iso.date(),
     /**
      * Extensible collection of boss identities covered by this manifest.
@@ -100,6 +102,17 @@ export const queenMabArtManifestSchema = z
   })
   .strict()
   .superRefine((manifest, ctx) => {
+    const knownBossIds = new Set(manifest.bosses.map((boss) => boss.bossId));
+    for (const [index, asset] of manifest.assets.entries()) {
+      if (!knownBossIds.has(asset.bossId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['assets', index, 'bossId'],
+          message: `asset references unknown bossId "${asset.bossId}"`,
+        });
+      }
+    }
+
     // v1 scope constraint: the `queen-mab-only` scope may only reference Queen.
     if (manifest.generatedArtScope === 'queen-mab-only') {
       const bossIds = manifest.bosses.map((b) => b.bossId);
@@ -117,6 +130,13 @@ export const queenMabArtManifestSchema = z
             code: z.ZodIssueCode.custom,
             path: ['assets', index, 'bossId'],
             message: `scope "queen-mab-only" forbids asset with bossId "${asset.bossId}"`,
+          });
+        }
+        if (asset.abilityId !== 'queen-mab-verdigris-glamour') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['assets', index, 'abilityId'],
+            message: `scope "queen-mab-only" forbids asset with abilityId "${asset.abilityId}"`,
           });
         }
       }

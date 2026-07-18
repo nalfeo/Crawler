@@ -34,6 +34,12 @@ import {
 import { runCoreSimulationStep } from '../../../src/core/simulation-core-step.js';
 import { AI_TYPE } from '../../../src/game/enemyAISystem.js';
 import { enemyAISystem, weaponSystem } from '../../../src/game/index.js';
+import {
+  getEnemyPreset,
+  getRoomPreset,
+  spawnPresetAroundCenter,
+} from '../../../src/labs/combat-arena-lab/arena-data.js';
+import { SeededRandom } from '../../../src/shared/random.js';
 
 const DELTA = GAME.DELTA_MS;
 const QUEEN_KEY = 'faerie-boss';
@@ -339,6 +345,7 @@ describe('Verdigris Glamour — cleanup paths', () => {
     step(h.world, 1);
     expect(h.world.mobAbilities.byEntity.has(h.queen)).toBe(false);
     expect(h.world.mobAbilities.cues).toHaveLength(0);
+    expect(h.world.announcements.filter((a) => a.kind === 'bossAbilityCast')).toHaveLength(0);
   });
 
   it('releases all state when the caster despawns', () => {
@@ -348,6 +355,7 @@ describe('Verdigris Glamour — cleanup paths', () => {
     removeEntity(h.world.ecs, h.queen);
     step(h.world, 1);
     expect(h.world.mobAbilities.byEntity.has(h.queen)).toBe(false);
+    expect(h.world.announcements.filter((a) => a.kind === 'bossAbilityCast')).toHaveLength(0);
   });
 
   it('releases all state when the encounter is disabled', () => {
@@ -358,6 +366,7 @@ describe('Verdigris Glamour — cleanup paths', () => {
     expect(h.world.mobAbilities.byEntity.size).toBe(0);
     expect(h.world.mobAbilities.cues).toHaveLength(0);
     expect(h.world.mobAbilities.encounterActive).toBe(false);
+    expect(h.world.announcements.filter((a) => a.kind === 'bossAbilityCast')).toHaveLength(0);
   });
 
   it('releases owned Tarnished effects and instance when the id is recycled', () => {
@@ -467,15 +476,22 @@ describe('Verdigris Glamour — canonical simulation pipeline', () => {
 
   it('the arena configuration records two casts through the canonical runtime', () => {
     const world = createTestWorld();
-    const player = spawnPlayer(world, 40, 40);
+    const roomPreset = getRoomPreset('medium-arena');
+    world.floorMap = roomPreset.buildMap();
+    const spawnWorld = world.floorMap.tileToWorld(
+      roomPreset.playerSpawnTile.x,
+      roomPreset.playerSpawnTile.y,
+    );
+    const player = spawnPlayer(world, spawnWorld.x, spawnWorld.y);
     world.stores.health.current[player] = 100_000;
     world.stores.health.max[player] = 100_000;
-    const queen = spawnBehaviorEnemy(world, 40, 10, 200, AI_TYPE.CHASE, 0.17, 60, 0);
-    setEnemyAppearanceKey(world, queen, QUEEN_KEY);
-    // Arm exactly as the arena preset does.
-    setMobAbilitiesEnabled(world, true);
-    registerMobAbility(world, queen, createVerdigrisGlamourDefinition());
-    activateMobAbilityEncounter(world);
+    const preset = getEnemyPreset('f2-queen-mab');
+    const rng = new SeededRandom(42);
+    const cx = world.floorMap.widthFt / 2;
+    const cy = world.floorMap.heightFt * 0.35;
+    const spawned = spawnPresetAroundCenter(world, world.floorMap, preset, cx, cy, rng, 14);
+    const queen = spawned[0];
+    expect(queen).toBeDefined();
     const inputState = createInputState();
 
     const resolutionFrames: number[] = [];
@@ -486,7 +502,7 @@ describe('Verdigris Glamour — canonical simulation pipeline', () => {
       runCoreSimulationStep(world, inputState, {
         preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
       });
-      const inst = world.mobAbilities.byEntity.get(queen);
+      const inst = world.mobAbilities.byEntity.get(queen!);
       if (inst && inst.resolvedCasts > prevResolved) {
         resolutionFrames.push(world.frameCount);
         prevResolved = inst.resolvedCasts;

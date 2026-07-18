@@ -58,6 +58,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
 
   const telegraphGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const tarnishGfx = new Map<number, Phaser.GameObjects.Graphics>();
+  const tarnishLastPos = new Map<number, { x: number; y: number }>();
   const lastResolved = new Map<number, number>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
   const castStartSeen = new Set<number>();
@@ -260,6 +261,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     for (const eid of tarnished) {
       const cx = ftToPx(world.stores.position.x[eid] ?? 0);
       const cy = ftToPx(world.stores.position.y[eid] ?? 0);
+      tarnishLastPos.set(eid, { x: cx, y: cy });
       if (!enabled) continue;
       let gfx = tarnishGfx.get(eid);
       if (gfx === undefined) {
@@ -273,10 +275,12 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     }
     for (const [eid, gfx] of tarnishGfx) {
       if (!tarnished.has(eid)) {
-        const cx = ftToPx(world.stores.position.x[eid] ?? 0);
-        const cy = ftToPx(world.stores.position.y[eid] ?? 0);
+        const last = tarnishLastPos.get(eid);
+        const cx = last?.x ?? ftToPx(world.stores.position.x[eid] ?? 0);
+        const cy = last?.y ?? ftToPx(world.stores.position.y[eid] ?? 0);
         gfx.destroy();
         tarnishGfx.delete(eid);
+        tarnishLastPos.delete(eid);
         // Cleanup/expiry poof when the debuff falls off.
         spawnRing(
           cx,
@@ -296,6 +300,7 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     telegraphGfx.clear();
     for (const gfx of tarnishGfx.values()) gfx.destroy();
     tarnishGfx.clear();
+    tarnishLastPos.clear();
     lastResolved.clear();
     lastGeom.clear();
     castStartSeen.clear();

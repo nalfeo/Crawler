@@ -42,6 +42,12 @@ export interface AnnouncementEvent {
    * spawner-arena events can keep using `archetypeIndex` + `displayName`.
    */
   readonly text?: string;
+  /**
+   * Optional stable event identity used by producers/consumers that need
+   * cancellation semantics (e.g. mob-ability telegraphs canceled before
+   * resolution). Non-cancelable announcement kinds may omit it.
+   */
+  readonly eventId?: string;
 }
 
 /**

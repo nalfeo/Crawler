@@ -92,6 +92,17 @@ export function clearMobAbility(world: GameWorld, casterEid: number): void {
     if (runtime.cues[i]!.casterEid === casterEid) runtime.cues.splice(i, 1);
   }
 
+  // Retire cast announcements owned by this caster so canceled telegraphs do not
+  // stay visible on the HUD banner.
+  const announcementPrefix = `${mobAbilitySourceId(inst.definition.abilityId, casterEid)}:cast-`;
+  for (let i = world.announcements.length - 1; i >= 0; i -= 1) {
+    const event = world.announcements[i]!;
+    if (event.kind !== 'bossAbilityCast') continue;
+    if (event.eventId?.startsWith(announcementPrefix)) {
+      world.announcements.splice(i, 1);
+    }
+  }
+
   // Release owned status effects (e.g. Tarnished) from every affected entity.
   const sourceId = mobAbilitySourceId(inst.definition.abilityId, casterEid);
   for (const eid of [...world.statusEffectsByEntity.keys()]) {
@@ -171,7 +182,7 @@ function isTargetValid(world: GameWorld, targetEid: number | null): boolean {
   return true;
 }
 
-function beginTelegraph(world: GameWorld, inst: MobAbilityInstanceState): void {
+function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityInstanceState): void {
   const def = inst.definition;
   // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
   const targetEid = findDefaultTarget(world);
@@ -198,6 +209,7 @@ function beginTelegraph(world: GameWorld, inst: MobAbilityInstanceState): void {
     kind: 'bossAbilityCast',
     archetypeIndex: -1,
     text: def.announcementText,
+    eventId: `${mobAbilitySourceId(def.abilityId, casterEid)}:cast-${inst.announcementsEmitted + 1}`,
     durationMs: ANNOUNCEMENT_DURATION_MS,
     elapsedMs: world.elapsedMs,
   });
@@ -266,7 +278,7 @@ export function mobAbilitySystem(world: GameWorld): void {
     inst.timerMs -= dtMs;
     if (inst.timerMs <= TIMER_EPSILON_MS) {
       if (inst.phase === 'cooldown') {
-        beginTelegraph(world, inst);
+        beginTelegraph(world, casterEid, inst);
       } else {
         resolveCast(world, casterEid, inst);
       }

@@ -12,11 +12,11 @@
 > [PR #1243](https://github.com/nalfeo/Crawler/pull/1243)
 > **Test suites:** `tests/unit/boss-ability-catalog.test.ts`; future runtime work
 > must add integration, headless, and deterministic visual coverage
-> **Known implementation gaps:** the catalog and delivery tracker are shipped by
-> this slice, but no boss ability executes yet. The reusable runtime foundation
-> and Queen Mab vertical slice are blocked by
-> [PR #1237](https://github.com/nalfeo/Crawler/pull/1237) and
-> [PR #1243](https://github.com/nalfeo/Crawler/pull/1243).
+> **Known implementation gaps:** the reusable runtime foundation and the Queen
+> Mab arena-only vertical slice are implemented and verified in the combat arena.
+> Production activation remains gated off by
+> `floor2-boss-production-enable`; the other 17 Floor 2 abilities remain blocked
+> until their own runtime slices land.
 
 ## Context
 

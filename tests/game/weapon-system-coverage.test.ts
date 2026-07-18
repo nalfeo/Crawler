@@ -12,6 +12,7 @@ import {
 } from '../../src/core/components.js';
 import { readDamageMeta } from '../../src/core/damage-meta.js';
 import { createEntity, spawnEnemy, spawnPlayer, spawnWeapon } from '../../src/core/helpers.js';
+import { applyStatusEffect, statusEffectSystem } from '../../src/core/index.js';
 import {
   clearActiveWeapon,
   computeEffectiveAccuracy,
@@ -703,6 +704,40 @@ describe('getActiveWeaponReadiness paths', () => {
     // syncActiveWeaponGeneration resets lastFireMs = elapsedMs - cooldownMs so
     // the freshly-equipped weapon can fire immediately: ready === true.
     expect(result!.ready).toBe(true);
+  });
+
+  it('lengthens cooldown under attackSpeed debuff and returns to baseline after expiry', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+
+    const baseline = getActiveWeaponReadiness(world);
+    expect(baseline).not.toBeNull();
+    expect(baseline!.cooldownMs).toBe(pistol.cooldownMs);
+
+    applyStatusEffect(world, player, {
+      stat: 'attackSpeed',
+      op: 'multiply',
+      value: 0.75,
+      durationMs: 4000,
+      sourceType: 'ability',
+      sourceId: 'mob-ability:queen-mab-verdigris-glamour:1',
+      stackRule: { mode: 'replace' },
+    });
+    const slowed = getActiveWeaponReadiness(world);
+    expect(slowed).not.toBeNull();
+    expect(slowed!.cooldownMs).toBeCloseTo(pistol.cooldownMs / 0.75, 6);
+
+    // Expire effects deterministically and assert readiness returns to baseline.
+    for (let i = 0; i < 245; i += 1) {
+      world.frameCount += 1;
+      world.elapsedMs += 1000 / 60;
+      statusEffectSystem(world);
+    }
+    const recovered = getActiveWeaponReadiness(world);
+    expect(recovered).not.toBeNull();
+    expect(recovered!.cooldownMs).toBeCloseTo(pistol.cooldownMs, 6);
   });
 });
 

@@ -57,19 +57,50 @@ interface TarnishedTuning {
   readonly damageAmount: number;
 }
 
-function designValue(ability: BossAbilityDef, id: string): number | string | boolean {
+interface CatalogDesignValue {
+  readonly value: number | string | boolean;
+  readonly unit: string;
+}
+
+function designValue(ability: BossAbilityDef, id: string): CatalogDesignValue {
   const found = ability.effect.designValues.find((value) => value.id === id);
   if (found === undefined) {
     throw new Error(`Verdigris Glamour catalog entry missing effect design value "${id}"`);
   }
-  return found.value;
+  return { value: found.value, unit: found.unit };
 }
 
-function asNumber(value: number | string | boolean, id: string): number {
+function expectUnit(actualUnit: string, expectedUnit: string, id: string): void {
+  if (actualUnit !== expectedUnit) {
+    throw new Error(
+      `Verdigris Glamour design value "${id}" must use unit "${expectedUnit}", got "${actualUnit}"`,
+    );
+  }
+}
+
+function asNumber(entry: CatalogDesignValue, id: string, expectedUnit: string): number {
+  expectUnit(entry.unit, expectedUnit, id);
+  const value = entry.value;
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new Error(`Verdigris Glamour design value "${id}" must be a finite number`);
   }
   return value;
+}
+
+function asString(entry: CatalogDesignValue, id: string, expectedUnit: string): string {
+  expectUnit(entry.unit, expectedUnit, id);
+  if (typeof entry.value !== 'string' || entry.value.length === 0) {
+    throw new Error(`Verdigris Glamour design value "${id}" must be a non-empty string`);
+  }
+  return entry.value;
+}
+
+function asBoolean(entry: CatalogDesignValue, id: string, expectedUnit: string): boolean {
+  expectUnit(entry.unit, expectedUnit, id);
+  if (typeof entry.value !== 'boolean') {
+    throw new Error(`Verdigris Glamour design value "${id}" must be a boolean`);
+  }
+  return entry.value;
 }
 
 /** Convert a signed percent modifier (e.g. -30) into a multiplier (0.70). */
@@ -78,33 +109,40 @@ function percentModifierToMultiplier(percent: number): number {
 }
 
 function readTarnishedTuning(ability: BossAbilityDef): TarnishedTuning {
-  const debuffId = designValue(ability, 'debuff-id');
+  const debuffId = asString(designValue(ability, 'debuff-id'), 'debuff-id', 'mode');
   if (debuffId !== 'tarnished') {
-    throw new Error(`Verdigris Glamour debuff-id must be "tarnished", got "${String(debuffId)}"`);
+    throw new Error(`Verdigris Glamour debuff-id must be "tarnished", got "${debuffId}"`);
   }
-  const profileRaw = designValue(ability, 'damage-profile');
-  if (typeof profileRaw !== 'string' || !(profileRaw in DAMAGE_PROFILE_AMOUNTS)) {
-    throw new Error(`Verdigris Glamour has unknown damage-profile "${String(profileRaw)}"`);
+  const profileRaw = asString(
+    designValue(ability, 'damage-profile'),
+    'damage-profile',
+    'descriptor',
+  );
+  if (!(profileRaw in DAMAGE_PROFILE_AMOUNTS)) {
+    throw new Error(`Verdigris Glamour has unknown damage-profile "${profileRaw}"`);
   }
   const profile = profileRaw as DamageProfile;
-  const stackingRaw = designValue(ability, 'stacking');
   return {
-    durationMs: asNumber(designValue(ability, 'duration'), 'duration'),
+    durationMs: asNumber(designValue(ability, 'duration'), 'duration', 'milliseconds'),
     moveSpeedMultiplier: percentModifierToMultiplier(
-      asNumber(designValue(ability, 'movement-speed-modifier'), 'movement-speed-modifier'),
+      asNumber(
+        designValue(ability, 'movement-speed-modifier'),
+        'movement-speed-modifier',
+        'percent',
+      ),
     ),
     attackSpeedMultiplier: percentModifierToMultiplier(
-      asNumber(designValue(ability, 'attack-speed-modifier'), 'attack-speed-modifier'),
+      asNumber(designValue(ability, 'attack-speed-modifier'), 'attack-speed-modifier', 'percent'),
     ),
-    stacking: stackingRaw === true,
+    stacking: asBoolean(designValue(ability, 'stacking'), 'stacking', 'flag'),
     damageAmount: DAMAGE_PROFILE_AMOUNTS[profile],
   };
 }
 
 function readRadiusFt(ability: BossAbilityDef): number {
   const metric = ability.telegraph.metrics.find((m) => m.id === 'radius');
-  if (metric === undefined || typeof metric.value !== 'number') {
-    throw new Error('Verdigris Glamour telegraph is missing a numeric "radius" metric');
+  if (metric === undefined || typeof metric.value !== 'number' || metric.unit !== 'feet') {
+    throw new Error('Verdigris Glamour telegraph is missing a numeric "radius" metric in feet');
   }
   return metric.value;
 }
