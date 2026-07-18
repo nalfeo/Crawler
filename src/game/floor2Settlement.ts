@@ -101,9 +101,10 @@ export function initializeFloor2Settlement(
   // and inventories; all new placement/defector randomness uses a derived RNG.
   // Quartermaster is excluded from the random pool and always placed separately.
   const allArchetypes = options.archetypes ?? loadShopArchetypes();
-  const quartermasterArchetype = loadShopArchetypes().find(
-    (a) => a.id === QUARTERMASTER_ARCHETYPE_ID,
-  );
+  // QM must always come from the canonical list (options.archetypes may be a custom subset).
+  const quartermasterArchetype =
+    allArchetypes.find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID) ??
+    loadShopArchetypes().find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
   if (!quartermasterArchetype) {
     throw new Error(
       `initializeFloor2Settlement: Quartermaster archetype "${QUARTERMASTER_ARCHETYPE_ID}" not found`,

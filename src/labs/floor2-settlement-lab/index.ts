@@ -106,7 +106,7 @@ function createSettlementLab(canvasHost: HTMLElement, controls: HTMLElement): ()
     //   pre-advances: 1 (defector family pick) + 3 (broker/defector/QM tile picks)
     //                 + state.shopCount (non-QM shop tile picks, processed before QM inventory)
     const settlementRng = new SeededRandom(hashStringToSeed(`floor2-settlement:${state.seed}`));
-    const preAdvanceCount = 1 + 3 + state.shopCount;
+    const preAdvanceCount = 1 + 3 + state.shopCount; // 1 defector family + 3 tile picks (broker/defector/QM) + shopCount non-QM tile picks
     for (let i = 0; i < preAdvanceCount; i += 1) settlementRng.nextInt(0, 1);
 
     // Quartermaster is always guaranteed — exclude from random pool.
