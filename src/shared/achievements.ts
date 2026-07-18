@@ -21,6 +21,10 @@ export type LootBoxTier = (typeof LOOT_BOX_TIERS)[number];
 
 export const ACHIEVEMENT_DIFFICULTIES = ['basic', 'standard', 'hard', 'brutal'] as const;
 export type AchievementDifficulty = (typeof ACHIEVEMENT_DIFFICULTIES)[number];
+export const ACHIEVEMENT_SCOPES = ['floor', 'current_run'] as const;
+export type AchievementScope = (typeof ACHIEVEMENT_SCOPES)[number];
+export const ACHIEVEMENT_FLOORS = [1, 2] as const;
+export type AchievementFloor = (typeof ACHIEVEMENT_FLOORS)[number];
 export const ACHIEVEMENT_RULE_PHASES = ['tick', 'run_end_clear'] as const;
 export type AchievementRulePhase = (typeof ACHIEVEMENT_RULE_PHASES)[number];
 export const ACHIEVEMENT_NUMBER_FACTS = [
@@ -36,6 +40,16 @@ export const ACHIEVEMENT_NUMBER_FACTS = [
   'unlockedAbilityCount',
 ] as const;
 export type AchievementNumberFact = (typeof ACHIEVEMENT_NUMBER_FACTS)[number];
+export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
+  'totalKills',
+  'maxSkillLevel',
+  'spentStatPoints',
+  'completedQuestCount',
+  'questLogSize',
+  'playerGold',
+  'unlockedAbilityCount',
+] as const;
+export type AchievementCurrentRunNumberFact = (typeof ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'staircaseBattleStarted',
   'staircaseUnlocked',
@@ -45,6 +59,12 @@ export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'runClearedFloor',
 ] as const;
 export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
+export const ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS = [
+  'equipmentUnlocked',
+  'runClearedFloor',
+] as const;
+export type AchievementCurrentRunBooleanFact =
+  (typeof ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS)[number];
 export const ACHIEVEMENT_NUMBER_OPERATORS = ['>=', '>', '<=', '<', '==='] as const;
 export type AchievementNumberOperator = (typeof ACHIEVEMENT_NUMBER_OPERATORS)[number];
 
@@ -76,7 +96,8 @@ export type AchievementUnlockRule =
 
 export interface AchievementDef {
   readonly id: string;
-  readonly floor: 1;
+  readonly floor: AchievementFloor;
+  readonly scope: AchievementScope;
   readonly title: string;
   readonly popupText: string;
   readonly unlockCriteria: string;
@@ -94,6 +115,12 @@ export interface AchievementArtBacklogItem {
   readonly placeholderId: string;
   readonly description: string;
   readonly usedByAchievementIds: readonly string[];
+}
+
+export interface AchievementFactState {
+  readonly numberFacts: Record<AchievementNumberFact, number>;
+  readonly booleanFacts: Record<AchievementBooleanFact, boolean>;
+  readonly completedQuestIds: Set<string>;
 }
 
 const achievementRewardSchema = z.discriminatedUnion('type', [
@@ -123,6 +150,7 @@ const achievementRewardSchema = z.discriminatedUnion('type', [
 ]);
 
 const achievementRulePhaseSchema = z.enum(ACHIEVEMENT_RULE_PHASES);
+const achievementScopeSchema = z.enum(ACHIEVEMENT_SCOPES);
 const achievementUnlockRuleSchema = z.discriminatedUnion('type', [
   z
     .object({
@@ -153,7 +181,8 @@ const achievementUnlockRuleSchema = z.discriminatedUnion('type', [
 const achievementSchema = z
   .object({
     id: z.string().min(1),
-    floor: z.literal(1),
+    floor: z.union([z.literal(1), z.literal(2)]),
+    scope: achievementScopeSchema.default('floor'),
     title: z.string().min(1),
     popupText: z.string().min(1),
     unlockCriteria: z.string().min(1),
@@ -201,14 +230,96 @@ function removeUnlockCriteriaDuplication(achievement: AchievementDef): Achieveme
 }
 
 export function parseAchievementCatalog(rawCatalog: unknown): readonly AchievementDef[] {
-  return achievementCatalogSchema.parse(rawCatalog).map(removeUnlockCriteriaDuplication);
+  const catalog = achievementCatalogSchema.parse(rawCatalog);
+  for (const achievement of catalog) {
+    if (achievement.scope !== 'current_run') continue;
+    for (const rule of achievement.unlockRules) {
+      if (
+        rule.type === 'numberCompare' &&
+        !ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS.includes(rule.fact as AchievementCurrentRunNumberFact)
+      ) {
+        throw new Error(
+          `Achievement ${achievement.id} uses floor-scoped number fact "${rule.fact}" in current_run scope`,
+        );
+      }
+      if (
+        rule.type === 'booleanIs' &&
+        !ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS.includes(
+          rule.fact as AchievementCurrentRunBooleanFact,
+        )
+      ) {
+        throw new Error(
+          `Achievement ${achievement.id} uses floor-scoped boolean fact "${rule.fact}" in current_run scope`,
+        );
+      }
+    }
+  }
+  return catalog.map(removeUnlockCriteriaDuplication);
 }
 
 export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] =
   parseAchievementCatalog(floor1Achievements);
+export const FLOOR2_ACHIEVEMENTS: readonly AchievementDef[] = [];
 
-export function getAchievementById(id: string): AchievementDef | undefined {
-  return FLOOR1_ACHIEVEMENTS.find((achievement) => achievement.id === id);
+const ACHIEVEMENTS_BY_FLOOR: Readonly<Record<AchievementFloor, readonly AchievementDef[]>> = {
+  1: FLOOR1_ACHIEVEMENTS,
+  2: FLOOR2_ACHIEVEMENTS,
+};
+
+const ALL_ACHIEVEMENTS = [...FLOOR1_ACHIEVEMENTS, ...FLOOR2_ACHIEVEMENTS];
+const UNIQUE_ACHIEVEMENT_IDS = new Set(ALL_ACHIEVEMENTS.map((achievement) => achievement.id));
+if (UNIQUE_ACHIEVEMENT_IDS.size !== ALL_ACHIEVEMENTS.length) {
+  throw new Error('Achievement ids must be globally unique across floor catalogs');
+}
+
+export function isAchievementFloor(value: number): value is AchievementFloor {
+  return value === 1 || value === 2;
+}
+
+export function getAchievementCatalogForFloor(floor: AchievementFloor): readonly AchievementDef[] {
+  return ACHIEVEMENTS_BY_FLOOR[floor];
+}
+
+export function createEmptyAchievementFactState(): AchievementFactState {
+  return {
+    numberFacts: {
+      totalKills: 0,
+      slimesKilled: 0,
+      ratsKilled: 0,
+      maxSkillLevel: 0,
+      spentStatPoints: 0,
+      goldCollected: 0,
+      completedQuestCount: 0,
+      questLogSize: 0,
+      playerGold: 0,
+      unlockedAbilityCount: 0,
+    },
+    booleanFacts: {
+      staircaseBattleStarted: false,
+      staircaseUnlocked: false,
+      safeRoomDiscovered: false,
+      equipmentUnlocked: false,
+      staircaseDiscovered: false,
+      runClearedFloor: false,
+    },
+    completedQuestIds: new Set(),
+  };
+}
+
+export function getAchievementById(
+  id: string,
+  options?: { readonly floor?: AchievementFloor; readonly scope?: AchievementScope },
+): AchievementDef | undefined {
+  const floors = options?.floor === undefined ? ACHIEVEMENT_FLOORS : [options.floor];
+  for (const floor of floors) {
+    const achievement = ACHIEVEMENTS_BY_FLOOR[floor].find(
+      (entry) => entry.id === id && (options?.scope === undefined || entry.scope === options.scope),
+    );
+    if (achievement) {
+      return achievement;
+    }
+  }
+  return undefined;
 }
 
 function collectIconBacklogItems(): AchievementArtBacklogItem[] {
