@@ -1,5 +1,10 @@
 # Handoff: issue #1368 velvet-coat brief
 
+> **Process-exception note:** This PR intentionally ships only the minimal
+> brief + blocker handoff. A retroactive issue-plan comment was attempted but
+> blocked by GitHub HTTP 403, so the detailed plan is recorded below under
+> **Process note**.
+
 **Date:** 2026-07-18
 **Persona:** Graphics Designer
 **Apple estimate:** 🍎 (art-only)
