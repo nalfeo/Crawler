@@ -85,16 +85,16 @@ export interface ActiveWeaponSnapshotV1 extends WeaponDef {
 }
 
 export interface FrozenEquipmentFieldsV1 {
-  readonly schemaVersion?: typeof FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION;
+  readonly schemaVersion: typeof FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION;
   readonly displayName: string;
   readonly artKey: string;
-  readonly slots?: readonly EquipmentSlotId[];
-  readonly tags?: readonly string[];
-  readonly weightLb?: number;
+  readonly slots: readonly EquipmentSlotId[];
+  readonly tags: readonly string[];
+  readonly weightLb: number;
   readonly statBonuses: Readonly<Partial<Record<StatId, number>>>;
-  readonly abilityGrants?: readonly string[];
-  readonly passiveGrants?: readonly string[];
-  readonly activeWeaponSnapshot?: ActiveWeaponSnapshotV1 | null;
+  readonly abilityGrants: readonly string[];
+  readonly passiveGrants: readonly string[];
+  readonly activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null;
 }
 
 export interface GeneratedEquipmentGenerationPolicyV1 {
@@ -125,7 +125,7 @@ export interface GeneratedEquipmentInstanceV1 {
   readonly enhancementLevel: GeneratedEquipmentEnhancementLevel;
   readonly resolvedEffects: readonly ResolvedEquipmentEffectV1[];
   readonly frozen: FrozenEquipmentFieldsV1;
-  readonly generation?: GeneratedEquipmentGenerationV1;
+  readonly generation: GeneratedEquipmentGenerationV1;
   readonly fingerprint: EquipmentFingerprintV1;
 }
 

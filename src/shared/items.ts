@@ -206,7 +206,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   mat('rusted-scrap', 'Rusted Scrap', 'Junk to most. Treasure to crafters.', C),
   mat('celestial-ingot', 'Celestial Ingot', "Forged in a star that hasn't been born yet.", L),
 
-  // ── Weapons (25) ────────────────────────────────────────────────────
+  // ── Weapons (29) ────────────────────────────────────────────────────
   wpn('throwing-knife', 'Throwing Knife', 'Balanced for a clean throw and a cleaner escape.', C),
   wpn('iron-sword', 'Sword', 'Serviceable. Boring. Gets the job done.', C),
   wpn('flame-dagger', 'Flame Dagger', 'The blade is warm. Always.', U),
@@ -236,6 +236,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('sling-of-shame', 'Sling of Shame', 'Rated #1 by audience vote.', U),
   wpn('oil-lantern', 'Oil Lantern', 'A glass trap that shatters warmly.', U),
   wpn('anchor-mace', 'Anchor Mace', 'For when you need to make a point. Slowly.', R),
+  wpn('harpoon-gun', 'Harpoon Gun', 'Fire a tethered bolt and reel them in.', R),
   wpn('twin-fangs', 'Twin Fangs', 'A pair of daggers that hum in harmony.', E),
   wpn('sponsor-sword', 'Sponsor Sword', 'Brought to you by GalactiCorp™.', L),
   wpn(
@@ -245,6 +246,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     R,
   ),
   wpn('ember-wand', 'Ember Wand', 'Channels smoldering intent into a focused bolt of heat.', R),
+  wpn('echo-bell', 'Echo Bell', 'A resonant beam weapon that rings once and never stops.', R),
 
   // ── Consumables (20) ────────────────────────────────────────────────
   con('health-vial', 'Health Vial', 'Tastes like pennies and hope.', C),
@@ -396,6 +398,12 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   gear('iron-visor', 'Iron Visor', 'A slitted faceplate. You see less, you flinch less.', C),
   gear('steel-pauldrons', 'Steel Pauldrons', 'Broad shoulder plates. Makes doorways a gamble.', U),
   gear('iron-breastplate', 'Iron Breastplate', 'Heavy, honest protection for the vitals.', U),
+  gear(
+    'runed-cuirass',
+    'Runed Cuirass',
+    'Dark-metal chest plate etched with glowing arcane runes.',
+    R,
+  ),
   gear('travelers-cloak', "Traveler's Cloak", 'Frayed at the hem, quick on the feet.', U),
   gear('sturdy-belt', 'Sturdy Belt', 'Cinches the gut and steadies the nerves.', C),
   gear('iron-greaves', 'Iron Greaves', 'Shin plates that have met many shins.', U),
