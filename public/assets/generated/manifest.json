@@ -2067,6 +2067,45 @@
       "judgeScore": null,
       "type": null
     },
+    "equipment/weapon/bone-saw": {
+      "briefId": "equipment/weapon/bone-saw",
+      "spriteName": "equipment/weapon/bone-saw",
+      "assetPath": "generated/equipment/weapon/bone-saw.png",
+      "approvedAt": "2026-07-18T01:45:33.608Z",
+      "sourceRun": "generated/runs/bone-saw/2026-07-18T01-39-45-manual",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 61,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 61,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 29,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "f4912b1422a1daacb0d77bf16c6e91e5c6c5c8fd0f3fe5c0255c4393dc985e76",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right",
+      "equipment": {
+        "stableId": "weapon.bone-saw",
+        "runtimeKey": "equipment/weapon/bone-saw",
+        "category": "weapon",
+        "family": "blade",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-blade"
+      }
+    },
     "equipment/weapon/iron-cleaver": {
       "briefId": "equipment/weapon/iron-cleaver",
       "spriteName": "equipment/weapon/iron-cleaver",
@@ -6416,6 +6455,18 @@
       "judgeScore": null,
       "type": null
     },
+    "storm-sling-placeholder": {
+      "briefId": "storm-sling",
+      "spriteName": "storm-sling",
+      "assetPath": "generated/storm-sling-placeholder.png",
+      "approvedAt": "2026-07-18T03:40:52.652Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon"
+    },
     "stress-ball-placeholder": {
       "briefId": "stress-ball",
       "spriteName": "stress-ball",
@@ -7303,6 +7354,18 @@
       "judgeScore": null,
       "type": null
     },
+    "twin-katar-var-0": {
+      "briefId": "twin-katar",
+      "spriteName": "twin-katar-var-0",
+      "assetPath": "generated/twin-katar-var-0.png",
+      "approvedAt": "2026-07-18T01:45:00.000Z",
+      "sourceRun": "manual/twin-katar",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual",
+      "judgeScore": null,
+      "type": "weapon"
+    },
     "vip-lanyard-placeholder": {
       "briefId": "vip-lanyard",
       "spriteName": "vip-lanyard",
@@ -7740,6 +7803,843 @@
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
+    },
+    "cactusfolk-needle-gunner-v1-var-10": {
+      "briefId": "cactusfolk-needle-gunner-v1",
+      "spriteName": "cactusfolk-needle-gunner-v1-var-10",
+      "assetPath": "generated/cactusfolk-needle-gunner-v1-var-10.png",
+      "approvedAt": "2026-07-09T07:39:36.146Z",
+      "sourceRun": "generated/runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e",
+      "variantIndex": 10,
+      "anchor": {
+        "x": 34,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 34,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 34,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "4c6ba95742d299731f526c9ef08114b3cf7b429b0365b54f7768675e1c8d2eb3",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cactusfolk-needle-gunner-v1-var-11": {
+      "briefId": "cactusfolk-needle-gunner-v1",
+      "spriteName": "cactusfolk-needle-gunner-v1-var-11",
+      "assetPath": "generated/cactusfolk-needle-gunner-v1-var-11.png",
+      "approvedAt": "2026-07-09T07:39:33.880Z",
+      "sourceRun": "generated/runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e",
+      "variantIndex": 11,
+      "anchor": {
+        "x": 34,
+        "y": 35,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 34,
+          "y": 35,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 34,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "d20cc0fd9cab90e3e4f9228b2511c6575c7607773f4da55e5b61882cfac9e532",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cactusfolk-needle-gunner-v1-var-15": {
+      "briefId": "cactusfolk-needle-gunner-v1",
+      "spriteName": "cactusfolk-needle-gunner-v1-var-15",
+      "assetPath": "generated/cactusfolk-needle-gunner-v1-var-15.png",
+      "approvedAt": "2026-07-09T07:39:35.037Z",
+      "sourceRun": "generated/runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e",
+      "variantIndex": 15,
+      "anchor": {
+        "x": 34,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 34,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 34,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "b8d84334d352ce563975d4cc0c9f91b1671b0455203600640676a42c777d6ef5",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-needle-gunner-v1/2026-07-09T07-25-32-2fc37c3e/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "imp-elite-hellfire-capo-v1-var-3": {
+      "briefId": "imp-elite-hellfire-capo-v1",
+      "spriteName": "imp-elite-hellfire-capo-v1-var-3",
+      "assetPath": "generated/imp-elite-hellfire-capo-v1-var-3.png",
+      "approvedAt": "2026-07-09T07:39:37.402Z",
+      "sourceRun": "generated/runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 28,
+        "y": 33,
+        "source": "manual"
+      },
+      "anchors": {
+        "hold": {
+          "x": 28,
+          "y": 33,
+          "source": "manual"
+        },
+        "centerOfGravity": {
+          "x": 28,
+          "y": 33,
+          "source": "manual"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "b8fa3a98783e39bb2a919694e4e68482b8de7d30f7c53ca2279f62d0cbb38ff4",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
+    },
+    "imp-elite-hellfire-capo-v1-var-5": {
+      "briefId": "imp-elite-hellfire-capo-v1",
+      "spriteName": "imp-elite-hellfire-capo-v1-var-5",
+      "assetPath": "generated/imp-elite-hellfire-capo-v1-var-5.png",
+      "approvedAt": "2026-07-09T07:39:38.499Z",
+      "sourceRun": "generated/runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 34,
+        "y": 60,
+        "source": "manual"
+      },
+      "anchors": {
+        "hold": {
+          "x": 34,
+          "y": 60,
+          "source": "manual"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 34,
+          "source": "manual"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "34dc6c7295cb7d68c6e613f2ecceb9da1859d41c209f63588266d3835103031f",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/imp-elite-hellfire-capo-v1/2026-07-09T07-05-53-19bcf8bf/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
+    },
+    "myconid-clubcap-v1-var-0": {
+      "briefId": "myconid-clubcap-v1",
+      "spriteName": "myconid-clubcap-v1-var-0",
+      "assetPath": "generated/myconid-clubcap-v1-var-0.png",
+      "approvedAt": "2026-07-09T07:39:39.639Z",
+      "sourceRun": "generated/runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "7498d079a73b5f6f6cdd8599d63e6f29fb61b28a8771fc80c0f797ed8ed0d967",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "myconid-clubcap-v1-var-1": {
+      "briefId": "myconid-clubcap-v1",
+      "spriteName": "myconid-clubcap-v1-var-1",
+      "assetPath": "generated/myconid-clubcap-v1-var-1.png",
+      "approvedAt": "2026-07-09T07:39:40.797Z",
+      "sourceRun": "generated/runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 31,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "c32f1a31c77b7d2db7c266d792e97b0fa7e6ebe775014d5249e32c2cea7770a9",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "myconid-clubcap-v1-var-3": {
+      "briefId": "myconid-clubcap-v1",
+      "spriteName": "myconid-clubcap-v1-var-3",
+      "assetPath": "generated/myconid-clubcap-v1-var-3.png",
+      "approvedAt": "2026-07-09T07:39:41.999Z",
+      "sourceRun": "generated/runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 31,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "dc5b2aaef2a8096d8df97d97ac1e2672ca55341443125a0febc69a9d3c53955e",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-clubcap-v1/2026-07-09T07-14-38-acf13704/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "myconid-elite-don-agaric-v1-var-0": {
+      "briefId": "myconid-elite-don-agaric-v1",
+      "spriteName": "myconid-elite-don-agaric-v1-var-0",
+      "assetPath": "generated/myconid-elite-don-agaric-v1-var-0.png",
+      "approvedAt": "2026-07-09T07:39:43.198Z",
+      "sourceRun": "generated/runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 30,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "9b116c70f9f3c7e06bf7797369105224e52fe5ee84d55e58cac072a8b4b781c7",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "myconid-elite-don-agaric-v1-var-1": {
+      "briefId": "myconid-elite-don-agaric-v1",
+      "spriteName": "myconid-elite-don-agaric-v1-var-1",
+      "assetPath": "generated/myconid-elite-don-agaric-v1-var-1.png",
+      "approvedAt": "2026-07-09T07:39:44.274Z",
+      "sourceRun": "generated/runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 30,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "0b4c18c5e74526d926a85a37df32c1b9b6e47ba89c07aff61512ccf3838fbe0b",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "myconid-elite-don-agaric-v1-var-2": {
+      "briefId": "myconid-elite-don-agaric-v1",
+      "spriteName": "myconid-elite-don-agaric-v1-var-2",
+      "assetPath": "generated/myconid-elite-don-agaric-v1-var-2.png",
+      "approvedAt": "2026-07-09T07:39:45.396Z",
+      "sourceRun": "generated/runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 29,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 29,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "98498dae103f46bb63d29b632125d0eb8e1febbb3660488ed5b5b6ed2fe367a5",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/myconid-elite-don-agaric-v1/2026-07-09T07-22-15-dd44d09b/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "toadkin-elite-swamp-consigliere-v1-var-13": {
+      "briefId": "toadkin-elite-swamp-consigliere-v1",
+      "spriteName": "toadkin-elite-swamp-consigliere-v1-var-13",
+      "assetPath": "generated/toadkin-elite-swamp-consigliere-v1-var-13.png",
+      "approvedAt": "2026-07-09T07:39:47.883Z",
+      "sourceRun": "generated/runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a",
+      "variantIndex": 13,
+      "anchor": {
+        "x": 32,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "e3d2e920e0e9864e2680de11b9cd0046469bf40ab4f54a4b2a10eb349424e25a",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "toadkin-elite-swamp-consigliere-v1-var-3": {
+      "briefId": "toadkin-elite-swamp-consigliere-v1",
+      "spriteName": "toadkin-elite-swamp-consigliere-v1-var-3",
+      "assetPath": "generated/toadkin-elite-swamp-consigliere-v1-var-3.png",
+      "approvedAt": "2026-07-09T07:39:49.402Z",
+      "sourceRun": "generated/runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 31,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "002bce70f60405a9f1325819c2434493a7d78e1840e3151f8b57bd74995ad98e",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "toadkin-elite-swamp-consigliere-v1-var-5": {
+      "briefId": "toadkin-elite-swamp-consigliere-v1",
+      "spriteName": "toadkin-elite-swamp-consigliere-v1-var-5",
+      "assetPath": "generated/toadkin-elite-swamp-consigliere-v1-var-5.png",
+      "approvedAt": "2026-07-09T07:39:46.612Z",
+      "sourceRun": "generated/runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 30,
+        "y": 31,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 31,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "fd8329c2af2e56d233a7792c402b1819306f3a8470dfac833c27a3e515d9a0fb",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/toadkin-elite-swamp-consigliere-v1/2026-07-09T07-05-41-7e26e31a/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "batfolk-elite-rave-don-v1-var-4": {
+      "briefId": "batfolk-elite-rave-don-v1",
+      "spriteName": "batfolk-elite-rave-don-v1-var-4",
+      "assetPath": "generated/batfolk-elite-rave-don-v1-var-4.png",
+      "approvedAt": "2026-07-09T08:03:07.566Z",
+      "sourceRun": "generated/runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 30,
+        "y": 31,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 31,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 31,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "703a74c4646cca5089170ba38871b3954e4021e3820eed597f9cc3e75cf77d80",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/batfolk-elite-rave-don-v1/2026-07-09T07-48-46-afaba2ce/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-junkshot-v1-var-5": {
+      "briefId": "goblin-junkshot-v1",
+      "spriteName": "goblin-junkshot-v1-var-5",
+      "assetPath": "generated/goblin-junkshot-v1-var-5.png",
+      "approvedAt": "2026-07-09T08:03:08.781Z",
+      "sourceRun": "generated/runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 31,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "38daca4f0bb4097131ae47df88c182a85c7cdda8a9bbab8df669faf64b3cf9d4",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-junkshot-v1-var-8": {
+      "briefId": "goblin-junkshot-v1",
+      "spriteName": "goblin-junkshot-v1-var-8",
+      "assetPath": "generated/goblin-junkshot-v1-var-8.png",
+      "approvedAt": "2026-07-09T08:03:09.843Z",
+      "sourceRun": "generated/runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 31,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3",
+      "type": null,
+      "contentHash": "1889b8698b1a2ae574014657acbd788231ce51433489a7a5e8cfe5fdad23dcb3",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-junkshot-v1/2026-07-09T07-36-09-c18fe968/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-elite-joyrider-v1-var-2": {
+      "briefId": "goblin-elite-joyrider-v1",
+      "spriteName": "goblin-elite-joyrider-v1-var-2",
+      "assetPath": "generated/goblin-elite-joyrider-v1-var-2.png",
+      "approvedAt": "2026-07-09T08:26:32.162Z",
+      "sourceRun": "generated/runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 29,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 29,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "1e1dce28c8c5daf84f247a3e4c0655f2d9ecf7cd112383f5b8c875cf38f3ab03",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-elite-joyrider-v1-var-5": {
+      "briefId": "goblin-elite-joyrider-v1",
+      "spriteName": "goblin-elite-joyrider-v1-var-5",
+      "assetPath": "generated/goblin-elite-joyrider-v1-var-5.png",
+      "approvedAt": "2026-07-09T08:26:32.224Z",
+      "sourceRun": "generated/runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 30,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "e1aeacd086a8c808982d0281a1ed5360375d2da8e3fb810b5a0747ee4831cd07",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "goblin-elite-joyrider-v1-var-6": {
+      "briefId": "goblin-elite-joyrider-v1",
+      "spriteName": "goblin-elite-joyrider-v1-var-6",
+      "assetPath": "generated/goblin-elite-joyrider-v1-var-6.png",
+      "approvedAt": "2026-07-09T08:26:32.264Z",
+      "sourceRun": "generated/runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd",
+      "variantIndex": 6,
+      "anchor": {
+        "x": 28,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 28,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 28,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "245f29a989d4b7fe8b8e21452c3c7ad17e800a90a6291ba389ce22de9d5d7785",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/goblin-elite-joyrider-v1/2026-07-09T08-20-24-5bbef3dd/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cactusfolk-elite-desert-capo-v1-var-0": {
+      "briefId": "cactusfolk-elite-desert-capo-v1",
+      "spriteName": "cactusfolk-elite-desert-capo-v1-var-0",
+      "assetPath": "generated/cactusfolk-elite-desert-capo-v1-var-0.png",
+      "approvedAt": "2026-07-09T08:40:21.115Z",
+      "sourceRun": "generated/runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 30,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "be97936e9092a11bbefde3526615d0ed9d3c76a97d24e5b85df2462870689eab",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cactusfolk-elite-desert-capo-v1-var-1": {
+      "briefId": "cactusfolk-elite-desert-capo-v1",
+      "spriteName": "cactusfolk-elite-desert-capo-v1-var-1",
+      "assetPath": "generated/cactusfolk-elite-desert-capo-v1-var-1.png",
+      "approvedAt": "2026-07-09T08:40:21.162Z",
+      "sourceRun": "generated/runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 30,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 30,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "de181bda594892bfe812aaffa9623dd0fdf1628ad934a749d55454922e1e63aa",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "cactusfolk-elite-desert-capo-v1-var-2": {
+      "briefId": "cactusfolk-elite-desert-capo-v1",
+      "spriteName": "cactusfolk-elite-desert-capo-v1-var-2",
+      "assetPath": "generated/cactusfolk-elite-desert-capo-v1-var-2.png",
+      "approvedAt": "2026-07-09T08:40:21.182Z",
+      "sourceRun": "generated/runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 29,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 29,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "590806f184751062a5bc5f5c49fd62bfae245ea0cf1ce7f605241303c4ab080b",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-elite-desert-capo-v1/2026-07-09T08-29-38-f3a6d0e8/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "faerie-boss-var-0": {
+      "briefId": "faerie-boss",
+      "spriteName": "faerie-boss-var-0",
+      "assetPath": "generated/faerie-boss-var-0.png",
+      "approvedAt": "2026-07-16T22:15:00.000Z",
+      "sourceRun": "generated/runs/faerie-boss-v1/2026-07-16T21-50-50-e48c978a",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 33,
+        "y": 71,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 71,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 33,
+          "y": 71,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": null,
+      "type": "enemy",
+      "contentHash": "a1b54fa041f94f9dae1ed0bceae5303f172c6098fce8728eb8fce6a67c1a8cce",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "equipment/weapon/moon-scythe": {
+      "briefId": "equipment/weapon/moon-scythe",
+      "spriteName": "equipment/weapon/moon-scythe",
+      "assetPath": "generated/equipment/weapon/moon-scythe.png",
+      "approvedAt": "2026-07-18T00:00:00.000Z",
+      "sourceRun": "manual-authored/moon-scythe",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual-authored",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "4fd795466d0eb0480e0667510313e77d5ca05cc36b1a64855343cadb3b8f7a33",
+      "equipment": {
+        "stableId": "weapon.moon-scythe",
+        "runtimeKey": "equipment/weapon/moon-scythe",
+        "category": "weapon",
+        "family": "magic-focus",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-magic-focus"
+      }
     }
   }
 }

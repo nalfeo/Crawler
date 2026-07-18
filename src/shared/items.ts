@@ -206,7 +206,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   mat('rusted-scrap', 'Rusted Scrap', 'Junk to most. Treasure to crafters.', C),
   mat('celestial-ingot', 'Celestial Ingot', "Forged in a star that hasn't been born yet.", L),
 
-  // ── Weapons (20) ────────────────────────────────────────────────────
+  // ── Weapons (25) ────────────────────────────────────────────────────
   wpn('throwing-knife', 'Throwing Knife', 'Balanced for a clean throw and a cleaner escape.', C),
   wpn('iron-sword', 'Sword', 'Serviceable. Boring. Gets the job done.', C),
   wpn('flame-dagger', 'Flame Dagger', 'The blade is warm. Always.', U),
@@ -242,6 +242,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     'A razor ring carved from dungeon bone. Comes back. Usually.',
     R,
   ),
+  wpn('ember-wand', 'Ember Wand', 'Channels smoldering intent into a focused bolt of heat.', R),
 
   // ── Consumables (20) ────────────────────────────────────────────────
   con('health-vial', 'Health Vial', 'Tastes like pennies and hope.', C),

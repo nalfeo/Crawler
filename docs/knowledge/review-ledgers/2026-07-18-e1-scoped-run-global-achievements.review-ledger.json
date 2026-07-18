@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "e1-scoped-run-global-achievements",
+  "task_title": "E1 Generalize scoped and run-global achievements",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Addressed plan-review findings by (1) enforcing global achievement-id uniqueness across floor catalogs, (2) constraining current_run rules to run-global-safe facts at parse-time, (3) introducing shared finalizeFloorAchievementProgressOnExit ordering helper (evaluate run_end then snapshot once), and (4) adding contract-protection tests for scope defaulting, current_run fact restrictions, and floor2 stair snapshot behavior."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
