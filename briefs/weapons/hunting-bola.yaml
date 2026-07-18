@@ -1,0 +1,20 @@
+type: weapon
+name: hunting-bola
+description: |
+  A hunting bola shown as a single centered weapon icon on a transparent
+  background. Two worn iron or stone weights are linked by a braided leather
+  cord, posed in a clean diagonal sweep so the whole silhouette reads at a
+  glance. Show one weight slightly higher and one lower with the cord forming
+  a simple open curve between them; keep the subject fully inside the frame
+  with clear breathing room. Dungeon-worn materials, crisp outline, readable
+  contrast, no hand, no target, no extra props, and absolutely not a bow.
+  The silhouette must clearly read as a bola weapon at native size.
+anchor: { x: 24, y: 48 }
+sensors:
+  weapon:
+    orientation: diagonal
+    diagonalToleranceDeg: 12
+variations:
+  - knotted center grip wrap with slightly asymmetrical weights
+  - one weight faceted stone and the other capped iron
+minVariations: 6
