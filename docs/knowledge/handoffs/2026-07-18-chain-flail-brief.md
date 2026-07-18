@@ -33,7 +33,7 @@ has not yet merged. The art brief can be approved and wired once that branch lan
 
 ## Key Decisions Made
 
-- **Brief ID = `chain-flail`**: matches the bare item concept slug so the pipeline
+- **Brief name/slug = `chain-flail`** (the `name` field in the YAML): matches the bare item concept slug so the pipeline
   auto-canonicalizes approved art to `chain-flail-var-N` (no `-vN` orphan).
 - **No orientation override**: chain flail is a vertical bludgeon weapon; the default
   vertical orientation in `weapon.json` is correct (grip at bottom, ball at top).
