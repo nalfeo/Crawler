@@ -455,13 +455,14 @@ test('latestMatchingCopilotCloudRun picks run with newest updated_at even when a
   assert.equal(result?.id, 900, 'should pick run A which has the newer updated_at');
 });
 
-test('matchingCopilotCloudRunRejection fails closed when workflow identity fields are missing', () => {
+test('matchingCopilotCloudRunRejection skips absent workflow identity fields (graceful degradation)', () => {
   const minimalRun = {
     id: 999,
     head_sha: HEAD_SHA,
     head_branch: HEAD_BRANCH,
     actor: { login: 'Copilot' },
-    // path/workflow/repository identity intentionally absent
+    // path/workflow_id/repository identity intentionally absent — endpoint already constrains by
+    // workflow id, so absent fields should not hard-reject a run
   };
   assert.equal(
     matchingCopilotCloudRunRejection({
@@ -470,7 +471,7 @@ test('matchingCopilotCloudRunRejection fails closed when workflow identity field
       headSha: HEAD_SHA,
       headBranch: HEAD_BRANCH,
     }),
-    'workflow-path',
+    null,
   );
 });
 

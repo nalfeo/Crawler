@@ -96,10 +96,16 @@ export function changedFileRetryDelaysMs({
 }
 
 export function matchingCopilotCloudRunRejection({ run, repository, headSha, headBranch }) {
-  if (String(run?.path || '') !== COPILOT_CLOUD_AGENT_WORKFLOW_PATH) return 'workflow-path';
-  if (Number(run?.workflow_id) !== Number(COPILOT_CLOUD_AGENT_WORKFLOW_ID)) return 'workflow-id';
-  if (!sameRepository(run?.repository?.full_name, repository)) return 'run-repository';
-  if (!sameRepository(run?.head_repository?.full_name, repository)) return 'run-head-repository';
+  if (run?.path != null && run.path !== COPILOT_CLOUD_AGENT_WORKFLOW_PATH) return 'workflow-path';
+  if (run?.workflow_id != null && Number(run.workflow_id) !== Number(COPILOT_CLOUD_AGENT_WORKFLOW_ID))
+    return 'workflow-id';
+  if (run?.repository?.full_name != null && !sameRepository(run.repository.full_name, repository))
+    return 'run-repository';
+  if (
+    run?.head_repository?.full_name != null &&
+    !sameRepository(run.head_repository.full_name, repository)
+  )
+    return 'run-head-repository';
   if (normalize(run?.head_sha) !== normalize(headSha)) return 'head-sha';
   if (trimRef(run?.head_branch) !== trimRef(headBranch)) return 'head-branch';
   if (!isCopilotLogin(run?.actor?.login)) return 'actor';
