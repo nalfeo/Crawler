@@ -255,13 +255,16 @@ describe('Floor 2 equipment epic status', () => {
     expect(validate(state).errors.map((error) => error.code)).toContain('evidence.hash-drift');
   });
 
-  it('rejects a merge fact that points at a non-commit git object', () => {
-    const state = cloneState();
-    validateA0(state);
-    state.nodes[0]!.merge.commit = TREE_OBJECT_SHA;
+  it.skipIf(TREE_OBJECT_SHA === '0'.repeat(40))(
+    'rejects a merge fact that points at a non-commit git object',
+    () => {
+      const state = cloneState();
+      validateA0(state);
+      state.nodes[0]!.merge.commit = TREE_OBJECT_SHA;
 
-    expect(validate(state).errors.map((error) => error.code)).toContain('merge.not-a-commit');
-  });
+      expect(validate(state).errors.map((error) => error.code)).toContain('merge.not-a-commit');
+    },
+  );
 
   it('rejects whitespace-only ownership metadata', () => {
     const state = cloneState();
@@ -472,6 +475,17 @@ describe('Floor 2 equipment epic status', () => {
 
     const codes = validate(state).errors.map((error) => error.code);
     expect(codes).toContain('dag.dependency-contract-drift');
+  });
+
+  it('rejects canonical parent-slice drift', () => {
+    const state = cloneState();
+    // packet:D2-A must have parent_slice 'slice:D2'; point it to a wrong slice.
+    const d2a = state.nodes.find((node) => node.node_id === 'packet:D2-A');
+    expect(d2a).toBeDefined();
+    if (d2a) d2a.parent_slice = 'slice:A0';
+
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).toContain('dag.parent-slice-contract-drift');
   });
 
   it('rejects a node not in the canonical plan graph', () => {

@@ -1020,11 +1020,15 @@ function validateEvidenceRequirements(
       });
       continue;
     }
-    if (gitReader.commitStatus(evidence.commit) !== 'commit') {
+    const nonFileCommitStatus = gitReader.commitStatus(evidence.commit);
+    if (nonFileCommitStatus !== 'commit') {
       result.errors.push({
         code: 'evidence.git-verification-failed',
         node_id: node.node_id,
-        message: `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
+        message:
+          nonFileCommitStatus === 'not-commit'
+            ? `${node.node_id} evidence commit ${evidence.commit} is not a commit object: ${evidence.path_or_check}`
+            : `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
       });
     }
   }
@@ -1667,6 +1671,10 @@ export function auditGithub(
         if (blocked) {
           // BLOCKED revokes all live claims for the blocked node only.
           liveClaimsByNodeAndSession.delete(blocked.nodeId);
+          operatorActions.push(
+            `Ownership of ${blocked.nodeId} was revoked by a BLOCKED event (${blocked.url}). ` +
+              `Verify cached ownership reflects the revocation or a subsequent re-claim.`,
+          );
           continue;
         }
         const claim = parseTrustedClaim(comment, expectedNodeId);
@@ -1803,6 +1811,7 @@ export function auditGithub(
     byOwner.push(claim);
     deduplicatedByOwner.set(sessionKey, byOwner);
   }
+  const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
   for (const [nodeId, claims] of deduplicatedByNode) {
     if (claims.length > 1) {
       errors.push({
@@ -1817,7 +1826,6 @@ export function auditGithub(
     // Reconcile the single authoritative live claim against cached ownership.
     if (claims.length === 1) {
       const liveClaim = claims[0]!;
-      const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
       const epicNode = nodesById.get(nodeId);
       if (epicNode && ACTIVE_STATUSES.has(epicNode.status)) {
         const owns = epicNode.ownership;
