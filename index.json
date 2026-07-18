@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7e82e8021e0bfeee713e4ad2ac48abb33e7534f3",
+    "commitDate": "2026-07-18T18:01:50Z",
+    "commitSubject": "feat(sprites): add scavenger-harness Floor 2 equipment icon (#1505)",
+    "capturedAt": "2026-07-18T19:35:00.745Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29655815632",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/7e82e8021e0bfeee713e4ad2ac48abb33e7534f3.json"
+  },
+  {
     "commit": "85f8d626d1152ce1a84b11fa9797f03e1df47bdd",
     "commitDate": "2026-07-18T18:01:43Z",
     "commitSubject": "art(sprites): add iron-visor Floor 2 equipment brief (#1504)",
