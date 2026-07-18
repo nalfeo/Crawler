@@ -14,8 +14,17 @@
       "notes": "Addressed five concerns: intake now rejects asset-request/no-copilot labels and runs on labeling to close the race; CI authorization will require immutable workflow context plus an explicit marker; active batch PRs will use a stable body marker; mixed base branches will fail closed; and workflow shape/authorization tests will be added."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true,
+          "notes": "Resolved the two applicable findings: replaced human-readable reason substring matching with a structured blocking flag, and fail-closed on check-in/requested base-branch mismatch. A separate pre-existing async test warning and a non-actionable query-size suggestion were not part of this change."
+        }
+      ]
     }
   }
 }
