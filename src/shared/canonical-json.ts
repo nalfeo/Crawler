@@ -1,156 +1,52 @@
-export class CanonicalJsonError extends Error {
-  constructor(
-    message: string,
-    readonly path: string,
-  ) {
-    super(`${message} at ${path}`);
-    this.name = 'CanonicalJsonError';
+function assertAcyclic(value: unknown, stack: Set<object>): void {
+  if (value === null || typeof value !== 'object') {
+    return;
   }
-}
-
-function canonicalize(value: unknown, path: string, ancestors: Set<object>): string {
-  if (value === null) return 'null';
-  if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new CanonicalJsonError('Expected a finite number', path);
-    }
-    return JSON.stringify(value);
+  if (stack.has(value)) {
+    throw new Error('canonicalJson: circular references are not supported');
   }
-  if (typeof value !== 'object') {
-    throw new CanonicalJsonError(`Unsupported ${typeof value} value`, path);
-  }
-  if (ancestors.has(value)) {
-    throw new CanonicalJsonError('Circular references are not supported', path);
-  }
-
-  ancestors.add(value);
+  stack.add(value);
   try {
     if (Array.isArray(value)) {
-      return `[${value
-        .map((entry, index) => canonicalize(entry, `${path}[${index}]`, ancestors))
-        .join(',')}]`;
+      for (const entry of value) {
+        assertAcyclic(entry, stack);
+      }
+      return;
     }
 
-    if (Object.getPrototypeOf(value) !== Object.prototype) {
-      throw new CanonicalJsonError('Expected a plain object', path);
+    for (const key of Object.keys(value as object)) {
+      assertAcyclic((value as Record<string, unknown>)[key], stack);
     }
-    if (Object.getOwnPropertySymbols(value).length > 0) {
-      throw new CanonicalJsonError('Symbol keys are not supported', path);
-    }
-
-    const record = value as Record<string, unknown>;
-    const properties = Object.keys(record)
-      .sort()
-      .map(
-        (key) => `${JSON.stringify(key)}:${canonicalize(record[key], `${path}.${key}`, ancestors)}`,
-      );
-    return `{${properties.join(',')}}`;
   } finally {
-    ancestors.delete(value);
+    stack.delete(value);
   }
 }
 
-/** Canonical JSON with lexicographically sorted object keys and stable array order. */
+function sortedReplacer(_key: string, val: unknown): unknown {
+  if (val === undefined) {
+    throw new Error('canonicalJson: undefined values are not permitted in fingerprint input');
+  }
+  if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+    const sorted: Record<string, unknown> = {};
+    for (const k of Object.keys(val as object).sort()) {
+      sorted[k] = (val as Record<string, unknown>)[k];
+    }
+    return sorted;
+  }
+  return val;
+}
+
+/**
+ * Canonical JSON with lexicographically sorted object keys and stable array order.
+ *
+ * This intentionally mirrors `JSON.stringify` semantics for non-finite numbers and
+ * non-plain objects (except for rejecting circular refs and undefined values).
+ */
 export function canonicalJson(value: unknown): string {
-  return canonicalize(value, '$', new Set());
-}
-
-const SHA256_INITIAL_STATE = [
-  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
-] as const;
-
-const SHA256_ROUND_CONSTANTS = [
-  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-] as const;
-
-function rotateRight(value: number, count: number): number {
-  return (value >>> count) | (value << (32 - count));
-}
-
-/** Dependency-free synchronous SHA-256 for browser and headless runtime code. */
-export function sha256Hex(input: string): string {
-  const message = new TextEncoder().encode(input);
-  const bitLength = message.length * 8;
-  const paddedLength = Math.ceil((message.length + 9) / 64) * 64;
-  const padded = new Uint8Array(paddedLength);
-  padded.set(message);
-  padded[message.length] = 0x80;
-
-  const paddedView = new DataView(padded.buffer);
-  paddedView.setUint32(paddedLength - 8, Math.floor(bitLength / 0x1_0000_0000), false);
-  paddedView.setUint32(paddedLength - 4, bitLength >>> 0, false);
-
-  const state: number[] = [...SHA256_INITIAL_STATE];
-  const words = new Uint32Array(64);
-  for (let offset = 0; offset < paddedLength; offset += 64) {
-    for (let index = 0; index < 16; index += 1) {
-      words[index] = paddedView.getUint32(offset + index * 4, false);
-    }
-    for (let index = 16; index < 64; index += 1) {
-      const word15 = words[index - 15] ?? 0;
-      const word2 = words[index - 2] ?? 0;
-      const sigma0 = rotateRight(word15, 7) ^ rotateRight(word15, 18) ^ (word15 >>> 3);
-      const sigma1 = rotateRight(word2, 17) ^ rotateRight(word2, 19) ^ (word2 >>> 10);
-      words[index] = ((words[index - 16] ?? 0) + sigma0 + (words[index - 7] ?? 0) + sigma1) >>> 0;
-    }
-
-    let a = state[0] ?? 0;
-    let b = state[1] ?? 0;
-    let c = state[2] ?? 0;
-    let d = state[3] ?? 0;
-    let e = state[4] ?? 0;
-    let f = state[5] ?? 0;
-    let g = state[6] ?? 0;
-    let h = state[7] ?? 0;
-
-    for (let index = 0; index < 64; index += 1) {
-      const upperSigma1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
-      const choice = (e & f) ^ (~e & g);
-      const temporary1 =
-        (h + upperSigma1 + choice + (SHA256_ROUND_CONSTANTS[index] ?? 0) + (words[index] ?? 0)) >>>
-        0;
-      const upperSigma0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
-      const majority = (a & b) ^ (a & c) ^ (b & c);
-      const temporary2 = (upperSigma0 + majority) >>> 0;
-
-      h = g;
-      g = f;
-      f = e;
-      e = (d + temporary1) >>> 0;
-      d = c;
-      c = b;
-      b = a;
-      a = (temporary1 + temporary2) >>> 0;
-    }
-
-    state[0] = ((state[0] ?? 0) + a) >>> 0;
-    state[1] = ((state[1] ?? 0) + b) >>> 0;
-    state[2] = ((state[2] ?? 0) + c) >>> 0;
-    state[3] = ((state[3] ?? 0) + d) >>> 0;
-    state[4] = ((state[4] ?? 0) + e) >>> 0;
-    state[5] = ((state[5] ?? 0) + f) >>> 0;
-    state[6] = ((state[6] ?? 0) + g) >>> 0;
-    state[7] = ((state[7] ?? 0) + h) >>> 0;
+  assertAcyclic(value, new Set());
+  const serialized = JSON.stringify(value, sortedReplacer);
+  if (serialized === undefined) {
+    throw new Error('canonicalJson: value is not JSON-serializable');
   }
-
-  return state.map((word) => word.toString(16).padStart(8, '0')).join('');
-}
-
-/** Recursively freezes a plain data graph after callers have validated it. */
-export function deepFreeze<T>(value: T): Readonly<T> {
-  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
-    for (const nested of Object.values(value)) {
-      deepFreeze(nested);
-    }
-    Object.freeze(value);
-  }
-  return value;
+  return serialized;
 }
