@@ -13,6 +13,10 @@ import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
 import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
+import {
+  createEmptyAchievementFactState,
+  type AchievementFactState,
+} from '../shared/achievements.js';
 import type {
   BloodFootprintSurface,
   BloodPoolSurface,
@@ -390,6 +394,8 @@ export interface GameWorld {
     pendingUnlockIds: string[];
     /** Achievement IDs whose reward has been opened/claimed this run. */
     claimedIds: Set<string>;
+    /** Deterministic run-global achievement facts carried across floor transitions. */
+    runGlobal: AchievementFactState;
   };
   /**
    * True when the player entity's current position is inside a safe room.
@@ -556,6 +562,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       unlockedIds: new Set(),
       pendingUnlockIds: [],
       claimedIds: new Set(),
+      runGlobal: createEmptyAchievementFactState(),
     },
     debugFlags: {
       showAllRooms: false,
