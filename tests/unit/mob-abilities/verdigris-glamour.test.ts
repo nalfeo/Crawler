@@ -222,6 +222,24 @@ describe('Verdigris Glamour — damage resolution', () => {
     expect(getStatusEffects(h.world, h.player).length).toBeGreaterThan(0);
   });
 
+  it('does not apply Tarnished when the damage is lethal', () => {
+    const h = buildHarness();
+    // Set player HP to exactly the ability's damage amount so the hit is lethal.
+    // After resolution the player must be at 0 HP with NO status effects — retaining
+    // Tarnished post-death violates the dead-target cleanup contract and would cause
+    // MobAbilityVfx to render a Tarnished ring during game-over.
+    h.world.stores.health.current[h.player] = 20; // moderate damage amount
+    h.def.resolve(h.world, {
+      abilityId: h.def.abilityId,
+      casterEid: h.queen,
+      sourceId: mobAbilitySourceId(h.def.abilityId, h.queen),
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+      targetEid: h.player,
+    });
+    expect(h.world.stores.health.current[h.player]!).toBe(0);
+    expect(getStatusEffects(h.world, h.player)).toHaveLength(0);
+  });
+
   it('does not damage a target outside the committed circle', () => {
     const h = buildHarness();
     const before = h.world.stores.health.current[h.player]!;

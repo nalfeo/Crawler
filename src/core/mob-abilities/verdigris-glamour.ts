@@ -227,7 +227,13 @@ function makeResolveHandler(ability: BossAbilityDef) {
         sourceX: geometry.x,
         sourceY: geometry.y,
       });
-      applyTarnished(world, eid, sourceId, tuning);
+      // Only Tarnish a target that survived the hit. If the 20 damage was lethal
+      // the player is now at 0 HP and must not retain status effects during
+      // game-over — that would violate the dead-target cleanup contract and cause
+      // the VFX layer to render a Tarnished indicator post-death.
+      if ((world.stores.health.current[eid] ?? 0) > 0) {
+        applyTarnished(world, eid, sourceId, tuning);
+      }
     }
   };
 }

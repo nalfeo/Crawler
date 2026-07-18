@@ -51,7 +51,7 @@ const gateSchema = z
   .object({
     id: idSchema,
     kind: z.enum(['delivery-milestone', 'external-dependency']),
-    state: z.enum(['in-progress', 'not-started', 'open', 'verified']),
+    state: z.enum(['closed-no-merge', 'in-progress', 'not-started', 'open', 'verified']),
     reason: z.string().min(40),
     ref: externalRefSchema.nullable(),
   })
