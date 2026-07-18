@@ -6061,3 +6061,124 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
     'task body must instruct the agent to verify and re-post the marker',
   );
 });
+
+test('transient compare failure does not produce a stale-marker hint (generic blocker preserved)', async (t) => {
+  // When the compare API call fails with a transient/indeterminate error (e.g. 5xx,
+  // rate limit, network error), the reconciler cannot determine whether the marker
+  // SHA is truly stale.  It must NOT emit a stale-marker hint that would
+  // incorrectly direct the recovery agent down the re-marker path.  The generic
+  // review-thread blocker must still be emitted so recovery continues normally.
+  const markerSha = 'beef0000aabbccddeeff00112233445566778899';
+  const threadId = 'PRRT_transient_fail_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/core/systems/damageSystem.ts',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original_transient',
+                  body: 'reviewer: damage calculation does not account for armor.',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r2`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_marker_transient',
+                  body: `✅ Addressed in \`${markerSha}\`: Armor factor applied before final damage.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    // Compare call returns a transient server error — lineage is indeterminate.
+    [`GET /repos/${OWNER}/${REPO}/compare/${markerSha}...${HEAD_SHA}`]: () => ({
+      status: 500,
+      body: { message: 'Internal Server Error' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1002 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread must NOT be auto-resolved (lineage was indeterminate).
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+
+  // A task comment must still be posted for the generic review-thread blocker.
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the review-thread blocker');
+
+  // The stale-marker hint must NOT appear — the compare failed transiently, so
+  // the SHA is indeterminate, not confirmed unreachable.
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    new RegExp(`Stale marker.*${markerSha}`, 'i'),
+    'task body must NOT include a stale-marker hint when lineage check was transient/indeterminate',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /verify fix is present.*reply to this thread/i,
+    'task body must NOT include re-marker instructions when compare failed transiently',
+  );
+});

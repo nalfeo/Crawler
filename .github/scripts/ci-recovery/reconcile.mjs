@@ -948,6 +948,12 @@ for (const thread of unresolvedThreads) {
   }
 }
 const reachableMarkerShas = new Set();
+// Only SHAs confirmed unreachable by a definitive API response (404 commit-not-found,
+// or a successful compare whose status is not ancestor-of-head). SHAs whose lineage
+// could not be determined due to transient failures (rate limits, 5xx, network errors,
+// 422 ambiguous SHA) are omitted from both sets so that the stale-marker hint is not
+// emitted spuriously.
+const definitivelyUnreachableMarkerShas = new Set();
 for (const markerSha of markerShasNeedingLineageCheck) {
   try {
     const compare = (
@@ -955,20 +961,34 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     ).data;
     if (compare?.status === 'identical' || compare?.status === 'ahead') {
       reachableMarkerShas.add(markerSha);
+    } else {
+      // Successful response but the marker commit is not an ancestor of HEAD
+      // (e.g. 'behind' or 'diverged') — definitively not reachable.
+      definitivelyUnreachableMarkerShas.add(markerSha);
     }
   } catch (error) {
+    const httpStatus = typeof error.status === 'number' ? error.status : null;
+    const isDefinitivelyMissing = httpStatus === 404;
     console.warn(
       JSON.stringify({
         event: 'ci-recovery.marker-sha-compare-failed',
-        message: 'Treating marker as non-reachable after compare failure.',
+        message: isDefinitivelyMissing
+          ? 'Marker commit not found (404); treating as definitively unreachable.'
+          : 'Lineage check failed with transient/indeterminate error; skipping stale-marker hint for this SHA.',
         markerSha,
         prHeadSha: pr.head.sha,
+        httpStatus,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? (error.stack ?? null) : null,
       }),
     );
-    // Treat any error (404 not found, 422 unresolvable/ambiguous SHA,
-    // network errors, etc.) as a non-reachable marker so recovery can proceed.
+    if (isDefinitivelyMissing) {
+      // 404: commit does not exist on GitHub — definitively a stale/never-pushed SHA.
+      definitivelyUnreachableMarkerShas.add(markerSha);
+    }
+    // For transient/indeterminate failures (rate limits, 5xx, network errors,
+    // 422 ambiguous SHA, etc.) the SHA is absent from both sets so no stale-marker
+    // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
 for (const thread of unresolvedThreads.filter((candidate) =>
@@ -995,14 +1015,13 @@ for (const thread of unresolvedThreads.filter((candidate) =>
 }
 
 // Detect threads whose last trusted comment carries a ✅ Addressed marker that
-// points to a SHA not reachable from the current head (e.g. a local commit
-// created by a recovery agent before it was pushed, later abandoned or squashed
-// into a different commit). The reconciler cannot auto-resolve these threads
-// because the compare API returns 404 for the stale SHA — correctly treating it
-// as non-reachable. Including the stale SHA in the blocker summary lets the
-// next recovery agent identify these threads quickly and reply with the correct
-// current-head SHA rather than re-investigating the underlying concern from
-// scratch.
+// points to a SHA definitively not reachable from the current head (e.g. a local
+// commit created by a recovery agent before it was pushed, later abandoned or
+// squashed into a different commit). Only emit the stale-marker hint when the
+// compare API confirmed the commit does not exist (404) or is not an ancestor
+// (non-identical/non-ahead compare). Threads where lineage could not be checked
+// due to transient errors (rate limits, 5xx, network failures, 422 ambiguous SHA)
+// keep the generic review-thread blocker without the misleading stale-SHA hint.
 const staleAddressedMarkerByThread = new Map();
 for (const thread of unresolvedThreads) {
   // Skip threads the reconciler will auto-resolve in the loop above.
@@ -1012,8 +1031,11 @@ for (const thread of unresolvedThreads) {
   const last = comments[comments.length - 1];
   const markerSha = extractAddressedMarkerSha(last?.body);
   if (!markerSha) continue;
-  // Reachable markers are handled by shouldResolveThread; only stale ones land here.
+  // Only flag as stale when we have a definitive non-reachable result.
+  // If the lineage check was skipped or failed transiently the SHA will be
+  // absent from both sets; treat it as indeterminate and skip the hint.
   if (headSha.startsWith(markerSha) || reachableMarkerShas.has(markerSha)) continue;
+  if (!definitivelyUnreachableMarkerShas.has(markerSha)) continue;
   const authorLogin = String(last?.author?.login ?? '').toLowerCase();
   const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
   if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
