@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { bashEnv, toBashScriptPath } from '../helpers/bash-script-path.js';
@@ -145,6 +145,27 @@ const STUB_DURATION_SECONDS = 300;
 const STUB_STARTUP_DELAY_MS = 200;
 /** Bound close wait so regressions cannot hang and leak background stub processes. */
 const CLOSE_TIMEOUT_MS = 5_000;
+/** Bound PID-file wait so the test fails fast if stub descendants never launch. */
+const CHILD_PID_TIMEOUT_MS = 3_000;
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+async function waitForFile(filePath: string, timeoutMs: number): Promise<void> {
+  const started = Date.now();
+  while (!existsSync(filePath)) {
+    if (Date.now() - started >= timeoutMs) {
+      throw new Error(`Timed out waiting for file: ${filePath}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 
 describe('verify-fast signal lifecycle', () => {
   it.skipIf(!hasBash)(
@@ -155,6 +176,8 @@ describe('verify-fast signal lifecycle', () => {
         'tests/clean.test.ts': 'export const testValue = 1;\n',
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
       });
+      const tscChildPidFile = path.join(fixture, 'tsc-child.pid');
+      const eslintChildPidFile = path.join(fixture, 'eslint-child.pid');
 
       const proc = spawn('bash', [SCRIPT], {
         cwd: fixture,
@@ -162,9 +185,13 @@ describe('verify-fast signal lifecycle', () => {
           NODE_ENV: 'test',
           VERIFY_FAST_TEST_STATIC_ONLY: '1',
           VERIFY_FAST_TSC_PROJECT: path.join(fixture, 'tsconfig.json'),
-          // Replace real tsc + lint with sleep stubs so the verifier is blocked
-          // in its parallel wait and can be cleanly interrupted via SIGINT.
+          // Replace real tsc + lint with controllable wrappers that each spawn
+          // a long-lived descendant sleep process. This validates process-group
+          // cleanup, not only top-level PID termination.
           VERIFY_FAST_TSC_STUB_SECONDS: String(STUB_DURATION_SECONDS),
+          VERIFY_FAST_TSC_STUB_WITH_DESCENDANT: '1',
+          VERIFY_FAST_TSC_STUB_TSC_CHILD_PID_FILE: tscChildPidFile,
+          VERIFY_FAST_TSC_STUB_ESLINT_CHILD_PID_FILE: eslintChildPidFile,
         }),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -199,6 +226,15 @@ describe('verify-fast signal lifecycle', () => {
           });
         });
 
+        await waitForFile(tscChildPidFile, CHILD_PID_TIMEOUT_MS);
+        await waitForFile(eslintChildPidFile, CHILD_PID_TIMEOUT_MS);
+        const tscChildPid = Number.parseInt(readFileSync(tscChildPidFile, 'utf8').trim(), 10);
+        const eslintChildPid = Number.parseInt(readFileSync(eslintChildPidFile, 'utf8').trim(), 10);
+        expect(Number.isFinite(tscChildPid)).toBe(true);
+        expect(Number.isFinite(eslintChildPid)).toBe(true);
+        expect(isProcessAlive(tscChildPid)).toBe(true);
+        expect(isProcessAlive(eslintChildPid)).toBe(true);
+
         // Interrupt the verifier — should trigger `trap 'exit 130' INT` then
         // `trap cleanup_parallel EXIT`, killing the background process groups.
         proc.kill('SIGINT');
@@ -215,6 +251,8 @@ describe('verify-fast signal lifecycle', () => {
           throw new Error(`Timed out waiting ${CLOSE_TIMEOUT_MS}ms for SIGINT shutdown`);
         }
         expect(closeResult.code).toBe(130);
+        expect(isProcessAlive(tscChildPid)).toBe(false);
+        expect(isProcessAlive(eslintChildPid)).toBe(false);
       } finally {
         if (!closed) {
           proc.kill('SIGKILL');

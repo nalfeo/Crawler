@@ -81,8 +81,15 @@ if [ "$test_static_only" -eq 1 ] && [ -n "${VERIFY_FAST_TSC_STUB_SECONDS:-}" ]; 
   stub_secs="${VERIFY_FAST_TSC_STUB_SECONDS//[^0-9]/}"
   # Cap at 600 s to avoid runaway processes from an accidental large value.
   if [ -n "$stub_secs" ] && [ "$stub_secs" -gt 600 ]; then stub_secs=600; fi
-  tsc_cmd=(sleep "${stub_secs:-1}")
-  LINT_CMD=(sleep "${stub_secs:-1}")
+  if [ "${VERIFY_FAST_TSC_STUB_WITH_DESCENDANT:-0}" = "1" ]; then
+    # Optional test hook: each stub job launches a long-lived child process so
+    # signal-lifecycle tests can assert process-group cleanup kills descendants.
+    tsc_cmd=(bash -c 'sleep "$1" & child=$!; [ -n "$2" ] && printf "%s\n" "$child" > "$2"; wait "$child"' _ "${stub_secs:-1}" "${VERIFY_FAST_TSC_STUB_TSC_CHILD_PID_FILE:-}")
+    LINT_CMD=(bash -c 'sleep "$1" & child=$!; [ -n "$2" ] && printf "%s\n" "$child" > "$2"; wait "$child"' _ "${stub_secs:-1}" "${VERIFY_FAST_TSC_STUB_ESLINT_CHILD_PID_FILE:-}")
+  else
+    tsc_cmd=(sleep "${stub_secs:-1}")
+    LINT_CMD=(sleep "${stub_secs:-1}")
+  fi
 fi
 
 "${tsc_cmd[@]}" &
