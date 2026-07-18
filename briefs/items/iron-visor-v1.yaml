@@ -1,0 +1,20 @@
+type: item
+name: iron-visor-v1
+description: |
+  A single iron faceplate / visor viewed front-facing or at a slight three-quarter
+  angle. The visor is a flat slab of riveted iron with a horizontal slit cut through
+  the upper third — the eye-slit is the defining visual feature; it must be clearly
+  readable as a narrow dark opening across the width of the plate. The outer surface
+  is dull grey iron with surface scratches, scuffs, and small dents from use. Three
+  to four visible round rivets along the edges anchor it to a presumed helm. The
+  bottom edge is slightly flared outward to protect the nose. No decorative engravings,
+  no magic glow, no background scene — just the worn slab of iron with its iconic
+  slit. Centered in the frame, fully inside the canvas with breathing room on all sides.
+  The silhouette reads unmistakably as a medieval armored visor or faceplate at a glance.
+variations:
+  - visor plate with deep horizontal slit and four rivets, visible edge dents from combat
+  - slightly convex faceplate with narrow eye-opening, rust staining around the slit edges
+  - flat iron visor with reinforced vertical nose ridge and two rivets on each side
+minVariations: 5
+judge:
+  enabled: true
