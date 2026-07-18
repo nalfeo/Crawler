@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -5,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   auditGithub,
   buildMaterializationPlan,
+  createDefaultGitReader,
   EXPECTED_NODE_IDS,
   extractPlanContract,
   validateEpicState,
@@ -19,36 +21,27 @@ const PLAN = readFileSync(resolve(EPIC_DIR, 'PLAN.md'), 'utf8');
 const STATE = JSON.parse(readFileSync(resolve(EPIC_DIR, 'epic-state.json'), 'utf8')) as EpicState;
 const NOW = new Date('2026-07-17T18:00:00.000Z');
 const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
-// Placeholder SHAs used in evidence entries – the working-tree git reader ignores
-// the commit parameter and reads from disk, so these only need to be valid SHA-40s.
 const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
 const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
 const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
+const TREE_OBJECT_SHA = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
+  cwd: REPO_ROOT,
+  encoding: 'utf8',
+}).trim();
+const TEST_GIT_READER = createDefaultGitReader(REPO_ROOT);
 
 function sha256OfFile(repoRoot: string, repoRelPath: string): string {
   const content = readFileSync(resolve(repoRoot, repoRelPath), 'utf8');
   return createHash('sha256').update(content).digest('hex');
 }
 
-/**
- * A repository-independent GitReader for unit tests: reads evidence files
- * from the current working tree (content matches the recorded sha256 hashes)
- * and treats every commit SHA as present. This avoids any dependency on git
- * history depth, keeping the suite green in shallow CI checkouts.
- */
-function makeWorkingTreeGitReader(repoRoot: string): GitReader {
-  return {
-    showContent(_commit: string, filePath: string): string | null {
-      try {
-        return readFileSync(resolve(repoRoot, filePath), 'utf8');
-      } catch {
-        return null;
-      }
-    },
-    commitExists(_commit: string): boolean {
-      return true;
-    },
-  };
+function sha256OfGitFile(repoRoot: string, commit: string, repoRelPath: string): string {
+  const content = execFileSync('git', ['show', `${commit}:${repoRelPath}`], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  return createHash('sha256').update(content).digest('hex');
 }
 
 function cloneState(): EpicState {
@@ -63,7 +56,7 @@ function validate(state: EpicState, planMarkdown = PLAN) {
     repoRoot: REPO_ROOT,
     now: NOW,
     planMarkdown,
-    gitReader: makeWorkingTreeGitReader(REPO_ROOT),
+    gitReader: TEST_GIT_READER,
   });
 }
 
@@ -98,24 +91,22 @@ function validateA0(state: EpicState): void {
     {
       kind: 'handoff',
       path_or_check: HANDOFF_PATH,
-      sha256: sha256OfFile(REPO_ROOT, HANDOFF_PATH),
+      sha256: sha256OfGitFile(REPO_ROOT, HANDOFF_COMMIT, HANDOFF_PATH),
       commit: HANDOFF_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
     {
       kind: 'review-ledger',
       path_or_check: LEDGER_PATH,
-      sha256: sha256OfFile(REPO_ROOT, LEDGER_PATH),
+      sha256: sha256OfGitFile(REPO_ROOT, LEDGER_COMMIT, LEDGER_PATH),
       commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
     {
-      // Use the handoff file as a stable stand-in for the offline-validator evidence
-      // (avoids circular sha256 bootstrap when the test file itself changes).
       kind: 'offline-validator-and-focused-tests',
-      path_or_check: HANDOFF_PATH,
-      sha256: sha256OfFile(REPO_ROOT, HANDOFF_PATH),
-      commit: HANDOFF_COMMIT,
+      path_or_check: 'tests/unit/agent/epic-status.test.ts',
+      sha256: sha256OfGitFile(REPO_ROOT, LEDGER_COMMIT, 'tests/unit/agent/epic-status.test.ts'),
+      commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
   ];
@@ -248,6 +239,28 @@ describe('Floor 2 equipment epic status', () => {
     state.nodes[0]!.evidence[0]!.sha256 = 'a'.repeat(64);
 
     expect(validate(state).errors.map((error) => error.code)).toContain('evidence.hash-drift');
+  });
+
+  it('rejects a merge fact that points at a non-commit git object', () => {
+    const state = cloneState();
+    validateA0(state);
+    state.nodes[0]!.merge.commit = TREE_OBJECT_SHA;
+
+    expect(validate(state).errors.map((error) => error.code)).toContain('merge.not-a-commit');
+  });
+
+  it('rejects whitespace-only ownership metadata', () => {
+    const state = cloneState();
+    state.nodes[0]!.ownership.claimant = '   ';
+    state.nodes[0]!.ownership.session = ' ';
+    state.nodes[0]!.ownership.scope = '\t';
+
+    const result = validate(state);
+
+    expect(result.errors.map((error) => error.code)).toContain('state.schema');
+    expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.claimant');
+    expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.session');
+    expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.scope');
   });
 
   it('renders stable child issue packets with late-bound parent substitution', () => {
@@ -585,6 +598,84 @@ describe('Floor 2 equipment epic status', () => {
     expect(
       audit.proposal.operator_actions.filter((a) => a.includes('session-z')).length,
     ).toBeGreaterThan(0);
+  });
+
+  it('revokes a child-issue live claim when BLOCKED omits node but lease disposition requests revoke', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'claimed';
+    a1.dependencies = [];
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    a1.ownership = {
+      claimant: 'agent-b',
+      session: 'session-child',
+      source: 'child-issue-comment',
+      scope: 'Slice A1 only',
+      claimed_at: '2026-07-17T16:00:00.000Z',
+      lease_expires_at: '2026-07-18T18:00:00.000Z',
+      heartbeat_at: '2026-07-17T16:00:00.000Z',
+      base_commit: HANDOFF_COMMIT,
+    };
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.endsWith('/issues/1279')) {
+          return {
+            number: 1279,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1279',
+          };
+        }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) return [];
+        if (path.includes('/issues/1279/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A1',
+                'claimant: agent-b',
+                'session: session-child',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T16:00:00.000Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A1 only',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1279#issuecomment-24',
+            },
+            {
+              body: ['BLOCKED', 'reason: dependency unresolved', 'lease_disposition: revoke'].join(
+                '\n',
+              ),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1279#issuecomment-25',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors.map((e) => e.code)).not.toContain('github.duplicate-live-claims');
+    expect(audit.proposal.operator_actions.filter((a) => a.includes('session-child'))).toHaveLength(
+      0,
+    );
   });
 
   it('keeps release_ready false when GitHub audit adds errors', () => {
@@ -929,12 +1020,18 @@ describe('validateEvidenceRequirements', () => {
     // Use a reader that only recognises the known commits, not the fabricated one.
     const knownCommits = new Set([HANDOFF_COMMIT, LEDGER_COMMIT]);
     const strictReader: GitReader = {
-      commitExists(sha) {
-        return knownCommits.has(sha);
+      commitStatus(sha) {
+        return knownCommits.has(sha) ? 'commit' : 'missing';
       },
-      showContent(_commit, filePath) {
+      readContent(_commit, filePath) {
+        if (filePath.startsWith('check:')) {
+          throw new Error('scheme-based check evidence must not be treated as a repository file');
+        }
         try {
-          return readFileSync(resolve(REPO_ROOT, filePath), 'utf8');
+          return {
+            content: readFileSync(resolve(REPO_ROOT, filePath), 'utf8'),
+            source: 'git' as const,
+          };
         } catch {
           return null;
         }
@@ -971,25 +1068,79 @@ describe('validateEvidenceRequirements', () => {
     });
 
     const readerWithUnavailableCommit: GitReader = {
-      commitExists() {
-        return false;
+      commitStatus() {
+        return 'missing';
       },
-      showContent(_commit, filePath) {
+      readContent(_commit, filePath) {
         try {
-          return readFileSync(resolve(REPO_ROOT, filePath), 'utf8');
+          return {
+            content: readFileSync(resolve(REPO_ROOT, filePath), 'utf8'),
+            source: 'working-tree' as const,
+          };
         } catch {
           return null;
         }
       },
     };
 
-    const errors = validateEpicState(state, {
+    const validation = validateEpicState(state, {
       repoRoot: REPO_ROOT,
       now: NOW,
       planMarkdown: PLAN,
       gitReader: readerWithUnavailableCommit,
-    }).errors;
-    expect(errors.map((e) => e.code)).not.toContain('evidence.git-verification-failed');
-    expect(errors.map((e) => e.code)).not.toContain('evidence.hash-drift');
+    });
+    expect(validation.errors.map((e) => e.code)).not.toContain('evidence.git-verification-failed');
+    expect(validation.errors.map((e) => e.code)).not.toContain('evidence.hash-drift');
+    expect(validation.warnings.map((e) => e.code)).toContain('evidence.commit-unavailable');
+  });
+
+  it('warns when canonical evidence is verified via working-tree fallback', () => {
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'merged';
+    node.github.pr = {
+      number: 1271,
+      url: 'https://github.com/nalfeo/Crawler/pull/1271',
+      head_sha: FULL_COMMIT,
+    };
+    node.merge = {
+      commit: TEST_MERGE_COMMIT,
+      merged_at: '2026-07-17T17:50:00.000Z',
+    };
+    node.evidence = node.evidence.map((e) =>
+      e.kind === 'handoff' || e.kind === 'review-ledger'
+        ? {
+            ...e,
+            commit: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+            sha256: sha256OfFile(REPO_ROOT, e.path_or_check),
+          }
+        : e,
+    );
+
+    const readerWithUnavailableCommit: GitReader = {
+      commitStatus() {
+        return 'missing';
+      },
+      readContent(_commit, filePath) {
+        try {
+          return {
+            content: readFileSync(resolve(REPO_ROOT, filePath), 'utf8'),
+            source: 'working-tree' as const,
+          };
+        } catch {
+          return null;
+        }
+      },
+    };
+
+    const validation = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      gitReader: readerWithUnavailableCommit,
+    });
+
+    expect(validation.errors.map((e) => e.code)).not.toContain('evidence.git-verification-failed');
+    expect(validation.warnings.map((e) => e.code)).toContain('evidence.commit-unavailable');
   });
 });

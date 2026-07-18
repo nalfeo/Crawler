@@ -204,10 +204,10 @@ const evidenceSchema = z
   .strict();
 const ownershipSchema = z
   .object({
-    claimant: z.string().nullable(),
-    session: z.string().nullable(),
+    claimant: z.string().trim().min(1).nullable(),
+    session: z.string().trim().min(1).nullable(),
     source: z.enum(['none', 'parent-issue-bootstrap', 'child-issue-comment']),
-    scope: z.string().nullable(),
+    scope: z.string().trim().min(1).nullable(),
     claimed_at: nullableDateTime,
     lease_expires_at: nullableDateTime,
     heartbeat_at: nullableDateTime,
@@ -498,8 +498,11 @@ export interface ValidationResult {
  * implementation in tests to avoid requiring full git history.
  */
 export interface GitReader {
-  showContent(commit: string, filePath: string): string | null;
-  commitExists(commit: string): boolean;
+  readContent(
+    commit: string,
+    filePath: string,
+  ): { readonly content: string; readonly source: 'git' | 'working-tree' } | null;
+  commitStatus(commit: string): 'commit' | 'not-commit' | 'missing';
 }
 
 export interface ValidationOptions {
@@ -537,15 +540,16 @@ function gitShowContent(repoRoot: string, commit: string, filePath: string): str
   }
 }
 
-function gitCommitExists(repoRoot: string, commit: string): boolean {
+function gitCommitStatus(repoRoot: string, commit: string): 'commit' | 'not-commit' | 'missing' {
   try {
-    execFileSync('git', ['cat-file', '-e', commit], {
+    const objectType = execFileSync('git', ['cat-file', '-t', commit], {
       cwd: repoRoot,
-      stdio: 'ignore',
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
-    return true;
+    return objectType.trim() === 'commit' ? 'commit' : 'not-commit';
   } catch {
-    return false;
+    return 'missing';
   }
 }
 
@@ -557,21 +561,25 @@ function gitCommitExists(repoRoot: string, commit: string): boolean {
  */
 export function createDefaultGitReader(repoRoot: string): GitReader {
   return {
-    showContent(commit: string, filePath: string): string | null {
+    readContent(commit: string, filePath: string) {
       const gitContent = gitShowContent(repoRoot, commit, filePath);
-      if (gitContent !== null) return gitContent;
-      // Working-tree fallback: if the commit is not locally accessible (e.g. after
-      // a squash-merge deletes the PR branch), read from disk. sha256 validation
-      // in the caller still enforces content integrity. Any read failure (file
-      // missing, permission error, etc.) means the evidence cannot be verified.
+      if (gitContent !== null) return { content: gitContent, source: 'git' as const };
+      // Working-tree fallback is reserved for missing commits (e.g. a squash-merge
+      // deleted the PR branch). If the commit object still exists but the file
+      // cannot be shown from that commit, treat verification as failed instead of
+      // silently hashing HEAD content.
+      if (gitCommitStatus(repoRoot, commit) !== 'missing') return null;
       try {
-        return readFileSync(resolve(repoRoot, filePath), 'utf8');
+        return {
+          content: readFileSync(resolve(repoRoot, filePath), 'utf8'),
+          source: 'working-tree' as const,
+        };
       } catch {
         return null;
       }
     },
-    commitExists(commit: string): boolean {
-      return gitCommitExists(repoRoot, commit);
+    commitStatus(commit: string) {
+      return gitCommitStatus(repoRoot, commit);
     },
   };
 }
@@ -861,7 +869,12 @@ function validateDag(
   }
 }
 
+function isNonFileEvidenceReference(candidate: string): boolean {
+  return /^(?![A-Za-z]:[\\/])[a-z][a-z0-9+.-]*:/i.test(candidate);
+}
+
 function isRepoFile(repoRoot: string, candidate: string): boolean {
+  if (isNonFileEvidenceReference(candidate)) return false;
   if (isAbsolute(candidate)) return false;
   const root = realpathSync(repoRoot);
   const absolute = resolve(root, candidate);
@@ -908,8 +921,8 @@ function validateEvidenceFiles(
       });
       continue;
     }
-    const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
-    if (content === null) {
+    const verification = gitReader.readContent(evidence.commit, evidence.path_or_check);
+    if (verification === null) {
       result.errors.push({
         code: 'evidence.git-verification-failed',
         node_id: node.node_id,
@@ -917,7 +930,16 @@ function validateEvidenceFiles(
       });
       continue;
     }
-    const actualHash = sha256(content);
+    if (verification.source === 'working-tree') {
+      result.warnings.push({
+        code: 'evidence.commit-unavailable',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} evidence commit ${evidence.commit} is not locally available; ` +
+          `verified ${evidence.path_or_check} against working-tree content instead`,
+      });
+    }
+    const actualHash = sha256(verification.content);
     if (actualHash !== evidence.sha256) {
       result.errors.push({
         code: 'evidence.hash-drift',
@@ -951,8 +973,8 @@ function validateEvidenceRequirements(
     // - file-backed evidence is verified by content hash at commit (or safe fallback),
     // - non-file check evidence must still point at an existing commit.
     if (isRepoFile(repoRoot, evidence.path_or_check)) {
-      const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
-      if (content === null) {
+      const verification = gitReader.readContent(evidence.commit, evidence.path_or_check);
+      if (verification === null) {
         result.errors.push({
           code: 'evidence.git-verification-failed',
           node_id: node.node_id,
@@ -960,7 +982,16 @@ function validateEvidenceRequirements(
         });
         continue;
       }
-      if (sha256(content) !== evidence.sha256) {
+      if (verification.source === 'working-tree') {
+        result.warnings.push({
+          code: 'evidence.commit-unavailable',
+          node_id: node.node_id,
+          message:
+            `${node.node_id} evidence commit ${evidence.commit} is not locally available; ` +
+            `verified ${evidence.path_or_check} against working-tree content instead`,
+        });
+      }
+      if (sha256(verification.content) !== evidence.sha256) {
         result.errors.push({
           code: 'evidence.hash-drift',
           node_id: node.node_id,
@@ -969,7 +1000,7 @@ function validateEvidenceRequirements(
       }
       continue;
     }
-    if (!gitReader.commitExists(evidence.commit)) {
+    if (gitReader.commitStatus(evidence.commit) !== 'commit') {
       result.errors.push({
         code: 'evidence.git-verification-failed',
         node_id: node.node_id,
@@ -1151,12 +1182,21 @@ function validateNodeLifecycle(
         node_id: node.node_id,
         message: `${node.node_id} at ${node.status} requires merge commit and timestamp`,
       });
-    } else if (!gitReader.commitExists(node.merge.commit)) {
-      result.errors.push({
-        code: 'merge.commit-not-found',
-        node_id: node.node_id,
-        message: `${node.node_id} merge commit ${node.merge.commit} does not exist in git`,
-      });
+    } else {
+      const mergeCommitStatus = gitReader.commitStatus(node.merge.commit);
+      if (mergeCommitStatus === 'missing') {
+        result.errors.push({
+          code: 'merge.commit-not-found',
+          node_id: node.node_id,
+          message: `${node.node_id} merge commit ${node.merge.commit} does not exist in git`,
+        });
+      } else if (mergeCommitStatus === 'not-commit') {
+        result.errors.push({
+          code: 'merge.not-a-commit',
+          node_id: node.node_id,
+          message: `${node.node_id} merge commit ${node.merge.commit} is not a commit object`,
+        });
+      }
     }
   }
   if (node.status === 'validated') {
@@ -1521,7 +1561,7 @@ function parseTrustedBlockedEvent(
     const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
     if (match?.[1] && match[2]) fields.set(match[1], match[2]);
   }
-  const nodeId = fields.get('node');
+  const nodeId = fields.get('node') ?? expectedNodeId;
   const leaseDisposition = fields.get('lease_disposition');
   if (!nodeId) return null;
   if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
