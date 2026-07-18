@@ -11,6 +11,7 @@ import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import type { AbilityState } from '../shared/abilities.js';
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
+import type { AchievementBooleanFact, AchievementNumberFact } from '../shared/achievements.js';
 
 interface SkillStateSnapshot {
   readonly level: number;
@@ -59,6 +60,11 @@ export interface PlayerCarryoverSnapshot {
     readonly unlockedIds: readonly string[];
     readonly pendingUnlockIds: readonly string[];
     readonly claimedIds: readonly string[];
+    readonly runGlobal: {
+      readonly numberFacts: Readonly<Record<AchievementNumberFact, number>>;
+      readonly booleanFacts: Readonly<Record<AchievementBooleanFact, boolean>>;
+      readonly completedQuestIds: readonly string[];
+    };
   };
 }
 
@@ -168,13 +174,30 @@ export function capturePlayerCarryover(
     coreStatPoints[statId] = world.stores.coreStatPoints[statId][playerEid] ?? 0;
   }
 
+  const inventory = world.inventories.get(playerEid);
+  if ((inventory?.generatedEquipment?.length ?? 0) > 0) {
+    throw new Error(
+      'Generated equipment carryover is not supported until the B3 persistence slice lands',
+    );
+  }
+
   const equipment = getEquipmentState(world, playerEid);
   const equippedItemIds: string[] = [];
   const seenInstances = new Set<number>();
   if (equipment) {
     for (const slot of SLOT_REGISTRY) {
       const instanceId = equipment.equipped[slot.id];
-      if (instanceId == null || seenInstances.has(instanceId)) continue;
+      if (instanceId == null) {
+        continue;
+      }
+      if (typeof instanceId !== 'number') {
+        throw new Error(
+          'Generated equipment carryover is not supported until the B3 persistence slice lands',
+        );
+      }
+      if (seenInstances.has(instanceId)) {
+        continue;
+      }
       const instance = equipment.instances.get(instanceId);
       if (!instance) {
         throw new Error(`Missing equipped instance ${instanceId} while capturing player carryover`);
@@ -184,7 +207,6 @@ export function capturePlayerCarryover(
     }
   }
 
-  const inventory = world.inventories.get(playerEid);
   const abilityState = snapshotAbilityState(
     world.abilityStatesByEntity.get(playerEid),
     world.frameCount,
@@ -224,6 +246,11 @@ export function capturePlayerCarryover(
       unlockedIds: [...world.achievements.unlockedIds],
       pendingUnlockIds: [...world.achievements.pendingUnlockIds],
       claimedIds: [...world.achievements.claimedIds],
+      runGlobal: {
+        numberFacts: { ...world.achievements.runGlobal.numberFacts },
+        booleanFacts: { ...world.achievements.runGlobal.booleanFacts },
+        completedQuestIds: [...world.achievements.runGlobal.completedQuestIds],
+      },
     },
   };
 }
@@ -250,6 +277,11 @@ export function restorePlayerCarryover(
     unlockedIds: new Set(snapshot.achievements.unlockedIds),
     pendingUnlockIds: [...snapshot.achievements.pendingUnlockIds],
     claimedIds: new Set(snapshot.achievements.claimedIds),
+    runGlobal: {
+      numberFacts: { ...snapshot.achievements.runGlobal.numberFacts },
+      booleanFacts: { ...snapshot.achievements.runGlobal.booleanFacts },
+      completedQuestIds: new Set(snapshot.achievements.runGlobal.completedQuestIds),
+    },
   };
 
   clearEquipmentState(world, playerEid);

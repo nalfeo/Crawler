@@ -1,25 +1,21 @@
 type: weapon
 name: twin-katar
+floor: 2
 description: |
-  A matched pair of katars (push daggers) displayed as a single composed icon,
-  both blades pointing upward symmetrically. Each katar has the distinctive
-  H-frame crossbar handle — two horizontal grip-bars connected by a central
-  spine, with a broad triangular blade projecting straight up from the
-  knuckle. The pair is arranged mirror-image: left blade tilts slightly left,
-  right blade tilts slightly right, grip bars interlocked or touching at
-  center, forming a bold V-silhouette at the top. Floor 2 dungeon-worn steel:
-  scratched and pitted blade faces, dark iron crossbars, wrapped center grip
-  in worn leather. Cold blue-grey steel with a thin highlight edge on each
-  blade, deep shadow on the flat faces, warm brown leather wrap, black iron
-  frame. No glow, no enchantment, no blood, no scabbard. The twin-blade
-  silhouette must read instantly at 64×64 — two blades up, one grip down.
-# Twin-katar is a composed dual weapon shown as a symmetrical pair.
-# The blades point upward (vertical orientation) with the grip/handle
-# assembly at the bottom center — matches weapon-default anchor (32, 56).
-# Vertical orientation, 4×4 sheet, kenney-roguelike palette, VLM judge —
-# all inherited from data/sprite-types/weapon.json. This brief only contains
-# the bits that make a twin-katar specifically a twin-katar.
+  A single twin katar shown as one centered thrown weapon icon on a transparent
+  background. Read immediately as a compact push-dagger / punch-knife silhouette:
+  short central grip with a rigid crossbar handle and twin forward blades running
+  parallel from the fist guard, angled up-right in a clean diagonal side or
+  three-quarter profile. Dark iron frame with worn steel blade edges and one small
+  muted brass wrap or rivet accent for Floor 2 salvage flavor. Keep the silhouette
+  bold, compact, and readable at game scale. No hand, no extra off-hand copy, no
+  sheath, no glow, no magic trails, no blood, no background props.
+anchor: { x: 24, y: 44 }
+sensors:
+  weapon:
+    orientation: diagonal
+    diagonalToleranceDeg: 6
 variations:
-  - blades crossed in an X at the top rather than side-by-side V
-  - ornate finger-ring guards added to the H-frame handles
-minVariations: 8
+  - slightly broader fist guard with a squared industrial knuckle-bar silhouette
+  - slimmer parallel blades with a more triangular spear-point finish
+minVariations: 6
