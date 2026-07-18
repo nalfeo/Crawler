@@ -440,7 +440,7 @@
     "id": "generated:boarding-axe-var-0",
     "kind": "sprite",
     "label": "boarding-axe-var-0",
-    "description": "Generated sprite from brief: boarding-axe.",
+    "description": "Hand-authored pixel art sprite for brief: boarding-axe.",
     "tags": ["weapon", "generated", "pipeline-approved"],
     "spriteId": "boarding-axe-var-0",
     "sheetKey": "generated-manifest",
@@ -2857,7 +2857,7 @@
     "frame": 121,
     "col": 1,
     "row": 10,
-    "note": "Tiny Dungeon ghost (frame 121) — temp CC0 art.",
+    "note": "Tiny Dungeon goblin (frame 121) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }
