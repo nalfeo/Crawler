@@ -202,6 +202,7 @@ describe('generated manifest -> engine chain (fixture)', () => {
 });
 
 describe('generated manifest -> engine chain (real repo manifest)', () => {
+  const itWithRepoManifest = existsSync(REPO_MANIFEST) ? it : it.skip;
   // Build the real-manifest registry ONCE for the table-driven item cases below,
   // rather than re-reading + re-parsing the on-disk manifest for every row.
   let sharedRealRegistry: Awaited<ReturnType<typeof fetchGeneratedSpriteRegistry>> | null = null;
@@ -240,6 +241,38 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(registry.version).toBe(GENERATED_MANIFEST_VERSION);
     expect(typeof registry.size).toBe('number');
   });
+
+  itWithRepoManifest(
+    'loads and preloads the shipped Floor 2 bone-saw runtime key from the real manifest',
+    async () => {
+      if (sharedRealRegistry === null) {
+        throw new Error('expected shared real generated-sprite registry to initialize');
+      }
+      const runtimeKey = 'equipment/weapon/bone-saw';
+      const entry = sharedRealRegistry.lookup(runtimeKey);
+      if (entry === null) {
+        throw new Error(`missing shipped generated-manifest entry for ${runtimeKey}`);
+      }
+      expect(entry.textureKey).toBe(runtimeKey);
+      expect(entry.assetPath).toBe('generated/equipment/weapon/bone-saw.png');
+      expect(entry.sourceRun).not.toBe('placeholder');
+
+      const queued: Array<{ textureKey: string; url: string }> = [];
+      preloadGeneratedSprites(
+        { image: (textureKey, url) => queued.push({ textureKey, url }) },
+        sharedRealRegistry,
+      );
+      expect(queued).toContainEqual({
+        textureKey: runtimeKey,
+        url: '/assets/generated/equipment/weapon/bone-saw.png',
+      });
+      expect(
+        existsSync(
+          path.resolve(__dirname, '../../public/assets/generated/equipment/weapon/bone-saw.png'),
+        ),
+      ).toBe(true);
+    },
+  );
 
   // Every migratable Floor-1 item must resolve — BY ITEM ID — to its real,
   // approved generated art, never the 2×2 placeholder. This is the deterministic
@@ -407,6 +440,63 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     // 3) The engine wiring map pins exactly those def→key mappings, so the guard
     //    above cannot drift out of sync with GENERATED_KEY_BY_NPC_DEF.
     expect(GENERATED_KEY_BY_NPC_DEF).toEqual(expectedByDef);
+  });
+
+  it('loads and preloads the shipped Floor 2 tower-spear runtime key from the real manifest', () => {
+    if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
+      return;
+    }
+    const runtimeKey = 'equipment/weapon/tower-spear';
+    const entry = sharedRealRegistry.lookup(runtimeKey);
+    expect(entry, `missing shipped generated-manifest entry for ${runtimeKey}`).not.toBeNull();
+    expect(entry?.textureKey).toBe(runtimeKey);
+    expect(entry?.assetPath).toBe('generated/equipment/weapon/tower-spear.png');
+    expect(entry?.sourceRun).not.toBe('placeholder');
+
+    const queued: Array<{ textureKey: string; url: string }> = [];
+    preloadGeneratedSprites(
+      { image: (textureKey, url) => queued.push({ textureKey, url }) },
+      sharedRealRegistry,
+    );
+    expect(queued).toContainEqual({
+      textureKey: runtimeKey,
+      url: '/assets/generated/equipment/weapon/tower-spear.png',
+    });
+    expect(
+      existsSync(
+        path.resolve(__dirname, '../../public/assets/generated/equipment/weapon/tower-spear.png'),
+      ),
+    ).toBe(true);
+  });
+
+  it('loads and preloads the shipped Floor 2 meteor-hammer runtime key from the real manifest', () => {
+    if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
+      return;
+    }
+    const runtimeKey = 'equipment/weapon/meteor-hammer';
+    const entry = sharedRealRegistry.lookup(runtimeKey);
+    expect(entry, `missing shipped generated-manifest entry for ${runtimeKey}`).not.toBeNull();
+    expect(entry?.textureKey).toBe(runtimeKey);
+    expect(entry?.assetPath).toBe('generated/equipment/weapon/meteor-hammer-placeholder.png');
+    expect(entry?.sourceRun).toBe('floor2-equipment-placeholder/v1');
+
+    const queued: Array<{ textureKey: string; url: string }> = [];
+    preloadGeneratedSprites(
+      { image: (textureKey, url) => queued.push({ textureKey, url }) },
+      sharedRealRegistry,
+    );
+    expect(queued).toContainEqual({
+      textureKey: runtimeKey,
+      url: '/assets/generated/equipment/weapon/meteor-hammer-placeholder.png',
+    });
+    expect(
+      existsSync(
+        path.resolve(
+          __dirname,
+          '../../public/assets/generated/equipment/weapon/meteor-hammer-placeholder.png',
+        ),
+      ),
+    ).toBe(true);
   });
 
   it('wires all Floor-1 harvestable nodes to real approved art, not placeholders', async () => {
