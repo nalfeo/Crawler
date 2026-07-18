@@ -14,7 +14,7 @@ musketeer-rifle-brief
 
 ## Systems touched
 
-sprites
+sprite-workflow
 
 ## Apples
 
@@ -45,11 +45,17 @@ Dark aged-iron barrel (long, slender, scuffed) + warm brown worn wooden stock + 
 ## Infrastructure constraints encountered
 
 - **Gitea API (localhost:26831) returns 410 Gone** for all write operations (issue comments, PR creation). Could not post the pre-coding plan comment to issue #1323 as requested by @nalfeo. Plan is documented in this handoff per AGENTS.md policy ("Plans stay in session chat").
-- **Azure OpenAI credentials not available** in this CI environment. `npm run setup:azure:env` skips in cloud/CI context. Sprite generation runs via the `asset-request.yml` GitHub Actions workflow (which has the secrets). Brief is committed; CI workflow handles generation when triggered.
+- **Azure OpenAI credentials not available** in this CI environment. `npm run setup:azure:env` skips in cloud/CI context. Generation must be run locally via `npm run sprites:run -- --brief briefs/weapons/musketeer-rifle.yaml` with `.env.local` Azure credentials, or via the sidecar gallery.
 
 ## Pipeline next steps
 
-1. **Generation**: `asset-request.yml` CI workflow processes the brief via Azure OpenAI — generates 16 candidates, judges via VLM (4x4 sheet, inherited defaults)
+> **Note:** `asset-request.yml` is issue-driven — it calls `synthesizeBrief` from
+> the issue body payload and promotes a new brief under `briefs/draft/`. It has no
+> push trigger and does not look up committed brief files. To run this pre-authored
+> brief, use `npm run sprites:run -- --brief briefs/weapons/musketeer-rifle.yaml`
+> locally (requires `.env.local` Azure credentials) or via the sidecar gallery.
+
+1. **Generation**: `npm run sprites:run -- --brief briefs/weapons/musketeer-rifle.yaml` with Azure credentials in `.env.local` (or via `npm run sprites:gallery` sidecar)
 2. **Approval**: `npm run sprites:approve -- <runDir> --variant <N>` on the winning variant
 3. **Check-in**: `npm run sprites:checkin` → `asset-checkin` issue (art branch, no PR)
 4. **Batch PR**: `asset-pr` skill consolidates into one art-only PR
