@@ -23,7 +23,7 @@ reported as a hard blocker — no placeholder was created.
 
 - **Brief authored and committed:** `briefs/weapons/ice-pick.yaml`
   - `type: weapon`, `name: ice-pick`
-  - Spike-upward ice pick, cold steel blueish highlight, charcoal iron collar,
+  - Spike-upward ice pick, cold steel bluish highlight, charcoal iron collar,
     wrapped grip, plain cap pommel
   - `minVariations: 6`
   - Two authored variation hints (hooked tip; reinforced riveted collar)
