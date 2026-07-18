@@ -1,11 +1,11 @@
 type: weapon
 name: throwing-knives
 description: |
-  One throwing knife, or a tight bundle of two or three throwing knives, in a
-  clear diagonal side-profile — blade(s) pointing up and to the right at
-  roughly 45 degrees, grip(s) in the lower-left. Slender symmetrical blades
-  with a pointed tip and a very short tang; no crossguard. Wrapped handle(s)
-  bound with dark cord at the base. Muted steel-grey blade with a single thin
+  One centered throwing knife in a clear diagonal side-profile — blade pointing
+  up and to the right at roughly 45 degrees, grip in the lower-left. Slender
+  symmetrical blade with a pointed tip and a very short tang; no crossguard.
+  Wrapped handle bound with dark cord at the base. Muted steel-grey blade with
+  a single thin
   highlight along one edge to suggest the flat face; dark olive or charcoal
   cord wrap on the grip; no pommel or guard. The silhouette must instantly read
   as a throwing knife — not a dagger, not a dart — with a recognizable sharp
@@ -24,7 +24,7 @@ sensors:
     diagonalToleranceDeg: 8
 variations:
   - single throwing knife with a slim wrapped handle, very slender blade
-  - tight bundle of three knives bound together, fanned tips pointing up-right
+  - single throwing knife with a polished steel blade and dark cord wrap
 minVariations: 8
 judge:
   enabled: true
