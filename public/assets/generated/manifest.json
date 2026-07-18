@@ -1014,6 +1014,17 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "bone-chakram-placeholder": {
+      "briefId": "bone-chakram",
+      "spriteName": "bone-chakram",
+      "assetPath": "generated/bone-chakram-placeholder.png",
+      "approvedAt": "2026-07-18T03:25:22.706Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "bone-club-placeholder": {
       "briefId": "bone-club",
       "spriteName": "bone-club",
@@ -4228,6 +4239,17 @@
       "judgeScore": null,
       "type": null
     },
+    "oil-lantern-placeholder": {
+      "briefId": "oil-lantern",
+      "spriteName": "oil-lantern",
+      "assetPath": "generated/oil-lantern-placeholder.png",
+      "approvedAt": "2026-07-18T01:43:20.931Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "old-sock-var-4": {
       "briefId": "old-sock",
       "spriteName": "old-sock-var-4",
@@ -5731,6 +5753,40 @@
       "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "scavenger-harness-var-0": {
+      "briefId": "scavenger-harness",
+      "spriteName": "scavenger-harness-var-0",
+      "assetPath": "generated/scavenger-harness-var-0.png",
+      "approvedAt": "2026-07-18T05:02:55.273Z",
+      "sourceRun": "generated/runs/scavenger-harness/2026-07-18T04-52-00-manual",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 56,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 56,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": null,
+      "type": "item",
+      "contentHash": "bc35e930fdba78610e2c49c1286e1b254c9f62730c6888d9e03fc7523ee4360b",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
@@ -8663,6 +8719,26 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "equipment/weapon/meteor-hammer": {
+      "briefId": "equipment/weapon/meteor-hammer",
+      "spriteName": "equipment/weapon/meteor-hammer",
+      "assetPath": "generated/equipment/weapon/meteor-hammer-placeholder.png",
+      "approvedAt": "2026-07-18T04:30:00.000Z",
+      "sourceRun": "floor2-equipment-placeholder/v1",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon",
+      "equipment": {
+        "stableId": "weapon.meteor-hammer",
+        "runtimeKey": "equipment/weapon/meteor-hammer",
+        "category": "weapon",
+        "family": "trap",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-trap"
+      }
     },
     "equipment/weapon/moon-scythe": {
       "briefId": "equipment/weapon/moon-scythe",
