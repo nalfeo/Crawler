@@ -48,6 +48,7 @@ import { loadLabState, saveLabState } from '../lab-persistence.js';
 import {
   ALL_ARCHETYPES,
   ARENA_ENEMY_PRESETS,
+  ARENA_OBSERVER_PLAYER_HP,
   ARENA_ROOM_PRESETS,
   findWalkablePosition,
   getEnemyPreset,
@@ -67,7 +68,6 @@ export {
 const LAB_ID = 'combat-arena-lab';
 const MAX_STEPS_PER_FRAME = 32;
 const PLAYER_HP_HERO = 200;
-const PLAYER_HP_OBSERVER = 5_000;
 const STARTER_WEAPON_ID = 'sword';
 const logger = createLogger('labs:combat-arena');
 
@@ -328,7 +328,11 @@ class CombatArenaScene extends Phaser.Scene {
   applyPlayerMode(): void {
     if (this.playerEid < 0) return;
     const isImmortal = this.settings.playerMode === 'immortal';
-    const hp = this.settings.playerMode === 'hero' ? PLAYER_HP_HERO : PLAYER_HP_OBSERVER;
+    // Observer and immortal modes share the same high-HP value as the headless
+    // evidence harness (`ARENA_OBSERVER_PLAYER_HP` from `arena-data.ts`).
+    // Immortal mode additionally attaches `Invincible` so the health system
+    // never sets world.state='game_over', enabling truly infinite survivability.
+    const hp = this.settings.playerMode === 'hero' ? PLAYER_HP_HERO : ARENA_OBSERVER_PLAYER_HP;
     this.world.stores.health.current[this.playerEid] = hp;
     this.world.stores.health.max[this.playerEid] = hp;
     // Immortal mode: attach the Invincible component so healthSystem never
@@ -456,7 +460,7 @@ function createCombatArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
 
   const playerModes: Record<string, PlayerMode> = {
     'Hero (200 HP)': 'hero',
-    'Observer (5000 HP)': 'observer',
+    [`Observer (${ARENA_OBSERVER_PLAYER_HP.toLocaleString()} HP)`]: 'observer',
     'Immortal (∞)': 'immortal',
   };
   arenaFolder
