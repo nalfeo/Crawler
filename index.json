@@ -1,5 +1,16 @@
 [
   {
+    "commit": "459cbb8334ce4eb6ff11d818f0dca697f8f5e7f1",
+    "commitDate": "2026-07-18T21:56:16Z",
+    "commitSubject": "Author the hunting-bola weapon sprite brief (#1538)",
+    "capturedAt": "2026-07-18T23:48:46.636Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29663795410",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/459cbb8334ce4eb6ff11d818f0dca697f8f5e7f1.json"
+  },
+  {
     "commit": "4c05cd5051e0b1f210d19b20de432e9acd294728",
     "commitDate": "2026-07-18T21:56:08Z",
     "commitSubject": "feat(sprites): add brass-knuckles weapon brief for Floor 2 equipment (#1530)",
