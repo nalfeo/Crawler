@@ -1264,7 +1264,9 @@ for (const run of actionRequiredRuns) {
 // Outdated threads reference code that no longer exists at that location and
 // do not block GitHub merges; excluding them prevents both spurious dispatches
 // and fingerprint instability from non-deterministic `line` values on stale
-// thread metadata.
+// thread metadata. The marker-based auto-resolution loop above (unresolvedThreads
+// at line 937) intentionally uses the broader filter so that outdated threads
+// which already carry a trusted ✅ Addressed marker can still be cleaned up.
 for (const thread of review.threads.filter(
   (candidate) => !candidate.isResolved && !candidate.isOutdated,
 )) {

@@ -4161,6 +4161,15 @@ test('outdated thread does not affect fingerprint when line field is non-determi
     taskBodies[0].includes('3607713280') && taskBodies[1].includes('3607713280'),
     'active thread must appear in both task comments',
   );
+  // Exactly one blocker entry in each task comment (the active thread only).
+  for (const [i, body] of taskBodies.entries()) {
+    const blockerCount = (body.match(/\*\*review-thread\*\*/g) ?? []).length;
+    assert.equal(
+      blockerCount,
+      1,
+      `task comment ${i} must list exactly 1 blocker (the active thread); got ${blockerCount}`,
+    );
+  }
 });
 
 test('live reconcile resolves only a trusted backtick-wrapped current-head marker', async (t) => {
