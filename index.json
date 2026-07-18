@@ -1,5 +1,16 @@
 [
   {
+    "commit": "156a9f11a9bd1212de79fd442e382cbc3e305173",
+    "commitDate": "2026-07-18T21:28:01Z",
+    "commitSubject": "feat(art): add gearwork-locket sprite brief for Floor 2 equipment icon (#1515)",
+    "capturedAt": "2026-07-18T22:49:15.677Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29662018289",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/156a9f11a9bd1212de79fd442e382cbc3e305173.json"
+  },
+  {
     "commit": "3ce2d286b11ef9725fe674db4fe57c61cbba0f1e",
     "commitDate": "2026-07-18T20:50:54Z",
     "commitSubject": "feat(art): add iron-greaves sprite brief for Floor 2 equipment icon (#1509)",
