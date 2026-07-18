@@ -41,14 +41,14 @@ sprite-pipeline
 
 ## Verification
 
-- `npx tsx -e "import { loadBrief } from './scripts/sprites/load-brief.ts'; ..."`
+- `npx tsx -e "import { loadBrief } from './scripts/sprites/load-brief.ts'; const { brief } = loadBrief('./briefs/items/merchant-sandals.yaml'); console.log(brief.name);"`
   loaded and validated `briefs/items/merchant-sandals.yaml` successfully.
 - `npm run verify:fast`
 
 ## Follow-up / Blockers
 
 - The requested issue-plan comment could not be posted from this environment
-  because the available GitHub CLI token is invalid here and no direct issue
+  because GitHub credentials here are missing/unauthorized and no direct issue
   comment creation tool is exposed in-session.
 - Generating, judging, approving, and checking in the actual merchant-sandals
   PNG remains follow-up work once the asset-request workflow or an authenticated
