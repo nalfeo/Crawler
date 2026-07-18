@@ -88,6 +88,7 @@ _…and 33 older, see `archive/`._
 
 ## sprite-pipeline
 
+- [2026-07-18-powder-keg-sprite-brief](2026-07-18-powder-keg-sprite-brief.md) — Brief + art plan for powder-keg weapon icon (issue #1343); generation pending `asset-request` label
 - [2026-07-18-boarding-axe](2026-07-18-boarding-axe.md) — Handoff: boarding-axe Floor 2 Equipment Icon
 - [2026-07-17-batfolk-boss-pr-recovery](2026-07-17-batfolk-boss-pr-recovery.md) — Handoff: batfolk-boss PR recovery
 - [2026-07-17-cactusfolk-boss-sprite-brief](2026-07-17-cactusfolk-boss-sprite-brief.md) — Handled issue #1262 for the `cactusfolk-boss` (Abuela Saguaro) sprite asset. The existing

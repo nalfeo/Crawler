@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "scavenger-harness-merge-recovery",
+  "task_title": "Merge recovery for PR #1505",
+  "estimated_apples": 2,
+  "stages": {}
+}
