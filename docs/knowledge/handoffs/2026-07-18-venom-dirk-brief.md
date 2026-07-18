@@ -44,7 +44,7 @@ The check-in step (`npm run sprites:checkin`) is **intentionally blocked in CI**
 
 ## PR review thread status
 
-All 4 review threads addressed; 3 resolved. Thread `PRRT_kwDOSvo2Ms6R8-DW` (handoff/pipeline reconciliation) has `✅ Addressed` replies at HEAD (59809e5) but the reconciler sweep has not yet auto-resolved it — likely parked awaiting a push event to re-trigger.
+All 4 review threads addressed; 3 resolved. Thread `PRRT_kwDOSvo2Ms6R8-DW` (handoff/pipeline reconciliation) is `is_outdated: true` per GitHub and has `✅ Addressed` replies at HEAD. Second-model validation (GPT-5.6 Sol, 2026-07-18) confirms NOT_APPLICABLE — no contradiction exists between handoff and PR description. Awaiting reconciler auto-resolution.
 
 ## What remains
 
