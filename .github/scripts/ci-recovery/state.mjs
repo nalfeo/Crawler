@@ -386,6 +386,7 @@ export const TRUSTED_BOT_LOGINS = new Set([
 ]);
 
 const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
+const addressedMarkerPattern = /✅\s*addressed\b/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {
@@ -446,7 +447,11 @@ function isTrustedComment(comment) {
 
 /**
  * Returns true only when the last comment in the thread is a trusted marker
- * that explicitly names the current head SHA (full or ≥7-char prefix).
+ * that explicitly names the current head SHA (full or ≥7-char prefix), OR
+ * when the thread is outdated and the last comment is a trusted ✅ Addressed
+ * marker (even without a valid SHA). An outdated thread whose trusted author
+ * confirmed it was addressed is deterministically non-applicable per
+ * ADR 0058 DEC-008; the code line is gone regardless of SHA validation.
  * A reopened thread with later reviewer feedback keeps returning false even if
  * an earlier comment had a valid marker.
  */
@@ -454,7 +459,13 @@ export function shouldResolveThread(thread, headSha, reachableCommitShas = null)
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) return false;
   const last = comments[comments.length - 1];
-  return isTrustedComment(last) && markerNamesHead(last.body, headSha, reachableCommitShas);
+  if (!isTrustedComment(last)) return false;
+  if (markerNamesHead(last.body, headSha, reachableCommitShas)) return true;
+  // Outdated threads: the original code line was changed, making the finding
+  // deterministically non-applicable. Resolve when a trusted author has also
+  // written any ✅ Addressed marker, even if the SHA token is malformed or
+  // contains a conventional-commit prefix (e.g. "✅ Addressed in fix(art): …").
+  return Boolean(thread.isOutdated) && addressedMarkerPattern.test(String(last.body ?? ''));
 }
 
 /**

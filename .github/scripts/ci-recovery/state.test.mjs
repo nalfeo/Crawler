@@ -722,6 +722,74 @@ test('shouldResolveThread accepts latest trusted commit URL marker on head linea
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
 });
 
+test('shouldResolveThread accepts outdated thread with trusted ✅ Addressed marker (no valid SHA)', () => {
+  // Regression: "✅ Addressed in fix(art): ..." has a conventional-commit prefix,
+  // not a valid hex SHA. For outdated threads this is still deterministic
+  // non-applicability per ADR 0058 DEC-008.
+  const thread = {
+    isOutdated: true,
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed in fix(art): correct copy/paste error in sprite-catalog',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread rejects outdated thread with untrusted ✅ Addressed marker', () => {
+  const thread = {
+    isOutdated: true,
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed in fix(art): some claim',
+          authorAssociation: 'NONE',
+          author: { login: 'drive-by-commenter' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('shouldResolveThread rejects outdated thread with no addressed marker', () => {
+  const thread = {
+    isOutdated: true,
+    comments: {
+      nodes: [
+        {
+          body: 'I will look into this later.',
+          authorAssociation: 'OWNER',
+          author: { login: 'dev' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('shouldResolveThread rejects non-outdated thread with trusted addressed marker but no valid SHA', () => {
+  // A non-outdated thread still requires a valid SHA in the marker.
+  const thread = {
+    isOutdated: false,
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed in fix(art): some change',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
   const runs = [
     { id: 100, name: 'CI', status: 'completed', conclusion: 'failure' },

@@ -4057,6 +4057,124 @@ test('live reconcile resolves only a trusted backtick-wrapped current-head marke
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${malformedThreadId}`));
 });
 
+test('live reconcile resolves outdated thread with trusted addressed marker but no valid SHA', async (t) => {
+  // Regression: PR #1399 had isOutdated=true + "✅ Addressed in fix(art): …" from
+  // copilot-swe-agent (trusted bot). shouldResolveThread now accepts this as
+  // deterministic non-applicability per ADR 0058 DEC-008.
+  const outdatedTrustedThreadId = 'thread-outdated-trusted-nosha';
+  const outdatedUntrustedThreadId = 'thread-outdated-untrusted-nosha';
+  const notOutdatedThreadId = 'thread-not-outdated-nosha';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      if (String(parsed?.query || '').includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (
+        String(parsed?.query || '')
+          .trimStart()
+          .startsWith('mutation')
+      ) {
+        return {
+          body: {
+            data: {
+              resolveReviewThread: { thread: { isResolved: true } },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: outdatedTrustedThreadId,
+            isResolved: false,
+            isOutdated: true,
+            comments: {
+              nodes: [
+                {
+                  body: '✅ Addressed in fix(art): corrected copy/paste note in sprite-catalog',
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent' },
+                },
+              ],
+            },
+          },
+          {
+            id: outdatedUntrustedThreadId,
+            isResolved: false,
+            isOutdated: true,
+            comments: {
+              nodes: [
+                {
+                  body: '✅ Addressed in fix(art): some claim',
+                  authorAssociation: 'NONE',
+                  author: { login: 'drive-by-commenter' },
+                },
+              ],
+            },
+          },
+          {
+            id: notOutdatedThreadId,
+            isResolved: false,
+            isOutdated: false,
+            comments: {
+              nodes: [
+                {
+                  body: '✅ Addressed in fix(art): same format but not outdated',
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  const resolutionMutations = mutatingCalls.filter(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread'),
+  );
+  assert.equal(
+    resolutionMutations.length,
+    1,
+    'only the outdated+trusted thread should be resolved',
+  );
+  assert.equal(resolutionMutations[0].body.variables.threadId, outdatedTrustedThreadId);
+  assert.match(stdout, new RegExp(`resolved thread=${outdatedTrustedThreadId}`));
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${outdatedUntrustedThreadId}`));
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${notOutdatedThreadId}`));
+});
+
 test('reconcile does not escalate router action-required run when it is the only obstruction', async (t) => {
   // The CI Recovery Router is a non-required infrastructure workflow; its
   // action_required status must remain a skip, not a blocker, preserving the
