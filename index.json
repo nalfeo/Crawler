@@ -1,5 +1,16 @@
 [
   {
+    "commit": "8e7ef488e2eeea19bbe9d4baa8cf8be868aaed00",
+    "commitDate": "2026-07-18T19:12:54Z",
+    "commitSubject": "feat(sprites): add bone-chakram Floor 2 thrown-weapon — brief, item def, placeholder, wiring (#1429)",
+    "capturedAt": "2026-07-18T20:32:05.769Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29657733870",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/8e7ef488e2eeea19bbe9d4baa8cf8be868aaed00.json"
+  },
+  {
     "commit": "7e82e8021e0bfeee713e4ad2ac48abb33e7534f3",
     "commitDate": "2026-07-18T18:01:50Z",
     "commitSubject": "feat(sprites): add scavenger-harness Floor 2 equipment icon (#1505)",
