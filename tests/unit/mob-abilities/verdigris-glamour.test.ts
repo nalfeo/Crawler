@@ -228,7 +228,7 @@ describe('Verdigris Glamour — damage resolution', () => {
     // After resolution the player must be at 0 HP with NO status effects — retaining
     // Tarnished post-death violates the dead-target cleanup contract and would cause
     // MobAbilityVfx to render a Tarnished ring during game-over.
-    h.world.stores.health.current[h.player] = 20; // moderate damage amount
+    h.world.stores.health.current[h.player] = 20; // exact damage amount → lethal hit
     h.def.resolve(h.world, {
       abilityId: h.def.abilityId,
       casterEid: h.queen,
