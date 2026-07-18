@@ -8,7 +8,7 @@
  * the actual pipelines rather than call the systems by hand.
  */
 import { query } from 'bitecs';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { SeededRandom } from '../../src/shared/random.js';
 import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
@@ -24,7 +24,7 @@ import {
   initializeFloor2Settlement,
   QUARTERMASTER_ARCHETYPE_ID,
 } from '../../src/game/floor2Settlement.js';
-import { loadShopArchetypes } from '../../src/shared/data/shop-archetypes.js';
+import * as shopArchetypes from '../../src/shared/data/shop-archetypes.js';
 import { DoorState } from '../../src/core/components.js';
 import {
   getFloor2FamilyEliteArchetype,
@@ -246,10 +246,35 @@ describe('Floor 2 settlement · initialization', () => {
     spawnPlayer(world, 0, 0);
     world.floor = 2;
     seedSettlementFamilyState(world);
-    const onlyQm = loadShopArchetypes().filter((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
+    const onlyQm = shopArchetypes
+      .loadShopArchetypes()
+      .filter((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
     expect(() => initializeFloor2Settlement(world, { archetypes: onlyQm })).toThrowError(
       /no non-Quartermaster archetypes available/,
     );
+  });
+
+  it('throws actionably when the canonical archetype list is missing the Quartermaster', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.floorMap = buildFloor2Map();
+    spawnPlayer(world, 0, 0);
+    world.floor = 2;
+    seedSettlementFamilyState(world);
+
+    const canonicalWithoutQm = shopArchetypes
+      .loadShopArchetypes()
+      .filter((a) => a.id !== QUARTERMASTER_ARCHETYPE_ID);
+    const loadSpy = vi
+      .spyOn(shopArchetypes, 'loadShopArchetypes')
+      .mockReturnValue(canonicalWithoutQm);
+
+    try {
+      expect(() => initializeFloor2Settlement(world)).toThrowError(
+        new RegExp(`Quartermaster archetype "${QUARTERMASTER_ARCHETYPE_ID}" not found`),
+      );
+    } finally {
+      loadSpy.mockRestore();
+    }
   });
 });
 

@@ -29,6 +29,7 @@ Estimated 🍎🍎, actual 🍎🍎. Exact: this stayed a bounded merge-recovery
   - `scripts/agent/epics/epic-status.ts`
   - `tests/unit/agent/epic-status.test.ts`
 - Finalized the merge as commit `2beacdc4`, preserving the unrelated `main` updates that auto-merged cleanly.
+- Added one focused integration regression in `tests/integration/floor2-settlement-broker.test.ts` covering the existing “canonical Quartermaster archetype missing” error path surfaced during final validation.
 
 ## Observe before done
 
@@ -39,6 +40,7 @@ Estimated 🍎🍎, actual 🍎🍎. Exact: this stayed a bounded merge-recovery
 
 - `npm run verify:fast`
 - `npm run verify:pr-prereqs`
+- `npx vitest run tests/integration/floor2-settlement-broker.test.ts`
 - GitHub PR metadata check: PR #1286 `mergeable_state` was dirty before recovery; pre-existing non-merge checks on head `498193d` were green/success-shaped apart from the active recovery run.
 
 ## Risks / follow-up
