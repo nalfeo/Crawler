@@ -61,9 +61,14 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const tarnishLastPos = new Map<number, { x: number; y: number }>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
   const castStartSeen = new Set<number>();
-  /** Transient circles created by spawnRing/spawnBurst/spawnCastStart. Cleaned up in destroy(). */
+  /**
+   * Transient circles created by spawnRing/spawnBurst/spawnCastStart.
+   * Each entry is removed by its `onComplete` callback when the tween finishes
+   * naturally — so under normal gameplay the sets stay small. destroy() kills any
+   * in-flight tweens and destroys their circles for scene-reset / shutdown safety.
+   */
   const transientCircles = new Set<Phaser.GameObjects.Arc>();
-  /** Tweens driving transient circles, keyed by their target circle. */
+  /** Tweens driving transient circles. Each entry is also removed on `onComplete`. */
   const transientTweens = new Map<Phaser.GameObjects.Arc, Phaser.Tweens.Tween>();
 
   function ignoreUi(obj: Phaser.GameObjects.GameObject & { setDepth(d: number): unknown }): void {
