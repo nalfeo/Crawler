@@ -10,7 +10,7 @@ description: |
   glow, no enchantment. The silhouette must read as an imposing, siege-scale
   bow at a glance and clearly not be a sword or crossbow.
 # Siege-bow is a vertical weapon (grip at bottom, limb tips at top),
-# inheriting the weapon-default orientation. The oversized limbs make it
+# explicitly set for clarity and strictness. The oversized limbs make it
 # wider than a standard bow, so we relax the center tolerance slightly.
 sensors:
   weapon:
