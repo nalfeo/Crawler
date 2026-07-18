@@ -3950,6 +3950,16 @@ test('live reconcile annotates outdated review threads in task body', async (t) 
     'task comment should include updated protocol explaining (outdated) threads',
   );
   assert.ok(
+    taskBody.includes('Still validate outdated threads against the current head'),
+    'task comment should require current-head validation for outdated threads',
+  );
+  assert.ok(
+    !taskBody.includes(
+      'classify them immediately as `deterministically-inapplicable` without invoking a code-review agent',
+    ),
+    'task comment must not treat outdated threads as an automatic validator bypass',
+  );
+  assert.ok(
     taskBody.includes('do not attempt to resolve it yourself'),
     'task comment should clarify that recovery infrastructure handles thread resolution',
   );
