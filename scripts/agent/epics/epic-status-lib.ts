@@ -7,7 +7,6 @@ import { z } from 'zod';
 
 // ajv is a transitive dependency available at runtime; load it via createRequire so that
 // ESM module resolution does not require it to be a direct package.json entry.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const Ajv = createRequire(import.meta.url)('ajv') as typeof import('ajv');
 
 const SHA_PATTERN = /^[0-9a-f]{7,64}$/;
