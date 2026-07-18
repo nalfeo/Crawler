@@ -1,0 +1,29 @@
+type: weapon
+name: alchemist-sprayer
+description: |
+  A compact handheld alchemist's beam sprayer, held at a diagonal angle
+  (~45 degrees), nozzle pointing upper-right and grip at the lower-left.
+  The body is a short, chunky pistol-like form: a corroded brass/copper
+  cylinder with a glass vial or reservoir mounted on top, filled with a
+  luminous green or cyan chemical reagent. A wide flared nozzle at the
+  front end suggests directional beam projection — slightly bell-shaped
+  or funnel-like, scorched at the tip from use. A rough wrapped grip or
+  wooden stock at the rear. Copper/brass fittings with verdigris patina;
+  thin dark metal bands around the barrel; a small pressure gauge or dial
+  on the side (readable as a circle with markings, no text). Scuffs and
+  corrosion on all metal surfaces. The silhouette must read as "handheld
+  spray/beam weapon" at a glance — clearly not a melee weapon. No glow
+  rays, no beam effects, no magical aura — just the device itself.
+# Beam weapon held at diagonal angle: nozzle upper-right, grip lower-left.
+# Override the weapon-default vertical orientation so the sensor accepts
+# this ~45-degree diagonal silhouette. Anchor shifts toward the grip end
+# (lower-left quadrant of the 64x64 output).
+anchor: { x: 18, y: 50 }
+sensors:
+  weapon:
+    orientation: diagonal
+    diagonalToleranceDeg: 10
+variations:
+  - larger prominent glass vial reservoir glowing bright green
+  - heavier steam-punk riveted copper body with multiple pressure gauges
+minVariations: 6
