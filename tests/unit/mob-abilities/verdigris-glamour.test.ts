@@ -339,6 +339,10 @@ describe('Verdigris Glamour — Tarnished status effect', () => {
 
     expect(h.world.state).toBe('game_over');
     expect(getStatusEffects(h.world, h.player)).toHaveLength(0);
+
+    arm(h);
+    step(h.world, FIRST_TELEGRAPH_FRAME + 5);
+    expect(h.world.announcements.filter((a) => a.kind === 'bossAbilityCast')).toHaveLength(0);
   });
 
   it('expires after its 4-second duration', () => {
