@@ -75,6 +75,8 @@ const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
+const TASK_COMMENT_MARKER_PATTERN = /crawler-ci-task:v1 fingerprint=([0-9a-f]+)\b/i;
+const TASK_REVIEW_THREAD_BLOCKER_PATTERN = /\*\*review-thread\*\*\s+`(review-thread:[^`]+)`/gi;
 const KNOWN_RECOVERY_REPLY_LOGINS = new Set([
   'copilot',
   'copilot[bot]',
@@ -101,6 +103,28 @@ function calculateRebaseFailureBackoffMs(attempt) {
 function reviewThreadReplyCommentId(url) {
   const match = String(url ?? '').match(REVIEW_DISCUSSION_COMMENT_PATTERN);
   return match?.[1] ?? null;
+}
+
+function extractTaskFingerprint(body) {
+  const match = String(body ?? '').match(TASK_COMMENT_MARKER_PATTERN);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+function extractTaskReviewThreadBlockerIds(body) {
+  return Array.from(
+    String(body ?? '').matchAll(TASK_REVIEW_THREAD_BLOCKER_PATTERN),
+    (match) => match[1],
+  );
+}
+
+function summarizePriorRecoveryIssueComment(body) {
+  const summary = String(body ?? '')
+    .split(/\r?\n/)
+    .filter((line) => !line.trimStart().startsWith('>'))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return summary ? summary.slice(0, 300) : null;
 }
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
@@ -1031,9 +1055,11 @@ for (const thread of unresolvedThreads.filter((candidate) =>
 // due to transient errors (rate limits, 5xx, network failures, 422 ambiguous SHA)
 // keep the generic review-thread blocker without the misleading stale-SHA hint.
 const staleAddressedMarkerByThread = new Map();
+const reviewThreadBlockerIdsByThread = new Map();
 for (const thread of unresolvedThreads) {
   // Skip threads the reconciler will auto-resolve in the loop above.
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
+  reviewThreadBlockerIdsByThread.set(thread.id, reviewThreadBlockerId(thread));
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) continue;
   const last = comments[comments.length - 1];
@@ -1048,6 +1074,32 @@ for (const thread of unresolvedThreads) {
   const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
   if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
     staleAddressedMarkerByThread.set(thread.id, markerSha);
+  }
+}
+
+const taskReviewThreadBlockersByFingerprint = new Map();
+for (const comment of comments) {
+  const taskFingerprint = extractTaskFingerprint(comment?.body);
+  if (!taskFingerprint) continue;
+  const blockerIds = extractTaskReviewThreadBlockerIds(comment?.body);
+  if (blockerIds.length > 0) {
+    taskReviewThreadBlockersByFingerprint.set(taskFingerprint, blockerIds);
+  }
+}
+
+const priorTopLevelReplyByBlockerId = new Map();
+for (const comment of comments) {
+  const authorLogin = String(comment?.user?.login ?? comment?.author?.login ?? '').toLowerCase();
+  if (!KNOWN_RECOVERY_REPLY_LOGINS.has(authorLogin)) continue;
+  if (extractAddressedMarkerSha(comment?.body)) continue;
+  const taskFingerprint = extractTaskFingerprint(comment?.body);
+  if (!taskFingerprint) continue;
+  const blockerIds = taskReviewThreadBlockersByFingerprint.get(taskFingerprint);
+  if (!blockerIds?.length) continue;
+  const priorReply = summarizePriorRecoveryIssueComment(comment?.body);
+  if (!priorReply) continue;
+  for (const blockerId of blockerIds) {
+    priorTopLevelReplyByBlockerId.set(blockerId, priorReply);
   }
 }
 
@@ -1069,15 +1121,21 @@ for (const thread of unresolvedThreads) {
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
   if (staleAddressedMarkerByThread.has(thread.id)) continue;
   const comments = thread.comments?.nodes ?? [];
-  // Need at least 2 comments: the original reviewer plus a subsequent reply.
-  if (comments.length < 2) continue;
-  const last = comments[comments.length - 1];
-  // Skip if the last comment already has a marker (handled by stale path or
-  // auto-resolution above).
-  if (extractAddressedMarkerSha(last?.body)) continue;
-  const authorLogin = String(last?.author?.login ?? '').toLowerCase();
-  if (KNOWN_RECOVERY_REPLY_LOGINS.has(authorLogin)) {
-    priorUnresolvedReplyByThread.set(thread.id, String(last?.body ?? '').slice(0, 300));
+  const blockerId = reviewThreadBlockerIdsByThread.get(thread.id);
+  const topLevelPriorReply = blockerId ? priorTopLevelReplyByBlockerId.get(blockerId) : null;
+  if (comments.length >= 2) {
+    const last = comments[comments.length - 1];
+    // Skip if the last comment already has a marker (handled by stale path or
+    // auto-resolution above).
+    if (extractAddressedMarkerSha(last?.body)) continue;
+    const authorLogin = String(last?.author?.login ?? '').toLowerCase();
+    if (KNOWN_RECOVERY_REPLY_LOGINS.has(authorLogin)) {
+      priorUnresolvedReplyByThread.set(thread.id, String(last?.body ?? '').slice(0, 300));
+      continue;
+    }
+  }
+  if (topLevelPriorReply) {
+    priorUnresolvedReplyByThread.set(thread.id, topLevelPriorReply);
   }
 }
 

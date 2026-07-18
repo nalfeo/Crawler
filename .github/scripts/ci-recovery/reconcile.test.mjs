@@ -19,6 +19,7 @@ import {
   makeState,
   parseStateComment,
   renderStateComment,
+  reviewThreadBlockerId,
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
@@ -6189,26 +6190,73 @@ test('transient compare failure does not produce a stale-marker hint (generic bl
 
 test('prior-reply thread includes hint in blocker summary when last trusted comment has no marker', async (t) => {
   // Simulate the root cause from the PR #1623 loop incident:
-  // The recovery agent replied to a review thread with a non-marker comment
-  // ("Blocked outside this branch") because the concern required an external
-  // action (e.g. posting a plan comment to a linked issue).  On subsequent
-  // dispatches the task body only showed the original reviewer's comment, so
-  // the agent had no context that a prior attempt already tried and failed.
-  // The reconciler should detect the prior unresolved reply and include a
-  // targeted hint so the next recovery agent knows:
+  // the recovery agent replied as a top-level PR comment quoting the earlier
+  // crawler-ci-task marker, while the unresolved review thread itself still had
+  // only the original reviewer comment. On subsequent dispatches the task body
+  // only showed the original reviewer's comment, so the agent had no context
+  // that a prior attempt already tried and failed. The reconciler should detect
+  // the top-level recovery reply and include a targeted hint so the next
+  // recovery agent knows:
   //   (a) not to re-post an identical "Blocked" reply (which changes the
   //       comment digest, resets the attempt counter, and delays loop-incident
   //       detection), and
   //   (b) to use GitHub API tools rather than gh CLI for any required
   //       external mutation.
   const threadId = 'PRRT_prior_reply_thread';
+  const priorTaskFingerprint = '2e6d12980f01b7351de9e23b2f24b0f92820e3eb9ebbf7d4850f639ea0bc1c51';
   const originalConcern = 'Issue #9999 explicitly required a detailed plan comment before code.';
   const priorBlockedReply =
     'Blocked outside this branch: issue #9999 still lacks the required pre-code plan comment.';
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: true,
+    path: 'docs/knowledge/handoffs/2026-07-17-floor2-equipment-a0.md',
+    line: null,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_reviewer',
+          body: originalConcern,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const blockerId = reviewThreadBlockerId(thread);
+  const priorTaskComment = [
+    `<!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '@copilot Please recover this PR from the exact blockers below.',
+    '',
+    `1. **review-thread** \`${blockerId}\` at \`.github/scripts/ci-recovery/reconcile.mjs:1073\``,
+    `   copilot-pull-request-reviewer: ${originalConcern}`,
+  ].join('\n');
+  const priorTopLevelReply = [
+    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '> @copilot Please recover this PR from the exact blockers below.',
+    '> ...',
+    '',
+    priorBlockedReply,
+  ].join('\n');
 
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [
+        {
+          id: 10030,
+          body: priorTaskComment,
+          user: { login: 'nalfeo' },
+        },
+        {
+          id: 10031,
+          body: priorTopLevelReply,
+          user: { login: 'Copilot' },
+        },
+      ],
+    }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
@@ -6240,32 +6288,7 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
         };
       }
       return {
-        body: gqlReviewThreads([
-          {
-            id: threadId,
-            isResolved: false,
-            isOutdated: true,
-            path: 'docs/knowledge/handoffs/2026-07-17-floor2-equipment-a0.md',
-            line: null,
-            comments: {
-              nodes: [
-                {
-                  id: 'PRIC_reviewer',
-                  body: originalConcern,
-                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
-                  authorAssociation: 'COLLABORATOR',
-                  author: { login: 'copilot-pull-request-reviewer' },
-                },
-                {
-                  id: 'PRIC_blocked_reply',
-                  body: priorBlockedReply,
-                  authorAssociation: 'COLLABORATOR',
-                  author: { login: 'copilot-swe-agent' },
-                },
-              ],
-            },
-          },
-        ]),
+        body: gqlReviewThreads([thread]),
       };
     },
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
@@ -6327,13 +6350,60 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
 
 test('prior-reply hint ignores non-recovery collaborator follow-up comments', async (t) => {
   const threadId = 'PRRT_collaborator_followup_thread';
+  const priorTaskFingerprint = '38aca57540f447b85a082cf668dbbc3b09a0ee223c542434dbaddaaa7a553e3e';
   const originalConcern = 'Reviewer still wants an external follow-up before merge.';
   const collaboratorFollowup =
     'I agree this still needs follow-up, but I am not the recovery agent for this thread.';
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: '.github/scripts/ci-recovery/reconcile.mjs',
+    line: 1072,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_reviewer_collab',
+          body: originalConcern,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const blockerId = reviewThreadBlockerId(thread);
+  const priorTaskComment = [
+    `<!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '@copilot Please recover this PR from the exact blockers below.',
+    '',
+    `1. **review-thread** \`${blockerId}\` at \`.github/scripts/ci-recovery/reconcile.mjs:1072\``,
+    `   copilot-pull-request-reviewer: ${originalConcern}`,
+  ].join('\n');
+  const nonRecoveryTopLevelReply = [
+    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '> @copilot Please recover this PR from the exact blockers below.',
+    '> ...',
+    '',
+    collaboratorFollowup,
+  ].join('\n');
 
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [
+        {
+          id: 10040,
+          body: priorTaskComment,
+          user: { login: 'nalfeo' },
+        },
+        {
+          id: 10041,
+          body: nonRecoveryTopLevelReply,
+          user: { login: 'trusted-maintainer' },
+        },
+      ],
+    }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
@@ -6365,32 +6435,7 @@ test('prior-reply hint ignores non-recovery collaborator follow-up comments', as
         };
       }
       return {
-        body: gqlReviewThreads([
-          {
-            id: threadId,
-            isResolved: false,
-            isOutdated: false,
-            path: '.github/scripts/ci-recovery/reconcile.mjs',
-            line: 1072,
-            comments: {
-              nodes: [
-                {
-                  id: 'PRIC_reviewer_collab',
-                  body: originalConcern,
-                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3`,
-                  authorAssociation: 'COLLABORATOR',
-                  author: { login: 'copilot-pull-request-reviewer' },
-                },
-                {
-                  id: 'PRIC_non_recovery_followup',
-                  body: collaboratorFollowup,
-                  authorAssociation: 'COLLABORATOR',
-                  author: { login: 'trusted-maintainer' },
-                },
-              ],
-            },
-          },
-        ]),
+        body: gqlReviewThreads([thread]),
       };
     },
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
