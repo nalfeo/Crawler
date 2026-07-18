@@ -274,6 +274,24 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
 
   // --- Magic ---
   [
+    'ember-wand',
+    def({
+      id: 'ember-wand',
+      name: 'Ember Wand',
+      weaponType: WeaponType.MAGIC,
+      baseDamage: 10,
+      cooldownMs: 700,
+      range: 36,
+      projectileSpeed: 0.55,
+      aoeRadius: 4,
+      goreFactor: 0.0,
+      pierce: 0,
+      baseAccuracy: 0.9,
+      weaponClassSkillId: 'arcane',
+      weaponTypeSkillId: 'spellcraft',
+    }),
+  ],
+  [
     'fireball',
     def({
       id: 'fireball',
