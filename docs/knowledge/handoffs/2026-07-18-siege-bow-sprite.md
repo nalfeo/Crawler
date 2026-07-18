@@ -20,6 +20,9 @@
 - ✅ Authored `briefs/weapons/siege-bow.yaml` for the `siege-bow` Floor 2 weapon icon
 - ✅ Brief validated against Zod schema via `npm run sprites:run -- --brief briefs/weapons/siege-bow.yaml` (schema-valid; fails only on missing `AZURE_OPENAI_ENDPOINT`)
 - ✅ PR #1411 updated with brief on branch `copilot/create-siege-bow-icon`
+- ✅ Rebased branch on main; PR #1411 is open, ready for review (not draft)
+- ✅ Code review (parallel_validation): no issues on YAML brief + handoff
+- ✅ CodeQL scan: trivially skipped (no source code changes)
 
 ## Brief specification
 
