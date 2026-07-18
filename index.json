@@ -1,5 +1,16 @@
 [
   {
+    "commit": "37b7b801e686bfd0ac14588c6969642950e8209e",
+    "commitDate": "2026-07-18T16:05:50Z",
+    "commitSubject": "feat(art): add musketeer-rifle weapon sprite brief (#1367)",
+    "capturedAt": "2026-07-18T17:26:37.249Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29651738503",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/37b7b801e686bfd0ac14588c6969642950e8209e.json"
+  },
+  {
     "commit": "2e3c845af18573fd395a9083bc319fee91824de0",
     "commitDate": "2026-07-18T16:05:42Z",
     "commitSubject": "feat(enemies): apply runtime mob motion across Floors 1 and 2 (#1272)",
