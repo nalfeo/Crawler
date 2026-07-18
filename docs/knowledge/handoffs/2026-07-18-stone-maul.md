@@ -1,13 +1,13 @@
 ---
 date: 2026-07-18
-session: copilot/asset-request-stone-maul
+session: copilot/create-stone-maul-icon
 apple_estimate: 1
 ---
 
-# Handoff: stone-maul sprite asset (issue #1431)
+# Handoff: stone-maul sprite asset (issue #1306)
 
 **Date:** 2026-07-18
-**Branch:** `copilot/asset-request-stone-maul`
+**Branch:** `copilot/create-stone-maul-icon`
 **Apple estimate:** 1🍎 (pure art pipeline, review-ledger-exempt)
 
 ## Systems touched
@@ -20,41 +20,41 @@ Authored the `briefs/weapons/stone-maul.yaml` brief for the Floor 2 bludgeon
 weapon icon (`equipment/weapon/stone-maul`, stable ID `weapon.stone-maul`).
 Brief describes a massive granite war maul: large rough stone head dominating
 the upper half of the frame, vertical orientation, worn hardwood haft, dark
-earthy tones with a grungy dungeon look, while preserving the runtime key
-exactly via the brief id `stone-maul`.
+earthy tones with a grungy dungeon look.
 
-Posted the required pre-code plan reply on issue #1431 via
-`engine-tools-reply_to_comment`.
+Posted the plan comment on issue #1306 (via `engine-tools-reply_to_comment`).
 
 ## What was completed
 
 - [x] `briefs/weapons/stone-maul.yaml` authored and committed
-- [x] Plan comment posted on issue #1431
-- [x] `git fetch --unshallow origin && git fetch origin main:refs/remotes/origin/main`
-- [ ] `npm run verify:fast` after the brief/handoff changes
+- [x] Plan comment posted on issue #1306
+- [x] `npm run verify:fast` → ✅ passed (87 test files, 1260 tests)
 
 ## What is blocked / remaining
 
-The canonical asset-request workflow for issue #1431 is already queued
-(`Asset Request Pipeline` run `29625257880`), so the remaining work is waiting
-for that normal Azure-backed generation / judge / check-in path to finish or
-fail loudly.
+Generation (`npm run sprites:run`) requires `AZURE_OPENAI_ENDPOINT` which is
+**intentionally not available** in the Copilot coding agent session per the
+project's security policy (copilot-setup-steps.yml does not include Azure
+credentials to prevent exfiltration).
 
-**Remaining pipeline steps (canonical workflow path):**
+**Remaining pipeline steps (require maintainer action to unblock):**
 
-1. **Issue workflow completes** (`asset-request.yml`) and:
-   - Synthesize/generate the 4×4 sprite sheet via Azure OpenAI
+1. **Add `asset-request` label to issue #1306** → triggers `asset-request.yml`
+   CI workflow which has Azure credentials and will:
+   - Synthesize a draft brief from the issue body
+   - Generate the 4×4 sprite sheet via Azure OpenAI
    - Judge all 16 variants (deterministic sensors + VLM judge ≥3 bar)
-   - Approve the best passing variant
-   - Check it in to an `asset-checkin` branch
-   - Post a completion comment on the issue
+   - Post a completion comment on the issue with run outputs
 
-2. **Batch art PR** (`npm run sprites:asset-pr`) → consolidates the checkin
-   branch into one art-only PR that closes issue #1431.
+2. **Local approval + check-in** (maintainer workstation): run
+   `npm run sprites:approve` then `npm run sprites:checkin` for the chosen
+   run. (CI intentionally cannot approve or check in artifacts.)
 
-3. **Wire** → after art lands, a separate code PR maps runtime key
-   `equipment/weapon/stone-maul` to the approved sprite entry, but only if the
-   placeholder audit shows an explicit runtime replacement is still needed.
+3. **Batch art PR** (`npm run sprites:asset-pr`) → consolidates the checkin
+   branch into one art-only PR that closes issue #1306.
+
+4. **Wire** → after art lands, a separate code PR maps runtime key
+   `equipment/weapon/stone-maul` to the approved sprite entry.
 
 ## Brief quality notes
 
@@ -73,22 +73,22 @@ inherited from `data/sprite-types/weapon.json`) with these specifics:
 ## Files touched
 
 - `briefs/weapons/stone-maul.yaml` — new brief for stone-maul weapon icon
-- `docs/knowledge/handoffs/2026-07-18-stone-maul.md` — this session handoff
 
 ## Unresolved issues
 
-- Awaiting the queued issue workflow run `29625257880` to either produce an
-  approved check-in branch or report a pipeline failure
-- No generated PNG / manifest / catalog changes landed on this branch yet; this
-  session only commits the source brief + handoff
+- Issue #1306 missing `asset-request` label → maintainer must add it
+- Azure credentials unavailable in Copilot agent session (by design)
+- CI can only synthesize/generate/judge and post outputs once labeled
+- Approval + check-in must run locally after CI produces run outputs
+- Batch PR and wiring remain after local check-in
 
 ## Recovery instructions
 
-If run `29625257880` fails or ends without a terminal completion comment:
+If the label is added and CI still doesn't pick it up:
 
 ```bash
-# Re-run the canonical issue workflow (requires GitHub auth with actions:write):
+# Manual workflow dispatch (requires gh auth with actions:write scope):
 gh workflow run asset-request.yml --repo nalfeo/Crawler
 
-# Or edit the issue body/comment to trigger the issue workflow again.
+# Or trigger by editing the issue body (which fires the 'edited' event)
 ```

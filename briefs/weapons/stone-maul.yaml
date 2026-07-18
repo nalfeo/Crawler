@@ -1,5 +1,6 @@
 type: weapon
 name: stone-maul
+floor: 2
 description: |
   A massive two-handed war maul held vertically, head at the top, long haft
   straight down. The head is a single rough-hewn granite boulder lashed or
@@ -23,6 +24,6 @@ sensors:
     bandRows: 4
     centerToleranceX: 5
 variations:
-  - obsidian-black stone head with jagged fracture lines
-  - round quartzite boulder head with iron binding-straps around the socket
+  - granite head with a wide horizontal fracture and a deep spalled gouge
+  - granite head with a broader iron socket collar and heavier edge chipping
 minVariations: 8
