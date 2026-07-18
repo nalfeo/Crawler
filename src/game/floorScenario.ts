@@ -113,7 +113,7 @@ import {
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
 import { memorizeSpell } from './systems/abilitySystem.js';
-import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
+import { finalizeFloorAchievementProgressOnExit } from './systems/achievementSystem.js';
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
@@ -2237,6 +2237,7 @@ function spawnFloor1SlimeRatBoss(world: GameWorld, playerX: number, playerY: num
     halfHeight: 0,
     shape: SHAPE_CIRCLE,
   });
+  setEnemyAppearanceKey(world, eid, 'slime-rat');
   // slimeRat quest boss is primarily a slime creature.
   setBloodColor(world, eid, BLOOD_COLOR_SLIME);
   setComponent(world.ecs, eid, Damage, { amount: 8 });
@@ -3165,7 +3166,7 @@ export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): 
   questSystem(world);
   world.state = 'safe_room';
   finalizeRunSummary(world, 'cleared_floor');
-  evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
+  finalizeFloorAchievementProgressOnExit(world);
   return true;
 }
 
