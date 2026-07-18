@@ -2077,6 +2077,17 @@
       "type": "item",
       "contentHash": "856b6b7385148d4bf461a2b9de301105eac6660106add6809b44262726bb2ed7"
     },
+    "echo-bell-placeholder": {
+      "briefId": "echo-bell",
+      "spriteName": "echo-bell",
+      "assetPath": "generated/echo-bell-placeholder.png",
+      "approvedAt": "2026-07-18T03:05:06.443Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "ectoplasm-glob-placeholder": {
       "briefId": "ectoplasm-glob",
       "spriteName": "ectoplasm-glob",
@@ -5929,6 +5940,37 @@
       "type": "tile",
       "contentHash": "7199c43c07d8b31017cf0fad4815dfdb9dc2f9b020243b415f92c5f1fd099f1b"
     },
+    "shadow-boots-var-0": {
+      "briefId": "shadow-boots",
+      "spriteName": "shadow-boots-var-0",
+      "assetPath": "generated/shadow-boots-var-0.png",
+      "approvedAt": "2026-07-18T04:50:00.000Z",
+      "sourceRun": "generated/runs/shadow-boots/2026-07-18T04-50-00-manual",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 16,
+        "y": 16,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 16,
+          "y": 16,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 16,
+          "y": 16,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "item",
+      "contentHash": "11a576309686ea155d062da3c0e0a44a17cb525fef201a21a15fc9730aa0dbcc",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "shadow-lichen-placeholder": {
       "briefId": "shadow-lichen",
       "spriteName": "shadow-lichen",
@@ -7987,6 +8029,19 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
+    },
+    "equipment/accessory/lucky-feather": {
+      "briefId": "lucky-feather",
+      "spriteName": "equipment/accessory/lucky-feather",
+      "assetPath": "generated/equipment-accessory-lucky-feather.png",
+      "approvedAt": "2026-07-18T05:32:55.599Z",
+      "sourceRun": "manual-import/lucky-feather",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual",
+      "judgeScore": null,
+      "type": "item",
+      "contentHash": "51baee84d222c27d4696892674c742ea1d447af94be95f4d70c84463672c4c12"
     }
   }
 }

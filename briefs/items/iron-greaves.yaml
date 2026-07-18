@@ -1,0 +1,26 @@
+type: item
+name: iron-greaves
+description: |
+  A pair of iron greaves (shin and lower-leg plate armor) displayed upright,
+  front-facing, centered in the frame. The two plates are shown together as a
+  matched set — thick rectangular iron shin guards with rounded knee-cap flanges
+  at the top, articulated ankle joints at the bottom. The iron surface is heavily
+  worn: deep scratches, dents from impact, dark grime settled into the crevices,
+  and rust-tinged edges that hint at long dungeon use. Plate edges have visible
+  rivets or bolts. The material reads unmistakably as heavy battered iron — cold
+  grey-blue metal tones with deep shadow in the articulation grooves. The overall
+  silhouette must read instantly as leg armor at 64×64: two parallel vertical
+  plates with clear knee and ankle features. Bold 1-pixel dark outlines. No
+  background, no floor, no character — just the greaves themselves on a
+  transparent background.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - greaves with pronounced riveted knee cap and straight vertical shin plate, deep
+    dent marks running diagonally across the shin from combat damage
+  - greaves with layered overlapping horizontal bands across the shin giving a
+    segmented articulated look, dark rust staining at the ankle joint
+  - wide gothic-style greaves with pointed toe-cap extensions and flared upper knee
+    flanges, a cracked surface line running across one shin plate
+minVariations: 5
