@@ -145,7 +145,7 @@
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
           "sha256": "fb5415de4d9d32769f767454bc9e36c7415a88432591e3403bbdeff5cf2ad1fc",
-          "commit": "7a2acf7e95555d26816e7a65b26b1f8d459278e3",
+          "commit": "8fbea1c701e5d536891489c7b8bf0f1715df0ca1",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         }
       ],
