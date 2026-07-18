@@ -1,0 +1,23 @@
+type: item
+name: blood-vial
+description: |
+  A slender glass vial sealed with a dark wax stopper, suspended vertically
+  on a short loop of blackened cord — worn as an accessory around the neck.
+  The vial is about half-full with deep crimson blood that clings to the
+  inner glass walls; a thin black residue at the bottom and faint dark
+  coagulation lines suggest it has been carried a long time. The glass is
+  slightly scratched and foggy with age, with a sharp highlight streak down
+  one side to communicate the rounded cylindrical shape. The stopper is
+  crudely shaped wax or cork in near-black or deep burgundy, pressed into
+  the neck with visible thumb-press texture. The cord makes a tight knot
+  just above the stopper neck. Entire composition reads as a worn, used
+  accessory — not a fresh medical sample. Silhouette: cord + vial shape
+  must read clearly as a wearable vial charm at a glance.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - vial with almost-full dark crimson blood, thick black coagulation at the base, stopper sealed with black dripped wax
+  - vial with blood at exactly half-level, small air bubble trapped at the top, cord knotted with elaborate dungeon-craft knots
+  - vial with a hairline crack running up the side and a single dried blood smear on the outer glass, stopper in cracked burgundy wax
+minVariations: 5
