@@ -7,7 +7,6 @@ description: |
   with one prominent central metal spike and a few short edge studs. Keep the silhouette clean and
   readable at gameplay scale, with clear outer contour and no background scene elements. Materials should
   read as worn steel and dark leather backing; no glow, no magic aura, no blood, no text.
-  Preserve exact consumer key semantics for equipment/weapon/spike-shield by keeping the brief id as spike-shield.
 # Keep candidate generation tightly scoped so we can approve a single stable icon.
 minVariations: 0
 judge:
