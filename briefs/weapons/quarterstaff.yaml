@@ -1,0 +1,22 @@
+type: weapon
+name: quarterstaff
+description: |
+  A tall wooden quarterstaff centered vertically, tip at the top, base at
+  the bottom. A simple polearm: uniform diameter along most of its length
+  with a slight natural taper toward both ends. Natural oak wood grain
+  running lengthwise; a short leather hand-wrap centered on the shaft for
+  the grip. No metal fittings, no carvings, no enchantment glow. The
+  silhouette must read as a plain wooden staff at a glance and clearly
+  not be a sword or spear.
+# Vertical orientation, 4x4 sheet, palette, references, anchor — all
+# inherited from data/sprite-types/weapon.json. This brief only contains
+# the bits that make a quarterstaff specifically a quarterstaff.
+#
+# `variations` is the author seed list. `minVariations: 8` tells the
+# runner to top this list up to 8 via the configured text provider
+# (Azure chat completions); when no chat deployment is configured the
+# seed flows through unchanged and the run still completes.
+variations:
+  - iron-capped tips at each end
+  - leather cord wrapped diagonally from grip to lower quarter
+minVariations: 8

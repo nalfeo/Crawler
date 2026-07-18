@@ -208,3 +208,12 @@ assets:
     integration:
       kind: sprite-registry
       id: sponsor-sword
+
+  - id: quarterstaff
+    type: weapon
+    label: 'Quarterstaff'
+    brief: 'Quarterstaff — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it as a tall vertical polearm so the weapon type reads at a glance. Simple oak wood, no enchantment.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: quarterstaff

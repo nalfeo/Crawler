@@ -4888,6 +4888,18 @@
       "facingDirection": "right",
       "contentHash": "896360f915fb5c64739129ab5d5a01a76317c3dd3ffffcb84c624a3fbebf90ae"
     },
+    "quarterstaff-placeholder": {
+      "briefId": "quarterstaff",
+      "spriteName": "quarterstaff",
+      "assetPath": "generated/quarterstaff-placeholder.png",
+      "approvedAt": "2026-07-18T02:00:00.000Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon"
+    },
     "raccoon-thief-var-0": {
       "briefId": "raccoon-thief",
       "spriteName": "raccoon-thief-var-0",
