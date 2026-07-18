@@ -699,16 +699,23 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
   }
 });
 
-test('extractAddressedMarkerSha parses slash-separated SHA pair by taking the first SHA', () => {
+test('extractAddressedMarkerSha parses slash-separated SHA pair by taking the second (later) SHA', () => {
   // Agents sometimes write two SHAs when a fix spans multiple commits, e.g.
-  // "✅ Addressed in 9adef25/28f3d0f: ...". The first SHA should be extracted.
-  assert.equal(extractAddressedMarkerSha('✅ Addressed in 9adef25/28f3d0f: note'), '9adef25');
-  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/def5678abc: note'), 'abc1234def');
-  // Non-SHA first component should still be rejected.
+  // "✅ Addressed in 9adef25/28f3d0f: ...". The second (later) SHA is returned
+  // so its ancestry in the lineage check proves the complete pair is present.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in 9adef25/28f3d0f: note'), '28f3d0f');
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/def5678abc: note'), 'def5678abc');
+  // Malformed: non-SHA first component → rejected.
   assert.equal(extractAddressedMarkerSha('✅ Addressed in not-a-sha/abc1234def: note'), null);
+  // Malformed: non-SHA second component → rejected.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/not-a-sha: note'), null);
+  // Malformed: empty second component (trailing slash) → rejected.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/: note'), null);
+  // Malformed: more than two components → rejected (not exactly a pair).
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/def5678abc/extra: note'), null);
 });
 
-test('shouldResolveThread accepts slash-separated SHA pair when first SHA is a reachable ancestor', () => {
+test('shouldResolveThread accepts slash-separated SHA pair when second (later) SHA is a reachable ancestor', () => {
   const thread = {
     comments: {
       nodes: [
@@ -725,12 +732,12 @@ test('shouldResolveThread accepts slash-separated SHA pair when first SHA is a r
       ],
     },
   };
-  // First SHA in the pair is a reachable ancestor of head → should resolve.
-  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set(['9adef25'])), true);
+  // Second SHA in the pair is a reachable ancestor of head → should resolve.
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set(['28f3d0f'])), true);
   // Not in reachable set and not head prefix → should not resolve.
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
-  // First SHA matches head prefix → should resolve.
-  assert.equal(shouldResolveThread(thread, '9adef25abc123456'), true);
+  // Second SHA matches head prefix → should resolve.
+  assert.equal(shouldResolveThread(thread, '28f3d0fabc123456'), true);
 });
 
 test('shouldResolveThread accepts latest trusted commit URL marker on head lineage', () => {

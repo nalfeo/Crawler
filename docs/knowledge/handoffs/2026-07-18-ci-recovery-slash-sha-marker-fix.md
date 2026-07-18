@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-18  
 **Session:** ci-recovery-slash-sha-marker-fix  
-**PR:** #1609 (closes #1609, incident on #1396)
+**PR:** #1613 (closes issue #1609, incident on PR #1396)
 
 ## Systems touched
 
@@ -39,28 +39,29 @@ As a result:
 
 ## Fix
 
-Added a slash-separated SHA pair path in `parseMarkerShaToken`:
+Updated `parseMarkerShaToken` to validate exactly two slash-separated hex-SHA components and return the second (later) SHA. Requiring both components to be valid SHAs prevents false positives from malformed tokens like `abc1234/not-a-sha` or `abc1234/def5678/extra`. Returning the second SHA ensures its ancestry in the lineage check proves the complete pair is present.
 
 ```js
 // Handle slash-separated SHA pairs like "9adef25/28f3d0f" (agents sometimes
-// write two SHAs when a fix spans multiple commits). Use the first component.
-const slashIdx = token.indexOf('/');
-if (slashIdx !== -1) {
-  const firstPart = token.slice(0, slashIdx);
-  if (hexShaPattern.test(firstPart)) {
-    return firstPart.toLowerCase();
+// write two SHAs when a fix spans multiple commits). Require exactly two
+// hex-SHA components; return the second (later) SHA so its ancestry proves
+// the complete pair is present.
+const slashParts = token.split('/');
+if (slashParts.length === 2) {
+  const [firstPart, secondPart] = slashParts;
+  if (hexShaPattern.test(firstPart) && hexShaPattern.test(secondPart)) {
+    return secondPart.toLowerCase();
   }
 }
 ```
 
-The first SHA is used and fed into the existing lineage-check path (ancestor compare).
-
 ## Files Changed
 
 - `.github/scripts/ci-recovery/state.mjs` — fix in `parseMarkerShaToken`
-- `.github/scripts/ci-recovery/state.test.mjs` — two new regression tests
+- `.github/scripts/ci-recovery/state.test.mjs` — regression tests (second-SHA extraction, malformed-second-component cases)
+- `docs/knowledge/review-ledgers/2026-07-18-ci-recovery-slash-sha-marker-fix.review-ledger.json` — 1🍎 ledger
 
 ## Verification
 
-- All 33 CI recovery state tests pass (31 pre-existing + 2 new)
-- `npm run verify:fast` passes (1 pre-existing unrelated failure in epic-status test due to shallow clone)
+- All 33 CI recovery state tests pass
+- `npm run verify:fast` passes cleanly
