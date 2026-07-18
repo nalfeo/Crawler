@@ -12,6 +12,24 @@ icon. The brief preserves the consumer-facing identity as `velvet-coat`, which
 is the item-id-safe form the item-art approval path expects for runtime
 resolution.
 
+## Process note
+
+Issue #1368's intake requested a detailed plan comment before code changes. The
+minimal brief + blocker handoff landed before that issue comment existed. During
+this PR recovery session I attempted to post the retroactive issue plan with
+`gh issue comment 1368 --repo nalfeo/Crawler --body-file /tmp/velvet-coat-issue-1368-plan.md`,
+but GitHub write auth in this environment returned `HTTP 403: 403 Forbidden`.
+
+Retroactive implementation plan for the minimal branch scope:
+
+- Preserve the bare runtime-safe id exactly by authoring
+  `briefs/items/velvet-coat.yaml` as the source-of-truth brief.
+- Attempt the normal sprite pipeline entrypoints available from this session,
+  but do not bypass the Azure-backed generate/judge/approve flow with manual
+  art if credentialed access is unavailable.
+- Record the real blocker and the next-step recovery path so a credentialed
+  follow-up can resume the normal pipeline without name drift.
+
 I attempted the required pipeline flow next, but this session cannot reach the
 Azure-backed generation path:
 
