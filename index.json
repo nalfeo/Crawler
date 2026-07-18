@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2e3c845af18573fd395a9083bc319fee91824de0",
+    "commitDate": "2026-07-18T16:05:42Z",
+    "commitSubject": "feat(enemies): apply runtime mob motion across Floors 1 and 2 (#1272)",
+    "capturedAt": "2026-07-18T17:25:00.060Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29651671780",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/2e3c845af18573fd395a9083bc319fee91824de0.json"
+  },
+  {
     "commit": "467e46f4338c89dd43b124f094226c402bde1859",
     "commitDate": "2026-07-18T14:30:09Z",
     "commitSubject": "Add boarding-axe sprite brief for Floor 2 equipment icon (#1417)",
