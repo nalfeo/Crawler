@@ -739,6 +739,48 @@ describe('getActiveWeaponReadiness paths', () => {
     expect(recovered).not.toBeNull();
     expect(recovered!.cooldownMs).toBeCloseTo(pistol.cooldownMs, 6);
   });
+
+  it('keeps switched weapons disabled while attackSpeed is 0×', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 10, 0, 50);
+
+    applyStatusEffect(world, player, {
+      stat: 'attackSpeed',
+      op: 'multiply',
+      value: 0,
+      durationMs: null,
+      sourceType: 'ability',
+      sourceId: 'test:zero-attack-speed',
+      stackRule: { mode: 'replace' },
+    });
+
+    const pistol = getWeaponDef('pistol')!;
+    const bow = getWeaponDef('bow')!;
+    setActiveWeapon(world, pistol);
+
+    const initial = getActiveWeaponReadiness(world);
+    expect(initial).not.toBeNull();
+    expect(initial!.cooldownMs).toBe(Infinity);
+    expect(initial!.ready).toBe(false);
+
+    world.elapsedMs += 10_000;
+    weaponSystem(world);
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+
+    // Regression: switching weapons while disabled used to set -Infinity
+    // `lastFireMs`, letting the next weapon fire immediately.
+    setActiveWeapon(world, bow);
+    const switched = getActiveWeaponReadiness(world);
+    expect(switched).not.toBeNull();
+    expect(switched!.cooldownMs).toBe(Infinity);
+    expect(switched!.ready).toBe(false);
+    expect(switched!.remainingMs).toBe(Infinity);
+
+    world.elapsedMs += 10_000;
+    weaponSystem(world);
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+  });
 });
 
 describe('weaponSystem sync and safe-space paths', () => {

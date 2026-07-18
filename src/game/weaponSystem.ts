@@ -124,6 +124,14 @@ function syncActiveWeaponGeneration(world: GameWorld, state: WeaponState): void 
   const player = getPlayerEntity(world);
   const cooldownMs =
     player === undefined ? def.cooldownMs : getEffectiveCooldownMs(world, player, def.cooldownMs);
+  if (!Number.isFinite(cooldownMs)) {
+    // Preserve the "cannot fire" gate for non-positive attack-speed multipliers.
+    // Using elapsedMs - Infinity here would store -Infinity and make
+    // `(elapsed - lastFire) < cooldown` comparisons misfire (Infinity < Infinity
+    // is false), allowing shots while disabled.
+    state.lastFireMs = world.elapsedMs;
+    return;
+  }
   state.lastFireMs = world.elapsedMs - cooldownMs;
 }
 

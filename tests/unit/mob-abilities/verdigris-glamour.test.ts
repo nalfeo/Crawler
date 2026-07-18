@@ -608,7 +608,6 @@ describe('Verdigris Glamour — canonical simulation pipeline', () => {
   });
 });
 
-
 describe('Verdigris Glamour — pendingBursts durable queue', () => {
   it('populates pendingBursts at resolution so burst survives caster teardown', () => {
     // Regression: the old approach read burst count from runtime.byEntity, which
@@ -669,13 +668,13 @@ describe('weaponSystem — zero attackSpeed multiplier', () => {
 
     // Apply a 0× attackSpeed status effect (persistent, never expires).
     applyStatusEffect(world, player, {
-     stat: 'attackSpeed',
-     op: 'multiply',
-     value: 0,
-     durationMs: null,
-     stackRule: { mode: 'replace' },
-     sourceType: 'debug',
-     sourceId: 'test:zero-attack-speed',
+      stat: 'attackSpeed',
+      op: 'multiply',
+      value: 0,
+      durationMs: null,
+      stackRule: { mode: 'replace' },
+      sourceType: 'debug',
+      sourceId: 'test:zero-attack-speed',
     });
 
     const inputState = createInputState();
@@ -685,11 +684,11 @@ describe('weaponSystem — zero attackSpeed multiplier', () => {
 
     // Run 120 frames (~2s) — well above any normal weapon cooldown.
     for (let i = 0; i < 120; i += 1) {
-     world.frameCount += 1;
-     world.elapsedMs += DELTA;
-     runCoreSimulationStep(world, inputState, {
-       preSystems: [weaponSystem],
-     });
+      world.frameCount += 1;
+      world.elapsedMs += DELTA;
+      runCoreSimulationStep(world, inputState, {
+        preSystems: [weaponSystem],
+      });
     }
 
     // No combat events should have been emitted; the weapon never fired.
