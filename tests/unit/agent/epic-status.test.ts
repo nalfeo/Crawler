@@ -551,6 +551,19 @@ describe('Floor 2 equipment epic status', () => {
     expect(codes).toContain('dag.parent-slice-contract-drift');
   });
 
+  it('rejects duplicate node_id entries', () => {
+    const state = cloneState();
+    const a0 = state.nodes.find((node) => node.node_id === 'slice:A0');
+    expect(a0).toBeDefined();
+    if (a0) {
+      // Duplicate the node to simulate a state where node_id uniqueness is violated.
+      state.nodes.push({ ...a0 });
+    }
+
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).toContain('dag.duplicate-node-id');
+  });
+
   it('detects committed JSON Schema parity drift when node constraints are loosened', () => {
     const loosened = structuredClone(SCHEMA) as {
       $defs: { node: { additionalProperties: boolean; required?: string[] } };
@@ -1181,16 +1194,23 @@ describe('applyGithubAudit', () => {
 
 describe('validateEvidenceRequirements', () => {
   it('production git reader rejects non-commit git objects', () => {
-    const reader = createDefaultGitReader(REPO_ROOT);
-    const commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-    }).trim();
-    const blobSha = execFileSync('git', ['rev-parse', 'HEAD:package.json'], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-    }).trim();
+    let commitSha: string;
+    let blobSha: string;
+    try {
+      commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      }).trim();
+      blobSha = execFileSync('git', ['rev-parse', 'HEAD:package.json'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      }).trim();
+    } catch {
+      // Skip when git is unavailable or not in a repository.
+      return;
+    }
 
+    const reader = createDefaultGitReader(REPO_ROOT);
     expect(reader.commitStatus(commitSha)).toBe('commit');
     expect(reader.commitStatus(blobSha)).toBe('not-commit');
   });

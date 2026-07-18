@@ -1108,6 +1108,22 @@ function validateDag(
   };
   for (const node of state.nodes) visit(node.node_id, []);
 
+  // Reject duplicate node_id entries: a Map silently overwrites duplicates, so
+  // check explicitly before building nodesById.
+  const nodeIdCounts = new Map<string, number>();
+  for (const node of state.nodes) {
+    nodeIdCounts.set(node.node_id, (nodeIdCounts.get(node.node_id) ?? 0) + 1);
+  }
+  for (const [dupId, count] of nodeIdCounts) {
+    if (count > 1) {
+      result.errors.push({
+        code: 'dag.duplicate-node-id',
+        node_id: dupId,
+        message: `${dupId} appears ${count} times in state.nodes; node_id must be unique`,
+      });
+    }
+  }
+
   // Validate that dependencies and parent_slice exactly match the canonical plan graph.
   for (const node of state.nodes) {
     const contractDeps = canonicalDependencies.get(node.node_id);
@@ -1245,12 +1261,24 @@ function validateEvidenceFiles(
       });
       continue;
     }
+    const commitStat = gitReader.commitStatus(evidence.commit);
+    if (commitStat !== 'commit') {
+      result.errors.push({
+        code: 'evidence.git-verification-failed',
+        node_id: node.node_id,
+        message:
+          commitStat === 'not-commit'
+            ? `${node.node_id} evidence commit ${evidence.commit} is not a commit object: ${evidence.path_or_check}`
+            : `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
+      });
+      continue;
+    }
     const verification = gitReader.readContent(evidence.commit, evidence.path_or_check);
     if (verification === null) {
       result.errors.push({
         code: 'evidence.git-verification-failed',
         node_id: node.node_id,
-        message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check} (commit or file may not exist)`,
+        message: `${node.node_id} evidence file not found at commit ${evidence.commit}: ${evidence.path_or_check}`,
       });
       continue;
     }
