@@ -168,6 +168,10 @@ export class MockGraphics {
   depth = 0;
   x = 0;
   y = 0;
+  rotation = 0;
+  scaleX = 1;
+  scaleY = 1;
+  name = '';
   fillRects: Array<{ x: number; y: number; w: number; h: number }> = [];
   fillEllipses: Array<{ x: number; y: number; w: number; h: number }> = [];
   fillCalls: Array<{ color: number; alpha: number }> = [];
@@ -261,6 +265,17 @@ export class MockGraphics {
 
   setDepth(depth: number): this {
     this.depth = depth;
+    return this;
+  }
+
+  setRotation(rotation: number): this {
+    this.rotation = rotation;
+    return this;
+  }
+
+  setScale(scaleX: number, scaleY?: number): this {
+    this.scaleX = scaleX;
+    this.scaleY = scaleY ?? scaleX;
     return this;
   }
 
