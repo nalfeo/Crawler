@@ -18,6 +18,7 @@ import {
   registerInstance,
   lookupInstance,
   hasInstance,
+  getRegistrySize,
   computeFingerprint,
   validateFingerprint,
   validateInstanceStructure,
@@ -237,14 +238,13 @@ describe('Generated Equipment Registry — Property Tests', () => {
           const world1 = enableRegistry(createTestWorld());
           const world2 = enableRegistry(createTestWorld());
 
-          // Ensure disjoint ID spaces: remap world2 IDs to a separate namespace
           const deduped1 = deduplicateByInstanceId(instances1Raw);
-          const deduped2 = deduplicateByInstanceId(
-            instances2Raw.map((b) => ({
-              ...b,
-              instanceId: (b.instanceId + '-w2') as GeneratedEquipmentInstanceId,
-            })),
-          );
+          // Remap world2 instances to ordinals 1000+ so IDs are guaranteed valid
+          // and disjoint from world1's (arbInstance uses ordinals 0..999).
+          const deduped2 = instances2Raw.map((b, i) => ({
+            ...b,
+            instanceId: createInstanceId('w2', 1000 + i),
+          }));
 
           const registered1Ids = new Set<GeneratedEquipmentInstanceId>();
           for (const base of deduped1) {
@@ -262,11 +262,15 @@ describe('Generated Equipment Registry — Property Tests', () => {
             if (r.ok) registered2Ids.add(base.instanceId);
           }
 
-          // IDs registered only in world1 must not be visible in world2
+          // Each world must report exactly the instances registered into it
+          if (getRegistrySize(world1) !== registered1Ids.size) return false;
+          if (getRegistrySize(world2) !== registered2Ids.size) return false;
+
+          // IDs registered in world1 must not be visible in world2
           for (const id of registered1Ids) {
             if (hasInstance(world2, id)) return false; // isolation violation
           }
-          // IDs registered only in world2 must not be visible in world1
+          // IDs registered in world2 must not be visible in world1
           for (const id of registered2Ids) {
             if (hasInstance(world1, id)) return false; // isolation violation
           }

@@ -71,23 +71,6 @@ function getMap(world: GameWorld): Map<GeneratedEquipmentInstanceId, GeneratedEq
   return map;
 }
 
-/**
- * Deep-freeze a GeneratedEquipmentInstanceV1 so all nested objects are
- * immutable (Object.freeze is shallow — resolvedEffects, frozen.statBonuses,
- * and frozen itself must be frozen individually).
- */
-function deepFreezeInstance(instance: GeneratedEquipmentInstanceV1): GeneratedEquipmentInstanceV1 {
-  const frozenFrozen = Object.freeze({
-    ...instance.frozen,
-    statBonuses: Object.freeze({ ...instance.frozen.statBonuses }),
-  });
-  const frozenEffects = Object.freeze(instance.resolvedEffects.map((e) => Object.freeze({ ...e })));
-  return Object.freeze({
-    ...instance,
-    resolvedEffects: frozenEffects,
-    frozen: frozenFrozen,
-  }) as GeneratedEquipmentInstanceV1;
-}
 
 // ---------------------------------------------------------------------------
 // Deterministic instance ID creation
@@ -310,8 +293,79 @@ export function validateInstanceStructure(instance: GeneratedEquipmentInstanceV1
 }
 
 // ---------------------------------------------------------------------------
-// Registry operations
+// Deep-clone and recursive freeze
 // ---------------------------------------------------------------------------
+
+/**
+ * Deep-clone `value` and recursively freeze every plain object and array in
+ * the clone. Primitives (string, number, boolean, null) are returned as-is.
+ *
+ * This is used to ensure stored records are fully immutable and that a
+ * caller cannot mutate registered content after registration or hydration,
+ * even through nested object or array references.
+ */
+function deepCloneAndFreeze<T>(value: T): T {
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return Object.freeze((value as unknown[]).map(deepCloneAndFreeze)) as unknown as T;
+  }
+  const clone: Record<string, unknown> = {};
+  for (const key of Object.keys(value as object)) {
+    clone[key] = deepCloneAndFreeze((value as Record<string, unknown>)[key]);
+  }
+  return Object.freeze(clone) as T;
+}
+
+// ---------------------------------------------------------------------------
+// Persisted-data shape guard
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal shape guard for a raw persisted instance record.
+ *
+ * Verifies that the value is a plain object with the nested fields that
+ * `validateInstanceStructure` would dereference without null guards.
+ * Returns `null` if shape is structurally safe to proceed with validation,
+ * or a descriptive error string if not.
+ */
+function guardRawInstance(raw: unknown): string | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return 'element is not a plain object';
+  }
+  const r = raw as Record<string, unknown>;
+  if (typeof r['schemaVersion'] !== 'string') return 'missing or non-string schemaVersion';
+  if (typeof r['instanceId'] !== 'string') return 'missing or non-string instanceId';
+  if (typeof r['fingerprint'] !== 'string') return 'missing or non-string fingerprint';
+
+  // frozen must be a plain (non-null, non-array) object
+  if (r['frozen'] === null || typeof r['frozen'] !== 'object' || Array.isArray(r['frozen'])) {
+    return 'frozen must be a plain object';
+  }
+  const frozen = r['frozen'] as Record<string, unknown>;
+  if (
+    frozen['statBonuses'] === null ||
+    typeof frozen['statBonuses'] !== 'object' ||
+    Array.isArray(frozen['statBonuses'])
+  ) {
+    return 'frozen.statBonuses must be a plain object';
+  }
+
+  // resolvedEffects must be an array with non-null object elements
+  if (!Array.isArray(r['resolvedEffects'])) {
+    return 'resolvedEffects must be an array';
+  }
+  for (let i = 0; i < (r['resolvedEffects'] as unknown[]).length; i++) {
+    const eff = (r['resolvedEffects'] as unknown[])[i];
+    if (eff === null || typeof eff !== 'object' || Array.isArray(eff)) {
+      return `resolvedEffects[${i}] is not a plain object`;
+    }
+  }
+
+  return null;
+}
+
 
 /**
  * Register a generated equipment instance in the world-owned registry.
@@ -349,14 +403,18 @@ export async function registerInstance(
     };
   }
 
-  // 3. Structural validation (sync)
-  const structureError = validateInstanceStructure(instance);
+  // Deep-clone before any further validation so mutations to the caller's
+  // object cannot race with or affect fingerprinting or the stored record.
+  const cloned = deepCloneAndFreeze(instance);
+
+  // 3. Structural validation (sync) — against the clone
+  const structureError = validateInstanceStructure(cloned);
   if (structureError !== null) {
     return { ok: false, reason: 'invalid_structure', detail: structureError };
   }
 
-  // 4. Fingerprint cryptographic validation (async)
-  const fingerprintOk = await validateFingerprint(instance);
+  // 4. Fingerprint cryptographic validation (async) — against the clone
+  const fingerprintOk = await validateFingerprint(cloned);
   if (!fingerprintOk) {
     return {
       ok: false,
@@ -367,16 +425,16 @@ export async function registerInstance(
 
   // 5. Duplicate check
   const map = getMap(world);
-  if (map.has(instance.instanceId)) {
+  if (map.has(cloned.instanceId)) {
     return {
       ok: false,
       reason: 'duplicate',
-      detail: `instance "${instance.instanceId}" is already registered`,
+      detail: `instance "${cloned.instanceId}" is already registered`,
     };
   }
 
-  // 6. Store frozen copy
-  map.set(instance.instanceId, deepFreezeInstance(instance));
+  // 6. Store the already-frozen deep clone (deepCloneAndFreeze recursively froze it)
+  map.set(cloned.instanceId, cloned);
   return { ok: true };
 }
 
@@ -447,41 +505,60 @@ export function snapshotRegistry(world: GameWorld): readonly GeneratedEquipmentI
  */
 export async function hydrateRegistry(
   world: GameWorld,
-  instances: readonly GeneratedEquipmentInstanceV1[],
+  instances: unknown,
 ): Promise<string[]> {
   const errors: string[] = [];
   const map = getMap(world);
 
-  for (const instance of instances) {
+  if (!Array.isArray(instances)) {
+    return ['hydrateRegistry: instances argument must be an array'];
+  }
+
+  for (let idx = 0; idx < instances.length; idx++) {
+    const raw: unknown = instances[idx];
+
+    // Shape guard: ensure basic structure before deeper validation
+    const shapeError = guardRawInstance(raw);
+    if (shapeError !== null) {
+      errors.push(`instance at index ${idx}: ${shapeError}`);
+      continue;
+    }
+
+    const instance = raw as GeneratedEquipmentInstanceV1;
+
     // Unknown schema versions fail closed
     if (!isKnownGeneratedSchemaVersion(instance.schemaVersion)) {
       errors.push(`skipped instance with unknown schemaVersion: "${instance.schemaVersion}"`);
       continue;
     }
 
+    // Deep-clone before validation and storage so caller mutations cannot
+    // affect the registered record.
+    const cloned = deepCloneAndFreeze(instance);
+
     // Structural validation
-    const structureError = validateInstanceStructure(instance);
+    const structureError = validateInstanceStructure(cloned);
     if (structureError !== null) {
-      errors.push(`invalid structure for instance "${instance.instanceId}": ${structureError}`);
+      errors.push(`invalid structure for instance "${cloned.instanceId}": ${structureError}`);
       continue;
     }
 
     // Fingerprint validation
-    const fingerprintOk = await validateFingerprint(instance);
+    const fingerprintOk = await validateFingerprint(cloned);
     if (!fingerprintOk) {
       errors.push(
-        `fingerprint mismatch for instance "${instance.instanceId}": tuning drift detected`,
+        `fingerprint mismatch for instance "${cloned.instanceId}": tuning drift detected`,
       );
       continue;
     }
 
     // Duplicate check (warn but skip, don't fail the whole hydration)
-    if (map.has(instance.instanceId)) {
-      errors.push(`duplicate instance "${instance.instanceId}" skipped during hydration`);
+    if (map.has(cloned.instanceId)) {
+      errors.push(`duplicate instance "${cloned.instanceId}" skipped during hydration`);
       continue;
     }
 
-    map.set(instance.instanceId, deepFreezeInstance(instance));
+    map.set(cloned.instanceId, cloned);
   }
 
   return errors;

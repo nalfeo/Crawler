@@ -64,13 +64,6 @@ export type EquipmentGrantSourceId = `equipment:${GeneratedEquipmentInstanceId}:
 // Resolution constants (ADR 0065 DEC-005)
 // ---------------------------------------------------------------------------
 
-/** Inherent scalar applied to weapon damage / armor for each rarity tier. */
-export const RARITY_INHERENT_SCALAR: Readonly<Record<GeneratedEquipmentRarity, number>> = {
-  common: 1.0,
-  uncommon: 1.05,
-  rare: 1.1,
-} as const;
-
 /**
  * Exact number of effect units allocated for each rarity.
  * Common = 0 (no affixes); Uncommon = 1 minor unit; Rare = 2 units.
@@ -87,9 +80,6 @@ export const ENHANCEMENT_MIN = 0 as const;
 
 /** Maximum enhancement level (+5 = +25% post-rarity inherent damage/armor). */
 export const ENHANCEMENT_MAX = 5 as const;
-
-/** Enhancement bonus per step: 5% of post-rarity inherent damage/armor. */
-export const ENHANCEMENT_STEP_PERCENT = 0.05 as const;
 
 // ---------------------------------------------------------------------------
 // Resolved effect unit

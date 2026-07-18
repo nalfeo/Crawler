@@ -376,7 +376,7 @@ describe('validateInstanceStructure', () => {
   });
 
   it('rejects enhancementLevel > ENHANCEMENT_MAX', async () => {
-    const base = makeInstanceBase({ enhancementLevel: 6 as unknown as number });
+    const base = makeInstanceBase({ enhancementLevel: 6 as unknown as 0 | 1 | 2 | 3 | 4 | 5 });
     const fp = await computeFingerprint(base);
     const bad: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
     expect(validateInstanceStructure(bad)).not.toBeNull();
@@ -746,6 +746,42 @@ describe('hydrateRegistry', () => {
     expect(getRegistrySize(world2)).toBe(2);
     expect(lookupInstance(world2, i1.instanceId)?.baseId).toBe(i1.baseId);
     expect(lookupInstance(world2, i2.instanceId)?.rarity).toBe('uncommon');
+  });
+
+  it('rejects non-array input', async () => {
+    const world = createTestWorld();
+    const errors = await hydrateRegistry(world, null);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('must be an array');
+    expect(getRegistrySize(world)).toBe(0);
+  });
+
+  it('collects error and continues when an element is null', async () => {
+    const world = createTestWorld();
+    const instance = await buildInstance();
+    const errors = await hydrateRegistry(world, [null, instance]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('index 0');
+    expect(getRegistrySize(world)).toBe(1); // second element still hydrates
+  });
+
+  it('collects error and continues when frozen is missing', async () => {
+    const world = createTestWorld();
+    const { frozen: _frozen, ...noFrozen } = await buildInstance();
+    const errors = await hydrateRegistry(world, [noFrozen]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('frozen');
+    expect(getRegistrySize(world)).toBe(0);
+  });
+
+  it('collects error and continues when resolvedEffects contains a null', async () => {
+    const world = createTestWorld();
+    const instance = await buildInstance();
+    const errors = await hydrateRegistry(world, [
+      { ...instance, resolvedEffects: [null] },
+    ]);
+    expect(errors).toHaveLength(1);
+    expect(getRegistrySize(world)).toBe(0);
   });
 });
 
