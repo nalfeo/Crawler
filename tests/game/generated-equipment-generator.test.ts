@@ -89,15 +89,19 @@ describe('deterministic generated equipment', () => {
     });
     const staticArmor = getEquipmentDefForItem('iron-breastplate')!;
     const affixArmor = generateEquipmentInstance(world, GENERATED_ARMOR_REQUEST);
-    const effectArmor = affixArmor.resolvedEffects
-      .filter((effect) => effect.kind === 'stat' && effect.stat === 'armor')
-      .reduce((sum, effect) => sum + effect.value, 0);
+    const effectArmor = affixArmor.resolvedEffects.reduce(
+      (sum, effect) =>
+        effect.kind === 'stat' && effect.stat === 'armor' ? sum + effect.value : sum,
+      0,
+    );
     const expectedArmor = Math.floor(
       (staticArmor.statBonuses.armor ?? 0) * 1.3 * 1.1 * 1.15 + effectArmor + 0.5,
     );
-    const effectConstitution = affixArmor.resolvedEffects
-      .filter((effect) => effect.kind === 'stat' && effect.stat === 'constitution')
-      .reduce((sum, effect) => sum + effect.value, 0);
+    const effectConstitution = affixArmor.resolvedEffects.reduce(
+      (sum, effect) =>
+        effect.kind === 'stat' && effect.stat === 'constitution' ? sum + effect.value : sum,
+      0,
+    );
 
     expect(affixArmor.frozen.statBonuses.armor).toBe(expectedArmor);
     expect(affixArmor.frozen.statBonuses.constitution).toBe(

@@ -109,3 +109,19 @@ Publish a ready, non-draft stacked PR targeting
 `nalfeo-sourced-ability-grants` at
 `bdb0e8736afde5c2bfd70cd847e408f469c01e5c` as the explicit second
 prerequisite. Do not merge or arm auto-merge.
+
+## Follow-up: strict test narrowing
+
+A dependent preflight reproduced two `TS2339` errors on published head
+`d858c905c074f77047d5b70d901c07d99ce0a443`: TypeScript did not retain the
+`ResolvedEquipmentStatEffectV1` narrowing across separate `filter()` and
+`reduce()` callbacks. The assertions now discriminate `effect.kind` inside each
+reduction callback before reading `effect.value`, preserving the same runtime
+coverage without a cast or weakened type contract.
+
+`npm run typecheck` was the authoritative reproduction command. The pre-fix
+`npm run verify:fast` invocation returned success despite the same typecheck
+failure, so this follow-up keeps the D1 fix test-only and records that verifier
+behavior for the coordinator rather than expanding into an unrelated
+infrastructure change. A separate 1-apple ledger records the bounded follow-up:
+`docs/knowledge/review-ledgers/2026-07-18-deterministic-equipment-generator-narrowing-followup.review-ledger.json`.
