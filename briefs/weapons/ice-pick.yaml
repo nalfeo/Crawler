@@ -1,0 +1,18 @@
+type: weapon
+name: ice-pick
+description: |
+  An ice pick held vertically, spike at the top, handle straight down.
+  Compact single-headed pick: a short, thick spike angled forward from a
+  sturdy straight haft — spike tip pointing upper-left at roughly 80 degrees
+  from vertical, haft pointing downward. Cold steel spike with a blueish
+  highlight along the tip; dark charcoal iron collar at the join; short
+  wrapped grip; plain cap pommel at the base. No glow, no frost particles,
+  no chains. Silhouette must read as a one-handed pick at a glance and
+  clearly not be a sword or mace.
+# Runtime key preserved exactly: equipment/weapon/ice-pick
+# Production wave: floor2-equipment-weapon-axe
+# Stable ID: weapon.ice-pick
+variations:
+  - hooked tip with a slight downward curve for better grip on ice
+  - reinforced collar with rivets where spike meets the haft
+minVariations: 6
