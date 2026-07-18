@@ -25,6 +25,9 @@ ci-policy
   interrupted runs terminate and reap both child processes.
 - Added isolated regression fixtures that run the real verifier static phase through
   the repository's Git-Bash/WSL/Linux path and environment helpers.
+- Kept the static-only test hook compatible with the production default project so
+  the regression suite now exercises `TSC_PROJECT="tsconfig.json"` unless a test
+  explicitly overrides it.
 - Corrected step labels and output so the verifier accurately describes full-project
   typechecking, changed-file linting, changed tests, and health checks.
 
@@ -51,7 +54,9 @@ ci-policy
 
 - Authoritative issue: #1570, open and maintainer-authored.
 - Branch base: `origin/main` at `84489aa693a18831b68c024630cf268eed35bd35`.
-- No gameplay/content behavior or gate strength changed.
+- No gameplay/content behavior changed; this PR intentionally strengthens the fast
+  verifier's TypeScript gate from source-only coverage to full `tsconfig.json`
+  coverage.
 
 ## Follow-up
 

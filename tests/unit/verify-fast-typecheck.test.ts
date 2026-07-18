@@ -74,19 +74,19 @@ function makeFixture(files: Record<string, string>): string {
   return dir;
 }
 
-function runStaticVerifier(fixtureDir: string) {
-  const project = path
-    .relative(REPO_ROOT, path.join(fixtureDir, 'tsconfig.json'))
-    .replace(/\\/g, '/');
+function runStaticVerifier(fixtureDir: string, options?: { cwd?: string; project?: string }) {
+  const env: Record<string, string> = {
+    NODE_ENV: 'test',
+    VERIFY_FAST_TEST_STATIC_ONLY: '1',
+  };
+  if (options?.project) {
+    env.VERIFY_FAST_TSC_PROJECT = options.project;
+  }
   return spawnSync('bash', [SCRIPT], {
-    cwd: REPO_ROOT,
+    cwd: options?.cwd ?? fixtureDir,
     encoding: 'utf8',
     timeout: 30_000,
-    env: bashEnv({
-      NODE_ENV: 'test',
-      VERIFY_FAST_TEST_STATIC_ONLY: '1',
-      VERIFY_FAST_TSC_PROJECT: project,
-    }),
+    env: bashEnv(env),
   });
 }
 
@@ -112,7 +112,7 @@ describe('verify-fast full-project typecheck', () => {
       files[errorPath] = narrowingError;
       const fixture = makeFixture(files);
 
-      const result = runStaticVerifier(fixture);
+      const result = runStaticVerifier(fixture, { cwd: fixture });
 
       expect(result.status).not.toBe(0);
       // Assert on the stable TS error code; the message text varies across TS versions.
@@ -130,7 +130,7 @@ describe('verify-fast full-project typecheck', () => {
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
       });
 
-      const result = runStaticVerifier(fixture);
+      const result = runStaticVerifier(fixture, { cwd: fixture });
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Fast verifier static checks passed');

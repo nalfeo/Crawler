@@ -32,7 +32,7 @@ if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]
   # Regression tests exercise this real parallel gate against isolated projects
   # and stop before the unrelated unit/headless phases.
   test_static_only=1
-  TSC_PROJECT="${VERIFY_FAST_TSC_PROJECT:?VERIFY_FAST_TSC_PROJECT is required in test mode}"
+  TSC_PROJECT="${VERIFY_FAST_TSC_PROJECT:-$TSC_PROJECT}"
 fi
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
