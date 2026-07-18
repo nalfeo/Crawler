@@ -36,7 +36,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 
 function setupPlayer() {
   const world = createTestWorld();
-  makeWalledMap(world, 10, 10);
+  world.floorMap = makeWalledMap({ tileSizeFt: 4 });
   const player = spawnPlayer(world, 0, 0);
   initializeBaseStats(world, player);
   addComponent(world.ecs, player, SkillHolder);
