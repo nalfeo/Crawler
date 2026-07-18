@@ -150,8 +150,16 @@ mobAbilitySystem]` so Tarnished ticks and expires in the live arena.
 
 Deterministic arena/runtime observation is recorded by the canonical simulation
 harness (`scripts/agent/queen-mab-arena-evidence.ts`) and deterministic visual
-guards in unit coverage (`tests/unit/mob-ability-vfx.test.ts`,
+guards in unit coverage (`tests/unit/mob-ability-vfx.test.ts` — 5 tests covering
+the 12ft telegraph footprint, Tarnished indicator, resolution burst, telegraph
+retirement, and cleanup poof with position caching;
 `tests/unit/combat-arena-lab-wiring.test.ts`).
+The `HudAnnouncementBanner` is wired into the combat arena scene
+(`createHudAnnouncementBanner` / `sync` / `destroy` in
+`src/labs/combat-arena-lab/index.ts`), so `bossAbilityCast` announcements are
+rendered in the browser arena. The Phaser renderer is a pure consumer of the
+committed cue state that the harness and unit tests validate; no direct browser
+observation was performed in this session (the runtime environment is headless).
 
 ## Follow-ups
 

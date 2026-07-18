@@ -104,6 +104,91 @@ describe('MobAbilityVfx', () => {
     expect(telegraphGfx!.strokeCircle).toHaveBeenCalledWith(ftToPx(40), ftToPx(40), ftToPx(12));
   });
 
+  it('draws the Tarnished indicator ring for debuffed entities', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 30, 25);
+
+    applyStatusEffect(world, player, {
+      stat: 'speed',
+      op: 'multiply',
+      value: 0.7,
+      durationMs: 4000,
+      sourceType: 'ability',
+      sourceId: 'mob-ability:queen-mab-verdigris-glamour:7',
+      stackRule: { mode: 'replace' },
+    });
+
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world);
+
+    // A graphics object must be created for the Tarnished indicator.
+    expect(graphicsObjects.length).toBeGreaterThan(0);
+    const tarnishGfx = graphicsObjects[0]!;
+    // The Tarnished ring is drawn centred on the entity's pixel position.
+    expect(tarnishGfx.strokeCircle).toHaveBeenCalledWith(
+      ftToPx(30),
+      ftToPx(25),
+      ftToPx(1.4),
+    );
+  });
+
+  it('fires a resolution burst when resolvedCasts increments', () => {
+    const { scene, circles } = createSceneStub();
+    const world = createTestWorld();
+    const inst = { ...mockInstance(), resolvedCasts: 0 };
+    world.mobAbilities.byEntity.set(7, inst);
+    // Give the caster a last-known geometry via a telegraph cue first.
+    world.mobAbilities.cues.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      casterEid: 7,
+      phase: 'telegraph',
+      telegraphProgress: 1,
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+      dangerColor: 'hostile-red',
+      announcementText: 'VERDIGRIS GLAMOUR — All that glitters will corrode!',
+    });
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world); // prime lastGeom
+
+    const circlesBeforeBurst = circles.length;
+
+    // Simulate resolution: cues clear, resolvedCasts increments.
+    world.mobAbilities.cues.length = 0;
+    (inst as { resolvedCasts: number }).resolvedCasts = 1;
+    vfx.update(world);
+
+    // Resolution burst emits rings (circles/tweened objects).
+    expect(circles.length).toBeGreaterThan(circlesBeforeBurst);
+  });
+
+  it('retires telegraph graphics when the cue ends', () => {
+    const { scene, graphicsObjects } = createSceneStub();
+    const world = createTestWorld();
+    world.mobAbilities.cues.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      casterEid: 7,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
+      dangerColor: 'hostile-red',
+      announcementText: 'VERDIGRIS GLAMOUR — All that glitters will corrode!',
+    });
+    world.mobAbilities.byEntity.set(7, mockInstance());
+    const vfx = createMobAbilityVfx(scene);
+    vfx.update(world); // telegraph graphics created
+
+    const telegraphGfx = graphicsObjects[0]!;
+    expect(telegraphGfx.destroy).not.toHaveBeenCalled();
+
+    // Cue ends (e.g. resolution) — next update should destroy the graphic.
+    world.mobAbilities.cues.length = 0;
+    world.mobAbilities.byEntity.delete(7);
+    vfx.update(world);
+
+    expect(telegraphGfx.destroy).toHaveBeenCalled();
+  });
+
   it('uses cached tarnish coordinates for cleanup poof when entity position no longer exists', () => {
     const { scene, circles } = createSceneStub();
     const world = createTestWorld();

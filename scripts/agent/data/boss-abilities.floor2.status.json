@@ -24,7 +24,7 @@
       "ref": {
         "kind": "pull-request",
         "number": 1243,
-        "state": "closed",
+        "state": "merged",
         "title": "feat: combat arena lab for AI debugging and boss playtesting",
         "url": "https://github.com/nalfeo/Crawler/pull/1243"
       }

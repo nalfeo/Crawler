@@ -208,13 +208,12 @@ Acceptance (arena-only staging mode):
 This slice was re-approved to land arena-only, before Floor 2 balance is final.
 The runtime is present in the canonical pipeline but default-off in the real
 game; only the combat arena lab enables it. PR #1237 is no longer a blocker to
-starting arena implementation; PR #1243 remains the authoritative arena
-dependency.
+arena implementation. PR #1243 (the combat arena lab) was squash-merged into
+`main` on 2026-07-17T18:48:05Z and is no longer a blocking dependency.
 
-1. Base the implementation on the open combat-arena branch
-   `copilot/create-combat-arena-lab` (PR #1243) at or after `3dbb91d3`, plus the
-   approved catalog/design commit; target the implementation PR at that branch,
-   not `main`.
+1. Base the implementation on `main` (which already contains the combat arena
+   lab from the squash-merge of PR #1243 on 2026-07-17) plus the approved
+   catalog/design commit. **✅ DONE** — implemented in PR #1273.
 2. No cast becomes eligible before 9,000ms of active boss combat.
 3. At eligibility, the exact announcement is
    `VERDIGRIS GLAMOUR — All that glitters will corrode!`.
@@ -231,9 +230,11 @@ dependency.
    the same duration. This is the hard recurring-ability gate. Real Floor 2
    headless balance validation is intentionally out of scope and deferred to the
    production-enable gate.
-9. The PR #1243 combat arena gains or reuses the faerie-boss selection and shows
-   the same canonical simulation step, announcement, circle, damage, debuff, and
-   excessive procedural VFX.
+9. The combat arena lab (`combat-arena-lab`) provides the faerie-boss selection
+   (via the `f2-queen-mab` preset) and shows the same canonical simulation step,
+   announcement, circle, damage, debuff, and excessive procedural VFX. The
+   announcement banner is wired into the arena scene. **✅ DONE** — arena preset
+   and banner wiring verified in PR #1273.
 10. No sprite-animation lab is required while cast animation remains
     `not-authored`. Adding animation changes that evidence requirement.
 11. Production AI avoids only the same committed circle that is visible to the
