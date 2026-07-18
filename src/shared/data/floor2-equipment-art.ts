@@ -1,6 +1,6 @@
 import type { SpriteType } from '../sprite-types.js';
 
-export const FLOOR2_WEAPON_FAMILIES = [
+const FLOOR2_WEAPON_FAMILIES = [
   'blade',
   'axe',
   'bludgeon',
@@ -13,7 +13,7 @@ export const FLOOR2_WEAPON_FAMILIES = [
   'trap',
 ] as const;
 
-export type Floor2WeaponFamily = (typeof FLOOR2_WEAPON_FAMILIES)[number];
+type Floor2WeaponFamily = (typeof FLOOR2_WEAPON_FAMILIES)[number];
 export type Floor2EquipmentCategory = 'weapon' | 'armor' | 'accessory';
 export type Floor2EquipmentSlot = 'weapon' | 'head' | 'torso' | 'hands' | 'feet' | 'accessory';
 export type Floor2NonWeaponFamily =
@@ -24,7 +24,7 @@ export type Floor2NonWeaponFamily =
   | 'accessory';
 export type Floor2EquipmentFamily = Floor2WeaponFamily | Floor2NonWeaponFamily;
 
-export const FLOOR2_EQUIPMENT_STABLE_IDS = [
+const FLOOR2_EQUIPMENT_STABLE_IDS = [
   'weapon.iron-cleaver',
   'weapon.ashwood-bow',
   'weapon.quarterstaff',
@@ -260,7 +260,7 @@ export interface Floor2EquipmentProductionWave {
   readonly entries: readonly Floor2EquipmentArtDefinition[];
 }
 
-export function runtimeKeyForFloor2Equipment(
+function runtimeKeyForFloor2Equipment(
   stableId: Floor2EquipmentStableId,
 ): Floor2EquipmentRuntimeKey {
   const separator = stableId.indexOf('.');
@@ -400,13 +400,3 @@ function buildProductionWaves(): readonly Floor2EquipmentProductionWave[] {
 
 export const FLOOR2_EQUIPMENT_PRODUCTION_WAVES = buildProductionWaves();
 
-const FLOOR2_EQUIPMENT_ART_BY_KEY: ReadonlyMap<
-  Floor2EquipmentRuntimeKey,
-  Floor2EquipmentArtDefinition
-> = new Map(FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => [entry.runtimeKey, entry]));
-
-export function getFloor2EquipmentArtDefinition(
-  runtimeKey: string,
-): Floor2EquipmentArtDefinition | undefined {
-  return FLOOR2_EQUIPMENT_ART_BY_KEY.get(runtimeKey as Floor2EquipmentRuntimeKey);
-}
