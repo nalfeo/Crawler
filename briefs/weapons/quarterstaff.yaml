@@ -1,5 +1,6 @@
 type: weapon
 name: quarterstaff
+floor: 2
 description: |
   A plain two-handed wooden quarterstaff held vertically, tip at the top,
   grip in the lower half of the canvas. The staff is a single long straight
@@ -18,6 +19,11 @@ description: |
 # We override the default (32, 56) to (32, 44) so the grip-wrap lands near
 # the anchor and the ferrule-tip reads clearly above it.
 anchor: { x: 32, y: 44 }
+# Weapons default to a derived grip anchor. Pin this brief to the authored
+# grip-centre pixel so the long staff does not snap to the lower ferrule.
+sensors:
+  anchor:
+    derive: false
 # `variations` seeds variety in the 4x4 sheet; `minVariations: 8` asks the
 # orchestrator to fill out to 8 variations via the text provider.
 variations:

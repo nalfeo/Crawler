@@ -234,6 +234,9 @@ function isAnchorCenterOfMassOk(
 
 function deriveHoldAnchor(image: RgbaImage, brief: Brief): DerivedAnchor | null {
   const anchorOpts = brief.sensors.anchor;
+  if (!(anchorOpts?.derive === true || anchorOpts?.mode === 'grip')) {
+    return null;
+  }
   const result = anchorDerivable(image, {
     bandRows: anchorOpts?.bandRows,
     centerToleranceX: anchorOpts?.centerToleranceX,

@@ -358,6 +358,23 @@ describe('scoreCandidate', () => {
     expect(card.derivedAnchors.centerOfGravity).not.toBeNull();
   });
 
+  it('does not surface a derived hold anchor when a weapon brief disables derivation', () => {
+    const processed = buildProcessedFixture(16, 16, rectPixels(7, 2, 8, 13));
+    const brief = makeBrief({
+      anchor: { x: 8, y: 11 },
+      sensors: {
+        weapon: { orientation: 'vertical' },
+        anchor: { derive: false },
+      } as Brief['sensors'],
+    });
+    const card = scoreCandidate(processed, brief, PALETTE);
+    expect(card.breakdown.map((r) => r.sensor)).toContain('anchor-opaque');
+    expect(card.breakdown.map((r) => r.sensor)).not.toContain('anchor-derivable');
+    expect(card.derivedAnchor).toBeNull();
+    expect(card.derivedAnchors.hold).toBeNull();
+    expect(card.derivedAnchors.centerOfGravity).not.toBeNull();
+  });
+
   it('treats palette-membership as pass-through when paletteMode is not strict', () => {
     const processed = buildProcessedFixture(16, 16, rectPixels(6, 6, 9, 9));
     const png = PNG.sync.read(processed);

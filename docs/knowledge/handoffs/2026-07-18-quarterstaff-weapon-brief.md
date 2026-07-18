@@ -14,23 +14,32 @@ sprite-pipeline
 
 ## Apples
 
-1🍎 exact — pure art task: brief authoring only. No code changes.
+1🍎 exact — original session scope was brief authoring only. This handoff now
+also records the post-review corrections that pinned the brief to Floor 2,
+disabled derived hold-anchor replacement, and corrected the manual generation
+instructions.
 
 ## What Was Done
 
 Authored the production-ready brief `briefs/weapons/quarterstaff.yaml` for
-the Floor 2 equipment quarterstaff weapon icon (issue #1307).
+the Floor 2 equipment quarterstaff weapon icon (issue #1307), then corrected
+the brief after review so the authored metadata matches the intended runtime
+contract.
 
 **Brief summary:**
 
 - Type: `weapon` (polearm family, production wave `floor2-equipment-weapon-polearm`)
 - Runtime key: `equipment/weapon/quarterstaff`
 - Stable ID: `weapon.quarterstaff`
+- Floor: `2` (pinned explicitly so prompt builders emit Floor 2 direction)
 - Orientation: vertical (inherited from `data/sprite-types/weapon.json`)
 - Anchor: `{x: 32, y: 44}` — overridden from the default `{x: 32, y: 56}` so the
   grip-wrap lands near the anchor and the ferrule-tip reads clearly above it
   (a quarterstaff is longer and thinner than a top-heavy mace, so the grip
   centre sits higher in the canvas)
+- `sensors.anchor.derive: false` — disables the weapon-family default derived
+  grip anchor so the authored `{x: 32, y: 44}` anchor is the value surfaced to
+  selection/approval
 - Size: 64×64, 4×4 sheet (inherited from weapon.json defaults)
 - Palette: `kenney-roguelike` (inherited)
 - `variations`: 2 author seeds (spalted-wood grain, rope-wrapped grip)
@@ -38,21 +47,29 @@ the Floor 2 equipment quarterstaff weapon icon (issue #1307).
 
 **Validation:**
 
-- `loadBrief` validation: ✅ passes (correct name/type/anchor/sensors)
-- `verify:fast`: ✅ 1260/1260 tests pass, no regressions
+- `loadBrief` validation: ✅ passes (correct name/type/floor/anchor/sensors)
+- `verify:fast`: ✅ passes, no regressions
 
 ## Key Decisions Made
 
 - **Brief file only (no PNG)**: Azure sprite generation credentials are not
-  available in this sandbox session. The CI asset-request pipeline picks up the
-  brief and generates the sprite when Azure credentials are present. The brief
-  is the source of truth that drives generation.
+  available in this sandbox session. The committed production brief is the
+  source of truth for manual/local generation (`npm run sprites:run -- --brief
+briefs/weapons/quarterstaff.yaml`) and for later sprite check-in. The current
+  `asset-request.yml` issue pipeline does **not** consume this committed file
+  directly; it synthesizes/promotes a draft brief under `briefs/draft/` from
+  the issue payload before running generation.
 
 - **Anchor override `{x:32, y:44}`**: A quarterstaff's grip is lower-middle on
   the shaft, not at the very base. The default weapon anchor `{x:32, y:56}` is
   designed for pommel-grip weapons (sword, mace). For a polearm, placing the
   anchor at y=44 (roughly 69% down the 64px canvas) centres the grip section
   near the anchor while keeping the ferrule-tip visible above.
+
+- **Derived hold anchor disabled for this brief**: Weapon-family defaults opt
+  into silhouette-derived hold anchors, which work for pommel-held weapons but
+  would replace the quarterstaff's authored grip anchor with the lower ferrule.
+  This brief explicitly opts out so the grip-centre anchor is preserved.
 
 - **Vertical orientation**: Inherited from weapon.json. A quarterstaff is
   naturally held upright, so vertical is the correct orientation (not diagonal
@@ -67,8 +84,11 @@ the Floor 2 equipment quarterstaff weapon icon (issue #1307).
 ## What's Next / Blockers
 
 - Azure credentials required to generate the actual PNG from this brief.
-  Trigger via `npm run sprites:run -- --brief quarterstaff` or let the
-  `asset-request.yml` CI workflow handle it.
+  Trigger manual generation via `npm run sprites:run -- --brief
+briefs/weapons/quarterstaff.yaml`.
+- The current `asset-request.yml` CI workflow for issue #1307 will keep
+  generating from its synthesized draft brief (`briefs/draft/weapons/quarterstaff.yaml`)
+  unless that workflow is separately wired to consume the committed production brief.
 - Once a variant is approved, run `npm run sprites:checkin` to update the
   manifest and catalog.
 - Batch with other polearm-wave assets via `npm run sprites:asset-pr` into the
