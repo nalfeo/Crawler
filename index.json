@@ -11,6 +11,17 @@
     "path": "by-sha/9313f5daf3d2f67f8dd6fed7925898c549bbaca3.json"
   },
   {
+    "commit": "77eb8142af09236b7d5469e8f2ca5b0e90d4647f",
+    "commitDate": "2026-07-18T21:28:16Z",
+    "commitSubject": "fix(ci-recovery): enforce in-thread addressed-marker replies for review blockers (#1518)",
+    "capturedAt": "2026-07-18T22:51:36.076Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29662130172",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/77eb8142af09236b7d5469e8f2ca5b0e90d4647f.json"
+  },
+  {
     "commit": "156a9f11a9bd1212de79fd442e382cbc3e305173",
     "commitDate": "2026-07-18T21:28:01Z",
     "commitSubject": "feat(art): add gearwork-locket sprite brief for Floor 2 equipment icon (#1515)",
