@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-sha-placeholder-fix",
+  "task_title": "CI Recovery: embed actual HEAD SHA in task instruction",
+  "estimated_apples": 2,
+  "stages": {}
+}

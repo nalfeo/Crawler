@@ -3832,6 +3832,18 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     taskCommentCall.body.body.includes(`Reply target comment ID: \`${reviewCommentId}\``),
     'task comment should include the review-thread reply target comment ID',
   );
+  // Regression: task instruction must embed the actual HEAD SHA so that agents
+  // write `✅ Addressed in <real-sha>:` instead of `✅ Addressed in the latest commit:`
+  // (which the marker parser cannot recognize and causes the recovery loop to stall).
+  assert.ok(
+    taskCommentCall.body.body.includes(`Addressed in ${HEAD_SHA}:`),
+    'task comment should embed the actual HEAD SHA in the Addressed-in instruction',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('Addressed in <sha>:'),
+    false,
+    'task comment must not contain the literal <sha> placeholder',
+  );
 });
 
 test('reconcile proceeds when copilot is assigned but no lease/state exists', async (t) => {
