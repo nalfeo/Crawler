@@ -3832,6 +3832,16 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     taskCommentCall.body.body.includes(`Reply target comment ID: \`${reviewCommentId}\``),
     'task comment should include the review-thread reply target comment ID',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes('not the ID of this task comment'),
+    'task comment should instruct the agent NOT to reply to the task comment itself',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'a marker reply on the review-thread comment is the only form recognised by the reconciler',
+    ),
+    'task comment should state that only a review-thread reply is recognised by the reconciler',
+  );
 });
 
 test('reconcile proceeds when copilot is assigned but no lease/state exists', async (t) => {

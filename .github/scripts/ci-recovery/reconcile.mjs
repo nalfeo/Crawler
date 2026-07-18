@@ -1593,7 +1593,7 @@ const taskBody = [
   '',
   '**Review-thread protocol:** For every listed review thread, invoke a separate review agent using a model different from your primary model to validate whether the comment is still applicable to the current head. Fix valid findings. Resolve only deterministic non-applicability (outdated/removed line or file, duplicate already addressed) or a validated `✅ Addressed` result. For substantive disagreement, reply with the validator evidence and leave the thread unresolved for escalation.',
   '',
-  'When a thread is addressed, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>` and resolve it. Run the repository-required verification and push one consolidated repair commit.',
+  'When a thread is addressed, use `reply_to_comment` with the **Reply target comment ID** listed above for that thread (not the ID of this task comment) and set the body to `✅ Addressed in <sha>: <one-line note>`. The CI recovery reconciler will resolve the review thread automatically on its next pass. Do **not** reply to this task comment to record addressed status — a marker reply on the review-thread comment is the only form recognised by the reconciler. Run the repository-required verification and push one consolidated repair commit.',
 ].join('\n');
 
 if (live) {
