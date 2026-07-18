@@ -33,4 +33,4 @@ Estimated 🍎🍎, actual 🍎🍎.
 ## Unresolved issues
 
 - The issue requested a pre-code plan comment on GitHub. I attempted to post it from this session, but `gh issue comment` was blocked by the repository host/auth constraints available in this sandbox.
-- The user-provided GitHub attachment URLs were not directly retrievable from this environment, so the landed asset used the exact runtime-key icon already present on `origin/nalfeo-floor-2-equipment-placeholders`, which matches the Floor 2 placeholder-art surface for this weapon family.
+- The user-provided GitHub attachment URLs were not directly retrievable from this environment, so the landed asset used the exact runtime-key icon from `origin/nalfeo-floor-2-equipment-placeholders` at commit `5ba2bf475fb3fb6bd3c38ef8c726d7ca72f344e1` (`public/assets/generated/equipment/weapon/meteor-hammer-placeholder.png`, blob `70c93f862637fcac6629ceeb4a83596ce56df6e0`), which matches the Floor 2 placeholder-art surface for this weapon family.
