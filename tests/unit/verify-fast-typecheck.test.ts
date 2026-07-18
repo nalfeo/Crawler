@@ -1,6 +1,6 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { bashEnv, toBashScriptPath } from '../helpers/bash-script-path.js';
@@ -148,29 +148,156 @@ const CLOSE_TIMEOUT_MS = 5_000;
 /** Bound PID-file wait so the test fails fast if stub descendants never launch. */
 const CHILD_PID_TIMEOUT_MS = 3_000;
 
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
+function runSignalLifecycleSupervisor(
+  fixtureDir: string,
+  tscChildPidFile: string,
+  eslintChildPidFile: string,
+) {
+  const logFile = path.join(fixtureDir, 'verify-fast-signal.log');
+  const supervisorScript = path.join(fixtureDir, 'verify-fast-signal-supervisor.sh');
+  writeFileSync(
+    supervisorScript,
+    `#!/usr/bin/env bash
+set -euo pipefail
+
+script_path="$1"
+log_file="$2"
+tsc_pid_file="$3"
+eslint_pid_file="$4"
+startup_delay_seconds="$5"
+child_pid_timeout_ms="$6"
+close_timeout_ms="$7"
+
+assert_pid_file() {
+  local label="$1"
+  local pid_file="$2"
+  local attempts="$3"
+  local attempt=0
+  while [ ! -s "$pid_file" ]; do
+    if [ "$attempt" -ge "$attempts" ]; then
+      echo "Timed out waiting for $label child pid file: $pid_file" >&2
+      exit 1
+    fi
+    attempt=$((attempt + 1))
+    sleep 0.05
+  done
 }
 
-async function waitForFile(filePath: string, timeoutMs: number): Promise<void> {
-  const started = Date.now();
-  while (!existsSync(filePath)) {
-    if (Date.now() - started >= timeoutMs) {
-      throw new Error(`Timed out waiting for file: ${filePath}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
+bash -m "$script_path" > "$log_file" 2>&1 &
+verify_pid=$!
+cleanup() {
+  kill -KILL "$verify_pid" 2>/dev/null || true
+  wait "$verify_pid" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+# 200 attempts * 50ms = 10s total wait for the Step 1/3 marker.
+step_attempts=200
+step_attempt=0
+while ! grep -q 'Step 1/3' "$log_file" 2>/dev/null; do
+  if ! kill -0 "$verify_pid" 2>/dev/null; then
+    echo "Process exited before Step 1/3 was printed" >&2
+    cat "$log_file" >&2 || true
+    exit 1
+  fi
+  if [ "$step_attempt" -ge "$step_attempts" ]; then
+    echo "Timed out waiting for Step 1/3 output" >&2
+    cat "$log_file" >&2 || true
+    exit 1
+  fi
+  step_attempt=$((step_attempt + 1))
+  sleep 0.05
+done
+
+sleep "$startup_delay_seconds"
+pid_attempts=$(( child_pid_timeout_ms / 50 ))
+assert_pid_file "tsc" "$tsc_pid_file" "$pid_attempts"
+assert_pid_file "eslint" "$eslint_pid_file" "$pid_attempts"
+tsc_child="$(tr -d '[:space:]' < "$tsc_pid_file")"
+eslint_child="$(tr -d '[:space:]' < "$eslint_pid_file")"
+if ! [[ "$tsc_child" =~ ^[0-9]+$ ]] || ! [[ "$eslint_child" =~ ^[0-9]+$ ]]; then
+  echo "Invalid child pid content: tsc='$tsc_child' eslint='$eslint_child'" >&2
+  exit 1
+fi
+kill -0 "$tsc_child"
+kill -0 "$eslint_child"
+
+kill -TERM "$verify_pid" 2>/dev/null || true
+kill -TERM -- "-$verify_pid" 2>/dev/null || true
+timeout_marker="$log_file.timeout"
+rm -f "$timeout_marker"
+close_timeout_seconds="$(awk -v ms="$close_timeout_ms" 'BEGIN { printf "%.3f", ms / 1000 }')"
+# Millisecond -> second.fraction conversion for POSIX sleep.
+(
+  sleep "$close_timeout_seconds"
+  if kill -0 "$verify_pid" 2>/dev/null; then
+    printf "timeout\n" > "$timeout_marker"
+    kill -KILL "$verify_pid" 2>/dev/null || true
+  fi
+) &
+timeout_pid=$!
+
+set +e
+wait "$verify_pid"
+verify_status=$?
+set -e
+kill "$timeout_pid" 2>/dev/null || true
+wait "$timeout_pid" 2>/dev/null || true
+if [ -f "$timeout_marker" ]; then
+  echo "Timed out waiting $close_timeout_ms ms for SIGTERM shutdown" >&2
+  exit 1
+fi
+if [ "$verify_status" -ne 143 ]; then
+  echo "Expected verify-fast exit 143, got $verify_status" >&2
+  cat "$log_file" >&2 || true
+  exit 1
+fi
+if kill -0 "$tsc_child" 2>/dev/null || kill -0 "$eslint_child" 2>/dev/null; then
+  echo "Descendant process survived cleanup (tsc=$tsc_child eslint=$eslint_child)" >&2
+  exit 1
+fi
+trap - EXIT
+echo "signal lifecycle ok"
+`,
+  );
+
+  return spawnSync(
+    'bash',
+    [
+      toBashScriptPath(supervisorScript),
+      SCRIPT,
+      logFile,
+      tscChildPidFile,
+      eslintChildPidFile,
+      String(STUB_STARTUP_DELAY_MS / 1000),
+      String(CHILD_PID_TIMEOUT_MS),
+      String(CLOSE_TIMEOUT_MS),
+    ],
+    {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: bashEnv({
+        NODE_ENV: 'test',
+        VERIFY_FAST_TEST_STATIC_ONLY: '1',
+        VERIFY_FAST_TSC_PROJECT: path.join(fixtureDir, 'tsconfig.json'),
+        VERIFY_FAST_TSC_STUB_SECONDS: String(STUB_DURATION_SECONDS),
+        VERIFY_FAST_TSC_STUB_WITH_DESCENDANT: '1',
+        VERIFY_FAST_TSC_STUB_TSC_CHILD_PID_FILE: tscChildPidFile,
+        VERIFY_FAST_TSC_STUB_ESLINT_CHILD_PID_FILE: eslintChildPidFile,
+      }),
+    },
+  );
 }
 
 describe('verify-fast signal lifecycle', () => {
   it.skipIf(!hasBash)(
-    'exits 130 on SIGINT and terminates background stub processes',
-    async () => {
+    // The supervisor runs verify-fast as an async Bash job; SIGTERM is used here
+    // because non-interactive async jobs can ignore SIGINT, especially across
+    // Windows->WSL launch boundaries. The cleanup assertion is the same: both
+    // descendant stub processes must be gone after signal-triggered shutdown.
+    'exits 143 on SIGTERM and terminates background stub processes',
+    () => {
       const fixture = makeFixture({
         'src/clean.ts': 'export const sourceValue = 1;\n',
         'tests/clean.test.ts': 'export const testValue = 1;\n',
@@ -179,86 +306,14 @@ describe('verify-fast signal lifecycle', () => {
       const tscChildPidFile = path.join(fixture, 'tsc-child.pid');
       const eslintChildPidFile = path.join(fixture, 'eslint-child.pid');
 
-      const proc = spawn('bash', [SCRIPT], {
-        cwd: fixture,
-        env: bashEnv({
-          NODE_ENV: 'test',
-          VERIFY_FAST_TEST_STATIC_ONLY: '1',
-          VERIFY_FAST_TSC_PROJECT: path.join(fixture, 'tsconfig.json'),
-          // Replace real tsc + lint with controllable wrappers that each spawn
-          // a long-lived descendant sleep process. This validates process-group
-          // cleanup, not only top-level PID termination.
-          VERIFY_FAST_TSC_STUB_SECONDS: String(STUB_DURATION_SECONDS),
-          VERIFY_FAST_TSC_STUB_WITH_DESCENDANT: '1',
-          VERIFY_FAST_TSC_STUB_TSC_CHILD_PID_FILE: tscChildPidFile,
-          VERIFY_FAST_TSC_STUB_ESLINT_CHILD_PID_FILE: eslintChildPidFile,
-        }),
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
+      const result = runSignalLifecycleSupervisor(fixture, tscChildPidFile, eslintChildPidFile);
 
-      let closed = false;
-      const closedPromise = new Promise<number | null>((resolve) => {
-        proc.on('close', (code) => {
-          closed = true;
-          resolve(code);
-        });
-      });
-
-      try {
-        // Wait until the parallel phase has been announced (both background jobs
-        // have been launched — the echo precedes the `&` invocations by only the
-        // LINT_CMD setup block, which completes in milliseconds).
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error('Timed out waiting for Step 1/3 output')),
-            10_000,
-          );
-          proc.stdout?.on('data', (chunk: Buffer) => {
-            if (chunk.toString().includes('Step 1/3')) {
-              clearTimeout(timer);
-              // Brief delay to let the background sleep stubs reach their own wait.
-              setTimeout(resolve, STUB_STARTUP_DELAY_MS);
-            }
-          });
-          proc.on('exit', () => {
-            clearTimeout(timer);
-            reject(new Error('Process exited before Step 1/3 was printed'));
-          });
-        });
-
-        await waitForFile(tscChildPidFile, CHILD_PID_TIMEOUT_MS);
-        await waitForFile(eslintChildPidFile, CHILD_PID_TIMEOUT_MS);
-        const tscChildPid = Number.parseInt(readFileSync(tscChildPidFile, 'utf8').trim(), 10);
-        const eslintChildPid = Number.parseInt(readFileSync(eslintChildPidFile, 'utf8').trim(), 10);
-        expect(Number.isFinite(tscChildPid)).toBe(true);
-        expect(Number.isFinite(eslintChildPid)).toBe(true);
-        expect(isProcessAlive(tscChildPid)).toBe(true);
-        expect(isProcessAlive(eslintChildPid)).toBe(true);
-
-        // Interrupt the verifier — should trigger `trap 'exit 130' INT` then
-        // `trap cleanup_parallel EXIT`, killing the background process groups.
-        proc.kill('SIGINT');
-
-        const closeResult = await Promise.race([
-          closedPromise.then((code) => ({ timedOut: false as const, code })),
-          new Promise<{ timedOut: true; code: null }>((resolve) => {
-            setTimeout(() => resolve({ timedOut: true, code: null }), CLOSE_TIMEOUT_MS);
-          }),
-        ]);
-        if (closeResult.timedOut) {
-          proc.kill('SIGKILL');
-          await closedPromise;
-          throw new Error(`Timed out waiting ${CLOSE_TIMEOUT_MS}ms for SIGINT shutdown`);
-        }
-        expect(closeResult.code).toBe(130);
-        expect(isProcessAlive(tscChildPid)).toBe(false);
-        expect(isProcessAlive(eslintChildPid)).toBe(false);
-      } finally {
-        if (!closed) {
-          proc.kill('SIGKILL');
-          await closedPromise;
-        }
+      if (result.status !== 0) {
+        throw new Error(
+          `signal supervisor failed with status ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+        );
       }
+      expect(`${result.stdout}\n${result.stderr}`).toContain('signal lifecycle ok');
     },
     30_000,
   );
