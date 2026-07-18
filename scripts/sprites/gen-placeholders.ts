@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { PNG } from 'pngjs';
+import { FLOOR2_EQUIPMENT_ART_ENTRIES } from '../../src/shared/floor2-equipment-art-keys.js';
 import { ITEM_CATALOG } from '../../src/shared/items.js';
 import { SeededRandom } from '../../src/shared/random.js';
 
@@ -521,6 +522,64 @@ export function run(options: RunOptions): { added: number; skipped: number } {
 
     const kind = handAuthored ? 'art' : 'proc';
     console.log(`  ${dryRun ? 'dry ' : ''}write ${id} (${kind}) → ${pngFilename}`);
+    added++;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Floor 2 equipment art keys
+  // Generates procedural placeholder PNGs for every Floor 2 equipment art key
+  // (weapon.iron-cleaver, head.iron-visor, etc.) that does not yet have a real
+  // approved sprite. The manifest key is `<artKey>-placeholder`; the PNG is
+  // `<artKey>-placeholder.png`. Art keys use dot notation which is valid in
+  // both manifest keys and filenames.
+  // ---------------------------------------------------------------------------
+  for (const entry of FLOOR2_EQUIPMENT_ART_ENTRIES) {
+    const artKey = entry.artKey;
+    const outerKey = `${artKey}-placeholder`;
+
+    // Skip if a real (non-placeholder) entry already exists for this briefId.
+    const existingReal = Object.values(manifest.entries).find(
+      (e) => e.briefId === artKey && e.sourceRun !== 'placeholder',
+    );
+    if (existingReal) {
+      console.log(`  skip  ${artKey} — real sprite already approved`);
+      skipped++;
+      continue;
+    }
+
+    // Skip if this exact placeholder key already exists and --force not passed.
+    if (manifest.entries[outerKey] && !force) {
+      console.log(`  skip  ${artKey} — placeholder already exists`);
+      skipped++;
+      continue;
+    }
+
+    const pngFilename = `${artKey}-placeholder.png`;
+    const pngPath = path.join(generatedDir, pngFilename);
+    const buffer = renderProceduralSprite(artKey);
+
+    if (!dryRun) {
+      fs.mkdirSync(generatedDir, { recursive: true });
+      fs.writeFileSync(pngPath, buffer);
+    }
+
+    const f2Entry: ManifestEntry = {
+      briefId: artKey,
+      spriteName: artKey,
+      assetPath: `generated/${pngFilename}`,
+      approvedAt: new Date().toISOString(),
+      sourceRun: 'placeholder',
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: 'placeholder',
+      judgeScore: null,
+    };
+
+    if (!dryRun) {
+      manifest.entries[outerKey] = f2Entry;
+    }
+
+    console.log(`  ${dryRun ? 'dry ' : ''}write ${artKey} (proc) → ${pngFilename}`);
     added++;
   }
 

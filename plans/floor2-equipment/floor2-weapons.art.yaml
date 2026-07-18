@@ -1,0 +1,463 @@
+id: floor2-weapons
+title: 'Floor 2 Equipment — Weapons'
+summary: "Production-wave art backlog for all 50 stable Floor 2 weapon base keys across 10 weapon families (heavy-blade, blunt, polearm, bow, thrown, light-blade, wand, alchemical, utility, mechanical). Each entry is backed by a deterministic procedural placeholder (sourceRun: placeholder) and needs real authored pixel art generated via the sprite pipeline. The stable art key and runtime lookup key are in each entry's integration.id. Waves are split by family for non-overlapping batch execution."
+assets:
+  # ── Family: heavy-blade ────────────────────────────────────────────────────
+  - id: weapon-iron-cleaver
+    type: weapon
+    label: 'Iron Cleaver'
+    brief: 'Iron Cleaver — a centered weapon icon on a transparent background. A broad, weighted cleaver with a single curved edge shown in a slightly angled three-quarter profile. Heavy and utilitarian.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.iron-cleaver
+
+  - id: weapon-dueling-saber
+    type: weapon
+    label: 'Dueling Saber'
+    brief: 'Dueling Saber — a centered weapon icon on a transparent background. A single-edged cavalry saber with a swept guard shown in a clean side profile. Elegant and precise.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.dueling-saber
+
+  - id: weapon-moon-scythe
+    type: weapon
+    label: 'Moon Scythe'
+    brief: 'Moon Scythe — a centered weapon icon on a transparent background. A crescent-bladed scythe with a pale silver edge shown in a diagonal silhouette with the full curved blade and haft visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.moon-scythe
+
+  - id: weapon-crescent-glaive
+    type: weapon
+    label: 'Crescent Glaive'
+    brief: 'Crescent Glaive — a centered weapon icon on a transparent background. A glaive with a wide crescent blade, the curved blade prominent at the top of the haft. Sweeping and fearsome.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.crescent-glaive
+
+  - id: weapon-void-rapier
+    type: weapon
+    label: 'Void Rapier'
+    brief: 'Void Rapier — a centered weapon icon on a transparent background. A slender rapier whose blade is made of solidified void-energy, the full blade glowing faintly purple.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.void-rapier
+
+  # ── Family: blunt ──────────────────────────────────────────────────────────
+  - id: weapon-stone-maul
+    type: weapon
+    label: 'Stone Maul'
+    brief: 'Stone Maul — a centered weapon icon on a transparent background. A massive two-handed maul with a rough-hewn stone head, showing both the head and long haft. Crushingly heavy.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.stone-maul
+
+  - id: weapon-sun-hammer
+    type: weapon
+    label: 'Sun Hammer'
+    brief: 'Sun Hammer — a centered weapon icon on a transparent background. A radiant war hammer etched with solar runes, the head face-on with a warm golden tint.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.sun-hammer
+
+  - id: weapon-meteor-hammer
+    type: weapon
+    label: 'Meteor Hammer'
+    brief: 'Meteor Hammer — a centered weapon icon on a transparent background. A heavy iron ball on a long flexible chain, the ball prominent with the chain looped behind.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.meteor-hammer
+
+  - id: weapon-brass-knuckles
+    type: weapon
+    label: 'Brass Knuckles'
+    brief: 'Brass Knuckles — a centered weapon icon on a transparent background. A set of four-loop brass knuckles shown slightly angled as if held in a fist.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.brass-knuckles
+
+  - id: weapon-baseball-bat
+    type: weapon
+    label: 'Baseball Bat'
+    brief: 'Baseball Bat — a centered weapon icon on a transparent background. A worn wooden baseball bat with a taped grip shown at a diagonal with the barrel end up.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.baseball-bat
+
+  # ── Family: polearm ────────────────────────────────────────────────────────
+  - id: weapon-quarterstaff
+    type: weapon
+    label: 'Quarterstaff'
+    brief: 'Quarterstaff — a centered weapon icon on a transparent background. A plain hardwood staff, worn smooth from use, shown at a diagonal with both ends visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.quarterstaff
+
+  - id: weapon-blood-lance
+    type: weapon
+    label: 'Blood Lance'
+    brief: 'Blood Lance — a centered weapon icon on a transparent background. A long lance with a crimson-tipped head and dark haft, at a steep diagonal with the tip prominent.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.blood-lance
+
+  - id: weapon-tower-spear
+    type: weapon
+    label: 'Tower Spear'
+    brief: 'Tower Spear — a centered weapon icon on a transparent background. A tall broad-bladed spear with the leaf-shaped head at the top and the haft extending down.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.tower-spear
+
+  - id: weapon-chain-flail
+    type: weapon
+    label: 'Chain Flail'
+    brief: 'Chain Flail — a centered weapon icon on a transparent background. A heavy spiked ball on a chain attached to a wooden handle, the chain extended in mid-swing.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.chain-flail
+
+  - id: weapon-bone-saw
+    type: weapon
+    label: 'Bone Saw'
+    brief: 'Bone Saw — a centered weapon icon on a transparent background. A long-bladed saw with deep gullets and a wrapped handle, the full serrated edge clearly visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.bone-saw
+
+  # ── Family: bow ────────────────────────────────────────────────────────────
+  - id: weapon-ashwood-bow
+    type: weapon
+    label: 'Ashwood Bow'
+    brief: 'Ashwood Bow — a centered weapon icon on a transparent background. A graceful recurve bow carved from pale ashwood, the strung arc at a slight angle with the grip centered.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.ashwood-bow
+
+  - id: weapon-hand-crossbow
+    type: weapon
+    label: 'Hand Crossbow'
+    brief: 'Hand Crossbow — a centered weapon icon on a transparent background. A compact one-handed crossbow with a short prod, the loaded weapon shown at a slight angle.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.hand-crossbow
+
+  - id: weapon-musketeer-rifle
+    type: weapon
+    label: 'Musketeer Rifle'
+    brief: 'Musketeer Rifle — a centered weapon icon on a transparent background. A long flintlock musket with an ornate stock, the full barrel length in a diagonal profile.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.musketeer-rifle
+
+  - id: weapon-siege-bow
+    type: weapon
+    label: 'Siege Bow'
+    brief: 'Siege Bow — a centered weapon icon on a transparent background. A massive recurve war bow with heavy limbs, the fully drawn bow silhouette from the side.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.siege-bow
+
+  - id: weapon-harpoon-gun
+    type: weapon
+    label: 'Harpoon Gun'
+    brief: 'Harpoon Gun — a centered weapon icon on a transparent background. A shoulder-mounted spring-loaded harpoon launcher with the loaded harpoon protruding from the barrel.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.harpoon-gun
+
+  # ── Family: thrown ─────────────────────────────────────────────────────────
+  - id: weapon-throwing-knives
+    type: weapon
+    label: 'Throwing Knives'
+    brief: 'Throwing Knives — a centered weapon icon on a transparent background. A fanned trio of slender balanced throwing blades spread in a slight fan arrangement.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.throwing-knives
+
+  - id: weapon-twin-katar
+    type: weapon
+    label: 'Twin Katar'
+    brief: 'Twin Katar — a centered weapon icon on a transparent background. A pair of push-dagger katars shown crossed in an X formation with handles visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.twin-katar
+
+  - id: weapon-hunting-bola
+    type: weapon
+    label: 'Hunting Bola'
+    brief: 'Hunting Bola — a centered weapon icon on a transparent background. Three weighted stone balls on braided cords, partially unfolded with cords fanning out.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.hunting-bola
+
+  - id: weapon-bone-chakram
+    type: weapon
+    label: 'Bone Chakram'
+    brief: 'Bone Chakram — a centered weapon icon on a transparent background. A carved bone throwing ring with serrated outer edge, shown face-on with the serration visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.bone-chakram
+
+  - id: weapon-war-fan
+    type: weapon
+    label: 'War Fan'
+    brief: 'War Fan — a centered weapon icon on a transparent background. A folding iron fan with razor-sharp outer ribs, shown half-open in a three-quarter view.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.war-fan
+
+  # ── Family: light-blade ────────────────────────────────────────────────────
+  - id: weapon-venom-dirk
+    type: weapon
+    label: 'Venom Dirk'
+    brief: 'Venom Dirk — a centered weapon icon on a transparent background. A thin double-edged dirk with a grooved blade for venom, a faint green tint along the fuller.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.venom-dirk
+
+  - id: weapon-ice-pick
+    type: weapon
+    label: 'Ice Pick'
+    brief: 'Ice Pick — a centered weapon icon on a transparent background. A narrow steel ice pick with a wooden handle shown in a clean side profile with a slight frost tint.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.ice-pick
+
+  - id: weapon-ritual-dagger
+    type: weapon
+    label: 'Ritual Dagger'
+    brief: 'Ritual Dagger — a centered weapon icon on a transparent background. A slender ceremonial dagger with carved bone handle, the full dagger in a side profile with the handle visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.ritual-dagger
+
+  - id: weapon-butcher-hook
+    type: weapon
+    label: 'Butcher Hook'
+    brief: "Butcher Hook — a centered weapon icon on a transparent background. A heavy curved butcher's hook on a short handle in a clear side profile with the point facing right."
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.butcher-hook
+
+  - id: weapon-boarding-axe
+    type: weapon
+    label: 'Boarding Axe'
+    brief: 'Boarding Axe — a centered weapon icon on a transparent background. A compact hatchet with a hooked back spike, the head in a side profile with both the blade and hook visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.boarding-axe
+
+  # ── Family: wand ───────────────────────────────────────────────────────────
+  - id: weapon-ember-wand
+    type: weapon
+    label: 'Ember Wand'
+    brief: 'Ember Wand — a centered weapon icon on a transparent background. A slender wand tipped with a glowing ember crystal, the wand at a slight angle with the ember tip prominent.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.ember-wand
+
+  - id: weapon-frost-crook
+    type: weapon
+    label: 'Frost Crook'
+    brief: 'Frost Crook — a centered weapon icon on a transparent background. A curved icy staff with frost crystals along the shaft, shown at a diagonal with visible frost detail.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.frost-crook
+
+  - id: weapon-storm-sling
+    type: weapon
+    label: 'Storm Sling'
+    brief: 'Storm Sling — a centered weapon icon on a transparent background. A woven sling crackling with static electricity, the pouch centered with visible arc detail.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.storm-sling
+
+  - id: weapon-rune-axe
+    type: weapon
+    label: 'Rune Axe'
+    brief: 'Rune Axe — a centered weapon icon on a transparent background. A single-bladed axe carved with glowing runes, the inscribed blade face-on with faint runic glow.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.rune-axe
+
+  - id: weapon-crystal-cannon
+    type: weapon
+    label: 'Crystal Cannon'
+    brief: 'Crystal Cannon — a centered weapon icon on a transparent background. A short arcane cannon barrel formed from a single crystal, the muzzle pointed slightly forward with crystal facets.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.crystal-cannon
+
+  # ── Family: alchemical ─────────────────────────────────────────────────────
+  - id: weapon-alchemist-sprayer
+    type: weapon
+    label: 'Alchemist Sprayer'
+    brief: 'Alchemist Sprayer — a centered weapon icon on a transparent background. A handheld pump-action sprayer filled with volatile reagent, the nozzle aimed forward with the tank prominent.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.alchemist-sprayer
+
+  - id: weapon-powder-keg
+    type: weapon
+    label: 'Powder Keg'
+    brief: 'Powder Keg — a centered weapon icon on a transparent background. A small barrel of black powder used as a thrown explosive, shown with a lit fuse.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.powder-keg
+
+  - id: weapon-acid-flask
+    type: weapon
+    label: 'Acid Flask'
+    brief: 'Acid Flask — a centered weapon icon on a transparent background. A glass flask filled with corrosive green acid, the sealed flask with liquid visible inside.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.acid-flask
+
+  - id: weapon-plague-censer
+    type: weapon
+    label: 'Plague Censer'
+    brief: 'Plague Censer — a centered weapon icon on a transparent background. A swinging bronze censer leaking toxic green smoke, shown on its chain with smoke trails.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.plague-censer
+
+  - id: weapon-echo-bell
+    type: weapon
+    label: 'Echo Bell'
+    brief: 'Echo Bell — a centered weapon icon on a transparent background. A resonating metal bell that emits damaging sound waves, shown with visible sound-wave lines.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.echo-bell
+
+  # ── Family: utility ────────────────────────────────────────────────────────
+  - id: weapon-thorn-whip
+    type: weapon
+    label: 'Thorn Whip'
+    brief: 'Thorn Whip — a centered weapon icon on a transparent background. A long vine whip covered in sharp thorns, coiled loosely with a few thorns clearly visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.thorn-whip
+
+  - id: weapon-spike-shield
+    type: weapon
+    label: 'Spike Shield'
+    brief: 'Spike Shield — a centered weapon icon on a transparent background. A small round buckler studded with outward-facing spikes, shown face-on with spikes clearly visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.spike-shield
+
+  - id: weapon-oil-lantern
+    type: weapon
+    label: 'Oil Lantern'
+    brief: 'Oil Lantern — a centered weapon icon on a transparent background. A swung oil lantern used as a fire-spreading weapon, the lantern shape with a visible flame inside.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.oil-lantern
+
+  - id: weapon-grave-shovel
+    type: weapon
+    label: 'Grave Shovel'
+    brief: 'Grave Shovel — a centered weapon icon on a transparent background. A sturdy iron-shod shovel repurposed for combat, the spade head slightly angled with the haft visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.grave-shovel
+
+  - id: weapon-war-pick
+    type: weapon
+    label: 'War Pick'
+    brief: 'War Pick — a centered weapon icon on a transparent background. A short-hafted pick with a heavy curved beak, the pick face prominent in a side profile.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.war-pick
+
+  # ── Family: mechanical ─────────────────────────────────────────────────────
+  - id: weapon-cog-pistol
+    type: weapon
+    label: 'Cog Pistol'
+    brief: 'Cog Pistol — a centered weapon icon on a transparent background. A clockwork single-shot pistol with exposed cog-gear mechanism, the side profile with cog detail visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.cog-pistol
+
+  - id: weapon-rivet-gun
+    type: weapon
+    label: 'Rivet Gun'
+    brief: 'Rivet Gun — a centered weapon icon on a transparent background. An industrial rivet gun converted to fire rivets as projectiles, the side profile with the loading chamber visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.rivet-gun
+
+  - id: weapon-sawblade-launcher
+    type: weapon
+    label: 'Sawblade Launcher'
+    brief: 'Sawblade Launcher — a centered weapon icon on a transparent background. A compact mechanical launcher that fires spinning sawblades, with a blade partially loaded.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.sawblade-launcher
+
+  - id: weapon-shock-baton
+    type: weapon
+    label: 'Shock Baton'
+    brief: 'Shock Baton — a centered weapon icon on a transparent background. A metal baton with electrified contacts at the tip, shown at a slight angle with arc detail at the tip.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.shock-baton
+
+  - id: weapon-flame-tongs
+    type: weapon
+    label: 'Flame Tongs'
+    brief: 'Flame Tongs — a centered weapon icon on a transparent background. Articulated metal tongs with flame channels at the tips, slightly open with flame tips visible.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: weapon.flame-tongs

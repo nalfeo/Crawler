@@ -1,0 +1,698 @@
+{
+  "version": 1,
+  "description": "Stable Floor 2 equipment art-key manifest. Lists the 70 immutable base art keys (50 weapons across 10 families + 20 armor/accessory items) with type, family, slot, and label metadata. Keys are frozen — additions append IDs; existing IDs are never recycled or renamed. Runtime lookup key: equipment/<type>/<base-name> (first dot replaced by slash). Source of truth for placeholder generation and batch art-request waves.",
+  "weaponFamilies": [
+    {
+      "id": "heavy-blade",
+      "label": "Heavy Blade",
+      "description": "Slashing or cleaving one- and two-handed blade weapons with high swing weight.",
+      "weapons": ["iron-cleaver", "dueling-saber", "moon-scythe", "crescent-glaive", "void-rapier"]
+    },
+    {
+      "id": "blunt",
+      "label": "Blunt",
+      "description": "Bludgeoning weapons that stun and crush rather than cut.",
+      "weapons": ["stone-maul", "sun-hammer", "meteor-hammer", "brass-knuckles", "baseball-bat"]
+    },
+    {
+      "id": "polearm",
+      "label": "Polearm",
+      "description": "Reach weapons mounted on long hafts — spears, staves, flails, and saws.",
+      "weapons": ["quarterstaff", "blood-lance", "tower-spear", "chain-flail", "bone-saw"]
+    },
+    {
+      "id": "bow",
+      "label": "Bow",
+      "description": "Ranged weapons that project physical ammunition — bows, crossbows, rifles, and guns.",
+      "weapons": ["ashwood-bow", "hand-crossbow", "musketeer-rifle", "siege-bow", "harpoon-gun"]
+    },
+    {
+      "id": "thrown",
+      "label": "Thrown",
+      "description": "Weapons designed to be hurled or spun at range — knives, chakrams, bolas, fans.",
+      "weapons": ["throwing-knives", "twin-katar", "hunting-bola", "bone-chakram", "war-fan"]
+    },
+    {
+      "id": "light-blade",
+      "label": "Light Blade",
+      "description": "Fast, light cutting and stabbing weapons favoring speed over raw power.",
+      "weapons": ["venom-dirk", "ice-pick", "ritual-dagger", "butcher-hook", "boarding-axe"]
+    },
+    {
+      "id": "wand",
+      "label": "Wand",
+      "description": "Magically attuned implements that channel elemental or runic forces.",
+      "weapons": ["ember-wand", "frost-crook", "storm-sling", "rune-axe", "crystal-cannon"]
+    },
+    {
+      "id": "alchemical",
+      "label": "Alchemical",
+      "description": "Weapons that deploy volatile chemical compounds — sprayers, censers, flasks, kegs.",
+      "weapons": ["alchemist-sprayer", "powder-keg", "acid-flask", "plague-censer", "echo-bell"]
+    },
+    {
+      "id": "utility",
+      "label": "Utility",
+      "description": "Improvised or dual-purpose tools repurposed as weapons — whips, shields, picks, shovels.",
+      "weapons": ["thorn-whip", "spike-shield", "oil-lantern", "grave-shovel", "war-pick"]
+    },
+    {
+      "id": "mechanical",
+      "label": "Mechanical",
+      "description": "Engineered or clockwork weapons powered by springs, gears, or compressed gas.",
+      "weapons": ["cog-pistol", "rivet-gun", "sawblade-launcher", "shock-baton", "flame-tongs"]
+    }
+  ],
+  "entries": [
+    {
+      "artKey": "weapon.iron-cleaver",
+      "type": "weapon",
+      "family": "heavy-blade",
+      "slot": "weapon",
+      "label": "Iron Cleaver",
+      "runtimeKey": "equipment/weapon/iron-cleaver",
+      "description": "A broad, weighted cleaver with a single curved edge. Show the full blade in a slightly angled three-quarter profile."
+    },
+    {
+      "artKey": "weapon.ashwood-bow",
+      "type": "weapon",
+      "family": "bow",
+      "slot": "weapon",
+      "label": "Ashwood Bow",
+      "runtimeKey": "equipment/weapon/ashwood-bow",
+      "description": "A graceful recurve bow carved from pale ashwood. Show the strung arc at a slight angle with the grip centered."
+    },
+    {
+      "artKey": "weapon.quarterstaff",
+      "type": "weapon",
+      "family": "polearm",
+      "slot": "weapon",
+      "label": "Quarterstaff",
+      "runtimeKey": "equipment/weapon/quarterstaff",
+      "description": "A plain hardwood staff, worn smooth from use. Show it at a diagonal with both ends visible."
+    },
+    {
+      "artKey": "weapon.throwing-knives",
+      "type": "weapon",
+      "family": "thrown",
+      "slot": "weapon",
+      "label": "Throwing Knives",
+      "runtimeKey": "equipment/weapon/throwing-knives",
+      "description": "A fanned trio of slender balanced throwing blades. Show them spread in a slight fan arrangement."
+    },
+    {
+      "artKey": "weapon.war-pick",
+      "type": "weapon",
+      "family": "utility",
+      "slot": "weapon",
+      "label": "War Pick",
+      "runtimeKey": "equipment/weapon/war-pick",
+      "description": "A short-hafted pick with a heavy curved beak. Show the pick face prominent in a side profile."
+    },
+    {
+      "artKey": "weapon.hand-crossbow",
+      "type": "weapon",
+      "family": "bow",
+      "slot": "weapon",
+      "label": "Hand Crossbow",
+      "runtimeKey": "equipment/weapon/hand-crossbow",
+      "description": "A compact one-handed crossbow with a short prod. Show the loaded weapon at a slight angle."
+    },
+    {
+      "artKey": "weapon.bone-saw",
+      "type": "weapon",
+      "family": "polearm",
+      "slot": "weapon",
+      "label": "Bone Saw",
+      "runtimeKey": "equipment/weapon/bone-saw",
+      "description": "A long-bladed saw with deep gullets and a wrapped handle. Show the full serrated edge clearly."
+    },
+    {
+      "artKey": "weapon.chain-flail",
+      "type": "weapon",
+      "family": "polearm",
+      "slot": "weapon",
+      "label": "Chain Flail",
+      "runtimeKey": "equipment/weapon/chain-flail",
+      "description": "A heavy spiked ball on a chain attached to a wooden handle. Show the chain extended in mid-swing."
+    },
+    {
+      "artKey": "weapon.dueling-saber",
+      "type": "weapon",
+      "family": "heavy-blade",
+      "slot": "weapon",
+      "label": "Dueling Saber",
+      "runtimeKey": "equipment/weapon/dueling-saber",
+      "description": "A single-edged cavalry saber with a swept guard. Show the blade in a clean side profile."
+    },
+    {
+      "artKey": "weapon.stone-maul",
+      "type": "weapon",
+      "family": "blunt",
+      "slot": "weapon",
+      "label": "Stone Maul",
+      "runtimeKey": "equipment/weapon/stone-maul",
+      "description": "A massive two-handed maul with a rough-hewn stone head. Show the full weapon with both the head and long haft."
+    },
+    {
+      "artKey": "weapon.musketeer-rifle",
+      "type": "weapon",
+      "family": "bow",
+      "slot": "weapon",
+      "label": "Musketeer Rifle",
+      "runtimeKey": "equipment/weapon/musketeer-rifle",
+      "description": "A long flintlock musket with an ornate stock. Show the full barrel length in a diagonal profile."
+    },
+    {
+      "artKey": "weapon.ember-wand",
+      "type": "weapon",
+      "family": "wand",
+      "slot": "weapon",
+      "label": "Ember Wand",
+      "runtimeKey": "equipment/weapon/ember-wand",
+      "description": "A slender wand tipped with a glowing ember crystal. Show the wand at a slight angle with the ember tip prominent."
+    },
+    {
+      "artKey": "weapon.frost-crook",
+      "type": "weapon",
+      "family": "wand",
+      "slot": "weapon",
+      "label": "Frost Crook",
+      "runtimeKey": "equipment/weapon/frost-crook",
+      "description": "A curved icy staff with frost crystals along the shaft. Show the crook at a diagonal with visible frost detail."
+    },
+    {
+      "artKey": "weapon.storm-sling",
+      "type": "weapon",
+      "family": "wand",
+      "slot": "weapon",
+      "label": "Storm Sling",
+      "runtimeKey": "equipment/weapon/storm-sling",
+      "description": "A woven sling crackling with static electricity. Show the pouch centered with visible arc detail."
+    },
+    {
+      "artKey": "weapon.venom-dirk",
+      "type": "weapon",
+      "family": "light-blade",
+      "slot": "weapon",
+      "label": "Venom Dirk",
+      "runtimeKey": "equipment/weapon/venom-dirk",
+      "description": "A thin double-edged dirk with a grooved blade for venom. Show the blade with a faint green tint along the fuller."
+    },
+    {
+      "artKey": "weapon.sun-hammer",
+      "type": "weapon",
+      "family": "blunt",
+      "slot": "weapon",
+      "label": "Sun Hammer",
+      "runtimeKey": "equipment/weapon/sun-hammer",
+      "description": "A radiant war hammer etched with solar runes. Show the head face-on with a warm golden tint."
+    },
+    {
+      "artKey": "weapon.moon-scythe",
+      "type": "weapon",
+      "family": "heavy-blade",
+      "slot": "weapon",
+      "label": "Moon Scythe",
+      "runtimeKey": "equipment/weapon/moon-scythe",
+      "description": "A crescent-bladed scythe with a pale silver edge. Show the full curved blade and haft in a diagonal silhouette."
+    },
+    {
+      "artKey": "weapon.blood-lance",
+      "type": "weapon",
+      "family": "polearm",
+      "slot": "weapon",
+      "label": "Blood Lance",
+      "runtimeKey": "equipment/weapon/blood-lance",
+      "description": "A long lance with a crimson-tipped head and dark haft. Show the weapon at a steep diagonal with the tip prominent."
+    },
+    {
+      "artKey": "weapon.grave-shovel",
+      "type": "weapon",
+      "family": "utility",
+      "slot": "weapon",
+      "label": "Grave Shovel",
+      "runtimeKey": "equipment/weapon/grave-shovel",
+      "description": "A sturdy iron-shod shovel repurposed for combat. Show the spade head slightly angled with the haft visible."
+    },
+    {
+      "artKey": "weapon.butcher-hook",
+      "type": "weapon",
+      "family": "light-blade",
+      "slot": "weapon",
+      "label": "Butcher Hook",
+      "runtimeKey": "equipment/weapon/butcher-hook",
+      "description": "A heavy curved butcher's hook on a short handle. Show the hook in a clear side profile with the point facing right."
+    },
+    {
+      "artKey": "weapon.cog-pistol",
+      "type": "weapon",
+      "family": "mechanical",
+      "slot": "weapon",
+      "label": "Cog Pistol",
+      "runtimeKey": "equipment/weapon/cog-pistol",
+      "description": "A clockwork single-shot pistol with exposed cog-gear mechanism. Show the side profile with cog detail visible."
+    },
+    {
+      "artKey": "weapon.alchemist-sprayer",
+      "type": "weapon",
+      "family": "alchemical",
+      "slot": "weapon",
+      "label": "Alchemist Sprayer",
+      "runtimeKey": "equipment/weapon/alchemist-sprayer",
+      "description": "A handheld pump-action sprayer filled with volatile reagent. Show the nozzle aimed forward with the tank prominent."
+    },
+    {
+      "artKey": "weapon.rune-axe",
+      "type": "weapon",
+      "family": "wand",
+      "slot": "weapon",
+      "label": "Rune Axe",
+      "runtimeKey": "equipment/weapon/rune-axe",
+      "description": "A single-bladed axe carved with glowing runes. Show the inscribed blade face-on with faint runic glow."
+    },
+    {
+      "artKey": "weapon.tower-spear",
+      "type": "weapon",
+      "family": "polearm",
+      "slot": "weapon",
+      "label": "Tower Spear",
+      "runtimeKey": "equipment/weapon/tower-spear",
+      "description": "A tall broad-bladed spear. Show the leaf-shaped head at the top with the haft extending down."
+    },
+    {
+      "artKey": "weapon.twin-katar",
+      "type": "weapon",
+      "family": "thrown",
+      "slot": "weapon",
+      "label": "Twin Katar",
+      "runtimeKey": "equipment/weapon/twin-katar",
+      "description": "A pair of push-dagger katars shown crossed. Show both blades in an X formation with handles visible."
+    },
+    {
+      "artKey": "weapon.thorn-whip",
+      "type": "weapon",
+      "family": "utility",
+      "slot": "weapon",
+      "label": "Thorn Whip",
+      "runtimeKey": "equipment/weapon/thorn-whip",
+      "description": "A long vine whip covered in sharp thorns. Show it coiled loosely with a few thorns clearly visible."
+    },
+    {
+      "artKey": "weapon.crystal-cannon",
+      "type": "weapon",
+      "family": "wand",
+      "slot": "weapon",
+      "label": "Crystal Cannon",
+      "runtimeKey": "equipment/weapon/crystal-cannon",
+      "description": "A short arcane cannon barrel formed from a single crystal. Show the muzzle pointed slightly forward with crystal facets."
+    },
+    {
+      "artKey": "weapon.baseball-bat",
+      "type": "weapon",
+      "family": "blunt",
+      "slot": "weapon",
+      "label": "Baseball Bat",
+      "runtimeKey": "equipment/weapon/baseball-bat",
+      "description": "A worn wooden baseball bat with a taped grip. Show the bat at a diagonal with the barrel end up."
+    },
+    {
+      "artKey": "weapon.rivet-gun",
+      "type": "weapon",
+      "family": "mechanical",
+      "slot": "weapon",
+      "label": "Rivet Gun",
+      "runtimeKey": "equipment/weapon/rivet-gun",
+      "description": "An industrial rivet gun converted to fire rivets as projectiles. Show the side profile with the loading chamber visible."
+    },
+    {
+      "artKey": "weapon.sawblade-launcher",
+      "type": "weapon",
+      "family": "mechanical",
+      "slot": "weapon",
+      "label": "Sawblade Launcher",
+      "runtimeKey": "equipment/weapon/sawblade-launcher",
+      "description": "A compact mechanical launcher that fires spinning sawblades. Show the launcher with a blade partially loaded."
+    },
+    {
+      "artKey": "weapon.oil-lantern",
+      "type": "weapon",
+      "family": "utility",
+      "slot": "weapon",
+      "label": "Oil Lantern",
+      "runtimeKey": "equipment/weapon/oil-lantern",
+      "description": "A swung oil lantern used as a fire-spreading weapon. Show the lantern shape with a visible flame inside."
+    },
+    {
+      "artKey": "weapon.shock-baton",
+      "type": "weapon",
+      "family": "mechanical",
+      "slot": "weapon",
+      "label": "Shock Baton",
+      "runtimeKey": "equipment/weapon/shock-baton",
+      "description": "A metal baton with electrified contacts at the tip. Show the baton at a slight angle with arc detail at the tip."
+    },
+    {
+      "artKey": "weapon.boarding-axe",
+      "type": "weapon",
+      "family": "light-blade",
+      "slot": "weapon",
+      "label": "Boarding Axe",
+      "runtimeKey": "equipment/weapon/boarding-axe",
+      "description": "A compact hatchet with a hooked back spike. Show the head in a side profile with both the blade and hook visible."
+    },
+    {
+      "artKey": "weapon.hunting-bola",
+      "type": "weapon",
+      "family": "thrown",
+      "slot": "weapon",
+      "label": "Hunting Bola",
+      "runtimeKey": "equipment/weapon/hunting-bola",
+      "description": "Three weighted stone balls on braided cords. Show the bola partially unfolded with cords fanning out."
+    },
+    {
+      "artKey": "weapon.spike-shield",
+      "type": "weapon",
+      "family": "utility",
+      "slot": "weapon",
+      "label": "Spike Shield",
+      "runtimeKey": "equipment/weapon/spike-shield",
+      "description": "A small round buckler studded with outward-facing spikes. Show the shield face-on with spikes clearly visible."
+    },
+    {
+      "artKey": "weapon.war-fan",
+      "type": "weapon",
+      "family": "thrown",
+      "slot": "weapon",
+      "label": "War Fan",
+      "runtimeKey": "equipment/weapon/war-fan",
+      "description": "A folding iron fan with razor-sharp outer ribs. Show it half-open in a three-quarter view."
+    },
+    {
+      "artKey": "weapon.crescent-glaive",
+      "type": "weapon",
+      "family": "heavy-blade",
+      "slot": "weapon",
+      "label": "Crescent Glaive",
+      "runtimeKey": "equipment/weapon/crescent-glaive",
+      "description": "A glaive with a wide crescent blade. Show the curved blade prominent at the top of the haft."
+    },
+    {
+      "artKey": "weapon.siege-bow",
+      "type": "weapon",
+      "family": "bow",
+      "slot": "weapon",
+      "label": "Siege Bow",
+      "runtimeKey": "equipment/weapon/siege-bow",
+      "description": "A massive recurve war bow with heavy limbs. Show the fully drawn bow silhouette from the side."
+    },
+    {
+      "artKey": "weapon.powder-keg",
+      "type": "weapon",
+      "family": "alchemical",
+      "slot": "weapon",
+      "label": "Powder Keg",
+      "runtimeKey": "equipment/weapon/powder-keg",
+      "description": "A small barrel of black powder used as a thrown explosive. Show the keg with a lit fuse."
+    },
+    {
+      "artKey": "weapon.acid-flask",
+      "type": "weapon",
+      "family": "alchemical",
+      "slot": "weapon",
+      "label": "Acid Flask",
+      "runtimeKey": "equipment/weapon/acid-flask",
+      "description": "A glass flask filled with corrosive green acid. Show the sealed flask with liquid visible inside."
+    },
+    {
+      "artKey": "weapon.ice-pick",
+      "type": "weapon",
+      "family": "light-blade",
+      "slot": "weapon",
+      "label": "Ice Pick",
+      "runtimeKey": "equipment/weapon/ice-pick",
+      "description": "A narrow steel ice pick with a wooden handle. Show it in a clean side profile with a slight frost tint."
+    },
+    {
+      "artKey": "weapon.flame-tongs",
+      "type": "weapon",
+      "family": "mechanical",
+      "slot": "weapon",
+      "label": "Flame Tongs",
+      "runtimeKey": "equipment/weapon/flame-tongs",
+      "description": "Articulated metal tongs with flame channels at the tips. Show the tongs slightly open with flame tips visible."
+    },
+    {
+      "artKey": "weapon.ritual-dagger",
+      "type": "weapon",
+      "family": "light-blade",
+      "slot": "weapon",
+      "label": "Ritual Dagger",
+      "runtimeKey": "equipment/weapon/ritual-dagger",
+      "description": "A slender ceremonial dagger with carved bone handle. Show the full dagger in a side profile with the handle visible."
+    },
+    {
+      "artKey": "weapon.brass-knuckles",
+      "type": "weapon",
+      "family": "blunt",
+      "slot": "weapon",
+      "label": "Brass Knuckles",
+      "runtimeKey": "equipment/weapon/brass-knuckles",
+      "description": "A set of four-loop brass knuckles. Show them slightly angled as if held in a fist."
+    },
+    {
+      "artKey": "weapon.meteor-hammer",
+      "type": "weapon",
+      "family": "blunt",
+      "slot": "weapon",
+      "label": "Meteor Hammer",
+      "runtimeKey": "equipment/weapon/meteor-hammer",
+      "description": "A heavy iron ball on a long flexible chain. Show the ball prominent with the chain looped behind."
+    },
+    {
+      "artKey": "weapon.harpoon-gun",
+      "type": "weapon",
+      "family": "bow",
+      "slot": "weapon",
+      "label": "Harpoon Gun",
+      "runtimeKey": "equipment/weapon/harpoon-gun",
+      "description": "A shoulder-mounted spring-loaded harpoon launcher. Show the loaded harpoon protruding from the barrel."
+    },
+    {
+      "artKey": "weapon.plague-censer",
+      "type": "weapon",
+      "family": "alchemical",
+      "slot": "weapon",
+      "label": "Plague Censer",
+      "runtimeKey": "equipment/weapon/plague-censer",
+      "description": "A swinging bronze censer leaking toxic green smoke. Show the censer on its chain with smoke trails."
+    },
+    {
+      "artKey": "weapon.bone-chakram",
+      "type": "weapon",
+      "family": "thrown",
+      "slot": "weapon",
+      "label": "Bone Chakram",
+      "runtimeKey": "equipment/weapon/bone-chakram",
+      "description": "A carved bone throwing ring with serrated outer edge. Show the chakram face-on with the serration visible."
+    },
+    {
+      "artKey": "weapon.echo-bell",
+      "type": "weapon",
+      "family": "alchemical",
+      "slot": "weapon",
+      "label": "Echo Bell",
+      "runtimeKey": "equipment/weapon/echo-bell",
+      "description": "A resonating metal bell that emits damaging sound waves. Show the bell shape with visible sound-wave lines."
+    },
+    {
+      "artKey": "weapon.void-rapier",
+      "type": "weapon",
+      "family": "heavy-blade",
+      "slot": "weapon",
+      "label": "Void Rapier",
+      "runtimeKey": "equipment/weapon/void-rapier",
+      "description": "A slender rapier whose blade is made of solidified void-energy. Show the full blade glowing faintly purple."
+    },
+    {
+      "artKey": "head.iron-visor",
+      "type": "item",
+      "family": null,
+      "slot": "head",
+      "label": "Iron Visor",
+      "runtimeKey": "equipment/head/iron-visor",
+      "description": "A heavy iron helm with a full face visor. Show it face-on with the visor closed and eye slits visible."
+    },
+    {
+      "artKey": "head.quartermaster-cap",
+      "type": "item",
+      "family": null,
+      "slot": "head",
+      "label": "Quartermaster Cap",
+      "runtimeKey": "equipment/head/quartermaster-cap",
+      "description": "A peaked cap with a supply corps insignia badge. Show it in a three-quarter side view with the badge visible."
+    },
+    {
+      "artKey": "head.batfolk-hood",
+      "type": "item",
+      "family": null,
+      "slot": "head",
+      "label": "Batfolk Hood",
+      "runtimeKey": "equipment/head/batfolk-hood",
+      "description": "A dark hood with ear-shaped fins on top. Show the hood in a slight front-angle view with the ear shapes clear."
+    },
+    {
+      "artKey": "head.alchemist-goggles",
+      "type": "item",
+      "family": null,
+      "slot": "head",
+      "label": "Alchemist Goggles",
+      "runtimeKey": "equipment/head/alchemist-goggles",
+      "description": "Round leather-framed magnifying goggles with tinted lenses. Show them face-on with both lenses visible."
+    },
+    {
+      "artKey": "torso.chain-hauberk",
+      "type": "item",
+      "family": null,
+      "slot": "torso",
+      "label": "Chain Hauberk",
+      "runtimeKey": "equipment/torso/chain-hauberk",
+      "description": "A mid-length chainmail coat. Show the torso silhouette with chainmail texture and coif collar visible."
+    },
+    {
+      "artKey": "torso.velvet-coat",
+      "type": "item",
+      "family": null,
+      "slot": "torso",
+      "label": "Velvet Coat",
+      "runtimeKey": "equipment/torso/velvet-coat",
+      "description": "A long deep-burgundy velvet coat with brass buttons. Show the coat in a three-quarter view with lapels visible."
+    },
+    {
+      "artKey": "torso.scavenger-harness",
+      "type": "item",
+      "family": null,
+      "slot": "torso",
+      "label": "Scavenger Harness",
+      "runtimeKey": "equipment/torso/scavenger-harness",
+      "description": "A leather chest harness with multiple loops and pouches. Show the harness face-on with straps and pouches visible."
+    },
+    {
+      "artKey": "torso.runed-cuirass",
+      "type": "item",
+      "family": null,
+      "slot": "torso",
+      "label": "Runed Cuirass",
+      "runtimeKey": "equipment/torso/runed-cuirass",
+      "description": "A breastplate inscribed with glowing magical runes. Show the chest plate face-on with rune engravings lit."
+    },
+    {
+      "artKey": "hands.duelist-gloves",
+      "type": "item",
+      "family": null,
+      "slot": "hands",
+      "label": "Duelist Gloves",
+      "runtimeKey": "equipment/hands/duelist-gloves",
+      "description": "Slim leather dueling gloves with reinforced knuckles. Show both gloves slightly overlapping from a slight angle."
+    },
+    {
+      "artKey": "hands.thorn-gauntlets",
+      "type": "item",
+      "family": null,
+      "slot": "hands",
+      "label": "Thorn Gauntlets",
+      "runtimeKey": "equipment/hands/thorn-gauntlets",
+      "description": "Heavy gauntlets with outward-facing bone spikes on the knuckles. Show them face-on with spikes clearly visible."
+    },
+    {
+      "artKey": "hands.tinker-grips",
+      "type": "item",
+      "family": null,
+      "slot": "hands",
+      "label": "Tinker Grips",
+      "runtimeKey": "equipment/hands/tinker-grips",
+      "description": "Padded fingerless grips with tool loops and a wrist brace. Show a single grip from a slight side angle."
+    },
+    {
+      "artKey": "feet.iron-greaves",
+      "type": "item",
+      "family": null,
+      "slot": "feet",
+      "label": "Iron Greaves",
+      "runtimeKey": "equipment/feet/iron-greaves",
+      "description": "Solid iron greaves covering the full shin and foot. Show the pair side by side slightly angled."
+    },
+    {
+      "artKey": "feet.shadow-boots",
+      "type": "item",
+      "family": null,
+      "slot": "feet",
+      "label": "Shadow Boots",
+      "runtimeKey": "equipment/feet/shadow-boots",
+      "description": "Supple dark leather boots that muffle footsteps. Show one boot in a three-quarter side view with sole visible."
+    },
+    {
+      "artKey": "feet.merchant-sandals",
+      "type": "item",
+      "family": null,
+      "slot": "feet",
+      "label": "Merchant Sandals",
+      "runtimeKey": "equipment/feet/merchant-sandals",
+      "description": "Well-worn open sandals with thick woven straps. Show the sandal from above at a slight angle."
+    },
+    {
+      "artKey": "accessory.blood-vial",
+      "type": "item",
+      "family": null,
+      "slot": "accessory",
+      "label": "Blood Vial",
+      "runtimeKey": "equipment/accessory/blood-vial",
+      "description": "A small sealed vial of dark crimson blood. Show the vial centered with the red contents visible."
+    },
+    {
+      "artKey": "accessory.compass-charm",
+      "type": "item",
+      "family": null,
+      "slot": "accessory",
+      "label": "Compass Charm",
+      "runtimeKey": "equipment/accessory/compass-charm",
+      "description": "A worn brass compass on a leather cord. Show the compass face-on with the needle pointing."
+    },
+    {
+      "artKey": "accessory.lucky-feather",
+      "type": "item",
+      "family": null,
+      "slot": "accessory",
+      "label": "Lucky Feather",
+      "runtimeKey": "equipment/accessory/lucky-feather",
+      "description": "A bright iridescent feather tied with a colored cord. Show the full feather in a gentle arc."
+    },
+    {
+      "artKey": "accessory.gearwork-locket",
+      "type": "item",
+      "family": null,
+      "slot": "accessory",
+      "label": "Gearwork Locket",
+      "runtimeKey": "equipment/accessory/gearwork-locket",
+      "description": "A heart-shaped brass locket with a tiny gear mechanism visible through a crystal window. Show it open or with the window visible."
+    },
+    {
+      "artKey": "accessory.warding-bell",
+      "type": "item",
+      "family": null,
+      "slot": "accessory",
+      "label": "Warding Bell",
+      "runtimeKey": "equipment/accessory/warding-bell",
+      "description": "A small iron bell engraved with protective runes. Show the bell in a three-quarter view with rune engravings visible."
+    },
+    {
+      "artKey": "accessory.surveyor-map",
+      "type": "item",
+      "family": null,
+      "slot": "accessory",
+      "label": "Surveyor Map",
+      "runtimeKey": "equipment/accessory/surveyor-map",
+      "description": "A folded parchment map with survey markings and red route lines. Show it partially unfolded from a slight angle."
+    }
+  ]
+}
