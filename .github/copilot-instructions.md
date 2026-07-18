@@ -74,7 +74,7 @@ findings in one pass.
 ### Resolving addressed review comments
 
 - Review-comment threads are reconciled by `.github/workflows/ci-recovery.yml` using the owner-scoped `CRAWLER_CI_PAT`, including cross-App Copilot reviewer threads.
-- When you address a review comment (push a fix **or** explain deterministic non-applicability in-thread), reply **in that thread** with the marker `✅ Addressed` (ideally `✅ Addressed in <sha>: <one-line note>`). The reconciler resolves the thread on the next event or 10-minute sweep; the code does **not** need to be outdated.
+- When you address a review comment (push a fix **or** explain deterministic non-applicability in-thread), reply **in that thread** with the marker `✅ Addressed in <sha>: <one-line note>` (the `in <sha>` part is required — omitting the SHA causes the reconciler to ignore the marker). The reconciler resolves the thread on the next event or 10-minute sweep; the code does **not** need to be outdated.
 - Only replies from the PR owner/member/collaborator or a trusted bot (e.g. the Copilot coding agent) are honored.
 - A different-model validator must check every listed review thread. Substantive disagreement stays unresolved and escalates; only marker-confirmed fixes or deterministic non-applicability may auto-resolve.
 
