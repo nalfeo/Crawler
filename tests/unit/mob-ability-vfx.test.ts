@@ -126,11 +126,7 @@ describe('MobAbilityVfx', () => {
     expect(graphicsObjects.length).toBeGreaterThan(0);
     const tarnishGfx = graphicsObjects[0]!;
     // The Tarnished ring is drawn centred on the entity's pixel position.
-    expect(tarnishGfx.strokeCircle).toHaveBeenCalledWith(
-      ftToPx(30),
-      ftToPx(25),
-      ftToPx(1.4),
-    );
+    expect(tarnishGfx.strokeCircle).toHaveBeenCalledWith(ftToPx(30), ftToPx(25), ftToPx(1.4));
   });
 
   it('fires a resolution burst when resolvedCasts increments', () => {
