@@ -227,6 +227,14 @@ assets:
       kind: sprite-registry
       id: sponsor-sword
 
+  - id: harpoon-gun
+    type: weapon
+    label: 'Harpoon Gun'
+    brief: 'Harpoon Gun — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. A tethered harpoon launcher — fire a bolt and reel them in.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: harpoon-gun
   - id: bone-chakram
     type: weapon
     label: 'Bone Chakram'
@@ -235,6 +243,15 @@ assets:
     integration:
       kind: sprite-registry
       id: bone-chakram
+
+  - id: echo-bell
+    type: weapon
+    label: 'Echo Bell'
+    brief: 'Echo Bell — a Floor 2 beam weapon: a sleek resonance bell on a short handle, held vertically. Bell-head at top, grip at bottom. Metallic body with a glowing accent ring. Silhouette reads as bell-on-a-handle at a glance.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: echo-bell
   - id: ember-wand
     type: weapon
     label: 'Ember Wand'
