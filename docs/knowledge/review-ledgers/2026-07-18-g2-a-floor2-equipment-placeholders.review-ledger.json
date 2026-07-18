@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "g2-a-floor2-equipment-placeholders",
+  "task_title": "G2-A: Add deterministic equipment placeholders and art-key manifest",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Concern 1 (blocking): placeholder briefId used dotted artKey which does not normalize the same way as art-plan kebab IDs — fixed by using artKey.replace(dots,hyphens) as briefId throughout (gen-placeholders.ts, helper functions, tests). Concern 2 (non-blocking): integration.id overloaded to link back to manifest — fixed by removing integration fields from YAML plans entirely (they have no runtime targets yet). Concern 3 (non-blocking): no cross-manifest sync guard — fixed by adding 3 new tests verifying every JSON entry appears in exactly one plan and vice versa. Concern 4 (suggestion): runtimeKey contract wording — clarified in helper function JSDoc comment. plan_divergence=minor: blocking fix changed briefId convention but no re-architecture; the manifest-first design stood."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -529,17 +529,26 @@ export function run(options: RunOptions): { added: number; skipped: number } {
   // Floor 2 equipment art keys
   // Generates procedural placeholder PNGs for every Floor 2 equipment art key
   // (weapon.iron-cleaver, head.iron-visor, etc.) that does not yet have a real
-  // approved sprite. The manifest key is `<artKey>-placeholder`; the PNG is
-  // `<artKey>-placeholder.png`. Art keys use dot notation which is valid in
-  // both manifest keys and filenames.
+  // approved sprite.
+  //
+  // Identity model: the sprite pipeline uses kebab-case briefIds (no dots).
+  // We derive `briefId = artKey.replace(/\./g, '-')` so that
+  //   normalizeConcept("weapon-iron-cleaver") === "weapon-iron-cleaver"
+  // matches the art-plan brief ID `weapon-iron-cleaver` from the production-wave
+  // YAMLs. The dot-notation artKey is preserved only as the procedural render seed
+  // and in the stable floor2-equipment-art-keys.json metadata; it does not appear
+  // in any pipeline identity field (briefId, manifest key, PNG filename).
   // ---------------------------------------------------------------------------
   for (const entry of FLOOR2_EQUIPMENT_ART_ENTRIES) {
     const artKey = entry.artKey;
-    const outerKey = `${artKey}-placeholder`;
+    // Convert dot-notation artKey to kebab-case briefId for pipeline identity.
+    // e.g. "weapon.iron-cleaver" → "weapon-iron-cleaver"
+    const briefId = artKey.replace(/\./g, '-');
+    const outerKey = `${briefId}-placeholder`;
 
     // Skip if a real (non-placeholder) entry already exists for this briefId.
     const existingReal = Object.values(manifest.entries).find(
-      (e) => e.briefId === artKey && e.sourceRun !== 'placeholder',
+      (e) => e.briefId === briefId && e.sourceRun !== 'placeholder',
     );
     if (existingReal) {
       console.log(`  skip  ${artKey} — real sprite already approved`);
@@ -554,8 +563,10 @@ export function run(options: RunOptions): { added: number; skipped: number } {
       continue;
     }
 
-    const pngFilename = `${artKey}-placeholder.png`;
+    const pngFilename = `${briefId}-placeholder.png`;
     const pngPath = path.join(generatedDir, pngFilename);
+    // Use artKey as the procedural render seed so visual appearance is stable
+    // and distinct per equipment concept.
     const buffer = renderProceduralSprite(artKey);
 
     if (!dryRun) {
@@ -564,8 +575,8 @@ export function run(options: RunOptions): { added: number; skipped: number } {
     }
 
     const f2Entry: ManifestEntry = {
-      briefId: artKey,
-      spriteName: artKey,
+      briefId,
+      spriteName: briefId,
       assetPath: `generated/${pngFilename}`,
       approvedAt: new Date().toISOString(),
       sourceRun: 'placeholder',

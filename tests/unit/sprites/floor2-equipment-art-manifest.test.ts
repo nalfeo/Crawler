@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 import {
   FLOOR2_EQUIPMENT_ART_ENTRIES,
   FLOOR2_WEAPON_FAMILIES,
@@ -296,9 +297,12 @@ describe('floor2 equipment art-key manifest', () => {
       for (const entry of FLOOR2_EQUIPMENT_ART_ENTRIES) {
         const key = floor2EquipmentPlaceholderKey(entry.artKey);
         const manifestEntry = manifest.entries[key];
-        if (manifestEntry && manifestEntry.briefId !== entry.artKey) {
+        // briefId uses kebab-case (dots replaced by hyphens) so the pipeline
+        // normalizeConcept() links placeholders to real art from the art plans.
+        const expectedBriefId = entry.artKey.replace(/\./g, '-');
+        if (manifestEntry && manifestEntry.briefId !== expectedBriefId) {
           wrongBriefId.push(
-            `${entry.artKey}: briefId=${manifestEntry.briefId} expected=${entry.artKey}`,
+            `${entry.artKey}: briefId=${manifestEntry.briefId} expected=${expectedBriefId}`,
           );
         }
       }
@@ -336,6 +340,75 @@ describe('floor2 equipment art-key manifest', () => {
         }
       }
       expect(wrongPath, `entries with wrong assetPath: ${wrongPath.join('; ')}`).toEqual([]);
+    });
+  });
+
+  describe('art-plan YAML ↔ manifest cross-sync guard', () => {
+    function loadYaml(relPath: string): Record<string, unknown> {
+      const fullPath = path.join(repoRoot, relPath);
+      return parseYaml(readFileSync(fullPath, 'utf8')) as Record<string, unknown>;
+    }
+
+    function collectPlanIds(relPath: string): string[] {
+      const plan = loadYaml(relPath) as { assets: Array<{ id: string }> };
+      return plan.assets.map((a) => a.id);
+    }
+
+    it('every floor2-equipment-art-keys.json entry appears in exactly one art-plan YAML', () => {
+      const weaponIds = new Set(collectPlanIds('plans/floor2-equipment/floor2-weapons.art.yaml'));
+      const armorIds = new Set(collectPlanIds('plans/floor2-equipment/floor2-armor.art.yaml'));
+
+      const duplicates: string[] = [];
+      const missing: string[] = [];
+
+      for (const entry of FLOOR2_EQUIPMENT_ART_ENTRIES) {
+        // Art-plan IDs use kebab-case (artKey dots replaced by hyphens).
+        const planId = entry.artKey.replace(/\./g, '-');
+        const inWeapons = weaponIds.has(planId);
+        const inArmor = armorIds.has(planId);
+        if (inWeapons && inArmor) duplicates.push(planId);
+        else if (!inWeapons && !inArmor) missing.push(planId);
+      }
+
+      expect(
+        duplicates,
+        `art keys present in both weapon and armor plans: ${duplicates.join(', ')}`,
+      ).toEqual([]);
+      expect(missing, `art keys missing from all art-plan YAMLs: ${missing.join(', ')}`).toEqual(
+        [],
+      );
+    });
+
+    it('every art-plan YAML ID maps back to a floor2-equipment-art-keys.json artKey', () => {
+      const allPlanIds = [
+        ...collectPlanIds('plans/floor2-equipment/floor2-weapons.art.yaml'),
+        ...collectPlanIds('plans/floor2-equipment/floor2-armor.art.yaml'),
+      ];
+      // Build the expected set of kebab IDs from the JSON manifest.
+      const expectedKebabIds = new Set(
+        FLOOR2_EQUIPMENT_ART_ENTRIES.map((e) => e.artKey.replace(/\./g, '-')),
+      );
+      const unknown = allPlanIds.filter((id) => !expectedKebabIds.has(id));
+      expect(
+        unknown,
+        `art-plan IDs with no matching manifest entry: ${unknown.join(', ')}`,
+      ).toEqual([]);
+    });
+
+    it('no duplicate IDs within each art-plan YAML', () => {
+      for (const relPath of [
+        'plans/floor2-equipment/floor2-weapons.art.yaml',
+        'plans/floor2-equipment/floor2-armor.art.yaml',
+      ]) {
+        const ids = collectPlanIds(relPath);
+        const seen = new Set<string>();
+        const dups: string[] = [];
+        for (const id of ids) {
+          if (seen.has(id)) dups.push(id);
+          seen.add(id);
+        }
+        expect(dups, `duplicate IDs in ${relPath}: ${dups.join(', ')}`).toEqual([]);
+      }
     });
   });
 });

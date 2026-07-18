@@ -84,16 +84,24 @@ export const FLOOR2_ARMOR_ART_ENTRIES: readonly Floor2EquipmentArtEntry[] =
 /**
  * Derive the manifest placeholder key for an art entry. This is the key used
  * in the generated sprite manifest (`public/assets/generated/manifest.json`).
- * Convention: `<artKey>-placeholder` (e.g. `weapon.iron-cleaver-placeholder`).
+ *
+ * Identity model: the sprite pipeline uses kebab-case briefIds (no dots).
+ * Dots in the artKey are converted to hyphens so that `normalizeConcept(briefId)`
+ * equals `normalizeConcept(artPlanId)` — making the placeholder audit link
+ * placeholder art to real approved art from the production-wave plans.
+ *
+ * Convention: `<artKey.replace('.', '-')>-placeholder`
+ *   e.g. `weapon.iron-cleaver` → `weapon-iron-cleaver-placeholder`
  */
 export function floor2EquipmentPlaceholderKey(artKey: string): string {
-  return `${artKey}-placeholder`;
+  return `${artKey.replace(/\./g, '-')}-placeholder`;
 }
 
 /**
  * Derive the placeholder PNG filename for an art entry.
- * Convention: `<artKey>-placeholder.png` (dots preserved — valid file name).
+ * Convention: `<artKey.replace('.', '-')>-placeholder.png`
+ *   e.g. `weapon.iron-cleaver` → `weapon-iron-cleaver-placeholder.png`
  */
 export function floor2EquipmentPlaceholderPng(artKey: string): string {
-  return `${artKey}-placeholder.png`;
+  return `${artKey.replace(/\./g, '-')}-placeholder.png`;
 }

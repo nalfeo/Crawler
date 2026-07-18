@@ -1,6 +1,6 @@
 id: floor2-armor
 title: 'Floor 2 Equipment — Armor and Accessories'
-summary: "Production-wave art backlog for all 20 stable Floor 2 non-weapon equipment base keys: 4 head, 4 torso, 3 hands, 3 feet, and 6 accessory slots. Each entry is backed by a deterministic procedural placeholder (sourceRun: placeholder) and needs real authored pixel art generated via the sprite pipeline. The stable art key and runtime lookup key are in each entry's integration.id. All entries are non-overlapping with the Floor 1 gear art plan."
+summary: 'Production-wave art backlog for all 20 stable Floor 2 non-weapon equipment base keys: 4 head, 4 torso, 3 hands, 3 feet, and 6 accessory slots. Each entry is backed by a deterministic procedural placeholder (sourceRun: placeholder) and needs real authored pixel art generated via the sprite pipeline. All entries are non-overlapping with the Floor 1 gear art plan.'
 assets:
   # ── Head (4) ───────────────────────────────────────────────────────────────
   - id: head-iron-visor
@@ -8,36 +8,24 @@ assets:
     label: 'Iron Visor'
     brief: 'Iron Visor — a centered small object icon on a transparent background. A heavy iron helm with a full face visor, shown face-on with the visor closed and eye slits visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: head.iron-visor
 
   - id: head-quartermaster-cap
     type: item
     label: 'Quartermaster Cap'
     brief: 'Quartermaster Cap — a centered small object icon on a transparent background. A peaked cap with a supply corps insignia badge, shown in a three-quarter side view with the badge visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: head.quartermaster-cap
 
   - id: head-batfolk-hood
     type: item
     label: 'Batfolk Hood'
     brief: 'Batfolk Hood — a centered small object icon on a transparent background. A dark hood with ear-shaped fins on top, shown in a slight front-angle view with the ear shapes clear.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: head.batfolk-hood
 
   - id: head-alchemist-goggles
     type: item
     label: 'Alchemist Goggles'
     brief: 'Alchemist Goggles — a centered small object icon on a transparent background. Round leather-framed magnifying goggles with tinted lenses, shown face-on with both lenses visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: head.alchemist-goggles
 
   # ── Torso (4) ──────────────────────────────────────────────────────────────
   - id: torso-chain-hauberk
@@ -45,36 +33,24 @@ assets:
     label: 'Chain Hauberk'
     brief: 'Chain Hauberk — a centered small object icon on a transparent background. A mid-length chainmail coat, the torso silhouette with chainmail texture and coif collar visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: torso.chain-hauberk
 
   - id: torso-velvet-coat
     type: item
     label: 'Velvet Coat'
     brief: 'Velvet Coat — a centered small object icon on a transparent background. A long deep-burgundy velvet coat with brass buttons, shown in a three-quarter view with lapels visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: torso.velvet-coat
 
   - id: torso-scavenger-harness
     type: item
     label: 'Scavenger Harness'
     brief: 'Scavenger Harness — a centered small object icon on a transparent background. A leather chest harness with multiple loops and pouches, shown face-on with straps and pouches visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: torso.scavenger-harness
 
   - id: torso-runed-cuirass
     type: item
     label: 'Runed Cuirass'
     brief: 'Runed Cuirass — a centered small object icon on a transparent background. A breastplate inscribed with glowing magical runes, shown face-on with rune engravings lit.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: torso.runed-cuirass
 
   # ── Hands (3) ──────────────────────────────────────────────────────────────
   - id: hands-duelist-gloves
@@ -82,27 +58,18 @@ assets:
     label: 'Duelist Gloves'
     brief: 'Duelist Gloves — a centered small object icon on a transparent background. Slim leather dueling gloves with reinforced knuckles, both gloves slightly overlapping from a slight angle.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: hands.duelist-gloves
 
   - id: hands-thorn-gauntlets
     type: item
     label: 'Thorn Gauntlets'
     brief: 'Thorn Gauntlets — a centered small object icon on a transparent background. Heavy gauntlets with outward-facing bone spikes on the knuckles, shown face-on with spikes clearly visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: hands.thorn-gauntlets
 
   - id: hands-tinker-grips
     type: item
     label: 'Tinker Grips'
     brief: 'Tinker Grips — a centered small object icon on a transparent background. Padded fingerless grips with tool loops and a wrist brace, a single grip from a slight side angle.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: hands.tinker-grips
 
   # ── Feet (3) ───────────────────────────────────────────────────────────────
   - id: feet-iron-greaves
@@ -110,27 +77,18 @@ assets:
     label: 'Iron Greaves'
     brief: 'Iron Greaves — a centered small object icon on a transparent background. Solid iron greaves covering the full shin and foot, the pair side by side slightly angled.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: feet.iron-greaves
 
   - id: feet-shadow-boots
     type: item
     label: 'Shadow Boots'
     brief: 'Shadow Boots — a centered small object icon on a transparent background. Supple dark leather boots that muffle footsteps, one boot in a three-quarter side view with sole visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: feet.shadow-boots
 
   - id: feet-merchant-sandals
     type: item
     label: 'Merchant Sandals'
     brief: 'Merchant Sandals — a centered small object icon on a transparent background. Well-worn open sandals with thick woven straps, shown from above at a slight angle.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: feet.merchant-sandals
 
   # ── Accessory (6) ──────────────────────────────────────────────────────────
   - id: accessory-blood-vial
@@ -138,51 +96,33 @@ assets:
     label: 'Blood Vial'
     brief: 'Blood Vial — a centered small object icon on a transparent background. A small sealed vial of dark crimson blood, the vial centered with the red contents visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: accessory.blood-vial
 
   - id: accessory-compass-charm
     type: item
     label: 'Compass Charm'
     brief: 'Compass Charm — a centered small object icon on a transparent background. A worn brass compass on a leather cord, shown face-on with the needle pointing.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: accessory.compass-charm
 
   - id: accessory-lucky-feather
     type: item
     label: 'Lucky Feather'
     brief: 'Lucky Feather — a centered small object icon on a transparent background. A bright iridescent feather tied with a colored cord, shown in a gentle arc.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: accessory.lucky-feather
 
   - id: accessory-gearwork-locket
     type: item
     label: 'Gearwork Locket'
     brief: 'Gearwork Locket — a centered small object icon on a transparent background. A heart-shaped brass locket with a tiny gear mechanism visible through a crystal window, shown with the window visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: accessory.gearwork-locket
 
   - id: accessory-warding-bell
     type: item
     label: 'Warding Bell'
     brief: 'Warding Bell — a centered small object icon on a transparent background. A small iron bell engraved with protective runes, shown in a three-quarter view with rune engravings visible.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: accessory.warding-bell
 
   - id: accessory-surveyor-map
     type: item
     label: 'Surveyor Map'
     brief: 'Surveyor Map — a centered small object icon on a transparent background. A folded parchment map with survey markings and red route lines, partially unfolded from a slight angle.'
     placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: accessory.surveyor-map
