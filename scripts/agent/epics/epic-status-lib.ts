@@ -1210,12 +1210,34 @@ function validateDag(
   }
 }
 
-function isNonFileEvidenceReference(candidate: string): boolean {
+/**
+ * Returns true if the candidate looks like a URI-scheme reference (not a
+ * file path).  Used to guard isRepoFile from treating `check:run/123` or
+ * `javascript:...` as relative paths.
+ */
+function hasUriScheme(candidate: string): boolean {
   return /^(?![A-Za-z]:[\\/])[a-z][a-z0-9+.-]*:/i.test(candidate);
 }
 
+/**
+ * Returns true only for the supported `check:` evidence URI scheme.
+ *
+ * Accepted formats:
+ *   check:run/<positive-integer>   – a GitHub Actions workflow run
+ *   check:job/<positive-integer>   – a GitHub Actions job
+ *
+ * Any other scheme (file:, http:, javascript:, etc.) is rejected so an
+ * invented URI cannot satisfy a required evidence kind.  The recorded sha256
+ * is a pre-computed commitment made at evidence-record time; check: references
+ * cannot be re-verified offline (they require the GitHub API), so validation
+ * only confirms the URI format and the associated commit object.
+ */
+function isCheckEvidenceReference(candidate: string): boolean {
+  return /^check:(?:run|job)\/[1-9]\d*$/.test(candidate);
+}
+
 function isRepoFile(repoRoot: string, candidate: string): boolean {
-  if (isNonFileEvidenceReference(candidate)) return false;
+  if (hasUriScheme(candidate)) return false;
   if (isAbsolute(candidate)) return false;
   const root = realpathSync(repoRoot);
   const absolute = resolve(root, candidate);
@@ -1348,11 +1370,11 @@ function validateEvidenceRequirements(
       }
       continue;
     }
-    if (!isNonFileEvidenceReference(evidence.path_or_check)) {
+    if (!isCheckEvidenceReference(evidence.path_or_check)) {
       result.errors.push({
         code: 'evidence.unsafe-path',
         node_id: node.node_id,
-        message: `${node.node_id} evidence path is not a repo file or recognized non-file reference: ${evidence.path_or_check}`,
+        message: `${node.node_id} evidence path is not a repo file or valid check: reference: ${evidence.path_or_check}`,
       });
       continue;
     }

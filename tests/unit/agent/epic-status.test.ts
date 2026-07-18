@@ -515,6 +515,75 @@ describe('Floor 2 equipment epic status', () => {
     expect(codes).toContain('evidence.unsafe-path');
   });
 
+  it('accepts valid check:run/<id> evidence references', () => {
+    const state = cloneState();
+    validateA0(state);
+    // Replace the offline-validator evidence (index 2) with a check: reference
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'check:run/12345678',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    // No evidence.unsafe-path — check:run/<id> is an allowlisted scheme
+    expect(codes).not.toContain('evidence.unsafe-path');
+  });
+
+  it('accepts valid check:job/<id> evidence references', () => {
+    const state = cloneState();
+    validateA0(state);
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'check:job/99999999',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).not.toContain('evidence.unsafe-path');
+  });
+
+  it('rejects arbitrary URI schemes as evidence references', () => {
+    const state = cloneState();
+    validateA0(state);
+    // A non-check: scheme must be rejected even if syntactically URI-like
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'fake:anything',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('evidence.unsafe-path');
+  });
+
+  it('rejects check: URI with unsupported resource type', () => {
+    const state = cloneState();
+    validateA0(state);
+    // check:workflow/<id> is not an allowlisted resource type
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'check:workflow/12345678',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('evidence.unsafe-path');
+  });
+
+  it('rejects javascript: URI scheme as evidence reference', () => {
+    const state = cloneState();
+    validateA0(state);
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'javascript:alert(1)',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('evidence.unsafe-path');
+  });
+
   it('rejects issue URL that does not match the issue number', () => {
     const state = cloneState();
     const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
