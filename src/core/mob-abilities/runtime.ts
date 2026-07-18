@@ -174,7 +174,8 @@ function targetPosition(
  * health. This preserves target identity across the telegraph window: if the
  * locked player EID is recycled into any other health-bearing entity,
  * {@link resolveCast} takes the invalid-target cleanup path instead of resolving
- * against the wrong target.
+ * against the wrong target. The existence/Health guards stay first so obviously
+ * invalid or dead entities exit before the stricter Player-identity check.
  */
 function isTargetValid(world: GameWorld, targetEid: number | null): boolean {
   if (targetEid === null || !entityExists(world.ecs, targetEid)) return false;

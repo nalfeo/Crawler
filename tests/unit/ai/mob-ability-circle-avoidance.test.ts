@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
+import { createVerdigrisGlamourDefinition } from '../../../src/core/index.js';
 import { spawnPlayer } from '../../../src/core/spawners/combatants.js';
 import { createInputState } from '../../../src/shared/input.js';
 import { createTestWorld } from '../../helpers/world-factory.js';
@@ -16,14 +17,15 @@ describe('BehaviorTreeAI mob-ability circle avoidance', () => {
     selectFloor1StarterWeapon(world, 0);
     world.stores.position.x[player] = 12;
     world.stores.position.y[player] = 0;
+    const def = createVerdigrisGlamourDefinition();
     world.mobAbilities.cues.push({
-      abilityId: 'queen-mab-verdigris-glamour',
+      abilityId: def.abilityId,
       casterEid: 99,
       phase: 'telegraph',
       telegraphProgress: 0.5,
       geometry: { kind: 'circle', x: 0, y: 0, radiusFt: 12 },
-      dangerColor: 'hostile-red',
-      announcementText: 'VERDIGRIS GLAMOUR — All that glitters will corrode!',
+      dangerColor: def.dangerColor,
+      announcementText: def.announcementText,
     });
 
     const ai = new BehaviorTreeAI({ seed: 42 });

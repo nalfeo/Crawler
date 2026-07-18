@@ -337,8 +337,8 @@ describe('Verdigris Glamour — Tarnished status effect', () => {
     h.world.stores.health.current[h.player] = 0;
     healthSystem(h.world);
 
-    expect(h.world.state).toBe('game_over');
     expect(getStatusEffects(h.world, h.player)).toHaveLength(0);
+    expect(h.world.state).toBe('game_over');
 
     arm(h);
     step(h.world, FIRST_TELEGRAPH_FRAME + 5);
