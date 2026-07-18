@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9bc0eaaca070651ba82b4332bd3b06c34152d1e7",
+    "commitDate": "2026-07-18T12:07:24Z",
+    "commitSubject": "Add `butcher-hook` weapon brief for Floor 2 asset-request pipeline (#1397)",
+    "capturedAt": "2026-07-18T13:42:27.912Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29644660125",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/9bc0eaaca070651ba82b4332bd3b06c34152d1e7.json"
+  },
+  {
     "commit": "91d07a4aaeda8c47d17a6f64e76369b946dabff3",
     "commitDate": "2026-07-18T12:07:16Z",
     "commitSubject": "feat(weapon): add sun-hammer Floor 2 bludgeon weapon with sprite brief and placeholder (#1378)",
