@@ -409,6 +409,33 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(GENERATED_KEY_BY_NPC_DEF).toEqual(expectedByDef);
   });
 
+  it('loads and preloads the shipped Floor 2 tower-spear runtime key from the real manifest', async () => {
+    if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
+      return;
+    }
+    const runtimeKey = 'equipment/weapon/tower-spear';
+    const entry = sharedRealRegistry.lookup(runtimeKey);
+    expect(entry, `missing shipped generated-manifest entry for ${runtimeKey}`).not.toBeNull();
+    expect(entry?.textureKey).toBe(runtimeKey);
+    expect(entry?.assetPath).toBe('generated/equipment/weapon/tower-spear.png');
+    expect(entry?.sourceRun).not.toBe('placeholder');
+
+    const queued: Array<{ textureKey: string; url: string }> = [];
+    preloadGeneratedSprites(
+      { image: (textureKey, url) => queued.push({ textureKey, url }) },
+      sharedRealRegistry,
+    );
+    expect(queued).toContainEqual({
+      textureKey: runtimeKey,
+      url: '/assets/generated/equipment/weapon/tower-spear.png',
+    });
+    expect(
+      existsSync(
+        path.resolve(__dirname, '../../public/assets/generated/equipment/weapon/tower-spear.png'),
+      ),
+    ).toBe(true);
+  });
+
   it('wires all Floor-1 harvestable nodes to real approved art, not placeholders', async () => {
     if (!existsSync(REPO_MANIFEST)) {
       // Fresh checkout without generated art on disk — nothing to observe.
