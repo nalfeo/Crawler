@@ -22,6 +22,14 @@
           "concerns_count": 3,
           "resolved_count": 3,
           "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "1. ADR 0065 and spec section missing — created ADR + added Floor 2 Generated Equipment Contract section to equipment-system.md. 2. Shallow freeze — replaced deepFreezeInstance with deepCloneAndFreeze (recursive clone+freeze); clone before validation to prevent mutation races. 3. hydrateRegistry accepts trusted type without shape guards — changed to accept unknown, added guardRawInstance() checking frozen/resolvedEffects/statBonuses shapes. 4. Property isolation test trivially returns true — fixed with valid disjoint IDs (ordinals 1000+), getRegistrySize size assertions, and both isolation directions verified."
         }
       ]
     }

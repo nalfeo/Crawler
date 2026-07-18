@@ -51,7 +51,6 @@ contracts and a world-owned generated-item registry keyed by stable instance ide
 | `RARITY_INHERENT_SCALAR`   | common=1.00, uncommon=1.05, rare=1.10 |
 | `RARITY_EFFECT_BUDGET`     | common=0, uncommon=1, rare=2          |
 | `ENHANCEMENT_MIN/MAX`      | 0 / 5                                 |
-| `ENHANCEMENT_STEP_PERCENT` | 0.05                                  |
 
 ## Plan review summary
 
@@ -72,6 +71,13 @@ Reviewed by `claude-sonnet-4.6` (round 1). 3 concerns raised, all resolved:
 1. (High) `validateInstanceStructure` could throw on null `frozen`/`statBonuses` — added null guards
 2. (Medium) `Object.freeze` was shallow — replaced with `deepFreezeInstance()`
 3. (Medium) Property test isolation check was vacuous — rewritten with disjoint ID spaces + real fail path
+
+Reviewed by `copilot-pull-request-reviewer` (round 2 — CI recovery). 4 concerns raised, all resolved:
+
+1. (Blocking) ADR 0065 and spec section missing — created `docs/knowledge/adr/0065-versioned-frozen-floor2-equipment-instances.md` + Floor 2 Generated Equipment Contract section in `equipment-system.md`
+2. (Blocking) Shallow freeze: `deepFreezeInstance` was a shallow clone+freeze — replaced with `deepCloneAndFreeze<T>` (recursive) and clone before validation so caller mutations cannot race with fingerprinting
+3. (Blocking) `hydrateRegistry` accepted trusted typed input without shape guards — changed to `unknown`, added `guardRawInstance()` with null/object/array checks for `frozen`, `statBonuses`, `resolvedEffects` elements
+4. (Blocking) Property isolation test returned `true` trivially (invalid remapped IDs + discarded sizes) — fixed: uses `createInstanceId('w2', 1000 + i)` for valid disjoint IDs, asserts `getRegistrySize` matches registered count, verifies both world1→world2 and world2→world1 directions
 
 ## Test coverage
 
