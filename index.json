@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e03ee7b2fb0647d8ab56f707d48439e6b67c4f27",
+    "commitDate": "2026-07-18T20:19:00Z",
+    "commitSubject": "Add harpoon-gun Floor 2 equipment weapon icon (placeholder + pipeline brief) (#1443)",
+    "capturedAt": "2026-07-18T21:27:44.320Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29659795714",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/e03ee7b2fb0647d8ab56f707d48439e6b67c4f27.json"
+  },
+  {
     "commit": "8e7ef488e2eeea19bbe9d4baa8cf8be868aaed00",
     "commitDate": "2026-07-18T19:12:54Z",
     "commitSubject": "feat(sprites): add bone-chakram Floor 2 thrown-weapon — brief, item def, placeholder, wiring (#1429)",
