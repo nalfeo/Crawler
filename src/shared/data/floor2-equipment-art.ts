@@ -399,4 +399,3 @@ function buildProductionWaves(): readonly Floor2EquipmentProductionWave[] {
 }
 
 export const FLOOR2_EQUIPMENT_PRODUCTION_WAVES = buildProductionWaves();
-
