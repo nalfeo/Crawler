@@ -722,6 +722,59 @@ test('shouldResolveThread accepts latest trusted commit URL marker on head linea
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
 });
 
+test('shouldResolveThread auto-resolves outdated thread without any marker (deterministic non-applicability)', () => {
+  // GitHub marks a thread isOutdated when the specific lines it referenced have
+  // changed since the review was posted.  This is "deterministic non-applicability"
+  // per ADR 0058 DEC-008 and must not block recovery indefinitely.
+  const thread = {
+    isOutdated: true,
+    comments: {
+      nodes: [
+        {
+          body: 'Spelling is inconsistent — consider changing "colour" to "color".',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread auto-resolves outdated thread even when last comment is untrusted reviewer', () => {
+  // isOutdated takes precedence: the referenced code changed, making the thread
+  // non-applicable regardless of comment authorship.
+  const thread = {
+    isOutdated: true,
+    comments: {
+      nodes: [
+        {
+          body: 'Still concerned about this.',
+          authorAssociation: 'NONE',
+          author: { login: 'external-reviewer' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread does not auto-resolve non-outdated thread without marker', () => {
+  const thread = {
+    isOutdated: false,
+    comments: {
+      nodes: [
+        {
+          body: 'This needs fixing.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
   const runs = [
     { id: 100, name: 'CI', status: 'completed', conclusion: 'failure' },

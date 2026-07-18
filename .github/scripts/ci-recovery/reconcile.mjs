@@ -1268,7 +1268,11 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
     path: thread.path || undefined,
-    line: thread.line || undefined,
+    // Intentionally omit `line`: for outdated threads GitHub changes `line`
+    // from a valid number to null, causing a spurious fingerprint change that
+    // resets the attempt counter.  The thread identity is already stable via
+    // `reviewThreadBlockerId` (thread ID + comment digest); `line` is redundant
+    // for deduplication and only introduces instability.
     summary: `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 500)}`,
     url: root?.url,
   });
