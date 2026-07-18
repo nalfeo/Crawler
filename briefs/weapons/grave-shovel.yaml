@@ -19,9 +19,9 @@ description: |
 # Vertical orientation and 4x4 sheet inherited from data/sprite-types/weapon.json.
 # anchor.x=32 (center), anchor.y=56 (grip base) — inherited defaults are correct.
 # judge.enabled=true inherited — VLM judge active for quality filtering.
-# Runtime mapping: stable id `weapon.grave-shovel` -> key `equipment/weapon/grave-shovel`
-# (from FLOOR2_EQUIPMENT_ART_DEFINITIONS issue metadata for this asset request).
 variations:
   - cracked wooden haft with iron reinforcing bands
   - wider, more rounded spade head with a visible edge nick
+# `minVariations` is the total post-expansion target; the runner may top these
+# two authored seeds up to six final variation prompts when a text provider exists.
 minVariations: 6
