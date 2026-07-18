@@ -1,5 +1,16 @@
 [
   {
+    "commit": "c5530faeaf25055a8d0ce6a08c459aed734af3f3",
+    "commitDate": "2026-07-18T18:01:36Z",
+    "commitSubject": "feat(assets): add alchemist-goggles Floor 2 equipment icon brief (#1502)",
+    "capturedAt": "2026-07-18T19:22:57.041Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29655517638",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/c5530faeaf25055a8d0ce6a08c459aed734af3f3.json"
+  },
+  {
     "commit": "87515622be18bede3c03d0788b98f600c876850a",
     "commitDate": "2026-07-18T17:37:19Z",
     "commitSubject": "feat(sprites): author ice-pick weapon brief for Floor 2 equipment (weapon.ice-pick) (#1426)",
