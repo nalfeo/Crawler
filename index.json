@@ -1,5 +1,16 @@
 [
   {
+    "commit": "84489aa693a18831b68c024630cf268eed35bd35",
+    "commitDate": "2026-07-18T01:32:39Z",
+    "commitSubject": "feat(floor2): guarantee one Quartermaster in every Floor 2 settlement (#1294)",
+    "capturedAt": "2026-07-18T07:19:40.140Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29629496076",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/84489aa693a18831b68c024630cf268eed35bd35.json"
+  },
+  {
     "commit": "72efe9dd1ae576d02f92bc332f81f40927ac658d",
     "commitDate": "2026-07-18T00:42:48Z",
     "commitSubject": "fix(ci-recovery): converge stale loops by auto-resolving outdated review threads (#1299)",
