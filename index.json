@@ -1,5 +1,16 @@
 [
   {
+    "commit": "87515622be18bede3c03d0788b98f600c876850a",
+    "commitDate": "2026-07-18T17:37:19Z",
+    "commitSubject": "feat(sprites): author ice-pick weapon brief for Floor 2 equipment (weapon.ice-pick) (#1426)",
+    "capturedAt": "2026-07-18T18:54:42.546Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29654895875",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/87515622be18bede3c03d0788b98f600c876850a.json"
+  },
+  {
     "commit": "598775a3e1c608b6e46c461b3fa94f392da9422b",
     "commitDate": "2026-07-18T17:05:13Z",
     "commitSubject": "feat(assets): add tower-spear Floor 2 weapon icon (#1404)",
