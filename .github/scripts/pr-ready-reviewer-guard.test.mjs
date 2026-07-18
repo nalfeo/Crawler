@@ -56,6 +56,7 @@ function makeLinkedIssue(overrides = {}) {
     title: 'Repair broken automation',
     state: 'OPEN',
     labels: [],
+    repository: { nameWithOwner: REPOSITORY },
     ...overrides,
   };
 }
@@ -297,6 +298,14 @@ for (const [name, mutate, expectedReason] of [
   ['non-empty diff', (input) => (input.changedFiles = 2), 'changed-files=2'],
   ['missing linked issue', (input) => (input.linkedIssues = []), 'linked-issue-count=0'],
   [
+    'cross-repo linked issue only (no same-repo issues)',
+    (input) =>
+      (input.linkedIssues = [
+        makeLinkedIssue({ repository: { nameWithOwner: 'nalfeo/OtherRepo' } }),
+      ]),
+    'linked-issue-count=0',
+  ],
+  [
     'multiple linked issues',
     (input) => (input.linkedIssues = [makeLinkedIssue(), makeLinkedIssue({ number: 1068 })]),
     'linked-issue-count=2',
@@ -360,6 +369,69 @@ for (const [name, mutate, expectedReason] of [
     assert.deepEqual(result, { eligible: false, reason: expectedReason });
   });
 }
+
+test('repair inspection rejects cross-repo issue with same number, passes if only same-repo issue present', () => {
+  // A cross-repo issue with same number as the expected local issue must be filtered out
+  const crossRepoIssue = makeLinkedIssue({
+    id: 'CROSS_REPO_ISSUE_1067',
+    number: 1067,
+    repository: { nameWithOwner: 'nalfeo/OtherRepo' },
+  });
+  const sameRepoIssue = makeLinkedIssue({
+    id: 'ISSUE_1067',
+    number: 1067,
+    repository: { nameWithOwner: REPOSITORY },
+  });
+
+  // Only cross-repo issue → filtered out → count=0
+  const crossOnly = inspectEmptyCopilotDraftRepair({
+    pr: makePr(),
+    changedFiles: 0,
+    linkedIssues: [crossRepoIssue],
+    runs: [makeRun()],
+    repository: REPOSITORY,
+    now: NOW,
+  });
+  assert.deepEqual(crossOnly, { eligible: false, reason: 'linked-issue-count=0' });
+
+  // Cross-repo + same-repo → only same-repo counts → count=1, eligible
+  const mixed = inspectEmptyCopilotDraftRepair({
+    pr: makePr(),
+    changedFiles: 0,
+    linkedIssues: [crossRepoIssue, sameRepoIssue],
+    runs: [makeRun()],
+    repository: REPOSITORY,
+    now: NOW,
+  });
+  assert.equal(mixed.eligible, true);
+  assert.equal(mixed.linkedIssue.id, 'ISSUE_1067');
+});
+
+test('repair inspection confirmation rejects by node id drift, not just number change', () => {
+  // Even if the number matches, a different node id (e.g. cross-repo swap) is rejected
+  const original = inspectEmptyCopilotDraftRepair({
+    pr: makePr(),
+    changedFiles: 0,
+    linkedIssues: [makeLinkedIssue()],
+    runs: [makeRun()],
+    repository: REPOSITORY,
+    now: NOW,
+  });
+  assert.equal(original.eligible, true);
+
+  // Confirmation with same number but different node id → rejected
+  const confirmed = inspectEmptyCopilotDraftRepair({
+    pr: makePr(),
+    changedFiles: 0,
+    linkedIssues: [makeLinkedIssue({ id: 'DIFFERENT_NODE_ID' })],
+    runs: [makeRun()],
+    repository: REPOSITORY,
+    now: NOW,
+    expectedIssueId: original.linkedIssue.id,
+  });
+  assert.deepEqual(confirmed, { eligible: false, reason: 'linked-issue-changed=1067' });
+});
+
 
 test('latestMatchingCopilotCloudRun picks run with newest updated_at even when another has newer created_at', () => {
   // Run A: created earlier but updated (completed) later

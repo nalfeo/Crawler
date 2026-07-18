@@ -200,6 +200,7 @@ export async function listClosingIssues(token, owner, repo, number) {
               title
               state
               labels(first: 100) { nodes { name } }
+              repository { nameWithOwner }
             }
           }
         }

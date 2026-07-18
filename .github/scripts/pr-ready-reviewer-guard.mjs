@@ -152,7 +152,7 @@ export function inspectEmptyCopilotDraftRepair({
   repository,
   now = new Date(),
   graceMs = EMPTY_DRAFT_REPAIR_GRACE_MS,
-  expectedIssueNumber = null,
+  expectedIssueId = null,
 }) {
   const localRejection = localEmptyCopilotDraftRepairRejection({
     pr,
@@ -166,7 +166,10 @@ export function inspectEmptyCopilotDraftRepair({
     };
   }
 
-  const references = Array.isArray(linkedIssues) ? linkedIssues : [];
+  const allReferences = Array.isArray(linkedIssues) ? linkedIssues : [];
+  const references = allReferences.filter((issue) =>
+    sameRepository(issue?.repository?.nameWithOwner, repository),
+  );
   if (references.length !== 1) {
     return { eligible: false, reason: `linked-issue-count=${references.length}` };
   }
@@ -177,7 +180,7 @@ export function inspectEmptyCopilotDraftRepair({
       reason: `linked-issue-state=${String(linkedIssue?.state || 'unknown')}`,
     };
   }
-  if (expectedIssueNumber !== null && Number(linkedIssue?.number) !== Number(expectedIssueNumber)) {
+  if (expectedIssueId !== null && String(linkedIssue?.id || '') !== String(expectedIssueId)) {
     return {
       eligible: false,
       reason: `linked-issue-changed=${String(linkedIssue?.number || 'unknown')}`,
@@ -292,7 +295,7 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
     repository,
     now,
     graceMs,
-    expectedIssueNumber: initialDecision.linkedIssue.number,
+    expectedIssueId: initialDecision.linkedIssue.id,
   });
 
   if (!confirmedDecision.eligible) {
