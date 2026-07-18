@@ -1,28 +1,28 @@
 type: weapon
 name: boarding-axe
+floor: 2
 description: |
-  A boarding axe held vertically, head at the top, haft pointing straight
-  down. The head has a wide, crescent-curved blade — broad at the cutting
-  edge and tapering back toward the eye/socket. The back spine of the head
-  is a short blunt poll. Short-to-medium wooden haft, not a polearm —
-  roughly the length of a hand axe to a hatchet. The cutting edge faces
-  left, blade curving outward so the silhouette clearly reads "axe" at
-  native size. Iron or steel head with 3–5 tonal stops: mid-grey base,
-  cool blue-grey highlight along the cutting edge bevel, darker shadow at
-  the socket joint, rust-brown pitting or salt weathering on the flat.
-  Dark brown wooden haft; optional rope or leather wrap at the collar just
-  below the head. Simple pommel cap or butt-spike at the grip end. No
-  glow, no enchantment, no blood, no decorative runes.
-  The silhouette must read as "axe" — not a sword, not a hammer — at a
-  glance when the whole sprite is rendered as a solid silhouette.
-# Vertical orientation, 4×4 sheet, palette, anchor, judge — all inherited
-# from data/sprite-types/weapon.json. This brief only captures what makes a
-# boarding axe specifically a boarding axe.
+  A short-hafted boarding axe held vertically, spike at the top, grip at the
+  bottom. The axe head is wide and asymmetric — a large single-bevel blade
+  flaring to one side, with a sturdy back-spike on the opposing side for
+  breaching doors and prying open hatches. The haft is thick, well-worn wood
+  with a wrapped grip of dark cord or leather; a simple iron butt-cap at the
+  base. Blade is dull iron-grey with rust-brown staining along the edge bevel
+  and one thin highlight catching light on the sharpened edge. Back spike is
+  dark iron, blunt and utilitarian. Three to five color stops: dark iron
+  shadow, mid-tone grey blade body, rust-brown edge staining, weathered
+  brown wood haft, dark grip wrap. No enchantment, no glow, no gore, no
+  decorative motifs. Silhouette must read unmistakably as an axe — not a
+  sword, not a mace — at a glance due to the wide, asymmetric blade head.
+  The tool has clearly seen dungeon use: nicks on the edge, scuffs on the haft.
+# Vertical orientation inherited from data/sprite-types/weapon.json —
+# grip at bottom (y=56), blade-head at top. Wide asymmetric axe head means
+# the silhouette axis tilts slightly toward the blade side; anchor stays at
+# the default grip center (32,56).
 #
-# Variations seed: strong cues we want guaranteed in the sheet. minVariations:8
-# tells the runner to top these up to 8 total via Azure chat completions.
+# Floor 2 context: darker palette choices are fine, more brutal
+# character — but readability at 64x64 still comes first.
 variations:
-  - double-bit blade (matching blade on both sides of the eye)
-  - rope-wrapped haft with a lanyard loop at the butt
-  - barnacle-encrusted blade edge with heavy salt pitting
-minVariations: 8
+  - narrower spike, heavier rust staining across full blade
+  - double-bevel edge instead of single, slightly longer haft
+minVariations: 6

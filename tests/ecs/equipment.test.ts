@@ -6,6 +6,7 @@ import { Health } from '../../src/core/components.js';
 import {
   initializeBaseStats,
   equip,
+  addGeneratedEquipmentToBag,
   equipFromBag,
   unequip,
   canEquip,
@@ -15,6 +16,11 @@ import {
   setEntityTags,
   registerCustomRequirement,
 } from '../../src/core/systems/equipmentSystem.js';
+import {
+  createGeneratedEquipmentInstance,
+  getGeneratedEquipmentInstance,
+} from '../../src/core/generated-equipment-registry.js';
+import { getEntityEncumbranceSnapshot } from '../../src/core/encumbrance.js';
 import { statSystem } from '../../src/core/systems/statSystem.js';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
 import { CORE_STAT_TO_SECONDARY, DEFAULT_BASE_STATS } from '../../src/shared/stats.js';
@@ -25,9 +31,23 @@ import {
   _registerEquipmentDefForTest,
   _clearEquipmentDefsForTest,
 } from '../../src/shared/equipmentDefs.js';
-import { addItem, hasItem, getItemCount, type InventoryBag } from '../../src/shared/inventory.js';
+import {
+  addGeneratedEquipmentReference,
+  addItem,
+  createInventoryBag,
+  hasGeneratedEquipmentReference,
+  hasItem,
+  getItemCount,
+  type InventoryBag,
+} from '../../src/shared/inventory.js';
 import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
+import {
+  FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+  type GeneratedEquipmentCreateInputV1,
+  type GeneratedEquipmentInstanceV1,
+} from '../../src/shared/generated-equipment-types.js';
 
 // --- Test helpers ---
 
@@ -62,6 +82,51 @@ function setupEntity(world: GameWorld): number {
   const eid = addEntity(world.ecs);
   initializeBaseStats(world, eid);
   return eid;
+}
+
+function createGeneratedTestEquipment(
+  world: GameWorld,
+  options: {
+    readonly baseId?: string;
+    readonly displayName?: string;
+    readonly slots?: EquipmentItemDef['slots'];
+    readonly statBonuses?: EquipmentItemDef['statBonuses'];
+    readonly weightLb?: number;
+    readonly abilityGrant?: string;
+  } = {},
+): GeneratedEquipmentInstanceV1 {
+  const abilityGrant = options.abilityGrant;
+  const input: GeneratedEquipmentCreateInputV1 = {
+    baseId: options.baseId ?? 'armor.test-helm',
+    itemLevel: 3,
+    rarity: abilityGrant ? 'uncommon' : 'common',
+    enhancementLevel: 0,
+    resolvedEffects: abilityGrant
+      ? [
+          {
+            schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+            effectId: abilityGrant,
+            effectOrdinal: 0,
+            unitCost: 1,
+            kind: 'abilityGrant',
+            grantId: abilityGrant,
+          },
+        ]
+      : [],
+    frozen: {
+      schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+      displayName: options.displayName ?? 'Generated Test Helm',
+      artKey: 'equipment.test-helm',
+      slots: options.slots ?? ['head'],
+      tags: ['armor'],
+      weightLb: options.weightLb ?? 0,
+      statBonuses: options.statBonuses ?? {},
+      abilityGrants: abilityGrant ? [abilityGrant] : [],
+      passiveGrants: [],
+      activeWeaponSnapshot: null,
+    },
+  };
+  return createGeneratedEquipmentInstance(world, input);
 }
 
 describe('Equipment System', () => {
@@ -616,6 +681,202 @@ describe('equipFromBag', () => {
   });
 });
 
+describe('generated equipment inventory transfers', () => {
+  let world: GameWorld;
+  let entity: number;
+  let bag: InventoryBag;
+
+  beforeEach(() => {
+    world = createTestWorld({ generatedEquipmentRunKey: 'b2-equipment-test' });
+    world.state = 'safe_room';
+    entity = setupEntity(world);
+    bag = createInventoryBag();
+    world.inventories.set(entity, bag);
+  });
+
+  it('moves one exact registry key from bag to slots without copying the registry record', () => {
+    const generated = createGeneratedTestEquipment(world, {
+      statBonuses: { armor: 7 },
+      weightLb: 12,
+    });
+    const registryRecord = getGeneratedEquipmentInstance(world, generated.instanceId);
+    expect(addGeneratedEquipmentToBag(world, entity, generated.instanceId).ok).toBe(true);
+
+    const result = equipFromBag(world, entity, {
+      kind: 'generated-instance',
+      instanceKey: generated.instanceId,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      instanceId: generated.instanceId,
+      swappedOut: [],
+      swappedOutEntries: [],
+    });
+    expect(hasGeneratedEquipmentReference(bag, generated.instanceId)).toBe(false);
+    const state = getEquipmentState(world, entity)!;
+    expect(state.equipped.head).toBe(generated.instanceId);
+    expect(state.instances.has(generated.instanceId)).toBe(false);
+    expect(getGeneratedEquipmentInstance(world, generated.instanceId)).toBe(registryRecord);
+    expect(getEffectiveStats(world, entity).armor).toBe(7);
+    expect(getEntityEncumbranceSnapshot(world, entity).equippedWeightLb).toBe(12);
+  });
+
+  it('moves a multi-slot key back to the bag atomically from either occupied slot', () => {
+    const generated = createGeneratedTestEquipment(world, {
+      slots: ['mainHand', 'offHand'],
+      weightLb: 25,
+    });
+    addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+    expect(
+      equipFromBag(world, entity, {
+        kind: 'generated-instance',
+        instanceKey: generated.instanceId,
+      }).ok,
+    ).toBe(true);
+    expect(getEntityEncumbranceSnapshot(world, entity).equippedWeightLb).toBe(25);
+
+    const result = unequip(world, entity, 'offHand');
+
+    expect(result).toEqual({
+      ok: true,
+      item: expect.objectContaining({ instanceId: generated.instanceId }),
+      entry: { kind: 'generated-instance', instanceKey: generated.instanceId },
+      bagUpdated: true,
+    });
+    expect(getEquipmentState(world, entity)!.equipped.mainHand).toBeNull();
+    expect(getEquipmentState(world, entity)!.equipped.offHand).toBeNull();
+    expect(hasGeneratedEquipmentReference(bag, generated.instanceId)).toBe(true);
+    expect(getEntityEncumbranceSnapshot(world, entity).equippedWeightLb).toBe(0);
+  });
+
+  it('keeps same-base generated instances distinct during an exact-key swap', () => {
+    const first = createGeneratedTestEquipment(world, {
+      baseId: 'armor.shared-base',
+      displayName: 'First Helm',
+      statBonuses: { armor: 2 },
+    });
+    const second = createGeneratedTestEquipment(world, {
+      baseId: 'armor.shared-base',
+      displayName: 'Second Helm',
+      statBonuses: { armor: 9 },
+    });
+    addGeneratedEquipmentToBag(world, entity, first.instanceId);
+    equipFromBag(world, entity, {
+      kind: 'generated-instance',
+      instanceKey: first.instanceId,
+    });
+    addGeneratedEquipmentToBag(world, entity, second.instanceId);
+
+    const result = equipFromBag(world, entity, {
+      kind: 'generated-instance',
+      instanceKey: second.instanceId,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      instanceId: second.instanceId,
+      swappedOut: [first.instanceId],
+      swappedOutEntries: [{ kind: 'generated-instance', instanceKey: first.instanceId }],
+    });
+    expect(getEquipmentState(world, entity)!.equipped.head).toBe(second.instanceId);
+    expect(hasGeneratedEquipmentReference(bag, first.instanceId)).toBe(true);
+    expect(hasGeneratedEquipmentReference(bag, second.instanceId)).toBe(false);
+    expect(getEffectiveStats(world, entity).armor).toBe(9);
+  });
+
+  it('preserves legacy static behavior across generated/static swaps', () => {
+    const generated = createGeneratedTestEquipment(world);
+    expect(equip(world, entity, getEquipmentDefForItem('iron-helm')!, { force: true }).ok).toBe(
+      true,
+    );
+    addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+
+    const generatedResult = equipFromBag(world, entity, {
+      kind: 'generated-instance',
+      instanceKey: generated.instanceId,
+    });
+    expect(generatedResult.ok).toBe(true);
+    expect(getItemCount(bag, 'iron-helm')).toBe(1);
+    expect(getEquipmentState(world, entity)!.equipped.head).toBe(generated.instanceId);
+
+    addItem(bag, 'iron-helm', 1);
+    const staticResult = equipFromBag(world, entity, 'iron-helm');
+    expect(staticResult.ok).toBe(true);
+    if (staticResult.ok) {
+      expect(staticResult.swappedOutEntries).toEqual([
+        { kind: 'generated-instance', instanceKey: generated.instanceId },
+      ]);
+    }
+    expect(hasGeneratedEquipmentReference(bag, generated.instanceId)).toBe(true);
+    expect(typeof getEquipmentState(world, entity)!.equipped.head).toBe('number');
+  });
+
+  it('rejects generated unequip when the exact key also appears in the bag', () => {
+    const generated = createGeneratedTestEquipment(world);
+    addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+    equipFromBag(world, entity, {
+      kind: 'generated-instance',
+      instanceKey: generated.instanceId,
+    });
+    addGeneratedEquipmentReference(bag, generated.instanceId);
+    const bagBefore = structuredClone(bag);
+    const equippedBefore = { ...getEquipmentState(world, entity)!.equipped };
+
+    const result = unequip(world, entity, 'head');
+
+    expect(result).toEqual({
+      ok: false,
+      reason: `Generated equipment ownership conflict: ${generated.instanceId}`,
+    });
+    expect(bag).toEqual(bagBefore);
+    expect(getEquipmentState(world, entity)!.equipped).toEqual(equippedBefore);
+  });
+
+  it.each([
+    ['missing registry key', 'missing'],
+    ['unsafe context', 'unsafe'],
+    ['duplicate bag ownership', 'duplicate'],
+    ['cross-entity ownership', 'cross-entity'],
+    ['unsupported generated grants', 'unsupported'],
+  ] as const)('rejects %s without changing bag, slots, or effective stats', (_name, scenario) => {
+    const generated =
+      scenario === 'unsupported'
+        ? createGeneratedTestEquipment(world, { abilityGrant: 'future-ability' })
+        : createGeneratedTestEquipment(world);
+    const entry = { kind: 'generated-instance' as const, instanceKey: generated.instanceId };
+
+    if (scenario === 'missing') {
+      entry.instanceKey = 'gei:v1:b2-equipment-test:999' as typeof entry.instanceKey;
+      addGeneratedEquipmentReference(bag, entry.instanceKey);
+    } else {
+      addGeneratedEquipmentToBag(world, entity, generated.instanceId);
+    }
+    if (scenario === 'unsafe') {
+      world.state = 'playing';
+      world.playerInSafeRoom = false;
+    } else if (scenario === 'duplicate') {
+      bag.generatedEquipment!.push({ ...entry });
+    } else if (scenario === 'cross-entity') {
+      const otherEntity = setupEntity(world);
+      const otherBag = createInventoryBag();
+      world.inventories.set(otherEntity, otherBag);
+      addGeneratedEquipmentReference(otherBag, generated.instanceId);
+    }
+
+    const bagBefore = structuredClone(bag);
+    const equippedBefore = { ...getEquipmentState(world, entity)!.equipped };
+    const statsBefore = getEffectiveStats(world, entity);
+
+    const result = equipFromBag(world, entity, entry);
+
+    expect(result.ok).toBe(false);
+    expect(bag).toEqual(bagBefore);
+    expect(getEquipmentState(world, entity)!.equipped).toEqual(equippedBefore);
+    expect(getEffectiveStats(world, entity)).toEqual(statsBefore);
+  });
+});
+
 // --- Equippable placeholder coverage across the paper-doll ---
 
 describe('equippable slot coverage', () => {
@@ -630,14 +891,14 @@ describe('equippable slot coverage', () => {
     }
   });
 
-  it('GEAR_ITEM_IDS covers 15 armor/accessory slots and excludes hands + neck', () => {
+  it('GEAR_ITEM_IDS covers 16 armor/accessory slots and excludes hands + neck', () => {
     const gearSlots = new Set<string>();
     for (const id of GEAR_ITEM_IDS) {
       const def = getEquipmentDefForItem(id);
       expect(def, `gear id ${id} has no equipment def`).toBeDefined();
       for (const slotId of def!.slots) gearSlots.add(slotId);
     }
-    expect(GEAR_ITEM_IDS).toHaveLength(15);
+    expect(GEAR_ITEM_IDS).toHaveLength(16);
     expect(gearSlots.has('mainHand')).toBe(false);
     expect(gearSlots.has('offHand')).toBe(false);
     expect(gearSlots.has('neck')).toBe(false);
