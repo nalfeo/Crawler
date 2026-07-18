@@ -38,7 +38,7 @@ budget for the same underlying blocker. This created an infinite recovery loop:
 captured by its stable `id` field (`review-thread:{threadId}:{commentDigest}`). `line`
 is display-only metadata that should not affect fingerprint stability.
 
-Also replied to PR #1569's review thread with `✅ Addressed in dad5f4e` to unblock it.
+A `✅ Addressed` reply may still be required on PR #1569's blocking review thread to unblock it.
 
 Observed: all 116 CI recovery tests pass.
 
@@ -55,8 +55,8 @@ Observed: all 116 CI recovery tests pass.
 
 ## What's Next / Blockers
 
-- PR #1569 should converge once the CI recovery next runs — the `✅ Addressed in dad5f4e`
-  reply is now posted to the blocking thread, which will satisfy `shouldResolveThread`.
+- PR #1569 still needs a trusted `✅ Addressed in <sha>` thread reply on the blocking review
+  comment before `shouldResolveThread` can auto-resolve it.
 - No further blockers on this session.
 
 ## Retrospective
