@@ -15,6 +15,12 @@ import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { MobAbilityRuntime } from './mob-abilities/types.js';
 import { createMobAbilityRuntime } from './mob-abilities/types.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
+import type {
+  BloodFootprintSurface,
+  BloodPoolSurface,
+  BloodyFootprintState,
+} from '../shared/blood-surfaces.js';
+import { createBloodyFootprintState } from '../shared/blood-surfaces.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
 import type { WeaponTelemetry } from './weapon-telemetry.js';
@@ -232,6 +238,12 @@ export interface GameWorld {
    * so `src/core` stays portable. Capped defensively by `pushAnnouncement`.
    */
   announcements: AnnouncementEvent[];
+  /** Persistent blood pools authored by simulation-side death/contact logic. */
+  bloodPools: BloodPoolSurface[];
+  /** Persistent bloody footprints/smears authored by the core step. */
+  bloodyFootprints: BloodFootprintSurface[];
+  /** Active bloody-footprint source window + overlap tracking. */
+  bloodyFootprintState: BloodyFootprintState;
   /**
    * Typed mob-ability runtime (Queen Mab Verdigris Glamour + future generic mob
    * abilities). Default-disabled: the normal game never registers active boss
@@ -521,6 +533,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     vfxEvents: [],
     announcements: [],
     mobAbilities: createMobAbilityRuntime(),
+    bloodPools: [],
+    bloodyFootprints: [],
+    bloodyFootprintState: createBloodyFootprintState(),
     spawnerArenaDoors: new Map(),
     spawnerArenaBarriers: new Map(),
     barriers: createBarrierRegistry(),

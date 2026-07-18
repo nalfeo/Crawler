@@ -160,6 +160,26 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
     }),
   ],
   [
+    'sun-hammer',
+    def({
+      id: 'sun-hammer',
+      name: 'Sun Hammer',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 35,
+      cooldownMs: 1100,
+      range: 6,
+      aoeRadius: 7,
+      durationMs: 350,
+      headRadius: 2.0,
+      shaftDamageMult: 0.5,
+      knockback: 5,
+      goreFactor: 0.2,
+      baseAccuracy: 0.82,
+      weaponClassSkillId: 'smashing',
+      weaponTypeSkillId: 'hammer',
+    }),
+  ],
+  [
     'baseball-bat',
     def({
       id: 'baseball-bat',
