@@ -1,16 +1,20 @@
 type: item
 name: merchant-sandals
+floor: 2
 description: |
-  A single matched pair of merchant's sandals shown as one centered footwear
-  subject, resting flat and fully inside the frame. The sandals are sturdy,
-  open-toed dungeon footwear with thick worn leather soles and broad crossing
-  straps over the top, plus an ankle strap with a small brass buckle. Surfaces
-  are scuffed and travel-worn, with subtle stitched edges and a few brighter
-  brass accents that suggest practical trade gear rather than noble finery. The
-  shape must read instantly as protective sandals at a glance, with a clear
-  paired-footwear silhouette and no extra props or background elements.
+  Merchant Sandals — a single centered small object icon with a clear, readable
+  silhouette on a transparent background. A matched pair of rugged open-toe
+  merchant sandals presented as one compact footwear subject, with reinforced
+  leather soles, broad crossing straps, and a sturdy heel loop or high rear
+  strap attached to the sandal that still reads cleanly at icon scale. Floor 2
+  salvage-merchant cues should
+  come through in the materials: worn dark leather, tarnished brass buckles or
+  coin-like trade tags, and a practical armored finish rather than delicate
+  beachwear. Keep the silhouette unmistakably sandals — not boots, shoes,
+  slippers, or bare feet. Leave a small transparent margin around the icon;
+  no detached props, no floating coins, no background, and no visible ankle or
+  leg portions above the footwear.
 variations:
-  - dark brown straps with warm brass buckles and heavier sole stitching for a rugged caravan look
-  - reddish leather straps with a small dangling coin charm near one ankle buckle, still readable as footwear first
-  - dust-grey soles with patched tan straps and a more reinforced toe strap for a scrappier market-traveler build
-minVariations: 3
+  - darker charcoal leather with two broad crossed straps and a rectangular brass buckle
+  - red-brown leather with heel loops and small tarnished coin charms stitched into the straps
+  - heavy travel-sandal variant with thicker sole, riveted heel wrap, and brighter brass toe-guard accents

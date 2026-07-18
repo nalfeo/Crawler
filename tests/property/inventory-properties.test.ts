@@ -2,13 +2,18 @@ import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import {
   createInventoryBag,
+  addGeneratedEquipmentReference,
   addItem,
+  hasGeneratedEquipmentReference,
+  listInventoryEntries,
   removeItem,
+  removeGeneratedEquipmentReference,
   hasItem,
   getItemCount,
   type InventoryBag,
 } from '../../src/shared/inventory.js';
 import { ItemRarity, type ItemDef } from '../../src/shared/items.js';
+import type { GeneratedEquipmentInstanceKey } from '../../src/shared/generated-equipment-types.js';
 
 /**
  * Property-based invariants for the pure inventory bag operations. A small
@@ -156,6 +161,52 @@ describe('inventory invariants (property-based)', () => {
           expect(hasItem(bag, id, threshold)).toBe(getItemCount(bag, id) >= threshold);
         },
       ),
+    );
+  });
+
+  it('generated-key add/remove conserves every distinct exact identity', () => {
+    fc.assert(
+      fc.property(
+        fc.uniqueArray(fc.integer({ min: 0, max: 1000 }), { maxLength: 50 }),
+        fc.integer({ min: 0, max: 1000 }),
+        (ordinals, removedOrdinal) => {
+          const bag = createInventoryBag();
+          const keys = ordinals.map(
+            (ordinal) => `gei:v1:inventory-property:${ordinal}` as GeneratedEquipmentInstanceKey,
+          );
+          for (const key of keys) addGeneratedEquipmentReference(bag, key);
+
+          const removedKey =
+            `gei:v1:inventory-property:${removedOrdinal}` as GeneratedEquipmentInstanceKey;
+          const existed = keys.includes(removedKey);
+          expect(removeGeneratedEquipmentReference(bag, removedKey) !== undefined).toBe(existed);
+
+          const expected = keys.filter((key) => key !== removedKey);
+          expect(
+            listInventoryEntries(bag)
+              .filter((entry) => entry.kind === 'generated-instance')
+              .map((entry) => entry.instanceKey),
+          ).toEqual(expected);
+        },
+      ),
+    );
+  });
+
+  it('duplicate generated-key insertion is rejected without changing identity count', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 1000 }), (ordinal) => {
+        const key = `gei:v1:inventory-duplicate:${ordinal}` as GeneratedEquipmentInstanceKey;
+        const bag = createInventoryBag();
+        addGeneratedEquipmentReference(bag, key);
+
+        expect(() => addGeneratedEquipmentReference(bag, key)).toThrow();
+        expect(hasGeneratedEquipmentReference(bag, key)).toBe(true);
+        expect(
+          listInventoryEntries(bag).filter(
+            (entry) => entry.kind === 'generated-instance' && entry.instanceKey === key,
+          ),
+        ).toHaveLength(1);
+      }),
     );
   });
 });
