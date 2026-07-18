@@ -168,13 +168,12 @@ export function createHudAnnouncementBanner(
   function pruneCanceledBossAbilityAnnouncements(world: GameWorld): void {
     const liveBossEventIds = new Set(
       world.announcements
-        .filter((event) => event.kind === 'bossAbilityCast' && event.eventId !== undefined)
-        .map((event) => event.eventId!),
+        .filter((event) => event.kind === 'bossAbilityCast')
+        .map((event) => event.eventId),
     );
     for (let i = queue.length - 1; i >= 0; i -= 1) {
       const event = queue[i]!;
       if (event.kind !== 'bossAbilityCast') continue;
-      if (event.eventId === undefined) continue;
       if (!liveBossEventIds.has(event.eventId)) {
         queue.splice(i, 1);
       }
@@ -190,7 +189,7 @@ export function createHudAnnouncementBanner(
     if (event.kind === 'bossAbilityCast') {
       labelText
         .setWordWrapWidth(BOSS_ABILITY_WRAP_WIDTH, true)
-        .setText(event.text ?? '')
+        .setText(event.text)
         .setY(ANNOUNCEMENT_PANEL_HEIGHT / 2)
         .setColor(colorForKind(event.kind));
       verbText.setText('');

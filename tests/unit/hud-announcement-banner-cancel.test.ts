@@ -140,7 +140,9 @@ describe('HudAnnouncementBanner — pruneCanceledBossAbilityAnnouncements', () =
     // runtime retiring the announcement on telegraph cancel).
     world.elapsedMs += GAME.DELTA_MS;
     world.announcements.splice(
-      world.announcements.findIndex((e) => e.eventId === 'ability:cast-1'),
+      world.announcements.findIndex(
+        (e) => e.kind === 'bossAbilityCast' && e.eventId === 'ability:cast-1',
+      ),
       1,
     );
 
@@ -178,7 +180,7 @@ describe('HudAnnouncementBanner — pruneCanceledBossAbilityAnnouncements', () =
     expect(hidesAfter).toBe(hidesBefore);
   });
 
-  it('only prunes bossAbilityCast events with eventIds — spawner events are unaffected', async () => {
+  it('only prunes bossAbilityCast events — spawner events are unaffected', async () => {
     const { createHudAnnouncementBanner } =
       await import('../../src/engine/HudAnnouncementBanner.js');
     const { scene } = createSceneStub();
@@ -202,7 +204,9 @@ describe('HudAnnouncementBanner — pruneCanceledBossAbilityAnnouncements', () =
     // Remove only the bossAbilityCast.
     world.elapsedMs += GAME.DELTA_MS;
     world.announcements.splice(
-      world.announcements.findIndex((e) => e.eventId === 'ability:cast-3'),
+      world.announcements.findIndex(
+        (e) => e.kind === 'bossAbilityCast' && e.eventId === 'ability:cast-3',
+      ),
       1,
     );
     banner.sync(world);

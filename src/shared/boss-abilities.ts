@@ -92,6 +92,38 @@ const targetingSchema = z
     }
   });
 
+/**
+ * Contracts for well-known telegraph metric IDs. Any metric ID in this map
+ * must carry the corresponding value type and unit, regardless of which
+ * telegraph shape requires it. This rejects malformed catalog data such as
+ * `radius: "wide", unit: "mode"` at the catalog boundary rather than
+ * deferring the failure to runtime adapters.
+ */
+const METRIC_CONTRACTS: Readonly<
+  Record<string, { valueType: 'positive-number' | 'positive-integer' | 'string'; unit: string }>
+> = {
+  radius: { valueType: 'positive-number', unit: 'feet' },
+  'inner-radius': { valueType: 'positive-number', unit: 'feet' },
+  'outer-radius': { valueType: 'positive-number', unit: 'feet' },
+  'start-radius': { valueType: 'positive-number', unit: 'feet' },
+  'end-radius': { valueType: 'positive-number', unit: 'feet' },
+  'max-radius': { valueType: 'positive-number', unit: 'feet' },
+  'endpoint-radius': { valueType: 'positive-number', unit: 'feet' },
+  width: { valueType: 'positive-number', unit: 'feet' },
+  'lane-width': { valueType: 'positive-number', unit: 'feet' },
+  'band-width': { valueType: 'positive-number', unit: 'feet' },
+  'ring-width': { valueType: 'positive-number', unit: 'feet' },
+  range: { valueType: 'positive-number', unit: 'feet' },
+  'max-range': { valueType: 'positive-number', unit: 'feet' },
+  angle: { valueType: 'positive-number', unit: 'degrees' },
+  'arc-angle': { valueType: 'positive-number', unit: 'degrees' },
+  'sweep-angle': { valueType: 'positive-number', unit: 'degrees' },
+  count: { valueType: 'positive-integer', unit: 'count' },
+  'band-count': { valueType: 'positive-integer', unit: 'count' },
+  'projectile-count': { valueType: 'positive-integer', unit: 'count' },
+  'length-mode': { valueType: 'string', unit: 'mode' },
+};
+
 const telegraphSchema = z
   .object({
     durationMs: z.number().int().positive(),
@@ -132,6 +164,47 @@ const telegraphSchema = z
         path: ['metrics'],
         message: `${telegraph.shape} telegraph requires length metric "max-range" or "length-mode"`,
       });
+    }
+    // Shape-specific metric contracts: validate value type and unit for any
+    // metric ID that has a known contract (e.g. radius must be a positive
+    // number in feet, not a string or a wrong unit).
+    for (const [index, metric] of telegraph.metrics.entries()) {
+      const contract = METRIC_CONTRACTS[metric.id];
+      if (contract === undefined) continue;
+      if (metric.unit !== contract.unit) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['metrics', index, 'unit'],
+          message: `metric "${metric.id}" must have unit "${contract.unit}", got "${metric.unit}"`,
+        });
+      }
+      const { value } = metric;
+      if (contract.valueType === 'string') {
+        if (typeof value !== 'string') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['metrics', index, 'value'],
+            message: `metric "${metric.id}" must be a string value`,
+          });
+        }
+      } else if (contract.valueType === 'positive-integer') {
+        if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['metrics', index, 'value'],
+            message: `metric "${metric.id}" must be a positive integer`,
+          });
+        }
+      } else {
+        // positive-number
+        if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['metrics', index, 'value'],
+            message: `metric "${metric.id}" must be a positive finite number`,
+          });
+        }
+      }
     }
   });
 
