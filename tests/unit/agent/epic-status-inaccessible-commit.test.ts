@@ -47,13 +47,13 @@ describe('epic evidence inaccessible-commit regression', () => {
     const state = cloneState();
     const INACCESSIBLE_SHA = '8cc19153bb8881a4faba5b696eb117c7abc820c2';
 
-    // Point the A0 test-evidence entry at the inaccessible commit while
+    // Point the A0 handoff evidence entry at the inaccessible commit while
     // keeping the correct file path so only the commit lookup fails.
+    // validateEvidenceFiles checks handoff/review-ledger evidence at pr_open
+    // status, so this exercises the real validation code path.
     const a0 = state.nodes.find((n) => n.node_id === 'slice:A0');
     expect(a0).toBeDefined();
-    const evidenceEntry = a0!.evidence.find(
-      (e) => e.kind === 'offline-validator-and-focused-tests',
-    );
+    const evidenceEntry = a0!.evidence.find((e) => e.kind === 'handoff');
     expect(evidenceEntry).toBeDefined();
     evidenceEntry!.commit = INACCESSIBLE_SHA;
 
@@ -84,28 +84,26 @@ describe('epic evidence inaccessible-commit regression', () => {
     expect(result.errors.map((e) => e.code)).toContain('evidence.git-verification-failed');
     const err = result.errors.find((e) => e.code === 'evidence.git-verification-failed');
     expect(err?.message).toContain(INACCESSIBLE_SHA);
-    expect(err?.message).toContain('tests/unit/agent/epic-status.test.ts');
+    expect(err?.message).toContain('docs/knowledge/handoffs/');
   });
 
   it('does NOT raise evidence.git-verification-failed when the recording commit is accessible', () => {
-    // Confirm the fix: recording the squash-merge commit (89ff7827) instead
-    // of the original branch commit (8cc19153) resolves the failure.
+    // Confirm the fix: with correct, accessible commits recorded in the state
+    // no git-verification-failed error is raised for handoff evidence.
+    // validateEvidenceFiles checks handoff/review-ledger at pr_open status.
     const state = cloneState();
-    const ACCESSIBLE_SHA = '89ff7827ca65a9d1564dad451ec9d2a2f312a82e';
 
     const a0 = state.nodes.find((n) => n.node_id === 'slice:A0');
     expect(a0).toBeDefined();
-    const evidenceEntry = a0!.evidence.find(
-      (e) => e.kind === 'offline-validator-and-focused-tests',
-    );
+    const evidenceEntry = a0!.evidence.find((e) => e.kind === 'handoff');
     expect(evidenceEntry).toBeDefined();
-    evidenceEntry!.commit = ACCESSIBLE_SHA;
+    // Keep the real (accessible) commit already recorded in the state.
 
     // Build a strict allowlist from the commits referenced by the modified
     // state's evidence entries.  This ensures the reader only returns content
-    // for SHAs that are actually recorded in the state, so if ACCESSIBLE_SHA
-    // is changed to an arbitrary value that doesn't appear in any evidence
-    // entry the test will fail rather than silently passing.
+    // for SHAs that are actually recorded in the state, so if the handoff
+    // commit is changed to an arbitrary value that doesn't appear in any
+    // evidence entry the test will fail rather than silently passing.
     const allowedCommits = new Set<string>();
     for (const node of state.nodes) {
       for (const ev of node.evidence) {
