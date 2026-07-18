@@ -387,7 +387,8 @@ export const TRUSTED_BOT_LOGINS = new Set([
 
 const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
-const nonApplicabilityMarkerPattern = /✅\s*addressed\s*\(deterministic non-applicability\)/i;
+const nonApplicabilityMarkerPattern =
+  /^\s*✅\s*Addressed\s*\(deterministic non-applicability\)\s*:\s*\S/i;
 
 function parseMarkerShaToken(rawToken) {
   // Marker replies often leave copied SHAs/URLs with trailing Markdown
@@ -446,8 +447,11 @@ function isTrustedComment(comment) {
 }
 
 /**
- * Returns true if body contains the explicit deterministic non-applicability
- * marker: "✅ Addressed (deterministic non-applicability)".
+ * Returns true if body starts with the explicit deterministic non-applicability
+ * marker followed by a non-empty explanation:
+ *   "✅ Addressed (deterministic non-applicability): <explanation>"
+ * The marker must appear at the start of the reply (optional leading whitespace
+ * is allowed) and a non-empty explanation after the colon is required.
  * This form is used when a trusted reviewer validates that the original
  * finding is not applicable to the current code (no fix SHA needed).
  */

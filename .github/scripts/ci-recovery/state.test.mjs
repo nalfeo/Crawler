@@ -746,6 +746,23 @@ test('isNonApplicabilityMarker recognizes the deterministic non-applicability fo
   // must not match bare "✅ Addressed" without the parenthetical
   assert.equal(isNonApplicabilityMarker('✅ Addressed: fix applied'), false);
   assert.equal(isNonApplicabilityMarker(''), false);
+  // must not match when marker appears mid-sentence (not at start of reply)
+  assert.equal(
+    isNonApplicabilityMarker(
+      'I cannot use ✅ Addressed (deterministic non-applicability): explanation because the finding is valid',
+    ),
+    false,
+  );
+  // must not match bare marker without explanation
+  assert.equal(
+    isNonApplicabilityMarker('✅ Addressed (deterministic non-applicability)'),
+    false,
+  );
+  // must not match marker with colon but whitespace-only explanation
+  assert.equal(
+    isNonApplicabilityMarker('✅ Addressed (deterministic non-applicability):   '),
+    false,
+  );
 });
 
 test('shouldResolveThread accepts trusted non-applicability marker without a SHA', () => {
