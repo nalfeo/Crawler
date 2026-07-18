@@ -65,9 +65,11 @@ generation happen via the `asset-request` workflow.
    the best-scoring variant (combinedPassed=true, judgeScore≥3).
 3. **Check-in**: `npm run sprites:checkin` → `asset-checkin` issue
 4. **Batch PR**: `npm run sprites:asset-pr` folds the check-in issue into an art-only PR
-5. **Wire**: once the manifest has `briefId: twin-katar` entries, the sprite
+5. **Wire**: once the manifest has entries with `briefId: twin-katar` (derived
+   from the brief's `name: twin-katar` field by `approve.ts`), the sprite
    auto-resolves when the twin-katar equipment def is added to the game
-   (item-sprites.ts uses `itemId → briefId` matching). No manual wiring needed.
+   (item-sprites.ts uses `itemId → manifest briefId` matching). No manual
+   wiring needed.
 
 ## Observe Before Done
 
