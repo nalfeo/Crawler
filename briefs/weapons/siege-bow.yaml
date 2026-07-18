@@ -11,14 +11,17 @@ description: |
   no enchantment, no quiver. The silhouette must read as an imposing,
   siege-scale bow at a glance — wide sweeping limbs clearly larger than a
   hunting bow — and must NOT be confused with a crossbow or a sword.
-# Siege bow is a vertical weapon (grip at bottom, limb tips at top).
-# The oversized limbs make it wider than a standard bow, so we relax
-# the center tolerance slightly. The VLM judge is enabled to filter
-# variants that don't read as a siege-scale bow.
-# All other geometry (64×64, kenney-roguelike, 4×4 sheet) inherited
-# from data/sprite-types/weapon.json.
+# Siege-bow is a vertical weapon (grip at bottom, limb tips at top),
+# explicitly set for clarity and strictness. The oversized limbs make it
+# wider than a standard bow, so we relax the center tolerance slightly.
+# The VLM judge is enabled to filter variants that don't read as a
+# siege-scale bow. All other geometry (64×64, kenney-roguelike, 4×4 sheet)
+# inherited from data/sprite-types/weapon.json.
 floor: 2
 sensors:
+  weapon:
+    orientation: vertical
+    diagonalToleranceDeg: 5
   anchor:
     derive: true
     bandRows: 4

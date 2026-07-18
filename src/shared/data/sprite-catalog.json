@@ -437,6 +437,19 @@
     "row": 0
   },
   {
+    "id": "generated:boarding-axe-var-0",
+    "kind": "sprite",
+    "label": "boarding-axe-var-0",
+    "description": "Hand-authored pixel art sprite for brief: boarding-axe.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "boarding-axe-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/boarding-axe-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:bone-shard-var-1",
     "kind": "sprite",
     "label": "bone-shard-var-1",
