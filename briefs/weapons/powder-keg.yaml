@@ -1,0 +1,20 @@
+type: weapon
+name: powder-keg
+description: |
+  A centered squat powder keg seen from a three-quarter angle, held
+  upright so the fuse extends from the top and the silhouette is taller
+  than wide. Wooden barrel body with two iron hoop bands around the
+  middle — dark weathered oak staves with visible grain lines, grey iron
+  bands. Short lit fuse curling from the bung hole at the top, tiny
+  orange-yellow flame tip. Worn scuff marks on the wood, rust spots on
+  the bands. Bold, readable silhouette that unmistakably reads as an
+  explosive trap at icon scale. No background, no glow, no smoke cloud,
+  no explosion — just the intact keg about to go off.
+# Vertical orientation (taller-than-wide keg silhouette) and default
+# 64x64 / kenney-roguelike / 4x4 sheet are all inherited from
+# data/sprite-types/weapon.json. Default anchor (32, 56) stays — the
+# base of the keg is the natural attach point.
+variations:
+  - keg reinforced with a thick iron chain wrapped around it
+  - cracks in the wood leaking a wisp of sparks
+minVariations: 6

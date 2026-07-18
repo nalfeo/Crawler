@@ -14,7 +14,7 @@ sprite-pipeline, sprite-workflow
 
 ## Apples
 
-Estimated 🍎, actual 🍎. Exact: art-surface-only check-in.
+Estimated 1🍎, actual 1🍎. Exact: art-surface-only check-in.
 
 ## What changed
 

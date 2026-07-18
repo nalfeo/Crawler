@@ -5,6 +5,7 @@ import type {
 } from './brief-selector-types.js';
 import { TextProviderError } from './text-types.js';
 import { contentDirectionBlock } from '../content-direction.js';
+import { resolveDesignLanguageAddenda } from '../design-language-addenda.js';
 import {
   DEFAULT_PROVIDER_TIMEOUT_MS,
   isTimeoutAbortError,
@@ -51,7 +52,7 @@ export class AzureOpenAIBriefSelectorProvider implements BriefSelectorProvider {
         signal: AbortSignal.timeout(this.timeoutMs),
         body: JSON.stringify({
           messages: [
-            { role: 'system', content: buildSystemPrompt(request.floor) },
+            { role: 'system', content: buildSystemPrompt(request.name, request.floor) },
             { role: 'user', content: buildUserPrompt(request) },
           ],
           temperature: 0.2,
@@ -131,10 +132,10 @@ export class AzureOpenAIBriefSelectorProvider implements BriefSelectorProvider {
   }
 }
 
-function buildSystemPrompt(floor: number): string {
+export function buildSystemPrompt(name: string, floor: number): string {
   return [
     'Pick the single best sprite brief candidate for Crawler.',
-    contentDirectionBlock(floor),
+    contentDirectionBlock(floor, resolveDesignLanguageAddenda(name, floor)),
     'Prioritize: unmistakable subject and gameplay-role fit; one readable identity plus one authored contradiction; floor-appropriate weirdness; a strong game-scale silhouette and concrete orientation; Crawler-specific design rather than generic fantasy or random ingredient soup; and legible color/material choices. Reject accidental anthropomorphism of items.',
     'Return strict JSON only: {"index": <number>, "rationale": "<one sentence>"}',
   ].join('\n\n');
