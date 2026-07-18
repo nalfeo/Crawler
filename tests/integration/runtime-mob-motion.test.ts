@@ -476,9 +476,10 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
     STALE_DETECT,
     STALE_ATTACK_RANGE,
   );
-  expect(newOccupantEid, 'EID must be recycled for the generation-safety test to be meaningful').toBe(
-    victimEid,
-  );
+  expect(
+    newOccupantEid,
+    'EID must be recycled for the generation-safety test to be meaningful',
+  ).toBe(victimEid);
   setComponent(staleGenWorld.ecs, newOccupantEid, Sprite, { textureId: 2, width: 3, height: 3 });
   setEnemyAppearanceKey(staleGenWorld, newOccupantEid, 'slime');
 

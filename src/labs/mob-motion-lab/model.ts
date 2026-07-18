@@ -144,10 +144,21 @@ function sampleMeleeAttack(elapsedMs: number): MobMotionTransform {
 
   if (phaseMs < windupMs + strikeMs) {
     const strikeElapsedMs = phaseMs - windupMs;
-    const contactElapsedMs =
-      CONTACT_ATTACK_MOTION_MS -
-      strikeElapsedMs * (CONTACT_ATTACK_MOTION_MS / Math.max(1, strikeMs));
-    return sampleContactAttackMotion(Math.max(0, contactElapsedMs));
+    const t = strikeElapsedMs / Math.max(1, strikeMs);
+    // Interpolate from the windup endpoint (t=0) to the full contact lunge (t=1).
+    // This preserves continuous motion at the windup→strike boundary instead of
+    // snapping to neutral (which occurred when contactElapsedMs=CONTACT_ATTACK_MOTION_MS
+    // was passed to sampleContactAttackMotion at strikeElapsedMs=0).
+    const lunge = sampleContactAttackMotion(0);
+    return {
+      offsetX: -0.18 + (lunge.offsetX + 0.18) * t,
+      offsetY: 0.04 + (lunge.offsetY - 0.04) * t,
+      scaleX: 0.94 + (lunge.scaleX - 0.94) * t,
+      scaleY: 1.07 + (lunge.scaleY - 1.07) * t,
+      rotation: -0.09 + (lunge.rotation + 0.09) * t,
+      alpha: 1,
+      flash: 0,
+    };
   }
 
   const recoveryElapsedMs = phaseMs - windupMs - strikeMs;
