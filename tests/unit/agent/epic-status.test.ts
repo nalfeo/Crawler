@@ -37,10 +37,7 @@ function sha256OfFile(repoRoot: string, repoRelPath: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-const CURRENT_TEST_FILE_HASH = sha256OfFile(
-  REPO_ROOT,
-  'tests/unit/agent/epic-status.test.ts',
-);
+const CURRENT_TEST_FILE_HASH = sha256OfFile(REPO_ROOT, 'tests/unit/agent/epic-status.test.ts');
 
 /**
  * A repository-independent GitReader for unit tests: reads evidence files
@@ -334,12 +331,10 @@ describe('Floor 2 equipment epic status', () => {
 
     const messages = validate(state).errors.map((error) => error.message);
 
-    expect(
-      messages.some((message) => message.includes('Issue URL does not match number')),
-    ).toBe(true);
-    expect(messages.some((message) => message.includes('PR URL does not match number'))).toBe(
+    expect(messages.some((message) => message.includes('Issue URL does not match number'))).toBe(
       true,
     );
+    expect(messages.some((message) => message.includes('PR URL does not match number'))).toBe(true);
   });
 
   it('rejects unverifiable required evidence paths for validated nodes', () => {
