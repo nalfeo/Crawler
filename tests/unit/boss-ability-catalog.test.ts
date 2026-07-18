@@ -231,12 +231,11 @@ describe('Floor 2 boss ability delivery status', () => {
     const records = buildBossAbilityStatusRecords();
     expect(records.every((record) => record.stage === 'blocked')).toBe(true);
 
-    // Queen has shipped verified arena evidence but is intentionally NOT
-    // production-verified: she stays blocked behind the still-unresolved
-    // production-enable/balance gate. The combat-arena-lab-pr-1243 gate was
-    // verified when PR #1243 squash-merged on 2026-07-17.
+    // Queen's runtime and telegraph VFX shipped, but the arena proof remains
+    // blocked until an actual browser arena observation is captured. She still
+    // stays blocked overall behind the separate production-enable/balance gate.
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
-    expect(queen?.status.arenaLabState).toBe('verified');
+    expect(queen?.status.arenaLabState).toBe('blocked');
     expect(queen?.status.runtimeState).toBe('verified');
     expect(queen?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     // The other 17 abilities remain blocked purely by the production-enable

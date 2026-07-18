@@ -110,6 +110,11 @@ export interface MobAbilityInstanceState {
   committedGeometry: MobAbilityGeometry | null;
   /** Target eid committed at telegraph start; `null` during cooldown. */
   committedTargetEid: number | null;
+  /**
+   * Render-generation of the target committed at telegraph start. Compared at
+   * resolution so same-Player-tag EID reuse cannot inherit a stale lock.
+   */
+  committedTargetGeneration: number | null;
   /** Count of fully resolved casts (telemetry / test observation). */
   resolvedCasts: number;
   /** Count of announcements emitted (must equal `resolvedCasts + inFlight`). */

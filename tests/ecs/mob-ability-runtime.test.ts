@@ -7,6 +7,7 @@
  * Tarnished) are covered by tests/unit/mob-abilities/verdigris-glamour.test.ts.
  */
 import { describe, it, expect } from 'vitest';
+import { removeEntity } from 'bitecs';
 import { GAME } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import {
@@ -205,6 +206,30 @@ describe('AI-avoidance cue consistency', () => {
     disableMobAbilityEncounter(world);
     // The cues array is emptied by disableMobAbilityEncounter.
     expect(world.mobAbilities.cues.length).toBe(0);
+  });
+
+  it('drops a locked target if the player eid is recycled into a new Player', () => {
+    const world = makeWorld();
+    const player = spawnPlayer(world, 5, 5);
+    const queen = spawnQueen(world, 5, 30);
+    arm(world, queen);
+
+    tick(world, 540);
+    const inst = world.mobAbilities.byEntity.get(queen)!;
+    expect(inst.phase).toBe('telegraph');
+    expect(inst.committedTargetEid).toBe(player);
+    const lockedGeneration = inst.committedTargetGeneration;
+    expect(lockedGeneration).toBe(world.entityRenderGeneration[player]);
+
+    removeEntity(world.ecs, player);
+    const recycledPlayer = spawnPlayer(world, 50, 50);
+    expect(recycledPlayer).toBe(player);
+    expect(world.entityRenderGeneration[recycledPlayer]).not.toBe(lockedGeneration);
+
+    tick(world, 90);
+
+    expect(inst.phase).toBe('cooldown');
+    expect(inst.resolvedCasts).toBe(0);
   });
 });
 

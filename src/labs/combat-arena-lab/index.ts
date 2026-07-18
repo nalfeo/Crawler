@@ -15,6 +15,7 @@ import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import {
   clearEntityStores,
+  clearActiveWeaponDef,
   Enemy,
   Invincible,
   createGameWorld,
@@ -183,12 +184,6 @@ class CombatArenaScene extends Phaser.Scene {
     this.playerEid = spawnPlayer(this.world, spawnWorld.x, spawnWorld.y);
     this.applyPlayerMode();
 
-    // Equip starter weapon so the player can fight
-    const weaponDef = getWeaponDef(STARTER_WEAPON_ID);
-    if (weaponDef) {
-      equipStarterOrFallback(this.world, STARTER_WEAPON_ID, weaponDef);
-    }
-
     // Spawn initial enemy preset
     this.spawnCurrentPreset();
 
@@ -342,6 +337,14 @@ class CombatArenaScene extends Phaser.Scene {
       addComponent(this.world.ecs, this.playerEid, Invincible);
     } else {
       removeComponent(this.world.ecs, this.playerEid, Invincible);
+    }
+    if (this.settings.playerMode === 'hero') {
+      const weaponDef = getWeaponDef(STARTER_WEAPON_ID);
+      if (weaponDef) {
+        equipStarterOrFallback(this.world, STARTER_WEAPON_ID, weaponDef);
+      }
+    } else {
+      clearActiveWeaponDef(this.world);
     }
   }
 

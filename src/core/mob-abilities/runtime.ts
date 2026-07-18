@@ -70,6 +70,7 @@ export function registerMobAbility(
     timerMs: definition.firstEligibleAfterMs,
     committedGeometry: null,
     committedTargetEid: null,
+    committedTargetGeneration: null,
     resolvedCasts: 0,
     announcementsEmitted: 0,
     registrationToken: token,
@@ -130,6 +131,7 @@ export function activateMobAbilityEncounter(world: GameWorld): void {
     inst.timerMs = inst.definition.firstEligibleAfterMs;
     inst.committedGeometry = null;
     inst.committedTargetEid = null;
+    inst.committedTargetGeneration = null;
   }
 }
 
@@ -178,8 +180,14 @@ function targetPosition(
  * against the wrong target. The existence/Health guards stay first so obviously
  * invalid or dead entities exit before the stricter Player-identity check.
  */
-function isTargetValid(world: GameWorld, targetEid: number | null): boolean {
+function isTargetValid(
+  world: GameWorld,
+  targetEid: number | null,
+  targetGeneration: number | null,
+): boolean {
   if (targetEid === null || !entityExists(world.ecs, targetEid)) return false;
+  if (targetGeneration === null) return false;
+  if ((world.entityRenderGeneration[targetEid] ?? 0) !== targetGeneration) return false;
   if (!hasComponent(world.ecs, targetEid, Health)) return false;
   if (!hasComponent(world.ecs, targetEid, Player)) return false;
   if ((world.stores.health.current[targetEid] ?? 0) <= 0) return false;
@@ -190,6 +198,11 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
   const def = inst.definition;
   // Commit target + origin + geometry ONCE, now. Nothing tracks after this.
   const targetEid = findDefaultTarget(world);
+  if (targetEid === null) {
+    inst.phase = 'cooldown';
+    inst.timerMs = def.cooldownMs;
+    return;
+  }
   const pos = targetPosition(world, targetEid);
   if (pos === null) {
     // No valid target to lock onto — skip this cast and re-arm the cooldown so
@@ -201,6 +214,7 @@ function beginTelegraph(world: GameWorld, casterEid: number, inst: MobAbilityIns
   inst.phase = 'telegraph';
   inst.timerMs = def.telegraphDurationMs;
   inst.committedTargetEid = targetEid;
+  inst.committedTargetGeneration = world.entityRenderGeneration[targetEid] ?? 0;
   inst.committedGeometry = {
     kind: 'circle',
     x: pos.x,
@@ -226,7 +240,10 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
   // Revalidate the locked target before resolution. If the player died,
   // despawned, or its ID was recycled during the 1.5s telegraph, skip the
   // resolve call and take the cancellation/cleanup path instead.
-  if (geometry !== null && isTargetValid(world, inst.committedTargetEid)) {
+  if (
+    geometry !== null &&
+    isTargetValid(world, inst.committedTargetEid, inst.committedTargetGeneration)
+  ) {
     def.resolve(world, {
       abilityId: def.abilityId,
       casterEid,
@@ -246,6 +263,7 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
   inst.timerMs = def.cooldownMs;
   inst.committedGeometry = null;
   inst.committedTargetEid = null;
+  inst.committedTargetGeneration = null;
 }
 
 /** Default target selection: the living player singleton (catalog `player-position`). */

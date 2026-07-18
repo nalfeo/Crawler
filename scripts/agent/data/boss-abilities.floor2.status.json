@@ -161,9 +161,9 @@
       "codexIconAssetRequest": null,
       "castAnimationState": "not-authored",
       "castAnimationAssetRequest": null,
-      "arenaLabState": "verified",
+      "arenaLabState": "blocked",
       "arenaLabPresetId": "f2-queen-mab",
-      "arenaLabEvidence": "seed-42 deterministic arena run records two Verdigris Glamour casts (telegraphs at 9000/19500 ms, resolutions at 10500/21000 ms) via the canonical runtime, while the normal-game default-off config records zero casts over the same duration (scripts/agent/queen-mab-arena-evidence.ts; tests/unit/mob-abilities/verdigris-glamour.test.ts).",
+      "arenaLabEvidence": "Headless canonical-runtime evidence is recorded via scripts/agent/queen-mab-arena-evidence.ts and tests/unit/mob-abilities/verdigris-glamour.test.ts, and the arena scene now shares the same observer no-weapon path via ARENA_OBSERVER_PLAYER_HP + clearActiveWeaponDef. Browser arena observation/capture is still pending, so arenaLabState remains blocked rather than verified.",
       "animationLabState": "not-required",
       "animationLabEvidence": null,
       "implementationIssue": {

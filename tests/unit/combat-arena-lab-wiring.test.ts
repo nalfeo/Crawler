@@ -77,7 +77,8 @@ describe('combat-arena-lab wiring', () => {
     expect(source).toContain("'observer'");
     expect(source).toContain("'immortal'");
     expect(source).toContain('PLAYER_HP_HERO');
-    expect(source).toContain('PLAYER_HP_OBSERVER');
+    expect(source).toContain('ARENA_OBSERVER_PLAYER_HP');
+    expect(source).toContain('clearActiveWeaponDef(this.world);');
   });
 
   it('supports simulation speed controls', () => {

@@ -493,6 +493,29 @@ describe('Verdigris Glamour — cleanup paths', () => {
     expect(getStatusEffects(h.world, recycled)).toHaveLength(0);
   });
 
+  it('skips resolution if the locked target eid is recycled into a new player', () => {
+    const h = buildHarness();
+    arm(h);
+    step(h.world, FIRST_TELEGRAPH_FRAME + 5);
+    const inst = h.world.mobAbilities.byEntity.get(h.queen)!;
+    expect(inst.phase).toBe('telegraph');
+    expect(inst.committedTargetEid).toBe(h.player);
+    const lockedGeneration = inst.committedTargetGeneration;
+
+    removeEntity(h.world.ecs, h.player);
+    const recycledPlayer = spawnPlayer(h.world, 40, 40);
+    expect(recycledPlayer).toBe(h.player);
+    expect(h.world.entityRenderGeneration[recycledPlayer]).not.toBe(lockedGeneration);
+    const recycledHealth = h.world.stores.health.current[recycledPlayer]!;
+
+    step(h.world, FIRST_RESOLUTION_FRAME - (FIRST_TELEGRAPH_FRAME + 5));
+
+    expect(inst.phase).toBe('cooldown');
+    expect(inst.resolvedCasts).toBe(0);
+    expect(h.world.stores.health.current[recycledPlayer]).toBe(recycledHealth);
+    expect(getStatusEffects(h.world, recycledPlayer)).toHaveLength(0);
+  });
+
   it('setMobAbilitiesEnabled(false) tears down the runtime', () => {
     const h = buildHarness();
     arm(h);

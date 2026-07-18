@@ -96,8 +96,9 @@ mobAbilitySystem]` so Tarnished ticks and expires in the live arena.
 ### Status / spec / ADR (honest staged rollout)
 
 - `scripts/agent/data/boss-abilities.floor2.status.json` — added the
-  `floor2-boss-production-enable` gate (not-started); Queen gains verified arena
-  evidence (`arenaLabState: verified`, preset `f2-queen-mab`) but is NOT
+  `floor2-boss-production-enable` gate (not-started); Queen's headless
+  canonical-runtime evidence is recorded, but `arenaLabState` remains `blocked`
+  until an actual browser combat-arena observation is captured. She is NOT
   production-verified while the production gate is off; all 18 abilities still
   derive as `blocked`; PR #1237 is no longer an arena blocker; PR #1243 remains
   the authoritative arena dependency.
@@ -148,7 +149,7 @@ mobAbilitySystem]` so Tarnished ticks and expires in the live arena.
     announcement string. Gate cadence 540/630/1170/1260 → PASS.
   - DEFAULT NORMAL GAME: runtime disabled, 0 registered casters, 0 casts. → PASS.
 
-Deterministic arena/runtime observation is recorded by the canonical simulation
+Deterministic runtime observation is recorded by the canonical simulation
 harness (`scripts/agent/queen-mab-arena-evidence.ts`) and deterministic visual
 guards in unit coverage (`tests/unit/mob-ability-vfx.test.ts` — 5 tests covering
 the 12ft telegraph footprint, Tarnished indicator, resolution burst, telegraph
@@ -157,9 +158,12 @@ retirement, and cleanup poof with position caching;
 The `HudAnnouncementBanner` is wired into the combat arena scene
 (`createHudAnnouncementBanner` / `sync` / `destroy` in
 `src/labs/combat-arena-lab/index.ts`), so `bossAbilityCast` announcements are
-rendered in the browser arena. The Phaser renderer is a pure consumer of the
+rendered in the browser arena, and observer / immortal arena modes now clear the
+starter weapon so the scene shares the same passive-observer setup as the
+headless evidence harness. The Phaser renderer is a pure consumer of the
 committed cue state that the harness and unit tests validate; no direct browser
-observation was performed in this session (the runtime environment is headless).
+observation was performed in this session (the runtime environment is headless),
+so the status sidecar keeps `arenaLabState` blocked pending that capture.
 
 ## Follow-ups
 
