@@ -125,7 +125,8 @@ describe('damageSystem', () => {
   it('emits a hit combat event when an enemy damages the player', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 1, 0, 25);
+    const enemy = spawnEnemy(world, 1, 0, 25);
+    const expectedGen = world.entityRenderGeneration[enemy];
 
     damageSystem(world, collisionSystem(world));
 
@@ -134,6 +135,10 @@ describe('damageSystem', () => {
       type: 'hit',
       targetType: 'player',
       delivery: 'contact',
+      // applyDamage must stamp sourceEid + sourceRenderGeneration so the bridge
+      // generation guard can reject stale events from recycled EIDs.
+      sourceEid: enemy,
+      sourceRenderGeneration: expectedGen,
     });
     expect(world.combatEvents[0]!.amount).toBeGreaterThan(0);
   });
