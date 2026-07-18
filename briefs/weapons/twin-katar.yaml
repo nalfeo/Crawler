@@ -1,0 +1,24 @@
+type: weapon
+name: twin-katar
+description: |
+  A matched pair of katars (push daggers) displayed as a single composed icon,
+  both blades pointing upward symmetrically. Each katar has the distinctive
+  H-frame crossbar handle — two horizontal grip-bars connected by a central
+  spine, with a broad triangular blade projecting straight up from the
+  knuckle. The pair is arranged mirror-image: left blade tilts slightly left,
+  right blade tilts slightly right, grip bars interlocked or touching at
+  center, forming a bold V-silhouette at the top. Floor 2 dungeon-worn steel:
+  scratched and pitted blade faces, dark iron crossbars, wrapped center grip
+  in worn leather. Cold blue-grey steel with a thin highlight edge on each
+  blade, deep shadow on the flat faces, warm brown leather wrap, black iron
+  frame. No glow, no enchantment, no blood, no scabbard. The twin-blade
+  silhouette must read instantly at 64×64 — two blades up, one grip down.
+# Twin-katar is a composed dual weapon shown as a symmetrical pair.
+# The blades point upward (vertical orientation) with the grip/handle
+# assembly at the bottom center — matches weapon-default anchor.
+# Everything else (64x64, palette, references, 4x4 sheet, VLM judge)
+# inherited from data/sprite-types/weapon.json.
+variations:
+  - blades crossed in an X at the top rather than side-by-side V
+  - ornate finger-ring guards added to the H-frame handles
+minVariations: 8
