@@ -651,14 +651,14 @@ test('a successful repair preserves requested-reviewer cleanup', async () => {
   const harness = createHarness({
     pulls: [
       makePr({
-        requested_reviewers: [{ login: 'nalfeo' }],
+        requested_reviewers: [{ login: 'helper' }, { login: 'NalFeO' }],
       }),
     ],
   });
 
   const summary = await runPrReadyReviewerGuard({
     repository: REPOSITORY,
-    reviewerLoginRaw: 'nalfeo',
+    reviewerLoginRaw: 'NALFEO',
     eventName: 'schedule',
     payloadAction: undefined,
     triggeringPullNumber: undefined,
@@ -678,7 +678,7 @@ test('a successful repair preserves requested-reviewer cleanup', async () => {
   });
   assert.deepEqual(
     harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
-    [['removeRequestedReviewer', 42, 'nalfeo']],
+    [['removeRequestedReviewer', 42, 'NalFeO']],
   );
 });
 
@@ -1283,5 +1283,39 @@ test('a repair failure does not suppress unchanged publication and reviewer clea
         name === 'removeRequestedReviewer' && pullNumber === 43 && reviewer === 'nalfeo',
     ),
     true,
+  );
+});
+
+test('a repair failure still attempts requested-reviewer cleanup for the repaired draft first', async () => {
+  const harness = createHarness({
+    pulls: [
+      makePr({
+        requested_reviewers: [{ login: 'nalfeo' }],
+      }),
+    ],
+    replacePlan: [null, new Error('reassign failed')],
+  });
+
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: {
+        info: (message) => harness.logs.push(['info', message]),
+        warning: (message) => harness.logs.push(['warning', message]),
+        error: (message) => harness.logs.push(['error', message]),
+      },
+      now: NOW,
+    }),
+    /Failed to repair 1 empty Copilot draft PR shell\(s\)/,
+  );
+
+  assert.deepEqual(
+    harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
+    [['removeRequestedReviewer', 42, 'nalfeo']],
   );
 });
