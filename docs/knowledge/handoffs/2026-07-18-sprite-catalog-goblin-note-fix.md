@@ -54,7 +54,7 @@ can be caught deterministically going forward.
 ## Verification run
 
 - `npx vitest run tests/unit/sprites/sprite-catalog-integrity.test.ts` — 2/2 pass
-- `npm run verify:fast` — all tests pass (1 pre-existing shallow-clone failure in epic-status.test.ts unrelated)
+- `npm run verify:fast` — all tests pass
 - `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-07-18-sprite-catalog-goblin-note-fix.review-ledger.json` — valid
 
 ## Unresolved issues

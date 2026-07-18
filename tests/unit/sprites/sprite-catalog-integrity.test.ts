@@ -16,13 +16,16 @@ import { describe, expect, it } from 'vitest';
 
 const CATALOG_PATH = path.join(process.cwd(), 'src', 'shared', 'data', 'sprite-catalog.json');
 
-/** Extracts the entity-name token from a Kenney-style label like:
- *  "Tiny Dungeon goblin (frame 121) — temp CC0 art."
- *  → "goblin"
+/** Extracts the entity-name token from a Kenney-style label.
+ *  Handles both common formats:
+ *  - "Tiny Dungeon goblin (frame 121) — temp CC0 art."  → "goblin"
+ *  - "Tiny Dungeon short sword — row 8 col 8 (frame 104)." → "short sword"
+ *  Stops at whichever delimiter comes first: em dash (—) or "(frame".
  *  Returns null if the string doesn't match the expected pattern. */
 function extractKenneyEntityName(text: string): string | null {
-  const match = String(text ?? '').match(/^Tiny Dungeon ([^(]+)\(frame/);
-  return match ? match[1].trim().toLowerCase() : null;
+  const match = String(text ?? '').match(/^Tiny Dungeon (.+?)\s*(?:\u2014|\(frame)/);
+  const name = match?.[1];
+  return name !== undefined ? name.trim().toLowerCase() : null;
 }
 
 type CatalogEntry = {
