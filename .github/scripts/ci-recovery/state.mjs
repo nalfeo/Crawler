@@ -111,6 +111,7 @@ export function normalizeBlockers(blockers) {
       ...(blocker.threadId ? { threadId: compact(blocker.threadId) } : {}),
       ...(blocker.path ? { path: compact(blocker.path) } : {}),
       ...(Number.isFinite(blocker.line) ? { line: blocker.line } : {}),
+      ...(blocker.isOutdated === true ? { isOutdated: true } : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }

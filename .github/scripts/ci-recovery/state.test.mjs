@@ -111,6 +111,23 @@ test('normalizes blocker order before fingerprinting', () => {
   assert.equal(blockerFingerprint(left), blockerFingerprint(right));
 });
 
+test('normalizeBlockers preserves isOutdated flag and it is included in the fingerprint', () => {
+  const fresh = { kind: 'review-thread', id: 'rt:abc:000', summary: 'finding', path: 'foo.ts' };
+  const outdated = { ...fresh, isOutdated: true };
+
+  // isOutdated:true must survive normalisation
+  const normalizedOutdated = normalizeBlockers([outdated]);
+  assert.equal(normalizedOutdated[0].isOutdated, true);
+
+  // isOutdated:false / absent must NOT set the field (stays absent)
+  const normalizedFresh = normalizeBlockers([fresh]);
+  assert.equal(normalizedFresh[0].isOutdated, undefined);
+
+  // fingerprints must differ between outdated and fresh so the automation
+  // resets the retry budget when a thread transitions to outdated state
+  assert.notEqual(blockerFingerprint([fresh]), blockerFingerprint([outdated]));
+});
+
 test('review-thread blocker identity changes when comments change', () => {
   const baseThread = {
     id: 'thread-1',
