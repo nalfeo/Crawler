@@ -1,0 +1,18 @@
+type: weapon
+name: butcher-hook
+description: |
+  A single one-handed butcher hook axe weapon centered in frame on a transparent
+  background. The silhouette reads immediately at gameplay scale: broad chopped
+  axe head with a forward-curving meat hook beak, short reinforced spine, and a
+  wrapped grip with a small pommel at the bottom. Keep orientation vertical with
+  the grip at the bottom and the blade/hook at the top. Floor 2 tone: rough
+  salvaged iron, scarred steel edge, dried grime, and greasy wear on the handle.
+  Use bold color separation, one-pixel dark outline, and chunky readable shading
+  with no anti-aliasing. No extra props, no hands, no glow, no blood spray, no
+  text, no decorative background.
+judge:
+  enabled: true
+variations:
+  - meat-hook beak dominates the top silhouette with a smaller rear spike
+  - broader axe blade profile with a shorter, heavier hook nose
+minVariations: 8
