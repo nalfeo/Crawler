@@ -13,7 +13,7 @@ in Azure blob store awaiting checkin.
 ## Systems touched
 
 - `briefs/weapons/dueling-saber.yaml` — authored canonical brief (vertical orientation,
-  swept guard, 3–5 steel color stops, dungeon-worn)
+  swept guard, 3–4 steel color stops, dungeon-worn)
 - Azure pipeline: generation completed via asset-request workflow (run #260)
 
 ## Generation details
