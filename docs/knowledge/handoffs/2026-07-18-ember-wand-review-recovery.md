@@ -18,22 +18,21 @@ Estimated 2🍎, actual 2🍎.
 
 ## Summary
 
-Recovered PR #1545's exact review-thread blockers without changing ember-wand gameplay tuning. The repair removes manual numeric section counts from `src/shared/items.ts` to prevent future drift and keeps this handoff aligned with the actual branch diff.
+Corrected this recovery handoff so it accurately describes the actual PR #1545 branch changes. The `items.ts` anti-drift section-header cleanup was already landed earlier, so this follow-up only fixes documentation accuracy and thread-tracking notes.
 
 ## Files touched
 
-- `src/shared/items.ts`
 - `docs/knowledge/handoffs/2026-07-18-ember-wand-review-recovery.md`
 
 ## What changed
 
-- Removed manual numeric section counts from `ITEM_CATALOG` headers in `items.ts` so comment text cannot drift from catalog growth.
 - Corrected this handoff's audit bullets so they describe the real file-level changes in this PR.
+- Removed wording that implied new `items.ts` edits in this follow-up and replaced it with references to the earlier landed anti-drift fix.
 
 ## Review-thread validation
 
-- Ran separate-model validation for the listed review threads and confirmed both were applicable on the recovery head.
-- Kept the remedy minimal by fixing documentation/audit text and removing hand-maintained section counts.
+- Confirmed the two cited threads (`#discussion_r3607770778`, `#discussion_r3607770783`) were the blockers being tracked by this handoff.
+- Kept the remedy minimal by fixing documentation/audit text only, then posting `✅ Addressed in <sha>` thread replies.
 
 ## CI / validation
 
@@ -43,8 +42,8 @@ Recovered PR #1545's exact review-thread blockers without changing ember-wand ga
 ## Observe before done
 
 - Before: the PR still had unresolved review blockers for stale handoff audit text and manually maintained section-count comments.
-- After: `items.ts` no longer carries numeric section counts, and this handoff now matches the actual branch diff for auditable recovery notes.
+- After: this handoff now matches the actual branch diff for auditable recovery notes and records the previously landed `items.ts` anti-drift cleanup.
 
 ## Unresolved issues
 
-- None in code. The remaining resolution step is posting `✅ Addressed in <sha>` replies on the exact review threads after the repair commit lands.
+- None.
