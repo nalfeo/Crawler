@@ -1261,7 +1261,13 @@ for (const run of actionRequiredRuns) {
   }
 }
 
-for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
+// Outdated threads reference code that no longer exists at that location and
+// do not block GitHub merges; excluding them prevents both spurious dispatches
+// and fingerprint instability from non-deterministic `line` values on stale
+// thread metadata.
+for (const thread of review.threads.filter(
+  (candidate) => !candidate.isResolved && !candidate.isOutdated,
+)) {
   const root = thread.comments?.nodes?.[0];
   blockers.push({
     kind: 'review-thread',
