@@ -1,0 +1,26 @@
+type: item
+name: scavenger-harness
+description: |
+  A battered, jury-rigged body harness assembled from salvaged straps, buckles,
+  and repurposed webbing. Viewed slightly from above, the harness is laid flat
+  as an icon — a tangle of thick canvas and leather straps crossing the chest
+  and cinching at a central D-ring buckle. Multiple attachment loops and
+  corroded metal clips hang from the shoulder straps and waist band, suggesting
+  utility over aesthetics. The straps are worn and fraying at the edges with
+  discoloration from sweat and dungeon grime. The dominant strap color is a
+  dirty olive or khaki canvas, with rusted orange-brown metal hardware. At
+  least one strap has been patched with a contrasting strip of dark fabric.
+  The silhouette must read clearly as body-armor harness equipment at 64×64 —
+  bold X-cross strap shape dominant, hardware glinting on the intersections.
+  No text, no UI chrome, no decorative background.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - harness with two prominent chest cross-straps meeting at a large central buckle ring, loops hanging at the sides
+  - wide chest rig with multiple horizontal utility straps and corroded carabiner clips, shoulder buckles emphasized
+  - scavenger harness with asymmetric patched strap — one shoulder strap noticeably repaired with darker cloth
+  - compact harness with a central load-bearing plate covered in fraying nylon and bolted D-ring hardware
+minVariations: 4
+judge:
+  enabled: true
