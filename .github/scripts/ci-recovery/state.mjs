@@ -445,12 +445,22 @@ function isTrustedComment(comment) {
 }
 
 /**
- * Returns true only when the last comment in the thread is a trusted marker
- * that explicitly names the current head SHA (full or ≥7-char prefix).
- * A reopened thread with later reviewer feedback keeps returning false even if
- * an earlier comment had a valid marker.
+ * Returns true when the thread should be resolved by the reconcile loop.
+ *
+ * Two conditions each independently satisfy resolution:
+ *
+ * 1. **Outdated thread** (`isOutdated: true`) — GitHub marks a thread outdated
+ *    when the code at that location changed after the review comment was posted.
+ *    The comment no longer refers to current code, so the thread is
+ *    deterministically non-applicable and can be resolved automatically.
+ *
+ * 2. **Trusted addressed marker** — the last comment in the thread is from a
+ *    trusted author and explicitly names the current head SHA (full or ≥7-char
+ *    prefix). A reopened thread with later reviewer feedback keeps returning
+ *    false even if an earlier comment had a valid marker.
  */
 export function shouldResolveThread(thread, headSha, reachableCommitShas = null) {
+  if (thread.isOutdated) return true;
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) return false;
   const last = comments[comments.length - 1];
