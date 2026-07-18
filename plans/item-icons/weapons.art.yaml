@@ -243,6 +243,15 @@ assets:
     integration:
       kind: sprite-registry
       id: bone-chakram
+
+  - id: echo-bell
+    type: weapon
+    label: 'Echo Bell'
+    brief: 'Echo Bell — a Floor 2 beam weapon: a sleek resonance bell on a short handle, held vertically. Bell-head at top, grip at bottom. Metallic body with a glowing accent ring. Silhouette reads as bell-on-a-handle at a glance.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: echo-bell
   - id: ember-wand
     type: weapon
     label: 'Ember Wand'
