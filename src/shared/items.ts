@@ -239,6 +239,12 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('harpoon-gun', 'Harpoon Gun', 'Fire a tethered bolt and reel them in.', R),
   wpn('twin-fangs', 'Twin Fangs', 'A pair of daggers that hum in harmony.', E),
   wpn('sponsor-sword', 'Sponsor Sword', 'Brought to you by GalactiCorp™.', L),
+  wpn(
+    'bone-chakram',
+    'Bone Chakram',
+    'A razor ring carved from dungeon bone. Comes back. Usually.',
+    R,
+  ),
   wpn('ember-wand', 'Ember Wand', 'Channels smoldering intent into a focused bolt of heat.', R),
 
   // ── Consumables (20) ────────────────────────────────────────────────

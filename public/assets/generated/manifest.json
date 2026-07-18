@@ -1014,6 +1014,17 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "bone-chakram-placeholder": {
+      "briefId": "bone-chakram",
+      "spriteName": "bone-chakram",
+      "assetPath": "generated/bone-chakram-placeholder.png",
+      "approvedAt": "2026-07-18T03:25:22.706Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "bone-club-placeholder": {
       "briefId": "bone-club",
       "spriteName": "bone-club",
