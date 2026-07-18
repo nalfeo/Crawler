@@ -6,16 +6,31 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Plan review identified missing train-path coverage, explicit flag-off fallback coverage, and the need to document main-health behavior; all were addressed with tests or workflow guidance."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
     }
   }
 }
