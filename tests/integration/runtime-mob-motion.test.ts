@@ -13,10 +13,7 @@ import {
   Velocity,
   Weight,
 } from '../../src/core/components.js';
-import {
-  applyDamage,
-  DEFAULT_DAMAGE_OPTIONS,
-} from '../../src/core/apply-damage.js';
+import { applyDamage, DEFAULT_DAMAGE_OPTIONS } from '../../src/core/apply-damage.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
