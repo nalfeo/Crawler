@@ -1173,6 +1173,40 @@
       "judgeScore": null,
       "type": "item"
     },
+    "cactusfolk-boss-var-0": {
+      "briefId": "cactusfolk-boss",
+      "spriteName": "cactusfolk-boss-var-0",
+      "assetPath": "generated/cactusfolk-boss-var-0.png",
+      "approvedAt": "2026-07-17T18:15:33.774Z",
+      "sourceRun": "generated/runs/cactusfolk-boss/2026-07-17T17-53-08-5c0e8bce",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 62,
+        "y": 68,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 62,
+          "y": 68,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 62,
+          "y": 68,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "ebc4340684db85e9497676bdf5db782c458e25a1293c94fe6b507486c77df800",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-boss-v1/2026-07-17T17-53-08-5c0e8bce/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-boss-v1/2026-07-17T17-53-08-5c0e8bce/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/cactusfolk-boss-v1/2026-07-17T17-53-08-5c0e8bce/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
     "cactusfolk-boss-var-1": {
       "briefId": "cactusfolk-boss",
       "spriteName": "cactusfolk-boss-var-1",
@@ -1201,9 +1235,9 @@
       "judgeScore": "5",
       "type": "enemy",
       "contentHash": "9f47e32106ea23d679f48e7397b2b58cb21e98b1133a42fda48865111f585aa9",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.yaml",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
@@ -2107,6 +2141,27 @@
       "judgeScore": null,
       "type": "weapon",
       "contentHash": "245058fad5a81c263a66e6924b4ca276dd829ef978b31613eb319f1414866b3a"
+    },
+    "equipment/weapon/moon-scythe": {
+      "briefId": "equipment/weapon/moon-scythe",
+      "spriteName": "equipment/weapon/moon-scythe",
+      "assetPath": "generated/equipment/weapon/moon-scythe.png",
+      "approvedAt": "2026-07-18T00:00:00.000Z",
+      "sourceRun": "manual-authored/moon-scythe",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual-authored",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "4fd795466d0eb0480e0667510313e77d5ca05cc36b1a64855343cadb3b8f7a33",
+      "equipment": {
+        "stableId": "weapon.moon-scythe",
+        "runtimeKey": "equipment/weapon/moon-scythe",
+        "category": "weapon",
+        "family": "magic-focus",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-magic-focus"
+      }
     },
     "exp-candy-placeholder": {
       "briefId": "exp-candy",
@@ -3322,9 +3377,9 @@
       "judgeScore": "5",
       "type": "enemy",
       "contentHash": "aed3bfa776fc27e454901d22c3731e4e0e4ecf23d73ee751ac668db10124f193",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-torch\\2026-07-08T04-22-21-2fbcb5d3\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-torch\\2026-07-08T04-22-21-2fbcb5d3\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\kobold-torch\\2026-07-08T04-22-21-2fbcb5d3\\postprocess.pipeline.effective.yaml",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
@@ -3712,9 +3767,9 @@
       "judgeScore": "5",
       "type": "enemy",
       "contentHash": "381f80638416fdf91eddc8ba051a2d6d0d3432171b8671c92a47d85ca969f89f",
-      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-burrower\\2026-07-08T05-05-46-350b03d1\\postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-burrower\\2026-07-08T05-05-46-350b03d1\\postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-burrower\\2026-07-08T05-05-46-350b03d1\\postprocess.pipeline.effective.yaml",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
@@ -4172,6 +4227,17 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "oil-lantern-placeholder": {
+      "briefId": "oil-lantern",
+      "spriteName": "oil-lantern",
+      "assetPath": "generated/oil-lantern-placeholder.png",
+      "approvedAt": "2026-07-18T01:43:20.931Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "old-sock-var-4": {
       "briefId": "old-sock",
@@ -5676,6 +5742,40 @@
       "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.overrides.json",
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/rusted-scrap-v1/2026-07-08T00-01-17-ca094eed/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
+    },
+    "scavenger-harness-var-0": {
+      "briefId": "scavenger-harness",
+      "spriteName": "scavenger-harness-var-0",
+      "assetPath": "generated/scavenger-harness-var-0.png",
+      "approvedAt": "2026-07-18T05:02:55.273Z",
+      "sourceRun": "generated/runs/scavenger-harness/2026-07-18T04-52-00-manual",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 56,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 56,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": null,
+      "type": "item",
+      "contentHash": "bc35e930fdba78610e2c49c1286e1b254c9f62730c6888d9e03fc7523ee4360b",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
@@ -8622,6 +8722,26 @@
       "type": "item",
       "contentHash": "51baee84d222c27d4696892674c742ea1d447af94be95f4d70c84463672c4c12"
     },
+    "equipment/weapon/meteor-hammer": {
+      "briefId": "equipment/weapon/meteor-hammer",
+      "spriteName": "equipment/weapon/meteor-hammer",
+      "assetPath": "generated/equipment/weapon/meteor-hammer-placeholder.png",
+      "approvedAt": "2026-07-18T04:30:00.000Z",
+      "sourceRun": "floor2-equipment-placeholder/v1",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon",
+      "equipment": {
+        "stableId": "weapon.meteor-hammer",
+        "runtimeKey": "equipment/weapon/meteor-hammer",
+        "category": "weapon",
+        "family": "trap",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-trap"
+      }
+    },
     "equipment/weapon/moon-scythe": {
       "briefId": "equipment/weapon/moon-scythe",
       "spriteName": "equipment/weapon/moon-scythe",
@@ -8641,6 +8761,48 @@
         "family": "magic-focus",
         "slot": "weapon",
         "productionWaveId": "floor2-equipment-weapon-magic-focus"
+      }
+    },
+    "equipment/weapon/tower-spear": {
+      "briefId": "equipment/weapon/tower-spear",
+      "spriteName": "equipment/weapon/tower-spear",
+      "assetPath": "generated/equipment/weapon/tower-spear.png",
+      "approvedAt": "2026-07-18T04:01:27.655Z",
+      "sourceRun": "generated/runs/tower-spear/2026-07-18T03-50-00-manual",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 62,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 62,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "1eef33ca8e1b852a5a394e0db7f398d2fd0f7222ff7a8c48c47498edc8e622e4",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right",
+      "equipment": {
+        "stableId": "weapon.tower-spear",
+        "runtimeKey": "equipment/weapon/tower-spear",
+        "category": "weapon",
+        "family": "polearm",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-polearm"
       }
     }
   }

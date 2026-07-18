@@ -46,11 +46,11 @@ contracts and a world-owned generated-item registry keyed by stable instance ide
 
 ## Key constants (ADR 0065 DEC-005)
 
-| Constant                   | Value                                 |
-| -------------------------- | ------------------------------------- |
-| `RARITY_INHERENT_SCALAR`   | common=1.00, uncommon=1.05, rare=1.10 |
-| `RARITY_EFFECT_BUDGET`     | common=0, uncommon=1, rare=2          |
-| `ENHANCEMENT_MIN/MAX`      | 0 / 5                                 |
+| Constant                 | Value                                 |
+| ------------------------ | ------------------------------------- |
+| `RARITY_INHERENT_SCALAR` | common=1.00, uncommon=1.05, rare=1.10 |
+| `RARITY_EFFECT_BUDGET`   | common=0, uncommon=1, rare=2          |
+| `ENHANCEMENT_MIN/MAX`    | 0 / 5                                 |
 
 ## Plan review summary
 
