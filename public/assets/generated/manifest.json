@@ -2174,6 +2174,17 @@
         "productionWaveId": "floor2-equipment-weapon-magic-focus"
       }
     },
+    "harpoon-gun-placeholder": {
+      "briefId": "harpoon-gun",
+      "spriteName": "harpoon-gun",
+      "assetPath": "generated/harpoon-gun-placeholder.png",
+      "approvedAt": "2026-07-18T03:16:24.697Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "exp-candy-placeholder": {
       "briefId": "exp-candy",
       "spriteName": "exp-candy",
