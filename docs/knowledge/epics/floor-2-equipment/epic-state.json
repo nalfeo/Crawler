@@ -148,8 +148,8 @@
         {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
-          "sha256": "e928197a8a777957a1db5700c03be4c3daa2e645e33da9eaebcbf720017c16dd",
-          "commit": "cc96f3a48354d06f938cee9e859f921a3195041a",
+          "sha256": "4a9bb0fc81ee287f096e5a6242d5b3d3344f1fb0ae1ddcd4422f2b5bc007ac59",
+          "commit": "a590244d35830e1a84ce051e5e7d61d43b0ae322",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         }
       ],
