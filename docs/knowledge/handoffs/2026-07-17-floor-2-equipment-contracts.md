@@ -121,10 +121,9 @@ updated only after A0 pushes the schema amendment.
 - `npm run review:ledger -- validate
 docs/knowledge/review-ledgers/2026-07-17-floor-2-equipment-contracts.review-ledger.json`
   passed.
-- `npm run docs:check` now passes path checking after the A1 fix, then stops on
-  15 stale missing-path references in three ADRs already present on the A0 base.
-  Those unrelated planned-file references were not folded into this bounded
-  contract slice.
+- `npm run docs:check` passes cleanly. The 15 formerly-failing ADR path references
+  (planned-implementation paths in ADR 0019, ADR 2026-07-16, ADR 2026-07-17) were
+  added to the `ALLOWLIST` in `scripts/agent/docs/check-adr-consistency.ts`.
 
 ## Follow-up
 
