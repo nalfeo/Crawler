@@ -72,47 +72,47 @@ test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
     maxDispatchPerRun: 5,
   });
 
-  test('priority-only mode dispatches repair PRs and preserves directly triggered PRs', () => {
-    const scheduledPulls = [
-      {
-        number: 1,
-        draft: false,
-        labels: [],
-        head: { repo: { full_name: 'nalfeo/Crawler' } },
-      },
-      {
-        number: 2,
-        draft: false,
-        labels: [{ name: 'ci-repair' }],
-        head: { repo: { full_name: 'nalfeo/Crawler' } },
-      },
-      {
-        number: 3,
-        draft: false,
-        labels: [],
-        head: { repo: { full_name: 'nalfeo/Crawler' } },
-      },
-    ];
-
-    assert.deepEqual(
-      collectPrNumbers({
-        payload: { issue: { number: 3, pull_request: {} } },
-        eventName: 'schedule',
-        repository: 'nalfeo/Crawler',
-        scheduledPulls,
-        priorityMode: 'priority-only',
-      }),
-      [3, 2],
-    );
-  });
-
-  test('priority mode rejects unsupported values', () => {
-    assert.equal(parsePriorityMode(undefined), 'normal');
-    assert.equal(parsePriorityMode('priority-only'), 'priority-only');
-    assert.throws(() => parsePriorityMode('paused'), /must be normal or priority-only/);
-  });
-
   assert.deepEqual(numbers, [1, 2, 3, 4, 5]);
+});
+
+test('priority-only mode dispatches repair PRs and preserves directly triggered PRs', () => {
+  const scheduledPulls = [
+    {
+      number: 1,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2,
+      draft: false,
+      labels: [{ name: 'ci-repair' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 3,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: { issue: { number: 3, pull_request: {} } },
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls,
+      priorityMode: 'priority-only',
+    }),
+    [3, 2],
+  );
+});
+
+test('priority mode rejects unsupported values', () => {
+  assert.equal(parsePriorityMode(undefined), 'normal');
+  assert.equal(parsePriorityMode('priority-only'), 'priority-only');
+  assert.throws(() => parsePriorityMode('paused'), /must be normal or priority-only/);
 });
 
 test('flag-off schedule sweeps prioritize PRs with train-owned labels before dispatch cap', () => {

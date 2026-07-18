@@ -292,7 +292,9 @@ export function collectPrNumbers({
     priorityMode === PRIORITY_ONLY_MODE &&
     priorityNumbers.size > 0
   ) {
-    return eligible.filter((number) => directNumbers.has(number) || priorityNumbers.has(number));
+    return eligible
+      .filter((number) => directNumbers.has(number) || priorityNumbers.has(number))
+      .slice(0, maxDispatchPerRun);
   }
   if (
     (eventName === 'schedule' || eventName === 'workflow_dispatch') &&

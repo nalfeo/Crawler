@@ -71,6 +71,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RECOVERY_TRIGGER: ${{ github.event_name }}
           MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
+          # Set to priority-only during GitHub/runner capacity incidents. Normal
+          # recovery remains the default and still dispatches repair PRs first.
           CI_RECOVERY_MAX_DISPATCH_PER_RUN: ${{ vars.CI_RECOVERY_MAX_DISPATCH_PER_RUN || '8' }}
           CI_RECOVERY_PRIORITY_MODE: ${{ vars.CI_RECOVERY_PRIORITY_MODE || 'normal' }}
         run: node .github/scripts/ci-recovery/router.mjs
