@@ -442,7 +442,7 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(GENERATED_KEY_BY_NPC_DEF).toEqual(expectedByDef);
   });
 
-  it('loads and preloads the shipped Floor 2 tower-spear runtime key from the real manifest', async () => {
+  it('loads and preloads the shipped Floor 2 tower-spear runtime key from the real manifest', () => {
     if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
       return;
     }
@@ -465,6 +465,67 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(
       existsSync(
         path.resolve(__dirname, '../../public/assets/generated/equipment/weapon/tower-spear.png'),
+      ),
+    ).toBe(true);
+  });
+
+  it('loads and preloads the shipped Floor 2 meteor-hammer runtime key from the real manifest', () => {
+    if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
+      return;
+    }
+    const runtimeKey = 'equipment/weapon/meteor-hammer';
+    const entry = sharedRealRegistry.lookup(runtimeKey);
+    expect(entry, `missing shipped generated-manifest entry for ${runtimeKey}`).not.toBeNull();
+    expect(entry?.textureKey).toBe(runtimeKey);
+    expect(entry?.assetPath).toBe('generated/equipment/weapon/meteor-hammer-placeholder.png');
+    expect(entry?.sourceRun).toBe('floor2-equipment-placeholder/v1');
+
+    const queued: Array<{ textureKey: string; url: string }> = [];
+    preloadGeneratedSprites(
+      { image: (textureKey, url) => queued.push({ textureKey, url }) },
+      sharedRealRegistry,
+    );
+    expect(queued).toContainEqual({
+      textureKey: runtimeKey,
+      url: '/assets/generated/equipment/weapon/meteor-hammer-placeholder.png',
+    });
+    expect(
+      existsSync(
+        path.resolve(
+          __dirname,
+          '../../public/assets/generated/equipment/weapon/meteor-hammer-placeholder.png',
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('loads and preloads the shipped harpoon-gun placeholder key from the real manifest', () => {
+    if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
+      return;
+    }
+    const briefId = 'harpoon-gun';
+    const textureKey = 'harpoon-gun-placeholder';
+    const entry = sharedRealRegistry
+      .entries()
+      .find((candidate) => candidate.textureKey === textureKey);
+    expect(entry, `missing shipped generated-manifest entry for ${textureKey}`).not.toBeUndefined();
+    expect(entry?.textureKey).toBe(textureKey);
+    expect(sharedRealRegistry.lookup(briefId)?.textureKey).toBe(textureKey);
+    expect(entry?.assetPath).toBe('generated/harpoon-gun-placeholder.png');
+    expect(entry?.sourceRun).toBe('placeholder');
+
+    const queued: Array<{ textureKey: string; url: string }> = [];
+    preloadGeneratedSprites(
+      { image: (queuedTextureKey, url) => queued.push({ textureKey: queuedTextureKey, url }) },
+      sharedRealRegistry,
+    );
+    expect(queued).toContainEqual({
+      textureKey,
+      url: '/assets/generated/harpoon-gun-placeholder.png',
+    });
+    expect(
+      existsSync(
+        path.resolve(__dirname, '../../public/assets/generated/harpoon-gun-placeholder.png'),
       ),
     ).toBe(true);
   });
