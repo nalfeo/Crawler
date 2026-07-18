@@ -289,12 +289,10 @@ describe('Floor 2 equipment epic status', () => {
 
     const messages = validate(state).errors.map((error) => error.message);
 
-    expect(
-      messages.some((message) => message.includes('Issue URL does not match number')),
-    ).toBe(true);
-    expect(messages.some((message) => message.includes('PR URL does not match number'))).toBe(
+    expect(messages.some((message) => message.includes('Issue URL does not match number'))).toBe(
       true,
     );
+    expect(messages.some((message) => message.includes('PR URL does not match number'))).toBe(true);
   });
 
   it('rejects unverifiable required evidence paths for validated nodes', () => {
@@ -303,7 +301,10 @@ describe('Floor 2 equipment epic status', () => {
     state.nodes[0]!.evidence[2] = {
       kind: 'offline-validator-and-focused-tests',
       path_or_check: 'tests/unit/agent/does-not-exist.test.ts',
-      sha256: sha256OfFile(REPO_ROOT, 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md'),
+      sha256: sha256OfFile(
+        REPO_ROOT,
+        'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md',
+      ),
       commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     };
