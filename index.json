@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3ce2d286b11ef9725fe674db4fe57c61cbba0f1e",
+    "commitDate": "2026-07-18T20:50:54Z",
+    "commitSubject": "feat(art): add iron-greaves sprite brief for Floor 2 equipment icon (#1509)",
+    "capturedAt": "2026-07-18T22:11:55.720Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29660933884",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/3ce2d286b11ef9725fe674db4fe57c61cbba0f1e.json"
+  },
+  {
     "commit": "e03ee7b2fb0647d8ab56f707d48439e6b67c4f27",
     "commitDate": "2026-07-18T20:19:00Z",
     "commitSubject": "Add harpoon-gun Floor 2 equipment weapon icon (placeholder + pipeline brief) (#1443)",
