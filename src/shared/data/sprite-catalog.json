@@ -814,6 +814,19 @@
     "row": 0
   },
   {
+    "id": "generated:flame-tongs-var-0",
+    "kind": "sprite",
+    "label": "flame-tongs-var-0",
+    "description": "Generated sprite from brief: flame-tongs.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "flame-tongs-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/flame-tongs-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:frost-lichen-v1-var-12",
     "kind": "sprite",
     "label": "frost-lichen-v1-var-12",
