@@ -496,7 +496,7 @@
       "briefId": "azure-mushroom",
       "spriteName": "azure-mushroom",
       "assetPath": "generated/azure-mushroom-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.702Z",
+      "approvedAt": "2026-07-18T02:44:38.903Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -1844,7 +1844,7 @@
       "briefId": "crimson-mushroom",
       "spriteName": "crimson-mushroom",
       "assetPath": "generated/crimson-mushroom-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.702Z",
+      "approvedAt": "2026-07-18T02:44:38.902Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -2056,6 +2056,58 @@
       "judgeScore": null,
       "type": null
     },
+    "equipment/weapon/bone-saw": {
+      "briefId": "equipment/weapon/bone-saw",
+      "spriteName": "equipment/weapon/bone-saw",
+      "assetPath": "generated/equipment/weapon/bone-saw.png",
+      "approvedAt": "2026-07-18T01:45:33.608Z",
+      "sourceRun": "generated/runs/bone-saw/2026-07-18T01-39-45-manual",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 61,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 61,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 29,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "f4912b1422a1daacb0d77bf16c6e91e5c6c5c8fd0f3fe5c0255c4393dc985e76",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right",
+      "equipment": {
+        "stableId": "weapon.bone-saw",
+        "runtimeKey": "equipment/weapon/bone-saw",
+        "category": "weapon",
+        "family": "blade",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-blade"
+      }
+    },
+    "equipment/weapon/iron-cleaver": {
+      "briefId": "equipment/weapon/iron-cleaver",
+      "spriteName": "equipment/weapon/iron-cleaver",
+      "assetPath": "generated/equipment/weapon/iron-cleaver.png",
+      "approvedAt": "2026-07-18T02:27:00.000Z",
+      "sourceRun": "issue-request",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "issue-request",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "245058fad5a81c263a66e6924b4ca276dd829ef978b31613eb319f1414866b3a"
+    },
     "exp-candy-placeholder": {
       "briefId": "exp-candy",
       "spriteName": "exp-candy",
@@ -2164,7 +2216,7 @@
       "briefId": "fireball",
       "spriteName": "fireball",
       "assetPath": "generated/fireball-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.692Z",
+      "approvedAt": "2026-07-18T02:44:38.893Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -2288,7 +2340,7 @@
       "briefId": "frost-lichen",
       "spriteName": "frost-lichen",
       "assetPath": "generated/frost-lichen-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.704Z",
+      "approvedAt": "2026-07-18T02:44:38.905Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -2942,17 +2994,6 @@
       "judgeScore": null,
       "type": null
     },
-    "harpoon-gun-placeholder": {
-      "briefId": "harpoon-gun",
-      "spriteName": "harpoon-gun",
-      "assetPath": "generated/harpoon-gun-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.697Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null
-    },
     "healing-fungus-placeholder": {
       "briefId": "healing-fungus",
       "spriteName": "healing-fungus",
@@ -3291,7 +3332,7 @@
       "briefId": "landmine",
       "spriteName": "landmine",
       "assetPath": "generated/landmine-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.696Z",
+      "approvedAt": "2026-07-18T02:44:38.897Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -3302,7 +3343,7 @@
       "briefId": "laser",
       "spriteName": "laser",
       "assetPath": "generated/laser-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.693Z",
+      "approvedAt": "2026-07-18T02:44:38.894Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -3681,7 +3722,7 @@
       "briefId": "moonbloom-flower",
       "spriteName": "moonbloom-flower",
       "assetPath": "generated/moonbloom-flower-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.704Z",
+      "approvedAt": "2026-07-18T02:44:38.904Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -4861,7 +4902,7 @@
       "briefId": "punch",
       "spriteName": "punch",
       "assetPath": "generated/punch-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.695Z",
+      "approvedAt": "2026-07-18T02:44:38.895Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -5770,7 +5811,7 @@
       "briefId": "shadow-lichen",
       "spriteName": "shadow-lichen",
       "assetPath": "generated/shadow-lichen-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.705Z",
+      "approvedAt": "2026-07-18T02:44:38.905Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -6403,6 +6444,18 @@
       "judgeScore": null,
       "type": null
     },
+    "storm-sling-placeholder": {
+      "briefId": "storm-sling",
+      "spriteName": "storm-sling",
+      "assetPath": "generated/storm-sling-placeholder.png",
+      "approvedAt": "2026-07-18T03:40:52.652Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon"
+    },
     "stress-ball-placeholder": {
       "briefId": "stress-ball",
       "spriteName": "stress-ball",
@@ -6427,11 +6480,22 @@
       "judgeScore": null,
       "type": "item"
     },
+    "sun-hammer-placeholder": {
+      "briefId": "sun-hammer",
+      "spriteName": "sun-hammer",
+      "assetPath": "generated/sun-hammer-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.898Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "sunpetal-flower-placeholder": {
       "briefId": "sunpetal-flower",
       "spriteName": "sunpetal-flower",
       "assetPath": "generated/sunpetal-flower-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.703Z",
+      "approvedAt": "2026-07-18T02:44:38.904Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -6674,7 +6738,7 @@
       "briefId": "throwing-knife",
       "spriteName": "throwing-knife",
       "assetPath": "generated/throwing-knife-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.691Z",
+      "approvedAt": "2026-07-18T02:44:38.891Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -7279,6 +7343,18 @@
       "judgeScore": null,
       "type": null
     },
+    "twin-katar-var-0": {
+      "briefId": "twin-katar",
+      "spriteName": "twin-katar-var-0",
+      "assetPath": "generated/twin-katar-var-0.png",
+      "approvedAt": "2026-07-18T01:45:00.000Z",
+      "sourceRun": "manual/twin-katar",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual",
+      "judgeScore": null,
+      "type": "weapon"
+    },
     "vip-lanyard-placeholder": {
       "briefId": "vip-lanyard",
       "spriteName": "vip-lanyard",
@@ -7716,6 +7792,38 @@
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
+    },
+    "equipment/weapon/moon-scythe": {
+      "briefId": "equipment/weapon/moon-scythe",
+      "spriteName": "equipment/weapon/moon-scythe",
+      "assetPath": "generated/equipment/weapon/moon-scythe.png",
+      "approvedAt": "2026-07-18T00:00:00.000Z",
+      "sourceRun": "manual-authored/moon-scythe",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual-authored",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "4fd795466d0eb0480e0667510313e77d5ca05cc36b1a64855343cadb3b8f7a33",
+      "equipment": {
+        "stableId": "weapon.moon-scythe",
+        "runtimeKey": "equipment/weapon/moon-scythe",
+        "category": "weapon",
+        "family": "magic-focus",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-magic-focus"
+      }
+    },
+    "harpoon-gun-placeholder": {
+      "briefId": "harpoon-gun",
+      "spriteName": "harpoon-gun",
+      "assetPath": "generated/harpoon-gun-placeholder.png",
+      "approvedAt": "2026-07-18T03:16:24.697Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     }
   }
 }
