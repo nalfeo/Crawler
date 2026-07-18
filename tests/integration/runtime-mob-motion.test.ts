@@ -393,7 +393,8 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
 
   removeEntity(reuseWorld.ecs, oldEid);
   reuseWorld.floorScenario!.enemyArchetypes.delete(oldEid);
-  reuseWorld.floorExtendedState!.ambientEnemyArchetypes!.delete(oldEid);
+  // Intentionally leave the stale ambientEnemyArchetypes entry to verify
+  // that the generation-fresh enemyAppearanceKeys takes priority over it.
   const recycledEid = spawnBehaviorEnemy(reuseWorld, 20, 10, 100, 0, 1, 30, 8);
   expect(recycledEid).toBe(oldEid);
   setComponent(reuseWorld.ecs, recycledEid, Sprite, { textureId: 2, width: 3, height: 3 });

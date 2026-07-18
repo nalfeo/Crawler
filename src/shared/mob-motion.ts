@@ -416,9 +416,10 @@ if (!floor1Rat) {
 /**
  * Special runtime profiles for Floor 1 mobs that are not in the regular pack:
  * - slime-mini: split from the slime archetype by the drop system
- * - slime-rat / rat-slime: the two Floor 1 bosses (both use AI_TYPE.CHASE, not RANGED,
- *   so hasProjectile is false — their acid fire is driven by the boss-fight script,
- *   not by enemyAISystem's ranged path)
+ * - slime-rat / rat-slime: the two Floor 1 bosses (both use AI_TYPE.CHASE, but
+ *   fire projectiles via attackRange + fireCooldownMs — enemyAISystem calls
+ *   tryFireEnemyProjectile for any enemy with attackRange > 0 in range regardless
+ *   of AI type, see enemyAISystem.ts:1994-1995)
  */
 const SPECIAL_FLOOR_1_PROFILES: readonly RuntimeMobMotionProfile[] = [
   {
@@ -431,7 +432,7 @@ const SPECIAL_FLOOR_1_PROFILES: readonly RuntimeMobMotionProfile[] = [
     archetypeId: 'slime-rat',
     name: 'Slime Rat',
     movementStyle: 'stomp',
-    hasProjectile: false,
+    hasProjectile: true,
     isBoss: true,
   },
   {
@@ -439,7 +440,7 @@ const SPECIAL_FLOOR_1_PROFILES: readonly RuntimeMobMotionProfile[] = [
     archetypeId: 'rat-slime',
     name: 'Rat Slime',
     movementStyle: 'stomp',
-    hasProjectile: false,
+    hasProjectile: true,
     isBoss: true,
   },
 ];

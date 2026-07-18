@@ -268,14 +268,19 @@ describe('combat-arena-lab wiring', () => {
   });
 
   it('spawnPresetAroundCenter routes f2 boss entries through production-compatible spawn: scaled HP, contact damage 2, family tag', () => {
-    // Find the first f2 preset that has a boss entry
+    // Find the first f2 preset that has a RANGED boss entry so all production-parity
+    // behaviors are exercised, including the max(160, detectRange × 4) attack range branch.
     const f2Preset = ARENA_ENEMY_PRESETS.find(
-      (p) => p.floor === 'floor2' && p.entries.some((e) => e.def.isBoss === true),
+      (p) =>
+        p.floor === 'floor2' &&
+        p.entries.some((e) => e.def.isBoss === true && e.def.aiType === 'ranged'),
     );
     expect(f2Preset).toBeDefined();
     if (!f2Preset) return;
 
-    const bossEntry = f2Preset.entries.find((e) => e.def.isBoss === true)!;
+    const bossEntry = f2Preset.entries.find(
+      (e) => e.def.isBoss === true && e.def.aiType === 'ranged',
+    )!;
     const bossDef = bossEntry.def;
 
     const rng = new SeededRandom(42424);
@@ -304,10 +309,9 @@ describe('combat-arena-lab wiring', () => {
     expect(world.stores.familyMembership.isBoss[bossEid]).toBe(1);
 
     // If the boss is ranged, attack range must be ≥ 160 (max(160, detectRange × 4))
-    if (bossDef.aiType === 'ranged') {
-      const expectedRange = Math.max(160, bossDef.detectRange * 4);
-      expect(world.stores.enemyBehavior.attackRange[bossEid]).toBe(expectedRange);
-    }
+    // This is guaranteed to execute because we selected a ranged boss above.
+    const expectedRange = Math.max(160, bossDef.detectRange * 4);
+    expect(world.stores.enemyBehavior.attackRange[bossEid]).toBe(expectedRange);
   });
 
   it('headless arena pipeline: spawn preset + run simulation steps without crash', () => {

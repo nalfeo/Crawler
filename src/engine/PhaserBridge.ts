@@ -387,8 +387,8 @@ function resolveMobMotionProfile(
   if (hasComponent(world.ecs, eid, Spawner)) return undefined;
   const archetypeId =
     world.floorScenario?.enemyArchetypes.get(eid) ??
-    world.floorExtendedState?.ambientEnemyArchetypes?.get(eid) ??
-    world.enemyAppearanceKeys.get(eid);
+    world.enemyAppearanceKeys.get(eid) ??
+    world.floorExtendedState?.ambientEnemyArchetypes?.get(eid);
   return getRuntimeMobMotionProfile(archetypeId);
 }
 
