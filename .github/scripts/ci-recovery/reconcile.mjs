@@ -1593,7 +1593,7 @@ const taskBody = [
   '',
   '**Review-thread protocol:** For every listed review thread, invoke a separate review agent using a model different from your primary model to validate whether the comment is still applicable to the current head. Fix valid findings. Resolve only deterministic non-applicability (outdated/removed line or file, duplicate already addressed) or a validated `✅ Addressed` result. For substantive disagreement, reply with the validator evidence and leave the thread unresolved for escalation.',
   '',
-  'When a thread is addressed, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>` and resolve it. Run the repository-required verification and push one consolidated repair commit.',
+  'When a thread is addressed by a real fix, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>` (where `<sha>` is the commit that contains the fix) and resolve it. When the finding is not applicable to the current code (outdated line, already-correct content, removed file, etc.), reply with `✅ Addressed (deterministic non-applicability): <one-line explanation>` — do NOT include a SHA in this form. Run the repository-required verification and push one consolidated repair commit.',
 ].join('\n');
 
 if (live) {

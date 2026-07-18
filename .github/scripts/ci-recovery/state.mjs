@@ -387,6 +387,7 @@ export const TRUSTED_BOT_LOGINS = new Set([
 
 const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
+const nonApplicabilityMarkerPattern = /✅\s*addressed\s*\(deterministic non-applicability\)/i;
 
 function parseMarkerShaToken(rawToken) {
   // Marker replies often leave copied SHAs/URLs with trailing Markdown
@@ -445,8 +446,22 @@ function isTrustedComment(comment) {
 }
 
 /**
+ * Returns true if body contains the explicit deterministic non-applicability
+ * marker: "✅ Addressed (deterministic non-applicability)".
+ * This form is used when a trusted reviewer validates that the original
+ * finding is not applicable to the current code (no fix SHA needed).
+ */
+export function isNonApplicabilityMarker(body) {
+  return nonApplicabilityMarkerPattern.test(String(body ?? ''));
+}
+
+/**
  * Returns true only when the last comment in the thread is a trusted marker
- * that explicitly names the current head SHA (full or ≥7-char prefix).
+ * that either:
+ *   (a) explicitly names the current head SHA (full or ≥7-char prefix) via
+ *       "✅ Addressed in <sha-or-commit-url>", or
+ *   (b) declares deterministic non-applicability via
+ *       "✅ Addressed (deterministic non-applicability)".
  * A reopened thread with later reviewer feedback keeps returning false even if
  * an earlier comment had a valid marker.
  */
@@ -454,7 +469,10 @@ export function shouldResolveThread(thread, headSha, reachableCommitShas = null)
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) return false;
   const last = comments[comments.length - 1];
-  return isTrustedComment(last) && markerNamesHead(last.body, headSha, reachableCommitShas);
+  if (!isTrustedComment(last)) return false;
+  return (
+    markerNamesHead(last.body, headSha, reachableCommitShas) || isNonApplicabilityMarker(last.body)
+  );
 }
 
 /**

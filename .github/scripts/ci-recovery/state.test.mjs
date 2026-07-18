@@ -20,6 +20,7 @@ import {
   makeState,
   reviewThreadBlockerId,
   reviewThreadCommentDigest,
+  isNonApplicabilityMarker,
   markerNamesHead,
   normalizeBlockers,
   ownerLabel,
@@ -720,6 +721,88 @@ test('shouldResolveThread accepts latest trusted commit URL marker on head linea
     true,
   );
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
+});
+
+test('isNonApplicabilityMarker recognizes the deterministic non-applicability format', () => {
+  assert.equal(
+    isNonApplicabilityMarker(
+      '✅ Addressed (deterministic non-applicability): no double-pipe rows present.',
+    ),
+    true,
+  );
+  assert.equal(
+    isNonApplicabilityMarker(
+      '✅ Addressed (deterministic non-applicability): table at lines 91–96 uses correct single | pipes.',
+    ),
+    true,
+  );
+  // case-insensitive
+  assert.equal(
+    isNonApplicabilityMarker('✅ ADDRESSED (Deterministic Non-Applicability): explanation'),
+    true,
+  );
+  // must not match plain "✅ Addressed in <sha>"
+  assert.equal(isNonApplicabilityMarker('✅ Addressed in abc1234: fix note'), false);
+  // must not match bare "✅ Addressed" without the parenthetical
+  assert.equal(isNonApplicabilityMarker('✅ Addressed: fix applied'), false);
+  assert.equal(isNonApplicabilityMarker(''), false);
+});
+
+test('shouldResolveThread accepts trusted non-applicability marker without a SHA', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'This table uses || at the start of each row.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed (deterministic non-applicability): table uses correct single | pipes — no || double-pipe rows present.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  // should resolve regardless of headSha since no SHA is required for non-applicability
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+  assert.equal(shouldResolveThread(thread, 'deadbeef00000000'), true);
+});
+
+test('shouldResolveThread rejects non-applicability marker from untrusted author', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed (deterministic non-applicability): some explanation',
+          authorAssociation: 'NONE',
+          author: { login: 'random-drive-by-user' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('shouldResolveThread rejects non-applicability marker if a later untrusted comment follows', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed (deterministic non-applicability): explanation',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+        {
+          body: 'I disagree — the issue is still present.',
+          authorAssociation: 'NONE',
+          author: { login: 'random-drive-by-user' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
 });
 
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
