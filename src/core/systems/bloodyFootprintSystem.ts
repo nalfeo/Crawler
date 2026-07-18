@@ -15,6 +15,21 @@ import {
 const MAX_CONTINUOUS_FOOTPRINT_GAP_FT =
   MAX_BLOODY_FOOTPRINT_EMITS_PER_FRAME * BLOODY_FOOTPRINT_EMIT_DISTANCE_FT;
 
+function pruneExpiredInPlace<T extends { expiresAtMs: number }>(items: T[], nowMs: number): void {
+  let writeIndex = 0;
+  for (let readIndex = 0; readIndex < items.length; readIndex += 1) {
+    const item = items[readIndex]!;
+    if (item.expiresAtMs <= nowMs) {
+      continue;
+    }
+    if (writeIndex !== readIndex) {
+      items[writeIndex] = item;
+    }
+    writeIndex += 1;
+  }
+  items.length = writeIndex;
+}
+
 function refreshSource(
   world: GameWorld,
   color: number,
@@ -42,10 +57,8 @@ function refreshSource(
 
 export function bloodyFootprintSystem(world: GameWorld): void {
   const nowMs = world.elapsedMs;
-  world.bloodPools = world.bloodPools.filter((pool) => pool.expiresAtMs > nowMs);
-  world.bloodyFootprints = world.bloodyFootprints.filter(
-    (footprint) => footprint.expiresAtMs > nowMs,
-  );
+  pruneExpiredInPlace(world.bloodPools, nowMs);
+  pruneExpiredInPlace(world.bloodyFootprints, nowMs);
 
   const state = world.bloodyFootprintState;
   if (!isBloodyFootprintSourceActive(state.source, nowMs)) {
@@ -65,7 +78,9 @@ export function bloodyFootprintSystem(world: GameWorld): void {
   const playerEid = players[0]!;
   const playerX = world.stores.position.x[playerEid] ?? 0;
   const playerY = world.stores.position.y[playerEid] ?? 0;
-  const nextOverlaps = new Set<number>();
+  const previousOverlaps = state.overlappingPoolIds;
+  const nextOverlaps = state.nextOverlappingPoolIds;
+  nextOverlaps.clear();
   let touchedPool = false;
 
   for (const pool of world.bloodPools) {
@@ -79,7 +94,7 @@ export function bloodyFootprintSystem(world: GameWorld): void {
     }
     touchedPool = true;
     nextOverlaps.add(pool.id);
-    if (!state.overlappingPoolIds.has(pool.id)) {
+    if (!previousOverlaps.has(pool.id)) {
       const shouldMix =
         isBloodyFootprintSourceActive(state.source, nowMs) && state.source.color !== pool.color;
       refreshSource(world, pool.color, playerX, playerY, shouldMix);
@@ -90,6 +105,8 @@ export function bloodyFootprintSystem(world: GameWorld): void {
     state.source.expiresAtMs = nowMs + BLOODY_FOOTPRINT_SOURCE_LIFETIME_MS;
   }
   state.overlappingPoolIds = nextOverlaps;
+  previousOverlaps.clear();
+  state.nextOverlappingPoolIds = previousOverlaps;
 
   const source = state.source;
   if (!isBloodyFootprintSourceActive(source, nowMs)) {

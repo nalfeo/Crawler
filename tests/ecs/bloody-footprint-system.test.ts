@@ -131,4 +131,48 @@ describe('bloodyFootprintSystem', () => {
     expect(world.bloodyFootprintState.source?.lastEmitX).toBe(50);
     expect(world.bloodyFootprintState.source?.lastEmitY).toBe(world.stores.position.y[playerEid]);
   });
+
+  it('prunes expired pools and footprints in place before processing the current frame', () => {
+    const world = createTestWorld({ seed: 47 });
+    const expiredPool = createBloodPoolSurface({
+      worldSeed: world.seed,
+      poolId: world.bloodyFootprintState.nextPoolId++,
+      x: 0,
+      y: 0,
+      color: GREEN_BLOOD,
+      createdAtMs: 0,
+    });
+    const freshPool = createBloodPoolSurface({
+      worldSeed: world.seed,
+      poolId: world.bloodyFootprintState.nextPoolId++,
+      x: 2,
+      y: 0,
+      color: BLUE_BLOOD,
+      createdAtMs: 20_000,
+    });
+    expiredPool.expiresAtMs = 10;
+    world.bloodPools.push(expiredPool, freshPool);
+    world.bloodyFootprints.push({
+      id: 1,
+      x: 0,
+      y: 0,
+      color: GREEN_BLOOD,
+      createdAtMs: 0,
+      expiresAtMs: 10,
+      angleRad: 0,
+      heelRadiusXFt: 0.1,
+      heelRadiusYFt: 0.1,
+      toeRadiusXFt: 0.1,
+      toeRadiusYFt: 0.1,
+      toeOffsetFt: 0.1,
+      smearLengthFt: 0,
+      smearWidthFt: 0,
+    });
+
+    world.elapsedMs = 100;
+    bloodyFootprintSystem(world);
+
+    expect(world.bloodPools).toEqual([freshPool]);
+    expect(world.bloodyFootprints).toHaveLength(0);
+  });
 });

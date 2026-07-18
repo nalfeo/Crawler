@@ -128,6 +128,7 @@ function addAuthoritativePool(
   y: number,
   createdAtMs = 1000,
 ): void {
+  world.elapsedMs = createdAtMs;
   world.bloodPools.push(
     createBloodPoolSurface({
       worldSeed: world.seed,
@@ -146,6 +147,7 @@ describe('death-VFX world→pixel coordinates', () => {
     const world = createTestWorld();
 
     addAuthoritativePool(world, 100, 50);
+    world.elapsedMs = 1000;
     vfx.update(world, 1000, 16, 0);
 
     expect(graphicsCreated).toHaveLength(1);
@@ -184,6 +186,7 @@ describe('blood pool spread shape', () => {
     const world = createTestWorld();
 
     addAuthoritativePool(world, 100, 50);
+    world.elapsedMs = 1000;
     vfx.update(world, 1000, 16, 0);
 
     expect(graphicsCreated).toHaveLength(0);
@@ -195,6 +198,7 @@ describe('blood pool spread shape', () => {
     const world = createTestWorld();
 
     addAuthoritativePool(world, 100, 50);
+    world.elapsedMs = 1000;
     vfx.update(world, 1000, 16, 0);
 
     expect(graphicsShapes).toHaveLength(1);
@@ -226,6 +230,7 @@ describe('blood pool spread shape', () => {
     const sampleFootprint = (renderElapsedMs: number): number => {
       // Empty the combatEvents so the update loop only animates the pool.
       world.combatEvents.length = 0;
+      world.elapsedMs = renderElapsedMs;
       vfx.update(world, renderElapsedMs, 16, 0);
       return pool.fillEllipses.reduce((total, lobe) => total + lobe.w * lobe.h, 0);
     };
@@ -246,6 +251,7 @@ describe('blood pool spread shape', () => {
     const world = createTestWorld();
 
     addAuthoritativePool(world, 100, 50);
+    world.elapsedMs = 1000;
     vfx.update(world, 1000, 16, 0);
 
     const pool = graphicsShapes[0]!;
@@ -253,12 +259,35 @@ describe('blood pool spread shape', () => {
     expect(pool.scaleY).toBe(1);
 
     world.combatEvents.length = 0;
+    world.elapsedMs = 1000 + 15_000;
     vfx.update(world, 1000 + 15_000, 16, 0);
     expect(pool.scaleX).toBe(1);
     expect(pool.scaleY).toBeCloseTo(0.75);
 
+    world.elapsedMs = 1000 + 29_970;
     vfx.update(world, 1000 + 29_970, 16, 0);
     expect(pool.scaleX).toBe(1);
     expect(pool.scaleY).toBeCloseTo(0.5, 2);
+  });
+
+  it('keys authoritative pool lifetime off sim time even when render time is ahead', () => {
+    const { scene, graphicsShapes } = createGoreSceneStub();
+    const vfx = createGoreVfx(scene, { intensity: 1, hitGoreEnabled: false });
+    const world = createTestWorld();
+
+    addAuthoritativePool(world, 100, 50);
+    world.elapsedMs = 1000;
+    vfx.update(world, 1000, 16, 0);
+
+    const pool = graphicsShapes[0]!;
+    expect(pool.scaleY).toBe(1);
+
+    world.combatEvents.length = 0;
+    vfx.update(world, 1000 + 15_000, 16, 0);
+    expect(pool.scaleY).toBe(1);
+
+    world.elapsedMs = 1000 + 15_000;
+    vfx.update(world, 1000 + 15_000, 16, 0);
+    expect(pool.scaleY).toBeCloseTo(0.75);
   });
 });

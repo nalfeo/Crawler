@@ -343,7 +343,7 @@ export function createGoreVfx(
             rendered = { id: worldPool.id, obj: graphics, lastProgress: -1, lastAlpha: -1 };
             pools.set(worldPool.id, rendered);
           }
-          const progress = getBloodPoolLifetimeProgress(worldPool, renderElapsedMs);
+          const progress = getBloodPoolLifetimeProgress(worldPool, world.elapsedMs);
           const alpha = 0.55 * (1 - progress);
           if (
             Math.abs(progress - rendered.lastProgress) > 0.001 ||

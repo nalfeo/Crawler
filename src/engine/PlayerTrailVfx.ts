@@ -122,19 +122,16 @@ export function createPlayerTrailVfx(scene: Phaser.Scene): PlayerTrailVfx {
   function setFootprintAlpha(
     graphic: Phaser.GameObjects.Graphics,
     footprint: GameWorld['bloodyFootprints'][number],
-    renderElapsedMs: number,
+    simNowMs: number,
   ): void {
     const lifetimeMs = Math.max(1, footprint.expiresAtMs - footprint.createdAtMs);
-    const progress = Math.max(
-      0,
-      Math.min(1, (renderElapsedMs - footprint.createdAtMs) / lifetimeMs),
-    );
+    const progress = Math.max(0, Math.min(1, (simNowMs - footprint.createdAtMs) / lifetimeMs));
     const alpha = 0.58 * (1 - progress);
     graphic.setAlpha(alpha);
   }
 
   return {
-    update(world: GameWorld, renderElapsedMs: number): void {
+    update(world: GameWorld, _renderElapsedMs: number): void {
       if (!dustEnabled && !graphicsEnabled) return;
       if (graphicsEnabled) {
         const activeFootprintIds = new Set(world.bloodyFootprints.map((footprint) => footprint.id));
@@ -159,7 +156,7 @@ export function createPlayerTrailVfx(scene: Phaser.Scene): PlayerTrailVfx {
             drawFootprintShape(graphic, footprint);
             footprintGraphics.set(footprint.id, graphic);
           }
-          setFootprintAlpha(graphic, footprint, renderElapsedMs);
+          setFootprintAlpha(graphic, footprint, world.elapsedMs);
         }
       }
 

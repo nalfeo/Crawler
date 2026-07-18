@@ -653,10 +653,6 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         color,
         createdAtMs: world.elapsedMs,
       });
-      // Re-anchor the authored pool so its visible core renders directly under
-      // the requested probe point, making contact-driven tests deterministic.
-      pool.x = x - pool.renderOffsetXFt;
-      pool.y = y - pool.renderOffsetYFt;
       world.bloodPools.push(pool);
       return pool.id;
     },

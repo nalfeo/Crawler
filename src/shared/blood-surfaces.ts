@@ -1,9 +1,9 @@
 import { DEFAULT_BLOOD_COLOR } from './constants.js';
 import { SeededRandom, hashStringToSeed } from './random.js';
 
-export const BLOOD_POOL_LIFETIME_MS = 30_000;
+const BLOOD_POOL_LIFETIME_MS = 30_000;
 export const BLOODY_FOOTPRINT_SOURCE_LIFETIME_MS = 5_000;
-export const BLOODY_FOOTPRINT_LIFETIME_MS = 5_000;
+const BLOODY_FOOTPRINT_LIFETIME_MS = 5_000;
 export const BLOODY_FOOTPRINT_EMIT_DISTANCE_FT = 0.42;
 export const MAX_BLOOD_POOLS = 150;
 export const MAX_BLOODY_FOOTPRINTS = 160;
@@ -12,9 +12,9 @@ export const MAX_BLOODY_FOOTPRINT_EMITS_PER_FRAME = 24;
 const BLOOD_POOL_BASE_RADIUS_FT = 1.0;
 const BLOOD_POOL_MAX_EXTRA_RADIUS_FT = 2.25;
 const BLOOD_POOL_INITIAL_SCALE = 0.25;
-export const BLOOD_POOL_EXPAND_PHASE = 0.7;
+const BLOOD_POOL_EXPAND_PHASE = 0.7;
 export const BLOOD_POOL_FINAL_VERTICAL_SCALE = 0.5;
-export const BLOOD_POOL_LOBE_COUNT = 5;
+const BLOOD_POOL_LOBE_COUNT = 5;
 const BLOOD_POOL_COLOR_SCALE = 0.83;
 
 export interface BloodPoolLobeShape {
@@ -66,6 +66,7 @@ export interface BloodyFootprintSourceState {
 export interface BloodyFootprintState {
   source: BloodyFootprintSourceState | null;
   overlappingPoolIds: Set<number>;
+  nextOverlappingPoolIds: Set<number>;
   nextPoolId: number;
   nextFootprintId: number;
   nextStampId: number;
@@ -75,21 +76,22 @@ export function createBloodyFootprintState(): BloodyFootprintState {
   return {
     source: null,
     overlappingPoolIds: new Set<number>(),
+    nextOverlappingPoolIds: new Set<number>(),
     nextPoolId: 1,
     nextFootprintId: 1,
     nextStampId: 0,
   };
 }
 
-export function clamp01(value: number): number {
+function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-export function packRgb(r: number, g: number, b: number): number {
+function packRgb(r: number, g: number, b: number): number {
   return ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
 }
 
-export function unpackRgb(color: number): { r: number; g: number; b: number } {
+function unpackRgb(color: number): { r: number; g: number; b: number } {
   return {
     r: (color >> 16) & 0xff,
     g: (color >> 8) & 0xff,
