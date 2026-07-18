@@ -5,10 +5,11 @@ assets:
   - id: alchemist-goggles
     type: item
     label: 'Alchemist Goggles'
-    brief: 'Alchemist Goggles — Floor 2 head-slot equipment icon. Oversized dual-lens brass/copper goggles with tinted scratched lenses, verdigris patina, riveted bridge, worn leather strap. Retro-futurist corporate-decay aesthetic. Silhouette reads as dungeon headgear at a glance.'
+    briefId: alchemist-goggles
+    brief: 'Alchemist Goggles — see briefs/items/alchemist-goggles.yaml for the authored Floor 2 dual-lens equipment-icon brief.'
     placeholderInUse: true
     integration:
-      kind: sprite-registry
+      kind: item-catalog
       id: alchemist-goggles
 
   - id: iron-helm

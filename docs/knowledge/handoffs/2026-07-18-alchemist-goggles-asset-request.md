@@ -42,7 +42,9 @@ runtime key `equipment/head/alchemist-goggles`).
 **Brief authored at:** `briefs/items/alchemist-goggles.yaml`
 
 **Art-plan entry added to:** `plans/item-icons/equipment-gear.art.yaml`
-(status now shows `brief-ready-placeholder` in `sprites:asset-plan`)
+(status now shows `brief-ready-placeholder` in `sprites:asset-plan`; integration
+tracks the item catalog entry `alchemist-goggles`, which is the runtime item-art
+consumer for equipment icons)
 
 **Generation attempt:** `npm run sprites:run -- --brief briefs/items/alchemist-goggles.yaml`
 failed with `Missing required env var 'AZURE_OPENAI_ENDPOINT'`. This is expected — Azure
@@ -67,6 +69,9 @@ credentials intentionally unavailable to coding-agent runner).
   same pattern as `iron-greaves.yaml`, `gearwork-locket.yaml`, etc. — bare name only. The
   ingester/worker may use a different naming convention; if it does, the brief here still serves
   as the human-authored design spec for the subject.
+- The art-plan integration target is `item-catalog: alchemist-goggles`, not
+  `sprite-registry`, because equipment/item icon readiness is consumed through
+  `resolveItemSprite(itemId)` rather than a sprite-registry ID.
 - `allowMainTouch: true` because goggles are inherently wide — the outer lens rim extends toward
   the frame edge, which is correct composition, not an error.
 - No anchor override needed — item type default `(32, 56)` is appropriate for headgear sitting
