@@ -264,41 +264,84 @@ test('hasCopilotPlanComment recognises existing Copilot plan and recovery plan m
     ]),
     false,
   );
-  // A non-intake Copilot comment counts.
+  // A structured non-intake Copilot plan comment counts.
   assert.equal(
     hasCopilotPlanComment([
-      { body: 'Plan: create a weapon brief...', user: { login: 'copilot-swe-agent' } },
+      {
+        body: [
+          '**High-level design and approach**',
+          'Create the weapon brief in the shared catalog.',
+          '',
+          '**Key decisions and alternatives**',
+          '- Keep the current manifest format.',
+          '',
+          '**Checklist**',
+          '- [x] Add the brief.',
+        ].join('\n'),
+        user: { login: 'copilot-swe-agent' },
+      },
     ]),
     true,
   );
-  // copilot[bot] login also counts.
+  // Arbitrary Copilot status notes do NOT count as plan evidence.
   assert.equal(
-    hasCopilotPlanComment([{ body: 'My implementation plan is...', user: { login: 'copilot' } }]),
-    true,
+    hasCopilotPlanComment([
+      { body: 'Still investigating the failing review thread.', user: { login: 'copilot' } },
+    ]),
+    false,
   );
-  // Recovery plan marker from any author counts (idempotency sentinel).
+  // Trusted recovery plan marker counts.
   assert.equal(
     hasCopilotPlanComment([
       {
         body: `${ISSUE_RECOVERY_PLAN_MARKER}\n\nRetroactive plan...`,
         user: { login: 'nalfeo' },
+        author_association: 'OWNER',
       },
     ]),
     true,
   );
+  // Untrusted recovery marker spoof does not count.
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: `${ISSUE_RECOVERY_PLAN_MARKER}\n\nRetroactive plan...`,
+        user: { login: 'random-user' },
+        author_association: 'NONE',
+      },
+    ]),
+    false,
+  );
 });
 
-test('buildRetroactivePlanComment embeds recovery marker and PR reference', () => {
+test('buildRetroactivePlanComment embeds required plan content and PR reference', () => {
   const body = buildRetroactivePlanComment(
     42,
     'feat: add quarterstaff',
     'https://github.com/o/r/pull/42',
+    [
+      'Repair-agent sessions lack `issues: write`, so the reconciler must post the plan itself.',
+      '',
+      '## Changes',
+      '- Add trusted plan detection helpers.',
+      '- Post the retroactive plan from reconcile.',
+    ].join('\n'),
   );
   assert.ok(body.includes(ISSUE_RECOVERY_PLAN_MARKER));
   assert.ok(body.includes('#42'));
   assert.ok(body.includes('feat: add quarterstaff'));
   assert.ok(body.includes('https://github.com/o/r/pull/42'));
+  assert.match(body, /\*\*High-level design and approach\*\*/);
+  assert.match(body, /\*\*Key decisions and alternatives\*\*/);
+  assert.match(body, /\*\*Checklist\*\*/);
+  assert.match(body, /- \[x\] Add trusted plan detection helpers\./);
   // Must not include untrusted HTML comment injection.
-  const injected = buildRetroactivePlanComment(1, '<!-- injected -->', 'https://example.com/p/1');
+  const injected = buildRetroactivePlanComment(
+    1,
+    '<!-- injected -->',
+    'https://example.com/p/1',
+    '<!-- hidden -->\n\n## Changes\n- keep visible',
+  );
   assert.ok(!injected.includes('<!-- injected -->'));
+  assert.ok(!injected.includes('<!-- hidden -->'));
 });

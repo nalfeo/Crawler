@@ -26,6 +26,83 @@ export function isCopilotLogin(login) {
   return COPILOT_OPENER_LOGINS.has(String(login || '').toLowerCase());
 }
 
+function hasTrustedCommentAuthor(comment) {
+  return (
+    TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
+    TRUSTED_BOT_LOGINS.has(String(comment.user?.login || '').toLowerCase())
+  );
+}
+
+function stripHtmlComments(value) {
+  return String(value || '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .trim();
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractMarkdownSection(body, heading) {
+  const match = stripHtmlComments(body).match(
+    new RegExp(`(?:^|\\n)##+\\s*${escapeRegExp(heading)}\\s*\\n([\\s\\S]*?)(?=\\n##+\\s|$)`, 'i'),
+  );
+  return match?.[1]?.trim() || '';
+}
+
+function extractLeadParagraph(body) {
+  const paragraphs = stripHtmlComments(body)
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .filter((paragraph) => !paragraph.startsWith('#'));
+  return paragraphs[0] || '';
+}
+
+function extractBulletLines(body) {
+  return String(body || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^- /.test(line))
+    .map((line) => line.replace(/^- /, '').trim());
+}
+
+function hasStructuredPlanContent(body) {
+  const text = stripHtmlComments(body);
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  if (
+    !lower.includes('high-level design') ||
+    !lower.includes('key decisions') ||
+    !lower.includes('checklist')
+  ) {
+    return false;
+  }
+  const contentLines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter(
+      (line) =>
+        !/^(?:#+\s*|\*\*)?(?:high-level design(?: and approach)?|key decisions(?: and alternatives)?|checklist)\b/i.test(
+          line,
+        ),
+    );
+  return /(^|\n)\s*-\s*(?:\[[ x]\]\s*)?\S+/im.test(text) && contentLines.length >= 3;
+}
+
+function buildRetroactiveChecklist(prBody) {
+  const changeBullets = extractBulletLines(extractMarkdownSection(prBody, 'Changes'));
+  if (changeBullets.length > 0) {
+    return changeBullets.map((entry) => `- [x] ${entry}`);
+  }
+  return [
+    '- [x] Confirm the linked issue still has the intake-plan requirement and lacks trusted plan evidence.',
+    '- [x] Post a trusted retroactive implementation plan on the source issue before dispatching repair work.',
+    '- [x] Keep the recovery path idempotent and covered by targeted regression tests.',
+  ];
+}
+
 export const ISSUE_INTAKE_BODY = [
   ISSUE_INTAKE_MARKER,
   '@copilot',
@@ -71,9 +148,7 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
 
 function isTrustedMarkerComment(comment) {
   return (
-    String(comment.body || '').includes(ISSUE_INTAKE_MARKER) &&
-    (TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
-      TRUSTED_BOT_LOGINS.has(String(comment.user?.login || '').toLowerCase()))
+    String(comment.body || '').includes(ISSUE_INTAKE_MARKER) && hasTrustedCommentAuthor(comment)
   );
 }
 
@@ -86,29 +161,32 @@ function isTrustedMarkerComment(comment) {
  * `user.login` and `author_association` fields.
  */
 export function hasIntakeRequirementComment(issueComments) {
-  return (issueComments || []).some(
-    (comment) =>
-      String(comment.body || '').includes(ISSUE_INTAKE_MARKER) &&
-      (TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
-        TRUSTED_BOT_LOGINS.has(String(comment.user?.login || '').toLowerCase())),
-  );
+  return (issueComments || []).some((comment) => {
+    return (
+      String(comment.body || '').includes(ISSUE_INTAKE_MARKER) && hasTrustedCommentAuthor(comment)
+    );
+  });
 }
 
 /**
- * Returns true if `issueComments` already contains a Copilot-authored plan
- * comment (any non-intake Copilot comment) or a retroactive recovery-plan
- * comment from a prior reconciler run.
+ * Returns true if `issueComments` already contains dedicated, trusted plan
+ * evidence: either a trusted retroactive recovery-plan comment from a prior
+ * reconciler run or a Copilot-authored comment with explicit plan sections.
  *
- * Both the `✅ Addressed` repair-marker pattern and the retroactive recovery
- * plan marker count as a satisfied plan requirement.
+ * This intentionally does NOT treat arbitrary non-intake Copilot comments as
+ * plans; status updates and failure notes must not suppress the retroactive
+ * recovery comment.
  */
 export function hasCopilotPlanComment(issueComments) {
   return (issueComments || []).some((comment) => {
     const body = String(comment.body || '');
     // A prior retroactive plan from CI recovery satisfies the requirement.
-    if (body.includes(ISSUE_RECOVERY_PLAN_MARKER)) return true;
-    // Any non-intake Copilot comment counts as a plan comment.
-    return isCopilotLogin(comment.user?.login) && !body.includes(ISSUE_INTAKE_MARKER);
+    if (body.includes(ISSUE_RECOVERY_PLAN_MARKER) && hasTrustedCommentAuthor(comment)) return true;
+    return (
+      isCopilotLogin(comment.user?.login) &&
+      !body.includes(ISSUE_INTAKE_MARKER) &&
+      hasStructuredPlanContent(body)
+    );
   });
 }
 
@@ -117,12 +195,16 @@ export function hasCopilotPlanComment(issueComments) {
  * issue whose linked PR was opened without the required pre-PR plan comment.
  *
  * Embeds `ISSUE_RECOVERY_PLAN_MARKER` so future reconciler runs skip the post
- * (idempotency) and so `hasCopilotPlanComment` returns true on re-check.
+ * (idempotency) and includes the concrete design / decisions / checklist
+ * content that the intake workflow requires on the issue itself.
  */
-export function buildRetroactivePlanComment(prNumber, prTitle, prHtmlUrl) {
-  const safeTitle = String(prTitle || '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .trim();
+export function buildRetroactivePlanComment(prNumber, prTitle, prHtmlUrl, prBody = '') {
+  const safeTitle = stripHtmlComments(prTitle);
+  const approachLead =
+    extractMarkdownSection(prBody, 'Fix') ||
+    extractLeadParagraph(prBody) ||
+    'Use the trusted CI recovery reconciler to satisfy the missing issue-side plan requirement before repair-thread follow-up runs.';
+  const checklist = buildRetroactiveChecklist(prBody);
   return [
     ISSUE_RECOVERY_PLAN_MARKER,
     '',
@@ -133,7 +215,16 @@ export function buildRetroactivePlanComment(prNumber, prTitle, prHtmlUrl) {
     `**PR:** ${prHtmlUrl || `#${prNumber}`}`,
     ...(safeTitle ? [`**Title:** ${safeTitle}`] : []),
     '',
-    'See the PR description for the full implementation details and approach.',
+    '**High-level design and approach**',
+    approachLead,
+    '',
+    '**Key decisions and alternatives**',
+    '- Post the issue comment from the trusted CI recovery reconciler instead of the repair agent, because the repair agent may lack `issues: write` permission.',
+    '- Treat only trusted, dedicated plan evidence as satisfied so unrelated Copilot status comments cannot suppress the recovery post.',
+    `- Keep the retroactive recovery comment idempotent with \`${ISSUE_RECOVERY_PLAN_MARKER}\` so repeated reconciliations do not duplicate the plan.`,
+    '',
+    '**Checklist**',
+    ...checklist,
   ].join('\n');
 }
 

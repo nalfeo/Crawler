@@ -5935,15 +5935,263 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 });
 
 // ---------------------------------------------------------------------------
-// Retroactive plan comment on linked issues missing a Copilot plan comment
-// (regression test for the CI-recovery permission-gap loop: Copilot repair
-// sessions lack issues:write, so the reconciler must post the plan using its
-// own CRAWLER_CI_PAT before dispatching the repair task).
+// Stale-marker detection: thread has trusted ✅ Addressed marker but the SHA
+// was never pushed (compare 404), so the thread remains unresolved.
 // ---------------------------------------------------------------------------
 
-test('live reconcile posts retroactive plan comment on linked issue with intake requirement but no Copilot plan', async (t) => {
+test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
+  // Simulate the root cause from the PR #1266 loop incident:
+  // The recovery agent replied to a review thread with ✅ Addressed in <sha>
+  // but that commit was created locally and never pushed.  The compare API
+  // returns 404, so the thread stays unresolved and the same fingerprint
+  // repeats indefinitely.  The reconciler should detect the stale marker and
+  // include a targeted hint in the blocker summary so the next recovery agent
+  // knows to re-post the marker with the current-head SHA.
+  const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
+  const threadId = 'PRRT_stale_marker_thread';
+  const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: true,
+            path: 'scripts/sprites/cli.ts',
+            line: 285,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'the CLI does not propagate the fifth score.',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_stale_reply',
+                  body: `✅ Addressed in \`${staleMarkerSha}\`: Added themeAdherence to the score vector.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    // Stale SHA returns 404 — commit was never pushed to GitHub.
+    [`GET /repos/${OWNER}/${REPO}/compare/${staleMarkerSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1001 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread must NOT be auto-resolved (stale SHA is not reachable).
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+
+  // A task comment must be posted because there is still a blocker.
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the stale-marker blocker');
+
+  // The task body must include the stale-marker annotation so the agent knows
+  // to re-post the marker rather than re-investigate.
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
+    'task body must identify the stale marker SHA',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /verify fix is present.*reply to this thread/i,
+    'task body must instruct the agent to verify and re-post the marker',
+  );
+});
+
+test('transient compare failure does not produce a stale-marker hint (generic blocker preserved)', async (t) => {
+  // When the compare API call fails with a transient/indeterminate error (e.g. 5xx,
+  // rate limit, network error), the reconciler cannot determine whether the marker
+  // SHA is truly stale.  It must NOT emit a stale-marker hint that would
+  // incorrectly direct the recovery agent down the re-marker path.  The generic
+  // review-thread blocker must still be emitted so recovery continues normally.
+  const markerSha = 'beef0000aabbccddeeff00112233445566778899';
+  const threadId = 'PRRT_transient_fail_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/core/systems/damageSystem.ts',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original_transient',
+                  body: 'reviewer: damage calculation does not account for armor.',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r2`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_marker_transient',
+                  body: `✅ Addressed in \`${markerSha}\`: Armor factor applied before final damage.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    // Compare call returns a transient server error — lineage is indeterminate.
+    [`GET /repos/${OWNER}/${REPO}/compare/${markerSha}...${HEAD_SHA}`]: () => ({
+      status: 500,
+      body: { message: 'Internal Server Error' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1002 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread must NOT be auto-resolved (lineage was indeterminate).
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+
+  // A task comment must still be posted for the generic review-thread blocker.
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the review-thread blocker');
+
+  // The stale-marker hint must NOT appear — the compare failed transiently, so
+  // the SHA is indeterminate, not confirmed unreachable.
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    new RegExp(`Stale marker.*${markerSha}`, 'i'),
+    'task body must NOT include a stale-marker hint when lineage check was transient/indeterminate',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /verify fix is present.*reply to this thread/i,
+    'task body must NOT include re-marker instructions when compare failed transiently',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Retroactive plan comment on linked issues missing a trusted, structured
+// Copilot plan comment.
+// ---------------------------------------------------------------------------
+
+test('live reconcile posts retroactive plan comment on linked issue with missing-plan blocker', async (t) => {
   const SOURCE_ISSUE = 1307;
-  const reviewCommentId = '3607268662';
+  const reviewCommentId = '3608216798';
   const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
@@ -5951,6 +6199,13 @@ test('live reconcile posts retroactive plan comment on linked issue with intake 
         ...basePr(),
         title: 'feat: add quarterstaff weapon brief',
         html_url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
+        body: [
+          'Repair-agent sessions lack `issues: write`, so the reconciler must post the plan itself.',
+          '',
+          '## Changes',
+          '- Add trusted plan detection helpers.',
+          '- Post the retroactive plan from reconcile.',
+        ].join('\n'),
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
@@ -5967,12 +6222,39 @@ test('live reconcile posts retroactive plan comment on linked issue with intake 
     [`POST /repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`]: (_url, body) => ({
       body: { id: 9002, body: body?.body ?? '' },
     }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 9100 },
+    }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
     }),
-    [`POST /graphql`]: (_url, parsed) => {
-      const query = String(parsed?.query ?? '');
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
       if (query.includes('closingIssuesReferences')) {
         return {
           body: {
@@ -5990,28 +6272,6 @@ test('live reconcile posts retroactive plan comment on linked issue with intake 
                     ],
                   },
                 },
-              },
-            },
-          },
-        };
-      }
-      if (query.includes('suggestedActors')) {
-        return {
-          body: {
-            data: {
-              repository: {
-                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
-              },
-            },
-          },
-        };
-      }
-      if (query.includes('replaceActorsForAssignable')) {
-        return {
-          body: {
-            data: {
-              replaceActorsForAssignable: {
-                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
               },
             },
           },
@@ -6041,17 +6301,7 @@ test('live reconcile posts retroactive plan comment on linked issue with intake 
       };
     },
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
-      body: {
-        check_runs: [
-          {
-            id: 1,
-            name: 'ci',
-            status: 'completed',
-            conclusion: 'failure',
-            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
-          },
-        ],
-      },
+      body: { check_runs: [] },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
   });
@@ -6065,7 +6315,6 @@ test('live reconcile posts retroactive plan comment on linked issue with intake 
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  // Reconciler must have posted the retroactive plan comment on the source issue.
   const planCommentCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&
@@ -6077,9 +6326,13 @@ test('live reconcile posts retroactive plan comment on linked issue with intake 
     planCommentCall,
     `expected live reconcile to POST retroactive plan on source issue #${SOURCE_ISSUE}`,
   );
-  assert.ok(
-    planCommentCall.body.body.includes(`#${PR_NUM}`),
-    'retroactive plan body should reference the PR number',
+  assert.match(planCommentCall.body.body, /\*\*High-level design and approach\*\*/);
+  assert.match(planCommentCall.body.body, /\*\*Key decisions and alternatives\*\*/);
+  assert.match(planCommentCall.body.body, /\*\*Checklist\*\*/);
+  assert.match(
+    planCommentCall.body.body,
+    /- \[x\] Add trusted plan detection helpers\./,
+    'retroactive plan body should carry checklist content from the PR description',
   );
   assert.match(
     stdout,
@@ -6088,10 +6341,16 @@ test('live reconcile posts retroactive plan comment on linked issue with intake 
   );
 });
 
-test('live reconcile skips plan comment post when source issue already has a Copilot plan comment', async (t) => {
+test('live reconcile skips retroactive plan post when linked issue already has trusted structured plan evidence', async (t) => {
   const SOURCE_ISSUE = 1308;
   const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'feat: add quarterstaff weapon brief',
+        html_url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
+      },
+    }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`]: () => ({
       body: [
@@ -6103,18 +6362,54 @@ test('live reconcile skips plan comment post when source issue already has a Cop
         },
         {
           id: 9002,
-          body: 'Plan: I will implement this by creating a weapon brief YAML...',
+          body: [
+            '**High-level design and approach**',
+            'Create the brief in the generated catalog.',
+            '',
+            '**Key decisions and alternatives**',
+            '- Keep the current sprite manifest format.',
+            '',
+            '**Checklist**',
+            '- [x] Add the brief entry.',
+          ].join('\n'),
           user: { login: 'copilot-swe-agent' },
           author_association: 'NONE',
         },
       ],
     }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 9101 },
+    }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
       body: { message: 'Not Found' },
     }),
-    [`POST /graphql`]: (_url, parsed) => {
-      const query = String(parsed?.query ?? '');
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
       if (query.includes('closingIssuesReferences')) {
         return {
           body: {
@@ -6126,7 +6421,7 @@ test('live reconcile skips plan comment post when source issue already has a Cop
                     nodes: [
                       {
                         number: SOURCE_ISSUE,
-                        title: 'Asset request: mace',
+                        title: 'Asset request: quarterstaff',
                         labels: { nodes: [] },
                       },
                     ],
@@ -6137,29 +6432,28 @@ test('live reconcile skips plan comment post when source issue already has a Cop
           },
         };
       }
-      if (query.includes('suggestedActors')) {
-        return {
-          body: {
-            data: {
-              repository: {
-                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
-              },
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'PRRT_kwDOSvo2Ms6R8Fm0',
+            isResolved: false,
+            isOutdated: false,
+            path: 'docs/knowledge/handoffs/2026-07-18-quarterstaff-weapon-brief.md',
+            line: null,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-plan-missing',
+                  body: 'Issue #1308 required a plan comment before the PR.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3608216806`,
+                },
+              ],
             },
           },
-        };
-      }
-      if (query.includes('replaceActorsForAssignable')) {
-        return {
-          body: {
-            data: {
-              replaceActorsForAssignable: {
-                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
-              },
-            },
-          },
-        };
-      }
-      return { body: gqlNoThreads() };
+        ]),
+      };
     },
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
       body: { check_runs: [] },
@@ -6176,14 +6470,131 @@ test('live reconcile skips plan comment post when source issue already has a Cop
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  // Must NOT post a plan comment when one already exists from Copilot.
-  assert.equal(
-    mutatingCalls.some(
-      (call) =>
-        call.method === 'POST' &&
-        call.url === `/repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`,
-    ),
-    false,
-    `must not post a plan comment on issue #${SOURCE_ISSUE} that already has a Copilot plan comment`,
+  const planCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`,
+  );
+  assert.equal(planCommentCall, undefined, 'did not expect a second retroactive plan comment');
+});
+
+test('live reconcile rechecks expected metadata before posting retroactive plan comments', async (t) => {
+  const SOURCE_ISSUE = 1309;
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      if (pullFetches === 1) {
+        return {
+          body: {
+            ...basePr(),
+            title: 'feat: add quarterstaff weapon brief',
+            html_url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
+            base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+          },
+        };
+      }
+      return {
+        body: {
+          ...basePr(),
+          head: {
+            sha: 'ffff234def5678901234567890abcdef12345678',
+            repo: { full_name: `${OWNER}/${REPO}` },
+          },
+          title: 'feat: add quarterstaff weapon brief',
+          html_url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
+          base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`]: () => ({
+      body: [
+        {
+          id: 9001,
+          body: `${ISSUE_INTAKE_MARKER}\n@copilot\nPlease handle...`,
+          user: { login: 'nalfeo' },
+          author_association: 'OWNER',
+        },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        number: SOURCE_ISSUE,
+                        title: 'Asset request: quarterstaff',
+                        labels: { nodes: [] },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'PRRT_kwDOSvo2Ms6R8Fm1',
+            isResolved: false,
+            isOutdated: false,
+            path: 'docs/knowledge/handoffs/2026-07-18-quarterstaff-weapon-brief.md',
+            line: null,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-plan-missing',
+                  body: 'Issue #1309 required a plan comment before the PR.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3608216831`,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const planCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`,
+  );
+  assert.equal(planCommentCall, undefined, 'stale metadata must block the retroactive plan write');
+  assert.match(
+    stdout,
+    /reason=head-sha-moved-before-mutation phase=retroactive-plan-comment/,
+    'expected stale-metadata fence to abort before the retroactive plan write',
   );
 });

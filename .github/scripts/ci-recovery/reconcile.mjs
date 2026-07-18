@@ -19,6 +19,8 @@ import {
   renderStateComment,
   shouldResolveThread,
   STATE_MARKER,
+  TRUSTED_ASSOCIATIONS,
+  TRUSTED_BOT_LOGINS,
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
@@ -96,6 +98,32 @@ function calculateRebaseFailureBackoffMs(attempt) {
 function reviewThreadReplyCommentId(url) {
   const match = String(url ?? '').match(REVIEW_DISCUSSION_COMMENT_PATTERN);
   return match?.[1] ?? null;
+}
+
+function reviewThreadPlanIssueNumbers(thread, closingIssues) {
+  const text = String(
+    (thread?.comments?.nodes ?? []).map((comment) => String(comment?.body || '')).join('\n'),
+  ).toLowerCase();
+  const mentionsPlanRequirement =
+    text.includes('plan comment') ||
+    text.includes('implementation plan') ||
+    text.includes('issue comment itself');
+  if (!mentionsPlanRequirement) return [];
+  const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
+  const explicitMatches = issueNumbers.filter(
+    (issueNumber) =>
+      text.includes(`issue #${issueNumber}`) || text.includes(`issue ${issueNumber}`),
+  );
+  if (explicitMatches.length > 0) return explicitMatches;
+  if (
+    issueNumbers.length === 1 &&
+    (text.includes('source issue') ||
+      text.includes('before the pr') ||
+      text.includes('issue itself'))
+  ) {
+    return issueNumbers;
+  }
+  return [];
 }
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {
@@ -883,37 +911,6 @@ approvalRejection = humanApprovalRejection({
 });
 pendingHumanApproval = Boolean(approvalRejection);
 
-// Proactively satisfy the plan-comment requirement on linked issues so that a
-// repair agent dispatched later in this cycle can reply `✅ Addressed` to the
-// review thread without being blocked by an issue-write permission failure.
-//
-// Root-cause context: Copilot repair-agent sessions lack `issues: write`
-// permission for posting comments on issues (gh CLI returns HTTP 403).  When a
-// reviewer flags a missing pre-PR plan comment on the source issue, the repair
-// agent can never satisfy the requirement and the reconciler loops until the
-// retry budget is exhausted.  The reconciler runs with CRAWLER_CI_PAT which
-// has full write access, so it can post the retroactive plan comment once and
-// break the loop.
-if (live && closingIssues.length > 0) {
-  for (const linkedIssue of closingIssues) {
-    const issueComments = await paginate(
-      readToken,
-      `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`,
-    );
-    if (!hasIntakeRequirementComment(issueComments) || hasCopilotPlanComment(issueComments)) {
-      continue;
-    }
-    const planBody = buildRetroactivePlanComment(prNumber, pr.title, pr.html_url);
-    await request(pat, `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`, {
-      method: 'POST',
-      body: { body: planBody },
-    });
-    process.stdout.write(
-      `posted retroactive plan comment on source issue #${linkedIssue.number} for pr=#${prNumber}\n`,
-    );
-  }
-}
-
 if (pendingHumanApproval) {
   await ensurePrLabel(
     HUMAN_APPROVAL_LABEL,
@@ -982,6 +979,12 @@ for (const thread of unresolvedThreads) {
   }
 }
 const reachableMarkerShas = new Set();
+// Only SHAs confirmed unreachable by a definitive API response (404 commit-not-found,
+// or a successful compare whose status is not ancestor-of-head). SHAs whose lineage
+// could not be determined due to transient failures (rate limits, 5xx, network errors,
+// 422 ambiguous SHA) are omitted from both sets so that the stale-marker hint is not
+// emitted spuriously.
+const definitivelyUnreachableMarkerShas = new Set();
 for (const markerSha of markerShasNeedingLineageCheck) {
   try {
     const compare = (
@@ -989,20 +992,34 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     ).data;
     if (compare?.status === 'identical' || compare?.status === 'ahead') {
       reachableMarkerShas.add(markerSha);
+    } else {
+      // Successful response but the marker commit is not an ancestor of HEAD
+      // (e.g. 'behind' or 'diverged') — definitively not reachable.
+      definitivelyUnreachableMarkerShas.add(markerSha);
     }
   } catch (error) {
+    const httpStatus = typeof error.status === 'number' ? error.status : null;
+    const isDefinitivelyMissing = httpStatus === 404;
     console.warn(
       JSON.stringify({
         event: 'ci-recovery.marker-sha-compare-failed',
-        message: 'Treating marker as non-reachable after compare failure.',
+        message: isDefinitivelyMissing
+          ? 'Marker commit not found (404); treating as definitively unreachable.'
+          : 'Lineage check failed with transient/indeterminate error; skipping stale-marker hint for this SHA.',
         markerSha,
         prHeadSha: pr.head.sha,
+        httpStatus,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? (error.stack ?? null) : null,
       }),
     );
-    // Treat any error (404 not found, 422 unresolvable/ambiguous SHA,
-    // network errors, etc.) as a non-reachable marker so recovery can proceed.
+    if (isDefinitivelyMissing) {
+      // 404: commit does not exist on GitHub — definitively a stale/never-pushed SHA.
+      definitivelyUnreachableMarkerShas.add(markerSha);
+    }
+    // For transient/indeterminate failures (rate limits, 5xx, network errors,
+    // 422 ambiguous SHA, etc.) the SHA is absent from both sets so no stale-marker
+    // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
 for (const thread of unresolvedThreads.filter((candidate) =>
@@ -1026,6 +1043,35 @@ for (const thread of unresolvedThreads.filter((candidate) =>
   }
   thread.isResolved = true;
   process.stdout.write(`${live ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
+}
+
+// Detect threads whose last trusted comment carries a ✅ Addressed marker that
+// points to a SHA definitively not reachable from the current head (e.g. a local
+// commit created by a recovery agent before it was pushed, later abandoned or
+// squashed into a different commit). Only emit the stale-marker hint when the
+// compare API confirmed the commit does not exist (404) or is not an ancestor
+// (non-identical/non-ahead compare). Threads where lineage could not be checked
+// due to transient errors (rate limits, 5xx, network failures, 422 ambiguous SHA)
+// keep the generic review-thread blocker without the misleading stale-SHA hint.
+const staleAddressedMarkerByThread = new Map();
+for (const thread of unresolvedThreads) {
+  // Skip threads the reconciler will auto-resolve in the loop above.
+  if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) continue;
+  const last = comments[comments.length - 1];
+  const markerSha = extractAddressedMarkerSha(last?.body);
+  if (!markerSha) continue;
+  // Only flag as stale when we have a definitive non-reachable result.
+  // If the lineage check was skipped or failed transiently the SHA will be
+  // absent from both sets; treat it as indeterminate and skip the hint.
+  if (headSha.startsWith(markerSha) || reachableMarkerShas.has(markerSha)) continue;
+  if (!definitivelyUnreachableMarkerShas.has(markerSha)) continue;
+  const authorLogin = String(last?.author?.login ?? '').toLowerCase();
+  const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
+  if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
+    staleAddressedMarkerByThread.set(thread.id, markerSha);
+  }
 }
 
 const blockers = [];
@@ -1297,15 +1343,30 @@ for (const run of actionRequiredRuns) {
   }
 }
 
+const retroactivePlanIssueNumbers = new Set();
 for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
   const root = thread.comments?.nodes?.[0];
+  const staleSha = staleAddressedMarkerByThread.get(thread.id);
+  const reviewerSummary = `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 450)}`;
+  const planIssueNumbers = reviewThreadPlanIssueNumbers(thread, closingIssues);
+  for (const issueNumber of planIssueNumbers) {
+    retroactivePlanIssueNumbers.add(issueNumber);
+  }
+  // When the thread already has a trusted ✅ Addressed marker but the referenced
+  // commit is not reachable from the current head, prepend a targeted hint so
+  // the recovery agent knows it only needs to re-post the marker with the
+  // correct current-head SHA — not re-investigate the underlying concern.
+  const summary = staleSha
+    ? `[Stale marker: ✅ Addressed in ${staleSha} exists but that commit is not reachable from current head — verify fix is present in the current head and reply to this thread with ✅ Addressed in <head-sha>: <note> to close the marker.] ${reviewerSummary}`
+    : reviewerSummary;
   blockers.push({
     kind: 'review-thread',
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
+    requiresIssuePlanComment: planIssueNumbers.length > 0,
     path: thread.path || undefined,
     line: thread.line || undefined,
-    summary: `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 500)}`,
+    summary,
     url: root?.url,
   });
 }
@@ -1322,6 +1383,32 @@ const fingerprint =
         reviewThreads: review.threads,
       })
     : blockerFingerprint(normalized);
+
+// Proactively satisfy the issue-side plan-comment requirement only when this
+// cycle is about to dispatch a review-thread blocker that explicitly identifies
+// a missing plan on a linked intake issue. This avoids mutating unrelated live
+// reconciliations (opt-out / merge-train-owned / active-shepherd / clean PR).
+if (live && retroactivePlanIssueNumbers.size > 0) {
+  for (const linkedIssue of closingIssues) {
+    if (!retroactivePlanIssueNumbers.has(linkedIssue.number)) continue;
+    const issueComments = await paginate(
+      readToken,
+      `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`,
+    );
+    if (!hasIntakeRequirementComment(issueComments) || hasCopilotPlanComment(issueComments)) {
+      continue;
+    }
+    await assertExpectedMetadataUnchanged('retroactive-plan-comment');
+    const planBody = buildRetroactivePlanComment(prNumber, pr.title, pr.html_url, pr.body);
+    await request(pat, `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`, {
+      method: 'POST',
+      body: { body: planBody },
+    });
+    process.stdout.write(
+      `posted retroactive plan comment on source issue #${linkedIssue.number} for pr=#${prNumber}\n`,
+    );
+  }
+}
 
 if (normalized.length === 0) {
   const waiting = [
