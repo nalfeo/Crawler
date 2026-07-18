@@ -9,6 +9,7 @@ import {
   COPILOT_CLOUD_AGENT_WORKFLOW_ID,
   COPILOT_CLOUD_AGENT_WORKFLOW_PATH,
   EMPTY_DRAFT_REPAIR_GRACE_MS,
+  EMPTY_DRAFT_REPAIR_LABEL,
   inspectEmptyCopilotDraftRepair,
   listCopilotCloudWorkflowRuns,
   latestMatchingCopilotCloudRun,
@@ -45,6 +46,7 @@ function makePr(overrides = {}) {
       repo: { full_name: REPOSITORY },
     },
     requested_reviewers: [],
+    labels: [],
     ...overrides,
   };
 }
@@ -240,6 +242,23 @@ function createHarness({
       }
       return structuredClone(pull);
     },
+    addPrLabel: async (pullNumber, labelName) => {
+      calls.push(['addPrLabel', pullNumber, labelName]);
+      const pull = state.pulls.find((entry) => entry.number === pullNumber);
+      if (pull) {
+        if (!Array.isArray(pull.labels)) pull.labels = [];
+        if (!pull.labels.some((l) => l.name === labelName)) {
+          pull.labels.push({ name: labelName });
+        }
+      }
+    },
+    removePrLabel: async (pullNumber, labelName) => {
+      calls.push(['removePrLabel', pullNumber, labelName]);
+      const pull = state.pulls.find((entry) => entry.number === pullNumber);
+      if (pull && Array.isArray(pull.labels)) {
+        pull.labels = pull.labels.filter((l) => l.name !== labelName);
+      }
+    },
   };
 
   const log = {
@@ -294,6 +313,11 @@ test('uses bounded changed-file retries only for the synchronized pull request',
 for (const [name, mutate, expectedReason] of [
   ['non-draft', (input) => (input.pr.draft = false), 'not-draft'],
   ['fork', (input) => (input.pr.head.repo.full_name = 'attacker/Crawler'), 'fork'],
+  [
+    'repair label present',
+    (input) => (input.pr.labels = [{ name: EMPTY_DRAFT_REPAIR_LABEL }]),
+    'already-repaired',
+  ],
   ['non-copilot author', (input) => (input.pr.user.login = 'octocat'), 'author=octocat'],
   ['non-empty diff', (input) => (input.changedFiles = 2), 'changed-files=2'],
   ['missing linked issue', (input) => (input.linkedIssues = []), 'linked-issue-count=0'],
@@ -1318,5 +1342,219 @@ test('a repair failure still attempts requested-reviewer cleanup for the repaire
   assert.deepEqual(
     harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
     [['removeRequestedReviewer', 42, 'nalfeo']],
+  );
+});
+
+test('repair is skipped and not repeated when PR has the repair marker label after a reopen', async () => {
+  // Simulate a previously repaired PR that was reopened: it has the repair label,
+  // state=open, draft=true, and zero changed files — everything else is eligible.
+  // The guard must skip without making any writes.
+  const harness = createHarness({
+    pulls: [
+      makePr({
+        labels: [{ name: EMPTY_DRAFT_REPAIR_LABEL }],
+      }),
+    ],
+  });
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'reopened',
+    payloadAction: 'reopened',
+    triggeringPullNumber: 42,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    reviewerRemovals: 0,
+  });
+  assert.equal(
+    harness.calls.some(
+      ([name]) =>
+        name === 'updatePullState' ||
+        name === 'removeIssueAssignees' ||
+        name === 'addIssueAssignees',
+    ),
+    false,
+    'no writes must be made for an already-repaired PR',
+  );
+  assert.ok(
+    harness.logs.some(([level, message]) => level === 'info' && message.includes('already-repaired')),
+  );
+});
+
+test('repair label is added before close and removed on rollback', async () => {
+  const harness = createHarness({
+    replacePlan: [new Error('remove failed')],
+  });
+
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    /Failed to repair 1 empty Copilot draft PR shell\(s\)/,
+  );
+
+  // Label must have been added before close
+  const labelAddIdx = harness.calls.findIndex(([name]) => name === 'addPrLabel');
+  const closeIdx = harness.calls.findIndex(
+    ([name, _num, state]) => name === 'updatePullState' && state === 'closed',
+  );
+  assert.ok(labelAddIdx >= 0, 'addPrLabel must be called');
+  assert.ok(closeIdx >= 0, 'close must be called');
+  assert.ok(labelAddIdx < closeIdx, 'addPrLabel must precede close');
+
+  // Label must have been removed during rollback
+  assert.ok(
+    harness.calls.some(([name]) => name === 'removePrLabel'),
+    'removePrLabel must be called during rollback',
+  );
+
+  // PR was also reopened in rollback
+  assert.ok(
+    harness.calls.some(([name, _num, state]) => name === 'updatePullState' && state === 'open'),
+  );
+});
+
+test('post-close changed-files drift causes reopen and skip without issue writes', async () => {
+  // Simulate: initial read = 0 files, confirmation = 0 files, then after close a
+  // concurrent push lands and the post-close read shows 3 changed files.
+  const harness = createHarness({
+    changedFilesByPull: new Map([[42, [0, 0, 3]]]),
+  });
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'schedule',
+    payloadAction: undefined,
+    triggeringPullNumber: undefined,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    reviewerRemovals: 0,
+  });
+  // close was attempted
+  assert.ok(
+    harness.calls.some(
+      ([name, num, st]) => name === 'updatePullState' && num === 42 && st === 'closed',
+    ),
+  );
+  // PR was reopened after drift was detected
+  assert.ok(
+    harness.calls.some(
+      ([name, num, st]) => name === 'updatePullState' && num === 42 && st === 'open',
+    ),
+  );
+  // no issue mutation must have been made
+  assert.equal(
+    harness.calls.some(([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees'),
+    false,
+  );
+  // repair label must have been removed
+  assert.ok(harness.calls.some(([name]) => name === 'removePrLabel'));
+  // log mentions drift
+  assert.ok(
+    harness.logs.some(
+      ([level, message]) => level === 'info' && message.includes('post-close-drift-files=3'),
+    ),
+  );
+});
+
+test('absent changed_files in initial PR read surfaces as a repair/publish error', async () => {
+  const harness = createHarness();
+  // Override getPull to return absent changed_files on the first call
+  let callCount = 0;
+  const originalGetPull = harness.api.getPull;
+  harness.api.getPull = async (pullNumber) => {
+    callCount += 1;
+    if (callCount === 1) {
+      harness.calls.push(['getPull', pullNumber]);
+      const pull = harness.state.pulls.find((entry) => entry.number === pullNumber);
+      return { ...structuredClone(pull) }; // no changed_files field
+    }
+    return originalGetPull(pullNumber);
+  };
+
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    /changed_files absent/,
+  );
+  assert.equal(
+    harness.calls.some(([name]) => name === 'updatePullState' || name === 'removeIssueAssignees'),
+    false,
+    'no writes should be made when changed_files is absent',
+  );
+});
+
+test('absent changed_files in confirmation read skips without close', async () => {
+  // changedFilesForDraft succeeds (returns 0), but the re-read for confirmation
+  // returns a PR without changed_files.
+  const harness = createHarness();
+  let callCount = 0;
+  const originalGetPull = harness.api.getPull;
+  harness.api.getPull = async (pullNumber) => {
+    callCount += 1;
+    const pull = harness.state.pulls.find((entry) => entry.number === pullNumber);
+    if (callCount === 2) {
+      // confirmation read — return PR without changed_files
+      harness.calls.push(['getPull', pullNumber]);
+      return { ...structuredClone(pull) };
+    }
+    return originalGetPull(pullNumber);
+  };
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'schedule',
+    payloadAction: undefined,
+    triggeringPullNumber: undefined,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    reviewerRemovals: 0,
+  });
+  assert.equal(
+    harness.calls.some(([name]) => name === 'updatePullState'),
+    false,
+    'close must not be attempted when changed_files is absent in confirmation',
+  );
+  assert.ok(
+    harness.logs.some(
+      ([level, message]) =>
+        level === 'info' && message.includes('confirmed-changed-files-absent'),
+    ),
   );
 });

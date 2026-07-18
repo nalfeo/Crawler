@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  addIssueAssignees,
   buildIssueActorIds,
   ISSUE_INTAKE_BODY,
   issueIntakeEligibility,
+  removeIssueAssignees,
   runIssueIntake,
 } from './issue-intake-lib.mjs';
 
@@ -228,4 +230,102 @@ test('buildIssueActorIds adds discovered Copilot actor when none is currently as
     includeCopilot: true,
   });
   assert.deepEqual(actorIds, ['USER_NALFEO', 'BOT_COPILOT_SWE_AGENT']);
+});
+
+test('addIssueAssignees sends correct mutation field, variables, and parses returned logins', async () => {
+  const captured = [];
+  const fakeGraphql = async (_token, query, variables) => {
+    captured.push({ query, variables });
+    return {
+      addAssigneesToAssignable: {
+        assignable: {
+          assignees: {
+            nodes: [{ login: 'nalfeo' }, { login: 'copilot-swe-agent' }],
+          },
+        },
+      },
+    };
+  };
+
+  const result = await addIssueAssignees({
+    graphql: fakeGraphql,
+    token: 'token',
+    assignableId: 'ISSUE_NODE_ID',
+    actorIds: ['USER_NALFEO', 'BOT_COPILOT'],
+  });
+
+  assert.equal(captured.length, 1);
+  assert.ok(
+    captured[0].query.includes('addAssigneesToAssignable'),
+    'mutation must use addAssigneesToAssignable field',
+  );
+  assert.ok(
+    captured[0].query.includes('$assignableId') && captured[0].query.includes('$assigneeIds'),
+    'mutation must accept $assignableId and $assigneeIds variables',
+  );
+  assert.deepEqual(captured[0].variables, {
+    assignableId: 'ISSUE_NODE_ID',
+    assigneeIds: ['USER_NALFEO', 'BOT_COPILOT'],
+  });
+  assert.deepEqual(result, ['nalfeo', 'copilot-swe-agent']);
+});
+
+test('removeIssueAssignees sends correct mutation field, variables, and parses returned logins', async () => {
+  const captured = [];
+  const fakeGraphql = async (_token, query, variables) => {
+    captured.push({ query, variables });
+    return {
+      removeAssigneesFromAssignable: {
+        assignable: {
+          assignees: {
+            nodes: [{ login: 'nalfeo' }],
+          },
+        },
+      },
+    };
+  };
+
+  const result = await removeIssueAssignees({
+    graphql: fakeGraphql,
+    token: 'token',
+    assignableId: 'ISSUE_NODE_ID',
+    actorIds: ['BOT_COPILOT'],
+  });
+
+  assert.equal(captured.length, 1);
+  assert.ok(
+    captured[0].query.includes('removeAssigneesFromAssignable'),
+    'mutation must use removeAssigneesFromAssignable field',
+  );
+  assert.ok(
+    captured[0].query.includes('$assignableId') && captured[0].query.includes('$assigneeIds'),
+    'mutation must accept $assignableId and $assigneeIds variables',
+  );
+  assert.deepEqual(captured[0].variables, {
+    assignableId: 'ISSUE_NODE_ID',
+    assigneeIds: ['BOT_COPILOT'],
+  });
+  assert.deepEqual(result, ['nalfeo']);
+});
+
+test('addIssueAssignees returns empty array when response is missing the assignees field', async () => {
+  const fakeGraphql = async () => ({ addAssigneesToAssignable: { assignable: {} } });
+  const result = await addIssueAssignees({
+    graphql: fakeGraphql,
+    token: 'token',
+    assignableId: 'ISSUE_NODE_ID',
+    actorIds: ['USER_NALFEO'],
+  });
+  assert.deepEqual(result, []);
+});
+
+test('removeIssueAssignees returns empty array when response is missing the assignees field', async () => {
+  const fakeGraphql = async () => ({ removeAssigneesFromAssignable: { assignable: {} } });
+  const result = await removeIssueAssignees({
+    graphql: fakeGraphql,
+    token: 'token',
+    assignableId: 'ISSUE_NODE_ID',
+    actorIds: ['BOT_COPILOT'],
+  });
+  assert.deepEqual(result, []);
 });

@@ -23,6 +23,7 @@ const READY_FOR_REVIEW_MUTATION = `
 export const COPILOT_CLOUD_AGENT_WORKFLOW_PATH = 'dynamic/copilot-swe-agent/copilot';
 export const COPILOT_CLOUD_AGENT_WORKFLOW_ID = 288998107;
 export const EMPTY_DRAFT_REPAIR_GRACE_MS = 5 * 60 * 1000;
+export const EMPTY_DRAFT_REPAIR_LABEL = 'copilot-empty-draft-repaired';
 const WORKFLOW_RUNS_PAGE_SIZE = 100;
 const WORKFLOW_RUNS_MAX_PAGES = 10;
 
@@ -144,6 +145,10 @@ function localEmptyCopilotDraftRepairRejection({ pr, changedFiles, repository })
   if (normalize(pr?.state) !== 'open') return 'not-open';
   if (pr?.draft !== true) return 'not-draft';
   if (!sameRepository(pr?.head?.repo?.full_name, repository)) return 'fork';
+  const labels = Array.isArray(pr?.labels) ? pr.labels : [];
+  if (labels.some((label) => normalize(label?.name) === normalize(EMPTY_DRAFT_REPAIR_LABEL))) {
+    return 'already-repaired';
+  }
   if (Number(changedFiles) !== 0) {
     return `changed-files=${Number(changedFiles) || 0}`;
   }
@@ -245,7 +250,15 @@ async function changedFilesForDraft({
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
     const details = await api.getPull(prNumber);
-    changedFiles = Number(details?.changed_files || 0);
+    const rawChangedFiles = details?.changed_files;
+    if (rawChangedFiles == null) {
+      throw new Error(`changed_files absent in PR response`);
+    }
+    const numChangedFiles = Number(rawChangedFiles);
+    if (!Number.isFinite(numChangedFiles) || numChangedFiles < 0) {
+      throw new Error(`changed_files invalid in PR response (${rawChangedFiles})`);
+    }
+    changedFiles = numChangedFiles;
     if (changedFiles > 0) {
       break;
     }
@@ -316,9 +329,23 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
 
   const currentLinkedIssues = await api.listClosingIssues(pr.number);
   const currentRuns = await api.listWorkflowRuns(currentPr.head.sha, currentPr.head.ref);
+
+  const rawConfirmedFiles = currentPr?.changed_files;
+  if (rawConfirmedFiles == null) {
+    const reason = 'confirmed-changed-files-absent';
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${reason}`);
+    return { status: 'skipped', reason };
+  }
+  const numConfirmedFiles = Number(rawConfirmedFiles);
+  if (!Number.isFinite(numConfirmedFiles) || numConfirmedFiles < 0) {
+    const reason = `confirmed-changed-files-invalid=${String(rawConfirmedFiles)}`;
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${reason}`);
+    return { status: 'skipped', reason };
+  }
+
   const confirmedDecision = inspectEmptyCopilotDraftRepair({
     pr: currentPr,
-    changedFiles: Number(currentPr.changed_files || 0),
+    changedFiles: numConfirmedFiles,
     linkedIssues: currentLinkedIssues,
     runs: currentRuns,
     repository,
@@ -357,6 +384,21 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
     includeCopilot: true,
   }).filter((id) => !actorIdsWithoutCopilot.includes(id));
 
+  // Apply a durable repair marker label before closing so any subsequent scan
+  // (including after a reopen event) skips this PR without repeating the repair.
+  // The marker is best-effort: failure is logged but does not block the repair.
+  let labelApplied = false;
+  try {
+    await api.addPrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+    labelApplied = true;
+  } catch (labelError) {
+    const warn = log.warning ?? log.warn ?? log.info;
+    warn?.call(
+      log,
+      `Could not add repair marker label to PR #${pr.number}: ${getErrorMessage(labelError)}`,
+    );
+  }
+
   let closeApplied = false;
   let closeRequestError = null;
   try {
@@ -377,6 +419,74 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
         `close operation failed for PR #${pr.number}: ${getErrorMessage(error)} (observation: ${observationMessage})`,
       );
     }
+  }
+
+  // Post-close drift verification: re-read the PR to confirm no concurrent push
+  // changed the head SHA or made the PR non-empty in the race window between
+  // our final eligibility confirmation and the actual close.
+  let postCloseVerification;
+  try {
+    postCloseVerification = await api.getPull(pr.number);
+  } catch (verifyError) {
+    if (closeApplied) {
+      try {
+        await api.updatePullState(pr.number, 'open');
+      } catch (_) {
+        /* best-effort reopen */
+      }
+    }
+    if (labelApplied) {
+      try {
+        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+      } catch (_) {
+        /* best-effort label removal */
+      }
+    }
+    throw new Error(
+      `post-close verification failed for PR #${pr.number}: ${getErrorMessage(verifyError)}`,
+    );
+  }
+  const postCloseFiles = postCloseVerification?.changed_files;
+  if (postCloseFiles == null || !Number.isFinite(Number(postCloseFiles)) || Number(postCloseFiles) > 0) {
+    const driftReason =
+      postCloseFiles == null || !Number.isFinite(Number(postCloseFiles))
+        ? 'post-close-changed-files-invalid'
+        : `post-close-drift-files=${Number(postCloseFiles)}`;
+    if (closeApplied) {
+      try {
+        await api.updatePullState(pr.number, 'open');
+      } catch (_) {
+        /* best-effort reopen */
+      }
+    }
+    if (labelApplied) {
+      try {
+        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+      } catch (_) {
+        /* best-effort label removal */
+      }
+    }
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${driftReason}`);
+    return { status: 'skipped', reason: driftReason };
+  }
+  if (normalize(postCloseVerification?.head?.sha) !== normalize(pr.head.sha)) {
+    const driftReason = `post-close-drift-sha=${String(postCloseVerification?.head?.sha || 'unknown')}`;
+    if (closeApplied) {
+      try {
+        await api.updatePullState(pr.number, 'open');
+      } catch (_) {
+        /* best-effort reopen */
+      }
+    }
+    if (labelApplied) {
+      try {
+        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+      } catch (_) {
+        /* best-effort label removal */
+      }
+    }
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${driftReason}`);
+    return { status: 'skipped', reason: driftReason };
   }
 
   try {
@@ -419,6 +529,13 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
         await api.updatePullState(pr.number, 'open');
       } catch (rollbackError) {
         rollbackErrors.push(new Error(`PR reopen failed: ${getErrorMessage(rollbackError)}`));
+      }
+    }
+    if (labelApplied) {
+      try {
+        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+      } catch (_) {
+        /* best-effort label removal during rollback — does not block the error surface */
       }
     }
     if (rollbackErrors.length > 0) {
@@ -505,6 +622,34 @@ function createApi({ token, owner, repo }) {
         assignableId,
         actorIds,
       }),
+    addPrLabel: async (pullNumber, labelName) => {
+      try {
+        await request(token, `/repos/${owner}/${repo}/issues/${pullNumber}/labels`, {
+          method: 'POST',
+          body: { labels: [labelName] },
+        });
+      } catch (addError) {
+        if (addError?.status === 422) {
+          await request(token, `/repos/${owner}/${repo}/labels`, {
+            method: 'POST',
+            body: { name: labelName, color: 'e4e669' },
+          }).catch(() => {});
+          await request(token, `/repos/${owner}/${repo}/issues/${pullNumber}/labels`, {
+            method: 'POST',
+            body: { labels: [labelName] },
+          });
+        } else {
+          throw addError;
+        }
+      }
+    },
+    removePrLabel: async (pullNumber, labelName) => {
+      await request(
+        token,
+        `/repos/${owner}/${repo}/issues/${pullNumber}/labels/${encodeURIComponent(labelName)}`,
+        { method: 'DELETE' },
+      ).catch(() => {});
+    },
   };
 }
 
