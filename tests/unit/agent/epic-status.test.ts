@@ -22,8 +22,8 @@ const NOW = new Date('2026-07-17T18:00:00.000Z');
 const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
 // Placeholder SHAs used in evidence entries – the working-tree git reader ignores
 // the commit parameter and reads from disk, so these only need to be valid SHA-40s.
-const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
-const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
+const HANDOFF_COMMIT = '8e9bb3208e8a4b4307401441525cfc76b3ac6d7d';
+const LEDGER_COMMIT = '8e9bb3208e8a4b4307401441525cfc76b3ac6d7d';
 const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
 // This test file is itself the immutable evidence target for A0, so any static hash
 // embedded here would immediately drift when the file changes. Compute the current
