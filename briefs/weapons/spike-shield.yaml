@@ -2,7 +2,7 @@ type: weapon
 name: spike-shield
 floor: 2
 description: |
-  A centered front-facing spike shield icon for runtime key equipment/weapon/spike-shield.
+  A centered front-facing spike shield icon for the requested spike-shield weapon equipment entry.
   Single compact trap-weapon silhouette on transparent background: a sturdy round or kite shield body
   with one prominent central metal spike and a few short edge studs. Keep the silhouette clean and
   readable at gameplay scale, with clear outer contour and no background scene elements. Materials should
