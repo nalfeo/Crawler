@@ -1,5 +1,16 @@
 [
   {
+    "commit": "467e46f4338c89dd43b124f094226c402bde1859",
+    "commitDate": "2026-07-18T14:30:09Z",
+    "commitSubject": "Add boarding-axe sprite brief for Floor 2 equipment icon (#1417)",
+    "capturedAt": "2026-07-18T16:17:49.042Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29649255473",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/467e46f4338c89dd43b124f094226c402bde1859.json"
+  },
+  {
     "commit": "fb4bf702bcae8127be8ba3719441eeb996133392",
     "commitDate": "2026-07-18T14:11:31Z",
     "commitSubject": "feat(sprites): author alchemist-sprayer weapon brief for Floor 2 equipment icon (#1409)",
