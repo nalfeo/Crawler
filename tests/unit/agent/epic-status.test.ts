@@ -394,6 +394,44 @@ describe('Floor 2 equipment epic status', () => {
     expect(audit.proposal.operator_actions).toHaveLength(1);
   });
 
+  it('rejects active cached ownership when no live trusted CLAIMED comment exists', () => {
+    const state = cloneState();
+    state.nodes[0]!.ownership.claimant = 'Producer';
+    state.nodes[0]!.ownership.session = '7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd';
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/pulls/1271')) {
+          return {
+            number: 1271,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: FULL_COMMIT },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors.map((error) => error.code)).toContain('github.missing-live-claim');
+    expect(audit.proposal.operator_actions.some((action) => action.includes('slice:A0'))).toBe(
+      true,
+    );
+  });
+
   it('flags advanced PR heads when head-bound evidence is still pinned to the older commit', () => {
     const state = cloneState();
     const a0 = state.nodes[0]!;
@@ -412,6 +450,24 @@ describe('Floor 2 equipment epic status', () => {
             html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
           };
+        }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A0',
+                'claimant: Producer',
+                'session: 7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T17:32:38.205Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A0 control plane only; no gameplay',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-1',
+            },
+          ];
         }
         if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.endsWith('/pulls/1271')) {
@@ -461,6 +517,24 @@ describe('Floor 2 equipment epic status', () => {
             html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
           };
+        }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A0',
+                'claimant: Producer',
+                'session: 7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T17:32:38.205Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A0 control plane only; no gameplay',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-1',
+            },
+          ];
         }
         if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.endsWith('/pulls/1271')) {
@@ -1067,6 +1141,24 @@ describe('Floor 2 equipment epic status', () => {
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
           };
         }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A0',
+                'claimant: Producer',
+                'session: 7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T17:32:38.205Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A0 control plane only; no gameplay',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-1',
+            },
+          ];
+        }
         if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.endsWith('/pulls/1271')) {
           return {
@@ -1262,6 +1354,110 @@ describe('applyGithubAudit', () => {
 });
 
 describe('validateEvidenceRequirements', () => {
+  it('supports legacy GitReader shape (showContent + commitExists + not-a-commit status)', () => {
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'validated';
+    node.merge = {
+      commit: TEST_MERGE_COMMIT,
+      merged_at: '2026-07-17T20:00:00.000Z',
+    };
+    node.evidence = [
+      {
+        kind: 'offline-validator-and-focused-tests',
+        path_or_check: 'tests/unit/agent/epic-status.test.ts',
+        sha256: sha256OfFile(REPO_ROOT, 'tests/unit/agent/epic-status.test.ts'),
+        commit: HANDOFF_COMMIT,
+        recorded_at: '2026-07-17T20:01:00.000Z',
+      },
+    ];
+    const legacyReader: GitReader = {
+      commitStatus(sha) {
+        if (sha === TEST_MERGE_COMMIT) return 'not-a-commit';
+        return 'commit';
+      },
+      commitExists: () => true,
+      showContent(_commit, filePath) {
+        return readFileSync(resolve(REPO_ROOT, filePath), 'utf8');
+      },
+    };
+
+    const result = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      schemaDocument: SCHEMA,
+      gitReader: legacyReader,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain('merge.not-a-commit');
+  });
+
+  it('accepts current not-commit status from commitStatus', () => {
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'validated';
+    node.merge = {
+      commit: TEST_MERGE_COMMIT,
+      merged_at: '2026-07-17T20:00:00.000Z',
+    };
+    node.evidence = [
+      {
+        kind: 'offline-validator-and-focused-tests',
+        path_or_check: 'tests/unit/agent/epic-status.test.ts',
+        sha256: sha256OfFile(REPO_ROOT, 'tests/unit/agent/epic-status.test.ts'),
+        commit: HANDOFF_COMMIT,
+        recorded_at: '2026-07-17T20:01:00.000Z',
+      },
+    ];
+    const reader: GitReader = {
+      commitStatus(sha) {
+        if (sha === TEST_MERGE_COMMIT) return 'not-commit';
+        return 'commit';
+      },
+      readContent(commit, filePath) {
+        return {
+          content: readFileSync(resolve(REPO_ROOT, filePath), 'utf8'),
+          source: commit === HANDOFF_COMMIT ? 'working-tree' : 'git',
+        };
+      },
+    };
+
+    const result = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      schemaDocument: SCHEMA,
+      gitReader: reader,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain('merge.not-a-commit');
+  });
+
+  it('maps legacy commitExists=false to missing commit status', () => {
+    const legacyReader: GitReader = {
+      commitExists: () => false,
+      showContent: () => null,
+    };
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'validated';
+    node.merge = {
+      commit: TEST_MERGE_COMMIT,
+      merged_at: '2026-07-17T20:00:00.000Z',
+    };
+
+    const result = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      schemaDocument: SCHEMA,
+      gitReader: legacyReader,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain('merge.commit-not-found');
+  });
+
   it('production git reader rejects non-commit git objects', () => {
     let commitSha: string;
     let blobSha: string;
@@ -1712,6 +1908,24 @@ describe('speculative stacked-work metadata', () => {
             html_url: 'https://github.com/nalfeo/Crawler/issues/1282',
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1282',
           };
+        }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A0',
+                'claimant: Producer',
+                'session: 7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T17:32:38.205Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A0 control plane only; no gameplay',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-1',
+            },
+          ];
         }
         if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.endsWith('/pulls/1271')) {

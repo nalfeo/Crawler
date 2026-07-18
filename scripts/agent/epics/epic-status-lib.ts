@@ -535,11 +535,31 @@ export interface ValidationResult {
  * implementation in tests to avoid requiring full git history.
  */
 export interface GitReader {
-  readContent(
+  /**
+   * Provide either `readContent` (preferred) or legacy `showContent`.
+   */
+  readContent?(
     commit: string,
     filePath: string,
   ): { readonly content: string; readonly source: 'git' | 'working-tree' } | null;
-  commitStatus(commit: string): 'commit' | 'not-commit' | 'missing';
+  /**
+   * Backward-compatible legacy alias kept for external tooling that still
+   * implements the pre-refactor GitReader shape.
+   */
+  showContent?(commit: string, filePath: string): string | null;
+  /**
+   * Provide either `commitStatus` (preferred) or legacy `commitExists`.
+   */
+  /**
+   * `not-a-commit` is accepted as a deprecated legacy alias of `not-commit`.
+   */
+  commitStatus?(commit: string): 'commit' | 'not-commit' | 'not-a-commit' | 'missing';
+  /**
+   * Backward-compatible legacy alias kept for external tooling that still
+   * implements the pre-refactor GitReader shape.
+   * Note: this boolean shape cannot distinguish non-commit objects from commits.
+   */
+  commitExists?(commit: string): boolean;
 }
 
 export interface ValidationOptions {
@@ -590,6 +610,37 @@ function gitCommitStatus(repoRoot: string, commit: string): 'commit' | 'not-comm
   }
 }
 
+function normalizeCommitStatus(
+  status: 'commit' | 'not-commit' | 'not-a-commit' | 'missing',
+): 'commit' | 'not-commit' | 'missing' {
+  // Legacy GitReader implementations reported non-commit objects as
+  // "not-a-commit"; the current contract uses "not-commit".
+  return status === 'not-a-commit' ? 'not-commit' : status;
+}
+
+function resolveCommitStatus(
+  gitReader: GitReader,
+  commit: string,
+): 'commit' | 'not-commit' | 'missing' {
+  if (gitReader.commitStatus) return normalizeCommitStatus(gitReader.commitStatus(commit));
+  if (gitReader.commitExists) return gitReader.commitExists(commit) ? 'commit' : 'missing';
+  throw new Error('Invalid GitReader: commitStatus or commitExists must be implemented');
+}
+
+function readContentAtCommit(
+  gitReader: GitReader,
+  commit: string,
+  filePath: string,
+): { readonly content: string; readonly source: 'git' | 'working-tree' } | null {
+  if (gitReader.readContent) return gitReader.readContent(commit, filePath);
+  if (!gitReader.showContent) {
+    throw new Error('Invalid GitReader: readContent or showContent must be implemented');
+  }
+  // Legacy showContent readers were defined as git-backed lookups.
+  const content = gitReader.showContent(commit, filePath);
+  return content === null ? null : { content, source: 'git' };
+}
+
 /**
  * Creates the production GitReader that shells out to real git commands.
  * Used by `loadAndValidateEpic` and the CLI. In unit tests, inject a custom
@@ -613,6 +664,12 @@ export function createDefaultGitReader(repoRoot: string): GitReader {
     },
     commitStatus(commit: string) {
       return gitCommitStatus(repoRoot, commit);
+    },
+    showContent(commit: string, filePath: string) {
+      return gitShowContent(repoRoot, commit, filePath);
+    },
+    commitExists(commit: string) {
+      return gitCommitStatus(repoRoot, commit) === 'commit';
     },
   };
 }
@@ -1283,7 +1340,7 @@ function validateEvidenceFiles(
       });
       continue;
     }
-    const commitStat = gitReader.commitStatus(evidence.commit);
+    const commitStat = resolveCommitStatus(gitReader, evidence.commit);
     if (commitStat !== 'commit') {
       result.errors.push({
         code: 'evidence.git-verification-failed',
@@ -1295,7 +1352,7 @@ function validateEvidenceFiles(
       });
       continue;
     }
-    const verification = gitReader.readContent(evidence.commit, evidence.path_or_check);
+    const verification = readContentAtCommit(gitReader, evidence.commit, evidence.path_or_check);
     if (verification === null) {
       result.errors.push({
         code: 'evidence.git-verification-failed',
@@ -1343,7 +1400,7 @@ function validateEvidenceRequirements(
     }
     if (handledKinds.has(requirement)) continue;
     if (isRepoFile(repoRoot, evidence.path_or_check)) {
-      const verification = gitReader.readContent(evidence.commit, evidence.path_or_check);
+      const verification = readContentAtCommit(gitReader, evidence.commit, evidence.path_or_check);
       if (verification === null) {
         result.errors.push({
           code: 'evidence.git-verification-failed',
@@ -1378,7 +1435,7 @@ function validateEvidenceRequirements(
       });
       continue;
     }
-    const nonFileCommitStatus = gitReader.commitStatus(evidence.commit);
+    const nonFileCommitStatus = resolveCommitStatus(gitReader, evidence.commit);
     if (nonFileCommitStatus !== 'commit') {
       result.errors.push({
         code: 'evidence.git-verification-failed',
@@ -1746,7 +1803,7 @@ function validateNodeLifecycle(
         message: `${node.node_id} at ${node.status} requires merge commit and timestamp`,
       });
     } else {
-      const mergeCommitStatus = gitReader.commitStatus(node.merge.commit);
+      const mergeCommitStatus = resolveCommitStatus(gitReader, node.merge.commit);
       if (mergeCommitStatus === 'missing') {
         result.errors.push({
           code: 'merge.commit-not-found',
@@ -2231,6 +2288,7 @@ export function auditGithub(
   }
   const issueClaims: ParsedClaim[] = [];
   const auditedIssues = new Map<number, GithubIssue>();
+  const failedIssueAudits = new Set<number>();
   const proposeIssueState = (issue: GithubIssue, expectedNode?: EpicNode): void => {
     if (expectedNode && expectedNode.reconciliation.observed_issue_state !== issue.state) {
       repoPatch.push({
@@ -2321,6 +2379,7 @@ export function auditGithub(
         }
       }
     } catch (error) {
+      failedIssueAudits.add(issueNumber);
       errors.push({
         code: 'github.issue-audit',
         node_id: expectedNode?.node_id,
@@ -2499,6 +2558,24 @@ export function auditGithub(
     deduplicatedByOwner.set(sessionKey, byOwner);
   }
   const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
+  for (const node of state.nodes) {
+    if (!ACTIVE_STATUSES.has(node.status)) continue;
+    if (!node.ownership.claimant || !node.ownership.session) continue;
+    const ownershipIssueNumber = node.github.issue?.number ?? state.github.parent_issue?.number;
+    if (ownershipIssueNumber && failedIssueAudits.has(ownershipIssueNumber)) continue;
+    if (deduplicatedByNode.has(node.node_id)) continue;
+    errors.push({
+      code: 'github.missing-live-claim',
+      node_id: node.node_id,
+      message:
+        `${node.node_id} is ${node.status} with cached owner ` +
+        `${node.ownership.claimant}/${node.ownership.session}, but no live trusted CLAIMED comment exists`,
+    });
+    operatorActions.push(
+      `Post a fresh trusted CLAIMED comment for ${node.node_id} or clear cached ownership ` +
+        `before continuing active work.`,
+    );
+  }
   for (const [nodeId, claims] of deduplicatedByNode) {
     if (claims.length > 1) {
       errors.push({
