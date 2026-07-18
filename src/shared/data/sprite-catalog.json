@@ -2857,7 +2857,7 @@
     "frame": 121,
     "col": 1,
     "row": 10,
-    "note": "Tiny Dungeon ghost (frame 121) — temp CC0 art.",
+    "note": "Tiny Dungeon goblin (frame 121) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }

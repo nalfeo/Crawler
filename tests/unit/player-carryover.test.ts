@@ -51,6 +51,9 @@ describe('player floor carryover', () => {
     source.featureUnlocks = { inventory: true, equipment: true, spells: true };
     source.achievements.unlockedIds.add('first-blood');
     source.achievements.pendingUnlockIds.push('first-blood');
+    source.achievements.runGlobal.numberFacts.totalKills = 99;
+    source.achievements.runGlobal.booleanFacts.staircaseUnlocked = true;
+    source.achievements.runGlobal.completedQuestIds.add('floor1-find-welcome');
     addStatModifier(source, {
       sourceType: 'skill',
       sourceId: `weapon-class-slashing:level:3:${sourcePlayer}`,
@@ -134,6 +137,7 @@ describe('player floor carryover', () => {
     );
     expect(destination.featureUnlocks).toEqual(source.featureUnlocks);
     expect(destination.achievements.unlockedIds).toEqual(source.achievements.unlockedIds);
+    expect(destination.achievements.runGlobal).toEqual(source.achievements.runGlobal);
     expect(destination.statModifiers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ sourceId: 'floor2-only' }),
