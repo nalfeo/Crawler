@@ -1,0 +1,354 @@
+# One-shot workflow: create the 70 Floor-2 equipment asset-request issues for G2-B.
+# Triggered on push to the g2-b session branch. Has a deduplication guard:
+# if any g2b-tagged asset-request issues already exist, the create step is skipped.
+# Delete this file once all issues are created and the pipeline is drained.
+
+name: G2-B Seed Asset-Request Issues
+
+on:
+  push:
+    branches:
+      - 'copilot/g2-b-produce-floor-2-equipment-sprite-waves'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  seed:
+    name: Create 70 Floor-2 equipment asset-request issues
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check for existing g2b issues
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh issue list \
+            --repo nalfeo/Crawler \
+            --label asset-request \
+            --state open \
+            --limit 100 \
+            --json number \
+            --jq 'length')
+          echo "existing_count=$count" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "${count:-0}" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "### Skipping: $count asset-request issues already exist" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "### Creating 70 asset-request issues for G2-B" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Create Wave 1 – blade weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "iron-cleaver" "Iron Cleaver" "weapon" "Iron Cleaver Floor 2 equipment icon for stable runtime key equipment/weapon/iron-cleaver. Create one centered, silhouette-readable blade weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "bone-saw" "Bone Saw" "weapon" "Bone Saw Floor 2 equipment icon for stable runtime key equipment/weapon/bone-saw. Create one centered, silhouette-readable blade weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "dueling-saber" "Dueling Saber" "weapon" "Dueling Saber Floor 2 equipment icon for stable runtime key equipment/weapon/dueling-saber. Create one centered, silhouette-readable blade weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "venom-dirk" "Venom Dirk" "weapon" "Venom Dirk Floor 2 equipment icon for stable runtime key equipment/weapon/venom-dirk. Create one centered, silhouette-readable blade weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "void-rapier" "Void Rapier" "weapon" "Void Rapier Floor 2 equipment icon for stable runtime key equipment/weapon/void-rapier. Create one centered, silhouette-readable blade weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 2 – axe weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "war-pick" "War Pick" "weapon" "War Pick Floor 2 equipment icon for stable runtime key equipment/weapon/war-pick. Create one centered, silhouette-readable axe weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "butcher-hook" "Butcher Hook" "weapon" "Butcher Hook Floor 2 equipment icon for stable runtime key equipment/weapon/butcher-hook. Create one centered, silhouette-readable axe weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "rune-axe" "Rune Axe" "weapon" "Rune Axe Floor 2 equipment icon for stable runtime key equipment/weapon/rune-axe. Create one centered, silhouette-readable axe weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "boarding-axe" "Boarding Axe" "weapon" "Boarding Axe Floor 2 equipment icon for stable runtime key equipment/weapon/boarding-axe. Create one centered, silhouette-readable axe weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "ice-pick" "Ice Pick" "weapon" "Ice Pick Floor 2 equipment icon for stable runtime key equipment/weapon/ice-pick. Create one centered, silhouette-readable axe weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 3 – bludgeon weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "chain-flail" "Chain Flail" "weapon" "Chain Flail Floor 2 equipment icon for stable runtime key equipment/weapon/chain-flail. Create one centered, silhouette-readable bludgeon weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "stone-maul" "Stone Maul" "weapon" "Stone Maul Floor 2 equipment icon for stable runtime key equipment/weapon/stone-maul. Create one centered, silhouette-readable bludgeon weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "sun-hammer" "Sun Hammer" "weapon" "Sun Hammer Floor 2 equipment icon for stable runtime key equipment/weapon/sun-hammer. Create one centered, silhouette-readable bludgeon weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "baseball-bat" "Baseball Bat" "weapon" "Baseball Bat Floor 2 equipment icon for stable runtime key equipment/weapon/baseball-bat. Create one centered, silhouette-readable bludgeon weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "brass-knuckles" "Brass Knuckles" "weapon" "Brass Knuckles Floor 2 equipment icon for stable runtime key equipment/weapon/brass-knuckles. Create one centered, silhouette-readable bludgeon weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 4 – polearm weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "quarterstaff" "Quarterstaff" "weapon" "Quarterstaff Floor 2 equipment icon for stable runtime key equipment/weapon/quarterstaff. Create one centered, silhouette-readable polearm weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "blood-lance" "Blood Lance" "weapon" "Blood Lance Floor 2 equipment icon for stable runtime key equipment/weapon/blood-lance. Create one centered, silhouette-readable polearm weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "grave-shovel" "Grave Shovel" "weapon" "Grave Shovel Floor 2 equipment icon for stable runtime key equipment/weapon/grave-shovel. Create one centered, silhouette-readable polearm weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "tower-spear" "Tower Spear" "weapon" "Tower Spear Floor 2 equipment icon for stable runtime key equipment/weapon/tower-spear. Create one centered, silhouette-readable polearm weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "crescent-glaive" "Crescent Glaive" "weapon" "Crescent Glaive Floor 2 equipment icon for stable runtime key equipment/weapon/crescent-glaive. Create one centered, silhouette-readable polearm weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 5 – bow weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "ashwood-bow" "Ashwood Bow" "weapon" "Ashwood Bow Floor 2 equipment icon for stable runtime key equipment/weapon/ashwood-bow. Create one centered, silhouette-readable bow weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "hand-crossbow" "Hand Crossbow" "weapon" "Hand Crossbow Floor 2 equipment icon for stable runtime key equipment/weapon/hand-crossbow. Create one centered, silhouette-readable bow weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "storm-sling" "Storm Sling" "weapon" "Storm Sling Floor 2 equipment icon for stable runtime key equipment/weapon/storm-sling. Create one centered, silhouette-readable bow weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "hunting-bola" "Hunting Bola" "weapon" "Hunting Bola Floor 2 equipment icon for stable runtime key equipment/weapon/hunting-bola. Create one centered, silhouette-readable bow weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "siege-bow" "Siege Bow" "weapon" "Siege Bow Floor 2 equipment icon for stable runtime key equipment/weapon/siege-bow. Create one centered, silhouette-readable bow weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 6 – firearm weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "musketeer-rifle" "Musketeer Rifle" "weapon" "Musketeer Rifle Floor 2 equipment icon for stable runtime key equipment/weapon/musketeer-rifle. Create one centered, silhouette-readable firearm weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "cog-pistol" "Cog Pistol" "weapon" "Cog Pistol Floor 2 equipment icon for stable runtime key equipment/weapon/cog-pistol. Create one centered, silhouette-readable firearm weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "crystal-cannon" "Crystal Cannon" "weapon" "Crystal Cannon Floor 2 equipment icon for stable runtime key equipment/weapon/crystal-cannon. Create one centered, silhouette-readable firearm weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "rivet-gun" "Rivet Gun" "weapon" "Rivet Gun Floor 2 equipment icon for stable runtime key equipment/weapon/rivet-gun. Create one centered, silhouette-readable firearm weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "harpoon-gun" "Harpoon Gun" "weapon" "Harpoon Gun Floor 2 equipment icon for stable runtime key equipment/weapon/harpoon-gun. Create one centered, silhouette-readable firearm weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 7 – thrown weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "throwing-knives" "Throwing Knives" "weapon" "Throwing Knives Floor 2 equipment icon for stable runtime key equipment/weapon/throwing-knives. Create one centered, silhouette-readable thrown weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "twin-katar" "Twin Katar" "weapon" "Twin Katar Floor 2 equipment icon for stable runtime key equipment/weapon/twin-katar. Create one centered, silhouette-readable thrown weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "war-fan" "War Fan" "weapon" "War Fan Floor 2 equipment icon for stable runtime key equipment/weapon/war-fan. Create one centered, silhouette-readable thrown weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "acid-flask" "Acid Flask" "weapon" "Acid Flask Floor 2 equipment icon for stable runtime key equipment/weapon/acid-flask. Create one centered, silhouette-readable thrown weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "bone-chakram" "Bone Chakram" "weapon" "Bone Chakram Floor 2 equipment icon for stable runtime key equipment/weapon/bone-chakram. Create one centered, silhouette-readable thrown weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 8 – magic-focus weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "ember-wand" "Ember Wand" "weapon" "Ember Wand Floor 2 equipment icon for stable runtime key equipment/weapon/ember-wand. Create one centered, silhouette-readable magic-focus weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "frost-crook" "Frost Crook" "weapon" "Frost Crook Floor 2 equipment icon for stable runtime key equipment/weapon/frost-crook. Create one centered, silhouette-readable magic-focus weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "moon-scythe" "Moon Scythe" "weapon" "Moon Scythe Floor 2 equipment icon for stable runtime key equipment/weapon/moon-scythe. Create one centered, silhouette-readable magic-focus weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "ritual-dagger" "Ritual Dagger" "weapon" "Ritual Dagger Floor 2 equipment icon for stable runtime key equipment/weapon/ritual-dagger. Create one centered, silhouette-readable magic-focus weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "plague-censer" "Plague Censer" "weapon" "Plague Censer Floor 2 equipment icon for stable runtime key equipment/weapon/plague-censer. Create one centered, silhouette-readable magic-focus weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 9 – beam weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "alchemist-sprayer" "Alchemist Sprayer" "weapon" "Alchemist Sprayer Floor 2 equipment icon for stable runtime key equipment/weapon/alchemist-sprayer. Create one centered, silhouette-readable beam weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "thorn-whip" "Thorn Whip" "weapon" "Thorn Whip Floor 2 equipment icon for stable runtime key equipment/weapon/thorn-whip. Create one centered, silhouette-readable beam weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "shock-baton" "Shock Baton" "weapon" "Shock Baton Floor 2 equipment icon for stable runtime key equipment/weapon/shock-baton. Create one centered, silhouette-readable beam weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "flame-tongs" "Flame Tongs" "weapon" "Flame Tongs Floor 2 equipment icon for stable runtime key equipment/weapon/flame-tongs. Create one centered, silhouette-readable beam weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "echo-bell" "Echo Bell" "weapon" "Echo Bell Floor 2 equipment icon for stable runtime key equipment/weapon/echo-bell. Create one centered, silhouette-readable beam weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 10 – trap weapons
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "sawblade-launcher" "Sawblade Launcher" "weapon" "Sawblade Launcher Floor 2 equipment icon for stable runtime key equipment/weapon/sawblade-launcher. Create one centered, silhouette-readable trap weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "oil-lantern" "Oil Lantern" "weapon" "Oil Lantern Floor 2 equipment icon for stable runtime key equipment/weapon/oil-lantern. Create one centered, silhouette-readable trap weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "spike-shield" "Spike Shield" "weapon" "Spike Shield Floor 2 equipment icon for stable runtime key equipment/weapon/spike-shield. Create one centered, silhouette-readable trap weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "powder-keg" "Powder Keg" "weapon" "Powder Keg Floor 2 equipment icon for stable runtime key equipment/weapon/powder-keg. Create one centered, silhouette-readable trap weapon on a transparent background; preserve the runtime key exactly."
+          create_issue "meteor-hammer" "Meteor Hammer" "weapon" "Meteor Hammer Floor 2 equipment icon for stable runtime key equipment/weapon/meteor-hammer. Create one centered, silhouette-readable trap weapon on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 11 – head armor
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "iron-visor" "Iron Visor" "item" "Iron Visor Floor 2 equipment icon for stable runtime key equipment/head/iron-visor. Create one centered, silhouette-readable headgear armor on a transparent background; preserve the runtime key exactly."
+          create_issue "quartermaster-cap" "Quartermaster Cap" "item" "Quartermaster Cap Floor 2 equipment icon for stable runtime key equipment/head/quartermaster-cap. Create one centered, silhouette-readable headgear armor on a transparent background; preserve the runtime key exactly."
+          create_issue "batfolk-hood" "Batfolk Hood" "item" "Batfolk Hood Floor 2 equipment icon for stable runtime key equipment/head/batfolk-hood. Create one centered, silhouette-readable headgear armor on a transparent background; preserve the runtime key exactly."
+          create_issue "alchemist-goggles" "Alchemist Goggles" "item" "Alchemist Goggles Floor 2 equipment icon for stable runtime key equipment/head/alchemist-goggles. Create one centered, silhouette-readable headgear armor on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 12 – torso armor
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "chain-hauberk" "Chain Hauberk" "item" "Chain Hauberk Floor 2 equipment icon for stable runtime key equipment/torso/chain-hauberk. Create one centered, silhouette-readable body-armor armor on a transparent background; preserve the runtime key exactly."
+          create_issue "velvet-coat" "Velvet Coat" "item" "Velvet Coat Floor 2 equipment icon for stable runtime key equipment/torso/velvet-coat. Create one centered, silhouette-readable body-armor armor on a transparent background; preserve the runtime key exactly."
+          create_issue "scavenger-harness" "Scavenger Harness" "item" "Scavenger Harness Floor 2 equipment icon for stable runtime key equipment/torso/scavenger-harness. Create one centered, silhouette-readable body-armor armor on a transparent background; preserve the runtime key exactly."
+          create_issue "runed-cuirass" "Runed Cuirass" "item" "Runed Cuirass Floor 2 equipment icon for stable runtime key equipment/torso/runed-cuirass. Create one centered, silhouette-readable body-armor armor on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 13 – hands armor
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "duelist-gloves" "Duelist Gloves" "item" "Duelist Gloves Floor 2 equipment icon for stable runtime key equipment/hands/duelist-gloves. Create one centered, silhouette-readable handwear armor on a transparent background; preserve the runtime key exactly."
+          create_issue "thorn-gauntlets" "Thorn Gauntlets" "item" "Thorn Gauntlets Floor 2 equipment icon for stable runtime key equipment/hands/thorn-gauntlets. Create one centered, silhouette-readable handwear armor on a transparent background; preserve the runtime key exactly."
+          create_issue "tinker-grips" "Tinker Grips" "item" "Tinker Grips Floor 2 equipment icon for stable runtime key equipment/hands/tinker-grips. Create one centered, silhouette-readable handwear armor on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 14 – feet armor
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "iron-greaves" "Iron Greaves" "item" "Iron Greaves Floor 2 equipment icon for stable runtime key equipment/feet/iron-greaves. Create one centered, silhouette-readable footwear armor on a transparent background; preserve the runtime key exactly."
+          create_issue "shadow-boots" "Shadow Boots" "item" "Shadow Boots Floor 2 equipment icon for stable runtime key equipment/feet/shadow-boots. Create one centered, silhouette-readable footwear armor on a transparent background; preserve the runtime key exactly."
+          create_issue "merchant-sandals" "Merchant Sandals" "item" "Merchant Sandals Floor 2 equipment icon for stable runtime key equipment/feet/merchant-sandals. Create one centered, silhouette-readable footwear armor on a transparent background; preserve the runtime key exactly."
+
+      - name: Create Wave 15 – accessories
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          create_issue() {
+            local slug="$1" name="$2" type="$3" brief="$4"
+            gh issue create \
+              --repo nalfeo/Crawler \
+              --title "Asset request: ${slug}" \
+              --label "asset-request" \
+              --body "$(printf '### Name\n%s\n\n### Brief\n%s\n\n### Type (optional)\n%s\n\n### Floor (optional)\n2' "${slug}" "${brief}" "${type}")"
+            sleep 1
+          }
+          create_issue "blood-vial" "Blood Vial" "item" "Blood Vial Floor 2 equipment icon for stable runtime key equipment/accessory/blood-vial. Create one centered, silhouette-readable accessory accessory on a transparent background; preserve the runtime key exactly."
+          create_issue "compass-charm" "Compass Charm" "item" "Compass Charm Floor 2 equipment icon for stable runtime key equipment/accessory/compass-charm. Create one centered, silhouette-readable accessory accessory on a transparent background; preserve the runtime key exactly."
+          create_issue "lucky-feather" "Lucky Feather" "item" "Lucky Feather Floor 2 equipment icon for stable runtime key equipment/accessory/lucky-feather. Create one centered, silhouette-readable accessory accessory on a transparent background; preserve the runtime key exactly."
+          create_issue "gearwork-locket" "Gearwork Locket" "item" "Gearwork Locket Floor 2 equipment icon for stable runtime key equipment/accessory/gearwork-locket. Create one centered, silhouette-readable accessory accessory on a transparent background; preserve the runtime key exactly."
+          create_issue "warding-bell" "Warding Bell" "item" "Warding Bell Floor 2 equipment icon for stable runtime key equipment/accessory/warding-bell. Create one centered, silhouette-readable accessory accessory on a transparent background; preserve the runtime key exactly."
+          create_issue "surveyor-map" "Surveyor Map" "item" "Surveyor Map Floor 2 equipment icon for stable runtime key equipment/accessory/surveyor-map. Create one centered, silhouette-readable accessory accessory on a transparent background; preserve the runtime key exactly."
+
+      - name: Report issue creation summary
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh issue list \
+            --repo nalfeo/Crawler \
+            --label asset-request \
+            --state open \
+            --limit 200 \
+            --json number \
+            --jq 'length')
+          echo "### G2-B Issue Seeding Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "Created asset-request issues. Open count: **${count}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "The Asset Request Pipeline workflow will process each issue in turn." >> "$GITHUB_STEP_SUMMARY"
