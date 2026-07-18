@@ -94,9 +94,10 @@ npm run sprites:asset-pr
 # 8. Observe in-game (npm run dev) and confirm icon renders
 ```
 
-## Known pre-existing test failure
+## Known pre-existing test failure (unrelated to this PR's scope)
 
-`tests/unit/agent/epic-status.test.ts` has 1 failing test:
+Outside the sprite/art-plan changes in this PR,
+`tests/unit/agent/epic-status.test.ts` has 1 pre-existing failing test:
 `rejects merge facts that point at a non-commit git object`
 
 This failure is caused by the shallow clone (depth=2) not containing the specific
