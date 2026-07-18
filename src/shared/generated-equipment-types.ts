@@ -150,3 +150,38 @@ export interface GeneratedEquipmentRegistrySnapshotV1 {
   readonly nextOrdinal: number;
   readonly instances: readonly GeneratedEquipmentInstanceV1[];
 }
+
+// Compatibility exports for the game-layer registry contract on main.
+export const KNOWN_GENERATED_SCHEMA_VERSION = GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION;
+export const RARITY_EFFECT_BUDGET: Readonly<Record<GeneratedEquipmentRarity, number>> = {
+  common: 0,
+  uncommon: 1,
+  rare: 2,
+};
+export const ENHANCEMENT_MIN = 0 as const;
+export const ENHANCEMENT_MAX = 5 as const;
+
+const GENERATED_INSTANCE_ID_PATTERN = /^gei:v1:[a-zA-Z0-9_-]+:\d+$/;
+const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{64}$/;
+
+export function isValidGeneratedInstanceId(id: string): id is GeneratedEquipmentInstanceId {
+  return GENERATED_INSTANCE_ID_PATTERN.test(id);
+}
+
+export function isKnownGeneratedSchemaVersion(
+  version: string,
+): version is typeof KNOWN_GENERATED_SCHEMA_VERSION {
+  return version === KNOWN_GENERATED_SCHEMA_VERSION;
+}
+
+export function isValidFingerprintV1(value: string): value is EquipmentFingerprintV1 {
+  return FINGERPRINT_PATTERN.test(value);
+}
+
+export function makeRunKey(seed: number | string): string {
+  const key = String(seed).replace(/[^a-zA-Z0-9_-]/g, '');
+  if (key.length === 0) {
+    throw new Error(`makeRunKey: seed "${seed}" produces an empty run key`);
+  }
+  return key;
+}
