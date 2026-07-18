@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-18  
 **Session slug:** spike-shield-asset-forge  
-**Closes:** #1347  
+**Related:** #1347  
 **Apples:** 1🍎 (art-only) — review-ledger-exempt  
 **Branch:** `copilot/add-spike-shield-icon`
 
