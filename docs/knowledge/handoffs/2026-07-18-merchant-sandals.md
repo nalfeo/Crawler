@@ -14,7 +14,7 @@ sprite-pipeline, sprite-workflow
 
 ## Apples
 
-Estimated 🍎🍎, actual 🍎🍎.
+Estimated 2 apples (🍎🍎), actual 2 apples (🍎🍎).
 
 ## What changed
 
