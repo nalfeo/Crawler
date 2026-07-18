@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,13 +23,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const __dirname_resolved = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname_resolved, '../..');
-const TSC_BIN = path.join(REPO_ROOT, 'node_modules', '.bin', 'tsc');
+const require = createRequire(import.meta.url);
+const TSC_BIN = require.resolve('typescript/bin/tsc');
 
 const MINIMAL_TSCONFIG = JSON.stringify({
   compilerOptions: {
     target: 'ES2022',
     module: 'ES2022',
-    moduleResolution: 'bundler',
     strict: true,
     noEmit: true,
     skipLibCheck: true,
@@ -57,17 +58,26 @@ function makeTsProject(files: Record<string, string>): string {
   return dir;
 }
 
+function runTsc(args: string[], cwd = REPO_ROOT) {
+  return spawnSync(process.execPath, [TSC_BIN, ...args], {
+    cwd,
+    encoding: 'utf8',
+  });
+}
+
 describe('verify:fast typecheck gate', () => {
   it('verify-fast.sh invokes tsc with tsconfig.json, not tsconfig.src.json', () => {
     const source = readFileSync(path.join(REPO_ROOT, 'scripts/agent/verify-fast.sh'), 'utf8');
     // The typecheck step must reference the full tsconfig (src + tests + scripts).
-    expect(source).toMatch(/tsc\b.*--project\s+tsconfig\.json/);
+    expect(source).toMatch(/tsc\b.*--project\s+(?:\.\/)?["']?tsconfig\.json["']?/);
     // The src-only config must NOT be used for the typecheck step.
-    expect(source).not.toMatch(/tsc\b.*--project\s+tsconfig\.src\.json/);
+    expect(source).not.toMatch(/tsc\b.*--project\s+(?:\.\/)?["']?tsconfig\.src\.json["']?/);
   });
 
-  it('tsconfig.json includes tests/**/*.ts', () => {
-    const tsconfig = JSON.parse(readFileSync(path.join(REPO_ROOT, 'tsconfig.json'), 'utf8')) as {
+  it('resolved tsconfig.json includes tests/**/*.ts', () => {
+    const result = runTsc(['--showConfig', '--project', path.join(REPO_ROOT, 'tsconfig.json')]);
+    expect(result.status).toBe(0);
+    const tsconfig = JSON.parse(result.stdout) as {
       include?: string[];
     };
     expect(tsconfig.include).toContain('tests/**/*.ts');
@@ -86,9 +96,7 @@ describe('verify:fast typecheck gate', () => {
         'export {};',
       ].join('\n'),
     });
-    const result = spawnSync(TSC_BIN, ['--noEmit', '--project', path.join(dir, 'tsconfig.json')], {
-      encoding: 'utf8',
-    });
+    const result = runTsc(['--noEmit', '--project', path.join(dir, 'tsconfig.json')], dir);
     expect(result.status).not.toBe(0);
     expect(result.stdout + result.stderr).toContain('TS2339');
   });
@@ -103,9 +111,7 @@ describe('verify:fast typecheck gate', () => {
         'export {};',
       ].join('\n'),
     });
-    const result = spawnSync(TSC_BIN, ['--noEmit', '--project', path.join(dir, 'tsconfig.json')], {
-      encoding: 'utf8',
-    });
+    const result = runTsc(['--noEmit', '--project', path.join(dir, 'tsconfig.json')], dir);
     expect(result.status).toBe(0);
   });
 });
