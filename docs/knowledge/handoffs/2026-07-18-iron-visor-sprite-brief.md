@@ -34,6 +34,13 @@
 
 The Copilot coding-agent session runs in CI (`GITHUB_ACTIONS=true`). The Azure setup script skips in CI environments, and the GitHub API write endpoints are blocked by the proxy. Azure generation therefore cannot run directly.
 
+**Confirmed from run #490 logs (03:32 UTC):**
+
+- The ingester scanned all `asset-request` labeled issues and found 4 (void-rapier, venom-dirk, dueling-saber, iron-cleaver)
+- Iron-visor (#1375) was NOT found — it has no `asset-request` label
+- The drain completed and queue was empty (`queue empty for 3 polls`)
+- So iron-visor is currently not in the Azure queue
+
 **The correct path** (requires human action):
 
 1. **Apply `asset-request` label to issue #1375** → triggers `.github/workflows/asset-request.yml`
