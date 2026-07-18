@@ -1,17 +1,24 @@
 type: weapon
 name: butcher-hook
 description: |
-  A large, heavy meat-hook held vertically, handle at the bottom and the
-  hooked end curving up and over at the top. The hook body is a thick
-  J-shaped or S-shaped curve of dark iron, with a sharp tapering point
-  at the tip. A short wrapped haft or wooden handle sits at the base,
-  bound with leather strip or chain link. The iron is dark and pitted —
-  rust-brown shadows in the grooves, a faint highlight on the outer curve
-  of the hook. No blood, no drip effects, no decorative flourishes. The
-  silhouette must read instantly as "large curved hook" at game scale.
-  Floor 2 intensity: the metal looks like it has genuinely been used.
-  Industrial, brutal, unsettling in the right way. Single subject, centered.
-
-# Vertical orientation (default for weapons): handle at the bottom-center,
-# hook curves upward. Default 64x64, 4x4 sheet, kenney-roguelike palette —
-# all inherited from data/sprite-types/weapon.json.
+  A single one-handed butcher hook axe weapon centered in frame on a transparent
+  background. The silhouette reads immediately at gameplay scale: broad chopped
+  axe head with a forward-curving meat hook beak, short reinforced spine, and a
+  wrapped grip with a small pommel at the bottom. Keep orientation vertical with
+  the grip at the bottom and the blade/hook at the top. Floor 2 tone: rough
+  salvaged iron, scarred steel edge, dried grime, and greasy wear on the handle.
+  Use bold color separation, one-pixel dark outline, and chunky readable shading
+  with no anti-aliasing. No extra props, no hands, no glow, no blood spray, no
+  text, no decorative background.
+judge:
+  enabled: true
+variations:
+  - meat-hook beak dominates the top silhouette with a smaller rear spike
+  - broader axe blade profile with a shorter, heavier hook nose
+  - elongated hook curves nearly 180° with a minimal flat axe poll
+  - twin-hook silhouette with a forward beak and a mirrored rear counter-hook
+  - heavy cleaver blade with a compact underslung hook near the base of the head
+  - triangular axe head with a sharp downward hook tip replacing the traditional toe
+  - narrow spine and exaggerated hook beak with a long deeply wrapped grip
+  - balanced hook-to-axe proportions with a square poll and medium-length handle
+minVariations: 8

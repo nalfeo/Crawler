@@ -48,6 +48,36 @@ export type {
   CanEquipResult,
 } from './equipment-types.js';
 export {
+  GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_BASE_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+  FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION,
+} from './generated-equipment-types.js';
+export type {
+  GeneratedEquipmentInstanceId,
+  GeneratedEquipmentInstanceKey,
+  EquipmentFingerprintV1,
+  GeneratedEquipmentRarity,
+  GeneratedEquipmentEnhancementLevel,
+  GeneratedEquipmentEffectUnitCost,
+  GeneratedEquipmentBaseV1,
+  ResolvedEquipmentStatEffectV1,
+  ResolvedEquipmentGrantEffectV1,
+  ResolvedEquipmentEffectV1,
+  ActiveWeaponSnapshotV1,
+  FrozenEquipmentFieldsV1,
+  GeneratedEquipmentGenerationPolicyV1,
+  GeneratedEquipmentGenerationV1,
+  GeneratedEquipmentInstanceV1,
+  GeneratedEquipmentCreateInputV1,
+  GeneratedEquipmentRegistrySnapshotV1,
+} from './generated-equipment-types.js';
+export { CanonicalJsonError, canonicalJson, sha256Hex, deepFreeze } from './canonical-json.js';
+export {
   ENCUMBRANCE_THRESHOLD_BASE_LB,
   ENCUMBRANCE_STR_THRESHOLD_BONUS_LB_PER_POINT,
   ENCUMBRANCE_BAND_MULTIPLIER,
