@@ -203,6 +203,8 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
 
@@ -224,6 +226,8 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-node
 
