@@ -1,5 +1,16 @@
 [
   {
+    "commit": "fb4bf702bcae8127be8ba3719441eeb996133392",
+    "commitDate": "2026-07-18T14:11:31Z",
+    "commitSubject": "feat(sprites): author alchemist-sprayer weapon brief for Floor 2 equipment icon (#1409)",
+    "capturedAt": "2026-07-18T15:36:46.836Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29648067278",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/fb4bf702bcae8127be8ba3719441eeb996133392.json"
+  },
+  {
     "commit": "6e84c82474ffc226d819f8de9754867457ba9364",
     "commitDate": "2026-07-18T14:11:24Z",
     "commitSubject": "Add the twin-katar equipment icon and source brief (#1408)",
