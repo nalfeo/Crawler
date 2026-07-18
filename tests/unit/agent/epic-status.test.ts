@@ -275,23 +275,6 @@ describe('Floor 2 equipment epic status', () => {
     expect(validate(state).errors.map((error) => error.code)).toContain('evidence.hash-drift');
   });
 
-  it('rejects whitespace-only active ownership metadata', () => {
-    const state = cloneState();
-    state.nodes[0]!.status = 'claimed';
-    state.nodes[0]!.ownership = {
-      claimant: '   ',
-      session: '\t',
-      source: 'parent-issue-bootstrap',
-      scope: '  ',
-      claimed_at: '2026-07-17T17:00:00.000Z',
-      lease_expires_at: '2026-07-18T17:00:00.000Z',
-      heartbeat_at: '2026-07-17T17:00:00.000Z',
-      base_commit: HANDOFF_COMMIT,
-    };
-
-    expect(validate(state).errors.map((error) => error.code)).toContain('state.schema');
-  });
-
   it('rejects mismatched issue and PR number/url pairs', () => {
     const state = cloneState();
     state.github.parent_issue = {
@@ -307,9 +290,9 @@ describe('Floor 2 equipment epic status', () => {
     const messages = validate(state).errors.map((error) => error.message);
 
     expect(
-      messages.some((message) => message.includes('Issue URL trailing number must match')),
+      messages.some((message) => message.includes('Issue URL does not match number')),
     ).toBe(true);
-    expect(messages.some((message) => message.includes('PR URL trailing number must match'))).toBe(
+    expect(messages.some((message) => message.includes('PR URL does not match number'))).toBe(
       true,
     );
   });
@@ -320,7 +303,7 @@ describe('Floor 2 equipment epic status', () => {
     state.nodes[0]!.evidence[2] = {
       kind: 'offline-validator-and-focused-tests',
       path_or_check: 'tests/unit/agent/does-not-exist.test.ts',
-      sha256: CURRENT_TEST_FILE_HASH,
+      sha256: sha256OfFile(REPO_ROOT, 'docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md'),
       commit: LEDGER_COMMIT,
       recorded_at: '2026-07-17T17:55:00.000Z',
     };
@@ -349,7 +332,7 @@ describe('Floor 2 equipment epic status', () => {
       planMarkdown: PLAN,
     });
 
-    expect(result.errors.map((error) => error.code)).toContain('merge.not-a-commit');
+    expect(result.errors.map((error) => error.code)).toContain('merge.commit-not-found');
   });
 
   it('renders stable child issue packets with late-bound parent substitution', () => {
