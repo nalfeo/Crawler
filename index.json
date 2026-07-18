@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4654990a191222aa09ce2686f6b9861bc3cafb4a",
+    "commitDate": "2026-07-18T13:09:18Z",
+    "commitSubject": "Add Floor 2 `moon-scythe` equipment icon and manifest entry (#1400)",
+    "capturedAt": "2026-07-18T14:36:20.687Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29646356076",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/4654990a191222aa09ce2686f6b9861bc3cafb4a.json"
+  },
+  {
     "commit": "9bc0eaaca070651ba82b4332bd3b06c34152d1e7",
     "commitDate": "2026-07-18T12:07:24Z",
     "commitSubject": "Add `butcher-hook` weapon brief for Floor 2 asset-request pipeline (#1397)",
