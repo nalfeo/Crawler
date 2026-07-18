@@ -20,9 +20,9 @@ sprite-pipeline, generated-assets
 
 Handled issue #1325 for the `moon-scythe` Floor 2 equipment icon:
 
-1. **Authored source brief**: Added `/home/runner/work/Crawler/Crawler/briefs/weapons/moon-scythe.yaml` with a centered, moon-themed scythe description that preserves the requested silhouette/readability constraints.
-2. **Checked in runtime asset**: Added `/home/runner/work/Crawler/Crawler/public/assets/generated/equipment/weapon/moon-scythe.png` as the transparent-background icon asset.
-3. **Preserved exact runtime key**: Added a new manifest entry under `equipment/weapon/moon-scythe` in `/home/runner/work/Crawler/Crawler/public/assets/generated/manifest.json` with the correct stable ID (`weapon.moon-scythe`) and production wave (`floor2-equipment-weapon-magic-focus`).
+1. **Authored source brief**: Added `briefs/weapons/moon-scythe.yaml` with a centered, moon-themed scythe description that preserves the requested silhouette/readability constraints.
+2. **Checked in runtime asset**: Added `public/assets/generated/equipment/weapon/moon-scythe.png` as the transparent-background icon asset.
+3. **Preserved exact runtime key**: Added a new manifest entry under `equipment/weapon/moon-scythe` in `public/assets/generated/manifest.json` with the correct stable ID (`weapon.moon-scythe`) and production wave (`floor2-equipment-weapon-magic-focus`).
 4. **Validated manifest/runtime surface**: Parsed the updated generated manifest successfully and confirmed the dev server serves `http://127.0.0.1:4173/assets/generated/equipment/weapon/moon-scythe.png` with HTTP 200 and the expected SHA-256 (`4fd795466d0eb0480e0667510313e77d5ca05cc36b1a64855343cadb3b8f7a33`).
 5. **verify:fast passed**: Fast verification completed successfully after the change set.
 
