@@ -128,6 +128,15 @@ assets:
       kind: sprite-registry
       id: toxic-blowgun
 
+  - id: thorn-whip
+    type: weapon
+    label: 'Thorn Whip'
+    brief: 'Thorn Whip — a single centered weapon icon with a clear, readable silhouette on a transparent background. A vine whip studded with hooked thorns, vertical orientation, grip at the bottom. Vines that bite back.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: thorn-whip
+
   - id: chain-whip
     type: weapon
     label: 'Chain Whip'
@@ -182,6 +191,15 @@ assets:
       kind: sprite-registry
       id: sling-of-shame
 
+  - id: oil-lantern
+    type: weapon
+    label: 'Oil Lantern'
+    brief: 'Oil Lantern — a dungeon trap weapon: a squat glass-and-metal oil lantern, rounded amber glass body with visible warm-toned oil and exposed wick near the top, tarnished metal cap and base ring. Silhouette reads as a lantern at a glance. A glass trap that shatters warmly.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: oil-lantern
+
   - id: anchor-mace
     type: weapon
     label: 'Anchor Mace'
@@ -209,6 +227,14 @@ assets:
       kind: sprite-registry
       id: sponsor-sword
 
+  - id: harpoon-gun
+    type: weapon
+    label: 'Harpoon Gun'
+    brief: 'Harpoon Gun — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. A tethered harpoon launcher — fire a bolt and reel them in.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: harpoon-gun
   - id: bone-chakram
     type: weapon
     label: 'Bone Chakram'
@@ -220,3 +246,44 @@ assets:
     integration:
       kind: sprite-registry
       id: bone-chakram
+
+  - id: echo-bell
+    type: weapon
+    label: 'Echo Bell'
+    brief: 'Echo Bell — a Floor 2 beam weapon: a sleek resonance bell on a short handle, held vertically. Bell-head at top, grip at bottom. Metallic body with a glowing accent ring. Silhouette reads as bell-on-a-handle at a glance.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: echo-bell
+  - id: ember-wand
+    type: weapon
+    label: 'Ember Wand'
+    brief: 'Ember Wand — a single centered magic-focus weapon icon on a transparent background. A slender wand held vertically, grip at bottom, glowing ember-tip at top. Channels smoldering intent into a focused bolt of heat.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: ember-wand
+  - id: sun-hammer
+    type: weapon
+    label: 'Sun Hammer'
+    brief: 'Sun Hammer — a single centered bludgeon weapon icon on a transparent background. Oversized rectangular hammer head plated in scorched gold with a sunburst relief on the striking face; thick shaft with wrapped grip and copper bands; silhouette reads unmistakably as a massive hammer at a glance. Floor 2 equipment. Hammer head plated in scorched gold. Hits like a solar flare.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: sun-hammer
+
+  - id: powder-keg
+    type: weapon
+    label: 'Powder Keg'
+    brief: >
+      Powder Keg Floor 2 equipment icon for stable runtime key
+      equipment/weapon/powder-keg. Create one centered, silhouette-readable trap
+      weapon on a transparent background; preserve the runtime key exactly. Squat
+      wooden barrel with iron bands, a short lit fuse at the top. Dark wood
+      body, grey iron bands, tiny orange flame on the fuse. Three-quarter view,
+      upright, fuse extending from top. Reads as an explosive trap at icon
+      scale.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: powder-keg
