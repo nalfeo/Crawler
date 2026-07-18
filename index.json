@@ -1,5 +1,16 @@
 [
   {
+    "commit": "598775a3e1c608b6e46c461b3fa94f392da9422b",
+    "commitDate": "2026-07-18T17:05:13Z",
+    "commitSubject": "feat(assets): add tower-spear Floor 2 weapon icon (#1404)",
+    "capturedAt": "2026-07-18T18:25:07.762Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29653588370",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/598775a3e1c608b6e46c461b3fa94f392da9422b.json"
+  },
+  {
     "commit": "28467a894981011ee76f403faf91543182839087",
     "commitDate": "2026-07-18T16:06:11Z",
     "commitSubject": "feat(sprites): add powder-keg weapon brief and art plan entry (#1413)",
