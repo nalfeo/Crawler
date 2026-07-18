@@ -41,6 +41,20 @@
     "pierce": 0
   },
   {
+    "id": "sun-hammer",
+    "name": "Sun Hammer",
+    "weaponType": 0,
+    "baseDamage": 35,
+    "cooldownMs": 1100,
+    "range": 6,
+    "aoeRadius": 7,
+    "durationMs": 350,
+    "headRadius": 2.0,
+    "shaftDamageMult": 0.5,
+    "knockback": 5,
+    "pierce": 0
+  },
+  {
     "id": "baseball-bat",
     "name": "Baseball Bat",
     "weaponType": 0,
