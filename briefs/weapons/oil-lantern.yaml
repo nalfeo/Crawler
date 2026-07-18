@@ -12,9 +12,11 @@ description: |
   different from any sword, mace, or disc. No flames escaping the glass, no
   floating magical glow, no dripping oil puddles, no background. Dungeon-worn:
   scuffs on the metal, a hairline crack on the glass, wax or soot near the wick.
-# Vertical orientation (default) — lantern is held upright by its bail.
-# Anchor at the base ring: x=32 (center), y=56 (bottom area). Both are
-# inherited from data/sprite-types/weapon.json so no overrides needed.
+# Vertical orientation (default from data/sprite-types/weapon.json) — lantern
+# is held upright by its bail, grip at the base.
+# Anchor inherited from weapon.json: x=32 (horizontal center), y=56 (bottom
+# 8 px — the base ring / foot). derive:true so the pipeline walks the
+# silhouette bottom-center if the static anchor pixel is transparent.
 variations:
   - iron frame lantern with cage bars instead of smooth glass body
   - oversized cracked glass globe, oil visibly sloshes inside
