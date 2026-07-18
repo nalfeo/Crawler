@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "floor-2-equipment-placeholders",
+  "task_title": "Floor 2 equipment placeholders",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Added direct canonical PLAN parity, a shared fail-closed in-place production promotion seam, strict metadata isolation from art-plan YAML, and generation collision checks. Kept weapon sprite type because existing item-icon weapon plans use the weapon pipeline type; equipment category/family/slot remain separate metadata."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Preserved raw manifest entry ordering after schema validation and made production-to-production canonical upserts fail closed; added regression tests."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Clean re-review; both round-1 fixes verified and all 70 manifest entries/assets checked."
+        }
+      ]
+    }
+  }
+}
