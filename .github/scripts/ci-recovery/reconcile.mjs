@@ -1098,6 +1098,9 @@ for (const comment of comments) {
   if (!blockerIds?.length) continue;
   const priorReply = summarizePriorRecoveryIssueComment(comment?.body);
   if (!priorReply) continue;
+  // Keep the newest top-level recovery reply for a blocker ID: later dispatches
+  // supersede older task attempts, so the most recent prior-attempt context is
+  // the least misleading hint for the next recovery run.
   for (const blockerId of blockerIds) {
     priorTopLevelReplyByBlockerId.set(blockerId, priorReply);
   }
