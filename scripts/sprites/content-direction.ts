@@ -1,3 +1,5 @@
+import type { DesignLanguageAddenda } from './design-language-addenda.js';
+
 export const DEFAULT_FLOOR = 1;
 export const MAX_FLOOR = 20;
 
@@ -42,6 +44,35 @@ export function floorContextBlock(floor: number): string {
   ].join('\n');
 }
 
-export function contentDirectionBlock(floor: number): string {
-  return [CRAWLER_DESIGN_LANGUAGE, '', floorContextBlock(floor)].join('\n');
+export function designLanguageAddendaBlock(addenda: DesignLanguageAddenda = {}): string {
+  const hasAnyAddendum = addenda.floor !== undefined || addenda.theme !== undefined;
+  return [
+    ...(hasAnyAddendum
+      ? [
+          '## Design language priority',
+          'These addenda refine, and may override, the general Crawler design language above. ' +
+            'When instructions conflict, follow this priority order: ' +
+            'theme design language > floor design language > general Crawler design language, ' +
+            'favoring the higher-priority guidance over the lower-priority one rather than blending them. ' +
+            'General Crawler dark-fantasy/dungeon-dressing motifs (armor, salvage, decay) work best when ' +
+            'they coordinate with the higher-priority floor/theme-specific details rather than masking or ' +
+            'burying them; when a dressing element cannot coordinate without obscuring those details, ' +
+            'leave it out.',
+          '',
+        ]
+      : []),
+    ...(addenda.floor ? ['## Floor design language', addenda.floor] : []),
+    ...(addenda.floor && addenda.theme ? [''] : []),
+    ...(addenda.theme ? ['## Theme design language', addenda.theme] : []),
+  ].join('\n');
+}
+
+export function contentDirectionBlock(floor: number, addenda: DesignLanguageAddenda = {}): string {
+  const optionalAddenda = designLanguageAddendaBlock(addenda);
+  return [
+    CRAWLER_DESIGN_LANGUAGE,
+    '',
+    floorContextBlock(floor),
+    ...(optionalAddenda ? ['', optionalAddenda] : []),
+  ].join('\n');
 }
