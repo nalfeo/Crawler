@@ -1,13 +1,33 @@
 type: weapon
 name: throwing-knives
 description: |
-  A single throwing knife icon, centered in frame on a transparent background.
-  Side-profile blade angled diagonally up-right (sensor: diagonal ±8°) with a clean, readable
-  silhouette at small size. Slim steel blade, compact dark wrapped grip, and a
-  tiny pommel cap; no extra props and no duplicate knives. Keep the shape bold
-  and uncluttered so it reads immediately as a thrown knife weapon. No glow, no
-  blood, no trails, no text.
+  One centered throwing knife in a clear diagonal side-profile — blade pointing
+  diagonally up and to the right (sensor: diagonal ±8°), grip in the lower-left. Slender
+  symmetrical blade with a pointed tip and a very short tang; no crossguard.
+  Wrapped handle bound with dark cord at the base. Muted steel-grey blade with
+  a thin highlight along one edge to suggest the flat face; dark olive or
+  charcoal cord wrap on the grip; no pommel or guard.
+  The silhouette must instantly read
+  as a throwing knife — not a dagger, not a dart — with a recognizable sharp
+  tip, narrow taper, and minimal grip. No glow, no blood, no enchantment, no
+  trails, no motion blur. Must survive runtime downscaling to 16 px.
+# Throwing knives are a thrown weapon — diagonal orientation (like compact-disk)
+# matches the in-flight / drawn pose and makes the weapon type unmistakable.
+# Anchor is in the grip area (bottom-left quadrant at ~45 degrees) rather than
+# the default bottom-center (32, 56).
+# Everything else (64×64, kenney-roguelike palette, 4×4 sheet, VLM judge)
+# is inherited from data/sprite-types/weapon.json.
+anchor: { x: 20, y: 48 }
 sensors:
   weapon:
     orientation: diagonal
     diagonalToleranceDeg: 8
+variations:
+  - single throwing knife with a slim wrapped handle, very slender blade
+  - single throwing knife with a polished steel blade and dark cord wrap
+minVariations: 8
+judge:
+  enabled: true
+# Floor 2 asset — production wave floor2-equipment-weapon-thrown.
+# Runtime key: equipment/weapon/throwing-knives (stable ID: weapon.throwing-knives).
+floor: 2
