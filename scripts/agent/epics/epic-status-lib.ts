@@ -647,7 +647,9 @@ function readContentAtCommit(
  * implementation (e.g. a working-tree reader) via `ValidationOptions.gitReader`
  * to avoid depending on full git history being present in the checkout.
  */
-export function createDefaultGitReader(repoRoot: string): GitReader {
+export function createDefaultGitReader(
+  repoRoot: string,
+): GitReader & Required<Pick<GitReader, 'commitStatus'>> {
   return {
     readContent(commit: string, filePath: string) {
       const gitContent = gitShowContent(repoRoot, commit, filePath);
