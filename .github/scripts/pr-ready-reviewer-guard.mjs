@@ -20,6 +20,9 @@ const READY_FOR_REVIEW_MUTATION = `
 `;
 
 export const COPILOT_CLOUD_AGENT_WORKFLOW_PATH = '.github/workflows/copilot-setup-steps.yml';
+export const COPILOT_CLOUD_AGENT_WORKFLOW_FILENAME = COPILOT_CLOUD_AGENT_WORKFLOW_PATH.split(
+  '/',
+).at(-1);
 export const EMPTY_DRAFT_REPAIR_GRACE_MS = 5 * 60 * 1000;
 const WORKFLOW_RUNS_PAGE_SIZE = 100;
 const WORKFLOW_RUNS_MAX_PAGES = 10;
@@ -59,13 +62,13 @@ export async function listCopilotCloudWorkflowRuns({
   headBranch,
   maxPages = WORKFLOW_RUNS_MAX_PAGES,
 }) {
-  const workflowPath = encodeURIComponent(COPILOT_CLOUD_AGENT_WORKFLOW_PATH);
+  const workflowFilename = encodeURIComponent(COPILOT_CLOUD_AGENT_WORKFLOW_FILENAME);
   const encodedBranch = encodeURIComponent(headBranch);
   const runs = [];
 
   for (let page = 1; page <= maxPages; page += 1) {
     const path =
-      `/repos/${owner}/${repo}/actions/workflows/${workflowPath}/runs` +
+      `/repos/${owner}/${repo}/actions/workflows/${workflowFilename}/runs` +
       `?branch=${encodedBranch}&per_page=${WORKFLOW_RUNS_PAGE_SIZE}&page=${page}`;
     const response = await requestFn(token, path);
     const pageRuns = Array.isArray(response?.data?.workflow_runs)

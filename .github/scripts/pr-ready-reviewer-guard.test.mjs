@@ -6,6 +6,7 @@ import { parse } from 'yaml';
 
 import {
   changedFileRetryDelaysMs,
+  COPILOT_CLOUD_AGENT_WORKFLOW_FILENAME,
   COPILOT_CLOUD_AGENT_WORKFLOW_PATH,
   EMPTY_DRAFT_REPAIR_GRACE_MS,
   inspectEmptyCopilotDraftRepair,
@@ -407,8 +408,9 @@ test('listCopilotCloudWorkflowRuns uses workflow-specific endpoint and paginates
   assert.equal(seenPaths.length, 2);
   assert.match(
     seenPaths[0],
-    /\/actions\/workflows\/\.github%2Fworkflows%2Fcopilot-setup-steps\.yml\/runs\?branch=/,
+    /\/actions\/workflows\/copilot-setup-steps\.yml\/runs\?branch=/,
   );
+  assert.ok(!seenPaths[0].includes('.github%2Fworkflows'));
   assert.ok(!seenPaths[0].includes('head_sha='));
   assert.equal(runs.length, 101);
 });
