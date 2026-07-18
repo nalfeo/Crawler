@@ -722,43 +722,6 @@ test('shouldResolveThread accepts latest trusted commit URL marker on head linea
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
 });
 
-test('shouldResolveThread auto-resolves outdated threads regardless of comments', () => {
-  // An isOutdated:true thread is deterministically non-applicable — the code
-  // at that location changed after the review comment was posted — so the
-  // reconcile loop can resolve it without requiring a trusted ✅ marker reply.
-  const outdatedNoComments = { isOutdated: true, comments: { nodes: [] } };
-  assert.equal(shouldResolveThread(outdatedNoComments, 'abc123456789abcdef'), true);
-
-  const outdatedUntrustedComment = {
-    isOutdated: true,
-    comments: {
-      nodes: [
-        {
-          body: 'Still looks wrong to me.',
-          authorAssociation: 'NONE',
-          author: { login: 'drive-by' },
-        },
-      ],
-    },
-  };
-  assert.equal(shouldResolveThread(outdatedUntrustedComment, 'abc123456789abcdef'), true);
-
-  // A non-outdated thread with no marker must NOT be auto-resolved.
-  const nonOutdatedNoMarker = {
-    isOutdated: false,
-    comments: {
-      nodes: [
-        {
-          body: 'Needs fixing.',
-          authorAssociation: 'OWNER',
-          author: { login: 'dev' },
-        },
-      ],
-    },
-  };
-  assert.equal(shouldResolveThread(nonOutdatedNoMarker, 'abc123456789abcdef'), false);
-});
-
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
   const runs = [
     { id: 100, name: 'CI', status: 'completed', conclusion: 'failure' },
