@@ -2,22 +2,23 @@ type: weapon
 name: war-fan
 description: |
   A tessen — a Japanese iron battle fan — displayed open as a thrown
-  weapon for Floor 2. The fan is fully deployed: rigid iron slats
-  radiating from the pivot rivet at the bottom into a wide arc, with
-  a fabric or lacquered panel spanning between them. Each outer slat
-  ends in a sharpened tip. The pivot rivet is the anchor point — it
-  sits at the bottom-center of the fan. Palette: dark iron/gunmetal
-  slats with a pop of deep red or lacquered crimson on the fabric
-  panel; dull gold or brass on the pivot rivet and tip reinforcement;
+  weapon for Floor 2. The fan is fully deployed and slightly angled:
+  rigid iron slats radiating from the central pivot rivet into a wide
+  arc, with a lacquered fabric panel spanning between them. Each outer
+  slat ends in a sharpened tip. The weapon is shown in a diagonal
+  throwing stance — the fan arc dominates the upper portion of the
+  icon while the pivot rivet and short handle sit in the lower-center.
+  Palette: dark iron/gunmetal slats, deep crimson lacquered panel
+  (bold readable pop), dull brass pivot rivet and tip reinforcement,
   near-black outline. Worn dungeon-quality: slight dings on slat edges,
-  cracked lacquer on the panel, a faint bloodstain near one tip — but
-  silhouette still reads clearly as an open fan at gameplay scale.
-  No glow, no fire, no chains, no trailing effects. Silhouette must
-  read as "open battle fan" at a glance.
-# War fan is held diagonally — the open fan arc sweeps from
-# bottom-left (pivot/handle) to top-right (outer slat tips), matching
-# the compact-disk throwing-weapon convention. The anchor is at the
-# pivot rivet, centered horizontally and near the bottom of the icon.
+  cracked lacquer on the panel — but silhouette reads clearly as an
+  open battle fan at gameplay scale. No glow, no fire, no chains, no
+  trailing effects. Silhouette must read as "open battle fan" at a glance.
+# War fan diagonal orientation: the open fan arc dominates the upper
+# frame while the pivot rivet handle sits in the lower-center area.
+# Anchor at (32, 48) — center-X, near the bottom — marks the pivot
+# rivet: the throw-center and natural grip point of the weapon.
+# Matches the compact-disk throwing-weapon convention (diagonal).
 anchor: { x: 32, y: 48 }
 sensors:
   weapon:

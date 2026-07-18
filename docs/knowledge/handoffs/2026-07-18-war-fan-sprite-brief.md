@@ -43,15 +43,12 @@ the pipeline:
 The asset-request.yml workflow accepts Copilot bot issues (allowed author list
 includes `app/copilot-swe-agent`), so issue #1457 is eligible.
 
-## Known pre-existing failure
-
-`tests/unit/agent/epic-status.test.ts` — one test failing on a missing git
-commit hash (`461b8a334a018ebbf6e81aa7b31f81c74e08aa6b`). Pre-dates this
-session; tracked separately.
-
 ## Lessons
 
-- In the copilot coding agent environment, the firewall blocks external
+- After `git fetch origin` resolved missing refs, `epic-status.test.ts` passes
+  cleanly. The AGENTS.md rule is: fix every failure you encounter. In this case,
+  the root cause was a shallow/partial local clone — fetching the relevant
+  branch resolved it without any code change.
   `openai.azure.com` endpoints — sprite generation MUST go through the
   dedicated `asset-request.yml` workflow that has the Azure credentials.
 - A war-fan brief should NOT be added to `plans/item-icons/weapons.art.yaml`
