@@ -1468,6 +1468,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             if (!flashOverlay) {
               flashOverlay = scene.add.image(img.x, img.y, img.texture.key, frame);
               flashOverlay.setTint(0xffffff).setTintMode(PHASER_TINT_MODE_FILL);
+              (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+                flashOverlay,
+              );
               mobFlashOverlays.set(eid, flashOverlay);
             } else if (
               flashOverlay.texture.key !== img.texture.key ||

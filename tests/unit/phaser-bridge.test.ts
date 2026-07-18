@@ -1404,6 +1404,45 @@ describe('createPhaserBridge', () => {
     expect(enemyImg.rotation).toBeCloseTo(-expected.rotation);
   });
 
+  it('ignores enemy flash overlays on the UI camera at creation time', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const uiIgnore = vi.fn();
+    scene.cameras = {
+      getCamera: vi.fn((name: string) =>
+        name === 'ui' ? ({ ignore: uiIgnore } as unknown as Phaser.Cameras.Scene2D.Camera) : null,
+      ),
+    } as unknown as Phaser.Scene['cameras'];
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const enemy = addEntity(world.ecs);
+
+    addComponent(world.ecs, enemy, set(Position, { x: 8, y: 8 }));
+    addComponent(world.ecs, enemy, set(Velocity, { x: -1, y: 0 }));
+    addComponent(world.ecs, enemy, Enemy);
+    addComponent(world.ecs, enemy, set(Sprite, { textureId: 1, width: 2, height: 2 }));
+    world.floorScenario = {
+      enemyArchetypes: new Map([[enemy, 'rat']]),
+      objective: { bossBattles: new Map() },
+    } as unknown as NonNullable<typeof world.floorScenario>;
+
+    bridge.sync(world, 0);
+    world.combatEvents.push({
+      type: 'hit',
+      x: 8,
+      y: 8,
+      amount: 2,
+      targetType: 'enemy',
+      targetEid: enemy,
+      delivery: 'projectile',
+      timestamp: 500,
+    });
+    bridge.sync(world, 500);
+
+    expect(images).toHaveLength(2);
+    expect(uiIgnore).toHaveBeenCalled();
+    expect(uiIgnore).toHaveBeenCalledWith(images[1]);
+  });
+
   // A welcome sign is a Sprite+Position entity whose textureId is the welcome
   // board (SPRITE_TEX_WELCOME_SIGN === 3). Its Rotation.angle aims the arrow at
   // the door that leads onward; the renderer picks the baked board so the
