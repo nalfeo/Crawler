@@ -3832,6 +3832,12 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     taskCommentCall.body.body.includes(`Reply target comment ID: \`${reviewCommentId}\``),
     'task comment should include the review-thread reply target comment ID',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'A top-level PR comment is never sufficient for a review-thread blocker',
+    ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
+    'task comment should explicitly reject top-level PR comments for review-thread blockers',
+  );
 });
 
 test('reconcile proceeds when copilot is assigned but no lease/state exists', async (t) => {
@@ -5930,5 +5936,255 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
     ),
     false,
     'concurrent waiting state must not be overwritten',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Stale-marker detection: thread has trusted ✅ Addressed marker but the SHA
+// was never pushed (compare 404), so the thread remains unresolved.
+// ---------------------------------------------------------------------------
+
+test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
+  // Simulate the root cause from the PR #1266 loop incident:
+  // The recovery agent replied to a review thread with ✅ Addressed in <sha>
+  // but that commit was created locally and never pushed.  The compare API
+  // returns 404, so the thread stays unresolved and the same fingerprint
+  // repeats indefinitely.  The reconciler should detect the stale marker and
+  // include a targeted hint in the blocker summary so the next recovery agent
+  // knows to re-post the marker with the current-head SHA.
+  const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
+  const threadId = 'PRRT_stale_marker_thread';
+  const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: true,
+            path: 'scripts/sprites/cli.ts',
+            line: 285,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'the CLI does not propagate the fifth score.',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_stale_reply',
+                  body: `✅ Addressed in \`${staleMarkerSha}\`: Added themeAdherence to the score vector.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    // Stale SHA returns 404 — commit was never pushed to GitHub.
+    [`GET /repos/${OWNER}/${REPO}/compare/${staleMarkerSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1001 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread must NOT be auto-resolved (stale SHA is not reachable).
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+
+  // A task comment must be posted because there is still a blocker.
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the stale-marker blocker');
+
+  // The task body must include the stale-marker annotation so the agent knows
+  // to re-post the marker rather than re-investigate.
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
+    'task body must identify the stale marker SHA',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /verify fix is present.*reply to this thread/i,
+    'task body must instruct the agent to verify and re-post the marker',
+  );
+});
+
+test('transient compare failure does not produce a stale-marker hint (generic blocker preserved)', async (t) => {
+  // When the compare API call fails with a transient/indeterminate error (e.g. 5xx,
+  // rate limit, network error), the reconciler cannot determine whether the marker
+  // SHA is truly stale.  It must NOT emit a stale-marker hint that would
+  // incorrectly direct the recovery agent down the re-marker path.  The generic
+  // review-thread blocker must still be emitted so recovery continues normally.
+  const markerSha = 'beef0000aabbccddeeff00112233445566778899';
+  const threadId = 'PRRT_transient_fail_thread';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/core/systems/damageSystem.ts',
+            line: 42,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original_transient',
+                  body: 'reviewer: damage calculation does not account for armor.',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r2`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_marker_transient',
+                  body: `✅ Addressed in \`${markerSha}\`: Armor factor applied before final damage.`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'copilot-swe-agent[bot]' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    // Compare call returns a transient server error — lineage is indeterminate.
+    [`GET /repos/${OWNER}/${REPO}/compare/${markerSha}...${HEAD_SHA}`]: () => ({
+      status: 500,
+      body: { message: 'Internal Server Error' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1002 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread must NOT be auto-resolved (lineage was indeterminate).
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+
+  // A task comment must still be posted for the generic review-thread blocker.
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the review-thread blocker');
+
+  // The stale-marker hint must NOT appear — the compare failed transiently, so
+  // the SHA is indeterminate, not confirmed unreachable.
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    new RegExp(`Stale marker.*${markerSha}`, 'i'),
+    'task body must NOT include a stale-marker hint when lineage check was transient/indeterminate',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /verify fix is present.*reply to this thread/i,
+    'task body must NOT include re-marker instructions when compare failed transiently',
   );
 });

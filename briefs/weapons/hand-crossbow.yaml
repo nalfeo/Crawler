@@ -1,0 +1,29 @@
+type: weapon
+name: hand-crossbow
+floor: 2
+description: |
+  A compact hand crossbow in a 45-degree diagonal pose — stock at bottom-left,
+  prod (horizontal bow limbs) extending up-and-right, a short bolt resting in
+  the groove. Pistol-grip wooden stock with a visible trigger guard and
+  trigger; narrow steel prod flanking the groove; bolt tip visible at
+  upper-right. Muted dark brown for the stock; iron-grey or slate-black for
+  the prod and hardware; a single thin highlight along the prod's upper edge
+  and the stock's forward rail. No glow, no enchantment, no runes. The
+  silhouette must read as a hand crossbow at a glance — clearly distinct from
+  a long bow, a pistol, or a full-size crossbow.
+# Hand crossbow is shown at a diagonal angle, stock at bottom-left and prod
+# extending up-and-right at ~45 degrees — same pose as compact-disk. Override
+# the weapon-default vertical orientation and shift the anchor to the grip area.
+anchor: { x: 22, y: 50 }
+sensors:
+  anchor:
+    derive: false
+  weapon:
+    orientation: diagonal
+# authored seed list: a few strong visual cues we want to guarantee show up.
+# minVariations: 8 tops this up via the Azure chat deployment so the sheet
+# explores the design space while always including the author seeds.
+variations:
+  - ornate carved stock with a detailed trigger guard and iron fittings
+  - worn leather wrapped grip with scratched steel prod and exposed bolt tip
+minVariations: 8
