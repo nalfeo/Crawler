@@ -282,10 +282,12 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       baseDamage: 10,
       cooldownMs: 700,
       range: 36,
-      // Slightly faster than fireball (0.50) — the ember bolt is a tight,
-      // focused projectile vs. a wide explosive sphere, so it travels a little
-      // quicker. Still subsonic by dungeon standards; not a laser.
+      // Slightly faster than fireball (0.50) — the ember bolt is a tighter,
+      // more focused projectile with a smaller heat burst than fireball's wide
+      // blast, so it travels a little quicker. Still subsonic by dungeon
+      // standards; not a laser.
       projectileSpeed: 0.55,
+      // Small splash on impact, but still notably tighter than fireball (6).
       aoeRadius: 4,
       goreFactor: 0.0,
       pierce: 0,

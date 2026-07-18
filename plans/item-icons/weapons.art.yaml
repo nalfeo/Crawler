@@ -212,7 +212,7 @@ assets:
   - id: ember-wand
     type: weapon
     label: 'Ember Wand'
-    brief: 'Ember Wand — a single centered magic-focus weapon icon on a transparent background. A slender wand held vertically, grip at bottom, glowing ember-tip at top. Channels smouldering intent into a focused bolt of heat.'
+    brief: 'Ember Wand — a single centered magic-focus weapon icon on a transparent background. A slender wand held vertically, grip at bottom, glowing ember-tip at top. Channels smoldering intent into a focused bolt of heat.'
     placeholderInUse: true
     integration:
       kind: sprite-registry
