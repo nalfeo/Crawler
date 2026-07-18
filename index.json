@@ -1,5 +1,16 @@
 [
   {
+    "commit": "f5f4a42520f4f572832082fbe72b889cc10358bb",
+    "commitDate": "2026-07-18T16:05:57Z",
+    "commitSubject": "feat(art): add venom-dirk weapon brief (issue #1326) (#1396)",
+    "capturedAt": "2026-07-18T17:28:15.683Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29651799102",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/f5f4a42520f4f572832082fbe72b889cc10358bb.json"
+  },
+  {
     "commit": "37b7b801e686bfd0ac14588c6969642950e8209e",
     "commitDate": "2026-07-18T16:05:50Z",
     "commitSubject": "feat(art): add musketeer-rifle weapon sprite brief (#1367)",
