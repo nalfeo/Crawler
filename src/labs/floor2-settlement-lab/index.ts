@@ -33,7 +33,7 @@ import {
 } from '../../shared/data/emergent-events.js';
 import { loadShopArchetypes, type ShopArchetypeDef } from '../../shared/data/shop-archetypes.js';
 import { generateShopInventory } from '../../core/generateShopInventory.js';
-import { SeededRandom } from '../../shared/random.js';
+import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { QUARTERMASTER_ARCHETYPE_ID } from '../../game/floor2Settlement.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -99,10 +99,20 @@ function createSettlementLab(canvasHost: HTMLElement, controls: HTMLElement): ()
       },
     };
     const archetypes = loadShopArchetypes();
+
+    // Build a settlement RNG that mirrors initializeFloor2Settlement's state
+    // at the point where QM inventory is rolled:
+    //   seed  : hashStringToSeed(`floor2-settlement:${world.seed}`)
+    //   pre-advances: 1 (defector family pick) + 3 (broker/defector/QM tile picks)
+    //                 + state.shopCount (non-QM shop tile picks, processed before QM inventory)
+    const settlementRng = new SeededRandom(hashStringToSeed(`floor2-settlement:${state.seed}`));
+    const preAdvanceCount = 1 + 3 + state.shopCount;
+    for (let i = 0; i < preAdvanceCount; i += 1) settlementRng.nextInt(0, 1);
+
     // Quartermaster is always guaranteed — exclude from random pool.
     const qmArch = archetypes.find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID) ?? null;
     if (qmArch) {
-      quartermasterShop = { arch: qmArch, inv: generateShopInventory(rng, qmArch) };
+      quartermasterShop = { arch: qmArch, inv: generateShopInventory(settlementRng, qmArch) };
     }
     const randomPool = archetypes.filter((a) => a.id !== QUARTERMASTER_ARCHETYPE_ID);
     const shuffled = [...randomPool];

@@ -6,16 +6,33 @@
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "minor",
+      "notes": "Plan review identified: (1) QM inventory used world.rng instead of settlementRng, breaking downstream seeded determinism — RESOLVED by switching to settlementRng. (2) Empty random pool (all archetypes == QM) gave silent 0-shop behavior — RESOLVED by adding actionable error guard."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Lab QM inventory used wrong RNG seed derivation. Flagged for fix."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Lab RNG now uses hashStringToSeed(floor2-settlement:seed) + pre-advances by 4+shopCount to match real implementation."
+        }
+      ]
     }
   }
 }
