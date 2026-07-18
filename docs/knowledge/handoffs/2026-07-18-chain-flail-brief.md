@@ -3,7 +3,7 @@
 **Date:** 2026-07-18  
 **Agent:** Asset Forge (Graphics Designer persona)  
 **Apple estimate:** 1🍎  
-**PR:** Closes #1308
+**PR:** Related to #1308 (kept open for workflow trigger)
 
 ## Summary
 
@@ -11,10 +11,7 @@ Authored `briefs/weapons/chain-flail.yaml` for the Floor 2 bludgeon production w
 
 ## Systems touched
 
-None — this is a pure art/brief task. No engine systems were modified. Files changed:
-
-- `briefs/weapons/chain-flail.yaml` — new weapon brief (art asset definition, no runtime code)
-- `docs/knowledge/handoffs/2026-07-18-chain-flail-brief.md` — this handoff
+sprite-workflow
 
 ## Design decisions
 
@@ -31,8 +28,8 @@ None — this is a pure art/brief task. No engine systems were modified. Files c
 | -------------------------------------------------- | --------------------------------------------------------------------- |
 | Brief authored                                     | ✅ `briefs/weapons/chain-flail.yaml`                                  |
 | `verify:fast`                                      | ✅ 87 files, 1260 tests passed                                        |
-| Committed + PR opened                              | ✅ closes #1308                                                       |
-| Generation (Azure sidecar)                         | ⏳ will trigger via `asset-request` workflow on PR label              |
+| Committed + PR opened                              | ✅ PR #1316 (issue #1308 remains open for workflow trigger)           |
+| Generation (Azure sidecar)                         | ⏳ trigger via issue event or `workflow_dispatch` on #1308            |
 | Judge / approve / check-in / asset-PR              | ⏳ next wave step after generation                                    |
 | Wire to runtime key `equipment/weapon/chain-flail` | ⏳ post-approval (item icon auto-resolution via `itemId === briefId`) |
 
@@ -42,8 +39,8 @@ Generation runs remotely via GitHub Actions (`asset-request.yml`). Visual review
 
 ## Next steps for successor agent
 
-1. Monitor `asset-request` workflow run triggered by PR label on this issue.
-2. Once run completes, run `sprite-judge` skill on the generated candidates.
+1. Trigger `asset-request` workflow on issue #1308 via issue event (label/edit) or `workflow_dispatch`. The workflow ingests the issue body's brief selection and synthesizes a `briefs/draft/...` brief (does not load committed `chain-flail.yaml` directly).
+2. Monitor the workflow run; once complete, run `sprite-judge` skill on the generated candidates.
 3. Approve winning variant with `npm run sprites:approve`.
 4. Check in with `npm run sprites:checkin` → triggers `asset-checkin` issue.
 5. Batch into floor2-bludgeon asset PR via `asset-pr` skill.
