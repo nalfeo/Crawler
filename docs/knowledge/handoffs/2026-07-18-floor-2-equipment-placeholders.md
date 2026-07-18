@@ -27,7 +27,7 @@ coverage, and the required two-round review loop.
 - Verified A1 base and latest resync head:
   `4c11335a281842f82d206a4c42b23a28e2f40e91`
 - A1 PR: #1276
-- Packet PR: pending publication
+- Packet PR: #1302, ready for review against A1
 - Canonical lifecycle: still blocked; this is STACKED-WORK evidence only.
 
 ## Summary
