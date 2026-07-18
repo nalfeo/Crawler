@@ -1,0 +1,28 @@
+type: weapon
+name: boarding-axe
+floor: 2
+description: |
+  A short-hafted boarding axe held vertically, spike at the top, grip at the
+  bottom. The axe head is wide and asymmetric — a large single-bevel blade
+  flaring to one side, with a sturdy back-spike on the opposing side for
+  breaching doors and prying open hatches. The haft is thick, well-worn wood
+  with a wrapped grip of dark cord or leather; a simple iron butt-cap at the
+  base. Blade is dull iron-grey with rust-brown staining along the edge bevel
+  and one thin highlight catching light on the sharpened edge. Back spike is
+  dark iron, blunt and utilitarian. Three to five color stops: dark iron
+  shadow, mid-tone grey blade body, rust-brown edge staining, weathered
+  brown wood haft, dark grip wrap. No enchantment, no glow, no gore, no
+  decorative motifs. Silhouette must read unmistakably as an axe — not a
+  sword, not a mace — at a glance due to the wide, asymmetric blade head.
+  The tool has clearly seen dungeon use: nicks on the edge, scuffs on the haft.
+# Vertical orientation inherited from data/sprite-types/weapon.json —
+# grip at bottom (y=56), blade-head at top. Wide asymmetric axe head means
+# the silhouette axis tilts slightly toward the blade side; anchor stays at
+# the default grip center (32,56).
+#
+# Floor 2 context: darker palette choices are fine, more brutal
+# character — but readability at 64x64 still comes first.
+variations:
+  - narrower spike, heavier rust staining across full blade
+  - double-bevel edge instead of single, slightly longer haft
+minVariations: 6
