@@ -26,7 +26,7 @@ Attempted the full scope (`generate → judge/review → approve`) but the envir
 
 - `npm run sprites:run -- --brief briefs/weapons/iron-sword.yaml` — ❌ blocked (`AZURE_OPENAI_ENDPOINT` missing). Baseline warmup check to confirm provider/environment behavior before running the new brief.
 - `npm run sprites:run -- --brief briefs/weapons/spike-shield.yaml --judge-budget-usd 0.25` — ❌ blocked (`AZURE_OPENAI_ENDPOINT` missing)
-- `npm run verify:fast` — ❌ initially failed due missing git object `461b8a334a...^{tree}` in a shallow clone; fetched full history (`git fetch --unshallow origin`) before re-running.
+- `npm run verify:fast` — ❌ initially failed due to missing git object `461b8a334a...^{tree}` in a shallow clone; fetched full history (`git fetch --unshallow origin`) before re-running.
 - `npm run verify:fast` — ✅ pass after unshallow + `origin/main` fetch
 
 ## Blockers
