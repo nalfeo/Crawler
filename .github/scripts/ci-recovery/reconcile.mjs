@@ -1330,6 +1330,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     path: thread.path || undefined,
     line: thread.line || undefined,
     summary,
+    isOutdated: thread.isOutdated === true,
     url: root?.url,
   });
 }
@@ -1638,7 +1639,7 @@ const taskBody = [
     const replyCommentId =
       blocker.kind === 'review-thread' ? reviewThreadReplyCommentId(blocker.url) : null;
     return [
-      `${index + 1}. **${blocker.kind}** \`${blocker.id}\`${blocker.path ? ` at \`${blocker.path}${blocker.line ? `:${blocker.line}` : ''}\`` : ''}`,
+      `${index + 1}. **${blocker.kind}** \`${blocker.id}\`${blocker.path ? ` at \`${blocker.path}${blocker.line ? `:${blocker.line}` : ''}\`` : ''}${blocker.isOutdated ? ' **(outdated — deterministic non-applicability candidate)**' : ''}`,
       `   ${blocker.summary}`,
       ...(blocker.url ? [`   ${blocker.url}`] : []),
       ...(replyCommentId
