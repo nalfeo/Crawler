@@ -18,7 +18,7 @@ rivet-gun weapon icon (runtime key `equipment/weapon/rivet-gun`, stable ID
 
 Sprite generation is **blocked** by missing Azure OpenAI credentials in the
 coding agent environment. Per the Azure-required sidecar policy (AGENTS.md §5),
-this blocker is reported rather than silently fallen back from.
+we report this blocker rather than silently falling back.
 
 ## What was done
 
