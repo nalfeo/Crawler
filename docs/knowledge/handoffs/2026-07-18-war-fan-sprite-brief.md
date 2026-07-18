@@ -10,7 +10,7 @@ icon (asset-request issue #1457). The brief covers:
 - Floor 2 palette: gunmetal slats, crimson lacquer panel, brass pivot rivet
 - Worn dungeon-quality with cracked lacquer and edge dings
 - Anchor at pivot rivet `{ x: 32, y: 48 }`, diagonal tolerance ±10°
-- `minVariations: 6` to ensure diversity; two seed variations
+- `minVariations: 6` with six explicit variation seeds to guide generation diversity
 
 ## Apple estimate
 
@@ -49,6 +49,7 @@ includes `app/copilot-swe-agent`), so issue #1457 is eligible.
   cleanly. The AGENTS.md rule is: fix every failure you encounter. In this case,
   the root cause was a shallow/partial local clone — fetching the relevant
   branch resolved it without any code change.
+- In the copilot coding-agent environment, the firewall blocks external
   `openai.azure.com` endpoints — sprite generation MUST go through the
   dedicated `asset-request.yml` workflow that has the Azure credentials.
 - A war-fan brief should NOT be added to `plans/item-icons/weapons.art.yaml`

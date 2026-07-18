@@ -14,12 +14,7 @@ description: |
   cracked lacquer on the panel — but silhouette reads clearly as an
   open battle fan at gameplay scale. No glow, no fire, no chains, no
   trailing effects. Silhouette must read as "open battle fan" at a glance.
-# War fan diagonal orientation: the open fan arc dominates the upper
-# frame while the pivot rivet handle sits in the lower-center area.
-# Anchor at (32, 48) — center-X, near the bottom — marks the pivot
-# rivet: the throw-center and natural grip point of the weapon.
-# Matches the compact-disk throwing-weapon convention (diagonal).
-anchor: { x: 32, y: 48 }
+anchor: { x: 32, y: 48 } # throw-center at pivot rivet, matches compact-disk convention
 sensors:
   weapon:
     orientation: diagonal
@@ -27,4 +22,8 @@ sensors:
 variations:
   - folded/closed tessen shown as a rigid iron rod gripped for throwing
   - crescent moon cutout motif punched into slats
+  - lacquer panel in deep forest green instead of crimson
+  - gold filigree accents on slat edges, more ornate noble-class aesthetic
+  - fan held at a steeper angle with the tips pointing upward-left
+  - two sharpened outer slats replaced with hooked claw tips
 minVariations: 6
