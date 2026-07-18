@@ -88,6 +88,7 @@ _…and 31 older, see `archive/`._
 
 ## sprite-pipeline
 
+- [2026-07-18-powder-keg-sprite-brief](2026-07-18-powder-keg-sprite-brief.md) — Brief + art plan for powder-keg weapon icon (issue #1343); generation pending label
 - [2026-07-17-batfolk-boss-pr-recovery](2026-07-17-batfolk-boss-pr-recovery.md) — Handoff: batfolk-boss PR recovery
 - [2026-07-16-asset-request-type-fingerprint-polish](2026-07-16-asset-request-type-fingerprint-polish.md) — Handoff: asset-request type fingerprint polish
 - [2026-07-16-asset-request-type-fingerprint-recovery](2026-07-16-asset-request-type-fingerprint-recovery.md) — Handoff: asset-request type fingerprint recovery
