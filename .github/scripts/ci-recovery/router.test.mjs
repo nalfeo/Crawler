@@ -115,6 +115,27 @@ test('priority mode rejects unsupported values', () => {
   assert.throws(() => parsePriorityMode('paused'), /must be normal or priority-only/);
 });
 
+test('priority-only mode falls back to ordinary dispatch when no repair PR exists', () => {
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [
+        {
+          number: 1,
+          draft: false,
+          labels: [],
+          head: { repo: { full_name: 'nalfeo/Crawler' } },
+        },
+      ],
+      maxDispatchPerRun: 1,
+      priorityMode: 'priority-only',
+    }),
+    [1],
+  );
+});
+
 test('flag-off schedule sweeps prioritize PRs with train-owned labels before dispatch cap', () => {
   const scheduledPulls = [
     ...Array.from({ length: 8 }, (_, index) => ({
@@ -296,6 +317,67 @@ test('train schedule rechecks owned slots for expiry without widening the window
       trainEnabled: true,
     }),
     [1, 2, 3, 4, 5, 6],
+  );
+});
+
+test('train priority-only sweeps dispatch repair PRs before ordinary recovery work', () => {
+  const pulls = [
+    {
+      number: 1,
+      state: 'open',
+      draft: false,
+      created_at: '2026-07-01T00:00:00Z',
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
+    {
+      number: 2,
+      state: 'open',
+      draft: false,
+      created_at: '2026-07-02T00:00:00Z',
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [{ name: 'ci-repair' }],
+    },
+  ];
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+      priorityMode: 'priority-only',
+    }),
+    [2],
+  );
+});
+
+test('train priority-only mode falls back to the normal sweep when no repair PR exists', () => {
+  const pulls = [
+    {
+      number: 1,
+      state: 'open',
+      draft: false,
+      created_at: '2026-07-01T00:00:00Z',
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: [],
+    },
+  ];
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+      priorityMode: 'priority-only',
+    }),
+    [1],
   );
 });
 

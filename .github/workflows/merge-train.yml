@@ -24,6 +24,9 @@ permissions:
 
 jobs:
   reconcile:
+    # If main health is red or Actions capacity is degraded, keep CI repair
+    # work moving through the recovery router with CI_RECOVERY_PRIORITY_MODE=
+    # priority-only and disable the train until main is healthy again.
     concurrency:
       group: crawler-merge-train
       queue: single
