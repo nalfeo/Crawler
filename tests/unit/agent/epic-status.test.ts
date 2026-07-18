@@ -24,10 +24,17 @@ const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
 const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
 const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
 const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
-const TREE_OBJECT_SHA = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
-  cwd: REPO_ROOT,
-  encoding: 'utf8',
-}).trim();
+let TREE_OBJECT_SHA: string;
+try {
+  TREE_OBJECT_SHA = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  }).trim();
+} catch {
+  // Fall back to a placeholder that is a valid 40-char hex string but will not
+  // match any real commit object (used to test merge.not-a-commit detection).
+  TREE_OBJECT_SHA = '0'.repeat(40);
+}
 const TEST_GIT_READER = createDefaultGitReader(REPO_ROOT);
 
 function sha256OfFile(repoRoot: string, repoRelPath: string): string {
@@ -36,12 +43,19 @@ function sha256OfFile(repoRoot: string, repoRelPath: string): string {
 }
 
 function sha256OfGitFile(repoRoot: string, commit: string, repoRelPath: string): string {
-  const content = execFileSync('git', ['show', `${commit}:${repoRelPath}`], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
-  });
-  return createHash('sha256').update(content).digest('hex');
+  try {
+    const content = execFileSync('git', ['show', `${commit}:${repoRelPath}`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return createHash('sha256').update(content).digest('hex');
+  } catch {
+    // Fall back to working-tree content when the commit is not locally available
+    // (e.g. shallow CI checkouts). Mirrors the production GitReader fallback.
+    const content = readFileSync(resolve(repoRoot, repoRelPath), 'utf8');
+    return createHash('sha256').update(content).digest('hex');
+  }
 }
 
 function cloneState(): EpicState {
@@ -422,6 +436,18 @@ describe('Floor 2 equipment epic status', () => {
     expect(codes).toContain('evidence.non-canonical-path');
   });
 
+  it('rejects path-traversal and invalid non-file evidence paths', () => {
+    const state = cloneState();
+    validateA0(state);
+    // Replace the non-file-scheme evidence entry with a path-traversal reference.
+    // This should be rejected as evidence.unsafe-path rather than silently passing.
+    state.nodes[0]!.evidence[2]!.path_or_check = '../outside-repo.txt';
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('evidence.unsafe-path');
+  });
+
   it('rejects issue URL that does not match the issue number', () => {
     const state = cloneState();
     const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
@@ -446,6 +472,21 @@ describe('Floor 2 equipment epic status', () => {
 
     const codes = validate(state).errors.map((error) => error.code);
     expect(codes).toContain('dag.dependency-contract-drift');
+  });
+
+  it('rejects a node not in the canonical plan graph', () => {
+    const state = cloneState();
+    // Inject a node whose ID is not part of the canonical 37-node graph.
+    state.nodes.push({
+      ...structuredClone(state.nodes[0]!),
+      node_id: 'slice:UNKNOWN',
+      display_id: 'Unknown',
+      dependencies: [],
+      parent_slice: null,
+    });
+
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).toContain('dag.unknown-node');
   });
 
   it('includes required terminal nodes in release blockers', () => {

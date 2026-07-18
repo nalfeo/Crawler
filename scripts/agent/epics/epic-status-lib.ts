@@ -841,20 +841,28 @@ function validateDag(
   for (const node of state.nodes) visit(node.node_id, []);
 
   // Validate that dependencies and parent_slice exactly match the canonical plan graph.
+  // Any node whose node_id is not present in the canonical maps is an unexpected addition
+  // or rename that must be rejected — the canonical graph is the single source of truth.
   for (const node of state.nodes) {
     const canonicalDeps = CANONICAL_DEPENDENCIES.get(node.node_id);
-    if (canonicalDeps !== undefined) {
-      const actual = [...node.dependencies].sort();
-      const expected = [...canonicalDeps].sort();
-      if (actual.join('\u0000') !== expected.join('\u0000')) {
-        result.errors.push({
-          code: 'dag.dependency-contract-drift',
-          node_id: node.node_id,
-          message:
-            `${node.node_id} dependencies [${actual.join(', ')}] do not match ` +
-            `canonical plan [${expected.join(', ')}]`,
-        });
-      }
+    if (canonicalDeps === undefined) {
+      result.errors.push({
+        code: 'dag.unknown-node',
+        node_id: node.node_id,
+        message: `${node.node_id} is not part of the canonical plan graph`,
+      });
+      continue;
+    }
+    const actual = [...node.dependencies].sort();
+    const expected = [...canonicalDeps].sort();
+    if (actual.join('\u0000') !== expected.join('\u0000')) {
+      result.errors.push({
+        code: 'dag.dependency-contract-drift',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} dependencies [${actual.join(', ')}] do not match ` +
+          `canonical plan [${expected.join(', ')}]`,
+      });
     }
     const canonicalParent = CANONICAL_PARENT_SLICES.get(node.node_id);
     if (canonicalParent !== undefined && node.parent_slice !== canonicalParent) {
@@ -971,7 +979,8 @@ function validateEvidenceRequirements(
     if (handledKinds.has(requirement)) continue;
     // For non-canonical kinds:
     // - file-backed evidence is verified by content hash at commit (or safe fallback),
-    // - non-file check evidence must still point at an existing commit.
+    // - explicit non-file scheme references (e.g. check:) need only a valid commit,
+    // - anything else (path-traversal, absolute path, etc.) is rejected as unsafe.
     if (isRepoFile(repoRoot, evidence.path_or_check)) {
       const verification = gitReader.readContent(evidence.commit, evidence.path_or_check);
       if (verification === null) {
@@ -998,6 +1007,17 @@ function validateEvidenceRequirements(
           message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
         });
       }
+      continue;
+    }
+    if (!isNonFileEvidenceReference(evidence.path_or_check)) {
+      // path_or_check is neither a repo-relative file path nor an explicit non-file
+      // scheme reference (e.g. check:). Treat as an unsafe/invalid path so that
+      // path-traversal or absolute-path entries cannot bypass evidence.unsafe-path.
+      result.errors.push({
+        code: 'evidence.unsafe-path',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence path is not a repo file or recognized non-file reference: ${evidence.path_or_check}`,
+      });
       continue;
     }
     if (gitReader.commitStatus(evidence.commit) !== 'commit') {
@@ -1653,9 +1673,10 @@ export function auditGithub(
         if (claim && Date.parse(claim.expiresAt) > now.getTime()) {
           const perSession =
             liveClaimsByNodeAndSession.get(claim.nodeId) ?? new Map<string, ParsedClaim>();
-          // Key by claimant:session composite so two competing claimants that
-          // reuse the same session string are not collapsed into one entry.
-          const compositeKey = `${claim.claimant}:${claim.session}`;
+          // Key by claimant + NUL + session composite so two competing claimants
+          // that reuse the same session string are not collapsed into one entry,
+          // and claimants/sessions containing `:` do not produce key collisions.
+          const compositeKey = `${claim.claimant}\u0000${claim.session}`;
           const prior = perSession.get(compositeKey);
           if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
             perSession.set(compositeKey, claim);

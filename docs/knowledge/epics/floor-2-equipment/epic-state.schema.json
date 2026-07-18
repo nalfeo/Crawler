@@ -462,15 +462,15 @@
       ],
       "properties": {
         "claimant": {
-          "type": [
-            "string",
-            "null"
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "pattern": "^(?!\\s*$).+" }
           ]
         },
         "session": {
-          "type": [
-            "string",
-            "null"
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "pattern": "^(?!\\s*$).+" }
           ]
         },
         "source": {
@@ -481,9 +481,9 @@
           ]
         },
         "scope": {
-          "type": [
-            "string",
-            "null"
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "pattern": "^(?!\\s*$).+" }
           ]
         },
         "claimed_at": {
