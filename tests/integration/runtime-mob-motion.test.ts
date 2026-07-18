@@ -13,6 +13,10 @@ import {
   Velocity,
   Weight,
 } from '../../src/core/components.js';
+import {
+  applyDamage,
+  DEFAULT_DAMAGE_OPTIONS,
+} from '../../src/core/apply-damage.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
@@ -421,9 +425,13 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
     ftToPx(20) + (recycledImage.flipX ? -1 : 1) * ftToPx(expectedRecycledMotion.offsetX),
   );
 
-  // ── Generation-safe hit reaction: stale events must not apply to a recycled EID ──
-  // Push a hit event with the OLD generation before recycling, then verify the
-  // new occupant does not receive the stale reaction on the next sync.
+  // ── Generation-safe hit reaction: two-sided proof ──
+  // • Producer side: applyDamage must stamp targetRenderGeneration; removing
+  //   the stamp makes the producer assertion fail.
+  // • Bridge guard: even with a correctly stamped event, a stale generation
+  //   (from the recycled victim) must be rejected; removing the guard lets a
+  //   hit-reaction pose show on the new occupant, making the position assertion
+  //   fail.
   const VICTIM_X = 5;
   const VICTIM_Y = 5;
   const NEW_OCCUPANT_X = 30;
@@ -453,19 +461,17 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   const staleBridge = createPhaserBridge(staleStub.scene);
   staleBridge.sync(staleGenWorld, 0);
 
-  // Record the OLD generation for the victim EID.
+  // ── Producer side: applyDamage must stamp targetRenderGeneration ──
   const oldGeneration = staleGenWorld.entityRenderGeneration[victimEid];
-  // Push a hit event with the victim's OLD generation stamped in.
-  staleGenWorld.combatEvents.push({
-    type: 'hit',
-    x: VICTIM_X,
-    y: VICTIM_Y,
-    amount: 5,
-    targetType: 'enemy',
-    targetEid: victimEid,
-    targetRenderGeneration: oldGeneration,
-    timestamp: 10,
-  });
+  staleGenWorld.elapsedMs = 0;
+  applyDamage(staleGenWorld, victimEid, 5, VICTIM_X, VICTIM_Y, DEFAULT_DAMAGE_OPTIONS);
+  const stampedEvent = staleGenWorld.combatEvents.at(-1)!;
+  expect(
+    stampedEvent.targetRenderGeneration,
+    'applyDamage must stamp targetRenderGeneration on the combat event',
+  ).toBe(oldGeneration);
+  // Drain events: the victim's hit must not seed the new occupant's stale-event check.
+  staleGenWorld.combatEvents.length = 0;
 
   // Remove and immediately recycle the EID (bitecs reuses it).
   removeEntity(staleGenWorld.ecs, victimEid);
@@ -486,18 +492,44 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   ).toBe(victimEid);
   setComponent(staleGenWorld.ecs, newOccupantEid, Sprite, { textureId: 2, width: 3, height: 3 });
   setEnemyAppearanceKey(staleGenWorld, newOccupantEid, 'slime');
-
-  // The new occupant has a different generation; the stale event must be skipped.
   expect(staleGenWorld.entityRenderGeneration[newOccupantEid]).not.toBe(oldGeneration);
+
   const staleBeforeSync = gameplaySnapshot(staleGenWorld, [newOccupantEid]);
-  staleBridge.sync(staleGenWorld, 50);
+
+  // ── Bridge guard: prewarm past the spawn window, then submit a stale event
+  //    at a fresh timestamp. Without the guard the entity shows a non-neutral
+  //    hit-reaction offset; the guard must reject it. ──
+  //
+  // First sync registers the new occupant (firstSeenMs = T_FIRST_SEEN).
+  const T_FIRST_SEEN = 50;
+  staleBridge.sync(staleGenWorld, T_FIRST_SEEN);
+  expect(
+    gameplaySnapshot(staleGenWorld, [newOccupantEid]),
+    'prewarm sync must not mutate gameplay',
+  ).toEqual(staleBeforeSync);
+
+  // Advance past spawn window: spawnElapsedMs = T_ACTIVE - T_FIRST_SEEN > MINI_SLIME_SPAWN_ANIM_MS.
+  const T_ACTIVE = T_FIRST_SEEN + MINI_SLIME_SPAWN_ANIM_MS + 50;
+  // Stale event with the OLD generation and a timestamp inside the HIT_REACTION_MOTION_MS
+  // window — so if the guard were absent, sampleHitReactionMotion would shift x by
+  // several pixels and the position assertion below would fail.
+  staleGenWorld.combatEvents.push({
+    type: 'hit',
+    x: NEW_OCCUPANT_X,
+    y: VICTIM_Y,
+    amount: 5,
+    targetType: 'enemy',
+    targetEid: newOccupantEid,
+    targetRenderGeneration: oldGeneration,
+    timestamp: T_ACTIVE - Math.floor(HIT_REACTION_MOTION_MS / 2),
+  });
+  staleBridge.sync(staleGenWorld, T_ACTIVE);
   expect(
     gameplaySnapshot(staleGenWorld, [newOccupantEid]),
     'generation-safe: stale hit event must not mutate new occupant gameplay state',
   ).toEqual(staleBeforeSync);
   const staleNewImage = [...staleStub.images].reverse().find((image) => !image.destroyed)!;
-  // The new occupant has no motion state, so it sits at neutral position — not
-  // at a hit-reaction offset — proving the stale event was discarded.
+  // Stale event rejected: no hit-reaction offset, entity at neutral position.
   expect(staleNewImage.x, 'generation-safe: new occupant must not show stale hit reaction').toBe(
     ftToPx(NEW_OCCUPANT_X),
   );
