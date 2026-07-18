@@ -314,7 +314,7 @@ describe('Floor 2 equipment epic status', () => {
   it('rejects merge facts that point at a non-commit git object', () => {
     const state = cloneState();
     validateA0(state);
-    const treeObject = execFileSync('git', ['rev-parse', `${HANDOFF_COMMIT}^{tree}`], {
+    const treeObject = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
     }).trim();

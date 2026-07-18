@@ -56,7 +56,7 @@ When `copilot-swe-agent` received this instruction, it filled in `<sha>` with a 
 
 - `node --test --test-name-pattern "live reconcile task comment includes explicit review-thread reply comment IDs" .github/scripts/ci-recovery/reconcile.test.mjs` — 1 passed
 - `node --test .github/scripts/ci-recovery/state.test.mjs` — 31 passed
-- `npm run verify:fast` — passed (1 unrelated pre-existing shallow-clone failure in `epic-status.test.ts`)
+- `npm run verify:fast` — passed (87 test files, 1260 tests; all green including `epic-status.test.ts`)
 
 ## Observe Before Done
 
