@@ -40,7 +40,7 @@ The check-in step (`npm run sprites:checkin`) is **intentionally blocked in CI**
 
 ## Systems touched
 
-- `briefs/weapons/venom-dirk.yaml` — new canonical brief (art lane, no wiring)
+`sprite-pipeline`, `sprite-workflow`
 
 ## What remains
 
