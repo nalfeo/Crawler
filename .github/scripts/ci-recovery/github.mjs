@@ -195,8 +195,10 @@ export async function listClosingIssues(token, owner, repo, number) {
           closingIssuesReferences(first: 100, after: $cursor) {
             pageInfo { hasNextPage endCursor }
             nodes {
+              id
               number
               title
+              state
               labels(first: 100) { nodes { name } }
             }
           }

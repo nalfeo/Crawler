@@ -1,0 +1,539 @@
+import { readFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+
+import { graphql, listClosingIssues, paginate, request } from './ci-recovery/github.mjs';
+import {
+  buildIssueActorIds,
+  getCopilotIssueAssignmentContext,
+  isCopilotLogin,
+  replaceIssueAssignees,
+} from './ci-recovery/issue-intake-lib.mjs';
+
+const READY_FOR_REVIEW_MUTATION = `
+  mutation MarkPullRequestReadyForReview($pullRequestId: ID!) {
+    markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
+      pullRequest {
+        number
+      }
+    }
+  }
+`;
+
+export const COPILOT_CLOUD_AGENT_WORKFLOW_PATH = '.github/workflows/copilot-setup-steps.yml';
+export const EMPTY_DRAFT_REPAIR_GRACE_MS = 5 * 60 * 1000;
+
+function normalize(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase();
+}
+
+function trimRef(value) {
+  return String(value ?? '').trim();
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function parseIsoDate(value) {
+  const parsed = Date.parse(String(value ?? ''));
+  return Number.isFinite(parsed) ? new Date(parsed) : null;
+}
+
+function completedAtForRun(run) {
+  return parseIsoDate(run?.updated_at);
+}
+
+function sameRepository(fullName, repository) {
+  return normalize(fullName) === normalize(repository);
+}
+
+export function changedFileRetryDelaysMs({
+  eventName,
+  payloadAction,
+  triggeringPullNumber,
+  prNumber,
+}) {
+  const isFreshSynchronize =
+    eventName === 'pull_request_target' &&
+    payloadAction === 'synchronize' &&
+    Number(triggeringPullNumber) === Number(prNumber);
+  return isFreshSynchronize ? [0, 1000, 2000] : [0];
+}
+
+export function matchingCopilotCloudRunRejection({ run, repository, headSha, headBranch }) {
+  if (run?.path !== COPILOT_CLOUD_AGENT_WORKFLOW_PATH) return 'workflow-path';
+  if (!sameRepository(run?.repository?.full_name, repository)) return 'run-repository';
+  if (!sameRepository(run?.head_repository?.full_name, repository)) return 'run-head-repository';
+  if (normalize(run?.head_sha) !== normalize(headSha)) return 'head-sha';
+  if (trimRef(run?.head_branch) !== trimRef(headBranch)) return 'head-branch';
+  if (!isCopilotLogin(run?.actor?.login)) return 'actor';
+  if (run?.triggering_actor && !isCopilotLogin(run?.triggering_actor?.login)) {
+    return 'triggering-actor';
+  }
+  return null;
+}
+
+export function latestMatchingCopilotCloudRun({ runs, repository, headSha, headBranch }) {
+  return [...(runs || [])]
+    .filter(
+      (run) =>
+        !matchingCopilotCloudRunRejection({
+          run,
+          repository,
+          headSha,
+          headBranch,
+        }),
+    )
+    .sort((left, right) => {
+      const rightCreated = Date.parse(String(right?.created_at ?? '')) || 0;
+      const leftCreated = Date.parse(String(left?.created_at ?? '')) || 0;
+      if (rightCreated !== leftCreated) return rightCreated - leftCreated;
+      return Number(right?.id || 0) - Number(left?.id || 0);
+    })[0];
+}
+
+export function inspectEmptyCopilotDraftRepair({
+  pr,
+  changedFiles,
+  linkedIssues,
+  runs,
+  repository,
+  now = new Date(),
+  graceMs = EMPTY_DRAFT_REPAIR_GRACE_MS,
+  expectedIssueNumber = null,
+}) {
+  if (normalize(pr?.state) !== 'open') return { eligible: false, reason: 'not-open' };
+  if (pr?.draft !== true) return { eligible: false, reason: 'not-draft' };
+  if (!sameRepository(pr?.head?.repo?.full_name, repository))
+    return { eligible: false, reason: 'fork' };
+  if (Number(changedFiles) !== 0) {
+    return { eligible: false, reason: `changed-files=${Number(changedFiles) || 0}` };
+  }
+  if (!isCopilotLogin(pr?.user?.login)) {
+    return {
+      eligible: false,
+      reason: `author=${String(pr?.user?.login || 'unknown')}`,
+    };
+  }
+
+  const references = Array.isArray(linkedIssues) ? linkedIssues : [];
+  if (references.length !== 1) {
+    return { eligible: false, reason: `linked-issue-count=${references.length}` };
+  }
+  const [linkedIssue] = references;
+  if (normalize(linkedIssue?.state) !== 'open') {
+    return {
+      eligible: false,
+      reason: `linked-issue-state=${String(linkedIssue?.state || 'unknown')}`,
+    };
+  }
+  if (expectedIssueNumber !== null && Number(linkedIssue?.number) !== Number(expectedIssueNumber)) {
+    return {
+      eligible: false,
+      reason: `linked-issue-changed=${String(linkedIssue?.number || 'unknown')}`,
+    };
+  }
+
+  const latestRun = latestMatchingCopilotCloudRun({
+    runs,
+    repository,
+    headSha: pr?.head?.sha,
+    headBranch: pr?.head?.ref,
+  });
+  if (!latestRun) {
+    return { eligible: false, reason: 'no-matching-copilot-cloud-run' };
+  }
+  if (normalize(latestRun?.status) !== 'completed') {
+    return {
+      eligible: false,
+      reason: `copilot-cloud-run-status=${String(latestRun?.status || 'unknown')}`,
+    };
+  }
+  const completedAt = completedAtForRun(latestRun);
+  if (!completedAt) {
+    return { eligible: false, reason: 'copilot-cloud-run-completed-at' };
+  }
+  const ageMs = now.getTime() - completedAt.getTime();
+  if (ageMs < graceMs) {
+    return {
+      eligible: false,
+      reason: `copilot-cloud-run-grace=${graceMs - ageMs}`,
+    };
+  }
+  return { eligible: true, linkedIssue, latestRun };
+}
+
+async function changedFilesForDraft({
+  api,
+  prNumber,
+  eventName,
+  payloadAction,
+  triggeringPullNumber,
+}) {
+  const delaysMs = changedFileRetryDelaysMs({
+    eventName,
+    payloadAction,
+    triggeringPullNumber,
+    prNumber,
+  });
+  let changedFiles = 0;
+
+  for (const delayMs of delaysMs) {
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    const details = await api.getPull(prNumber);
+    changedFiles = Number(details?.changed_files || 0);
+    if (changedFiles > 0) {
+      break;
+    }
+  }
+
+  return changedFiles;
+}
+
+async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log, now, graceMs }) {
+  const linkedIssues = await api.listClosingIssues(pr.number);
+  const runs = await api.listWorkflowRuns(pr.head.sha, pr.head.ref);
+  const initialDecision = inspectEmptyCopilotDraftRepair({
+    pr,
+    changedFiles,
+    linkedIssues,
+    runs,
+    repository,
+    now,
+    graceMs,
+  });
+
+  if (!initialDecision.eligible) {
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${initialDecision.reason}`);
+    return { status: 'skipped', reason: initialDecision.reason };
+  }
+
+  const currentPr = await api.getPull(pr.number);
+  if (normalize(currentPr?.head?.sha) !== normalize(pr.head.sha)) {
+    const reason = `head-sha-changed=${String(currentPr?.head?.sha || 'unknown')}`;
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${reason}`);
+    return { status: 'skipped', reason };
+  }
+  if (trimRef(currentPr?.head?.ref) !== trimRef(pr.head.ref)) {
+    const reason = `head-branch-changed=${String(currentPr?.head?.ref || 'unknown')}`;
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${reason}`);
+    return { status: 'skipped', reason };
+  }
+
+  const currentLinkedIssues = await api.listClosingIssues(pr.number);
+  const currentRuns = await api.listWorkflowRuns(currentPr.head.sha, currentPr.head.ref);
+  const confirmedDecision = inspectEmptyCopilotDraftRepair({
+    pr: currentPr,
+    changedFiles: Number(currentPr.changed_files || 0),
+    linkedIssues: currentLinkedIssues,
+    runs: currentRuns,
+    repository,
+    now,
+    graceMs,
+    expectedIssueNumber: initialDecision.linkedIssue.number,
+  });
+
+  if (!confirmedDecision.eligible) {
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${confirmedDecision.reason}`);
+    return { status: 'skipped', reason: confirmedDecision.reason };
+  }
+
+  const assignmentContext = await api.getCopilotIssueAssignmentContext(
+    confirmedDecision.linkedIssue.number,
+  );
+  if (normalize(assignmentContext.issueState) !== 'open') {
+    const reason = `linked-issue-state-changed=${String(assignmentContext.issueState || 'unknown')}`;
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${reason}`);
+    return { status: 'skipped', reason };
+  }
+  if (!assignmentContext.assignees.some((assignee) => isCopilotLogin(assignee?.login))) {
+    const reason = 'linked-issue-copilot-assignee-missing';
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${reason}`);
+    return { status: 'skipped', reason };
+  }
+
+  const originalActorIds = buildIssueActorIds({
+    assignees: assignmentContext.assignees,
+    copilotActorId: assignmentContext.copilot.id,
+    includeCopilot: true,
+  });
+  const actorIdsWithoutCopilot = buildIssueActorIds({
+    assignees: assignmentContext.assignees,
+    copilotActorId: assignmentContext.copilot.id,
+    includeCopilot: false,
+  });
+
+  await api.updatePullState(pr.number, 'closed');
+
+  try {
+    const removedLogins = await api.replaceIssueAssignees(
+      assignmentContext.issueId,
+      actorIdsWithoutCopilot,
+    );
+    if (removedLogins.some((login) => isCopilotLogin(login))) {
+      throw new Error(
+        `Copilot removal did not persist on linked issue #${confirmedDecision.linkedIssue.number}`,
+      );
+    }
+
+    const reassignedLogins = await api.replaceIssueAssignees(
+      assignmentContext.issueId,
+      originalActorIds,
+    );
+    if (!reassignedLogins.some((login) => isCopilotLogin(login))) {
+      throw new Error(
+        `Copilot reassignment did not persist on linked issue #${confirmedDecision.linkedIssue.number}`,
+      );
+    }
+  } catch (repairError) {
+    const rollbackErrors = [];
+    try {
+      const restoredLogins = await api.replaceIssueAssignees(
+        assignmentContext.issueId,
+        originalActorIds,
+      );
+      if (!restoredLogins.some((login) => isCopilotLogin(login))) {
+        throw new Error(
+          `Copilot assignment did not persist during rollback on issue #${confirmedDecision.linkedIssue.number}`,
+        );
+      }
+    } catch (rollbackError) {
+      rollbackErrors.push(new Error(`issue rollback failed: ${getErrorMessage(rollbackError)}`));
+    }
+    try {
+      await api.updatePullState(pr.number, 'open');
+    } catch (rollbackError) {
+      rollbackErrors.push(new Error(`PR reopen failed: ${getErrorMessage(rollbackError)}`));
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        [repairError, ...rollbackErrors],
+        `repair failed for PR #${pr.number}: ${getErrorMessage(repairError)}; rollback also failed: ${rollbackErrors.map(getErrorMessage).join('; ')}`,
+        { cause: repairError },
+      );
+    }
+    throw repairError;
+  }
+
+  log.info(
+    `Repaired empty Copilot draft PR #${pr.number}: closed shell, restarted linked issue #${confirmedDecision.linkedIssue.number}, cloud run ${confirmedDecision.latestRun.id}.`,
+  );
+  return {
+    status: 'repaired',
+    issueNumber: confirmedDecision.linkedIssue.number,
+    runId: confirmedDecision.latestRun.id,
+  };
+}
+
+function parseRepository(fullName) {
+  const [owner, repo] = String(fullName || '').split('/');
+  if (!owner || !repo) {
+    throw new Error('GITHUB_REPOSITORY must be set to owner/repo');
+  }
+  return { owner, repo };
+}
+
+function createApi({ token, owner, repo }) {
+  return {
+    listOpenPulls: () => paginate(token, `/repos/${owner}/${repo}/pulls?state=open`),
+    getPull: async (pullNumber) =>
+      (await request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}`)).data,
+    markReadyForReview: async (pullRequestId) =>
+      graphql(token, READY_FOR_REVIEW_MUTATION, { pullRequestId }),
+    removeRequestedReviewer: async (pullNumber, reviewerLogin) =>
+      request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}/requested_reviewers`, {
+        method: 'DELETE',
+        body: { reviewers: [reviewerLogin] },
+      }),
+    listClosingIssues: (pullNumber) => listClosingIssues(token, owner, repo, pullNumber),
+    listWorkflowRuns: async (headSha, headBranch) =>
+      (
+        await request(
+          token,
+          `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&branch=${encodeURIComponent(headBranch)}&per_page=100`,
+        )
+      ).data.workflow_runs || [],
+    updatePullState: async (pullNumber, state) =>
+      (
+        await request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}`, {
+          method: 'PATCH',
+          body: { state },
+        })
+      ).data,
+    getCopilotIssueAssignmentContext: (issueNumber) =>
+      getCopilotIssueAssignmentContext({
+        graphql,
+        token,
+        owner,
+        repo,
+        issueNumber,
+      }),
+    replaceIssueAssignees: (assignableId, actorIds) =>
+      replaceIssueAssignees({
+        graphql,
+        token,
+        assignableId,
+        actorIds,
+      }),
+  };
+}
+
+export async function runPrReadyReviewerGuard({
+  repository,
+  reviewerLoginRaw,
+  eventName,
+  payloadAction,
+  triggeringPullNumber,
+  api,
+  log = console,
+  now = new Date(),
+  graceMs = EMPTY_DRAFT_REPAIR_GRACE_MS,
+}) {
+  const reviewerLogin = String(reviewerLoginRaw || '')
+    .trim()
+    .toLowerCase();
+  if (!reviewerLogin) {
+    throw new Error('REVIEWER_LOGIN is required');
+  }
+
+  const openPrs = await api.listOpenPulls();
+  if (openPrs.length === 0) {
+    log.info('No open PRs found.');
+    return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+  }
+
+  let draftsPublished = 0;
+  let emptyDraftRepairs = 0;
+  let reviewerRemovals = 0;
+  const publishFailures = [];
+  const repairFailures = [];
+
+  for (const pr of openPrs) {
+    const prNumber = pr.number;
+    let closedByRepair = false;
+    let attemptedRepair = false;
+
+    if (pr.draft) {
+      try {
+        const changedFiles = await changedFilesForDraft({
+          api,
+          prNumber,
+          eventName,
+          payloadAction,
+          triggeringPullNumber,
+        });
+        if (changedFiles === 0) {
+          attemptedRepair = true;
+          const repairResult = await repairEmptyCopilotDraft({
+            api,
+            repository,
+            pr,
+            changedFiles,
+            log,
+            now,
+            graceMs,
+          });
+          if (repairResult.status === 'repaired') {
+            emptyDraftRepairs += 1;
+            closedByRepair = true;
+          }
+        } else {
+          log.info(`skip empty-draft repair pr=#${prNumber} reason=changed-files=${changedFiles}`);
+          await api.markReadyForReview(pr.node_id);
+          draftsPublished += 1;
+          log.info(
+            `Marked PR #${prNumber} as ready for review with ${changedFiles} changed file(s).`,
+          );
+        }
+      } catch (error) {
+        const prError = `PR #${prNumber}: ${getErrorMessage(error)}`;
+        if (attemptedRepair) {
+          repairFailures.push(prError);
+          log.error(
+            `Could not repair empty Copilot draft PR #${prNumber}: ${getErrorMessage(error)}`,
+          );
+        } else {
+          publishFailures.push(prError);
+          log.error(`Could not mark PR #${prNumber} ready: ${getErrorMessage(error)}`);
+        }
+      }
+    } else {
+      log.info(`skip empty-draft repair pr=#${prNumber} reason=not-draft`);
+    }
+
+    if (closedByRepair) {
+      continue;
+    }
+
+    try {
+      const requestedReviewers = pr.requested_reviewers ?? [];
+      const reviewerToRemove = requestedReviewers.find(
+        (reviewer) => reviewer.login?.toLowerCase() === reviewerLogin,
+      );
+      if (!reviewerToRemove?.login) {
+        continue;
+      }
+      await api.removeRequestedReviewer(prNumber, reviewerToRemove.login);
+      reviewerRemovals += 1;
+      log.info(`Removed @${reviewerToRemove.login} from requested reviewers on PR #${prNumber}.`);
+    } catch (error) {
+      log.warning(`Could not process reviewers for PR #${prNumber}: ${getErrorMessage(error)}`);
+    }
+  }
+
+  log.info(
+    `Done. Drafts published: ${draftsPublished}. Empty draft repairs: ${emptyDraftRepairs}. Reviewer removals: ${reviewerRemovals}.`,
+  );
+
+  if (publishFailures.length > 0 || repairFailures.length > 0) {
+    const failures = [
+      ...(publishFailures.length > 0
+        ? [`Failed to publish ${publishFailures.length} draft PR(s):`, ...publishFailures]
+        : []),
+      ...(repairFailures.length > 0
+        ? [
+            `Failed to repair ${repairFailures.length} empty Copilot draft PR shell(s):`,
+            ...repairFailures,
+          ]
+        : []),
+    ];
+    throw new Error(failures.join('\n'));
+  }
+
+  return { draftsPublished, emptyDraftRepairs, reviewerRemovals };
+}
+
+async function main() {
+  const token = String(process.env.CRAWLER_CI_PAT || '').trim();
+  if (!token) {
+    throw new Error('CRAWLER_CI_PAT is required');
+  }
+  const repository = String(process.env.GITHUB_REPOSITORY || '').trim();
+  const { owner, repo } = parseRepository(repository);
+  const eventName = String(process.env.GITHUB_EVENT_NAME || '');
+  const payload = process.env.GITHUB_EVENT_PATH
+    ? JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, 'utf8'))
+    : {};
+  const logger = {
+    info: (message) => process.stdout.write(`${message}\n`),
+    warning: (message) => process.stderr.write(`${message}\n`),
+    error: (message) => process.stderr.write(`${message}\n`),
+  };
+  await runPrReadyReviewerGuard({
+    repository,
+    reviewerLoginRaw: process.env.REVIEWER_LOGIN,
+    eventName,
+    payloadAction: payload?.action,
+    triggeringPullNumber: payload?.pull_request?.number,
+    api: createApi({ token, owner, repo }),
+    log: logger,
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}

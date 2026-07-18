@@ -95,6 +95,8 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
             nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
           },
           issue: {
+            id: 'ISSUE_1067',
+            state: 'OPEN',
             assignees: { nodes: [{ id: 'USER_NALFEO', login: 'nalfeo' }] },
           },
         },
@@ -165,7 +167,7 @@ test('deletes the kickoff comment when assignment does not persist', async () =>
           suggestedActors: {
             nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
           },
-          issue: { assignees: { nodes: [] } },
+          issue: { id: 'ISSUE_1067', state: 'OPEN', assignees: { nodes: [] } },
         },
       };
     }
