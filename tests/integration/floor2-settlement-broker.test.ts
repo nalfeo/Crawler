@@ -20,7 +20,10 @@ import {
   DEFAULT_RELATION,
   type FamilyId,
 } from '../../src/core/faction-relations.js';
-import { initializeFloor2Settlement } from '../../src/game/floor2Settlement.js';
+import {
+  initializeFloor2Settlement,
+  QUARTERMASTER_ARCHETYPE_ID,
+} from '../../src/game/floor2Settlement.js';
 import { DoorState } from '../../src/core/components.js';
 import {
   getFloor2FamilyEliteArchetype,
@@ -87,7 +90,7 @@ describe('Floor 2 settlement · initialization', () => {
     _resetEmergentEventCache();
   });
 
-  it('spawns the Broker, a family defector, and 1-2 shops inside the settlement cluster', () => {
+  it('spawns the Broker, a family defector, a guaranteed Quartermaster, and 1-2 non-QM shops inside the settlement cluster', () => {
     const world = createTestWorld({ seed: 999 });
     world.floorMap = buildFloor2Map();
     spawnPlayer(world, 0, 0);
@@ -100,6 +103,16 @@ describe('Floor 2 settlement · initialization', () => {
     expect(presentFamilies).toContain(snap.defectorFamilyId as FamilyId);
     expect(snap.settlementRoomIds.length).toBeGreaterThanOrEqual(2);
     expect(snap.settlementRoomIds.length).toBeLessThanOrEqual(3);
+
+    // Guaranteed Quartermaster.
+    expect(snap.quartermasterShop.archetypeId).toBe(QUARTERMASTER_ARCHETYPE_ID);
+    expect(snap.quartermasterShop.npcEid).toBeGreaterThan(0);
+    expect(snap.quartermasterShop.inventory.length).toBeGreaterThan(0);
+    for (const item of snap.quartermasterShop.inventory) {
+      expect(item.unitPrice).toBeGreaterThanOrEqual(1);
+    }
+
+    // Non-Quartermaster shops (1–2 seeded).
     expect(snap.shops.length).toBe(2);
     for (const shop of snap.shops) {
       expect(shop.npcEid).toBeGreaterThan(0);
@@ -107,6 +120,8 @@ describe('Floor 2 settlement · initialization', () => {
       for (const item of shop.inventory) {
         expect(item.unitPrice).toBeGreaterThanOrEqual(1);
       }
+      // No shop in the random pool should be the Quartermaster.
+      expect(shop.archetypeId).not.toBe(QUARTERMASTER_ARCHETYPE_ID);
     }
 
     const elite = getFloor2FamilyEliteArchetype(snap.defectorFamilyId);
@@ -145,7 +160,12 @@ describe('Floor 2 settlement · initialization', () => {
     expect(seenDoorKeys).toEqual(expectedDoorKeys);
 
     const settlementDoorTiles = settlementRooms.flatMap((room) => room.doors);
-    const npcEids = [snap.brokerEid, snap.defectorEid, ...snap.shops.map((shop) => shop.npcEid)];
+    const npcEids = [
+      snap.brokerEid,
+      snap.defectorEid,
+      snap.quartermasterShop.npcEid,
+      ...snap.shops.map((shop) => shop.npcEid),
+    ];
     const npcTiles = npcEids.map((eid) => {
       const tile = world.floorMap!.worldToTile(
         world.stores.position.x[eid] ?? 0,
@@ -196,6 +216,28 @@ describe('Floor 2 settlement · initialization', () => {
     expect(a.defectorFamilyId).toEqual(b.defectorFamilyId);
     expect(a.shops.map((s) => s.archetypeId)).toEqual(b.shops.map((s) => s.archetypeId));
     expect(a.shops.map((s) => s.inventory)).toEqual(b.shops.map((s) => s.inventory));
+    // Guaranteed Quartermaster is also deterministic.
+    expect(a.quartermasterShop.archetypeId).toEqual(b.quartermasterShop.archetypeId);
+    expect(a.quartermasterShop.inventory).toEqual(b.quartermasterShop.inventory);
+  });
+
+  it('Quartermaster is never selected from the random shop pool', () => {
+    // Run several different seeds and verify the non-QM shops array never
+    // contains the Quartermaster archetype id.
+    const seeds = [1, 2, 3, 42, 100, 999, 12345];
+    for (const seed of seeds) {
+      const world = createTestWorld({ seed });
+      world.floorMap = buildFloor2Map();
+      spawnPlayer(world, 0, 0);
+      world.floor = 2;
+      seedSettlementFamilyState(world);
+      const snap = initializeFloor2Settlement(world);
+      for (const shop of snap.shops) {
+        expect(shop.archetypeId).not.toBe(QUARTERMASTER_ARCHETYPE_ID);
+      }
+      // Exactly one Quartermaster guaranteed.
+      expect(snap.quartermasterShop.archetypeId).toBe(QUARTERMASTER_ARCHETYPE_ID);
+    }
   });
 });
 
