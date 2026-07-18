@@ -3,15 +3,21 @@ name: siege-bow
 description: |
   A massive, heavy-duty siege bow held vertically, limb tips at the top,
   grip straight down. Oversized recurved limbs — much thicker and wider than
-  a standard bow — reinforced with iron bands or straps. A thick bowstring
-  under tension between the limbs. Worn dark wood with iron or steel
-  reinforcement bands near the grip and at the limb tips; steel-grey metal
-  fittings with a subtle highlight; deep brown wood grain. No arrows, no
-  glow, no enchantment. The silhouette must read as an imposing, siege-scale
-  bow at a glance and clearly not be a sword or crossbow.
+  a standard bow — reinforced with iron bands or straps along the length.
+  A thick bowstring under tension between the limbs. Worn dark wood with
+  iron or steel reinforcement bands near the grip and at the limb tips;
+  steel-grey metal fittings with a subtle highlight; deep brown wood grain
+  with visible dungeon-worn scuffs and cracked lacquer. No arrows, no glow,
+  no enchantment, no quiver. The silhouette must read as an imposing,
+  siege-scale bow at a glance — wide sweeping limbs clearly larger than a
+  hunting bow — and must NOT be confused with a crossbow or a sword.
 # Siege-bow is a vertical weapon (grip at bottom, limb tips at top),
 # explicitly set for clarity and strictness. The oversized limbs make it
 # wider than a standard bow, so we relax the center tolerance slightly.
+# The VLM judge is enabled to filter variants that don't read as a
+# siege-scale bow. All other geometry (64×64, kenney-roguelike, 4×4 sheet)
+# inherited from data/sprite-types/weapon.json.
+floor: 2
 sensors:
   weapon:
     orientation: vertical
@@ -22,7 +28,8 @@ sensors:
     centerToleranceX: 5
 judge:
   enabled: true
+  maxVariants: 16
 variations:
-  - extra-wide recurved limbs with visible wood lamination
+  - extra-wide recurved limbs with visible wood lamination layers
   - iron-reinforced limbs with bolted metal plates along the length
 minVariations: 8

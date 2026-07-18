@@ -1,0 +1,19 @@
+type: weapon
+name: ember-wand
+description: |
+  A slender magic wand held vertically, grip at the bottom, glowing ember-tip
+  at the top. The shaft is dark-lacquered wood or bone, wrapped with rough
+  twine near the grip. The tip widens into a small carved ember-socket housing
+  a smoldering amber/orange coal that radiates heat shimmer — a single bright
+  ember-glow with a few cinder sparks. The silhouette must read as a wand at a
+  glance: straight vertical shaft, clear grip end, distinct glowing head. No
+  fire eruption, no large flame — just a focused, controlled ember ready to
+  discharge. Dungeon-worn: scuffed shaft, uneven twine wrap, dull metal
+  ferrule. Warm amber/orange accent against dark-wood brown and muted bone tones.
+# Vertical orientation and 4x4 sheet inherited from data/sprite-types/weapon.json.
+# The default anchor (32, 56) sits in the grip area — correct for a wand.
+# `judge.enabled: true` is also inherited from the weapon type defaults.
+minVariations: 6
+variations:
+  - ember tip enclosed in a small cracked-stone cap
+  - twin ember nodes near the tip, both glowing
