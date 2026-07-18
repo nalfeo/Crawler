@@ -1,0 +1,31 @@
+# Meteor Hammer PR Recovery
+
+**Date:** 2026-07-18  
+**PR:** #1422 — Add Floor 2 meteor-hammer runtime-key icon asset  
+**Commits:** pending merge finalization  
+**Session type:** PR recovery (merge-conflict blocker)
+
+## Systems touched
+
+sprite-pipeline, sprite-workflow, testing
+
+## What changed
+
+- Merged `origin/main` into `copilot/add-meteor-hammer-icon`.
+- Resolved the only conflict in `public/assets/generated/manifest.json` by keeping:
+  - this PR's `equipment/weapon/meteor-hammer` runtime-key placeholder entry
+  - main's newer `equipment/weapon/tower-spear` generated-art entry
+  - the existing `equipment/weapon/moon-scythe` entry between them
+- Added the required 2🍎 review ledger:
+  - `docs/knowledge/review-ledgers/2026-07-18-meteor-hammer-runtime-key-icon.review-ledger.json`
+
+## Validation
+
+- `npm run verify:fast`
+- `npm run verify:pr-prereqs`
+- Secret scan on merge-touched files (`briefs/weapons/tower-spear.yaml`, `docs/knowledge/handoffs/2026-07-18-tower-spear-sprite.md`, `public/assets/generated/equipment/weapon/tower-spear.png`, `public/assets/generated/manifest.json`, `src/shared/data/sprite-catalog.json`, `tests/integration/generated-manifest-engine.test.ts`)
+
+## Notes
+
+- The earlier failing Copilot workflow run for this PR was an agent runtime error (`invalid image data`), not a repository code/test failure.
+- `files/guard-telemetry.jsonl` was absent in this session, so no telemetry capture was required.
