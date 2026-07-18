@@ -20,9 +20,18 @@ export type EquipmentFingerprintV1 = `sha256:${string}`;
 export type GeneratedEquipmentRarity = 'common' | 'uncommon' | 'rare';
 export type GeneratedEquipmentEnhancementLevel = 0 | 1 | 2 | 3 | 4 | 5;
 export type GeneratedEquipmentEffectUnitCost = 1 | 2;
+export type EquipmentGrantSourceId = `equipment:${GeneratedEquipmentInstanceId}:${number}`;
 export type ActiveWeaponClassSkillTag = `weapon-class:${WeaponClassSkillId}`;
 export type ActiveWeaponTypeSkillTag = `weapon-type:${WeaponTypeSkillId}`;
 export type ActiveWeaponSnapshotSkillTag = ActiveWeaponClassSkillTag | ActiveWeaponTypeSkillTag;
+export const RARITY_EFFECT_BUDGET: Readonly<Record<GeneratedEquipmentRarity, number>> = {
+  common: 0,
+  uncommon: 1,
+  rare: 2,
+} as const;
+export const ENHANCEMENT_MIN = 0 as const;
+export const ENHANCEMENT_MAX = 5 as const;
+export const KNOWN_GENERATED_SCHEMA_VERSION = GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION;
 
 export interface GeneratedEquipmentBaseV1 {
   readonly schemaVersion: typeof GENERATED_EQUIPMENT_BASE_SCHEMA_VERSION;
@@ -56,9 +65,16 @@ export interface ResolvedEquipmentGrantEffectV1 extends ResolvedEquipmentEffectB
   readonly grantId: string;
 }
 
+export interface LegacyResolvedEquipmentEffectV1 {
+  readonly effectId: string;
+  readonly magnitude: number;
+  readonly units: GeneratedEquipmentEffectUnitCost;
+}
+
 export type ResolvedEquipmentEffectV1 =
   | ResolvedEquipmentStatEffectV1
-  | ResolvedEquipmentGrantEffectV1;
+  | ResolvedEquipmentGrantEffectV1
+  | LegacyResolvedEquipmentEffectV1;
 
 export interface ActiveWeaponSnapshotV1 extends WeaponDef {
   readonly schemaVersion: typeof ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION;
@@ -69,16 +85,16 @@ export interface ActiveWeaponSnapshotV1 extends WeaponDef {
 }
 
 export interface FrozenEquipmentFieldsV1 {
-  readonly schemaVersion: typeof FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION;
+  readonly schemaVersion?: typeof FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION;
   readonly displayName: string;
   readonly artKey: string;
-  readonly slots: readonly EquipmentSlotId[];
-  readonly tags: readonly string[];
-  readonly weightLb: number;
+  readonly slots?: readonly EquipmentSlotId[];
+  readonly tags?: readonly string[];
+  readonly weightLb?: number;
   readonly statBonuses: Readonly<Partial<Record<StatId, number>>>;
-  readonly abilityGrants: readonly string[];
-  readonly passiveGrants: readonly string[];
-  readonly activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null;
+  readonly abilityGrants?: readonly string[];
+  readonly passiveGrants?: readonly string[];
+  readonly activeWeaponSnapshot?: ActiveWeaponSnapshotV1 | null;
 }
 
 export interface GeneratedEquipmentGenerationPolicyV1 {
@@ -109,7 +125,7 @@ export interface GeneratedEquipmentInstanceV1 {
   readonly enhancementLevel: GeneratedEquipmentEnhancementLevel;
   readonly resolvedEffects: readonly ResolvedEquipmentEffectV1[];
   readonly frozen: FrozenEquipmentFieldsV1;
-  readonly generation: GeneratedEquipmentGenerationV1;
+  readonly generation?: GeneratedEquipmentGenerationV1;
   readonly fingerprint: EquipmentFingerprintV1;
 }
 
@@ -129,4 +145,29 @@ export interface GeneratedEquipmentRegistrySnapshotV1 {
   readonly generationPolicyFingerprint: EquipmentFingerprintV1;
   readonly nextOrdinal: number;
   readonly instances: readonly GeneratedEquipmentInstanceV1[];
+}
+
+const INSTANCE_ID_RE = /^gei:v1:[a-zA-Z0-9_-]+:\d+$/;
+const FINGERPRINT_RE = /^sha256:[0-9a-f]{64}$/;
+
+export function isValidGeneratedInstanceId(id: string): id is GeneratedEquipmentInstanceId {
+  return INSTANCE_ID_RE.test(id);
+}
+
+export function isKnownGeneratedSchemaVersion(
+  version: string,
+): version is typeof KNOWN_GENERATED_SCHEMA_VERSION {
+  return version === KNOWN_GENERATED_SCHEMA_VERSION;
+}
+
+export function isValidFingerprintV1(value: string): value is EquipmentFingerprintV1 {
+  return FINGERPRINT_RE.test(value);
+}
+
+export function makeRunKey(seed: number | string): string {
+  const key = String(seed).replace(/[^a-zA-Z0-9_-]/g, '');
+  if (key.length === 0) {
+    throw new Error(`makeRunKey: seed "${seed}" produces an empty run key`);
+  }
+  return key;
 }

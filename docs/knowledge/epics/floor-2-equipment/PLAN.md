@@ -10,17 +10,6 @@ The machine-readable execution index is
 `docs/knowledge/epics/floor-2-equipment/epic-state.json`. That file is a cache
 and coordination index; it never overrides stronger evidence.
 
-## Normative contract links
-
-- Generated equipment, rewards, economy, AI, flags, and migration:
-  [equipment-system.md](../../../../.specify/specs/equipment-system.md)
-- Immutable static weapons and frozen active snapshots:
-  [weapon-system.md](../../../../.specify/specs/weapon-system.md)
-- Cross-system decision and alternatives:
-  [ADR 0065](../../adr/0065-versioned-frozen-floor2-equipment-instances.md)
-- Deferred Unique equipment follow-up (outside this epic's 37-node DAG):
-  <https://github.com/nalfeo/Crawler/issues/1274>
-
 ## Hard acceptance gate
 
 For the representative-build benchmark, the median aggregate DPS ratio must be
@@ -37,34 +26,22 @@ committed as deterministic evidence before the release node can validate.
 ## Product contract
 
 - Equipment rarity is Common, Uncommon, or Rare. No shipped item may exceed
-  Rare. Unique items are explicitly deferred from this epic to
-  <https://github.com/nalfeo/Crawler/issues/1274>.
+  Rare. Unique items are explicitly deferred from this epic.
 - One versioned generated-instance registry is authoritative across inventory,
   equip/unequip, achievement rewards, chests, merchant stock, and floor
   carryover. Consumers must not maintain parallel item-instance shapes.
-- Instance resolution is base template -> item level -> inherent scaling ->
-  rarity scalar/budget -> enhancement +N -> affixes/effects -> frozen
-  stats/name/art/weapon snapshot and fingerprint. The governing equipment and
-  weapon specs own the exact field and migration contracts.
 - Achievement equipment rewards resolve once, at unlock time, to an immutable
   generated instance. Loading, UI rendering, or later catalog edits must not
   reroll an already-resolved reward.
 - Floor 1 remains equipment-free. Equipment generation, rewards, shops, and
   equip affordances are unavailable there.
-- Floor 2 provides 30 floor achievements (10 each at Common, Uncommon, and Rare)
-  plus 6 current-run-global achievements that cross floor transitions and reset
-  on a new run. Floor 2 box equipment affinity is 25% / 50% / 75% for those
-  three tiers; Floor 1 boxes remain equipment-free.
+- Floor 2 provides 30 floor achievements plus 6 run-global achievements.
 - The Floor 2 boss chest selects rarity at 85% Uncommon and 15% Rare.
 - Every Floor 2 settlement has a guaranteed Quartermaster plus 1-2 random
   non-Quartermaster shops. Shop equipment stock is Common or Uncommon only.
 - The launch catalog contains at least 70 base items: exactly 50 weapons and 20
-  non-weapons in the stable manifest below. The 50 weapons are exactly 5 in each
-  of 10 stable weapon families. Future additions append IDs; they do not rename
-  or recycle them.
-- Equipment-granted abilities and passives are source-owned and reference
-  counted so unequip removes only the originating grant. The existing active
-  ability limit of 10 remains authoritative.
+  non-weapons in the stable manifest below. Future additions append IDs; they
+  do not rename or recycle them.
 - Shared chests use one accessible interaction and presentation contract:
   keyboard, pointer, and touch parity; focus management; readable rarity cues
   that do not rely on color alone; and deterministic item details.
@@ -72,9 +49,6 @@ committed as deterministic evidence before the release node can validate.
   merchant, chest, and carryover APIs. Travel must use the existing route
   planner. No AI-only inventory mutations, teleports, or duplicate planner may
   be introduced.
-- The seven release flags remain default off, enforce their documented
-  dependency closure, preserve recognized disabled data, and never expose
-  equipment on Floor 1. Unknown future instance/snapshot versions fail closed.
 
 ## Machine-owned plan contract
 
@@ -247,66 +221,25 @@ The normal lifecycle is:
 it is `release_requirement: deferred` with a required reason. Deferred nodes are
 unclaimable and excluded from the release conjunction.
 
-Speculative stacked work is orthogonal to this lifecycle. A node with
-`stacked_work.state` equal to `stacked_in_progress` or `stacked_pr_open` remains
-literally `status: blocked`; those values are never added to the lifecycle enum.
-The separate `stacked_work.owner` never populates normal `ownership`. Stacked
-work therefore cannot satisfy dependency validation, enter the ready queue, or
-make a downstream node ready.
-
-The protocol support work is tracked in issue #1282. A1's dedicated child issue
-is #1279, and its speculative contracts PR remains dependency-blocked on A0.
-
 A required node computes ready only when:
 
 1. every direct dependency is `validated`; or
 2. a dependency is `superseded`, names a replacement, and that replacement is
    `validated`;
 3. the node has a materialized issue, except for A0's parent-issue bootstrap;
-4. the node itself is not terminal or already beyond ready; and
-5. no plan-change invalidation applies.
-
-A blocked node may carry `stacked_work` only when all of the following hold:
-
-1. its execution lane is explicitly listed in `stacked_work_policy`; initially
-   only the locally coordinated `control` lane is permitted;
-2. it has a dedicated child issue and exactly one unexpired trusted
-   `STACKED-WORK` owner comment whose node/session/branch matches state;
-3. every incomplete direct prerequisite is represented once by an open PR
-   snapshot, and exactly one PR is marked as the branch's stack base;
-4. each dependency snapshot matches the prerequisite node's cached PR number,
-   URL, and full head SHA, while GitHub audit independently checks current
-   PR/head/base facts;
-5. the dependent branch and open PR, when present, have stable identity and are
-   based on the recorded stack-base branch;
-6. the dependency-head resync snapshot is exact and no more than 24 hours old;
-7. neither its owner/session nor its branch conflicts with normal or stacked
-   ownership elsewhere; and
-8. material contract drift or a blocking reason is recorded rather than hidden.
-
-The immediate stack base may be either one represented direct prerequisite or
-one auxiliary control-plane support PR. An auxiliary base must be the sole
-`is_stack_base` entry, have `node_id: null`, and link its dedicated tracking
-issue; it never becomes a delivery node or satisfies a DAG dependency. This
-allows A1 to stack on the protocol support PR while A0 remains its only planned
-delivery prerequisite and the epic remains exactly 37 nodes.
-
-The exact prerequisite and stack-base heads are authoritative because another
-branch can commit those values without changing them. A dependent branch's own
-head cannot be an exact committed invariant: committing a cache refresh changes
-that same head. `dependent.observed_head_sha` is therefore a nullable,
-read-only GitHub observation cache. Head movement proposes a cache refresh but
-does not fail offline validation; stable PR, branch, and base identity still do.
-
-Offline validation proves internal snapshots and heartbeat freshness. Only
-read-only GitHub audit can prove that a mutable PR is still open and that remote
-head/base refs have not advanced. Audit records observed facts and proposes
-reviewed patches/operator actions; it never writes lifecycle or completion state.
+4. the node itself is not terminal or already beyond ready;
+5. no plan-change invalidation applies; and
+6. the node has no pending `requires_main_rebase` in its `stacked_work`
+   (even if all deps would otherwise be `validated`).
 
 `cancelled` dependencies never satisfy readiness. If an active node loses
 readiness after a plan change or dependency invalidation, the Producer posts
 `BLOCKED`, revokes its lease, moves it to `blocked`, and invalidates downstream
 evidence. Child agents do not continue under a stale claim.
+
+Speculative stacked-work (`stacked_work` on a `blocked` node) is orthogonal to
+the lifecycle. The node status remains `blocked`; `stacked_work` never enters
+the ready queue. See "Speculative stacked-work protocol" for details.
 
 Status requirements:
 
@@ -361,41 +294,105 @@ Bulk online creation is outside A0. The acceptance path is:
 Use these exact structured headings in issue comments:
 
 - `CLAIMED`: owner, session, base commit, scope, claimed_at, expires_at.
-- `STACKED-WORK`: node, claimant, session, branch, dependency_head,
-  claimed_at, expires_at, and heartbeat_at. It is valid only while lifecycle is
-  `blocked` and does not confer a normal claim.
+- `STACKED-WORK`: See "Speculative stacked-work protocol" below.
 - `BLOCKED`: blocker node/fact, evidence, requested action, lease disposition.
-  A trusted `BLOCKED` event revokes both normal `CLAIMED` ownership and live
-  `STACKED-WORK` ownership for that node.
 - `UNBLOCKED`: resolving evidence and refreshed dependency snapshot.
 - `SCOPE-CHANGE-REQUEST`: requested delta, rationale, impacted nodes, evidence
   invalidation, apple/review impact. This never changes scope by itself.
+- `STACKED-WORK`: speculative child issue/session/PR, stacked base node/PR, and
+  whether a rebase onto `main` is now required before the node can re-enter the
+  authoritative ready queue.
 - `HANDOFF`: branch/PR, head SHA, handoff path/hash, ledger path/hash, tests,
   unresolved risks, and next owner.
 
 Free-form updates may follow the structured block, but automation and Producers
 use only the structured fields for reconciliation.
 
-### Prerequisite merge transition
+## Speculative stacked-work protocol
 
-When a stack-base prerequisite merges, the cached lifecycle is not silently
-advanced. GitHub audit marks the prerequisite observation `MERGED`, requires
-`rebase_to_main.pending: true`, captures the pre-rebase dependent head and merge
-commit, and emits this operator sequence:
+A lifecycle-blocked node whose unvalidated direct prerequisites are all `pr_open`
+may begin speculative work on a branch stacked from the dependency PR branch,
+without advancing the node's lifecycle status. The node remains `blocked`;
+speculative progress is orthogonal and never enters the ready queue.
 
-1. fetch the prerequisite merge and current `main`;
-2. rebase the dependent branch onto `main` and push the new head;
-3. retarget the dependent PR base to `main`;
-4. rerun offline and read-only GitHub validation;
-5. verify GitHub observes a pushed head that differs from the pre-rebase
-   snapshot and also observes `base: main`;
-6. clear the completed stacked metadata in one reviewed Producer state update;
-7. keep lifecycle `blocked` until every prerequisite reaches `validated`; and
-8. only then enter the normal `ready -> claimed -> ...` lifecycle.
+### When speculative work is permitted
 
-Clearing `rebase_to_main.pending` while stacked metadata still exists is invalid
-after a prerequisite merge. The metadata is removed only after the remote rebase
-and retarget are observed, preventing a local-only or premature completion claim.
+All of the following must hold before recording `stacked_work`:
+
+1. The node's `status` is `blocked`.
+2. Every unvalidated direct dependency has `status: pr_open`.
+3. Every unvalidated dependency has a PR ref (`github.pr`) recorded in state.
+4. A `stacked_work` block is present for every unvalidated dependency with exact
+   stack-base facts (see fields below).
+5. The `stacked_work.issue` ref is materialized (a live GitHub child issue).
+6. There is no other node with the same `stacked_work.session` or
+   `stacked_work.issue.number`.
+
+### stacked_work fields
+
+| Field          | Description                                                             |
+| -------------- | ----------------------------------------------------------------------- |
+| `mode`         | `stacked_in_progress` or `stacked_pr_open`                              |
+| `issue`        | Issue ref for the speculative work's child issue                        |
+| `session`      | Session identifier for the speculative work owner                       |
+| `branch`       | The stacked branch name                                                 |
+| `pr`           | PR ref for the speculative PR (required when mode is `stacked_pr_open`) |
+| `stack_bases`  | One entry per unvalidated direct dependency (see below)                 |
+| `drift_reason` | Optional material drift or block reason                                 |
+
+### stack_bases entry fields
+
+| Field                  | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `dependency_node_id`   | Node ID of the unvalidated direct dependency                |
+| `dependency_pr_number` | PR number of the dependency                                 |
+| `dependency_branch`    | Branch name of the dependency PR                            |
+| `dependency_head_sha`  | Dep's head SHA when speculative work was initiated          |
+| `last_resynced_at`     | Timestamp of the most recent resync with the dep            |
+| `last_resynced_head`   | Dep's head SHA at last resync                               |
+| `requires_main_rebase` | `true` once the dep PR merges; blocks lifecycle advancement |
+
+### Stale-head detection
+
+The offline validator compares `stack_base.last_resynced_head` against the dep
+node's cached `github.pr.head_sha`. If they differ, the dep's PR has advanced
+since the last resync and the stack is stale (`stacked.stale-dep-head` error).
+The child agent must fetch the latest dep commits, merge or rebase, update
+`last_resynced_head` and `last_resynced_at`, and post a `STACKED-WORK` update.
+
+### STACKED-WORK comment protocol
+
+Post a `STACKED-WORK` comment on the child issue to record or update speculative
+progress. The structured fields are:
+
+- `node`: the blocked node ID
+- `mode`: `stacked_in_progress` or `stacked_pr_open`
+- `session`: session identifier
+- `branch`: stacked branch name
+- `dep_snapshot`: comma-separated `<dep_node_id>:<dep_head_sha>` pairs
+
+The Producer records these facts in one global-state update.
+
+### Post-merge rebase and lifecycle handoff
+
+Once a dependency PR merges:
+
+1. The offline validator emits `stacked.merged-dep-rebase-required` if
+   `requires_main_rebase` is not set to `true`; the Producer must update the
+   stack_base flag.
+2. When `requires_main_rebase: true`, the validator emits
+   `stacked.requires-main-rebase` and an operator action requiring the Producer
+   to confirm the rebase and clear `stacked_work`.
+3. The child agent rebases the stacked branch onto `main`, resolves conflicts,
+   and posts a `STACKED-WORK` update confirming completion.
+4. The Producer verifies the rebase, clears `stacked_work` (sets it to `null`),
+   and advances the node through the normal lifecycle (`blocked → ready →
+claimed → ...`).
+5. Normal lifecycle checks then apply; the node enters the ready queue only when
+   all deps are `validated` and `stacked_work` is `null`.
+
+The Producer is the sole writer of `stacked_work` in the global state. Child
+agents post `STACKED-WORK` comments; they do not edit `epic-state.json` directly.
 
 ## Execution lanes
 
@@ -607,17 +604,16 @@ A fresh Producer must be able to resume with zero conversation context:
 3. Query the parent/child issues, PRs, workflow runs, and referenced branches.
 4. Inspect every referenced handoff and review ledger; verify content hashes and
    commits rather than trusting branch names.
-5. Run
+5. For any node with `stacked_work`, inspect the stacked branch and the
+   dependency PR to verify `last_resynced_head` is current and
+   `requires_main_rebase` is correct.
+6. Run
    `npm run epic:status -- floor-2-equipment --github --reconcile`.
-6. Review the emitted `repo_patch` and `operator_actions`; the command writes
+7. Review the emitted `repo_patch` and `operator_actions`; the command writes
    nothing.
-7. Resolve stronger-fact conflicts in authority order. Do not copy cached state
+8. Resolve stronger-fact conflicts in authority order. Do not copy cached state
    over GitHub or committed evidence.
-8. Post structured BLOCKED/UNBLOCKED/HANDOFF comments as needed.
-9. For every `stacked_work` entry, verify the dedicated issue's one live
-   `STACKED-WORK` owner, exact prerequisite heads/bases, stable dependent
-   PR/branch/base identity, the nullable dependent-head observation cache, last
-   resync, and any pending rebase-to-main action.
+9. Post structured BLOCKED/UNBLOCKED/STACKED-WORK/HANDOFF comments as needed.
 10. As sole global-state writer, apply one reviewed state update.
 11. Dispatch only nodes in the validator-computed ready queue with materialized
     child issues.
@@ -626,6 +622,14 @@ If the parent issue is unavailable, merged git and deterministic evidence still
 permit recovery. Recreate the issue dashboard from the materialization plan,
 then reconcile issue numbers into state. A session transcript or local
 worktree is never authoritative.
+
+For stacked-work reconciliation after a prerequisite merges:
+
+1. Confirm the stacked branch has been rebased onto `main`.
+2. Verify the speculative work is still valid (no merge-conflict regressions).
+3. Update the stack_base `requires_main_rebase` to `true` if not already set.
+4. After rebase confirmation, clear `stacked_work` (set to `null`) and advance
+   the node through the normal lifecycle in one coordinated state update.
 
 ## Durable plan-change protocol
 

@@ -1126,10 +1126,18 @@ export function registerGeneratedEquipmentInstance(
       '$.instance.instanceId',
     );
   }
-  if (instance.generation.ordinal !== state.nextOrdinal) {
+  const generation = instance.generation;
+  if (!generation) {
+    fail(
+      'invalid-payload',
+      'Generated equipment instance is missing generation metadata',
+      '$.instance.generation',
+    );
+  }
+  if (generation.ordinal !== state.nextOrdinal) {
     fail(
       'ordinal-gap',
-      `Expected ordinal ${state.nextOrdinal}; received ${instance.generation.ordinal}`,
+      `Expected ordinal ${state.nextOrdinal}; received ${generation.ordinal}`,
       '$.instance.generation.ordinal',
     );
   }
@@ -1170,7 +1178,7 @@ export function requireGeneratedEquipmentActiveWeaponSnapshot(
 ): ActiveWeaponSnapshotV1 {
   const instance = requireGeneratedEquipmentInstance(world, instanceId);
   const snapshot = instance.frozen.activeWeaponSnapshot;
-  if (snapshot === null) {
+  if (!snapshot) {
     fail(
       'invalid-payload',
       `Generated equipment instance ${instanceId} has no active weapon snapshot`,
@@ -1289,10 +1297,18 @@ export function restoreGeneratedEquipmentRegistry(
       expectedPolicy: registry.generationPolicy,
       expectedPolicyFingerprint: registry.generationPolicyFingerprint,
     });
-    if (instance.generation.ordinal !== ordinal) {
+    const generation = instance.generation;
+    if (!generation) {
+      fail(
+        'invalid-payload',
+        'Generated equipment instance is missing generation metadata',
+        `$.snapshot.instances[${ordinal}].generation`,
+      );
+    }
+    if (generation.ordinal !== ordinal) {
       fail(
         'ordinal-gap',
-        `Expected ordinal ${ordinal}; received ${instance.generation.ordinal}`,
+        `Expected ordinal ${ordinal}; received ${generation.ordinal}`,
         `$.snapshot.instances[${ordinal}].generation.ordinal`,
       );
     }
