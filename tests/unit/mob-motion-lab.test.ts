@@ -143,6 +143,12 @@ describe('mob motion lab model', () => {
       alpha: 1,
     });
     expect(corpsePose.offsetX).toBeGreaterThan(0);
+    // Magnitude guard: peak knockback at 220 ms (smoothstep → 1) must equal
+    // 7 px / 8 px·ft⁻¹ = 0.875 ft. If `sampleDeath` regresses to raw-pixel
+    // amplitudes the bridge would scale them 8× (56 px instead of 7 px).
+    const peakPose = sampleMobMotion('death', 220);
+    expect(peakPose.offsetX).toBeCloseTo(7 / 8, 3);
+    expect(peakPose.offsetY).toBeCloseTo(1 / 8, 3);
   });
 
   it('cycles status concepts deterministically for scrubbed capture', () => {
@@ -227,6 +233,21 @@ describe('mob motion lab model', () => {
     expect(shared.filter((spec) => spec.hasProjectile).map((spec) => spec.archetypeId)).toEqual([
       'goblin-junkshot',
     ]);
+  });
+
+  it('melee attack preview has continuous motion at the windup→strike boundary (319→320 ms)', () => {
+    // At 319ms (last windup frame), the pose should reflect the full windup lean.
+    const at319 = sampleMobMotion('attack', 319, {});
+    // At 320ms (first strike frame), the pose should still reflect the windup endpoint
+    // (offsetX ≈ -0.18) rather than snapping to neutral, ensuring continuous motion.
+    const at320 = sampleMobMotion('attack', 320, {});
+
+    // Both should be non-neutral: the windup pulls back to negative offsetX
+    expect(at319.offsetX).toBeLessThan(-0.1);
+    // The strike at t=0 must start at the windup endpoint, not neutral
+    expect(at320.offsetX).toBeLessThan(-0.1);
+    // The two poses should be nearly identical (boundary continuity)
+    expect(Math.abs(at320.offsetX - at319.offsetX)).toBeLessThan(0.05);
   });
 
   it('resolves the actual hostile AoE projectile through runtime render mappings', () => {

@@ -1,17 +1,22 @@
 /**
  * VLM judge for the sprite generation pipeline (spec §F4).
  *
- * Four evaluators, one vision call per variant:
+ * Four evaluators always run, one vision call per variant; a 5th
+ * (`theme_adherence`) joins them whenever the brief carries a floor or
+ * theme design-language addendum:
  *
  *   - `design_language` — does the concept feel specifically like Crawler?
  *   - `reference_style_match` — does rendering match approved references?
  *   - `brief_match`   — does the candidate match `brief.prompt`?
  *   - `readability`   — does the candidate read at game scale on a dark
  *                       floor tile? (composited preview attached)
+ *   - `theme_adherence` (conditional) — does the candidate honor the
+ *                       floor/theme design-language addenda, not just the
+ *                       generic Crawler style?
  *
  * Each evaluator returns a 1-5 integer score and a 1-2 sentence
- * rationale. A variant is `passed` only when ALL evaluators score >= 3
- * (spec §F4: `< 3 auto-rejects`).
+ * rationale. A variant is `passed` only when ALL active evaluators score
+ * >= 3 (spec §F4: `< 3 auto-rejects`).
  *
  * Hard constitutional rule (§3 — Deterministic CI Only): this module
  * REFUSES to run when `process.env.CI` is defined. The judge calls a
@@ -20,9 +25,9 @@
  * ADR — see ADR 0043 for the asset-request CI worker exception, which
  * opens the gate when `SPRITES_ALLOW_CI_PIPELINE=true` is ALSO set.
  *
- * Cost discipline: one vision call per variant — all three evaluators
+ * Cost discipline: one vision call per variant — all active evaluators
  * are requested in a single structured-output response, NOT fanned out
- * into three separate calls. This keeps a typical 8-variant brief well
+ * into separate calls. This keeps a typical 8-variant brief well
  * under the $0.50/run ceiling in spec §"Cost ceiling".
  *
  * Inputs are pure-ish (Buffer + brief + style guide string); the only
@@ -39,6 +44,11 @@ import { isCiPipelineBypassed } from './ci-bypass.js';
 import { JudgeCache } from './judge-cache.js';
 import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js';
 import { contentDirectionBlock } from './content-direction.js';
+import { designLanguageAddendaBlock } from './content-direction.js';
+import {
+  resolveDesignLanguageAddenda,
+  type DesignLanguageAddenda,
+} from './design-language-addenda.js';
 
 /**
  * Version of the system prompt + user prompt structure built below.
@@ -50,9 +60,14 @@ import { contentDirectionBlock } from './content-direction.js';
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v3';
+const PROMPT_TEMPLATE_VERSION = 'v7';
 
-export type Evaluator = 'design_language' | 'reference_style_match' | 'brief_match' | 'readability';
+export type Evaluator =
+  | 'design_language'
+  | 'reference_style_match'
+  | 'brief_match'
+  | 'readability'
+  | 'theme_adherence';
 
 /** Per-evaluator result on the 1-5 ordinal scale. */
 export interface EvaluatorResult {
@@ -79,6 +94,17 @@ export interface JudgeScorecard {
   readonly styleMatch: EvaluatorResult;
   readonly briefMatch: EvaluatorResult;
   readonly readability: EvaluatorResult;
+  /**
+   * Floor/theme design-language adherence. Only present (and only
+   * scored) when the brief resolves a floor or theme addendum — see
+   * `resolveDesignLanguageAddenda`. Sprites with no addendum have
+   * nothing to adhere to, so this is omitted entirely for them rather
+   * than defaulting to a pass. When present, it participates in
+   * `passed`/`minScore`/`rejectedBy` exactly like the other evaluators,
+   * so a sheet that ignores the floor or theme addendum fails review
+   * instead of passing on the other four axes alone.
+   */
+  readonly themeAdherence?: EvaluatorResult;
   /** True iff every evaluator scored >= 3. */
   readonly passed: boolean;
   /** Lowest of the three scores. Convenient for ranking. */
@@ -144,14 +170,59 @@ const evaluatorPayloadSchema = z
   })
   .strict();
 
-const judgeResponseSchema = z
+const baseJudgeResponseSchema = z
   .object({
     design_language: evaluatorPayloadSchema,
     reference_style_match: evaluatorPayloadSchema,
     brief_match: evaluatorPayloadSchema,
     readability: evaluatorPayloadSchema,
+    theme_adherence: evaluatorPayloadSchema.optional(),
   })
   .strict();
+
+/**
+ * `theme_adherence` is REQUIRED in the parsed response when the brief
+ * resolves a floor or theme addendum (floor-intensity design language or
+ * Floor 2 family design language), and must be absent otherwise. Requiring
+ * rather than merely allowing it is deliberate — an optional field the model
+ * can silently skip would let a sheet that ignores the floor or family
+ * addendum still pass on the other four axes, exactly the failure mode this
+ * dimension exists to catch.
+ */
+function parseJudgeResponse(
+  value: unknown,
+  hasAddendum: boolean,
+): ReturnType<typeof baseJudgeResponseSchema.safeParse> {
+  const parsed = baseJudgeResponseSchema.safeParse(value);
+  if (!parsed.success) return parsed;
+  if (hasAddendum && parsed.data.theme_adherence === undefined) {
+    return {
+      success: false,
+      error: new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          path: ['theme_adherence'],
+          message:
+            'theme_adherence is required when the brief resolves a floor or theme design-language addendum',
+        },
+      ]),
+    } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
+  }
+  if (!hasAddendum && parsed.data.theme_adherence !== undefined) {
+    return {
+      success: false,
+      error: new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          path: ['theme_adherence'],
+          message:
+            'theme_adherence is not allowed when no floor or theme design-language addendum applies',
+        },
+      ]),
+    } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
+  }
+  return parsed;
+}
 
 /**
  * Error thrown when a judge call fails for any non-provider reason —
@@ -193,6 +264,10 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
   }
 
   const now = options.now ?? (() => new Date());
+  const designLanguageAddenda = resolveDesignLanguageAddenda(
+    options.brief.name,
+    options.brief.floor,
+  );
 
   // Cache lookup runs BEFORE building previews / images — a hit
   // avoids both the provider call AND the (cheap-but-not-free) PNG
@@ -207,6 +282,7 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
         referencePngs: options.referencePngs,
         briefMatchInstructions: options.brief.prompt,
         floor: options.brief.floor,
+        designLanguageAddenda: designLanguageAddendaBlock(designLanguageAddenda),
       })
     : null;
   if (options.cache && cacheKey) {
@@ -234,9 +310,15 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     .slice(0, 3)
     .map((png) => ({ png, label: 'reference' as const }));
 
+  const hasAddendumForPrompt =
+    designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
   const request: EvaluateRequest = {
-    systemInstructions: buildSystemInstructions(options.styleGuide, options.brief.floor),
-    userPrompt: buildUserPrompt(options.brief, referencePreviews.length),
+    systemInstructions: buildSystemInstructions(
+      options.styleGuide,
+      options.brief.floor,
+      designLanguageAddenda,
+    ),
+    userPrompt: buildUserPrompt(options.brief, referencePreviews.length, hasAddendumForPrompt),
     images: [
       { png: candidatePreview, label: 'candidate' },
       { png: readabilityComposite, label: 'readability-composite' },
@@ -246,7 +328,9 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
 
   const response = await options.provider.evaluate(request);
 
-  const parsed = judgeResponseSchema.safeParse(normalizeLegacyJudgeResponse(response.json));
+  const hasAddendum =
+    designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
+  const parsed = parseJudgeResponse(normalizeLegacyJudgeResponse(response.json), hasAddendum);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
@@ -304,7 +388,7 @@ function writeSidecar(processedDir: string, variantIndex: number, card: JudgeSco
 
 function buildScorecard(args: {
   variantIndex: number;
-  payload: z.infer<typeof judgeResponseSchema>;
+  payload: z.infer<typeof baseJudgeResponseSchema>;
   modelDeployment: string;
   usage: {
     readonly promptTokens: number;
@@ -318,6 +402,9 @@ function buildScorecard(args: {
     ['reference_style_match', args.payload.reference_style_match],
     ['brief_match', args.payload.brief_match],
     ['readability', args.payload.readability],
+    ...(args.payload.theme_adherence
+      ? ([['theme_adherence', args.payload.theme_adherence]] as const)
+      : []),
   ];
   const rejectedBy = evaluators.filter(([, r]) => r.score < 3).map(([name]) => name);
   const minScore = Math.min(...evaluators.map(([, r]) => r.score));
@@ -330,6 +417,7 @@ function buildScorecard(args: {
     styleMatch: args.payload.reference_style_match,
     briefMatch: args.payload.brief_match,
     readability: args.payload.readability,
+    themeAdherence: args.payload.theme_adherence,
     passed: rejectedBy.length === 0,
     minScore,
     rejectedBy,
@@ -337,7 +425,13 @@ function buildScorecard(args: {
   };
 }
 
-function buildSystemInstructions(styleGuide: string, floor: number): string {
+function buildSystemInstructions(
+  styleGuide: string,
+  floor: number,
+  addenda: DesignLanguageAddenda,
+): string {
+  const hasAddendum = addenda.floor !== undefined || addenda.theme !== undefined;
+  const bothAddenda = addenda.floor !== undefined && addenda.theme !== undefined;
   return [
     'You are a strict quality judge for pixel-art sprites generated for a top-down roguelike game.',
     '',
@@ -347,9 +441,9 @@ function buildSystemInstructions(styleGuide: string, floor: number): string {
     'the canonical Crawler art style, not off-style stock art — so the candidate should look',
     'like it belongs in the same shipped set.',
     '',
-    contentDirectionBlock(floor),
+    contentDirectionBlock(floor, addenda),
     '',
-    'Score the candidate on four independent 1-5 ordinal axes:',
+    `Score the candidate on ${hasAddendum ? 'five' : 'four'} independent 1-5 ordinal axes:`,
     '',
     '  1. design_language — Does the concept feel specifically like Crawler: one readable',
     '                       identity plus one authored contradiction, darkly funny rather than',
@@ -372,6 +466,39 @@ function buildSystemInstructions(styleGuide: string, floor: number): string {
     '                    punched through the body, disconnected/floating pixel islands,',
     '                    detached limbs/fragments, and broken contiguous silhouette.',
     '                    These defects should score readability <= 2.',
+    ...(bothAddenda
+      ? [
+          '',
+          '  5. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,',
+          '                       materials, garments, props, colors, or iconography named in the',
+          '                       floor AND theme design language sections above — not just the',
+          "                       general Crawler vibe (that is design_language's job)?",
+          '                       Both active sections must be represented: floor-intensity cues',
+          '                       alone do not satisfy this axis when a family theme is also present.',
+          '                       5 = multiple specific details from BOTH sections are clearly visible.',
+          '                       4 = at least one unambiguous named detail from EACH active section.',
+          '                       3 = specific details from at least one section might be present',
+          '                           but are ambiguous; the other section is not represented.',
+          '                       2 = on-vibe but none of the named cues from any section are',
+          '                           legible — scores 2 or below auto-reject.',
+          '                       1 = the candidate contradicts or ignores the addenda entirely.',
+        ]
+      : hasAddendum
+        ? [
+            '',
+            '  5. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,',
+            '                       materials, garments, props, colors, or iconography named in the',
+            '                       floor or theme design language section above — not just the',
+            "                       general Crawler vibe (that is design_language's job)? Look for",
+            '                       concrete, named details, not a vague thematic gesture.',
+            '                       5 = multiple specific addendum details are clearly visible.',
+            '                       4 = at least one named addendum detail is unambiguous.',
+            '                       3 = one named detail might be present but is ambiguous.',
+            "                       2 = the concept is on-vibe but none of the addendum's distinguishing",
+            '                       details are legible — scores 2 or below auto-reject.',
+            '                       1 = the candidate contradicts or ignores the addendum entirely.',
+          ]
+        : []),
     '',
     'Anything scoring below 3 auto-rejects the variant. Use the full 1-5 scale; do not',
     'default to 3 for borderline cases — pick 2 (fail) or 4 (pass) and justify briefly.',
@@ -387,12 +514,15 @@ function buildSystemInstructions(styleGuide: string, floor: number): string {
     '  "design_language": { "score": 1-5, "rationale": "..." },',
     '  "reference_style_match": { "score": 1-5, "rationale": "..." },',
     '  "brief_match": { "score": 1-5, "rationale": "..." },',
-    '  "readability": { "score": 1-5, "rationale": "..." }',
+    hasAddendum
+      ? '  "readability": { "score": 1-5, "rationale": "..." },'
+      : '  "readability": { "score": 1-5, "rationale": "..." }',
+    ...(hasAddendum ? ['  "theme_adherence": { "score": 1-5, "rationale": "..." }'] : []),
     '}',
   ].join('\n');
 }
 
-function buildUserPrompt(brief: Brief, referenceCount: number): string {
+function buildUserPrompt(brief: Brief, referenceCount: number, hasAddendum: boolean): string {
   const hasReferences = referenceCount > 0;
   const refSummary = hasReferences
     ? `${referenceCount} reference image(s) attached, labelled reference-1 .. reference-${referenceCount}.`
@@ -414,7 +544,12 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
       '                               The candidate must read as same-family with them.',
     );
   }
-  lines.push('', refSummary, '', 'Return your four scores and rationales as a strict JSON object.');
+  lines.push(
+    '',
+    refSummary,
+    '',
+    `Return your ${hasAddendum ? 'five' : 'four'} scores and rationales as a strict JSON object.`,
+  );
   return lines.filter((s) => s !== '').join('\n');
 }
 

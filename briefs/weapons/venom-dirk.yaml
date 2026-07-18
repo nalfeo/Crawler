@@ -1,0 +1,25 @@
+type: weapon
+name: venom-dirk
+description: |
+  A narrow dirk (short stabbing dagger) held vertically, point up, grip at the
+  bottom. The blade is slender and double-edged, tapering to a sharp tip — taller
+  than it is wide, occupying at least two-thirds of the frame height. The steel
+  is deeply discoloured: dark slate-grey or near-black with a sickly venom-green
+  tinge along the fuller (blood groove running centre-blade). Irregular patches of
+  dark purple corrosion creep from the crossguard up the lower blade, suggesting
+  toxic contamination baked into the metal. Thin highlights glint off each razor
+  edge. The crossguard is straight and narrow, slightly wider than the blade,
+  dark iron with a subtle green patina. The grip is short, wrapped in dark leather
+  strips with thin cord binding at top and bottom; a small flat pommel caps the
+  base. No glow, no floating droplets, no bubbles, no cartoonish dripping effects,
+  no scabbard, no second weapon. The silhouette must read as a stabbing blade at
+  a glance: a tall narrow vertical shape with a distinct crossguard break and
+  grip below it. Venom theme is conveyed through palette (dark purples, poisonous
+  greens, slate-grey), not through particle effects.
+# Vertical orientation and 64x64 target inherited from data/sprite-types/weapon.json.
+# Anchor at (32, 56) — grip-bottom centre — inherited.
+# No sensor overrides needed: this is a true vertical blade.
+variations:
+  - blade with venomous green channels carved lengthwise along both edges, dark ichor dried as matte residue in the grooves
+  - dark purple crystalline venom deposits crusted along the fuller, glinting faintly
+minVariations: 8
