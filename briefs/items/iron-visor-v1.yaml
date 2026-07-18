@@ -15,6 +15,8 @@ variations:
   - visor plate with deep horizontal slit and four rivets, visible edge dents from combat
   - slightly convex faceplate with narrow eye-opening, rust staining around the slit edges
   - flat iron visor with reinforced vertical nose ridge and two rivets on each side
+  - heavy rectangular faceplate with soot-darkened slit interior and rounded rivets along the brow
+  - worn iron visor with flared lower edge, pitted scratches, and asymmetrical rivet spacing from repairs
 minVariations: 5
 judge:
   enabled: true
