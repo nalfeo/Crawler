@@ -182,6 +182,15 @@ assets:
       kind: sprite-registry
       id: sling-of-shame
 
+  - id: oil-lantern
+    type: weapon
+    label: 'Oil Lantern'
+    brief: 'Oil Lantern — a dungeon trap weapon: a squat glass-and-metal oil lantern, rounded amber glass body with visible warm-toned oil and exposed wick near the top, tarnished metal cap and base ring. Silhouette reads as a lantern at a glance. A glass trap that shatters warmly.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: oil-lantern
+
   - id: anchor-mace
     type: weapon
     label: 'Anchor Mace'
