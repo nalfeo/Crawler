@@ -2,35 +2,28 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-17",
   "session_slug": "floor-2-stacked-work-protocol",
-  "task_title": "Durable speculative stacked-work protocol for Floor 2 equipment epic control plane",
+  "task_title": "Add speculative stacked-work metadata to epic control plane",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "claude-sonnet-5",
-      "concerns_count": 5,
-      "resolved_count": 5,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
       "plan_divergence": "minor",
-      "notes": "Added dependency.node_id field to tie stacked work to a specific DAG dependency; added owner.claimed_at for provenance; made merged/closed dependent PR an error (not warning) in GitHub audit; gated rebase_to_main.complete on merged-or-validated (not just validated) matching recovery doc; added cross-validation of dependency.pr_number against tracked PR."
+      "notes": "4 concerns found (2 critical, 2 major), all resolved: (1) post-merge stack_base simultaneously required+rejected — fixed by widening allowed set from unvalidated-only to all direct deps; (2) computeReady only gated on requires_main_rebase flag not on stacked_work presence — fixed to gate on node.stacked_work==null; (3) stacked_work.issue not audited on GitHub — fixed by adding stacked_work.issue to the auditIssue loop; (4) dependency_pr_number not validated against dep PR — fixed with new stacked.base-pr-mismatch check. Plan divergence=minor: no re-architecture, all fixes were detail-level corrections to the chosen design."
     },
     "code_review": {
       "clean": true,
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-5"],
+          "models": [
+            "claude-opus-4.8"
+          ],
           "concerns_count": 2,
           "resolved_count": 2,
-          "clean": false,
-          "notes": "premature-rebase-complete false-fired on merged status; missing null completed_at validation"
-        },
-        {
-          "round": 2,
-          "models": ["claude-sonnet-5"],
-          "concerns_count": 3,
-          "resolved_count": 3,
-          "clean": true,
-          "notes": "Simplified redundant null check; renamed stackedOwners to stackedWorkByOwner; clarified recovery doc heading re merged vs validated"
+          "clean": true
         }
       ]
     }
