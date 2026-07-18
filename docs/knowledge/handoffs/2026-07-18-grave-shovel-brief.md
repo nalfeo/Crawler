@@ -3,19 +3,21 @@
 **Date:** 2026-07-18  
 **Session type:** Art pipeline (brief commit, no code change)  
 **Branch:** `copilot/asset-request-grave-shovel`  
-**Apple estimate:** 🍎🍎
+**Apple estimate:** 🍎🍎 (apple complexity scale; see `docs/agent-os/policies/complexity-policy.md`)
 
 ## Summary
 
 Committed the `briefs/weapons/grave-shovel.yaml` sprite brief for the Floor 2
 equipment wave (`floor2-equipment-weapon-polearm`). The brief describes a
 vertical polearm weapon with a wide rusty iron spade-head blade, weathered
-wooden haft, and grave-soil markings. Runtime key: `equipment/weapon/grave-shovel`.
+wooden haft, and grave-soil markings. Issue target runtime key:
+`equipment/weapon/grave-shovel` (brief `name: grave-shovel` is the art/brief id;
+runtime key wiring is handled in a later wiring step).
 
 The brief is authored according to the weapon type defaults
 (`data/sprite-types/weapon.json`): 4×4 sprite sheet, anchor at center-bottom
-of the grip, VLM judge enabled. No type overrides were necessary — the default
-vertical polearm orientation is correct for this asset.
+of the grip, vision-language model (VLM) judge enabled. No type overrides were
+necessary — the default vertical polearm orientation is correct for this asset.
 
 ## Files Touched
 

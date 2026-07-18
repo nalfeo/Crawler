@@ -17,7 +17,7 @@ description: |
   highlight on the metal.
 # Grave-shovel is a vertical polearm: blade up, grip down.
 # Vertical orientation and 4x4 sheet inherited from data/sprite-types/weapon.json.
-# anchor.x=32 (center), anchor.y=56 (grip base) — inherited defaults are correct.
+# Anchor is inherited from data/sprite-types/weapon.json defaults.
 # judge.enabled=true inherited — VLM judge active for quality filtering.
 variations:
   - cracked wooden haft with iron reinforcing bands
