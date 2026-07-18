@@ -55,7 +55,7 @@
     {
       "abilityId": "nana-snaggle-scrap-cart-stampede",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "goblin-boss",
@@ -83,7 +83,7 @@
     {
       "abilityId": "don-paco-the-big-gob",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "llama-boss",
@@ -111,7 +111,7 @@
     {
       "abilityId": "big-panda-wei-bamboo-fed-berserk",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "panda-boss",
@@ -185,7 +185,7 @@
     {
       "abilityId": "king-skritt-roman-candle-coronation",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "kobold-boss",
@@ -213,7 +213,7 @@
     {
       "abilityId": "sovereign-cap-spore-bloom",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "myconid-boss",
@@ -241,7 +241,7 @@
     {
       "abilityId": "big-mama-bufo-tongue-repossession",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "toadkin-boss",
@@ -269,7 +269,7 @@
     {
       "abilityId": "overseer-fizzwick-clockwork-kill-saw",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "gnome-boss",
@@ -297,7 +297,7 @@
     {
       "abilityId": "plague-boss-squick-undercity-mob-call",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "ratfolk-boss",
@@ -325,7 +325,7 @@
     {
       "abilityId": "abuela-saguaro-thorn-ring",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "cactusfolk-boss",
@@ -359,7 +359,7 @@
     {
       "abilityId": "countess-vesper-midnight-resonance",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "batfolk-boss",
@@ -393,7 +393,7 @@
     {
       "abilityId": "kingpin-molt-shell-company-lockdown",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "crabfolk-boss",
@@ -421,7 +421,7 @@
     {
       "abilityId": "broodfather-chitin-turnover",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "beetlefolk-boss",
@@ -455,7 +455,7 @@
     {
       "abilityId": "foreman-grubbs-undermine-the-union",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "molefolk-boss",
@@ -483,7 +483,7 @@
     {
       "abilityId": "boss-bandit-rocco-highway-robbery",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "raccoons-boss",
@@ -511,7 +511,7 @@
     {
       "abilityId": "don-honkrado-omerta-honk",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "geese-boss",
@@ -545,7 +545,7 @@
     {
       "abilityId": "foreman-scorch-hellfire-shift-line",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "imps-boss",
@@ -573,7 +573,7 @@
     {
       "abilityId": "gastropod-godfather-long-squeeze",
       "designState": "approved",
-      "foundationState": "not-started",
+      "foundationState": "verified",
       "runtimeState": "not-started",
       "bossArt": {
         "runtimeBriefId": "snailfolk-boss",

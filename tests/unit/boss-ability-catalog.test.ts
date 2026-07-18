@@ -293,23 +293,23 @@ describe('Floor 2 boss ability delivery status', () => {
   });
 
   it('promotes the 17-boss backlog only when the production-enable gate is verified', () => {
+    const backlog = FLOOR2_BOSS_ABILITY_STATUS.entries.filter(
+      (entry) => entry.abilityId !== 'queen-mab-verdigris-glamour',
+    );
+    expect(backlog.every((entry) => entry.foundationState === 'verified')).toBe(true);
+
     const promoted = bossAbilityStatusPackSchema.parse({
       ...FLOOR2_BOSS_ABILITY_STATUS,
       gates: FLOOR2_BOSS_ABILITY_STATUS.gates.map((gate) =>
         gate.id === 'floor2-boss-production-enable' ? { ...gate, state: 'verified' } : gate,
       ),
-      entries: FLOOR2_BOSS_ABILITY_STATUS.entries.map((entry) =>
-        entry.abilityId === 'queen-mab-verdigris-glamour'
-          ? entry
-          : { ...entry, foundationState: 'verified' },
-      ),
     });
-    const backlog = promoted.entries.filter(
+    const promotedBacklog = promoted.entries.filter(
       (entry) => entry.abilityId !== 'queen-mab-verdigris-glamour',
     );
-    expect(backlog).toHaveLength(17);
+    expect(promotedBacklog).toHaveLength(17);
     expect(
-      backlog.every((entry) => deriveBossAbilityDeliveryStage(entry, promoted) === 'ready'),
+      promotedBacklog.every((entry) => deriveBossAbilityDeliveryStage(entry, promoted) === 'ready'),
     ).toBe(true);
   });
 
@@ -356,6 +356,27 @@ describe('Floor 2 boss ability delivery status', () => {
     );
   });
 
+  it('requires a canonical arena preset id before arena lab work can be verified', () => {
+    const abilityId = FLOOR2_BOSS_ABILITY_STATUS.entries[0]!.abilityId;
+    const withoutArenaPresetId = {
+      ...FLOOR2_BOSS_ABILITY_STATUS,
+      entries: FLOOR2_BOSS_ABILITY_STATUS.entries.map((entry) =>
+        entry.abilityId === abilityId
+          ? {
+              ...entry,
+              arenaLabState: 'verified',
+              arenaLabPresetId: null,
+              arenaLabEvidence: 'seed-42-headless-and-arena-evidence',
+            }
+          : entry,
+      ),
+    };
+
+    expect(() => bossAbilityStatusPackSchema.parse(withoutArenaPresetId)).toThrow(
+      /verified arena-lab state requires a canonical combat-arena preset id/,
+    );
+  });
+
   it.each(['in-progress', 'not-requested', 'planned', 'requested'] as const)(
     'rejects verified animation-lab proof for a %s cast animation',
     (castAnimationState) => {
@@ -396,6 +417,7 @@ describe('Floor 2 boss ability delivery status', () => {
               runtimeState: 'verified',
               telegraphVfxState: 'verified',
               arenaLabState: 'verified',
+              arenaLabPresetId: 'f2-queen-mab',
               arenaLabEvidence: 'seed-42-headless-and-arena-evidence',
               castAnimationState: 'approved',
               animationLabState: 'verified',
@@ -422,6 +444,7 @@ describe('Floor 2 boss ability delivery status', () => {
             runtimeState: 'verified' as const,
             telegraphVfxState: 'verified' as const,
             arenaLabState: 'verified' as const,
+            arenaLabPresetId: 'f2-queen-mab',
             arenaLabEvidence: 'seed-42-headless-and-arena-evidence',
           }
         : entry,

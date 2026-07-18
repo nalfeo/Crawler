@@ -158,12 +158,21 @@ export const bossAbilityStatusEntrySchema = z
         message: 'authored cast animation makes animation-lab proof required',
       });
     }
-    if (status.arenaLabState === 'verified' && status.arenaLabEvidence === null) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['arenaLabEvidence'],
-        message: 'verified arena-lab state requires evidence',
-      });
+    if (status.arenaLabState === 'verified') {
+      if (status.arenaLabEvidence === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['arenaLabEvidence'],
+          message: 'verified arena-lab state requires evidence',
+        });
+      }
+      if (status.arenaLabPresetId === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['arenaLabPresetId'],
+          message: 'verified arena-lab state requires a canonical combat-arena preset id',
+        });
+      }
     }
     if (status.animationLabState === 'verified' && status.animationLabEvidence === null) {
       ctx.addIssue({
