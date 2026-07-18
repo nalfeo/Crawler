@@ -693,6 +693,10 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
     '✅ Addressed in abc1234def`: note',
     '✅ Addressed in `abc1234`def`: note',
     '✅ Addressed in ``abc1234def`: note',
+    // Malformed markers: "in <sha>" is required — bare "✅ Addressed:" without SHA must not parse.
+    '✅ Addressed: Maintainer authorization granted via CI recovery dispatch.',
+    '✅ Addressed.',
+    '✅ Addressed',
   ];
   for (const body of rejected) {
     assert.equal(extractAddressedMarkerSha(body), null, body);
@@ -720,6 +724,29 @@ test('shouldResolveThread accepts latest trusted commit URL marker on head linea
     true,
   );
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
+});
+
+test('shouldResolveThread rejects trusted comment with "✅ Addressed:" but no SHA (regression: loop-incident PR #1316)', () => {
+  // A recovery agent posted "✅ Addressed: Maintainer authorization granted via CI recovery dispatch."
+  // — using a colon instead of "in <sha>". The reconciler must NOT resolve such a thread because
+  // extractAddressedMarkerSha requires the literal word "in" followed by a valid hex SHA or commit URL.
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Linked issue #1308 explicitly required a detailed plan comment before any code was written.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed: Maintainer authorization granted via CI recovery dispatch.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'dd71cc987392aa0ed644a1005b55ee16c1a9354c'), false);
 });
 
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
