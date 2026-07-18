@@ -34,9 +34,11 @@ Brief details:
   at ~45°; matches compact-disk brief pattern for held/thrown weapons
 - `anchor: {x:22, y:50}` — shifted to the pistol-grip area (lower-left
   quadrant), consistent with diagonal-held weapons
-- `sensors.anchor.derive: false` — explicitly uses the authored static grip
-  anchor instead of the weapon-default derived-anchor sensor, which computes
-  the anchor from the detected grip region near the bottom-center
+- `sensors.anchor.derive: false` — switches the pass/fail sensor from
+  `anchor-derivable` (which requires a derivable bottom-center grip) to
+  `anchor-opaque` (which only validates an opaque pixel at the brief anchor).
+  The brief anchor serves as a fallback in `pickChosen` when derivation fails;
+  if a valid grip is derived, the derived anchor takes precedence
 - 2 authored variation seeds + `minVariations: 8` for generation diversity
 - Palette: muted dark brown (stock), iron-grey/slate-black (prod, hardware),
   single highlight; no glow, no enchantment
@@ -76,7 +78,9 @@ Verified: `npm run verify:fast` — 1260 tests pass, all guards green.
 
 ### Lessons Learned
 
-- For diagonal weapon briefs, override `orientation`, set a matching static
-  `anchor`, and set `sensors.anchor.derive: false` when the authored grip
-  should be enforced directly (for example, non-centered lower-left pistol
-  grips).
+- For diagonal weapon briefs, override `orientation` and set a matching
+  `anchor`. Use `sensors.anchor.derive: false` to switch the pass/fail sensor
+  from `anchor-derivable` (strict bottom-center grip requirement) to
+  `anchor-opaque` (validates the brief anchor only). Note that `pickChosen`
+  still prefers a derived anchor when derivation succeeds; `derive: false`
+  changes the sensor gate, not the publication priority.
