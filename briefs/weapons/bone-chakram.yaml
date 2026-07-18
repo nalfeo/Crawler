@@ -31,7 +31,7 @@ description: |
 # standard weapon grip anchor {x:32, y:56} places the attach-point at
 # the bottom of the frame — correct for a vertical hilt but wrong for
 # a centered ring that has no grip.
-anchor: { x: 32, y: 40 }
+anchor: { x: 32, y: 40 } # ring center — not grip; see comment above
 sensors:
   weapon:
     orientation: diagonal
