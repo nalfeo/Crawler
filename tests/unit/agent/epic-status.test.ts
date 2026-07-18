@@ -1205,8 +1205,14 @@ describe('Floor 2 equipment epic status', () => {
 
     // A0 is superseded; its requirement is satisfied because A1 (the replacement) is validated.
     // The readiness.false-ready error code should NOT appear for slice:A0.
-    expect(result.errors.some((e) => e.code === 'readiness.false-ready' && e.node_id === 'slice:A0')).toBe(false);
-    expect(result.errors.some((e) => e.code === 'lifecycle.superseded-replacement' && e.node_id === 'slice:A0')).toBe(false);
+    expect(
+      result.errors.some((e) => e.code === 'readiness.false-ready' && e.node_id === 'slice:A0'),
+    ).toBe(false);
+    expect(
+      result.errors.some(
+        (e) => e.code === 'lifecycle.superseded-replacement' && e.node_id === 'slice:A0',
+      ),
+    ).toBe(false);
   });
 
   it('does not require heartbeat_at for a freshly claimed node', () => {
@@ -1221,7 +1227,7 @@ describe('Floor 2 equipment epic status', () => {
     a1.ownership = {
       claimant: 'agent-x',
       session: 'sess-abc',
-      source: 'trusted-issue-comment',
+      source: 'child-issue-comment',
       scope: 'Slice A1 only',
       claimed_at: '2026-07-18T00:00:00.000Z',
       lease_expires_at: '2026-07-19T00:00:00.000Z',

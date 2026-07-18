@@ -324,16 +324,57 @@ const epicStateSchema = z
       .object({
         required_node_status: z.literal('validated'),
         all_required_nodes: z.literal(true),
-        flags: z
-          .tuple([
-            z.object({ name: z.literal('floor2EquipmentRegistry'), default: z.literal(false), validating_nodes: z.array(z.string().regex(/^slice:/)).min(1) }).strict(),
-            z.object({ name: z.literal('floor2EquipmentCatalog'), default: z.literal(false), validating_nodes: z.array(z.string().regex(/^slice:/)).min(1) }).strict(),
-            z.object({ name: z.literal('floor2EquipmentRewards'), default: z.literal(false), validating_nodes: z.array(z.string().regex(/^slice:/)).min(1) }).strict(),
-            z.object({ name: z.literal('floor2EquipmentEconomy'), default: z.literal(false), validating_nodes: z.array(z.string().regex(/^slice:/)).min(1) }).strict(),
-            z.object({ name: z.literal('floor2EquipmentUx'), default: z.literal(false), validating_nodes: z.array(z.string().regex(/^slice:/)).min(1) }).strict(),
-            z.object({ name: z.literal('floor2EquipmentWorld'), default: z.literal(false), validating_nodes: z.array(z.string().regex(/^slice:/)).min(1) }).strict(),
-            z.object({ name: z.literal('floor2EquipmentAiMaintenance'), default: z.literal(false), validating_nodes: z.array(z.string().regex(/^slice:/)).min(1) }).strict(),
-          ]),
+        flags: z.tuple([
+          z
+            .object({
+              name: z.literal('floor2EquipmentRegistry'),
+              default: z.literal(false),
+              validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentCatalog'),
+              default: z.literal(false),
+              validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentRewards'),
+              default: z.literal(false),
+              validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentEconomy'),
+              default: z.literal(false),
+              validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentUx'),
+              default: z.literal(false),
+              validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentWorld'),
+              default: z.literal(false),
+              validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentAiMaintenance'),
+              default: z.literal(false),
+              validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
+            })
+            .strict(),
+        ]),
       })
       .strict(),
     nodes: z.array(nodeSchema),
