@@ -5845,7 +5845,7 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 // was never pushed (compare 404), so the thread remains unresolved.
 // ---------------------------------------------------------------------------
 
-test('stale-marker thread annotates blocker summary with hint to re-post marker when compare 404s', async (t) => {
+test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
   // Simulate the root cause from the PR #1266 loop incident:
   // The recovery agent replied to a review thread with ✅ Addressed in <sha>
   // but that commit was created locally and never pushed.  The compare API
