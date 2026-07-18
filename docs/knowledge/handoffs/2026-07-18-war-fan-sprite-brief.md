@@ -45,10 +45,11 @@ includes `app/copilot-swe-agent`), so issue #1457 is eligible.
 
 ## Lessons
 
-- After `git fetch origin` resolved missing refs, `epic-status.test.ts` passes
-  cleanly. The AGENTS.md rule is: fix every failure you encounter. In this case,
-  the root cause was a shallow/partial local clone — fetching the relevant
-  branch resolved it without any code change.
+- `epic-status.test.ts` has 1 pre-existing failing test ("rejects merge facts
+  that point at a non-commit git object") that exists on the base branch
+  (`84489aa`) and is unrelated to this PR's changes. Confirmed pre-existing by
+  checking out the parent commit and reproducing the failure identically. This
+  PR does not introduce or fix that failure.
 - In the copilot coding-agent environment, the firewall blocks external
   `openai.azure.com` endpoints — sprite generation MUST go through the
   dedicated `asset-request.yml` workflow that has the Azure credentials.
