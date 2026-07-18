@@ -980,7 +980,7 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
 for (const thread of unresolvedThreads.filter(
   (candidate) =>
-    candidate.isOutdated && !shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
+    candidate.isOutdated && !shouldResolveThread(candidate, headSha, reachableMarkerShas),
 )) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
@@ -1010,7 +1010,7 @@ for (const thread of unresolvedThreads.filter(
   process.stdout.write(`${live ? 'posted' : 'would-post'} outdated-marker thread=${thread.id}\n`);
 }
 for (const thread of unresolvedThreads.filter((candidate) =>
-  shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
+  shouldResolveThread(candidate, headSha, reachableMarkerShas),
 )) {
   if (live) {
     await assertExpectedMetadataUnchanged('resolve-thread');

@@ -4260,6 +4260,72 @@ test('reconcile does not post outdated-marker for non-outdated thread with no tr
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+test('reconcile skips outdated-marker and logs no-reply-target when first comment URL does not match discussion pattern', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      if (
+        String(parsed?.query ?? '')
+          .trimStart()
+          .startsWith('mutation')
+      ) {
+        return { body: { data: {} } };
+      }
+      // Thread is outdated but first comment URL is empty — no #discussion_r<id> pattern.
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-no-url',
+            isResolved: false,
+            isOutdated: true,
+            path: 'src/core/systems/some.ts',
+            line: 10,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-no-url',
+                  body: 'This looks odd.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: '', // does not match REVIEW_DISCUSSION_COMMENT_PATTERN
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // Must log the skip reason without attempting to post a reply.
+  assert.match(
+    stdout,
+    /skip outdated-marker thread=thread-outdated-no-url reason=no-reply-target/,
+    'should log skip with reason=no-reply-target when URL does not match discussion pattern',
+  );
+  // Must NOT log would-post or would-resolve for this thread.
+  assert.doesNotMatch(stdout, /would-post outdated-marker thread=thread-outdated-no-url/);
+  assert.doesNotMatch(stdout, /would-resolve thread=thread-outdated-no-url/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
 test('live reconcile resolves only a trusted backtick-wrapped current-head marker', async (t) => {
   const trustedThreadId = 'thread-trusted-backtick';
   const untrustedThreadId = 'thread-untrusted-backtick';
