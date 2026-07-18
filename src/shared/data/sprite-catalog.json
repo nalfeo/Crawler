@@ -3002,5 +3002,18 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:equipment/accessory/lucky-feather",
+    "kind": "sprite",
+    "label": "equipment/accessory/lucky-feather",
+    "description": "Generated sprite from brief: lucky-feather.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "equipment/accessory/lucky-feather",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/equipment-accessory-lucky-feather.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
