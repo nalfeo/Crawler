@@ -30,8 +30,8 @@ Recovered PR #1390's three exact review-thread blockers without changing ember-w
 
 ## What changed
 
-- Updated the `Weapons` section header comment in `ITEM_CATALOG` from `(20)` to `(24)` so the inline count matches the actual catalog and the existing unit-test snapshot.
-- Added a new `ember-wand` entry in `plans/item-icons/weapons.art.yaml` for the PR's weapon art-plan coverage.
+- Removed manual numeric section counts from `ITEM_CATALOG` headers in `items.ts` so comment text cannot drift from catalog growth.
+- Kept the weapon art-plan entries aligned during recovery, including `ember-wand` coverage alongside the existing Floor 2 weapon entries.
 - Clarified the ember-wand projectile comments in `weaponDefs.ts` to state that `projectileSpeed: 0.55` pairs with a smaller heat burst, and that `aoeRadius: 4` is an intentional small splash tighter than fireball's `6`.
 - Initialized a 2🍎 review ledger for this recovery session.
 
