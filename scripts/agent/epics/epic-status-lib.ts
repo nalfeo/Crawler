@@ -1,8 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { z } from 'zod';
+
+// ajv is a transitive dependency available at runtime; load it via createRequire so that
+// ESM module resolution does not require it to be a direct package.json entry.
+const Ajv = createRequire(import.meta.url)('ajv') as typeof import('ajv');
 
 const SHA_PATTERN = /^[0-9a-f]{7,64}$/;
 const SHA40_PATTERN = /^[0-9a-f]{40}$/;
@@ -410,20 +415,78 @@ const epicStateSchema = z
       .object({
         required_node_status: z.literal('validated'),
         all_required_nodes: z.literal(true),
-        flags: z
-          .array(
-            z
-              .object({
-                name: z.string().min(1),
-                default: z.literal(false),
-                validating_nodes: z
-                  .array(z.string().regex(/^slice:/))
-                  .min(1)
-                  .superRefine(uniqueStringItems),
-              })
-              .strict(),
-          )
-          .min(7),
+        flags: z.tuple([
+          z
+            .object({
+              name: z.literal('floor2EquipmentRegistry'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentCatalog'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentRewards'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentEconomy'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentUx'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentWorld'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentAiMaintenance'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+        ]),
       })
       .strict(),
     nodes: z.array(nodeSchema),
@@ -671,7 +734,43 @@ function sameMembers(actual: unknown, expected: ReadonlyArray<string>): boolean 
   );
 }
 
-function validateCommittedSchema(schemaDocument: unknown, result: MutableValidation): void {
+/**
+ * Recursively transform a Draft 2020-12 JSON Schema into an ajv-v6–compatible
+ * (Draft 7) schema so we can apply it to manifest data without upgrading ajv.
+ *
+ * Transformations applied:
+ * - Strip the top-level `$schema` meta-URI (ajv v6 would try to resolve it).
+ * - Rename `$defs` → `definitions` and rewrite `#/$defs/` refs accordingly.
+ * - Replace `prefixItems`+`items:false` (2020-12 tuple syntax) with
+ *   `items`+`additionalItems:false` (Draft 7 tuple syntax).
+ */
+function transformSchemaForAjvV6(obj: unknown, depth = 0): unknown {
+  if (Array.isArray(obj)) return obj.map((v) => transformSchemaForAjvV6(v, depth + 1));
+  if (obj === null || typeof obj !== 'object') return obj;
+  const src = obj as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const k of Object.keys(src)) {
+    if (k === '$schema' && depth === 0) continue; // drop meta-schema URI
+    if (k === '$defs') {
+      result['definitions'] = transformSchemaForAjvV6(src[k], depth + 1);
+    } else if (k === 'prefixItems') {
+      // 2020-12 tuple → Draft 7 tuple
+      result['items'] = transformSchemaForAjvV6(src[k], depth + 1);
+      if (src['items'] === false) result['additionalItems'] = false;
+    } else if (k === 'items' && 'prefixItems' in src) {
+      // Already handled above alongside prefixItems
+    } else {
+      result[k] = transformSchemaForAjvV6(src[k], depth + 1);
+    }
+  }
+  return result;
+}
+
+function validateCommittedSchema(
+  schemaDocument: unknown,
+  input: unknown,
+  result: MutableValidation,
+): void {
   const schema = z
     .object({
       $schema: z.literal('https://json-schema.org/draft/2020-12/schema'),
@@ -878,7 +977,6 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
       code: 'schema.contract-parity',
       message: 'Committed JSON Schema $defs.stackedWork drifted from the Zod contract',
     });
-    return;
   }
   const stackedWorkProps =
     stackedWork && isRecord(stackedWork.properties) ? stackedWork.properties : null;
@@ -905,6 +1003,32 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
     result.errors.push({
       code: 'schema.contract-parity',
       message: 'Committed JSON Schema stackedWork references drifted from the Zod contract',
+    });
+  }
+
+  // Apply the committed JSON Schema to the manifest data so that any divergence
+  // between the schema document and the Zod runtime validator is caught immediately.
+  try {
+    const ajvCompatSchema = transformSchemaForAjvV6(schemaDocument);
+    const patched = JSON.parse(
+      JSON.stringify(ajvCompatSchema).replace(/#\/\$defs\//g, '#/definitions/'),
+    ) as object;
+    const ajv = new Ajv({ unknownFormats: 'ignore', schemaId: 'auto', allErrors: true });
+    const validate = ajv.compile(patched);
+    if (!validate(input)) {
+      const messages = (validate.errors ?? [])
+        .slice(0, 5)
+        .map((error) => `${error.dataPath || '.'}: ${error.message}`)
+        .join('; ');
+      result.errors.push({
+        code: 'schema.manifest-invalid',
+        message: `Manifest rejected by committed JSON Schema: ${messages}`,
+      });
+    }
+  } catch (err) {
+    result.errors.push({
+      code: 'schema.manifest-validation-error',
+      message: `Failed to apply JSON Schema to manifest: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
 }
@@ -1448,15 +1572,18 @@ function validateNodeLifecycle(
 
   const owns = node.ownership;
   if (ACTIVE_STATUSES.has(node.status)) {
-    const requiredOwnership = [
+    // heartbeat_at is required only after claiming (i.e. in_progress, pr_open), not for the
+    // initial claimed state itself where the heartbeat has not yet been posted.
+    const claimFields = [
       owns.claimant,
       owns.session,
       owns.scope,
       owns.claimed_at,
       owns.lease_expires_at,
-      owns.heartbeat_at,
       owns.base_commit,
     ];
+    const requiredOwnership =
+      node.status === 'claimed' ? claimFields : [...claimFields, owns.heartbeat_at];
     if (
       owns.source === 'none' ||
       requiredOwnership.some((value) => value === null) ||
@@ -1666,7 +1793,7 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
   }
 
   if (options.schemaDocument !== undefined) {
-    validateCommittedSchema(options.schemaDocument, result);
+    validateCommittedSchema(options.schemaDocument, input, result);
   }
 
   const planMarkdown =
@@ -1692,6 +1819,10 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
     });
   }
 
+  const contractValid = !result.errors.some(
+    (e) => e.code === 'plan.contract-drift' || e.code === 'plan.contract-invalid',
+  );
+
   const nodesById = new Map(state.nodes.map((node) => [node.node_id, node]));
   validateDag(state, nodesById, result);
   const now = options.now ?? new Date();
@@ -1711,14 +1842,22 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
       }
     }
   }
+  // When the contract hash is invalid, suppress ready/proposal transitions: a changed
+  // PLAN must go through the full plan-change protocol before nodes can advance.
+  if (!contractValid) {
+    result.readyQueue.length = 0;
+  }
   result.readyQueue.sort();
   const allRequiredValidated =
     result.errors.length === 0 &&
     state.nodes
       .filter((node) => node.release_requirement === 'required')
-      .every((node) => node.status === 'validated');
+      .every((node) => isDependencySatisfied(node, nodesById));
   const allFlagNodesValidated = state.release.flags.every((flag) =>
-    flag.validating_nodes.every((nodeId) => nodesById.get(nodeId)?.status === 'validated'),
+    flag.validating_nodes.every((nodeId) => {
+      const n = nodesById.get(nodeId);
+      return n !== undefined && isDependencySatisfied(n, nodesById);
+    }),
   );
   const releaseReady = allRequiredValidated && allFlagNodesValidated;
   return {
@@ -2258,24 +2397,63 @@ export function auditGithub(
       const epicNode = nodesById.get(nodeId);
       if (epicNode && ACTIVE_STATUSES.has(epicNode.status)) {
         const owns = epicNode.ownership;
-        const drifts: string[] = [];
-        if (liveClaim.claimant !== owns.claimant)
-          drifts.push(`claimant: ${liveClaim.claimant} vs ${owns.claimant ?? 'none'}`);
-        if (liveClaim.session !== owns.session)
-          drifts.push(`session: ${liveClaim.session} vs ${owns.session ?? 'none'}`);
-        if (liveClaim.expiresAt !== owns.lease_expires_at)
-          drifts.push(`expires_at: ${liveClaim.expiresAt} vs ${owns.lease_expires_at ?? 'none'}`);
-        if (liveClaim.scope !== owns.scope)
-          drifts.push(`scope: ${liveClaim.scope} vs ${owns.scope ?? 'none'}`);
-        if (liveClaim.baseCommit !== owns.base_commit)
-          drifts.push(`base_commit: ${liveClaim.baseCommit} vs ${owns.base_commit ?? 'none'}`);
-        if (liveClaim.claimedAt !== owns.claimed_at)
-          drifts.push(`claimed_at: ${liveClaim.claimedAt} vs ${owns.claimed_at ?? 'none'}`);
-        if (drifts.length > 0) {
+        const ownerIdentityDrifts: string[] = [];
+        if (liveClaim.claimant !== owns.claimant) {
+          ownerIdentityDrifts.push(`claimant: ${liveClaim.claimant} vs ${owns.claimant ?? 'none'}`);
+        }
+        if (liveClaim.session !== owns.session) {
+          ownerIdentityDrifts.push(`session: ${liveClaim.session} vs ${owns.session ?? 'none'}`);
+        }
+        if (ownerIdentityDrifts.length > 0) {
           operatorActions.push(
-            `Live claim on ${nodeId} differs from cached ownership (${drifts.join('; ')}). ` +
+            `Live claim on ${nodeId} differs from cached ownership (${ownerIdentityDrifts.join('; ')}). ` +
               `Producer must verify and reconcile ${nodeId} ownership.`,
           );
+        } else {
+          // Same owner/session — reconcile authoritative ownership fields that may have
+          // advanced (e.g. a heartbeat post with a newer expiry, scope, or base commit).
+          const nodeIdx = state.nodes.indexOf(epicNode);
+          if (liveClaim.expiresAt !== owns.lease_expires_at) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/lease_expires_at`,
+              value: liveClaim.expiresAt,
+              reason: `Live CLAIMED comment has newer expiry for ${nodeId}`,
+            });
+          }
+          if (liveClaim.scope !== owns.scope) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/scope`,
+              value: liveClaim.scope,
+              reason: `Live CLAIMED comment has updated scope for ${nodeId}`,
+            });
+          }
+          if (liveClaim.baseCommit !== owns.base_commit) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/base_commit`,
+              value: liveClaim.baseCommit,
+              reason: `Live CLAIMED comment has updated base_commit for ${nodeId}`,
+            });
+          }
+          if (liveClaim.claimedAt !== owns.claimed_at) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/claimed_at`,
+              value: liveClaim.claimedAt,
+              reason: `Live CLAIMED comment has updated claimed_at for ${nodeId}`,
+            });
+          }
+          // postedAt from the live claim is the most recent heartbeat timestamp.
+          if (liveClaim.postedAt !== owns.heartbeat_at) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/heartbeat_at`,
+              value: liveClaim.postedAt,
+              reason: `Live CLAIMED comment heartbeat for ${nodeId}`,
+            });
+          }
         }
       } else if (epicNode && !ACTIVE_STATUSES.has(epicNode.status)) {
         operatorActions.push(

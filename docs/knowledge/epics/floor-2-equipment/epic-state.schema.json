@@ -244,9 +244,53 @@
         "flags": {
           "type": "array",
           "minItems": 7,
-          "items": {
-            "$ref": "#/$defs/releaseFlag"
-          }
+          "maxItems": 7,
+          "uniqueItems": true,
+          "prefixItems": [
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentRegistry" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentCatalog" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentRewards" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentEconomy" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentUx" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentWorld" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentAiMaintenance" } } }
+              ]
+            }
+          ],
+          "items": false
         }
       }
     },
@@ -454,43 +498,6 @@
         },
         "merged_at": {
           "$ref": "#/$defs/nullableDateTime"
-        }
-      }
-    },
-    "stackBase": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["node_id", "pr"],
-      "properties": {
-        "node_id": {
-          "type": "string",
-          "pattern": "^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$"
-        },
-        "pr": {
-          "$ref": "#/$defs/prRef"
-        }
-      }
-    },
-    "stackedWork": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["session", "issue", "pr", "stack_base", "main_rebase_required"],
-      "properties": {
-        "session": {
-          "type": "string",
-          "minLength": 1
-        },
-        "issue": {
-          "$ref": "#/$defs/issueRef"
-        },
-        "pr": {
-          "$ref": "#/$defs/nullablePrRef"
-        },
-        "stack_base": {
-          "$ref": "#/$defs/stackBase"
-        },
-        "main_rebase_required": {
-          "type": "boolean"
         }
       }
     },
@@ -726,21 +733,10 @@
     "stackedWork": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "mode",
-        "issue",
-        "session",
-        "branch",
-        "pr",
-        "stack_bases",
-        "drift_reason"
-      ],
+      "required": ["mode", "issue", "session", "branch", "pr", "stack_bases", "drift_reason"],
       "properties": {
         "mode": {
-          "enum": [
-            "stacked_in_progress",
-            "stacked_pr_open"
-          ]
+          "enum": ["stacked_in_progress", "stacked_pr_open"]
         },
         "issue": {
           "$ref": "#/$defs/issueRef"
@@ -772,10 +768,7 @@
           }
         },
         "drift_reason": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       }
     },

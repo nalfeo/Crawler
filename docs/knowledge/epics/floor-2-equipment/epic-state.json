@@ -28,7 +28,14 @@
     "bootstrap_node": "slice:A0",
     "default_lease_hours": 24,
     "maximum_without_heartbeat_hours": 48,
-    "protocol_headings": ["CLAIMED", "STACKED-WORK", "BLOCKED", "UNBLOCKED", "SCOPE-CHANGE-REQUEST", "HANDOFF"]
+    "protocol_headings": [
+      "CLAIMED",
+      "STACKED-WORK",
+      "BLOCKED",
+      "UNBLOCKED",
+      "SCOPE-CHANGE-REQUEST",
+      "HANDOFF"
+    ]
   },
   "github": {
     "repository": "nalfeo/Crawler",
@@ -141,8 +148,8 @@
         {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
-          "sha256": "76f6cf0816360cc4286fa89a1e810a938b8f0cc7e1a8f0dc3c8029cc4e251183",
-          "commit": "065591b1717588fd7acdb8e28936946e4a7e63e6",
+          "sha256": "fb5415de4d9d32769f767454bc9e36c7415a88432591e3403bbdeff5cf2ad1fc",
+          "commit": "8fbea1c701e5d536891489c7b8bf0f1715df0ca1",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         }
       ],

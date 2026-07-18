@@ -1411,4 +1411,158 @@ describe('speculative stacked-work metadata', () => {
       ),
     ).toBe(true);
   });
+
+  it('suppresses ready_queue when plan contract hash has drifted', () => {
+    const state = cloneState();
+    validateA0(state);
+    // A1 would normally be ready (A0 validated satisfies its dependency).
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    if (a1) {
+      a1.github.issue = {
+        number: 9002,
+        url: 'https://github.com/nalfeo/Crawler/issues/9002',
+      };
+    }
+    // Corrupt the contract hash to trigger plan.contract-drift.
+    state.plan.contract_sha256 = '0'.repeat(64);
+
+    const result = validate(state);
+
+    expect(result.errors.map((e) => e.code)).toContain('plan.contract-drift');
+    expect(result.ready_queue).toEqual([]);
+  });
+
+  it('counts a superseded required node as satisfied when its replacement is validated', () => {
+    const state = cloneState();
+    const a0 = state.nodes.find((node) => node.node_id === 'slice:A0');
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    if (!a0 || !a1) return;
+    // Mark A0 as superseded pointing to A1 as its replacement.
+    a0.status = 'superseded';
+    a0.superseded_by = 'slice:A1';
+    a0.ownership = {
+      claimant: null,
+      session: null,
+      source: 'none',
+      scope: null,
+      claimed_at: null,
+      lease_expires_at: null,
+      heartbeat_at: null,
+      base_commit: null,
+    };
+    // Mark A1 as validated so it satisfies the superseded A0.
+    a1.status = 'validated';
+    a1.dependencies = []; // clear deps so it is self-sufficient for this test
+    a1.release_requirement = 'required';
+    a1.ownership = {
+      claimant: null,
+      session: null,
+      source: 'none',
+      scope: null,
+      claimed_at: null,
+      lease_expires_at: null,
+      heartbeat_at: null,
+      base_commit: null,
+    };
+    a1.merge = { commit: TEST_MERGE_COMMIT, merged_at: '2026-07-17T17:50:00.000Z' };
+    a1.evidence = a0.evidence.length > 0 ? structuredClone(a0.evidence) : [];
+    a1.github.pr = {
+      number: 9999,
+      url: 'https://github.com/nalfeo/Crawler/pull/9999',
+      head_sha: FULL_COMMIT,
+    };
+
+    const result = validate(state);
+
+    // A0 is superseded; its requirement is satisfied because A1 (the replacement) is validated.
+    // The readiness.false-ready error code should NOT appear for slice:A0.
+    expect(
+      result.errors.some((e) => e.code === 'readiness.false-ready' && e.node_id === 'slice:A0'),
+    ).toBe(false);
+    expect(
+      result.errors.some(
+        (e) => e.code === 'lifecycle.superseded-replacement' && e.node_id === 'slice:A0',
+      ),
+    ).toBe(false);
+  });
+
+  it('does not require heartbeat_at for a freshly claimed node', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    if (!a1) return;
+    a1.status = 'claimed';
+    a1.github.issue = {
+      number: 9003,
+      url: 'https://github.com/nalfeo/Crawler/issues/9003',
+    };
+    a1.ownership = {
+      claimant: 'agent-x',
+      session: 'sess-abc',
+      source: 'child-issue-comment',
+      scope: 'Slice A1 only',
+      claimed_at: '2026-07-18T00:00:00.000Z',
+      lease_expires_at: '2026-07-19T00:00:00.000Z',
+      heartbeat_at: null, // no heartbeat yet — freshly claimed
+      base_commit: FULL_COMMIT,
+    };
+
+    const result = validate(state);
+
+    expect(result.errors.some((e) => e.code === 'ownership.incomplete')).toBe(false);
+  });
+
+  it('proposes ownership patch when same owner/session posts a refreshed heartbeat expiry', () => {
+    const state = cloneState();
+    state.nodes[0]!.status = 'in_progress';
+    state.nodes[0]!.github.pr = null;
+    const STALE_EXPIRY = '2026-07-18T10:00:00.000Z';
+    const NEW_EXPIRY = '2026-07-19T10:00:00.000Z';
+    state.nodes[0]!.ownership.claimant = 'agent-y';
+    state.nodes[0]!.ownership.session = 'sess-xyz';
+    state.nodes[0]!.ownership.lease_expires_at = STALE_EXPIRY;
+    state.nodes[0]!.ownership.heartbeat_at = '2026-07-17T12:00:00.000Z';
+    const makeRefreshedClaim = (): string =>
+      [
+        'CLAIMED',
+        'node: slice:A0',
+        'claimant: agent-y',
+        'session: sess-xyz',
+        `expires_at: ${NEW_EXPIRY}`,
+        'claimed_at: 2026-07-17T10:00:00.000Z',
+        `base_commit: ${HANDOFF_COMMIT}`,
+        'scope: Slice A0 control plane only',
+      ].join('\n');
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: makeRefreshedClaim(),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-200',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors).toEqual([]);
+    // Should propose a patch updating the cached lease_expires_at to the new value.
+    const expiryPatch = audit.proposal.repo_patch.find(
+      (p) => p.path.endsWith('/ownership/lease_expires_at') && p.value === NEW_EXPIRY,
+    );
+    expect(expiryPatch).toBeDefined();
+  });
 });
