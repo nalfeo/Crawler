@@ -234,6 +234,10 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
       targetEid: inst.committedTargetEid,
     });
     inst.resolvedCasts += 1;
+    // Enqueue a durable burst event so the VFX renderer can fire the resolution
+    // burst even if the caster dies later in the same simulation step (which
+    // would remove byEntity[casterEid] before PhaserBridge.sync runs).
+    world.mobAbilities.pendingBursts.push(geometry);
   }
   // Re-arm: cooldown is anchored AFTER resolution.
   inst.phase = 'cooldown';

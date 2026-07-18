@@ -29,6 +29,7 @@ import {
   disableMobAbilityEncounter,
   createVerdigrisGlamourDefinition,
   mobAbilitySourceId,
+  applyStatusEffect,
   VERDIGRIS_GLAMOUR_ABILITY_ID,
   type MobAbilityRuntimeDefinition,
 } from '../../../src/core/index.js';
@@ -604,5 +605,93 @@ describe('Verdigris Glamour — canonical simulation pipeline', () => {
     // re-application masks the expiry.
     stepArena(245);
     expect(tarnishedCount()).toBe(0);
+  });
+});
+
+
+describe('Verdigris Glamour — pendingBursts durable queue', () => {
+  it('populates pendingBursts at resolution so burst survives caster teardown', () => {
+    // Regression: the old approach read burst count from runtime.byEntity, which
+    // clearMobAbility empties before PhaserBridge.sync; if the caster died in the
+    // same step as the resolution, the burst was lost. Now resolveCast pushes
+    // geometry to pendingBursts so the queue is non-empty regardless of caster
+    // liveness when the VFX renderer runs.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 40, 40);
+    world.stores.health.current[player] = 100_000;
+    world.stores.health.max[player] = 100_000;
+    const queen = spawnBehaviorEnemy(world, 40, 10, 200, AI_TYPE.CHASE, 0.17, 60, 0);
+    setEnemyAppearanceKey(world, queen, QUEEN_KEY);
+    setMobAbilitiesEnabled(world, true);
+    registerMobAbility(world, queen, createVerdigrisGlamourDefinition());
+    activateMobAbilityEncounter(world);
+    const inputState = createInputState();
+
+    // Advance to just before the first resolution frame.
+    for (let i = 0; i < FIRST_RESOLUTION_FRAME - 1; i += 1) {
+      world.frameCount += 1;
+      world.elapsedMs += DELTA;
+      runCoreSimulationStep(world, inputState, {
+        preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
+      });
+    }
+    expect(world.mobAbilities.pendingBursts).toHaveLength(0);
+
+    // Run the resolution frame — pendingBursts is populated by resolveCast.
+    world.frameCount += 1;
+    world.elapsedMs += DELTA;
+    runCoreSimulationStep(world, inputState, {
+      preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
+    });
+    expect(world.mobAbilities.pendingBursts).toHaveLength(1);
+    expect(world.mobAbilities.pendingBursts[0]).toMatchObject({ kind: 'circle' });
+
+    // Simulate caster teardown (byEntity cleared) — pendingBursts is unaffected.
+    clearMobAbility(world, queen);
+    expect(world.mobAbilities.byEntity.has(queen)).toBe(false);
+    expect(world.mobAbilities.pendingBursts).toHaveLength(1);
+  });
+});
+
+describe('weaponSystem — zero attackSpeed multiplier', () => {
+  it('a 0× attackSpeed status prevents weapon firing (cooldown becomes Infinity)', () => {
+    // Regression: the old `attackSpeedMult > 0 && attackSpeedMult !== 1` guard
+    // skipped the zero branch (0 > 0 is false), so the weapon still fired at
+    // baseline rate even with a zero-multiplier debuff. Now attackSpeedMult <= 0
+    // sets the effective cooldown to Infinity so no projectile is ever fired.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 40, 40);
+    world.stores.health.current[player] = 100_000;
+    world.stores.health.max[player] = 100_000;
+    // Spawn an enemy in auto-aim range (COMBAT_RADIUS_FT = 150) but far enough
+    // away that the collisionSystem never generates a damage event for them.
+    spawnBehaviorEnemy(world, 80, 40, 200, AI_TYPE.CHASE, 0.17, 60, 0);
+
+    // Apply a 0× attackSpeed status effect (persistent, never expires).
+    applyStatusEffect(world, player, {
+     stat: 'attackSpeed',
+     op: 'multiply',
+     value: 0,
+     durationMs: null,
+     stackRule: { mode: 'replace' },
+     sourceId: 'test:zero-attack-speed',
+    });
+
+    const inputState = createInputState();
+    // Snapshot events before the loop; the weapon-system-only pipeline runs
+    // no collision/damage ticks, so all new events must come from weaponSystem.
+    const eventsBefore = world.combatEvents.length;
+
+    // Run 120 frames (~2s) — well above any normal weapon cooldown.
+    for (let i = 0; i < 120; i += 1) {
+     world.frameCount += 1;
+     world.elapsedMs += DELTA;
+     runCoreSimulationStep(world, inputState, {
+       preSystems: [weaponSystem],
+     });
+    }
+
+    // No combat events should have been emitted; the weapon never fired.
+    expect(world.combatEvents.length).toBe(eventsBefore);
   });
 });

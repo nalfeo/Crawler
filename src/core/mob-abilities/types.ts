@@ -146,6 +146,13 @@ export interface MobAbilityRuntime {
   /** Committed public cue state for the renderer and AI avoidance, rebuilt each tick. */
   readonly cues: MobAbilityCue[];
   /**
+   * Durable pending-burst queue populated by the executor when a cast resolves.
+   * The VFX renderer drains this each frame to fire the resolution burst even if
+   * the caster died in the same simulation step that called `clearMobAbility`
+   * (which would remove the caster from `byEntity` before `PhaserBridge.sync`).
+   */
+  readonly pendingBursts: Array<MobAbilityGeometry>;
+  /**
    * Per-EID generation token, set on each `registerMobAbility` and cleared on
    * `clearMobAbility`. Compared against `MobAbilityInstanceState.registrationToken`
    * in `isCasterValid` to catch same-archetype EID recycling within a tick.
@@ -162,6 +169,7 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
     encounterActive: false,
     byEntity: new Map(),
     cues: [],
+    pendingBursts: [],
     registrationTokens: new Map(),
     nextToken: 0,
   };

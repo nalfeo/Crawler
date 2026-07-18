@@ -198,7 +198,9 @@ flowchart LR
 
 ```
 preSystems: statSystem → floor1PlayerStatSystem
-            → weaponSystem → enemyAISystem → floor1EnemyDirectorSystem
+            → weaponSystem → enemyAISystem → statusEffectSystem
+            → mobAbilitySystem (default-off gate; enabled by combat-arena lab / future production activation)
+            → floor1EnemyDirectorSystem
 postSystems: levelSystem → skillSystem → abilitySystem → floorObjectiveSystem → questSystem
 ```
 
@@ -236,6 +238,7 @@ postSystems: levelSystem → skillSystem → abilitySystem → floorObjectiveSys
 | `statSystem`                | ✅     | Per-frame EffectiveStats recompute (base + points + equipment)       | [Progression](systems/05-progression.md)                                         |
 | `equipmentSystem`           | ✅     | Slot equip/unequip; bonuses folded via `effective-stats.ts`          | [Progression](systems/05-progression.md)                                         |
 | `questSystem`               | ✅     | Data-driven quest-log eval + feature unlocks (run via `postSystems`) | [ADR 0011](knowledge/adr/0011-data-driven-quest-system.md)                       |
+| `mobAbilitySystem`          | ✅     | Generic mob-ability executor (Verdigris Glamour); default-off gate   | [ADR 0064](knowledge/adr/0064-queen-mab-verdigris-glamour-arena-slice.md)        |
 
 ### Game systems (src/game/)
 

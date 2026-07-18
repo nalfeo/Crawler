@@ -210,8 +210,12 @@ function getEffectiveCooldownMs(world: GameWorld, player: number, baseCooldownMs
   }
   // Fold in the `attackSpeed` status channel (e.g. Queen Mab's Tarnished 0.75x).
   // A multiplier < 1 means "attacks slower", so it LENGTHENS the cooldown.
+  // A zero or negative multiplier represents a "cannot attack" state; treat it
+  // as Infinity so no weapon fires while the effect is active.
   const attackSpeedMult = computeEffectiveValue(1, getStatusEffects(world, player), 'attackSpeed');
-  if (attackSpeedMult > 0 && attackSpeedMult !== 1) {
+  if (attackSpeedMult <= 0) {
+    cooldownMs = Infinity;
+  } else if (attackSpeedMult !== 1) {
     cooldownMs /= attackSpeedMult;
   }
   return cooldownMs;

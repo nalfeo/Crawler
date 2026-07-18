@@ -59,9 +59,12 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   const telegraphGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const tarnishGfx = new Map<number, Phaser.GameObjects.Graphics>();
   const tarnishLastPos = new Map<number, { x: number; y: number }>();
-  const lastResolved = new Map<number, number>();
   const lastGeom = new Map<number, { x: number; y: number; r: number }>();
   const castStartSeen = new Set<number>();
+  /** Transient circles created by spawnRing/spawnBurst/spawnCastStart. Cleaned up in destroy(). */
+  const transientCircles = new Set<Phaser.GameObjects.Arc>();
+  /** Tweens driving transient circles, keyed by their target circle. */
+  const transientTweens = new Map<Phaser.GameObjects.Arc, Phaser.Tweens.Tween>();
 
   function ignoreUi(obj: Phaser.GameObjects.GameObject & { setDepth(d: number): unknown }): void {
     (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(obj);
@@ -84,14 +87,20 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
     ring.setDepth(depth);
     ring.setBlendMode('ADD');
     ignoreUi(ring);
-    scene.tweens.add({
+    transientCircles.add(ring);
+    const tween = scene.tweens.add({
       targets: ring,
       radius: toR,
       alpha: { from: 1, to: 0 },
       duration: lifetimeMs,
       ease: 'Cubic.easeOut',
-      onComplete: () => ring.destroy(),
+      onComplete: () => {
+        transientCircles.delete(ring);
+        transientTweens.delete(ring);
+        ring.destroy();
+      },
     });
+    transientTweens.set(ring, tween);
   }
 
   /** Gratuitous verdigris/bronze sparks flying outward from the detonation. */
@@ -125,7 +134,8 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       spark.setDepth(BURST_DEPTH);
       spark.setBlendMode('ADD');
       ignoreUi(spark);
-      scene.tweens.add({
+      transientCircles.add(spark);
+      const tween = scene.tweens.add({
         targets: spark,
         x: x + Math.cos(angle) * dist,
         y: y + Math.sin(angle) * dist,
@@ -133,8 +143,13 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         scale: { from: 1, to: 0.2 },
         duration: BURST_LIFETIME_MS * (0.7 + rand() * 0.4),
         ease: 'Quad.easeOut',
-        onComplete: () => spark.destroy(),
+        onComplete: () => {
+          transientCircles.delete(spark);
+          transientTweens.delete(spark);
+          spark.destroy();
+        },
       });
+      transientTweens.set(spark, tween);
     }
   }
 
@@ -227,14 +242,18 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
       drawTelegraph(gfx, cx, cy, radiusPx, cue.telegraphProgress);
     }
 
-    // ── Resolution bursts (fire once per resolved cast) ────────────────────
-    for (const [eid, inst] of runtime.byEntity) {
-      const prev = lastResolved.get(eid) ?? 0;
-      if (inst.resolvedCasts > prev) {
-        const geom = lastGeom.get(eid);
-        if (geom) spawnBurst(geom.x, geom.y, geom.r);
+    // ── Resolution bursts (drain the durable pending-burst queue) ─────────
+    // The core runtime pushes committed geometry here when a cast resolves, so
+    // bursts survive even if the caster is cleared (killed/despawned) later in
+    // the same simulation step before PhaserBridge.sync runs.
+    while (runtime.pendingBursts.length > 0) {
+      const geom = runtime.pendingBursts.shift()!;
+      if (geom.kind === 'circle') {
+        const cx = ftToPx(geom.x);
+        const cy = ftToPx(geom.y);
+        const r = ftToPx(geom.radiusFt);
+        spawnBurst(cx, cy, r);
       }
-      lastResolved.set(eid, inst.resolvedCasts);
     }
 
     // ── Retire telegraph graphics whose cue has ended ──────────────────────
@@ -245,10 +264,9 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
         castStartSeen.delete(eid);
       }
     }
-    // Drop stale geometry/resolution bookkeeping for gone casters.
-    for (const eid of [...lastResolved.keys()]) {
+    // Drop stale geometry bookkeeping for gone casters.
+    for (const eid of [...lastGeom.keys()]) {
       if (!runtime.byEntity.has(eid)) {
-        lastResolved.delete(eid);
         lastGeom.delete(eid);
       }
     }
@@ -296,12 +314,19 @@ export function createMobAbilityVfx(scene: Phaser.Scene): {
   }
 
   function destroy(): void {
+    // Stop and destroy all transient tween targets (rings, sparks) before
+    // they complete naturally so scene resets and shutdown fully release them.
+    for (const [circle, tween] of transientTweens) {
+      tween.stop();
+      circle.destroy();
+    }
+    transientTweens.clear();
+    transientCircles.clear();
     for (const gfx of telegraphGfx.values()) gfx.destroy();
     telegraphGfx.clear();
     for (const gfx of tarnishGfx.values()) gfx.destroy();
     tarnishGfx.clear();
     tarnishLastPos.clear();
-    lastResolved.clear();
     lastGeom.clear();
     castStartSeen.clear();
   }

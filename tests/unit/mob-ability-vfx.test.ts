@@ -46,7 +46,7 @@ function createSceneStub() {
     tweens: {
       add: vi.fn((config: { onComplete?: () => void }) => {
         config.onComplete?.();
-        return { remove: vi.fn() };
+        return { stop: vi.fn(), remove: vi.fn() };
       }),
     },
     cameras: { getCamera: vi.fn(() => null) },
@@ -129,7 +129,7 @@ describe('MobAbilityVfx', () => {
     expect(tarnishGfx.strokeCircle).toHaveBeenCalledWith(ftToPx(30), ftToPx(25), ftToPx(1.4));
   });
 
-  it('fires a resolution burst when resolvedCasts increments', () => {
+  it('fires a resolution burst when a geometry is enqueued in pendingBursts', () => {
     const { scene, circles } = createSceneStub();
     const world = createTestWorld();
     const inst = { ...mockInstance(), resolvedCasts: 0 };
@@ -149,9 +149,11 @@ describe('MobAbilityVfx', () => {
 
     const circlesBeforeBurst = circles.length;
 
-    // Simulate resolution: cues clear, resolvedCasts increments.
+    // Simulate resolution: runtime pushes committed geometry to pendingBursts
+    // (instead of the old resolvedCasts polling which broke when byEntity was
+    // cleared before PhaserBridge.sync ran).
     world.mobAbilities.cues.length = 0;
-    (inst as { resolvedCasts: number }).resolvedCasts = 1;
+    world.mobAbilities.pendingBursts.push({ kind: 'circle', x: 40, y: 40, radiusFt: 12 });
     vfx.update(world);
 
     // Resolution burst emits rings (circles/tweened objects).
