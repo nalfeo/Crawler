@@ -80,31 +80,18 @@ function main(): void {
       proposal = mergeProposal(proposal, audit.proposal);
     }
   }
-  const stackedWork =
-    offline.state?.nodes
-      .filter((node) => node.stacked_work)
-      .map((node) => ({
-        node_id: node.node_id,
-        lifecycle_status: node.status,
-        stacked_state: node.stacked_work!.state,
-        branch: node.stacked_work!.dependent.branch,
-        dependency_head: node.stacked_work!.last_resynced_dependency_head_sha,
-        rebase_to_main_pending: node.stacked_work!.rebase_to_main.pending,
-      })) ?? [];
 
-  const releaseReady = offline.release_ready && errors.length === 0;
   const payload = {
     epic_id: options.epicId,
     valid: errors.length === 0,
-    release_ready: releaseReady,
+    release_ready: offline.release_ready,
     ready_queue: offline.ready_queue,
-    stacked_work: stackedWork,
     blockers: offline.blockers,
     errors,
     warnings,
     reconciliation: options.reconcile ? proposal : undefined,
     materialization_plan:
-      options.materializationPlan && offline.state && offline.errors.length === 0
+      options.materializationPlan && offline.state
         ? buildMaterializationPlan(offline.state)
         : undefined,
     writes_performed: false,
@@ -116,18 +103,8 @@ function main(): void {
     const lines = [
       `Epic: ${options.epicId}`,
       `Offline schema/DAG: ${offline.errors.length === 0 ? 'valid' : 'invalid'}`,
-      `Release ready: ${releaseReady ? 'yes' : 'no'}`,
+      `Release ready: ${offline.release_ready ? 'yes' : 'no'}`,
       `Ready queue: ${offline.ready_queue.length > 0 ? offline.ready_queue.join(', ') : '(empty)'}`,
-      `Stacked work: ${
-        stackedWork.length > 0
-          ? stackedWork
-              .map(
-                (work) =>
-                  `${work.node_id}=${work.stacked_state} (lifecycle ${work.lifecycle_status}, ${work.branch})`,
-              )
-              .join(', ')
-          : '(none)'
-      }`,
       ...renderDiagnostics('Errors', errors),
       ...renderDiagnostics('Warnings', warnings),
       ...renderDiagnostics('Blockers', offline.blockers),
