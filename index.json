@@ -1,5 +1,16 @@
 [
   {
+    "commit": "28467a894981011ee76f403faf91543182839087",
+    "commitDate": "2026-07-18T16:06:11Z",
+    "commitSubject": "feat(sprites): add powder-keg weapon brief and art plan entry (#1413)",
+    "capturedAt": "2026-07-18T17:36:38.175Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29652063366",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/28467a894981011ee76f403faf91543182839087.json"
+  },
+  {
     "commit": "5184fe13ba13cf7c710862af0f9123474ae64151",
     "commitDate": "2026-07-18T16:06:04Z",
     "commitSubject": "feat(floor2-equipment): register thorn-whip weapon and author generation brief (#1401)",
