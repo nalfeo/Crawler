@@ -6188,7 +6188,7 @@ test('transient compare failure does not produce a stale-marker hint (generic bl
 });
 
 test('prior-reply thread includes hint in blocker summary when last trusted comment has no marker', async (t) => {
-  // Simulate the root cause from the PR #1265 loop incident:
+  // Simulate the root cause from the PR #1623 loop incident:
   // The recovery agent replied to a review thread with a non-marker comment
   // ("Blocked outside this branch") because the concern required an external
   // action (e.g. posting a plan comment to a linked issue).  On subsequent
