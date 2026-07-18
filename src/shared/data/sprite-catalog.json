@@ -1984,6 +1984,19 @@
     "row": 0
   },
   {
+    "id": "generated:shadow-boots-var-0",
+    "kind": "sprite",
+    "label": "shadow-boots-var-0",
+    "description": "Generated sprite from brief: shadow-boots.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "shadow-boots-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/shadow-boots-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:shadow-lichen-v1-var-12",
     "kind": "sprite",
     "label": "shadow-lichen-v1-var-12",
