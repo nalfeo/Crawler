@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ISSUE_INTAKE_BODY, issueIntakeEligibility, runIssueIntake } from './issue-intake-lib.mjs';
+import {
+  buildIssueActorIds,
+  ISSUE_INTAKE_BODY,
+  issueIntakeEligibility,
+  runIssueIntake,
+} from './issue-intake-lib.mjs';
 
 const issue = {
   node_id: 'ISSUE_1067',
@@ -202,4 +207,25 @@ test('deletes the kickoff comment when assignment does not persist', async () =>
   assert.equal(requestCalls[0].method, 'POST');
   assert.equal(requestCalls[1].method, 'DELETE');
   assert.ok(requestCalls[1].path.includes('/12345'));
+});
+
+test('buildIssueActorIds preserves existing Copilot assignee ids when includeCopilot=true', () => {
+  const actorIds = buildIssueActorIds({
+    assignees: [
+      { id: 'USER_NALFEO', login: 'nalfeo' },
+      { id: 'BOT_LEGACY_COPILOT', login: 'Copilot' },
+    ],
+    copilotActorId: 'BOT_COPILOT_SWE_AGENT',
+    includeCopilot: true,
+  });
+  assert.deepEqual(actorIds, ['USER_NALFEO', 'BOT_LEGACY_COPILOT']);
+});
+
+test('buildIssueActorIds adds discovered Copilot actor when none is currently assigned', () => {
+  const actorIds = buildIssueActorIds({
+    assignees: [{ id: 'USER_NALFEO', login: 'nalfeo' }],
+    copilotActorId: 'BOT_COPILOT_SWE_AGENT',
+    includeCopilot: true,
+  });
+  assert.deepEqual(actorIds, ['USER_NALFEO', 'BOT_COPILOT_SWE_AGENT']);
 });

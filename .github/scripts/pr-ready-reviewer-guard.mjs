@@ -21,6 +21,8 @@ const READY_FOR_REVIEW_MUTATION = `
 
 export const COPILOT_CLOUD_AGENT_WORKFLOW_PATH = '.github/workflows/copilot-setup-steps.yml';
 export const EMPTY_DRAFT_REPAIR_GRACE_MS = 5 * 60 * 1000;
+const WORKFLOW_RUNS_PAGE_SIZE = 100;
+const WORKFLOW_RUNS_MAX_PAGES = 10;
 
 function normalize(value) {
   return String(value ?? '')
@@ -47,6 +49,35 @@ function completedAtForRun(run) {
 
 function sameRepository(fullName, repository) {
   return normalize(fullName) === normalize(repository);
+}
+
+export async function listCopilotCloudWorkflowRuns({
+  requestFn,
+  token,
+  owner,
+  repo,
+  headBranch,
+  maxPages = WORKFLOW_RUNS_MAX_PAGES,
+}) {
+  const workflowPath = encodeURIComponent(COPILOT_CLOUD_AGENT_WORKFLOW_PATH);
+  const encodedBranch = encodeURIComponent(headBranch);
+  const runs = [];
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const path =
+      `/repos/${owner}/${repo}/actions/workflows/${workflowPath}/runs` +
+      `?branch=${encodedBranch}&per_page=${WORKFLOW_RUNS_PAGE_SIZE}&page=${page}`;
+    const response = await requestFn(token, path);
+    const pageRuns = Array.isArray(response?.data?.workflow_runs)
+      ? response.data.workflow_runs
+      : [];
+    runs.push(...pageRuns);
+    if (pageRuns.length < WORKFLOW_RUNS_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return runs;
 }
 
 export function changedFileRetryDelaysMs({
@@ -379,13 +410,14 @@ function createApi({ token, owner, repo }) {
         body: { reviewers: [reviewerLogin] },
       }),
     listClosingIssues: (pullNumber) => listClosingIssues(token, owner, repo, pullNumber),
-    listWorkflowRuns: async (headSha, headBranch) =>
-      (
-        await request(
-          token,
-          `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&branch=${encodeURIComponent(headBranch)}&per_page=100`,
-        )
-      ).data.workflow_runs || [],
+    listWorkflowRuns: async (_headSha, headBranch) =>
+      listCopilotCloudWorkflowRuns({
+        requestFn: request,
+        token,
+        owner,
+        repo,
+        headBranch,
+      }),
     updatePullState: async (pullNumber, state) =>
       (
         await request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}`, {
@@ -510,7 +542,8 @@ export async function runPrReadyReviewerGuard({
       reviewerRemovals += 1;
       log.info(`Removed @${reviewerToRemove.login} from requested reviewers on PR #${prNumber}.`);
     } catch (error) {
-      log.warning(`Could not process reviewers for PR #${prNumber}: ${getErrorMessage(error)}`);
+      const warn = log.warning ?? log.warn ?? log.info;
+      warn?.call(log, `Could not process reviewers for PR #${prNumber}: ${getErrorMessage(error)}`);
     }
   }
 

@@ -9,6 +9,7 @@ import {
   COPILOT_CLOUD_AGENT_WORKFLOW_PATH,
   EMPTY_DRAFT_REPAIR_GRACE_MS,
   inspectEmptyCopilotDraftRepair,
+  listCopilotCloudWorkflowRuns,
   latestMatchingCopilotCloudRun,
   matchingCopilotCloudRunRejection,
   runPrReadyReviewerGuard,
@@ -382,6 +383,34 @@ test('matchingCopilotCloudRunRejection still rejects run with wrong path when pa
     }),
     'workflow-path',
   );
+});
+
+test('listCopilotCloudWorkflowRuns uses workflow-specific endpoint and paginates', async () => {
+  const seenPaths = [];
+  const requestFn = async (_token, path) => {
+    seenPaths.push(path);
+    if (path.endsWith('page=1')) {
+      return {
+        data: { workflow_runs: Array.from({ length: 100 }, (_, index) => ({ id: index + 1 })) },
+      };
+    }
+    return { data: { workflow_runs: [{ id: 200 }] } };
+  };
+  const runs = await listCopilotCloudWorkflowRuns({
+    requestFn,
+    token: 'token',
+    owner: 'nalfeo',
+    repo: 'Crawler',
+    headBranch: HEAD_BRANCH,
+  });
+
+  assert.equal(seenPaths.length, 2);
+  assert.match(
+    seenPaths[0],
+    /\/actions\/workflows\/\.github%2Fworkflows%2Fcopilot-setup-steps\.yml\/runs\?branch=/,
+  );
+  assert.ok(!seenPaths[0].includes('head_sha='));
+  assert.equal(runs.length, 101);
 });
 
 test('skips local-ineligible empty-draft repairs before linked-issue or workflow-run reads', async () => {
@@ -803,6 +832,43 @@ test('requested-reviewer cleanup stays unchanged for non-draft pull requests', a
     harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
     [['removeRequestedReviewer', 42, 'nalfeo']],
   );
+});
+
+test('reviewer-removal failures fall back to warn-capable loggers', async () => {
+  const harness = createHarness({
+    pulls: [
+      makePr({
+        draft: false,
+        requested_reviewers: [{ login: 'nalfeo' }],
+      }),
+    ],
+  });
+  harness.api.removeRequestedReviewer = async () => {
+    throw new Error('remove failed');
+  };
+  const warnings = [];
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'pull_request_target',
+    payloadAction: 'review_requested',
+    triggeringPullNumber: 42,
+    api: harness.api,
+    log: {
+      info: () => {},
+      warn: (message) => warnings.push(message),
+      error: () => {},
+    },
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    reviewerRemovals: 0,
+  });
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Could not process reviewers for PR #42/);
 });
 
 test('a repair failure does not suppress unchanged publication and reviewer cleanup for other PRs', async () => {

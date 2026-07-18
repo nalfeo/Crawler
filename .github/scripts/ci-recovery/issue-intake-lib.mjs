@@ -123,12 +123,22 @@ export async function getCopilotIssueAssignmentContext({
 }
 
 export function buildIssueActorIds({ assignees, copilotActorId, includeCopilot }) {
-  const actorIds = (assignees || [])
-    .filter((assignee) => includeCopilot || !isCopilotLogin(assignee?.login))
+  const allAssignees = Array.isArray(assignees) ? assignees : [];
+  const nonCopilotActorIds = allAssignees
+    .filter((assignee) => !isCopilotLogin(assignee?.login))
     .map((assignee) => assignee.id)
     .filter(Boolean);
+  const copilotActorIds = allAssignees
+    .filter((assignee) => isCopilotLogin(assignee?.login))
+    .map((assignee) => assignee.id)
+    .filter(Boolean);
+  const actorIds = [...nonCopilotActorIds];
   if (includeCopilot) {
-    actorIds.push(copilotActorId);
+    if (copilotActorIds.length > 0) {
+      actorIds.push(...copilotActorIds);
+    } else if (copilotActorId) {
+      actorIds.push(copilotActorId);
+    }
   }
   return [...new Set(actorIds)];
 }
