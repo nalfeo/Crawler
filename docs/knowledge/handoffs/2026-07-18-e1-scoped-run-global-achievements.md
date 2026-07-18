@@ -33,7 +33,7 @@ quests, floor2, inventory, hud-ux
 - `npm test -- tests/unit/achievements.test.ts tests/game/achievement-system.test.ts tests/unit/player-carryover.test.ts tests/unit/floor2-victory-system.test.ts tests/unit/devtools/achievements-canvas-adapter-parity.test.ts` ✅
 - `npm run verify:fast` ✅
 - `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-07-18-e1-scoped-run-global-achievements.review-ledger.json` ✅
-- `npm run verify:pr-prereqs` (post-artifact) ✅ pending final rerun
+- `npm run verify:pr-prereqs` ✅
 
 ## Unresolved issues
 
@@ -41,5 +41,4 @@ quests, floor2, inventory, hud-ux
 
 ## Recommended next steps
 
-- Re-run `npm run verify:pr-prereqs` after final artifact commit.
 - Post the same high-level summary in the PR description when opening the PR (per issue requirement).

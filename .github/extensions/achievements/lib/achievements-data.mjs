@@ -60,6 +60,9 @@ const REQUIRED_STRING_FIELDS = [
   'difficulty',
 ];
 
+/** Valid scope values — mirrors achievements.ts ACHIEVEMENT_SCOPES. */
+const VALID_SCOPES = new Set(['floor', 'current_run']);
+
 // --- Pure transforms (verbatim ports of achievements.ts) --------------------
 
 /** Escape a string for literal use inside a RegExp. (achievements.ts:escapeRegExp) */
@@ -193,6 +196,14 @@ export function parseAchievementCatalog(rawCatalog) {
       typeof entry.reward.type !== 'string'
     ) {
       throw new Error(`achievements[${index}].reward must be an object with a string type`);
+    }
+    // Mirror the core Zod parser: a missing scope defaults to 'floor', but an
+    // explicit value that is not a recognised scope (e.g. a typo like "run")
+    // must be rejected so errors surface here rather than at game-parse time.
+    if (entry.scope !== undefined && !VALID_SCOPES.has(entry.scope)) {
+      throw new Error(
+        `achievements[${index}].scope must be 'floor' or 'current_run' if provided, got '${entry.scope}'`,
+      );
     }
   }
   return rawCatalog.map((entry) => {

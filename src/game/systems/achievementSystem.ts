@@ -11,6 +11,7 @@ import {
   getAchievementById,
   isAchievementFloor,
   type AchievementBooleanFact,
+  type AchievementDef,
   type AchievementNumberFact,
   type AchievementNumberOperator,
   type AchievementRulePhase,
@@ -67,9 +68,18 @@ const RUN_GLOBAL_MAX_FACTS: readonly AchievementNumberFact[] = [
   'maxSkillLevel',
   'spentStatPoints',
   'questLogSize',
-  'playerGold',
   'unlockedAbilityCount',
 ];
+
+/**
+ * Facts stored as the latest (most-recent-floor) value: values in this array
+ * are overwritten on each floor transition rather than accumulated (sum) or
+ * high-water-marked (max). `playerGold` is a point-in-time balance that can
+ * decrease, so using Math.max would silently prevent `<` / `<=` / `===` rules
+ * from ever seeing a reduced balance after a spending-heavy floor.
+ */
+const RUN_GLOBAL_LATEST_FACTS: readonly AchievementNumberFact[] = ['playerGold'];
+
 const CURRENT_RUN_NUMBER_FACT_SET = new Set<AchievementNumberFact>(
   ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS,
 );
@@ -190,6 +200,9 @@ function mergeRunGlobalFacts(world: GameWorld, floorFacts: AchievementFacts): vo
       floorFacts.numberFacts[fact],
     );
   }
+  for (const fact of RUN_GLOBAL_LATEST_FACTS) {
+    world.achievements.runGlobal.numberFacts[fact] = floorFacts.numberFacts[fact];
+  }
   for (const fact of ACHIEVEMENT_BOOLEAN_FACTS) {
     world.achievements.runGlobal.booleanFacts[fact] =
       world.achievements.runGlobal.booleanFacts[fact] || floorFacts.booleanFacts[fact];
@@ -229,6 +242,10 @@ function collectCurrentRunAchievementFacts(
     if (!CURRENT_RUN_NUMBER_FACT_SET.has(fact)) continue;
     facts.numberFacts[fact] = Math.max(facts.numberFacts[fact], floorFacts.numberFacts[fact]);
   }
+  for (const fact of RUN_GLOBAL_LATEST_FACTS) {
+    if (!CURRENT_RUN_NUMBER_FACT_SET.has(fact)) continue;
+    facts.numberFacts[fact] = floorFacts.numberFacts[fact];
+  }
   for (const fact of ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS) {
     facts.booleanFacts[fact] = facts.booleanFacts[fact] || floorFacts.booleanFacts[fact];
   }
@@ -260,8 +277,12 @@ function shouldUnlockAchievementForPhase(
   return activeRules.every((rule) => evaluateUnlockRule(rule, facts));
 }
 
-export function unlockAchievement(world: GameWorld, achievementId: string): boolean {
-  const achievement = getAchievementById(achievementId);
+export function unlockAchievement(
+  world: GameWorld,
+  achievementId: string,
+  def?: AchievementDef,
+): boolean {
+  const achievement = def ?? getAchievementById(achievementId);
   if (!achievement || world.achievements.unlockedIds.has(achievementId)) {
     return false;
   }
@@ -285,6 +306,7 @@ export function finalizeFloorAchievementProgressOnExit(world: GameWorld): void {
 export function evaluateAchievementUnlocksForPhase(
   world: GameWorld,
   phase: AchievementRulePhase,
+  catalogOverride?: readonly AchievementDef[],
 ): void {
   if (!isAchievementFloor(world.floor)) {
     return;
@@ -292,11 +314,12 @@ export function evaluateAchievementUnlocksForPhase(
 
   const floorFacts = collectFloorAchievementFacts(world);
   const runFacts = collectCurrentRunAchievementFacts(world, floorFacts);
-  for (const achievement of getAchievementCatalogForFloor(world.floor)) {
+  const catalog = catalogOverride ?? getAchievementCatalogForFloor(world.floor);
+  for (const achievement of catalog) {
     const activeFacts = selectFactsForScope(achievement.scope, floorFacts, runFacts);
     if (!activeFacts) continue;
     if (shouldUnlockAchievementForPhase(achievement.unlockRules, activeFacts, phase)) {
-      unlockAchievement(world, achievement.id);
+      unlockAchievement(world, achievement.id, achievement);
     }
   }
 }
