@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6e84c82474ffc226d819f8de9754867457ba9364",
+    "commitDate": "2026-07-18T14:11:24Z",
+    "commitSubject": "Add the twin-katar equipment icon and source brief (#1408)",
+    "capturedAt": "2026-07-18T15:33:16.516Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29647999111",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/6e84c82474ffc226d819f8de9754867457ba9364.json"
+  },
+  {
     "commit": "b6928d160b066d7f7704c6e112d7ab1f419fb68d",
     "commitDate": "2026-07-18T14:11:17Z",
     "commitSubject": "feat(sprites): add cog-pistol Floor 2 weapon brief (#1407)",
