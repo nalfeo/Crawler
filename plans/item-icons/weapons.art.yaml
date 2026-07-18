@@ -128,6 +128,15 @@ assets:
       kind: sprite-registry
       id: toxic-blowgun
 
+  - id: thorn-whip
+    type: weapon
+    label: 'Thorn Whip'
+    brief: 'Thorn Whip — a single centered weapon icon with a clear, readable silhouette on a transparent background. A vine whip studded with hooked thorns, vertical orientation, grip at the bottom. Vines that bite back.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: thorn-whip
+
   - id: chain-whip
     type: weapon
     label: 'Chain Whip'
@@ -234,3 +243,19 @@ assets:
     integration:
       kind: sprite-registry
       id: sun-hammer
+
+  - id: powder-keg
+    type: weapon
+    label: 'Powder Keg'
+    brief: >
+      Powder Keg Floor 2 equipment icon for stable runtime key
+      equipment/weapon/powder-keg. Create one centered, silhouette-readable trap
+      weapon on a transparent background; preserve the runtime key exactly. Squat
+      wooden barrel with iron bands, a short lit fuse at the top. Dark wood
+      body, grey iron bands, tiny orange flame on the fuse. Three-quarter view,
+      upright, fuse extending from top. Reads as an explosive trap at icon
+      scale.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: powder-keg
