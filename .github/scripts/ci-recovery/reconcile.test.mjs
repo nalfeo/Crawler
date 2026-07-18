@@ -6182,3 +6182,143 @@ test('transient compare failure does not produce a stale-marker hint (generic bl
     'task body must NOT include re-marker instructions when compare failed transiently',
   );
 });
+
+test('prior-reply thread includes hint in blocker summary when last trusted comment has no marker', async (t) => {
+  // Simulate the root cause from the PR #1265 loop incident:
+  // The recovery agent replied to a review thread with a non-marker comment
+  // ("Blocked outside this branch") because the concern required an external
+  // action (e.g. posting a plan comment to a linked issue).  On subsequent
+  // dispatches the task body only showed the original reviewer's comment, so
+  // the agent had no context that a prior attempt already tried and failed.
+  // The reconciler should detect the prior unresolved reply and include a
+  // targeted hint so the next recovery agent knows:
+  //   (a) not to re-post an identical "Blocked" reply (which changes the
+  //       comment digest, resets the attempt counter, and delays loop-incident
+  //       detection), and
+  //   (b) to use GitHub API tools rather than gh CLI for any required
+  //       external mutation.
+  const threadId = 'PRRT_prior_reply_thread';
+  const originalConcern = 'Issue #9999 explicitly required a detailed plan comment before code.';
+  const priorBlockedReply =
+    'Blocked outside this branch: issue #9999 still lacks the required pre-code plan comment.';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: true,
+            path: 'docs/knowledge/handoffs/2026-07-17-floor2-equipment-a0.md',
+            line: null,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_reviewer',
+                  body: originalConcern,
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                },
+                {
+                  id: 'PRIC_blocked_reply',
+                  body: priorBlockedReply,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'copilot-swe-agent' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1003 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread must NOT be auto-resolved (no ✅ Addressed marker present).
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+
+  // A task comment must be posted because the thread is still unresolved.
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the prior-reply blocker');
+
+  // The task body must include the prior-reply hint so the next dispatch
+  // knows not to re-post an identical "Blocked" reply.
+  assert.match(
+    taskCommentCall.body.body,
+    /Prior recovery reply.*no marker posted/i,
+    'task body must identify the prior non-marker reply',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    /do not re-post an identical reply/i,
+    'task body must instruct the agent not to duplicate the prior reply',
+  );
+
+  // The stale-marker hint must NOT appear (prior reply, not a stale marker).
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /Stale marker/i,
+    'task body must NOT include a stale-marker hint for a prior-reply thread',
+  );
+
+  // The original reviewer concern must still appear in the summary.
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(originalConcern.slice(0, 40)),
+    'task body must still include the original reviewer concern',
+  );
+});
