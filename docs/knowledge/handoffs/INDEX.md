@@ -88,7 +88,6 @@ _…and 31 older, see `archive/`._
 
 ## sprite-pipeline
 
-- [2026-07-18-shock-baton-brief](2026-07-18-shock-baton-brief.md) — Handoff: shock-baton weapon brief (Floor 2 equipment icon)
 - [2026-07-17-batfolk-boss-pr-recovery](2026-07-17-batfolk-boss-pr-recovery.md) — Handoff: batfolk-boss PR recovery
 - [2026-07-16-asset-request-type-fingerprint-polish](2026-07-16-asset-request-type-fingerprint-polish.md) — Handoff: asset-request type fingerprint polish
 - [2026-07-16-asset-request-type-fingerprint-recovery](2026-07-16-asset-request-type-fingerprint-recovery.md) — Handoff: asset-request type fingerprint recovery

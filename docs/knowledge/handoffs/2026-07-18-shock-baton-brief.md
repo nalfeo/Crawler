@@ -11,7 +11,7 @@ Authored `briefs/weapons/shock-baton.yaml` for the Floor 2 equipment icon reques
 
 ## Systems touched
 
-sprite-pipeline, sprite-workflow
+sprite-workflow
 
 ## Files changed
 
