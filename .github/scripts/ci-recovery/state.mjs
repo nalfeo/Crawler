@@ -386,6 +386,10 @@ export const TRUSTED_BOT_LOGINS = new Set([
 ]);
 
 const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
+// Bare "✅ Addressed" form: present when "addressed" is NOT followed by " in <token>".
+// The negative lookahead uses \b (word boundary) so "✅ Addressed in ..." is excluded
+// while "✅ Addressed: ..." (the non-applicable assertion form) is accepted.
+const addressedBarePattern = /✅\s*addressed(?!\s+in\b)/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {
@@ -423,6 +427,18 @@ export function extractAddressedMarkerSha(body) {
   return parseMarkerShaToken(match[1]);
 }
 
+/**
+ * Returns true if the body contains the bare "✅ Addressed" marker (without
+ * "in <sha>").  This covers the non-applicable assertion form — e.g.
+ * "✅ Addressed: finding is not applicable at current HEAD" — where no commit
+ * SHA exists to reference.  The check explicitly excludes the "✅ Addressed in
+ * <sha>" form so a malformed or lineage-failing SHA marker cannot bypass the
+ * stricter extractAddressedMarkerSha / markerNamesHead path.
+ */
+export function hasBareAddressedMarker(body) {
+  return addressedBarePattern.test(String(body ?? ''));
+}
+
 /** Returns true if body contains "✅ Addressed in <sha-or-commit-url>" and the
  *  extracted commit names the current head (full or ≥7-char prefix), or is a
  *  known ancestor from reachableCommitShas. */
@@ -445,8 +461,14 @@ function isTrustedComment(comment) {
 }
 
 /**
- * Returns true only when the last comment in the thread is a trusted marker
- * that explicitly names the current head SHA (full or ≥7-char prefix).
+ * Returns true only when the last comment in the thread is a trusted marker.
+ * Two accepted forms:
+ *   1. "✅ Addressed in <sha>:" — the SHA must name the current head or a
+ *      reachable ancestor (commit was actually pushed).
+ *   2. "✅ Addressed: <prose>" — bare form; the trusted author asserts the
+ *      finding is non-applicable at current HEAD (no commit SHA to reference).
+ *      Excluded when the body contains "✅ Addressed in <token>" so a
+ *      malformed or wrong-lineage SHA cannot fall through to the bare path.
  * A reopened thread with later reviewer feedback keeps returning false even if
  * an earlier comment had a valid marker.
  */
@@ -454,7 +476,11 @@ export function shouldResolveThread(thread, headSha, reachableCommitShas = null)
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) return false;
   const last = comments[comments.length - 1];
-  return isTrustedComment(last) && markerNamesHead(last.body, headSha, reachableCommitShas);
+  if (!isTrustedComment(last)) return false;
+  if (markerNamesHead(last.body, headSha, reachableCommitShas)) return true;
+  // Bare "✅ Addressed" form: accepted from trusted authors when no "in <sha>"
+  // token is present (non-applicable findings where no code change was needed).
+  return hasBareAddressedMarker(last.body);
 }
 
 /**
