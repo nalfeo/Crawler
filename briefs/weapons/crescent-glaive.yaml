@@ -1,0 +1,16 @@
+type: weapon
+name: crescent-glaive
+floor: 2
+description: |
+  A single crescent glaive held vertically, with a long dark wooden shaft
+  running straight down from a broad crescent steel blade at the top. The
+  blade should read as a sweeping half-moon profile with a pointed tip and
+  small rear hook, while the pole remains slim and centered so the whole
+  silhouette is unmistakably a polearm at icon scale. Cool grey steel with
+  one thin highlight on the blade edge, muted brass socket hardware, and a
+  wrapped grip at the bottom. No glow, no blood, no banner, no off-hand
+  shield, no extra props, and no second weapon.
+variations:
+  - heavier moon-shaped blade with a shorter rear hook
+  - longer leaner shaft with a smaller crescent head
+minVariations: 8
