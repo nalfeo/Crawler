@@ -241,6 +241,33 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(typeof registry.size).toBe('number');
   });
 
+  it('loads and preloads the shipped Floor 2 bone-saw runtime key from the real manifest', async () => {
+    if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
+      return;
+    }
+    const runtimeKey = 'equipment/weapon/bone-saw';
+    const entry = sharedRealRegistry.lookup(runtimeKey);
+    expect(entry, `missing shipped generated-manifest entry for ${runtimeKey}`).not.toBeNull();
+    expect(entry?.textureKey).toBe(runtimeKey);
+    expect(entry?.assetPath).toBe('generated/equipment/weapon/bone-saw.png');
+    expect(entry?.sourceRun).not.toBe('placeholder');
+
+    const queued: Array<{ textureKey: string; url: string }> = [];
+    preloadGeneratedSprites(
+      { image: (textureKey, url) => queued.push({ textureKey, url }) },
+      sharedRealRegistry,
+    );
+    expect(queued).toContainEqual({
+      textureKey: runtimeKey,
+      url: '/assets/generated/equipment/weapon/bone-saw.png',
+    });
+    expect(
+      existsSync(
+        path.resolve(__dirname, '../../public/assets/generated/equipment/weapon/bone-saw.png'),
+      ),
+    ).toBe(true);
+  });
+
   // Every migratable Floor-1 item must resolve — BY ITEM ID — to its real,
   // approved generated art, never the 2×2 placeholder. This is the deterministic
   // real-artifact gate for the "one item sprite, no separate icon" change
