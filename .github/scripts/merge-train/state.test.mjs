@@ -76,6 +76,22 @@ test('orders eligible same-repository PRs by creation time', () => {
   );
 });
 
+test('orders CI repair PRs ahead of ordinary merge-train entries', () => {
+  assert.deepEqual(
+    queueEntries(
+      [
+        pr(1, { created_at: '2026-07-01T00:00:00Z' }),
+        pr(2, {
+          created_at: '2026-07-02T00:00:00Z',
+          labels: [{ name: 'merge-train' }, { name: 'ci-repair' }],
+        }),
+      ],
+      'nalfeo/Crawler',
+    ).map((entry) => entry.number),
+    [2, 1],
+  );
+});
+
 test('candidate fingerprints bind base, head, title, and order', () => {
   const original = candidateFingerprint('base', [pr(1), pr(2)]);
   assert.equal(original, candidateFingerprint('base', [pr(1), pr(2)]));

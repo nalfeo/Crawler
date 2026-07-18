@@ -13,6 +13,7 @@ import {
 } from './state.mjs';
 import {
   BLOCKED_LABEL,
+  CI_REPAIR_LABEL,
   NOOP_LABEL,
   parseEnabledFlag,
   QUEUE_LABEL,
@@ -21,6 +22,9 @@ import {
 
 const DEFAULT_MAX_DISPATCH_PER_RUN = 8;
 const REPAIR_WINDOW_SIZE = 6;
+const NORMAL_PRIORITY_MODE = 'normal';
+const PRIORITY_ONLY_MODE = 'priority-only';
+const PRIORITY_LABELS = new Set([CI_REPAIR_LABEL, 'ci-incident']);
 const MANAGED_COMMENT_MARKERS = [
   '<!-- crawler-ci-state:v1 -->',
   '<!-- crawler-ci-task:v1',
@@ -45,6 +49,28 @@ const OWNERSHIP_HYDRATION_BATCH_SIZE = 6;
 function parsePositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw ?? ''), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function parsePriorityMode(raw) {
+  const mode = String(raw || NORMAL_PRIORITY_MODE);
+  if (![NORMAL_PRIORITY_MODE, PRIORITY_ONLY_MODE].includes(mode)) {
+    throw new Error(
+      `CI_RECOVERY_PRIORITY_MODE must be ${NORMAL_PRIORITY_MODE} or ${PRIORITY_ONLY_MODE}, received: ${mode}`,
+    );
+  }
+  return mode;
+}
+
+function isPriorityPullRequest(pullRequest) {
+  return (pullRequest.labels || []).some((label) => PRIORITY_LABELS.has(label.name));
+}
+
+function comparePullRequests(left, right) {
+  return (
+    Number(isPriorityPullRequest(right)) - Number(isPriorityPullRequest(left)) ||
+    new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
+    left.number - right.number
+  );
 }
 
 function sleep(ms) {
@@ -147,6 +173,7 @@ export function collectPrNumbers({
   scheduledPulls = [],
   maxDispatchPerRun = DEFAULT_MAX_DISPATCH_PER_RUN,
   trainEnabled = false,
+  priorityMode = NORMAL_PRIORITY_MODE,
   now = new Date(),
 }) {
   if (trainEnabled) {
@@ -176,13 +203,13 @@ export function collectPrNumbers({
           !shouldExcludeByLabels
         );
       })
-      .sort(
-        (left, right) =>
-          new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
-          left.number - right.number,
-      );
+      .sort(comparePullRequests);
     const direct = eligiblePulls.filter((pullRequest) =>
       directlyTriggeredPrs.has(pullRequest.number),
+    );
+    const priority = eligiblePulls.filter(
+      (pullRequest) =>
+        !directlyTriggeredPrs.has(pullRequest.number) && isPriorityPullRequest(pullRequest),
     );
 
     if (!repairWindowSweep) {
@@ -192,15 +219,21 @@ export function collectPrNumbers({
     const waitingTransitions = eligiblePulls.filter(
       (pullRequest) =>
         !directlyTriggeredPrs.has(pullRequest.number) &&
+        !isPriorityPullRequest(pullRequest) &&
         (pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL),
     );
     const sweep = eligiblePulls.filter(
       (pullRequest) =>
         !directlyTriggeredPrs.has(pullRequest.number) &&
+        !isPriorityPullRequest(pullRequest) &&
         !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
         !hasHealthyOwnerForSweep(pullRequest, now),
     );
-    return [...direct, ...waitingTransitions, ...sweep]
+    const candidates =
+      priorityMode === PRIORITY_ONLY_MODE && priority.length > 0
+        ? [...direct, ...priority]
+        : [...direct, ...priority, ...waitingTransitions, ...sweep];
+    return candidates
       .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
       .sort(
         (left, right) =>
@@ -217,6 +250,7 @@ export function collectPrNumbers({
   // unbounded backlog of newly-updated PRs could otherwise keep pushing an
   // older, still-labeled PR past the cap on every sweep (never cleaned up).
   const trainLabeledNumbers = new Set();
+  const priorityNumbers = new Set();
   const waitingTransitionNumbers = new Set();
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
@@ -241,6 +275,9 @@ export function collectPrNumbers({
           if (hasTrainOwnedLabel(pullRequest)) {
             trainLabeledNumbers.add(number);
           }
+          if (isPriorityPullRequest(pullRequest)) {
+            priorityNumbers.add(number);
+          }
           if (waitingTransition) {
             waitingTransitionNumbers.add(number);
           }
@@ -252,6 +289,13 @@ export function collectPrNumbers({
   const eligible = [...numbers];
   if (
     (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
+    priorityMode === PRIORITY_ONLY_MODE &&
+    priorityNumbers.size > 0
+  ) {
+    return eligible.filter((number) => directNumbers.has(number) || priorityNumbers.has(number));
+  }
+  if (
+    (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
     eligible.length > maxDispatchPerRun
   ) {
     // Prioritize PRs the event directly named plus any still carrying a
@@ -260,12 +304,14 @@ export function collectPrNumbers({
     const prioritized = eligible.filter(
       (number) =>
         directNumbers.has(number) ||
+        priorityNumbers.has(number) ||
         trainLabeledNumbers.has(number) ||
         waitingTransitionNumbers.has(number),
     );
     const remaining = eligible.filter(
       (number) =>
         !directNumbers.has(number) &&
+        !priorityNumbers.has(number) &&
         !trainLabeledNumbers.has(number) &&
         !waitingTransitionNumbers.has(number),
     );
@@ -457,6 +503,7 @@ export async function runFromEnv(env = process.env) {
     env.CI_RECOVERY_MAX_DISPATCH_PER_RUN,
     DEFAULT_MAX_DISPATCH_PER_RUN,
   );
+  const priorityMode = parsePriorityMode(env.CI_RECOVERY_PRIORITY_MODE);
 
   if (!token || !owner || !repo || !eventPath) {
     throw new Error('Missing GITHUB_TOKEN, GITHUB_REPOSITORY, or GITHUB_EVENT_PATH');
@@ -509,6 +556,7 @@ export async function runFromEnv(env = process.env) {
               scheduledPulls: resolvedPulls,
               maxDispatchPerRun: REPAIR_WINDOW_SIZE,
               trainEnabled: true,
+              priorityMode,
               now: hydrateNow,
             }).length,
         },
@@ -523,6 +571,7 @@ export async function runFromEnv(env = process.env) {
     scheduledPulls,
     maxDispatchPerRun,
     trainEnabled,
+    priorityMode,
     now: new Date(),
   });
   const directlyTriggeredPrs = eventPrNumbers(payload);

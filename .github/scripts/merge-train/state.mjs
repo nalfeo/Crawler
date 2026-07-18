@@ -41,6 +41,7 @@ export const LANDED_MARKER = '<!-- crawler-merge-train-landed:v1 -->';
 export const MERGE_TRAIN_PR_TRAILER = 'Merge-Train-PR';
 export const MERGE_TRAIN_ORIGINAL_HEAD_TRAILER = 'Merge-Train-Original-Head';
 export const VALIDATION_FAILED_LABEL = 'merge-train-validation-failed';
+export const CI_REPAIR_LABEL = 'ci-repair';
 export const DEFAULT_ADMISSION_CHECKS = ['ci', 'Security checks'];
 export const MAX_TRAIN_SIZE = 6;
 
@@ -91,6 +92,8 @@ export function queueEntries(pullRequests, repository) {
     )
     .sort(
       (left, right) =>
+        Number((right.labels || []).some((label) => label.name === CI_REPAIR_LABEL)) -
+          Number((left.labels || []).some((label) => label.name === CI_REPAIR_LABEL)) ||
         new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
         left.number - right.number,
     );

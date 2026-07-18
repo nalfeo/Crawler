@@ -41,6 +41,7 @@ if (shouldSkipRepoIncidentWorkflowRun(run)) {
 }
 
 const label = 'ci-incident';
+const repairLabel = 'ci-repair';
 const title = `CI incident: ${run.name}`;
 const openIssues = await paginate(
   token,
@@ -125,6 +126,20 @@ try {
     throw error;
   }
 }
+try {
+  await request(token, `/repos/${owner}/${repo}/labels`, {
+    method: 'POST',
+    body: {
+      name: repairLabel,
+      color: 'b60205',
+      description: 'CI repair work that takes priority during capacity pressure',
+    },
+  });
+} catch (error) {
+  if (error.status !== 422) {
+    throw error;
+  }
+}
 
 const body = [
   '<!-- crawler-ci-incident:v1 -->',
@@ -158,14 +173,14 @@ if (existing) {
   issue = (
     await request(token, `/repos/${owner}/${repo}/issues/${existing.number}`, {
       method: 'PATCH',
-      body: { body, labels: [label] },
+      body: { body, labels: [label, repairLabel] },
     })
   ).data;
 } else {
   issue = (
     await request(token, `/repos/${owner}/${repo}/issues`, {
       method: 'POST',
-      body: { title, body, labels: [label] },
+      body: { title, body, labels: [label, repairLabel] },
     })
   ).data;
 }
