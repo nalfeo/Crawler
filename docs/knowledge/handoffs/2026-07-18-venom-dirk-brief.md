@@ -42,6 +42,10 @@ The check-in step (`npm run sprites:checkin`) is **intentionally blocked in CI**
 
 `sprite-pipeline`, `sprite-workflow`
 
+## PR review thread status
+
+All 4 review threads addressed; 3 resolved. Thread `PRRT_kwDOSvo2Ms6R8-DW` (handoff/pipeline reconciliation) has `✅ Addressed` replies at HEAD (59809e5) but the reconciler sweep has not yet auto-resolved it — likely parked awaiting a push event to re-trigger.
+
 ## What remains
 
 For the maintainer (requires local dev box with Azure credentials):
