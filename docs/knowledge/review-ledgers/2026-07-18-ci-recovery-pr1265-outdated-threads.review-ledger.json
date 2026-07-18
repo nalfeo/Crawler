@@ -2,7 +2,7 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-18",
   "session_slug": "ci-recovery-pr1265-outdated-threads",
-  "task_title": "Fix CI recovery stale loop on outdated review threads",
+  "task_title": "Recover PR #1299 by restoring marker-gated review-thread resolution",
   "estimated_apples": 2,
   "stages": {}
 }
