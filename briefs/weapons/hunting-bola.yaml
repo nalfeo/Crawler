@@ -9,7 +9,6 @@ description: |
   with clear breathing room. Dungeon-worn materials, crisp outline, readable
   contrast, no hand, no target, no extra props, and absolutely not a bow.
   The silhouette must clearly read as a bola weapon at native size.
-anchor: { x: 24, y: 48 }
 sensors:
   weapon:
     orientation: diagonal
