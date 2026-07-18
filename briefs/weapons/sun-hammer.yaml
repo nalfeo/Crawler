@@ -1,0 +1,21 @@
+type: weapon
+name: sun-hammer
+description: |
+  A heavy two-handed war hammer infused with solar energy, held vertically
+  — grip at the bottom, hammer head at the top. The head is oversized and
+  rectangular, plated in scorched gold with a bright sunburst relief carved
+  into the striking face: concentric rings radiating from a central disc,
+  like a captured solar flare. The shaft is wrapped in sun-bleached fabric
+  with copper bands at the grip and a rounded iron pommel. Small cracks in
+  the gold plating glow faintly amber, hinting at heat contained within.
+  The silhouette reads unmistakably as a massive hammer — wide flat head,
+  short thick shaft — and must be clearly distinct from a mace or sword.
+  No fire effects, no lens flare, no magical glow halos. Just controlled
+  solar power made blunt-force hardware. Dungeon-worn, heavy, and honest.
+# Floor 2 bludgeon weapon — upgraded from the standard hammer.
+# Vertical orientation, 4x4 sheet, kenney-roguelike palette,
+# anchor at grip center inherited from data/sprite-types/weapon.json.
+variations:
+  - two-toned head: bright gold face with darker hammered reverse
+  - sun relief detail on the head more abstract / stylised
+minVariations: 6
