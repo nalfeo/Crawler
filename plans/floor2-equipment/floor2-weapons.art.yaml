@@ -1,6 +1,6 @@
 id: floor2-weapons
 title: 'Floor 2 Equipment — Weapons'
-summary: 'Production-wave art backlog for all 50 stable Floor 2 weapon base keys across 10 weapon families (heavy-blade, blunt, polearm, bow, thrown, light-blade, wand, alchemical, utility, mechanical). Each entry is backed by a deterministic procedural placeholder (sourceRun: placeholder) and needs real authored pixel art generated via the sprite pipeline. Waves are split by family for non-overlapping batch execution.'
+summary: 'Production-wave art backlog for all 50 stable Floor 2 weapon base keys across 10 weapon families (heavy-blade, blunt, polearm, bow, thrown, light-blade, wand, alchemical, utility, mechanical). Each entry is backed by a deterministic procedural placeholder (sourceRun: placeholder) and needs real authored pixel art generated via the sprite pipeline. The canonical art-key/runtime-key contract lives in src/shared/floor2-equipment-art-keys.ts; there is no live sprite-registry wiring for these generated equipment briefs yet, so this backlog intentionally omits integration targets until the runtime consumer exists. Waves are split by family for non-overlapping batch execution.'
 assets:
   # ── Family: heavy-blade ────────────────────────────────────────────────────
   - id: weapon-iron-cleaver

@@ -1,6 +1,6 @@
 id: floor2-armor
 title: 'Floor 2 Equipment — Armor and Accessories'
-summary: 'Production-wave art backlog for all 20 stable Floor 2 non-weapon equipment base keys: 4 head, 4 torso, 3 hands, 3 feet, and 6 accessory slots. Each entry is backed by a deterministic procedural placeholder (sourceRun: placeholder) and needs real authored pixel art generated via the sprite pipeline. All entries are non-overlapping with the Floor 1 gear art plan.'
+summary: 'Production-wave art backlog for all 20 stable Floor 2 non-weapon equipment base keys: 4 head, 4 torso, 3 hands, 3 feet, and 6 accessory slots. Each entry is backed by a deterministic procedural placeholder (sourceRun: placeholder) and needs real authored pixel art generated via the sprite pipeline. The canonical art-key/runtime-key contract lives in src/shared/floor2-equipment-art-keys.ts; there is no live sprite-registry/item-catalog wiring for these generated equipment briefs yet, so this backlog intentionally omits integration targets until the runtime consumer exists. All entries are non-overlapping with the Floor 1 gear art plan.'
 assets:
   # ── Head (4) ───────────────────────────────────────────────────────────────
   - id: head-iron-visor

@@ -8,10 +8,10 @@
     "plan_review": {
       "completed": true,
       "reviewer_model": "gpt-5.4",
-      "concerns_count": 4,
-      "resolved_count": 4,
+      "concerns_count": 3,
+      "resolved_count": 3,
       "plan_divergence": "minor",
-      "notes": "Concern 1 (blocking): placeholder briefId used dotted artKey which does not normalize the same way as art-plan kebab IDs — fixed by using artKey.replace(dots,hyphens) as briefId throughout (gen-placeholders.ts, helper functions, tests). Concern 2 (non-blocking): integration.id overloaded to link back to manifest — fixed by removing integration fields from YAML plans entirely (they have no runtime targets yet). Concern 3 (non-blocking): no cross-manifest sync guard — fixed by adding 3 new tests verifying every JSON entry appears in exactly one plan and vice versa. Concern 4 (suggestion): runtimeKey contract wording — clarified in helper function JSDoc comment. plan_divergence=minor: blocking fix changed briefId convention but no re-architecture; the manifest-first design stood."
+      "notes": "Concern 1 (blocking): Floor 2 placeholders used dotted artKey values as pipeline briefIds, which cannot match real approved briefIds and do not bucket with them in placeholder-audit — fixed by introducing a canonical artKey→briefId helper and writing only the kebab-case briefId in manifest entries while preserving the dotted placeholder key/PNG filename. Concern 2 (non-blocking): the Floor 2 plan YAMLs claimed integration targets that do not exist in the runtime yet — fixed by removing those integration blocks and clarifying that the runtime-key contract lives in src/shared/floor2-equipment-art-keys.ts until a real consumer exists. Concern 3 (non-blocking): the branch lacked real generator-branch regression coverage and a repo-backed plan/manifest contract assertion — fixed by adding temp-dir run() tests plus committed-plan contract tests. plan_divergence=minor: the recovery added a better treatment of the integration-metadata edge case without changing the overall slice design."
     },
     "code_review": {
       "clean": true,
@@ -19,15 +19,15 @@
         {
           "round": 1,
           "models": ["claude-sonnet-4.6"],
-          "concerns_count": 0,
-          "resolved_count": 0,
-          "clean": true
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
         },
         {
           "round": 2,
           "models": ["claude-sonnet-4.6"],
-          "concerns_count": 1,
-          "resolved_count": 1,
+          "concerns_count": 0,
+          "resolved_count": 0,
           "clean": true
         }
       ]

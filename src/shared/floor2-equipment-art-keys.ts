@@ -3,8 +3,15 @@
  *
  * Loads and re-exports the frozen 70-key data from
  * `data/floor2-equipment-art-keys.json`. Keys are immutable: new keys append
- * to the list; existing IDs are never recycled or renamed (see PLAN.md and
- * ADR 0065 for the contract rationale).
+ * to the list; existing IDs are never recycled or renamed.
+ *
+ * Floor 2 equipment uses TWO stable identifiers on purpose:
+ *   - artKey: dotted runtime/integration key (`weapon.iron-cleaver`)
+ *   - pipeline briefId: kebab-case generation key (`weapon-iron-cleaver`)
+ *
+ * The sprite pipeline's brief `name` field forbids dots, so generated and
+ * placeholder manifest entries must use the kebab-case briefId while runtime
+ * integration continues to point at the dotted artKey.
  *
  * Runtime lookup key convention:
  *   artKey `weapon.iron-cleaver` → runtimeKey `equipment/weapon/iron-cleaver`
@@ -82,26 +89,31 @@ export const FLOOR2_ARMOR_ART_ENTRIES: readonly Floor2EquipmentArtEntry[] =
   FLOOR2_EQUIPMENT_ART_ENTRIES.filter((e) => e.type === 'item');
 
 /**
+ * Canonical sprite-pipeline brief id for an equipment art key.
+ * Convention: replace the first `.` with `-`
+ * (`weapon.iron-cleaver` -> `weapon-iron-cleaver`).
+ */
+export function floor2EquipmentPipelineBriefId(artKey: string): string {
+  const dotIndex = artKey.indexOf('.');
+  if (dotIndex === -1) {
+    return artKey;
+  }
+  return `${artKey.slice(0, dotIndex)}-${artKey.slice(dotIndex + 1)}`;
+}
+
+/**
  * Derive the manifest placeholder key for an art entry. This is the key used
  * in the generated sprite manifest (`public/assets/generated/manifest.json`).
- *
- * Identity model: the sprite pipeline uses kebab-case briefIds (no dots).
- * Dots in the artKey are converted to hyphens so that `normalizeConcept(briefId)`
- * equals `normalizeConcept(artPlanId)` — making the placeholder audit link
- * placeholder art to real approved art from the production-wave plans.
- *
- * Convention: `<artKey.replace('.', '-')>-placeholder`
- *   e.g. `weapon.iron-cleaver` → `weapon-iron-cleaver-placeholder`
+ * Convention: `<artKey>-placeholder` (e.g. `weapon.iron-cleaver-placeholder`).
  */
 export function floor2EquipmentPlaceholderKey(artKey: string): string {
-  return `${artKey.replace(/\./g, '-')}-placeholder`;
+  return `${artKey}-placeholder`;
 }
 
 /**
  * Derive the placeholder PNG filename for an art entry.
- * Convention: `<artKey.replace('.', '-')>-placeholder.png`
- *   e.g. `weapon.iron-cleaver` → `weapon-iron-cleaver-placeholder.png`
+ * Convention: `<artKey>-placeholder.png` (dots preserved — valid file name).
  */
 export function floor2EquipmentPlaceholderPng(artKey: string): string {
-  return `${artKey.replace(/\./g, '-')}-placeholder.png`;
+  return `${artKey}-placeholder.png`;
 }

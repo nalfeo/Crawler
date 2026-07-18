@@ -124,66 +124,66 @@
       "type": "item",
       "contentHash": "a7fcfaceacc3f2d433ba5915a32faa2d26ecaa1c385e21748b0fcc229fb5e74b"
     },
-    "accessory-blood-vial-placeholder": {
+    "accessory.blood-vial-placeholder": {
       "briefId": "accessory-blood-vial",
       "spriteName": "accessory-blood-vial",
-      "assetPath": "generated/accessory-blood-vial-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.918Z",
+      "assetPath": "generated/accessory.blood-vial-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.765Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "accessory-compass-charm-placeholder": {
+    "accessory.compass-charm-placeholder": {
       "briefId": "accessory-compass-charm",
       "spriteName": "accessory-compass-charm",
-      "assetPath": "generated/accessory-compass-charm-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.919Z",
+      "assetPath": "generated/accessory.compass-charm-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.765Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "accessory-gearwork-locket-placeholder": {
+    "accessory.gearwork-locket-placeholder": {
       "briefId": "accessory-gearwork-locket",
       "spriteName": "accessory-gearwork-locket",
-      "assetPath": "generated/accessory-gearwork-locket-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.919Z",
+      "assetPath": "generated/accessory.gearwork-locket-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.766Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "accessory-lucky-feather-placeholder": {
+    "accessory.lucky-feather-placeholder": {
       "briefId": "accessory-lucky-feather",
       "spriteName": "accessory-lucky-feather",
-      "assetPath": "generated/accessory-lucky-feather-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.919Z",
+      "assetPath": "generated/accessory.lucky-feather-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.766Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "accessory-surveyor-map-placeholder": {
+    "accessory.surveyor-map-placeholder": {
       "briefId": "accessory-surveyor-map",
       "spriteName": "accessory-surveyor-map",
-      "assetPath": "generated/accessory-surveyor-map-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.920Z",
+      "assetPath": "generated/accessory.surveyor-map-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.766Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "accessory-warding-bell-placeholder": {
+    "accessory.warding-bell-placeholder": {
       "briefId": "accessory-warding-bell",
       "spriteName": "accessory-warding-bell",
-      "assetPath": "generated/accessory-warding-bell-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.919Z",
+      "assetPath": "generated/accessory.warding-bell-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.766Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -194,45 +194,49 @@
       "briefId": "aether-dust",
       "spriteName": "aether-dust",
       "assetPath": "generated/aether-dust-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.852Z",
+      "approvedAt": "2026-06-24T03:52:54.360Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "alien-tooth-placeholder": {
       "briefId": "alien-tooth",
       "spriteName": "alien-tooth",
       "assetPath": "generated/alien-tooth-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.881Z",
+      "approvedAt": "2026-06-24T03:52:54.419Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "anchor-mace-placeholder": {
       "briefId": "anchor-mace",
       "spriteName": "anchor-mace",
       "assetPath": "generated/anchor-mace-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.864Z",
+      "approvedAt": "2026-06-24T03:52:54.377Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "ancient-cipher-placeholder": {
       "briefId": "ancient-cipher",
       "spriteName": "ancient-cipher",
       "assetPath": "generated/ancient-cipher-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.878Z",
+      "approvedAt": "2026-06-24T03:52:54.411Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "angry-roomba-v1-var-10": {
       "briefId": "angry-roomba-v1",
@@ -498,62 +502,67 @@
       "briefId": "antidote-pill",
       "spriteName": "antidote-pill",
       "assetPath": "generated/antidote-pill-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.871Z",
+      "approvedAt": "2026-06-24T03:52:54.391Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "audience-rating-card-placeholder": {
       "briefId": "audience-rating-card",
       "spriteName": "audience-rating-card",
       "assetPath": "generated/audience-rating-card-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.881Z",
+      "approvedAt": "2026-06-24T03:52:54.421Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "audience-snack-placeholder": {
       "briefId": "audience-snack",
       "spriteName": "audience-snack",
       "assetPath": "generated/audience-snack-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.873Z",
+      "approvedAt": "2026-06-24T03:52:54.399Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "audience-token-placeholder": {
       "briefId": "audience-token",
       "spriteName": "audience-token",
       "assetPath": "generated/audience-token-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.877Z",
+      "approvedAt": "2026-06-24T03:52:54.409Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "autograph-book-placeholder": {
       "briefId": "autograph-book",
       "spriteName": "autograph-book",
       "assetPath": "generated/autograph-book-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.883Z",
+      "approvedAt": "2026-06-24T03:52:54.428Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "azure-mushroom-placeholder": {
       "briefId": "azure-mushroom",
       "spriteName": "azure-mushroom",
       "assetPath": "generated/azure-mushroom-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.887Z",
+      "approvedAt": "2026-07-18T00:02:52.733Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -684,12 +693,13 @@
       "briefId": "band-of-fortune",
       "spriteName": "band-of-fortune",
       "assetPath": "generated/band-of-fortune-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.892Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "baseball-bat-v1-var-0": {
       "briefId": "baseball-bat-v1",
@@ -857,12 +867,13 @@
       "briefId": "beaded-bracelet",
       "spriteName": "beaded-bracelet",
       "assetPath": "generated/beaded-bracelet-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.892Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "beetlefolk-boss-var-0": {
       "briefId": "beetlefolk-boss",
@@ -998,12 +1009,13 @@
       "briefId": "berserker-brew",
       "spriteName": "berserker-brew",
       "assetPath": "generated/berserker-brew-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.873Z",
+      "approvedAt": "2026-06-24T03:52:54.401Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "berserker-brew-v2-var-0": {
       "briefId": "berserker-brew-v2",
@@ -1072,23 +1084,25 @@
       "briefId": "bone-club",
       "spriteName": "bone-club",
       "assetPath": "generated/bone-club-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.857Z",
+      "approvedAt": "2026-06-24T03:52:54.370Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "bone-dust-placeholder": {
       "briefId": "bone-dust",
       "spriteName": "bone-dust",
       "assetPath": "generated/bone-dust-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.848Z",
+      "approvedAt": "2026-06-24T03:52:54.355Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "bone-shard-var-1": {
       "briefId": "bone-shard",
@@ -1157,67 +1171,73 @@
       "briefId": "bootleg-dvd",
       "spriteName": "bootleg-dvd",
       "assetPath": "generated/bootleg-dvd-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.883Z",
+      "approvedAt": "2026-06-24T03:52:54.426Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "boss-trophy-placeholder": {
       "briefId": "boss-trophy",
       "spriteName": "boss-trophy",
       "assetPath": "generated/boss-trophy-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.878Z",
+      "approvedAt": "2026-06-24T03:52:54.410Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "broadcast-booster-placeholder": {
       "briefId": "broadcast-booster",
       "spriteName": "broadcast-booster",
       "assetPath": "generated/broadcast-booster-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.870Z",
+      "approvedAt": "2026-06-24T03:52:54.387Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "broadcast-chip-placeholder": {
       "briefId": "broadcast-chip",
       "spriteName": "broadcast-chip",
       "assetPath": "generated/broadcast-chip-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.879Z",
+      "approvedAt": "2026-06-24T03:52:54.413Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "broken-circuit-placeholder": {
       "briefId": "broken-circuit",
       "spriteName": "broken-circuit",
       "assetPath": "generated/broken-circuit-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.880Z",
+      "approvedAt": "2026-06-24T03:52:54.418Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "bronze-vambrace-placeholder": {
       "briefId": "bronze-vambrace",
       "spriteName": "bronze-vambrace",
       "assetPath": "generated/bronze-vambrace-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.891Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "cactusfolk-boss-var-1": {
       "briefId": "cactusfolk-boss",
@@ -1660,23 +1680,25 @@
       "briefId": "celestial-ingot",
       "spriteName": "celestial-ingot",
       "assetPath": "generated/celestial-ingot-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.852Z",
+      "approvedAt": "2026-06-24T03:52:54.361Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "chain-whip-placeholder": {
       "briefId": "chain-whip",
       "spriteName": "chain-whip",
       "assetPath": "generated/chain-whip-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.861Z",
+      "approvedAt": "2026-06-24T03:52:54.373Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "classified-dossier-var-1": {
       "briefId": "classified-dossier",
@@ -1775,23 +1797,25 @@
       "briefId": "confetti-popper",
       "spriteName": "confetti-popper",
       "assetPath": "generated/confetti-popper-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.882Z",
+      "approvedAt": "2026-06-24T03:52:54.425Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "contestant-badge-placeholder": {
       "briefId": "contestant-badge",
       "spriteName": "contestant-badge",
       "assetPath": "generated/contestant-badge-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.882Z",
+      "approvedAt": "2026-06-24T03:52:54.424Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "copper-ore-var-6": {
       "briefId": "copper-ore",
@@ -1886,7 +1910,7 @@
       "briefId": "crimson-mushroom",
       "spriteName": "crimson-mushroom",
       "assetPath": "generated/crimson-mushroom-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.887Z",
+      "approvedAt": "2026-07-18T00:02:52.732Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -1994,12 +2018,13 @@
       "briefId": "director-mic",
       "spriteName": "director-mic",
       "assetPath": "generated/director-mic-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.863Z",
+      "approvedAt": "2026-06-24T03:52:54.376Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "directors-cue-card-var-0": {
       "briefId": "directors-cue-card",
@@ -2036,12 +2061,13 @@
       "briefId": "directors-pass",
       "spriteName": "directors-pass",
       "assetPath": "generated/directors-pass-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.875Z",
+      "approvedAt": "2026-06-24T03:52:54.406Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "dragon-scale-var-2": {
       "briefId": "dragon-scale",
@@ -2076,45 +2102,49 @@
       "briefId": "ectoplasm-glob",
       "spriteName": "ectoplasm-glob",
       "assetPath": "generated/ectoplasm-glob-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.849Z",
+      "approvedAt": "2026-06-24T03:52:54.356Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "elevator-fuse-placeholder": {
       "briefId": "elevator-fuse",
       "spriteName": "elevator-fuse",
       "assetPath": "generated/elevator-fuse-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.879Z",
+      "approvedAt": "2026-06-24T03:52:54.414Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "exp-candy-placeholder": {
       "briefId": "exp-candy",
       "spriteName": "exp-candy",
       "assetPath": "generated/exp-candy-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.872Z",
+      "approvedAt": "2026-06-24T03:52:54.392Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "expired-coupon-placeholder": {
       "briefId": "expired-coupon",
       "spriteName": "expired-coupon",
       "assetPath": "generated/expired-coupon-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.886Z",
+      "approvedAt": "2026-06-24T03:52:54.441Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "faerie-blink-var-0": {
       "briefId": "faerie-blink",
@@ -2188,40 +2218,41 @@
       "briefId": "feathersteel",
       "spriteName": "feathersteel",
       "assetPath": "generated/feathersteel-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.851Z",
+      "approvedAt": "2026-06-24T03:52:54.358Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
-    "feet-iron-greaves-placeholder": {
+    "feet.iron-greaves-placeholder": {
       "briefId": "feet-iron-greaves",
       "spriteName": "feet-iron-greaves",
-      "assetPath": "generated/feet-iron-greaves-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.915Z",
+      "assetPath": "generated/feet.iron-greaves-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.763Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "feet-merchant-sandals-placeholder": {
+    "feet.merchant-sandals-placeholder": {
       "briefId": "feet-merchant-sandals",
       "spriteName": "feet-merchant-sandals",
-      "assetPath": "generated/feet-merchant-sandals-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.918Z",
+      "assetPath": "generated/feet.merchant-sandals-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.765Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "feet-shadow-boots-placeholder": {
+    "feet.shadow-boots-placeholder": {
       "briefId": "feet-shadow-boots",
       "spriteName": "feet-shadow-boots",
-      "assetPath": "generated/feet-shadow-boots-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.916Z",
+      "assetPath": "generated/feet.shadow-boots-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.764Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -2232,7 +2263,7 @@
       "briefId": "fireball",
       "spriteName": "fireball",
       "assetPath": "generated/fireball-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.858Z",
+      "approvedAt": "2026-07-18T00:02:52.723Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -2272,84 +2303,91 @@
       "briefId": "floor-key-bronze",
       "spriteName": "floor-key-bronze",
       "assetPath": "generated/floor-key-bronze-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.874Z",
+      "approvedAt": "2026-06-23T00:55:52.050Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "floor-key-gold-placeholder": {
       "briefId": "floor-key-gold",
       "spriteName": "floor-key-gold",
       "assetPath": "generated/floor-key-gold-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.875Z",
+      "approvedAt": "2026-06-23T00:55:52.052Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "floor-key-silver-placeholder": {
       "briefId": "floor-key-silver",
       "spriteName": "floor-key-silver",
       "assetPath": "generated/floor-key-silver-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.875Z",
+      "approvedAt": "2026-06-23T00:55:52.052Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "floor-key-void-placeholder": {
       "briefId": "floor-key-void",
       "spriteName": "floor-key-void",
       "assetPath": "generated/floor-key-void-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.875Z",
+      "approvedAt": "2026-06-23T00:55:52.053Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "floor-skip-pass-placeholder": {
       "briefId": "floor-skip-pass",
       "spriteName": "floor-skip-pass",
       "assetPath": "generated/floor-skip-pass-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.871Z",
+      "approvedAt": "2026-06-24T03:52:54.389Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "foam-finger-placeholder": {
       "briefId": "foam-finger",
       "spriteName": "foam-finger",
       "assetPath": "generated/foam-finger-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.882Z",
+      "approvedAt": "2026-06-24T03:52:54.424Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "frost-bow-placeholder": {
       "briefId": "frost-bow",
       "spriteName": "frost-bow",
       "assetPath": "generated/frost-bow-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.854Z",
+      "approvedAt": "2026-06-24T03:52:54.366Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "frost-lichen-placeholder": {
       "briefId": "frost-lichen",
       "spriteName": "frost-lichen",
       "assetPath": "generated/frost-lichen-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.888Z",
+      "approvedAt": "2026-07-18T00:02:52.734Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -2496,12 +2534,13 @@
       "briefId": "ghost-photo",
       "spriteName": "ghost-photo",
       "assetPath": "generated/ghost-photo-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.885Z",
+      "approvedAt": "2026-06-24T03:52:54.435Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "giant-cave-rat-var-2": {
       "briefId": "giant-cave-rat",
@@ -2575,12 +2614,13 @@
       "briefId": "glitch-marble",
       "spriteName": "glitch-marble",
       "assetPath": "generated/glitch-marble-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.881Z",
+      "approvedAt": "2026-06-24T03:52:54.423Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "glow-worm-var-6": {
       "briefId": "glow-worm",
@@ -2926,34 +2966,37 @@
       "briefId": "gold-nugget",
       "spriteName": "gold-nugget",
       "assetPath": "generated/gold-nugget-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.841Z",
+      "approvedAt": "2026-06-24T03:52:54.325Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "gravity-hammer-placeholder": {
       "briefId": "gravity-hammer",
       "spriteName": "gravity-hammer",
       "assetPath": "generated/gravity-hammer-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.862Z",
+      "approvedAt": "2026-06-24T03:52:54.374Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "green-room-key-placeholder": {
       "briefId": "green-room-key",
       "spriteName": "green-room-key",
       "assetPath": "generated/green-room-key-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.878Z",
+      "approvedAt": "2026-06-24T03:52:54.412Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "green-slime-baby-v1-var-2": {
       "briefId": "green-slime-baby-v1",
@@ -2986,33 +3029,33 @@
       "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
-    "hands-duelist-gloves-placeholder": {
+    "hands.duelist-gloves-placeholder": {
       "briefId": "hands-duelist-gloves",
       "spriteName": "hands-duelist-gloves",
-      "assetPath": "generated/hands-duelist-gloves-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.914Z",
+      "assetPath": "generated/hands.duelist-gloves-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.763Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "hands-thorn-gauntlets-placeholder": {
+    "hands.thorn-gauntlets-placeholder": {
       "briefId": "hands-thorn-gauntlets",
       "spriteName": "hands-thorn-gauntlets",
-      "assetPath": "generated/hands-thorn-gauntlets-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.915Z",
+      "assetPath": "generated/hands.thorn-gauntlets-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.763Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "hands-tinker-grips-placeholder": {
+    "hands.tinker-grips-placeholder": {
       "briefId": "hands-tinker-grips",
       "spriteName": "hands-tinker-grips",
-      "assetPath": "generated/hands-tinker-grips-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.915Z",
+      "assetPath": "generated/hands.tinker-grips-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.763Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -3023,51 +3066,52 @@
       "briefId": "hardite-plank",
       "spriteName": "hardite-plank",
       "assetPath": "generated/hardite-plank-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.847Z",
+      "approvedAt": "2026-06-24T03:52:54.333Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
-    "head-alchemist-goggles-placeholder": {
+    "head.alchemist-goggles-placeholder": {
       "briefId": "head-alchemist-goggles",
       "spriteName": "head-alchemist-goggles",
-      "assetPath": "generated/head-alchemist-goggles-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.912Z",
+      "assetPath": "generated/head.alchemist-goggles-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.761Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "head-batfolk-hood-placeholder": {
+    "head.batfolk-hood-placeholder": {
       "briefId": "head-batfolk-hood",
       "spriteName": "head-batfolk-hood",
-      "assetPath": "generated/head-batfolk-hood-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.911Z",
+      "assetPath": "generated/head.batfolk-hood-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.761Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "head-iron-visor-placeholder": {
+    "head.iron-visor-placeholder": {
       "briefId": "head-iron-visor",
       "spriteName": "head-iron-visor",
-      "assetPath": "generated/head-iron-visor-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.909Z",
+      "assetPath": "generated/head.iron-visor-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.760Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "head-quartermaster-cap-placeholder": {
+    "head.quartermaster-cap-placeholder": {
       "briefId": "head-quartermaster-cap",
       "spriteName": "head-quartermaster-cap",
-      "assetPath": "generated/head-quartermaster-cap-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.910Z",
+      "assetPath": "generated/head.quartermaster-cap-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.760Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -3078,23 +3122,25 @@
       "briefId": "healing-fungus",
       "spriteName": "healing-fungus",
       "assetPath": "generated/healing-fungus-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.873Z",
+      "approvedAt": "2026-06-24T03:52:54.400Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "health-vial-placeholder": {
       "briefId": "health-vial",
       "spriteName": "health-vial",
       "assetPath": "generated/health-vial-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.866Z",
+      "approvedAt": "2026-06-23T00:55:52.051Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "imp-elite-hellfire-capo-v1-var-3": {
       "briefId": "imp-elite-hellfire-capo-v1",
@@ -3236,45 +3282,49 @@
       "briefId": "iron-armguard",
       "spriteName": "iron-armguard",
       "assetPath": "generated/iron-armguard-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.891Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "iron-breastplate-placeholder": {
       "briefId": "iron-breastplate",
       "spriteName": "iron-breastplate",
       "assetPath": "generated/iron-breastplate-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.889Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "iron-greaves-placeholder": {
       "briefId": "iron-greaves",
       "spriteName": "iron-greaves",
       "assetPath": "generated/iron-greaves-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.890Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "iron-helm-placeholder": {
       "briefId": "iron-helm",
       "spriteName": "iron-helm",
       "assetPath": "generated/iron-helm-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.888Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "iron-ore-var-0": {
       "briefId": "iron-ore",
@@ -3314,23 +3364,25 @@
       "briefId": "iron-sword",
       "spriteName": "iron-sword",
       "assetPath": "generated/iron-sword-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.853Z",
+      "approvedAt": "2026-06-24T03:52:54.363Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "weapon"
     },
     "iron-visor-placeholder": {
       "briefId": "iron-visor",
       "spriteName": "iron-visor",
       "assetPath": "generated/iron-visor-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.889Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "kobold-boss-var-0": {
       "briefId": "kobold-boss",
@@ -3404,7 +3456,7 @@
       "briefId": "landmine",
       "spriteName": "landmine",
       "assetPath": "generated/landmine-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.860Z",
+      "approvedAt": "2026-07-18T00:02:52.727Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -3415,7 +3467,7 @@
       "briefId": "laser",
       "spriteName": "laser",
       "assetPath": "generated/laser-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.858Z",
+      "approvedAt": "2026-07-18T00:02:52.724Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -3426,67 +3478,73 @@
       "briefId": "laugh-track-tape",
       "spriteName": "laugh-track-tape",
       "assetPath": "generated/laugh-track-tape-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.886Z",
+      "approvedAt": "2026-06-24T03:52:54.436Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "lava-glass-placeholder": {
       "briefId": "lava-glass",
       "spriteName": "lava-glass",
       "assetPath": "generated/lava-glass-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.850Z",
+      "approvedAt": "2026-06-24T03:52:54.357Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "leather-boots-placeholder": {
       "briefId": "leather-boots",
       "spriteName": "leather-boots",
       "assetPath": "generated/leather-boots-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.890Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "leather-bracer-placeholder": {
       "briefId": "leather-bracer",
       "spriteName": "leather-bracer",
       "assetPath": "generated/leather-bracer-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.891Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "leather-gloves-placeholder": {
       "briefId": "leather-gloves",
       "spriteName": "leather-gloves",
       "assetPath": "generated/leather-gloves-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.891Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "living-stone-placeholder": {
       "briefId": "living-stone",
       "spriteName": "living-stone",
       "assetPath": "generated/living-stone-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.851Z",
+      "approvedAt": "2026-06-24T03:52:54.360Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "llama-boss-var-8": {
       "briefId": "llama-boss",
@@ -3560,23 +3618,25 @@
       "briefId": "lucky-charm",
       "spriteName": "lucky-charm",
       "assetPath": "generated/lucky-charm-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.871Z",
+      "approvedAt": "2026-06-23T00:55:52.051Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "lucky-dice-placeholder": {
       "briefId": "lucky-dice",
       "spriteName": "lucky-dice",
       "assetPath": "generated/lucky-dice-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.886Z",
+      "approvedAt": "2026-06-24T03:52:54.439Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "mama-slime-v1-var-0": {
       "briefId": "mama-slime-v1",
@@ -3648,34 +3708,37 @@
       "briefId": "map-fragment-a",
       "spriteName": "map-fragment-a",
       "assetPath": "generated/map-fragment-a-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.876Z",
+      "approvedAt": "2026-06-24T03:52:54.406Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "map-fragment-b-placeholder": {
       "briefId": "map-fragment-b",
       "spriteName": "map-fragment-b",
       "assetPath": "generated/map-fragment-b-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.876Z",
+      "approvedAt": "2026-06-24T03:52:54.407Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "map-fragment-c-placeholder": {
       "briefId": "map-fragment-c",
       "spriteName": "map-fragment-c",
       "assetPath": "generated/map-fragment-c-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.876Z",
+      "approvedAt": "2026-06-24T03:52:54.407Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "merchants-stained-charm-var-0": {
       "briefId": "merchants-stained-charm",
@@ -3783,7 +3846,7 @@
       "briefId": "moonbloom-flower",
       "spriteName": "moonbloom-flower",
       "assetPath": "generated/moonbloom-flower-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.887Z",
+      "approvedAt": "2026-07-18T00:02:52.734Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -3828,12 +3891,13 @@
       "briefId": "mushroom-cap",
       "spriteName": "mushroom-cap",
       "assetPath": "generated/mushroom-cap-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.850Z",
+      "approvedAt": "2026-06-24T03:52:54.357Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "myconid-boss-var-0": {
       "briefId": "myconid-boss",
@@ -4111,12 +4175,13 @@
       "briefId": "mystery-meat",
       "spriteName": "mystery-meat",
       "assetPath": "generated/mystery-meat-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.870Z",
+      "approvedAt": "2026-06-24T03:52:54.386Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "npc-spell-broker-var-1": {
       "briefId": "npc-spell-broker",
@@ -4224,12 +4289,13 @@
       "briefId": "obsidian-axe",
       "spriteName": "obsidian-axe",
       "assetPath": "generated/obsidian-axe-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.861Z",
+      "approvedAt": "2026-06-24T03:52:54.373Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "old-sock-var-4": {
       "briefId": "old-sock",
@@ -4432,12 +4498,13 @@
       "briefId": "participation-trophy",
       "spriteName": "participation-trophy",
       "assetPath": "generated/participation-trophy-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.884Z",
+      "approvedAt": "2026-06-24T03:52:54.429Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "pebble-var-1": {
       "briefId": "pebble",
@@ -4477,34 +4544,37 @@
       "briefId": "phoenix-tear",
       "spriteName": "phoenix-tear",
       "assetPath": "generated/phoenix-tear-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.870Z",
+      "approvedAt": "2026-06-24T03:52:54.385Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "plasma-pistol-placeholder": {
       "briefId": "plasma-pistol",
       "spriteName": "plasma-pistol",
       "assetPath": "generated/plasma-pistol-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.857Z",
+      "approvedAt": "2026-06-24T03:52:54.371Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "producers-note-placeholder": {
       "briefId": "producers-note",
       "spriteName": "producers-note",
       "assetPath": "generated/producers-note-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.879Z",
+      "approvedAt": "2026-06-24T03:52:54.412Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "prop-junk-pile-v1-var-0": {
       "briefId": "prop-junk-pile-v1",
@@ -4956,7 +5026,7 @@
       "briefId": "punch",
       "spriteName": "punch",
       "assetPath": "generated/punch-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.859Z",
+      "approvedAt": "2026-07-18T00:02:52.725Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -5066,12 +5136,13 @@
       "briefId": "rage-elixir",
       "spriteName": "rage-elixir",
       "assetPath": "generated/rage-elixir-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.869Z",
+      "approvedAt": "2026-06-24T03:52:54.384Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "rat-king-v1-var-0": {
       "briefId": "rat-king-v1",
@@ -5587,45 +5658,49 @@
       "briefId": "raw-wood",
       "spriteName": "raw-wood",
       "assetPath": "generated/raw-wood-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.847Z",
+      "approvedAt": "2026-06-24T03:52:54.331Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "recall-stone-placeholder": {
       "briefId": "recall-stone",
       "spriteName": "recall-stone",
       "assetPath": "generated/recall-stone-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.872Z",
+      "approvedAt": "2026-06-24T03:52:54.395Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "recharge-tonic-placeholder": {
       "briefId": "recharge-tonic",
       "spriteName": "recharge-tonic",
       "assetPath": "generated/recharge-tonic-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.867Z",
+      "approvedAt": "2026-06-24T03:52:54.379Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "revival-kit-placeholder": {
       "briefId": "revival-kit",
       "spriteName": "revival-kit",
       "assetPath": "generated/revival-kit-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.874Z",
+      "approvedAt": "2026-06-24T03:52:54.405Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "rhea-vale-v1-var-0": {
       "briefId": "rhea-vale-v1",
@@ -5732,12 +5807,13 @@
       "briefId": "season-badge",
       "spriteName": "season-badge",
       "assetPath": "generated/season-badge-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.877Z",
+      "approvedAt": "2026-06-24T03:52:54.410Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "sewer-grate-floor-tile-v1-var-1": {
       "briefId": "sewer-grate-floor-tile-v1",
@@ -5859,7 +5935,7 @@
       "briefId": "shadow-lichen",
       "spriteName": "shadow-lichen",
       "assetPath": "generated/shadow-lichen-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.888Z",
+      "approvedAt": "2026-07-18T00:02:52.735Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -5904,56 +5980,61 @@
       "briefId": "shadow-shard",
       "spriteName": "shadow-shard",
       "assetPath": "generated/shadow-shard-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.842Z",
+      "approvedAt": "2026-06-24T03:52:54.327Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "shield-scroll-placeholder": {
       "briefId": "shield-scroll",
       "spriteName": "shield-scroll",
       "assetPath": "generated/shield-scroll-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.868Z",
+      "approvedAt": "2026-06-24T03:52:54.382Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "shiny-button-placeholder": {
       "briefId": "shiny-button",
       "spriteName": "shiny-button",
       "assetPath": "generated/shiny-button-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.885Z",
+      "approvedAt": "2026-06-24T03:52:54.432Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "signet-of-focus-placeholder": {
       "briefId": "signet-of-focus",
       "spriteName": "signet-of-focus",
       "assetPath": "generated/signet-of-focus-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.892Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "silk-thread-placeholder": {
       "briefId": "silk-thread",
       "spriteName": "silk-thread",
       "assetPath": "generated/silk-thread-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.848Z",
+      "approvedAt": "2026-06-24T03:52:54.352Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "slime-king-v1-var-4": {
       "briefId": "slime-king-v1",
@@ -6204,23 +6285,25 @@
       "briefId": "sling-of-shame",
       "spriteName": "sling-of-shame",
       "assetPath": "generated/sling-of-shame-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.864Z",
+      "approvedAt": "2026-06-24T03:52:54.376Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "smoke-bomb-placeholder": {
       "briefId": "smoke-bomb",
       "spriteName": "smoke-bomb",
       "assetPath": "generated/smoke-bomb-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.869Z",
+      "approvedAt": "2026-06-24T03:52:54.383Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "snailfolk-boss-var-0": {
       "briefId": "snailfolk-boss",
@@ -6294,12 +6377,13 @@
       "briefId": "spectral-blade",
       "spriteName": "spectral-blade",
       "assetPath": "generated/spectral-blade-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.862Z",
+      "approvedAt": "2026-06-24T03:52:54.375Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "spell-broker-v2-var-2": {
       "briefId": "spell-broker-v2",
@@ -6404,106 +6488,115 @@
       "briefId": "sponsor-contract",
       "spriteName": "sponsor-contract",
       "assetPath": "generated/sponsor-contract-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.877Z",
+      "approvedAt": "2026-06-24T03:52:54.408Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "sponsor-energy-drink-placeholder": {
       "briefId": "sponsor-energy-drink",
       "spriteName": "sponsor-energy-drink",
       "assetPath": "generated/sponsor-energy-drink-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.874Z",
+      "approvedAt": "2026-06-24T03:52:54.404Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "sponsor-sword-placeholder": {
       "briefId": "sponsor-sword",
       "spriteName": "sponsor-sword",
       "assetPath": "generated/sponsor-sword-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.865Z",
+      "approvedAt": "2026-06-24T03:52:54.379Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "star-fragment-placeholder": {
       "briefId": "star-fragment",
       "spriteName": "star-fragment",
       "assetPath": "generated/star-fragment-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.845Z",
+      "approvedAt": "2026-06-24T03:52:54.329Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "star-lance-placeholder": {
       "briefId": "star-lance",
       "spriteName": "star-lance",
       "assetPath": "generated/star-lance-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.856Z",
+      "approvedAt": "2026-06-24T03:52:54.369Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "steel-pauldrons-placeholder": {
       "briefId": "steel-pauldrons",
       "spriteName": "steel-pauldrons",
       "assetPath": "generated/steel-pauldrons-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.889Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "stim-shot-placeholder": {
       "briefId": "stim-shot",
       "spriteName": "stim-shot",
       "assetPath": "generated/stim-shot-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.867Z",
+      "approvedAt": "2026-06-24T03:52:54.380Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "stress-ball-placeholder": {
       "briefId": "stress-ball",
       "spriteName": "stress-ball",
       "assetPath": "generated/stress-ball-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.883Z",
+      "approvedAt": "2026-06-24T03:52:54.427Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "sturdy-belt-placeholder": {
       "briefId": "sturdy-belt",
       "spriteName": "sturdy-belt",
       "assetPath": "generated/sturdy-belt-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.890Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "sunpetal-flower-placeholder": {
       "briefId": "sunpetal-flower",
       "spriteName": "sunpetal-flower",
       "assetPath": "generated/sunpetal-flower-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.887Z",
+      "approvedAt": "2026-07-18T00:02:52.733Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -6746,7 +6839,7 @@
       "briefId": "throwing-knife",
       "spriteName": "throwing-knife",
       "assetPath": "generated/throwing-knife-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.853Z",
+      "approvedAt": "2026-07-18T00:02:52.721Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -6757,12 +6850,13 @@
       "briefId": "thunder-staff",
       "spriteName": "thunder-staff",
       "assetPath": "generated/thunder-staff-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.855Z",
+      "approvedAt": "2026-06-24T03:52:54.367Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "tile-boss-staircase-floor-v2-var-10": {
       "briefId": "tile-boss-staircase-floor-v2",
@@ -7136,12 +7230,13 @@
       "briefId": "time-capsule",
       "spriteName": "time-capsule",
       "assetPath": "generated/time-capsule-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.872Z",
+      "approvedAt": "2026-06-24T03:52:54.396Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "toadkin-boss-var-0": {
       "briefId": "toadkin-boss",
@@ -7313,44 +7408,44 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
-    "torso-chain-hauberk-placeholder": {
+    "torso.chain-hauberk-placeholder": {
       "briefId": "torso-chain-hauberk",
       "spriteName": "torso-chain-hauberk",
-      "assetPath": "generated/torso-chain-hauberk-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.912Z",
+      "assetPath": "generated/torso.chain-hauberk-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.761Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "torso-runed-cuirass-placeholder": {
+    "torso.runed-cuirass-placeholder": {
       "briefId": "torso-runed-cuirass",
       "spriteName": "torso-runed-cuirass",
-      "assetPath": "generated/torso-runed-cuirass-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.914Z",
+      "assetPath": "generated/torso.runed-cuirass-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.762Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "torso-scavenger-harness-placeholder": {
+    "torso.scavenger-harness-placeholder": {
       "briefId": "torso-scavenger-harness",
       "spriteName": "torso-scavenger-harness",
-      "assetPath": "generated/torso-scavenger-harness-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.913Z",
+      "assetPath": "generated/torso.scavenger-harness-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.762Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "torso-velvet-coat-placeholder": {
+    "torso.velvet-coat-placeholder": {
       "briefId": "torso-velvet-coat",
       "spriteName": "torso-velvet-coat",
-      "assetPath": "generated/torso-velvet-coat-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.913Z",
+      "assetPath": "generated/torso.velvet-coat-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.762Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
@@ -7361,612 +7456,618 @@
       "briefId": "toxic-blowgun",
       "spriteName": "toxic-blowgun",
       "assetPath": "generated/toxic-blowgun-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.860Z",
+      "approvedAt": "2026-06-24T03:52:54.372Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "travelers-cloak-placeholder": {
       "briefId": "travelers-cloak",
       "spriteName": "travelers-cloak",
       "assetPath": "generated/travelers-cloak-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.889Z",
+      "approvedAt": "2026-07-06T00:00:00.000Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": "item"
     },
     "twin-fangs-placeholder": {
       "briefId": "twin-fangs",
       "spriteName": "twin-fangs",
       "assetPath": "generated/twin-fangs-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.865Z",
+      "approvedAt": "2026-06-24T03:52:54.378Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "vip-lanyard-placeholder": {
       "briefId": "vip-lanyard",
       "spriteName": "vip-lanyard",
       "assetPath": "generated/vip-lanyard-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.880Z",
+      "approvedAt": "2026-06-24T03:52:54.416Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "void-crystal-placeholder": {
       "briefId": "void-crystal",
       "spriteName": "void-crystal",
       "assetPath": "generated/void-crystal-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.843Z",
+      "approvedAt": "2026-06-24T03:52:54.328Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
     "void-scythe-placeholder": {
       "briefId": "void-scythe",
       "spriteName": "void-scythe",
       "assetPath": "generated/void-scythe-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.856Z",
+      "approvedAt": "2026-06-24T03:52:54.368Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
-      "judgeScore": null
+      "judgeScore": null,
+      "type": null
     },
-    "weapon-acid-flask-placeholder": {
+    "weapon.acid-flask-placeholder": {
       "briefId": "weapon-acid-flask",
       "spriteName": "weapon-acid-flask",
-      "assetPath": "generated/weapon-acid-flask-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.906Z",
+      "assetPath": "generated/weapon.acid-flask-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.757Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-alchemist-sprayer-placeholder": {
+    "weapon.alchemist-sprayer-placeholder": {
       "briefId": "weapon-alchemist-sprayer",
       "spriteName": "weapon-alchemist-sprayer",
-      "assetPath": "generated/weapon-alchemist-sprayer-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.900Z",
+      "assetPath": "generated/weapon.alchemist-sprayer-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.748Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-ashwood-bow-placeholder": {
+    "weapon.ashwood-bow-placeholder": {
       "briefId": "weapon-ashwood-bow",
       "spriteName": "weapon-ashwood-bow",
-      "assetPath": "generated/weapon-ashwood-bow-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.893Z",
+      "assetPath": "generated/weapon.ashwood-bow-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.737Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-baseball-bat-placeholder": {
+    "weapon.baseball-bat-placeholder": {
       "briefId": "weapon-baseball-bat",
       "spriteName": "weapon-baseball-bat",
-      "assetPath": "generated/weapon-baseball-bat-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.902Z",
+      "assetPath": "generated/weapon.baseball-bat-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.752Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-blood-lance-placeholder": {
+    "weapon.blood-lance-placeholder": {
       "briefId": "weapon-blood-lance",
       "spriteName": "weapon-blood-lance",
-      "assetPath": "generated/weapon-blood-lance-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.899Z",
+      "assetPath": "generated/weapon.blood-lance-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.746Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-boarding-axe-placeholder": {
+    "weapon.boarding-axe-placeholder": {
       "briefId": "weapon-boarding-axe",
       "spriteName": "weapon-boarding-axe",
-      "assetPath": "generated/weapon-boarding-axe-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.904Z",
+      "assetPath": "generated/weapon.boarding-axe-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.755Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-bone-chakram-placeholder": {
+    "weapon.bone-chakram-placeholder": {
       "briefId": "weapon-bone-chakram",
       "spriteName": "weapon-bone-chakram",
-      "assetPath": "generated/weapon-bone-chakram-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.908Z",
+      "assetPath": "generated/weapon.bone-chakram-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.759Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-bone-saw-placeholder": {
+    "weapon.bone-saw-placeholder": {
       "briefId": "weapon-bone-saw",
       "spriteName": "weapon-bone-saw",
-      "assetPath": "generated/weapon-bone-saw-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.896Z",
+      "assetPath": "generated/weapon.bone-saw-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.739Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-brass-knuckles-placeholder": {
+    "weapon.brass-knuckles-placeholder": {
       "briefId": "weapon-brass-knuckles",
       "spriteName": "weapon-brass-knuckles",
-      "assetPath": "generated/weapon-brass-knuckles-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.907Z",
+      "assetPath": "generated/weapon.brass-knuckles-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.758Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-butcher-hook-placeholder": {
+    "weapon.butcher-hook-placeholder": {
       "briefId": "weapon-butcher-hook",
       "spriteName": "weapon-butcher-hook",
-      "assetPath": "generated/weapon-butcher-hook-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.900Z",
+      "assetPath": "generated/weapon.butcher-hook-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.747Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-chain-flail-placeholder": {
+    "weapon.chain-flail-placeholder": {
       "briefId": "weapon-chain-flail",
       "spriteName": "weapon-chain-flail",
-      "assetPath": "generated/weapon-chain-flail-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.896Z",
+      "assetPath": "generated/weapon.chain-flail-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.740Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-cog-pistol-placeholder": {
+    "weapon.cog-pistol-placeholder": {
       "briefId": "weapon-cog-pistol",
       "spriteName": "weapon-cog-pistol",
-      "assetPath": "generated/weapon-cog-pistol-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.900Z",
+      "assetPath": "generated/weapon.cog-pistol-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.748Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-crescent-glaive-placeholder": {
+    "weapon.crescent-glaive-placeholder": {
       "briefId": "weapon-crescent-glaive",
       "spriteName": "weapon-crescent-glaive",
-      "assetPath": "generated/weapon-crescent-glaive-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.905Z",
+      "assetPath": "generated/weapon.crescent-glaive-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.756Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-crystal-cannon-placeholder": {
+    "weapon.crystal-cannon-placeholder": {
       "briefId": "weapon-crystal-cannon",
       "spriteName": "weapon-crystal-cannon",
-      "assetPath": "generated/weapon-crystal-cannon-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.902Z",
+      "assetPath": "generated/weapon.crystal-cannon-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.751Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-dueling-saber-placeholder": {
+    "weapon.dueling-saber-placeholder": {
       "briefId": "weapon-dueling-saber",
       "spriteName": "weapon-dueling-saber",
-      "assetPath": "generated/weapon-dueling-saber-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.896Z",
+      "assetPath": "generated/weapon.dueling-saber-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.740Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-echo-bell-placeholder": {
+    "weapon.echo-bell-placeholder": {
       "briefId": "weapon-echo-bell",
       "spriteName": "weapon-echo-bell",
-      "assetPath": "generated/weapon-echo-bell-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.909Z",
+      "assetPath": "generated/weapon.echo-bell-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.759Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-ember-wand-placeholder": {
+    "weapon.ember-wand-placeholder": {
       "briefId": "weapon-ember-wand",
       "spriteName": "weapon-ember-wand",
-      "assetPath": "generated/weapon-ember-wand-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.897Z",
+      "assetPath": "generated/weapon.ember-wand-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.742Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-flame-tongs-placeholder": {
+    "weapon.flame-tongs-placeholder": {
       "briefId": "weapon-flame-tongs",
       "spriteName": "weapon-flame-tongs",
-      "assetPath": "generated/weapon-flame-tongs-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.906Z",
+      "assetPath": "generated/weapon.flame-tongs-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.757Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-frost-crook-placeholder": {
+    "weapon.frost-crook-placeholder": {
       "briefId": "weapon-frost-crook",
       "spriteName": "weapon-frost-crook",
-      "assetPath": "generated/weapon-frost-crook-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.898Z",
+      "assetPath": "generated/weapon.frost-crook-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.743Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-grave-shovel-placeholder": {
+    "weapon.grave-shovel-placeholder": {
       "briefId": "weapon-grave-shovel",
       "spriteName": "weapon-grave-shovel",
-      "assetPath": "generated/weapon-grave-shovel-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.899Z",
+      "assetPath": "generated/weapon.grave-shovel-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.746Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-hand-crossbow-placeholder": {
+    "weapon.hand-crossbow-placeholder": {
       "briefId": "weapon-hand-crossbow",
       "spriteName": "weapon-hand-crossbow",
-      "assetPath": "generated/weapon-hand-crossbow-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.895Z",
+      "assetPath": "generated/weapon.hand-crossbow-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.739Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-harpoon-gun-placeholder": {
+    "weapon.harpoon-gun-placeholder": {
       "briefId": "weapon-harpoon-gun",
       "spriteName": "weapon-harpoon-gun",
-      "assetPath": "generated/weapon-harpoon-gun-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.908Z",
+      "assetPath": "generated/weapon.harpoon-gun-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.758Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-hunting-bola-placeholder": {
+    "weapon.hunting-bola-placeholder": {
       "briefId": "weapon-hunting-bola",
       "spriteName": "weapon-hunting-bola",
-      "assetPath": "generated/weapon-hunting-bola-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.904Z",
+      "assetPath": "generated/weapon.hunting-bola-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.755Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-ice-pick-placeholder": {
+    "weapon.ice-pick-placeholder": {
       "briefId": "weapon-ice-pick",
       "spriteName": "weapon-ice-pick",
-      "assetPath": "generated/weapon-ice-pick-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.906Z",
+      "assetPath": "generated/weapon.ice-pick-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.757Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-iron-cleaver-placeholder": {
+    "weapon.iron-cleaver-placeholder": {
       "briefId": "weapon-iron-cleaver",
       "spriteName": "weapon-iron-cleaver",
-      "assetPath": "generated/weapon-iron-cleaver-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.893Z",
+      "assetPath": "generated/weapon.iron-cleaver-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.736Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-meteor-hammer-placeholder": {
+    "weapon.meteor-hammer-placeholder": {
       "briefId": "weapon-meteor-hammer",
       "spriteName": "weapon-meteor-hammer",
-      "assetPath": "generated/weapon-meteor-hammer-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.907Z",
+      "assetPath": "generated/weapon.meteor-hammer-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.758Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-moon-scythe-placeholder": {
+    "weapon.moon-scythe-placeholder": {
       "briefId": "weapon-moon-scythe",
       "spriteName": "weapon-moon-scythe",
-      "assetPath": "generated/weapon-moon-scythe-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.899Z",
+      "assetPath": "generated/weapon.moon-scythe-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.745Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-musketeer-rifle-placeholder": {
+    "weapon.musketeer-rifle-placeholder": {
       "briefId": "weapon-musketeer-rifle",
       "spriteName": "weapon-musketeer-rifle",
-      "assetPath": "generated/weapon-musketeer-rifle-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.897Z",
+      "assetPath": "generated/weapon.musketeer-rifle-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.742Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-oil-lantern-placeholder": {
+    "weapon.oil-lantern-placeholder": {
       "briefId": "weapon-oil-lantern",
       "spriteName": "weapon-oil-lantern",
-      "assetPath": "generated/weapon-oil-lantern-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.903Z",
+      "assetPath": "generated/weapon.oil-lantern-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.754Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-plague-censer-placeholder": {
+    "weapon.plague-censer-placeholder": {
       "briefId": "weapon-plague-censer",
       "spriteName": "weapon-plague-censer",
-      "assetPath": "generated/weapon-plague-censer-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.908Z",
+      "assetPath": "generated/weapon.plague-censer-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.759Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-powder-keg-placeholder": {
+    "weapon.powder-keg-placeholder": {
       "briefId": "weapon-powder-keg",
       "spriteName": "weapon-powder-keg",
-      "assetPath": "generated/weapon-powder-keg-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.905Z",
+      "assetPath": "generated/weapon.powder-keg-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.756Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-quarterstaff-placeholder": {
+    "weapon.quarterstaff-placeholder": {
       "briefId": "weapon-quarterstaff",
       "spriteName": "weapon-quarterstaff",
-      "assetPath": "generated/weapon-quarterstaff-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.894Z",
+      "assetPath": "generated/weapon.quarterstaff-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.738Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-ritual-dagger-placeholder": {
+    "weapon.ritual-dagger-placeholder": {
       "briefId": "weapon-ritual-dagger",
       "spriteName": "weapon-ritual-dagger",
-      "assetPath": "generated/weapon-ritual-dagger-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.907Z",
+      "assetPath": "generated/weapon.ritual-dagger-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.758Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-rivet-gun-placeholder": {
+    "weapon.rivet-gun-placeholder": {
       "briefId": "weapon-rivet-gun",
       "spriteName": "weapon-rivet-gun",
-      "assetPath": "generated/weapon-rivet-gun-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.902Z",
+      "assetPath": "generated/weapon.rivet-gun-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.752Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-rune-axe-placeholder": {
+    "weapon.rune-axe-placeholder": {
       "briefId": "weapon-rune-axe",
       "spriteName": "weapon-rune-axe",
-      "assetPath": "generated/weapon-rune-axe-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.901Z",
+      "assetPath": "generated/weapon.rune-axe-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.749Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-sawblade-launcher-placeholder": {
+    "weapon.sawblade-launcher-placeholder": {
       "briefId": "weapon-sawblade-launcher",
       "spriteName": "weapon-sawblade-launcher",
-      "assetPath": "generated/weapon-sawblade-launcher-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.903Z",
+      "assetPath": "generated/weapon.sawblade-launcher-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.753Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-shock-baton-placeholder": {
+    "weapon.shock-baton-placeholder": {
       "briefId": "weapon-shock-baton",
       "spriteName": "weapon-shock-baton",
-      "assetPath": "generated/weapon-shock-baton-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.903Z",
+      "assetPath": "generated/weapon.shock-baton-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.754Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-siege-bow-placeholder": {
+    "weapon.siege-bow-placeholder": {
       "briefId": "weapon-siege-bow",
       "spriteName": "weapon-siege-bow",
-      "assetPath": "generated/weapon-siege-bow-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.905Z",
+      "assetPath": "generated/weapon.siege-bow-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.756Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-spike-shield-placeholder": {
+    "weapon.spike-shield-placeholder": {
       "briefId": "weapon-spike-shield",
       "spriteName": "weapon-spike-shield",
-      "assetPath": "generated/weapon-spike-shield-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.904Z",
+      "assetPath": "generated/weapon.spike-shield-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.755Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-stone-maul-placeholder": {
+    "weapon.stone-maul-placeholder": {
       "briefId": "weapon-stone-maul",
       "spriteName": "weapon-stone-maul",
-      "assetPath": "generated/weapon-stone-maul-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.897Z",
+      "assetPath": "generated/weapon.stone-maul-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.741Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-storm-sling-placeholder": {
+    "weapon.storm-sling-placeholder": {
       "briefId": "weapon-storm-sling",
       "spriteName": "weapon-storm-sling",
-      "assetPath": "generated/weapon-storm-sling-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.898Z",
+      "assetPath": "generated/weapon.storm-sling-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.744Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-sun-hammer-placeholder": {
+    "weapon.sun-hammer-placeholder": {
       "briefId": "weapon-sun-hammer",
       "spriteName": "weapon-sun-hammer",
-      "assetPath": "generated/weapon-sun-hammer-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.899Z",
+      "assetPath": "generated/weapon.sun-hammer-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.745Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-thorn-whip-placeholder": {
+    "weapon.thorn-whip-placeholder": {
       "briefId": "weapon-thorn-whip",
       "spriteName": "weapon-thorn-whip",
-      "assetPath": "generated/weapon-thorn-whip-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.901Z",
+      "assetPath": "generated/weapon.thorn-whip-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.751Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-throwing-knives-placeholder": {
+    "weapon.throwing-knives-placeholder": {
       "briefId": "weapon-throwing-knives",
       "spriteName": "weapon-throwing-knives",
-      "assetPath": "generated/weapon-throwing-knives-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.894Z",
+      "assetPath": "generated/weapon.throwing-knives-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.738Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-tower-spear-placeholder": {
+    "weapon.tower-spear-placeholder": {
       "briefId": "weapon-tower-spear",
       "spriteName": "weapon-tower-spear",
-      "assetPath": "generated/weapon-tower-spear-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.901Z",
+      "assetPath": "generated/weapon.tower-spear-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.749Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-twin-katar-placeholder": {
+    "weapon.twin-katar-placeholder": {
       "briefId": "weapon-twin-katar",
       "spriteName": "weapon-twin-katar",
-      "assetPath": "generated/weapon-twin-katar-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.901Z",
+      "assetPath": "generated/weapon.twin-katar-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.750Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-venom-dirk-placeholder": {
+    "weapon.venom-dirk-placeholder": {
       "briefId": "weapon-venom-dirk",
       "spriteName": "weapon-venom-dirk",
-      "assetPath": "generated/weapon-venom-dirk-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.898Z",
+      "assetPath": "generated/weapon.venom-dirk-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.744Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-void-rapier-placeholder": {
+    "weapon.void-rapier-placeholder": {
       "briefId": "weapon-void-rapier",
       "spriteName": "weapon-void-rapier",
-      "assetPath": "generated/weapon-void-rapier-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.909Z",
+      "assetPath": "generated/weapon.void-rapier-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.760Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-war-fan-placeholder": {
+    "weapon.war-fan-placeholder": {
       "briefId": "weapon-war-fan",
       "spriteName": "weapon-war-fan",
-      "assetPath": "generated/weapon-war-fan-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.904Z",
+      "assetPath": "generated/weapon.war-fan-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.755Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
     },
-    "weapon-war-pick-placeholder": {
+    "weapon.war-pick-placeholder": {
       "briefId": "weapon-war-pick",
       "spriteName": "weapon-war-pick",
-      "assetPath": "generated/weapon-war-pick-placeholder.png",
-      "approvedAt": "2026-07-18T00:19:27.895Z",
+      "assetPath": "generated/weapon.war-pick-placeholder.png",
+      "approvedAt": "2026-07-18T00:02:52.738Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,
       "anchor": null,
