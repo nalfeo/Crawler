@@ -1,0 +1,29 @@
+type: weapon
+name: storm-sling
+description: |
+  A compact recurve bow held vertically — grip at the bottom center, both
+  limbs curving outward and up toward the top of the frame. The bow body
+  is carved from dark bone or heavily weathered wood: deep grey-brown base
+  color with darker knots and grain lines, faint angular storm-rune
+  engravings scratched into the outer face of each limb. The bowstring is
+  a taut arc of pale blue-white electrical energy — it should look like a
+  captured lightning bolt rather than fiber; the glow pools faintly around
+  the nocking point at the center. No arrow, no quiver, no accessories.
+  Silhouette must read instantly as a recurve bow at 64×64: U-shape on its
+  side (horizontal limbs, vertical string line) is wrong — the bow stands
+  upright so the string runs nearly vertical down the center. Color scheme:
+  dark charcoal-brown (#3a2e24) bow body, highlight ridge along the outer
+  limb edge in warm bone (#b09070), deep near-black rune lines, bright
+  pale-cyan string (#9adaf0) with a subtler inner-glow blue (#4fa8d4).
+  Hard 1-pixel outlines. No gradients. Bold palette contrast between the
+  dark wood body and the bright electric string.
+# Storm-sling is a standard vertical bow weapon — same orientation as the
+# weapon-type default (vertical). Only the description and variations differ
+# from the inherited defaults (64x64, kenney-roguelike palette, 4x4 sheet,
+# vertical ±5°, anchor x:32 y:56).
+# judge.enabled inherits true from weapon.json so the VLM gate runs locally.
+variations:
+  - bow limbs wrap in coiled storm-vine; runes pulse with faint amber light
+  - recurve limbs tipped with small carved lightning-bolt finials
+  - bowstring crackles along its length with visible spark nodes at thirds
+minVariations: 8
