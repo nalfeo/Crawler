@@ -1,8 +1,8 @@
 # 2026-07-18 — venom-dirk weapon brief (issue #1326)
 
 **Date:** 2026-07-18  
-**Apple estimate:** 1🍎 (art-only lane; brief committed, generation pending)  
-**Status:** ⏳ Brief committed; sprite generation blocked by missing Azure credentials  
+**Apple estimate:** 1🍎 (art-only lane)  
+**Status:** ✅ Brief committed; ✅ Azure pipeline completed twice; ⏳ Check-in pending (local-only step)  
 **Issue:** nalfeo/Crawler#1326  
 **Branch:** `copilot/create-venom-dirk-icon`
 
@@ -21,11 +21,22 @@
 5. **`verify:fast` passed** — all 1260 tests green, no regressions
 6. **Brief committed and pushed** to `copilot/create-venom-dirk-icon`
 
-## Blocker: Azure credentials not available
+## Azure pipeline status
 
-The sprite generation pipeline (`npm run sprites:run -- --brief briefs/weapons/venom-dirk.yaml`) requires `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_API_KEY` which are intentionally scoped only to the `asset-request.yml` GitHub Actions workflow (per workflow security comments). Per AGENTS.md §Azure-required sidecar policy, the correct response is to report the blocker and stop.
+The `asset-request.yml` GitHub Actions workflow ran twice on issue #1326 and **both completed successfully**:
 
-The GitHub Actions asset-request pipeline has already run **twice** on issue #1326 but both times used the synthesized brief name `venom-dirk-v1` (not `venom-dirk`). Those run artifacts exist in Azure blob storage but cannot be accessed from the coding agent environment.
+| Run | Timestamp                      | Brief ID        | Status      |
+| --- | ------------------------------ | --------------- | ----------- |
+| 1   | `2026-07-18T01-21-05-492291b3` | `venom-dirk-v1` | ✅ Complete |
+| 2   | `2026-07-18T03-35-59-750212e2` | `venom-dirk-v1` | ✅ Complete |
+
+The generated sprites are stored in Azure blob storage at:
+
+- `generated-runs/venom-dirk-v1/2026-07-18T03-35-59-750212e2/` (most recent)
+
+VLM judge selected candidate 1/3: _"jagged-edged blade with thorn-like projection and bat-wing guard, strong dark-fantasy silhouette, venomous theme, floor-appropriate weirdness."_
+
+The check-in step (`npm run sprites:checkin`) is **intentionally blocked in CI** per Constitutional §3. It must run on a dev box with Azure credentials to commit the PNG and create the `asset-checkin` issue.
 
 ## Systems touched
 
@@ -33,35 +44,28 @@ The GitHub Actions asset-request pipeline has already run **twice** on issue #13
 
 ## What remains
 
-For whoever has Azure credentials (developer or CI runner):
+For the maintainer (requires local dev box with Azure credentials):
 
-1. **Generate:**
-
-   ```bash
-   npm run sprites:run -- --brief briefs/weapons/venom-dirk.yaml
-   ```
-
-   This will produce `generated/runs/venom-dirk/<run-id>/` locally.
-
-2. **Judge** variants using the sprite-judge skill — look at `combinedPassed` in the run output, pick the best passing variant that reads as a stabbing blade at a glance.
-
-3. **Approve:**
-
-   ```bash
-   npm run sprites:approve -- generated/runs/venom-dirk/<run-id> --variant <N>
-   ```
-
-4. **Check in:**
+1. **Check in the generated sprite:**
 
    ```bash
    npm run sprites:checkin
    ```
 
-   → creates `asset-checkin` issue + art branch
+   This downloads the approved `venom-dirk-v1` run from Azure, commits the PNG + manifest update + catalog update to a new `assets/checkin-*` branch, and creates an `asset-checkin` issue.
 
-5. **Asset PR:** use the `asset-pr` skill to batch all open `asset-checkin` issues into one art-only PR.
+2. **Asset PR:** use the `asset-pr` skill to batch all open `asset-checkin` issues into one art-only PR that closes issue #1326.
 
-6. **Observe:** Confirm `equipment/weapon/venom-dirk` resolves to real art in `npm run dev`.
+3. **Observe:** Confirm `equipment/weapon/venom-dirk` resolves to real art in `npm run dev`.
+
+Alternatively, if a new generation is preferred using the canonical authored brief:
+
+```bash
+npm run sprites:run -- --brief briefs/weapons/venom-dirk.yaml
+# Judge, approve, checkin as above
+```
+
+This will produce a `venom-dirk` (not `venom-dirk-v1`) manifest entry, which is cleaner but requires the normalization pass to work correctly.
 
 ## Key brief decisions
 
