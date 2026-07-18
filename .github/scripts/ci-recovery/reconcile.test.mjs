@@ -3948,11 +3948,11 @@ test('reconcile resolves only ancestor lineage markers from compare status', asy
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
-test('outdated review thread is not treated as a blocker — no task dispatch when only blocker is outdated', async (t) => {
+test('outdated review thread still dispatches a recovery task when it is the only blocker', async (t) => {
   // Regression test for the CI recovery loop on PR #1503:
-  // An `isOutdated: true` thread (code at that line was modified) must NOT be
-  // included in the blocker list and must not trigger a recovery task dispatch.
-  // Only unresolved, non-outdated threads should block the automation.
+  // An unresolved `isOutdated: true` thread must still block automation until a
+  // validator confirms it can be resolved. ci-recovery should therefore dispatch
+  // a task even when the only blocker is outdated.
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
@@ -3960,31 +3960,56 @@ test('outdated review thread is not treated as a blocker — no task dispatch wh
       status: 404,
       body: { message: 'Not Found' },
     }),
-    [`POST /graphql`]: () => ({
-      body: gqlReviewThreads(
-        [
-          {
-            id: 'thread-outdated',
-            isResolved: false,
-            isOutdated: true,
-            path: 'briefs/items/velvet-coat.yaml',
-            line: 10,
-            comments: {
-              nodes: [
-                {
-                  id: 'comment-outdated',
-                  body: 'Consider re-wrapping the YAML block scalar.',
-                  author: { login: 'copilot-pull-request-reviewer' },
-                  authorAssociation: 'NONE',
-                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r99999`,
-                },
-              ],
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
             },
           },
-        ],
-        [],
-      ),
-    }),
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads(
+          [
+            {
+              id: 'thread-outdated',
+              isResolved: false,
+              isOutdated: true,
+              path: 'briefs/items/velvet-coat.yaml',
+              line: 10,
+              comments: {
+                nodes: [
+                  {
+                    id: 'comment-outdated',
+                    body: 'Consider re-wrapping the YAML block scalar.',
+                    author: { login: 'copilot-pull-request-reviewer' },
+                    authorAssociation: 'NONE',
+                    url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r99999`,
+                  },
+                ],
+              },
+            },
+          ],
+          [],
+        ),
+      };
+    },
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
       body: {
         check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null }],
@@ -4008,28 +4033,24 @@ test('outdated review thread is not treated as a blocker — no task dispatch wh
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  // Must reach the admission-wait path (CI still running), not dispatch a task.
-  assert.match(stdout, /wait pr=#42 admission=ci/, 'expected admission wait, not task dispatch');
-  // No recovery task comment should be posted for an outdated-only blocker.
-  assert.equal(
-    mutatingCalls.some(
-      (call) =>
-        call.method === 'POST' &&
-        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
-        typeof call.body?.body === 'string' &&
-        call.body.body.includes('crawler-ci-task:v1'),
-    ),
-    false,
-    'outdated-only thread must not trigger a recovery task comment',
+  assert.match(stdout, /assigned copilot pr=#42/);
+  const taskCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
   );
+  assert.ok(taskCall, 'outdated-only thread must trigger a recovery task comment');
+  assert.match(taskCall.body.body, /discussion_r99999/);
+  assert.equal((taskCall.body.body.match(/\*\*review-thread\*\*/g) ?? []).length, 1);
 });
 
 test('outdated thread does not affect fingerprint when line field is non-deterministic', async (t) => {
   // Regression for fingerprint instability: an isOutdated thread whose `line`
   // field changes between reads (e.g. 10 → null) must not change the
-  // blockerFingerprint because outdated threads are excluded from blockers.
-  // The active non-outdated thread's fingerprint must be stable regardless of
-  // what the outdated thread's `line` value is.
+  // blockerFingerprint. Outdated threads still stay in blockers, but their
+  // unstable line metadata is omitted from the fingerprint.
   const activeThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3607713280`;
 
   function makeGraphqlHandler(outdatedLine) {
@@ -4151,23 +4172,22 @@ test('outdated thread does not affect fingerprint when line field is non-determi
   const [secondFp] = taskBodies[1].match(/fingerprint=([0-9a-f]+)/i) ?? [];
   assert.ok(firstFp && secondFp, 'both task comments must carry a fingerprint');
   assert.equal(firstFp, secondFp, 'outdated thread line change must not alter blockerFingerprint');
-  // The outdated thread must NOT appear in either task body.
+  // Both the active and outdated threads must appear in both task bodies.
   assert.ok(
-    !taskBodies[0].includes('thread-outdated') && !taskBodies[1].includes('thread-outdated'),
-    'outdated thread must not be listed in the recovery task',
+    taskBodies[0].includes('3607713282') && taskBodies[1].includes('3607713282'),
+    'outdated thread must remain listed in the recovery task',
   );
-  // The active thread MUST appear in both task bodies.
   assert.ok(
     taskBodies[0].includes('3607713280') && taskBodies[1].includes('3607713280'),
     'active thread must appear in both task comments',
   );
-  // Exactly one blocker entry in each task comment (the active thread only).
+  // Exactly two blocker entries in each task comment (active + outdated thread).
   for (const [i, body] of taskBodies.entries()) {
     const blockerCount = (body.match(/\*\*review-thread\*\*/g) ?? []).length;
     assert.equal(
       blockerCount,
-      1,
-      `task comment ${i} must list exactly 1 blocker (the active thread); got ${blockerCount}`,
+      2,
+      `task comment ${i} must list exactly 2 blockers (active + outdated thread); got ${blockerCount}`,
     );
   }
 });

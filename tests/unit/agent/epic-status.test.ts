@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -314,20 +313,24 @@ describe('Floor 2 equipment epic status', () => {
   it('rejects merge facts that point at a non-commit git object', () => {
     const state = cloneState();
     validateA0(state);
-    const treeObject = execFileSync('git', ['rev-parse', `${HANDOFF_COMMIT}^{tree}`], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-    }).trim();
+    const nonCommitObject = 'b'.repeat(40);
     state.nodes[0]!.status = 'merged';
     state.nodes[0]!.merge = {
-      commit: treeObject,
+      commit: nonCommitObject,
       merged_at: '2026-07-17T17:50:00.000Z',
     };
+    const gitReader = makeWorkingTreeGitReader(REPO_ROOT);
 
     const result = validateEpicState(state, {
       repoRoot: REPO_ROOT,
       now: NOW,
       planMarkdown: PLAN,
+      gitReader: {
+        ...gitReader,
+        commitStatus(commit: string) {
+          return commit === nonCommitObject ? 'not-a-commit' : 'commit';
+        },
+      },
     });
 
     expect(result.errors.map((error) => error.code)).toContain('merge.not-a-commit');

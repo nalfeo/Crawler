@@ -1261,22 +1261,18 @@ for (const run of actionRequiredRuns) {
   }
 }
 
-// Outdated threads reference code that no longer exists at that location and
-// do not block GitHub merges; excluding them prevents both spurious dispatches
-// and fingerprint instability from non-deterministic `line` values on stale
-// thread metadata. The marker-based auto-resolution loop above (unresolvedThreads
-// at line 937) intentionally uses the broader filter so that outdated threads
-// which already carry a trusted ✅ Addressed marker can still be cleaned up.
-for (const thread of review.threads.filter(
-  (candidate) => !candidate.isResolved && !candidate.isOutdated,
-)) {
+// Keep every unresolved thread as a blocker so ci-recovery stays aligned with
+// merge-train admission. Outdated threads still need deterministic validation /
+// resolution; only their GraphQL `line` field is unstable, so omit it from the
+// blocker fingerprint when the thread is already outdated.
+for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
   const root = thread.comments?.nodes?.[0];
   blockers.push({
     kind: 'review-thread',
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
     path: thread.path || undefined,
-    line: thread.line || undefined,
+    line: thread.isOutdated ? undefined : (thread.line ?? undefined),
     summary: `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 500)}`,
     url: root?.url,
   });

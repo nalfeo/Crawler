@@ -11,70 +11,56 @@ ci-recovery
 
 ## What was broken
 
-The CI recovery automation looped indefinitely on PR #1503 because it treated an
-`isOutdated: true` review thread as an active blocker. Thread 2
-(`PRRT_kwDOSvo2Ms6R9SwG`) was a cosmetic YAML line-wrapping comment made by
-`copilot-pull-request-reviewer`; a subsequent commit modified the file, making the
-thread outdated. Despite this, `reconcile.mjs` filtered threads only by
-`!isResolved`, not `!isOutdated`, so the thread remained a blocker indefinitely.
+The CI recovery automation looped indefinitely on PR #1503 because an unresolved
+outdated review thread stayed in the blocker set, but its GraphQL `thread.line`
+metadata was non-deterministic (`10` on one read, `null` on another). That let the
+same logical blocker hash differently across runs, which tripped the
+"active-copilot-progress backpressure" path and silently churned attempts without
+stable progress.
 
-There were two concrete symptoms:
-
-1. **Spurious task dispatches** — The recovery automation posted `@copilot` task
-   comments for a thread whose code no longer exists at that location. The agent
-   could not deterministically address the thread, so no progress was made.
-
-2. **Fingerprint instability** — The GraphQL `thread.line` field for outdated threads
-   is non-deterministic (returned `10` on the first read of PR #1503, then `null` on
-   subsequent reads). This caused the `blockerFingerprint` to change between reconciler
-   runs, triggering the "active-copilot-progress backpressure" code which silently
-   reset the attempt counter and updated state without posting a new task. This
-   compounded the stall.
+The first attempted fix on this branch was too broad: it removed unresolved
+outdated threads from the blocker set entirely. Review correctly flagged that as a
+policy violation because merge-train still blocks on every unresolved review
+thread, outdated or not. Excluding them would have made ci-recovery claim
+convergence while downstream admission still rejected the PR.
 
 ## Root cause
 
-`reconcile.mjs` line 1264 (before fix):
-
-```javascript
-for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
-```
-
-The filter excluded resolved threads but **not outdated threads**. Outdated threads
-(`isOutdated: true`) represent code that no longer exists at that diff location.
-GitHub's branch protection rules do not treat outdated threads as merge blockers;
-the CI recovery automation should not either.
+The blocker fingerprint included `thread.line` for every unresolved review thread,
+including outdated ones. For stale threads GitHub can return that field
+non-deterministically, so identical unresolved review state produced different
+`blockerFingerprint` values across runs.
 
 ## Fix
 
-Exclude `isOutdated: true` threads from the blocker list (one-line change):
+- Keep **all unresolved review threads** in ci-recovery blockers so the reconcile
+  path stays aligned with merge-train / ADR 0058 review-resolution policy.
+- Canonicalize stale-thread metadata by omitting `line` from the blocker record
+  when `thread.isOutdated === true`. The blocker still exists, but its fingerprint
+  no longer depends on unstable GraphQL line data.
+- Make the focused `epic-status` unit test shallow-clone safe by using the
+  existing injected `GitReader` seam instead of shelling out to
+  `git rev-parse <hardcoded-sha>^{tree}`.
+- Refresh the Floor 2 equipment epic-state fixture's
+  `offline-validator-and-focused-tests` SHA so it matches the updated test file.
 
-```javascript
-for (const thread of review.threads.filter(
-  (candidate) => !candidate.isResolved && !candidate.isOutdated,
-)) {
-```
+## Tests added / updated
 
-The `unresolvedThreads` variable used for marker-based auto-resolution (line 937)
-is intentionally left unchanged: outdated threads that have a trusted `✅ Addressed`
-marker should still be eligible for cleanup resolution, but they no longer contribute
-to the blocker list or the `blockerFingerprint`.
+Two regression tests in `.github/scripts/ci-recovery/reconcile.test.mjs` now cover
+the correct policy:
 
-## Tests added
-
-Two regression tests in `.github/scripts/ci-recovery/reconcile.test.mjs`:
-
-1. **"outdated review thread is not treated as a blocker — no task dispatch when only
-   blocker is outdated"** — Verifies that a PR with only an outdated thread reaches
-   the admission-wait path rather than dispatching a recovery task.
+1. **"outdated review thread still dispatches a recovery task when it is the only
+   blocker"** — Verifies that an unresolved outdated thread still blocks recovery
+   and produces a repair task.
 
 2. **"outdated thread does not affect fingerprint when line field is non-deterministic"**
    — Runs two reconciler instances with `line: 10` and `line: null` on the same
-   outdated thread, confirms both produce identical `blockerFingerprint` values and
-   that the outdated thread ID never appears in the dispatched task comment.
+   outdated thread, confirms both produce identical `blockerFingerprint` values,
+   and confirms both the active and outdated review-thread blockers remain present
+   in the dispatched task comment.
 
 ## Verification
 
-- All 86 reconcile tests pass (84 pre-existing + 2 new).
-- All 31 state tests pass.
-- `verify:fast` passes (one pre-existing `epic-status.test.ts` failure due to
-  missing git history in shallow clone is unrelated to this change).
+- `node --test .github/scripts/ci-recovery/reconcile.test.mjs`
+- `npm run test:unit -- tests/unit/agent/epic-status.test.ts`
+- `npm run verify:fast`
