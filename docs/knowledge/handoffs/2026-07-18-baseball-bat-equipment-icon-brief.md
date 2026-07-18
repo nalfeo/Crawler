@@ -14,7 +14,7 @@ sprite-pipeline
 
 ## Apples
 
-1🍎 exact — pure art task: brief authoring. No code changes.
+1 apple exact — pure art task: brief authoring. No code changes.
 
 ## What Was Done
 
