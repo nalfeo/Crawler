@@ -1,0 +1,32 @@
+type: weapon
+name: frost-crook
+description: |
+  A hooked magic staff (crook shape) held vertically — haft straight down,
+  curved crook head sweeping to one side at the top like a shepherd's crook.
+  The crook is icy and crystalline: a single dominant arc with jagged frost
+  crystal formations growing along the outer curve and at the tip of the
+  hook. The shaft is dark gnarled wood or frosted bone with pale blue-white
+  ice veins snaking up from the grip to the crook. Colour language is cold:
+  deep midnight blue base for the wood, bright icy cyan highlights on the
+  crystal clusters, pale white for the ice sheen and frost rim-light. The
+  hook arc itself glows faintly — a single 1-pixel pale-blue accent ring
+  along the inside edge of the curve. Small ice shard or teardrop crystal
+  at the very tip of the crook. Simple wrapped grip at the base in dark
+  indigo or black leather. No flames, no chains, no scabbard, no runes or
+  text, no floating orbs, no weapon-trail effects. The silhouette must read
+  as "hooked magic staff" at a glance — the crook arc should be clear and
+  bold, not a loose spiral. Single weapon, centered, fully inside the cell.
+# Vertical orientation is inherited from weapon type defaults (grip at
+# bottom, crook head at top). Anchor defaults (32, 56) inherited — grip
+# is centered at the base. Everything else (64x64, kenney-roguelike
+# palette, 4x4 sheet, judge.enabled) inherited from
+# data/sprite-types/weapon.json.
+#
+# Floor 2 equipment; stable id: weapon.frost-crook
+# Runtime key: equipment/weapon/frost-crook
+floor: 2
+variations:
+  - crook tip is a large hexagonal ice crystal instead of a shard
+  - shaft is wrapped in spiral frost-rime bands alternating dark wood and ice
+  - the crook arc has three small icicle spurs along the outer edge
+minVariations: 8
