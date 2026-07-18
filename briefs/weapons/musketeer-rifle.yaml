@@ -1,0 +1,25 @@
+type: weapon
+name: musketeer-rifle
+floor: 2
+description: |
+  A long flintlock musket — 17th–18th century military-style firearm. Held
+  vertically with the muzzle (barrel end) at the top and the butt-stock at
+  the bottom. The barrel is long, slender, and dark — aged iron with scuffs
+  and surface pitting suggesting dungeon wear. The wooden stock is rich brown
+  with visible grain and battle-worn scuffs; the forestock wraps partway up
+  the barrel. The flintlock mechanism sits prominently on the right side of
+  the breech: a curved hammer, steel frizzen pan with flash-guard, and a
+  small iron trigger guard are all individually readable at native size. A
+  simple iron ramrod slot runs along the underside of the barrel. No scope,
+  no bayonet, no glow, no enchantment, no flames. The silhouette must read
+  unmistakably as a long musket at a glance — long barrel dominating, short
+  stock at the base, flintlock bump clearly visible on the side.
+# Vertical orientation is the weapon default — muzzle at top, stock at bottom.
+# Anchor at grip / trigger-guard, default (32, 56) inherited from weapon type.
+# All other defaults (64x64, 4x4 sheet, palette, sensors, judge) are inherited
+# from data/sprite-types/weapon.json.
+variations:
+  - serpentine flintlock hammer with ornate curved profile
+  - heavier octagonal barrel cross-section with brass band near muzzle
+  - worn wood stock with a cracked repair wrap of leather cord near butt
+minVariations: 8
