@@ -7,7 +7,7 @@
 
 ## Systems touched
 
-sprites
+sprite-pipeline
 
 ## What was done
 
