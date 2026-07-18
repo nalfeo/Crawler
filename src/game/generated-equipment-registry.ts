@@ -71,7 +71,6 @@ function getMap(world: GameWorld): Map<GeneratedEquipmentInstanceId, GeneratedEq
   return map;
 }
 
-
 // ---------------------------------------------------------------------------
 // Deterministic instance ID creation
 // ---------------------------------------------------------------------------
@@ -366,7 +365,6 @@ function guardRawInstance(raw: unknown): string | null {
   return null;
 }
 
-
 /**
  * Register a generated equipment instance in the world-owned registry.
  *
@@ -503,10 +501,7 @@ export function snapshotRegistry(world: GameWorld): readonly GeneratedEquipmentI
  * @returns Array of error strings for any instance that failed hydration.
  *          Empty array = all instances hydrated successfully.
  */
-export async function hydrateRegistry(
-  world: GameWorld,
-  instances: unknown,
-): Promise<string[]> {
+export async function hydrateRegistry(world: GameWorld, instances: unknown): Promise<string[]> {
   const errors: string[] = [];
   const map = getMap(world);
 

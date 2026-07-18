@@ -777,9 +777,7 @@ describe('hydrateRegistry', () => {
   it('collects error and continues when resolvedEffects contains a null', async () => {
     const world = createTestWorld();
     const instance = await buildInstance();
-    const errors = await hydrateRegistry(world, [
-      { ...instance, resolvedEffects: [null] },
-    ]);
+    const errors = await hydrateRegistry(world, [{ ...instance, resolvedEffects: [null] }]);
     expect(errors).toHaveLength(1);
     expect(getRegistrySize(world)).toBe(0);
   });
