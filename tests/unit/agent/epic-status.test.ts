@@ -17,6 +17,9 @@ const REPO_ROOT = process.cwd();
 const EPIC_DIR = resolve(REPO_ROOT, 'docs', 'knowledge', 'epics', 'floor-2-equipment');
 const PLAN = readFileSync(resolve(EPIC_DIR, 'PLAN.md'), 'utf8');
 const STATE = JSON.parse(readFileSync(resolve(EPIC_DIR, 'epic-state.json'), 'utf8')) as EpicState;
+const SCHEMA = JSON.parse(
+  readFileSync(resolve(EPIC_DIR, 'epic-state.schema.json'), 'utf8'),
+) as unknown;
 const NOW = new Date('2026-07-17T18:00:00.000Z');
 const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
 // Placeholder SHAs used in evidence entries – the working-tree git reader ignores
@@ -58,6 +61,16 @@ function validate(state: EpicState, planMarkdown = PLAN) {
     repoRoot: REPO_ROOT,
     now: NOW,
     planMarkdown,
+    gitReader: makeWorkingTreeGitReader(REPO_ROOT),
+  });
+}
+
+function validateWithSchema(state: EpicState, planMarkdown = PLAN) {
+  return validateEpicState(state, {
+    repoRoot: REPO_ROOT,
+    now: NOW,
+    planMarkdown,
+    schemaDocument: SCHEMA,
     gitReader: makeWorkingTreeGitReader(REPO_ROOT),
   });
 }
@@ -596,6 +609,28 @@ describe('Floor 2 equipment epic status', () => {
     expect(
       audit.proposal.operator_actions.some(
         (a) => a.includes('new-agent') && a.includes('old-agent'),
+      ),
+    ).toBe(true);
+  });
+
+  it('validates manifest against committed JSON Schema and catches schema/Zod divergence', () => {
+    // Canonical manifest passes the committed JSON Schema.
+    const passResult = validateWithSchema(cloneState());
+    expect(passResult.errors.map((e) => e.code)).not.toContain('schema.manifest-invalid');
+
+    // A manifest that violates the JSON Schema (e.g. wrong schema_version const) is rejected.
+    const badState = cloneState() as unknown as Record<string, unknown>;
+    (badState as { schema_version: string }).schema_version = 'WRONG/v99';
+    const failResult = validateEpicState(badState, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      schemaDocument: SCHEMA,
+      gitReader: makeWorkingTreeGitReader(REPO_ROOT),
+    });
+    expect(
+      failResult.errors.some(
+        (e) => e.code === 'schema.manifest-invalid' || e.code === 'state.schema',
       ),
     ).toBe(true);
   });

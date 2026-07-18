@@ -1,8 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { z } from 'zod';
+
+// ajv is a transitive dependency available at runtime; load it via createRequire so that
+// ESM module resolution does not require it to be a direct package.json entry.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const Ajv = createRequire(import.meta.url)('ajv') as typeof import('ajv');
 
 const SHA_PATTERN = /^[0-9a-f]{7,64}$/;
 const SHA40_PATTERN = /^[0-9a-f]{40}$/;
@@ -507,7 +513,43 @@ export function extractPlanContract(markdown: string): {
   };
 }
 
-function validateCommittedSchema(schemaDocument: unknown, result: MutableValidation): void {
+/**
+ * Recursively transform a Draft 2020-12 JSON Schema into an ajv-v6–compatible
+ * (Draft 7) schema so we can apply it to manifest data without upgrading ajv.
+ *
+ * Transformations applied:
+ * - Strip the top-level `$schema` meta-URI (ajv v6 would try to resolve it).
+ * - Rename `$defs` → `definitions` and rewrite `#/$defs/` refs accordingly.
+ * - Replace `prefixItems`+`items:false` (2020-12 tuple syntax) with
+ *   `items`+`additionalItems:false` (Draft 7 tuple syntax).
+ */
+function transformSchemaForAjvV6(obj: unknown, depth = 0): unknown {
+  if (Array.isArray(obj)) return obj.map((v) => transformSchemaForAjvV6(v, depth + 1));
+  if (obj === null || typeof obj !== 'object') return obj;
+  const src = obj as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const k of Object.keys(src)) {
+    if (k === '$schema' && depth === 0) continue; // drop meta-schema URI
+    if (k === '$defs') {
+      result['definitions'] = transformSchemaForAjvV6(src[k], depth + 1);
+    } else if (k === 'prefixItems') {
+      // 2020-12 tuple → Draft 7 tuple
+      result['items'] = transformSchemaForAjvV6(src[k], depth + 1);
+      if (src['items'] === false) result['additionalItems'] = false;
+    } else if (k === 'items' && 'prefixItems' in src) {
+      // Already handled above alongside prefixItems
+    } else {
+      result[k] = transformSchemaForAjvV6(src[k], depth + 1);
+    }
+  }
+  return result;
+}
+
+function validateCommittedSchema(
+  schemaDocument: unknown,
+  input: unknown,
+  result: MutableValidation,
+): void {
   const schema = z
     .object({
       $schema: z.literal('https://json-schema.org/draft/2020-12/schema'),
@@ -588,6 +630,35 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
     result.errors.push({
       code: 'schema.invalid',
       message: schema.error.issues.map(formatZodIssue).join('; '),
+    });
+    return; // schema document is malformed; cannot apply it to the manifest
+  }
+
+  // Apply the committed JSON Schema to the manifest data so that any future
+  // divergence between the schema document and the Zod runtime validator is
+  // caught immediately rather than silently accepted.
+  try {
+    const ajvCompatSchema = transformSchemaForAjvV6(schemaDocument);
+    // Rewrite $defs refs to definitions refs in the serialised form.
+    const patched = JSON.parse(
+      JSON.stringify(ajvCompatSchema).replace(/#\/\$defs\//g, '#/definitions/'),
+    ) as object;
+    const ajv = new Ajv({ unknownFormats: 'ignore', schemaId: 'auto', allErrors: true });
+    const validate = ajv.compile(patched);
+    if (!validate(input)) {
+      const messages = (validate.errors ?? [])
+        .slice(0, 5)
+        .map((e) => `${e.dataPath || '.'}: ${e.message}`)
+        .join('; ');
+      result.errors.push({
+        code: 'schema.manifest-invalid',
+        message: `Manifest rejected by committed JSON Schema: ${messages}`,
+      });
+    }
+  } catch (err) {
+    result.errors.push({
+      code: 'schema.manifest-validation-error',
+      message: `Failed to apply JSON Schema to manifest: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
 }
@@ -1061,7 +1132,7 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
   }
 
   if (options.schemaDocument !== undefined) {
-    validateCommittedSchema(options.schemaDocument, result);
+    validateCommittedSchema(options.schemaDocument, input, result);
   }
 
   const planMarkdown =
