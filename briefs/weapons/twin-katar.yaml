@@ -16,8 +16,17 @@ description: |
 # Twin-katar is a composed dual weapon shown as a symmetrical pair.
 # The blades point upward (vertical orientation) with the grip/handle
 # assembly at the bottom center — matches weapon-default anchor.
-# Everything else (64x64, palette, references, 4x4 sheet, VLM judge)
-# inherited from data/sprite-types/weapon.json.
+#
+# Inheritance from data/sprite-types/weapon.json (brief only overrides what
+# differs from the type default; loader merges them before Zod validation):
+#   size:       { width: 64, height: 64 }
+#   palette:    { id: "kenney-roguelike" }
+#   anchor:     { x: 32, y: 56 }     ← grip bottom-center
+#   generation: { sheet: { rows: 4, cols: 4 } }  ← 16 variants on 1024×1024
+#   sensors:    { weapon: { orientation: "vertical", diagonalToleranceDeg: 5 } }
+#   judge:      { enabled: true, maxVariants: 16 }
+# No overrides needed — the default vertical orientation and center anchor
+# are exactly right for a twin-blade composed icon.
 variations:
   - blades crossed in an X at the top rather than side-by-side V
   - ornate finger-ring guards added to the H-frame handles
