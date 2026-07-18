@@ -179,3 +179,23 @@ export function createMobAbilityRuntime(): MobAbilityRuntime {
 export function mobAbilitySourceId(abilityId: string, casterEid: number): string {
   return `mob-ability:${abilityId}:${casterEid}`;
 }
+
+/**
+ * Hard cap on `pendingBursts` — the VFX renderer drains quickly under normal
+ * play but headless / lab runs have no renderer, so growth is capped
+ * defensively (oldest dropped). Burst geometry data is cosmetic-only, so
+ * dropping events is harmless. Matches the VFX_EVENT_CAP pattern.
+ */
+const MOB_ABILITY_BURST_CAP = 256;
+
+/**
+ * Push a burst event, enforcing {@link MOB_ABILITY_BURST_CAP} (drops oldest
+ * when full). Follows the same bounded-queue pattern as `pushVfxEvent` and
+ * `pushAnnouncement`.
+ */
+export function pushMobAbilityBurst(bursts: MobAbilityGeometry[], geom: MobAbilityGeometry): void {
+  bursts.push(geom);
+  if (bursts.length > MOB_ABILITY_BURST_CAP) {
+    bursts.splice(0, bursts.length - MOB_ABILITY_BURST_CAP);
+  }
+}

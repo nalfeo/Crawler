@@ -26,6 +26,7 @@ import { pushAnnouncement } from '../../shared/announcement-events.js';
 import type { GameWorld } from '../world.js';
 import {
   mobAbilitySourceId,
+  pushMobAbilityBurst,
   type MobAbilityInstanceState,
   type MobAbilityRuntimeDefinition,
 } from './types.js';
@@ -237,7 +238,8 @@ function resolveCast(world: GameWorld, casterEid: number, inst: MobAbilityInstan
     // Enqueue a durable burst event so the VFX renderer can fire the resolution
     // burst even if the caster dies later in the same simulation step (which
     // would remove byEntity[casterEid] before PhaserBridge.sync runs).
-    world.mobAbilities.pendingBursts.push(geometry);
+    // Bounded push prevents unbounded headless growth (VFX is the sole drain).
+    pushMobAbilityBurst(world.mobAbilities.pendingBursts, geometry);
   }
   // Re-arm: cooldown is anchored AFTER resolution.
   inst.phase = 'cooldown';
