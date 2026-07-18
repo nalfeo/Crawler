@@ -3,7 +3,7 @@
 **Date:** 2026-07-18
 **Session slug:** spike-shield-asset-request
 **Apple estimate / actual:** 1🍎 / 1🍎
-**Issue:** nalfeo/Crawler#1474
+**Issue:** #1474
 **PR:** branch `copilot/asset-request-spike-shield`
 
 ## Systems touched
@@ -24,7 +24,7 @@ Attempted the full scope (`generate → judge/review → approve`) but the envir
 
 ## Verification run
 
-- `npm run sprites:run -- --brief briefs/weapons/iron-sword.yaml` — ❌ blocked (`AZURE_OPENAI_ENDPOINT` missing)
+- `npm run sprites:run -- --brief briefs/weapons/iron-sword.yaml` — ❌ blocked (`AZURE_OPENAI_ENDPOINT` missing). Baseline warmup check to confirm provider/environment behavior before running the new brief.
 - `npm run sprites:run -- --brief briefs/weapons/spike-shield.yaml --judge-budget-usd 0.25` — ❌ blocked (`AZURE_OPENAI_ENDPOINT` missing)
 - `npm run verify:fast` — ❌ 1 unrelated pre-existing unit test failure (`tests/unit/agent/epic-status.test.ts`, missing git object `461b8a334a...^{tree}`)
 
