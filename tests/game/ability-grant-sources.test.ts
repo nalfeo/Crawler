@@ -386,8 +386,9 @@ describe('migrateAbilityStateToSourceTracking', () => {
 // ─── Playercarryover snapshot round-trip ─────────────────────────────────
 
 describe('playerCarryover snapshot round-trip', () => {
-  it('round-trips grant-source maps through capturePlayerCarryover/restorePlayerCarryover', () => {
+  it('strips equipment sources from ability grants during carryover (stale instanceId prevention)', () => {
     const { world: source, player: sourcePlayer } = setupPlayer();
+    // Grant veteran-instinct from both equipment and skill.
     grantEquipmentPassiveAbility(source, sourcePlayer, 'veteran-instinct', 7);
     grantPassiveAbility(source, sourcePlayer, 'veteran-instinct', {
       kind: 'skill',
@@ -401,12 +402,30 @@ describe('playerCarryover snapshot round-trip', () => {
     restorePlayerCarryover(dest, destPlayer, snapshot);
 
     const state = dest.abilityStatesByEntity.get(destPlayer)!;
+    // Mixed-source ability (equipment + skill) survives with non-equipment sources only.
     expect(state.passiveAbilityIds).toContain('veteran-instinct');
     const passiveSources = state.passiveAbilityGrantSources.get('veteran-instinct')!;
-    expect(passiveSources).toHaveLength(2);
-    expect(passiveSources.some((s) => s.kind === 'equipment' && s.instanceId === 7)).toBe(true);
+    expect(passiveSources.some((s) => s.kind === 'equipment')).toBe(false);
     expect(passiveSources.some((s) => s.kind === 'skill' && s.skillId === 'iron-skin')).toBe(true);
+    // Learned spell survives intact.
     expect(state.activeAbilityGrantSources.get('fireball')).toEqual([{ kind: 'learned' }]);
+  });
+
+  it('drops equipment-only granted abilities from carryover snapshot', () => {
+    const { world: source, player: sourcePlayer } = setupPlayer();
+    // Grant an active ability ONLY via equipment (no learned/skill source).
+    grantEquipmentActiveAbility(source, sourcePlayer, 'battle-focus', 42);
+
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+
+    const { world: dest, player: destPlayer } = setupPlayer();
+    restorePlayerCarryover(dest, destPlayer, snapshot);
+
+    const state = dest.abilityStatesByEntity.get(destPlayer)!;
+    // Equipment-only ability should NOT survive carryover; it must be re-granted
+    // when the equipment is re-equipped on the new floor.
+    expect(state.equippedActiveAbilityIds).not.toContain('battle-focus');
+    expect(state.activeAbilityGrantSources.has('battle-focus')).toBe(false);
   });
 
   it('restores from old snapshot without grant-source fields using migration', () => {

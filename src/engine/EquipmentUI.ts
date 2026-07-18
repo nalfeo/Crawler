@@ -752,6 +752,9 @@ export function createEquipmentUI(
     const result = unequip(lastWorld, playerEid, slotId);
     if (result.ok) {
       addItem(currentBag, result.item.def.id, 1);
+      // TODO(C2→D): call revokeEquipmentAbilityGrants(lastWorld, playerEid, result.item.instanceId)
+      // here once equipment-ability wiring is implemented so unequipping revokes
+      // only this instance's ability grants (see src/game/systems/abilitySystem.ts).
       invalidate();
       config.onInventoryChanged?.();
     }

@@ -95,20 +95,56 @@ function snapshotAbilityState(
   frameCount: number,
 ): AbilityStateSnapshot | undefined {
   if (!state) return undefined;
+
+  // Strip equipment-sourced entries from the snapshot.  Equipment instance IDs
+  // are allocated per-world and are not stable across floor transitions; storing
+  // them would produce stale references after carryover restore.  Abilities
+  // whose *only* source was equipment are also dropped from the ID lists here —
+  // they will be re-granted when the carried-over equipment is re-equipped.
+  // Abilities with mixed sources (e.g. learned + equipment) survive with their
+  // non-equipment sources intact.
+  //
+  // TODO(C2→D): when equipment-ability wiring is fully implemented, persist a
+  // compact itemDef→abilityId manifest here and re-grant on restore so equipment
+  // abilities survive the transition without stale instanceId references.
+  const nonEquipmentSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
+    sources.filter((s) => s.kind !== 'equipment');
+
+  const filteredActiveSources = new Map<string, AbilityGrantSource[]>();
+  for (const [abilityId, sources] of state.activeAbilityGrantSources) {
+    const kept = nonEquipmentSources(sources);
+    if (kept.length > 0) filteredActiveSources.set(abilityId, kept);
+  }
+  const filteredPassiveSources = new Map<string, AbilityGrantSource[]>();
+  for (const [abilityId, sources] of state.passiveAbilityGrantSources) {
+    const kept = nonEquipmentSources(sources);
+    if (kept.length > 0) filteredPassiveSources.set(abilityId, kept);
+  }
+
+  // Drop equipment-only abilities from the canonical ID lists.
+  const equippedActiveAbilityIds = state.equippedActiveAbilityIds.filter(
+    (id) => filteredActiveSources.has(id) || !state.activeAbilityGrantSources.has(id),
+  );
+  const passiveAbilityIds = state.passiveAbilityIds.filter(
+    (id) => filteredPassiveSources.has(id) || !state.passiveAbilityGrantSources.has(id),
+  );
+
   return {
     learnedSpellIds: [...state.learnedSpellIds],
-    equippedActiveAbilityIds: [...state.equippedActiveAbilityIds],
-    passiveAbilityIds: [...state.passiveAbilityIds],
+    equippedActiveAbilityIds,
+    passiveAbilityIds,
     cooldownElapsedFramesByAbilityId: [...state.cooldownByAbilityId].map(
       ([abilityId, lastTriggerFrame]) =>
         [abilityId, Math.max(0, frameCount - lastTriggerFrame)] as const,
     ),
     cooldownFramesByAbilityId: [...state.cooldownFramesByAbilityId],
-    appliedPassiveAbilityIds: [...state.appliedPassiveAbilityIds],
-    activeAbilityGrantSources: [...state.activeAbilityGrantSources].map(
+    appliedPassiveAbilityIds: [...state.appliedPassiveAbilityIds].filter((id) =>
+      passiveAbilityIds.includes(id),
+    ),
+    activeAbilityGrantSources: [...filteredActiveSources].map(
       ([abilityId, sources]) => [abilityId, [...sources]] as const,
     ),
-    passiveAbilityGrantSources: [...state.passiveAbilityGrantSources].map(
+    passiveAbilityGrantSources: [...filteredPassiveSources].map(
       ([abilityId, sources]) => [abilityId, [...sources]] as const,
     ),
   };
