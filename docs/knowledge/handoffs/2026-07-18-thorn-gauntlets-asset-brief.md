@@ -65,7 +65,7 @@ Created a production-ready sprite brief for the `thorn-gauntlets` Floor 2 equipm
 
 **Blocking constraints confirmed in this session**:
 
-- Existing run artifacts unreachable from this environment due DNS / blob-host resolution failure.
+- Existing run artifacts unreachable from this environment due to DNS / blob-host resolution failure.
 - Fresh Azure generation unavailable because the coding-agent shell has no Azure credentials and cloud/CI bootstrap intentionally skips `.env.local`.
 - The required issue plan comment remained blocked by environment constraints; earlier attempts from the parent session hit 403 / DNS-proxy problems, and this session did not claim success.
 
