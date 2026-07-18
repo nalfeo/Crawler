@@ -3,7 +3,7 @@
   "schema_version": "crawler-epic-state/v1",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-18T12:05:08.000Z",
+  "updated_at": "2026-07-18T13:34:03.559Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
