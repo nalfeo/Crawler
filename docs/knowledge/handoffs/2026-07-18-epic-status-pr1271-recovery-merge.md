@@ -8,7 +8,7 @@ ci-policy, docs-tooling
 
 - merged `origin/main` into `nalfeo-floor-2-epic-control` to resolve the reported PR conflict cleanly
 - fixed epic-status evidence verification for non-canonical required evidence so file-backed evidence verifies via content hash even when recorded commit is unavailable post-squash
-- tightened BLOCKED-event reconciliation so claims are revoked only when `lease_disposition: revoke` is explicitly present
+- tightened BLOCKED-event reconciliation diagnostics while preserving the implemented protocol: trusted `BLOCKED` comments revoke live claims for the target node, and later trusted `CLAIMED` comments can re-establish ownership
 - fixed drift-audit workflow JSON capture by running epic-status with npm silent mode when redirecting machine-readable output
 
 ## Files touched

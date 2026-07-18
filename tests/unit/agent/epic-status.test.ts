@@ -541,6 +541,16 @@ describe('Floor 2 equipment epic status', () => {
     expect(codes).toContain('dag.dependency-contract-drift');
   });
 
+  it('rejects canonical parent-slice drift', () => {
+    const state = cloneState();
+    const d2a = state.nodes.find((node) => node.node_id === 'packet:D2-A');
+    expect(d2a).toBeDefined();
+    if (d2a) d2a.parent_slice = 'slice:Z9';
+
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).toContain('dag.parent-slice-contract-drift');
+  });
+
   it('detects committed JSON Schema parity drift when node constraints are loosened', () => {
     const loosened = structuredClone(SCHEMA) as {
       $defs: { node: { additionalProperties: boolean; required?: string[] } };
@@ -725,6 +735,89 @@ describe('Floor 2 equipment epic status', () => {
         a.includes('Ownership of slice:A0 was revoked by a BLOCKED event'),
       ),
     ).toBe(false);
+  });
+
+  it('does not emit revoke action when cache is already unclaimed after BLOCKED', () => {
+    const state = cloneState();
+    const a0 = state.nodes.find((node) => node.node_id === 'slice:A0');
+    expect(a0).toBeDefined();
+    if (a0) {
+      a0.status = 'blocked';
+      a0.ownership = {
+        claimant: null,
+        session: null,
+        source: 'none',
+        scope: null,
+        claimed_at: null,
+        lease_expires_at: null,
+        heartbeat_at: null,
+        base_commit: null,
+      };
+    }
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: ['BLOCKED', 'node: slice:A0', 'reason: dependency unresolved'].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-21',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    expect(
+      audit.proposal.operator_actions.some((a) =>
+        a.includes('Ownership of slice:A0 was revoked by a BLOCKED event'),
+      ),
+    ).toBe(false);
+  });
+
+  it('accepts trusted BLOCKED events without node field when expected node is known', () => {
+    const state = cloneState();
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: ['BLOCKED', 'reason: dependency unresolved'].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-99',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    expect(
+      audit.proposal.operator_actions.some((a) =>
+        a.includes('Ownership of slice:A0 was revoked by a BLOCKED event'),
+      ),
+    ).toBe(true);
   });
 
   it('does not collapse competing claimants that share a session id', () => {
@@ -1568,6 +1661,88 @@ describe('speculative stacked-work metadata', () => {
         (p) => p.path.includes('stacked_work/pr/head_sha') && p.value === NEW_HEAD,
       ),
     ).toBe(true);
+  });
+
+  it('maps node-less BLOCKED comments on stacked_work issues to the owning node', () => {
+    const state = buildStateWithStackedWork();
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.status = 'claimed';
+      a1.ownership = {
+        claimant: 'agent-z',
+        session: 'session-z',
+        source: 'child-issue-comment',
+        scope: 'stacked-work',
+        claimed_at: '2026-07-17T16:00:00.000Z',
+        lease_expires_at: '2026-07-18T18:00:00.000Z',
+        heartbeat_at: '2026-07-17T16:00:00.000Z',
+        base_commit: HANDOFF_COMMIT,
+      };
+    }
+    const runner: GithubRunner = {
+      get(path: string) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.endsWith('/issues/9100')) {
+          return {
+            number: 9100,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/9100',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/9100',
+          };
+        }
+        if (path.endsWith('/issues/1282')) {
+          return {
+            number: 1282,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1282',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1282',
+          };
+        }
+        if (path.includes('/issues/1282/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: ['BLOCKED', 'reason: dependency unresolved'].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1282#issuecomment-41',
+            },
+          ];
+        }
+        if (
+          path.includes('/issues/1264/comments?per_page=100&page=1') ||
+          path.includes('/issues/9100/comments?per_page=100&page=1')
+        ) {
+          return [];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        if (path.endsWith('/pulls/1271')) {
+          return {
+            number: 1271,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: FULL_COMMIT },
+          };
+        }
+        throw new Error(`Unexpected GitHub path: ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    const revokeActions = audit.proposal.operator_actions.filter((a) =>
+      a.includes('was revoked by a BLOCKED event'),
+    );
+    expect(revokeActions.some((a) => a.includes('slice:A1'))).toBe(true);
+    expect(revokeActions.some((a) => a.includes('slice:A0'))).toBe(false);
   });
 
   it('suppresses ready_queue when plan contract hash has drifted', () => {

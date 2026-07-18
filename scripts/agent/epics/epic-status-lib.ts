@@ -2145,7 +2145,7 @@ function parseTrustedBlockedEvent(
     const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
     if (match?.[1] && match[2]) fields.set(match[1], match[2]);
   }
-  const nodeId = fields.get('node');
+  const nodeId = fields.get('node') ?? expectedNodeId;
   if (!nodeId) return null;
   if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
   return { nodeId, url: comment.html_url };
@@ -2248,8 +2248,15 @@ export function auditGithub(
           latestClaimsByNodeAndOwner.set(claim.nodeId, perOwner);
         }
       }
+      const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
       for (const [revokedNodeId, blocked] of latestRevokeByNode) {
-        if (!latestClaimsByNodeAndOwner.has(revokedNodeId)) {
+        const cacheNode = nodesById.get(revokedNodeId);
+        const cacheStillClaimed =
+          cacheNode !== undefined &&
+          ACTIVE_STATUSES.has(cacheNode.status) &&
+          cacheNode.ownership.claimant !== null &&
+          cacheNode.ownership.session !== null;
+        if (cacheStillClaimed && !latestClaimsByNodeAndOwner.has(revokedNodeId)) {
           operatorActions.push(
             `Ownership of ${revokedNodeId} was revoked by a BLOCKED event (${blocked.url}). ` +
               `Verify cached ownership reflects the revocation or a subsequent re-claim.`,
@@ -2280,7 +2287,7 @@ export function auditGithub(
     const stackedIssue = node.stacked_work?.issue;
     const mainIssue = node.github.issue;
     if (stackedIssue && stackedIssue.number !== mainIssue?.number) {
-      auditIssue(stackedIssue.number);
+      auditIssue(stackedIssue.number, node);
     }
     if (!node.github.pr) continue;
     try {
@@ -2441,6 +2448,7 @@ export function auditGithub(
     byOwner.push(claim);
     deduplicatedByOwner.set(sessionKey, byOwner);
   }
+  const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
   for (const [nodeId, claims] of deduplicatedByNode) {
     if (claims.length > 1) {
       errors.push({
@@ -2455,7 +2463,6 @@ export function auditGithub(
     // Reconcile the single authoritative live claim against cached ownership.
     if (claims.length === 1) {
       const liveClaim = claims[0]!;
-      const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
       const epicNode = nodesById.get(nodeId);
       if (epicNode && ACTIVE_STATUSES.has(epicNode.status)) {
         const owns = epicNode.ownership;
