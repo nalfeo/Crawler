@@ -1351,6 +1351,26 @@ describe('applyGithubAudit', () => {
     );
     expect(combined.proposal.operator_actions).toContain('follow up');
   });
+
+  it('preserves release_ready true when offline is ready and audit is clean', () => {
+    const offlineReady: ValidationResult = {
+      state: null,
+      errors: [],
+      warnings: [],
+      blockers: [],
+      ready_queue: [],
+      release_ready: true,
+      proposal: { repo_patch: [], operator_actions: [] },
+    };
+    const combined = applyGithubAudit(offlineReady, {
+      errors: [],
+      warnings: [],
+      proposal: { repo_patch: [], operator_actions: [] },
+    });
+
+    expect(combined.release_ready).toBe(true);
+    expect(combined.errors).toEqual([]);
+  });
 });
 
 describe('validateEvidenceRequirements', () => {
