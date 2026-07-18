@@ -110,6 +110,12 @@ export function initializeFloor2Settlement(
     );
   }
   const randomPool = allArchetypes.filter((a) => a.id !== QUARTERMASTER_ARCHETYPE_ID);
+  if (randomPool.length === 0) {
+    throw new Error(
+      'initializeFloor2Settlement: no non-Quartermaster archetypes available for random shop selection; ' +
+        'supply at least one non-Quartermaster archetype in the archetype pool',
+    );
+  }
   const shopCount = options.shopCount ?? (world.rng.next() < 0.5 ? 1 : 2);
   const shuffled = [...randomPool];
   world.rng.shuffle(shuffled);
@@ -156,9 +162,12 @@ export function initializeFloor2Settlement(
   });
 
   // Spawn guaranteed Quartermaster.
+  // Use settlementRng for QM inventory to keep world.rng consumption unchanged
+  // compared to pre-QM (so non-QM shop inventories and all downstream world.rng
+  // callers remain bit-for-bit identical regardless of whether QM was added).
   const qmWorldPos = floorMap.tileToWorld(quartermasterTile.x, quartermasterTile.y);
   const qmNpcEid = spawnNpc(world, qmWorldPos.x, qmWorldPos.y, quartermasterArchetype.npcId);
-  const qmRolled = generateShopInventory(world.rng, quartermasterArchetype);
+  const qmRolled = generateShopInventory(settlementRng, quartermasterArchetype);
   const qmInventory: Floor2ShopInventoryItem[] = qmRolled.items.map((item) => ({
     itemId: item.itemId,
     unitPrice: item.unitPrice,

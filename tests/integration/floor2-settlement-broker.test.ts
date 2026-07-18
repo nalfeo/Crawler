@@ -24,6 +24,7 @@ import {
   initializeFloor2Settlement,
   QUARTERMASTER_ARCHETYPE_ID,
 } from '../../src/game/floor2Settlement.js';
+import { loadShopArchetypes } from '../../src/shared/data/shop-archetypes.js';
 import { DoorState } from '../../src/core/components.js';
 import {
   getFloor2FamilyEliteArchetype,
@@ -238,6 +239,17 @@ describe('Floor 2 settlement · initialization', () => {
       // Exactly one Quartermaster guaranteed.
       expect(snap.quartermasterShop.archetypeId).toBe(QUARTERMASTER_ARCHETYPE_ID);
     }
+  });
+  it('throws actionably when the archetype pool contains only the Quartermaster (empty random pool)', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.floorMap = buildFloor2Map();
+    spawnPlayer(world, 0, 0);
+    world.floor = 2;
+    seedSettlementFamilyState(world);
+    const onlyQm = loadShopArchetypes().filter((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
+    expect(() => initializeFloor2Settlement(world, { archetypes: onlyQm })).toThrowError(
+      /no non-Quartermaster archetypes available/,
+    );
   });
 });
 
