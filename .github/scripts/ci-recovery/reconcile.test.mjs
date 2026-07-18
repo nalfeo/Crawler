@@ -23,6 +23,7 @@ import {
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
 import { admissionFingerprint, QUEUE_LABEL } from '../merge-train/state.mjs';
+import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './issue-intake-lib.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
@@ -5930,5 +5931,259 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
     ),
     false,
     'concurrent waiting state must not be overwritten',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Retroactive plan comment on linked issues missing a Copilot plan comment
+// (regression test for the CI-recovery permission-gap loop: Copilot repair
+// sessions lack issues:write, so the reconciler must post the plan using its
+// own CRAWLER_CI_PAT before dispatching the repair task).
+// ---------------------------------------------------------------------------
+
+test('live reconcile posts retroactive plan comment on linked issue with intake requirement but no Copilot plan', async (t) => {
+  const SOURCE_ISSUE = 1307;
+  const reviewCommentId = '3607268662';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        title: 'feat: add quarterstaff weapon brief',
+        html_url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}`,
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`]: () => ({
+      body: [
+        {
+          id: 9001,
+          body: `${ISSUE_INTAKE_MARKER}\n@copilot\nPlease handle...`,
+          user: { login: 'nalfeo' },
+          author_association: 'OWNER',
+        },
+      ],
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`]: (_url, body) => ({
+      body: { id: 9002, body: body?.body ?? '' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        number: SOURCE_ISSUE,
+                        title: 'Asset request: quarterstaff',
+                        labels: { nodes: [] },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'PRRT_kwDOSvo2Ms6R8FfL',
+            isResolved: false,
+            isOutdated: true,
+            path: 'docs/knowledge/handoffs/2026-07-18-quarterstaff-weapon-brief.md',
+            line: null,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-plan-missing',
+                  body: 'Issue #1307 required a plan comment before the PR.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          {
+            id: 1,
+            name: 'ci',
+            status: 'completed',
+            conclusion: 'failure',
+            html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+          },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Reconciler must have posted the retroactive plan comment on the source issue.
+  const planCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes(ISSUE_RECOVERY_PLAN_MARKER),
+  );
+  assert.ok(
+    planCommentCall,
+    `expected live reconcile to POST retroactive plan on source issue #${SOURCE_ISSUE}`,
+  );
+  assert.ok(
+    planCommentCall.body.body.includes(`#${PR_NUM}`),
+    'retroactive plan body should reference the PR number',
+  );
+  assert.match(
+    stdout,
+    new RegExp(`posted retroactive plan comment on source issue #${SOURCE_ISSUE}`),
+    'reconciler should log the retroactive plan posting',
+  );
+});
+
+test('live reconcile skips plan comment post when source issue already has a Copilot plan comment', async (t) => {
+  const SOURCE_ISSUE = 1308;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`]: () => ({
+      body: [
+        {
+          id: 9001,
+          body: `${ISSUE_INTAKE_MARKER}\n@copilot\nPlease handle...`,
+          user: { login: 'nalfeo' },
+          author_association: 'OWNER',
+        },
+        {
+          id: 9002,
+          body: 'Plan: I will implement this by creating a weapon brief YAML...',
+          user: { login: 'copilot-swe-agent' },
+          author_association: 'NONE',
+        },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        number: SOURCE_ISSUE,
+                        title: 'Asset request: mace',
+                        labels: { nodes: [] },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Must NOT post a plan comment when one already exists from Copilot.
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${SOURCE_ISSUE}/comments`,
+    ),
+    false,
+    `must not post a plan comment on issue #${SOURCE_ISSUE} that already has a Copilot plan comment`,
   );
 });

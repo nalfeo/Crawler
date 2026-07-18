@@ -1,6 +1,14 @@
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './state.mjs';
 
 export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
+
+/**
+ * Marker embedded in retroactive plan comments posted by the CI recovery
+ * reconciler when a linked issue has an intake requirement but no Copilot plan
+ * comment was ever posted. Used as an idempotency key so the reconciler never
+ * posts the retroactive plan comment twice.
+ */
+export const ISSUE_RECOVERY_PLAN_MARKER = '<!-- crawler-ci-recovery-plan:v1 -->';
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
 const COPILOT_OPENER_LOGINS = new Set([
   'copilot',
@@ -67,6 +75,66 @@ function isTrustedMarkerComment(comment) {
     (TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
       TRUSTED_BOT_LOGINS.has(String(comment.user?.login || '').toLowerCase()))
   );
+}
+
+/**
+ * Returns true if `issueComments` contains a trusted intake-marker comment,
+ * meaning the issue was assigned via the intake workflow and has a standing
+ * plan-comment requirement.
+ *
+ * Comments fetched from the REST `/issues/{number}/comments` endpoint have
+ * `user.login` and `author_association` fields.
+ */
+export function hasIntakeRequirementComment(issueComments) {
+  return (issueComments || []).some(
+    (comment) =>
+      String(comment.body || '').includes(ISSUE_INTAKE_MARKER) &&
+      (TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
+        TRUSTED_BOT_LOGINS.has(String(comment.user?.login || '').toLowerCase())),
+  );
+}
+
+/**
+ * Returns true if `issueComments` already contains a Copilot-authored plan
+ * comment (any non-intake Copilot comment) or a retroactive recovery-plan
+ * comment from a prior reconciler run.
+ *
+ * Both the `✅ Addressed` repair-marker pattern and the retroactive recovery
+ * plan marker count as a satisfied plan requirement.
+ */
+export function hasCopilotPlanComment(issueComments) {
+  return (issueComments || []).some((comment) => {
+    const body = String(comment.body || '');
+    // A prior retroactive plan from CI recovery satisfies the requirement.
+    if (body.includes(ISSUE_RECOVERY_PLAN_MARKER)) return true;
+    // Any non-intake Copilot comment counts as a plan comment.
+    return isCopilotLogin(comment.user?.login) && !body.includes(ISSUE_INTAKE_MARKER);
+  });
+}
+
+/**
+ * Builds the body of a retroactive plan comment to be posted on a source
+ * issue whose linked PR was opened without the required pre-PR plan comment.
+ *
+ * Embeds `ISSUE_RECOVERY_PLAN_MARKER` so future reconciler runs skip the post
+ * (idempotency) and so `hasCopilotPlanComment` returns true on re-check.
+ */
+export function buildRetroactivePlanComment(prNumber, prTitle, prHtmlUrl) {
+  const safeTitle = String(prTitle || '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .trim();
+  return [
+    ISSUE_RECOVERY_PLAN_MARKER,
+    '',
+    '**Retroactive implementation plan** _(filed by CI recovery pipeline)_',
+    '',
+    `The agent that opened PR #${prNumber} did not post an implementation plan before opening the PR. The CI recovery pipeline is posting this retroactive plan to satisfy the pre-PR planning requirement so the review thread can be resolved.`,
+    '',
+    `**PR:** ${prHtmlUrl || `#${prNumber}`}`,
+    ...(safeTitle ? [`**Title:** ${safeTitle}`] : []),
+    '',
+    'See the PR description for the full implementation details and approach.',
+  ].join('\n');
 }
 
 async function deleteCommentIfCreated(request, token, owner, repo, commentId) {

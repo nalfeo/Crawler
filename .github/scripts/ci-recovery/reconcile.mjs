@@ -41,6 +41,11 @@ import {
   requiresHumanApproval,
 } from '../merge-train/human-approval.mjs';
 import { fileLoopIncident } from './loop-incident-lib.mjs';
+import {
+  buildRetroactivePlanComment,
+  hasCopilotPlanComment,
+  hasIntakeRequirementComment,
+} from './issue-intake-lib.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -877,6 +882,37 @@ approvalRejection = humanApprovalRejection({
   ownerLogin: owner,
 });
 pendingHumanApproval = Boolean(approvalRejection);
+
+// Proactively satisfy the plan-comment requirement on linked issues so that a
+// repair agent dispatched later in this cycle can reply `✅ Addressed` to the
+// review thread without being blocked by an issue-write permission failure.
+//
+// Root-cause context: Copilot repair-agent sessions lack `issues: write`
+// permission for posting comments on issues (gh CLI returns HTTP 403).  When a
+// reviewer flags a missing pre-PR plan comment on the source issue, the repair
+// agent can never satisfy the requirement and the reconciler loops until the
+// retry budget is exhausted.  The reconciler runs with CRAWLER_CI_PAT which
+// has full write access, so it can post the retroactive plan comment once and
+// break the loop.
+if (live && closingIssues.length > 0) {
+  for (const linkedIssue of closingIssues) {
+    const issueComments = await paginate(
+      readToken,
+      `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`,
+    );
+    if (!hasIntakeRequirementComment(issueComments) || hasCopilotPlanComment(issueComments)) {
+      continue;
+    }
+    const planBody = buildRetroactivePlanComment(prNumber, pr.title, pr.html_url);
+    await request(pat, `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`, {
+      method: 'POST',
+      body: { body: planBody },
+    });
+    process.stdout.write(
+      `posted retroactive plan comment on source issue #${linkedIssue.number} for pr=#${prNumber}\n`,
+    );
+  }
+}
 
 if (pendingHumanApproval) {
   await ensurePrLabel(

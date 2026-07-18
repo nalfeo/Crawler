@@ -201,3 +201,104 @@ test('deletes the kickoff comment when assignment does not persist', async () =>
   assert.equal(requestCalls[1].method, 'DELETE');
   assert.ok(requestCalls[1].path.includes('/12345'));
 });
+
+import {
+  buildRetroactivePlanComment,
+  hasCopilotPlanComment,
+  hasIntakeRequirementComment,
+  ISSUE_INTAKE_MARKER,
+  ISSUE_RECOVERY_PLAN_MARKER,
+} from './issue-intake-lib.mjs';
+
+test('hasIntakeRequirementComment returns true only for trusted intake-marker comments', () => {
+  assert.equal(hasIntakeRequirementComment([]), false);
+  assert.equal(
+    hasIntakeRequirementComment([
+      { body: 'no marker here', user: { login: 'nalfeo' }, author_association: 'OWNER' },
+    ]),
+    false,
+  );
+  assert.equal(
+    hasIntakeRequirementComment([
+      {
+        body: `${ISSUE_INTAKE_MARKER}\n@copilot\nPlease handle...`,
+        user: { login: 'nalfeo' },
+        author_association: 'OWNER',
+      },
+    ]),
+    true,
+  );
+  // Intake marker from untrusted author (non-member) does not count.
+  assert.equal(
+    hasIntakeRequirementComment([
+      {
+        body: `${ISSUE_INTAKE_MARKER}\n@copilot\nPlease handle...`,
+        user: { login: 'random-user' },
+        author_association: 'NONE',
+      },
+    ]),
+    false,
+  );
+  // Trusted bot login also counts.
+  assert.equal(
+    hasIntakeRequirementComment([
+      {
+        body: `${ISSUE_INTAKE_MARKER}\n@copilot\nPlease handle...`,
+        user: { login: 'github-actions[bot]' },
+        author_association: 'NONE',
+      },
+    ]),
+    true,
+  );
+});
+
+test('hasCopilotPlanComment recognises existing Copilot plan and recovery plan markers', () => {
+  assert.equal(hasCopilotPlanComment([]), false);
+  // Intake comment from Copilot does NOT count as a plan comment.
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: `${ISSUE_INTAKE_MARKER}\n@copilot`,
+        user: { login: 'copilot-swe-agent' },
+      },
+    ]),
+    false,
+  );
+  // A non-intake Copilot comment counts.
+  assert.equal(
+    hasCopilotPlanComment([
+      { body: 'Plan: create a weapon brief...', user: { login: 'copilot-swe-agent' } },
+    ]),
+    true,
+  );
+  // copilot[bot] login also counts.
+  assert.equal(
+    hasCopilotPlanComment([{ body: 'My implementation plan is...', user: { login: 'copilot' } }]),
+    true,
+  );
+  // Recovery plan marker from any author counts (idempotency sentinel).
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: `${ISSUE_RECOVERY_PLAN_MARKER}\n\nRetroactive plan...`,
+        user: { login: 'nalfeo' },
+      },
+    ]),
+    true,
+  );
+});
+
+test('buildRetroactivePlanComment embeds recovery marker and PR reference', () => {
+  const body = buildRetroactivePlanComment(
+    42,
+    'feat: add quarterstaff',
+    'https://github.com/o/r/pull/42',
+  );
+  assert.ok(body.includes(ISSUE_RECOVERY_PLAN_MARKER));
+  assert.ok(body.includes('#42'));
+  assert.ok(body.includes('feat: add quarterstaff'));
+  assert.ok(body.includes('https://github.com/o/r/pull/42'));
+  // Must not include untrusted HTML comment injection.
+  const injected = buildRetroactivePlanComment(1, '<!-- injected -->', 'https://example.com/p/1');
+  assert.ok(!injected.includes('<!-- injected -->'));
+});
