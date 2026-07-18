@@ -1315,7 +1315,9 @@ describe('Floor 2 equipment epic status', () => {
       },
     });
 
-    expect(validate(state).errors.map((e) => e.code)).toContain('stacked.premature-rebase-complete');
+    expect(validate(state).errors.map((e) => e.code)).toContain(
+      'stacked.premature-rebase-complete',
+    );
   });
 
   it('rejects duplicate stacked_work ownership for the same claimant/session across nodes', () => {

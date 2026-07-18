@@ -2263,7 +2263,9 @@ export function auditGithub(
           // Report all field-level deltas for operator visibility.
           const allDiffs = [...drifts];
           if (liveClaim.expiresAt !== owns.lease_expires_at)
-            allDiffs.push(`expires_at: ${liveClaim.expiresAt} vs ${owns.lease_expires_at ?? 'none'}`);
+            allDiffs.push(
+              `expires_at: ${liveClaim.expiresAt} vs ${owns.lease_expires_at ?? 'none'}`,
+            );
           if (liveClaim.scope !== owns.scope)
             allDiffs.push(`scope: ${liveClaim.scope} vs ${owns.scope ?? 'none'}`);
           if (liveClaim.baseCommit !== owns.base_commit)
