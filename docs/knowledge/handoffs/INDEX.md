@@ -63,6 +63,7 @@ _…and 37 older, see `archive/`._
 
 ## ai-behavior-tree
 
+- [2026-07-17-floor-2-equipment-contracts](2026-07-17-floor-2-equipment-contracts.md) — Handoff: Floor 2 Equipment Contract Foundation
 - [2026-07-17-floor2-progress-suppression-recovery](2026-07-17-floor2-progress-suppression-recovery.md) — Floor 2 progress suppression recovery
 - [2026-07-16-ai-invariant-harness](2026-07-16-ai-invariant-harness.md) — Added a reusable AI invariant fixture that defines the hard-gate invariant
 - [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
@@ -163,6 +164,7 @@ _…and 49 older, see `archive/`._
 
 ## quests
 
+- [2026-07-17-floor-2-equipment-contracts](2026-07-17-floor-2-equipment-contracts.md) — Handoff: Floor 2 Equipment Contract Foundation
 - [2026-07-17-player-floor-transition](2026-07-17-player-floor-transition.md) — Replaced the Floor 1 full-page Floor 2 navigation with an in-process
 - [2026-07-16-quest-arrows-blocked-quests](2026-07-16-quest-arrows-blocked-quests.md) — Added blocked-objective filtering in `getQuestWaypoints`
 - [2026-07-15-floor2-ai-hunt-progression](2026-07-15-floor2-ai-hunt-progression.md) — Handoff - Floor 2 AI Hunt Progression
@@ -182,9 +184,8 @@ _…and 49 older, see `archive/`._
 - [2026-07-10-floor2-family-boss-progression](2026-07-10-floor2-family-boss-progression.md) — Handoff — Floor 2 Family Boss Progression
 - [2026-07-10-floor2-feedback-fixes](2026-07-10-floor2-feedback-fixes.md) — Handoff — Floor 2 Feedback Fixes
 - [2026-07-10-harvest-range-fix](2026-07-10-harvest-range-fix.md) — Changed `HARVEST_RANGE_FT` from `1.0` to `4.0` in `src/core/systems/harvestSystem.ts`
-- [2026-07-09-devtool-canvas-achievements](2026-07-09-devtool-canvas-achievements.md) — Slice D of the DevTool-canvas epic: ports the read/write **achievements editor**
 
-_…and 33 older, see `archive/`._
+_…and 34 older, see `archive/`._
 
 ## hud-ux
 
@@ -244,6 +245,8 @@ _…and 46 older, see `archive/`._
 
 ## inventory
 
+- [2026-07-18-generated-instance-registry](2026-07-18-generated-instance-registry.md) — Handoff: Floor 2 Generated Equipment Instance Registry
+- [2026-07-17-floor-2-equipment-contracts](2026-07-17-floor-2-equipment-contracts.md) — Handoff: Floor 2 Equipment Contract Foundation
 - [2026-07-17-player-floor-transition](2026-07-17-player-floor-transition.md) — Replaced the Floor 1 full-page Floor 2 navigation with an in-process
 - [2026-07-16-advisory-checks-encumbrance-export-cleanup](2026-07-16-advisory-checks-encumbrance-export-cleanup.md) — Handoff: PR #1203 advisory-checks dead-export cleanup
 - [2026-07-16-equipment-weight-encumbrance](2026-07-16-equipment-weight-encumbrance.md) — Handoff: Author complete equipment weight values for encumbrance
@@ -262,10 +265,8 @@ _…and 46 older, see `archive/`._
 - [2026-07-09-floor-1-ux-review](2026-07-09-floor-1-ux-review.md) — Floor 1 UX overlap/readability pass
 - [2026-07-08-ai-runner-floor-seed-fix](2026-07-08-ai-runner-floor-seed-fix.md) — AI runner floor/seed/scenario apply + playback UX refresh
 - [2026-07-08-asset-name-normalization](2026-07-08-asset-name-normalization.md) — Handoff: Item-sprite asset-name normalization (retire `ItemDef.icon`, bare-key item art)
-- [2026-07-07-equipment-review-harness-fixes](2026-07-07-equipment-review-harness-fixes.md) — Closed out the equipment paper-doll overhaul branch by fixing the two VALID
-- [2026-07-07-inventory-design-language](2026-07-07-inventory-design-language.md) — Ported the EquipmentUI's design language ("blue-steel" pixel-dungeon aesthetic)
 
-_…and 26 older, see `archive/`._
+_…and 28 older, see `archive/`._
 
 ## vfx
 
@@ -290,6 +291,8 @@ _…and 26 older, see `archive/`._
 
 ## weapons
 
+- [2026-07-18-generated-instance-registry](2026-07-18-generated-instance-registry.md) — Handoff: Floor 2 Generated Equipment Instance Registry
+- [2026-07-17-floor-2-equipment-contracts](2026-07-17-floor-2-equipment-contracts.md) — Handoff: Floor 2 Equipment Contract Foundation
 - [2026-07-17-player-floor-transition](2026-07-17-player-floor-transition.md) — Replaced the Floor 1 full-page Floor 2 navigation with an in-process
 - [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
@@ -308,10 +311,8 @@ _…and 26 older, see `archive/`._
 - [2026-07-11-per-attack-skill-attribution](2026-07-11-per-attack-skill-attribution.md) — Handoff: Per-attack weapon skill XP attribution
 - [2026-07-11-pipeline-unification](2026-07-11-pipeline-unification.md) — Resolved the two known ordering divergences between the visual and headless
 - [2026-07-10-core-stat-scaling-weight-placeholder](2026-07-10-core-stat-scaling-weight-placeholder.md) — Brought the `copilot/review-basic-stats` branch back to a mergeable state by merging `origin/main`, resolving the lone conflict in `src/cor…
-- [2026-07-10-floor2-family-boss-progression](2026-07-10-floor2-family-boss-progression.md) — Handoff — Floor 2 Family Boss Progression
-- [2026-07-10-pr1009-review-fixes](2026-07-10-pr1009-review-fixes.md) — Fixed Copilot review blocker #1 by separating percent and flat damage contracts:
 
-_…and 28 older, see `archive/`._
+_…and 30 older, see `archive/`._
 
 ## enemies
 
@@ -373,6 +374,16 @@ _…and 70 older, see `archive/`._
 ## ci-policy
 
 - [2026-07-17-exhaustive-copilot-review-prompt](2026-07-17-exhaustive-copilot-review-prompt.md) — Added one all-path review contract for native Copilot and harness reviewers. It
+- [2026-07-18-generated-instance-registry](2026-07-18-generated-instance-registry.md) — Handoff: Floor 2 Generated Equipment Instance Registry
+- [2026-07-17-ai-sweep-viewer](2026-07-17-ai-sweep-viewer.md) — Extended the Sweep Results Viewer Copilot canvas extension (`.github/extensions/sweep-results-viewer/`) to support AI Sweep Eval (`ai-sweep…
+- [2026-07-17-beetlefolk-boss-pr-recovery](2026-07-17-beetlefolk-boss-pr-recovery.md) — Handoff: PR #1224 blocker recovery
+- [2026-07-17-ci-recovery-loop-incident-filing](2026-07-17-ci-recovery-loop-incident-filing.md) — CI recovery: file deduplicated investigation issues on stale-automation-exhausted
+- [2026-07-17-ci-recovery-markdown-marker](2026-07-17-ci-recovery-markdown-marker.md) — Accept Markdown addressed markers in CI Recovery
+- [2026-07-17-exhaustive-copilot-review-prompt](2026-07-17-exhaustive-copilot-review-prompt.md) — Added one all-path review contract for native Copilot and harness reviewers. It
+- [2026-07-17-floor-2-equipment-contracts](2026-07-17-floor-2-equipment-contracts.md) — Handoff: Floor 2 Equipment Contract Foundation
+- [2026-07-17-floor-2-equipment-epic-control](2026-07-17-floor-2-equipment-epic-control.md) — Implemented Slice A0 as a durable, resumable control plane without changing
+- [2026-07-17-floor-2-stacked-work-protocol](2026-07-17-floor-2-stacked-work-protocol.md) — Implemented the A0.1 control-plane follow-up without changing equipment gameplay
+- [2026-07-17-nightly-balance-issue-body-fix](2026-07-17-nightly-balance-issue-body-fix.md) — Nightly balance issue body fix
 - [2026-07-17-player-floor-transition](2026-07-17-player-floor-transition.md) — Replaced the Floor 1 full-page Floor 2 navigation with an in-process
 - [2026-07-16-advisory-checks-encumbrance-export-cleanup](2026-07-16-advisory-checks-encumbrance-export-cleanup.md) — Handoff: PR #1203 advisory-checks dead-export cleanup
 - [2026-07-16-ai-runner-panel-ux](2026-07-16-ai-runner-panel-ux.md) — Handoff: AI Runner side-panel UX
