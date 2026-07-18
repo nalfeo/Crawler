@@ -11,6 +11,17 @@
     "path": "by-sha/87515622be18bede3c03d0788b98f600c876850a.json"
   },
   {
+    "commit": "b175292b16e5b475529e741ed0d8aa12b58f62fc",
+    "commitDate": "2026-07-18T17:37:13Z",
+    "commitSubject": "feat(assets): add spike-shield Floor 2 weapon brief for sprite generation (#1421)",
+    "capturedAt": "2026-07-18T19:01:37.685Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29654745192",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/b175292b16e5b475529e741ed0d8aa12b58f62fc.json"
+  },
+  {
     "commit": "598775a3e1c608b6e46c461b3fa94f392da9422b",
     "commitDate": "2026-07-18T17:05:13Z",
     "commitSubject": "feat(assets): add tower-spear Floor 2 weapon icon (#1404)",
