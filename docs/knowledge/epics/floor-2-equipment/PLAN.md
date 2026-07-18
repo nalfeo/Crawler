@@ -10,17 +10,6 @@ The machine-readable execution index is
 `docs/knowledge/epics/floor-2-equipment/epic-state.json`. That file is a cache
 and coordination index; it never overrides stronger evidence.
 
-## Normative contract links
-
-- Generated equipment, rewards, economy, AI, flags, and migration:
-  [equipment-system.md](../../../../.specify/specs/equipment-system.md)
-- Immutable static weapons and frozen active snapshots:
-  [weapon-system.md](../../../../.specify/specs/weapon-system.md)
-- Cross-system decision and alternatives:
-  [ADR 0065](../../adr/0065-versioned-frozen-floor2-equipment-instances.md)
-- Deferred Unique equipment follow-up (outside this epic's 37-node DAG):
-  <https://github.com/nalfeo/Crawler/issues/1274>
-
 ## Hard acceptance gate
 
 For the representative-build benchmark, the median aggregate DPS ratio must be
@@ -37,34 +26,22 @@ committed as deterministic evidence before the release node can validate.
 ## Product contract
 
 - Equipment rarity is Common, Uncommon, or Rare. No shipped item may exceed
-  Rare. Unique items are explicitly deferred from this epic to
-  <https://github.com/nalfeo/Crawler/issues/1274>.
+  Rare. Unique items are explicitly deferred from this epic.
 - One versioned generated-instance registry is authoritative across inventory,
   equip/unequip, achievement rewards, chests, merchant stock, and floor
   carryover. Consumers must not maintain parallel item-instance shapes.
-- Instance resolution is base template -> item level -> inherent scaling ->
-  rarity scalar/budget -> enhancement +N -> affixes/effects -> frozen
-  stats/name/art/weapon snapshot and fingerprint. The governing equipment and
-  weapon specs own the exact field and migration contracts.
 - Achievement equipment rewards resolve once, at unlock time, to an immutable
   generated instance. Loading, UI rendering, or later catalog edits must not
   reroll an already-resolved reward.
 - Floor 1 remains equipment-free. Equipment generation, rewards, shops, and
   equip affordances are unavailable there.
-- Floor 2 provides 30 floor achievements (10 each at Common, Uncommon, and Rare)
-  plus 6 current-run-global achievements that cross floor transitions and reset
-  on a new run. Floor 2 box equipment affinity is 25% / 50% / 75% for those
-  three tiers; Floor 1 boxes remain equipment-free.
+- Floor 2 provides 30 floor achievements plus 6 run-global achievements.
 - The Floor 2 boss chest selects rarity at 85% Uncommon and 15% Rare.
 - Every Floor 2 settlement has a guaranteed Quartermaster plus 1-2 random
   non-Quartermaster shops. Shop equipment stock is Common or Uncommon only.
 - The launch catalog contains at least 70 base items: exactly 50 weapons and 20
-  non-weapons in the stable manifest below. The 50 weapons are exactly 5 in each
-  of 10 stable weapon families. Future additions append IDs; they do not rename
-  or recycle them.
-- Equipment-granted abilities and passives are source-owned and reference
-  counted so unequip removes only the originating grant. The existing active
-  ability limit of 10 remains authoritative.
+  non-weapons in the stable manifest below. Future additions append IDs; they
+  do not rename or recycle them.
 - Shared chests use one accessible interaction and presentation contract:
   keyboard, pointer, and touch parity; focus management; readable rarity cues
   that do not rely on color alone; and deterministic item details.
@@ -72,9 +49,6 @@ committed as deterministic evidence before the release node can validate.
   merchant, chest, and carryover APIs. Travel must use the existing route
   planner. No AI-only inventory mutations, teleports, or duplicate planner may
   be introduced.
-- The seven release flags remain default off, enforce their documented
-  dependency closure, preserve recognized disabled data, and never expose
-  equipment on Floor 1. Unknown future instance/snapshot versions fail closed.
 
 ## Machine-owned plan contract
 
