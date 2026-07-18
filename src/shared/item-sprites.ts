@@ -29,6 +29,7 @@
  * `SeededRandom`.
  */
 import { getEquipmentDefForItem, getEquippableItemIds } from './equipmentDefs.js';
+import { FLOOR2_EQUIPMENT_ART_IDENTITIES } from './floor2-equipment-art.js';
 import type { GeneratedSpriteEntry, GeneratedSpriteRegistry } from './generated-assets.js';
 import { HARVESTABLE_DEFS } from './harvestableDefs.js';
 import { ITEM_CATALOG } from './items.js';
@@ -104,10 +105,12 @@ export function itemSpriteConcepts(itemId: string): readonly string[] {
 /**
  * The set of names that identify a **gameplay item** for art-naming purposes:
  * every `ItemDef.id` plus every equipment `weaponId` alias (e.g. `baseball-bat`,
- * which backs the `bone-club` item). Art approved for any of these concepts must
- * be keyed BARE (`<name>-var-N`), never versioned (`<name>-vN-var-N`) — the
- * `-vN` lineage tag is a generation-time concern that must not leak into an
- * item's consumer-facing key (items resolve by item id; ADR 0051).
+ * which backs the `bone-club` item), plus reserved Floor 2 equipment art
+ * identities that intentionally exist ahead of gameplay catalogs. Art approved
+ * for any of these concepts must be keyed BARE (`<name>-var-N`), never versioned
+ * (`<name>-vN-var-N`) — the `-vN` lineage tag is a generation-time concern that
+ * must not leak into an item's consumer-facing key (items resolve by item id;
+ * ADR 0051).
  *
  * This is keyed on gameplay identity, NOT sprite `type`: the item set spans
  * `material`/`weapon`/`consumable`/… `type`s and even `character`-typed art
@@ -129,6 +132,9 @@ export function itemArtIdentitySet(): ReadonlySet<string> {
     if (weaponId !== undefined) {
       identity.add(weaponId);
     }
+  }
+  for (const floor2Identity of FLOOR2_EQUIPMENT_ART_IDENTITIES) {
+    identity.add(floor2Identity);
   }
   // Harvestable world-node ids (e.g. `azure-mushroom`) also register as Materials
   // ItemDefs, but their generated art ships as a VERSIONED world-node key

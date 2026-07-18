@@ -270,6 +270,10 @@ export function runtimeKeyForFloor2Equipment(
   return `equipment/${stableId.slice(0, separator)}/${stableId.slice(separator + 1)}`;
 }
 
+export function artIdentityForFloor2Equipment(stableId: Floor2EquipmentStableId): string {
+  return stableId.slice(stableId.indexOf('.') + 1);
+}
+
 function displayNameFor(stableId: Floor2EquipmentStableId): string {
   const slug = stableId.slice(stableId.indexOf('.') + 1);
   return slug.replace(/(^|-)([a-z])/g, (_match, separator: string, letter: string) => {
@@ -358,6 +362,10 @@ function validateDefinitions(definitions: readonly Floor2EquipmentArtDefinition[
     definitions.map((entry) => entry.placeholderAssetPath),
     'placeholder path',
   );
+  unique(
+    definitions.map((entry) => artIdentityForFloor2Equipment(entry.stableId)),
+    'art identity',
+  );
   const weapons = definitions.filter((entry) => entry.category === 'weapon');
   if (weapons.length !== 50 || definitions.length - weapons.length !== 20) {
     throw new Error(
@@ -376,6 +384,10 @@ function validateDefinitions(definitions: readonly Floor2EquipmentArtDefinition[
 
 export const FLOOR2_EQUIPMENT_ART_DEFINITIONS = buildDefinitions();
 validateDefinitions(FLOOR2_EQUIPMENT_ART_DEFINITIONS);
+
+export const FLOOR2_EQUIPMENT_ART_IDENTITIES: readonly string[] = Object.freeze(
+  FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => artIdentityForFloor2Equipment(entry.stableId)),
+);
 
 function buildProductionWaves(): readonly Floor2EquipmentProductionWave[] {
   const waves = new Map<string, Floor2EquipmentProductionWave>();

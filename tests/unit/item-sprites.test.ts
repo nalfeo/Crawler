@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import {
+  FLOOR2_EQUIPMENT_ART_DEFINITIONS,
+  FLOOR2_EQUIPMENT_ART_IDENTITIES,
+  artIdentityForFloor2Equipment,
+} from '../../src/shared/floor2-equipment-art.js';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
 import {
   canonicalItemBriefId,
@@ -236,10 +241,27 @@ describe('itemArtIdentitySet', () => {
     expect(itemSpriteConcepts('bone-club')).toContain('baseball-bat');
   });
 
+  it('includes all 70 unique Floor 2 equipment consumer identities from the canonical definitions', () => {
+    const derivedIdentities = FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) =>
+      artIdentityForFloor2Equipment(entry.stableId),
+    );
+    expect(FLOOR2_EQUIPMENT_ART_IDENTITIES).toEqual(derivedIdentities);
+    expect(FLOOR2_EQUIPMENT_ART_IDENTITIES).toHaveLength(70);
+    expect(new Set(FLOOR2_EQUIPMENT_ART_IDENTITIES).size).toBe(70);
+    expect(FLOOR2_EQUIPMENT_ART_IDENTITIES.every((entry) => identity.has(entry))).toBe(true);
+  });
+
+  it('includes representative Floor 2 weapon and UI identities', () => {
+    expect(identity.has('bone-saw')).toBe(true);
+    expect(identity.has('iron-visor')).toBe(true);
+    expect(identity.has('surveyor-map')).toBe(true);
+  });
+
   it('excludes non-item concepts (enemies, set-pieces)', () => {
     expect(identity.has('angry-roomba')).toBe(false);
     expect(identity.has('rat')).toBe(false);
     expect(identity.has('welcome-sign-left')).toBe(false);
+    expect(identity.has('mossy-dungeon-floor')).toBe(false);
   });
 
   it('excludes harvestable world-node ids (they ship VERSIONED, not bare) — guardrail', () => {
@@ -272,10 +294,17 @@ describe('canonicalItemBriefId', () => {
     expect(canonicalItemBriefId('baseball-bat-v3', identity)).toBe('baseball-bat');
   });
 
-  it('leaves genuinely non-item versioned concepts versioned', () => {
+  it('strips -vN for representative Floor 2 weapon and UI art identities', () => {
+    expect(canonicalItemBriefId('bone-saw-v1', identity)).toBe('bone-saw');
+    expect(canonicalItemBriefId('iron-visor-v2', identity)).toBe('iron-visor');
+    expect(canonicalItemBriefId('surveyor-map-v3', identity)).toBe('surveyor-map');
+  });
+
+  it('leaves enemy, prop, and tile concepts versioned', () => {
     expect(canonicalItemBriefId('angry-roomba-v2', identity)).toBe('angry-roomba-v2');
     expect(canonicalItemBriefId('rat-v1', identity)).toBe('rat-v1');
     expect(canonicalItemBriefId('welcome-sign-left-v2', identity)).toBe('welcome-sign-left-v2');
+    expect(canonicalItemBriefId('mossy-dungeon-floor-v1', identity)).toBe('mossy-dungeon-floor-v1');
   });
 
   it('leaves harvestable world-node -vN briefs versioned (guardrail)', () => {

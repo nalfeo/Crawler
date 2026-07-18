@@ -5,9 +5,11 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   FLOOR2_EQUIPMENT_ART_DEFINITIONS,
+  FLOOR2_EQUIPMENT_ART_IDENTITIES,
   FLOOR2_EQUIPMENT_PRODUCTION_WAVES,
   FLOOR2_EQUIPMENT_STABLE_IDS,
   FLOOR2_WEAPON_FAMILIES,
+  artIdentityForFloor2Equipment,
   runtimeKeyForFloor2Equipment,
 } from '../../../src/shared/floor2-equipment-art.js';
 import {
@@ -75,9 +77,15 @@ describe('Floor 2 equipment art manifest', () => {
       FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => entry.stableId),
       FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => entry.runtimeKey),
       FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) => entry.placeholderAssetPath),
+      FLOOR2_EQUIPMENT_ART_IDENTITIES,
     ]) {
       expect(new Set(values).size).toBe(values.length);
     }
+    expect(FLOOR2_EQUIPMENT_ART_IDENTITIES).toEqual(
+      FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((entry) =>
+        artIdentityForFloor2Equipment(entry.stableId),
+      ),
+    );
     expect(
       Object.fromEntries(
         ['head', 'torso', 'hands', 'feet', 'accessory'].map((slot) => [

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "floor2-art-canonicalization",
+  "task_title": "Fix Floor 2 equipment sprite approval canonicalization",
+  "estimated_apples": 2,
+  "stages": {}
+}

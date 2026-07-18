@@ -8,10 +8,19 @@
  */
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { buildGeneratedSpriteRegistry } from '../../../src/shared/generated-assets.js';
 import {
   approveVariant,
   ApproveError,
@@ -721,6 +730,61 @@ describe('approveVariant', () => {
   });
 
   describe('item art recurrence guard (ADR 0051)', () => {
+    it('approves a copied Floor 2 bone-saw run under one consistent bare consumer identity', () => {
+      const { runDir: sourceRunDir } = writeFakeRun(repoRoot, {
+        briefId: 'bone-saw-v1',
+        variantIndices: [0, 1],
+        chosenIndex: 1,
+      });
+      const copiedRunDir = path.join(
+        repoRoot,
+        'generated',
+        'runs',
+        'bone-saw-v1',
+        'immutable-copy',
+      );
+      cpSync(sourceRunDir, copiedRunDir, { recursive: true });
+      const summaryBefore = readFileSync(path.join(copiedRunDir, 'summary.json'));
+      const processedBefore = readFileSync(path.join(copiedRunDir, 'processed', '01.png'));
+
+      const entry = approveVariant({
+        runDir: copiedRunDir,
+        variantIndex: 1,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+
+      const variantId = 'bone-saw-var-1';
+      expect(entry.briefId).toBe('bone-saw');
+      expect(entry.spriteName).toBe(variantId);
+      expect(entry.assetPath).toBe(`generated/${variantId}.png`);
+      expect(readFileSync(path.join(copiedRunDir, 'summary.json'))).toEqual(summaryBefore);
+      expect(readFileSync(path.join(copiedRunDir, 'processed', '01.png'))).toEqual(processedBefore);
+      expect(readFileSync(path.join(publicAssetsDir, entry.assetPath))).toEqual(processedBefore);
+
+      const manifest = readManifest(manifestPath);
+      expect(Object.keys(manifest.entries)).toEqual([variantId]);
+      expect(manifest.entries[variantId]).toEqual(entry);
+      expect(buildGeneratedSpriteRegistry(manifest).lookup('bone-saw')?.textureKey).toBe(variantId);
+
+      const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<
+        Record<string, unknown>
+      >;
+      expect(catalog).toContainEqual(
+        expect.objectContaining({
+          id: `generated:${variantId}`,
+          label: variantId,
+          spriteId: variantId,
+        }),
+      );
+      expect(catalog.some((candidate) => candidate.id === 'generated:bone-saw-v1-var-1')).toBe(
+        false,
+      );
+    });
+
     it('ships a versioned weapon-typed item brief BARE (flame-dagger-v2 → flame-dagger)', () => {
       const { runDir } = writeFakeRun(repoRoot, {
         briefId: 'flame-dagger-v2',
