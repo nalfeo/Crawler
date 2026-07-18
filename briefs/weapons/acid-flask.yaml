@@ -1,0 +1,28 @@
+type: weapon
+name: acid-flask
+description: |
+  A small round-bottomed glass flask, nearly full of corrosive acid, held
+  upright with the round base at the bottom and the sealed neck at the top.
+  The glass body is dark-tinted but translucent — pale amber or pale
+  yellow-green tint — so the sickly acid inside is visible. The liquid fill
+  sits at roughly two-thirds height, leaving a clear headspace; the liquid
+  level line is distinct. The acid is the dominant saturated hue: vivid
+  acid-green (chartreuse range) or bright yellow-green, with a brighter
+  highlight spot on the liquid surface. A thin glass-sheen highlight stripe
+  runs vertically along the left edge of the bottle body. The stopper is a
+  dark cork sealed with a twist of rough hemp or cloth wick wrapped tightly
+  around the neck and knotted — this fabric wrap is the key silhouette cue
+  that reads "thrown weapon" and not a potion bottle. A faint acid smear or
+  drip on the outside of the glass hints at corrosive handling. One-pixel
+  dark outline on all edges. No glow, no enchantment aura, no cracks (it
+  has not been thrown yet). No text, no label, no decorative framing.
+  Silhouette must read as a small corked flask at game scale.
+floor: 2
+# Vertical orientation is the weapon-type default — flask stands upright,
+# cork at top, base at bottom. No orientation override needed.
+# Inherits: 64×64, 4×4 sheet, anchor at (32,56), judge enabled, kenney-roguelike palette.
+variations:
+  - round squat amber-tinted glass flask with a dark cork and wrapped cloth wick
+  - elongated teardrop vial with pale green tint, metal crimp cap and knotted jute cord
+  - wide-shouldered apothecary bottle with slight blue-green glass tint and wax-sealed cork
+minVariations: 8
