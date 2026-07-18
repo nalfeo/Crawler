@@ -3,7 +3,7 @@
 **Date:** 2026-07-18  
 **Agent:** Asset Forge (Graphics Designer persona)  
 **Branch:** `copilot/create-frost-crook-icon`  
-**PR:** Closes #1319  
+**PR:** Refs #1319  
 **Estimate:** 1 🍎 (art-only, review-ledger-exempt)
 
 ---
@@ -57,8 +57,10 @@ Key choices in the brief:
   bands, icicle spurs) + `minVariations: 8` for runner top-up.
 - **Explicit exclusions in description:** no flames, chains, runes, orbs,
   trail effects — prevents common model drift for magic weapons.
-- **Judge:** inherited `judge.enabled: true` from weapon type defaults — VLM
-  quality filter runs locally, refuses under CI.
+- **Judge:** inherited `judge.enabled: true` from weapon type defaults — the
+  VLM quality filter is expected to run in the CI `asset-request` worker
+  (ADR-0043 bypass + Azure vision configured); ordinary CI gates outside that
+  workflow refuse to run it.
 
 ---
 
@@ -70,7 +72,7 @@ Key choices in the brief:
 | Brief authored                      | ✅ `briefs/weapons/frost-crook.yaml`                                                        |
 | Brief schema valid                  | ✅ all fields verified via `loadBrief` + Zod                                                |
 | Generate (Azure)                    | ⏳ Pending CI — no local Azure credentials                                                  |
-| Judge / score                       | ⏳ Pending CI                                                                               |
+| Judge / score                       | ⏳ Pending CI asset-request worker (authorized VLM-judge bypass path)                       |
 | Approve                             | ⏳ Pending CI                                                                               |
 | Check-in (manifest + catalog + PNG) | ⏳ Pending CI                                                                               |
 | Batch PR (asset-pr skill)           | ⏳ Pending post-CI                                                                          |
@@ -81,7 +83,7 @@ Key choices in the brief:
 
 ## Issue tracking
 
-- **#1319** (open, original) — this PR closes it
+- **#1319** (open, original) — addressed by this PR; final closure happens after generated art is approved, checked in, and wired
 - **#1462** (closed as duplicate) — no action required
 
 ---
