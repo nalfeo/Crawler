@@ -60,7 +60,7 @@ node --test .github/scripts/ci-recovery/issue-intake.test.mjs
 # 11 tests, 0 failures
 
 npm run verify:fast
-# 1 pre-existing shallow-clone failure in epic-status.test.ts (unrelated)
+# passed (unshallowed checkout)
 ```
 
 ## Unresolved issues

@@ -403,18 +403,29 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
   let closeRequestError = null;
 
   // Helper: rollback of a committed close by reopening and removing the repair label.
-  // Reopen is best-effort (failure logged but suppressed). Label removal propagates
-  // non-404 errors so a stuck label surfaces rather than silently blocking future scans.
+  // Collect rollback failures so reopen failures are surfaced (instead of silently
+  // returning skipped with the PR still closed) while still attempting label cleanup.
   const rollbackClose = async () => {
+    const rollbackErrors = [];
     if (closeApplied) {
       try {
         await api.updatePullState(pr.number, 'open');
-      } catch (_) {
-        /* best-effort reopen */
+      } catch (rollbackError) {
+        rollbackErrors.push(new Error(`PR reopen failed: ${getErrorMessage(rollbackError)}`));
       }
     }
     if (labelApplied) {
-      await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+      try {
+        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+      } catch (rollbackError) {
+        rollbackErrors.push(new Error(`label cleanup failed: ${getErrorMessage(rollbackError)}`));
+      }
+    }
+    if (rollbackErrors.length > 0) {
+      throw new AggregateError(
+        rollbackErrors,
+        `post-close rollback failed for PR #${pr.number}: ${rollbackErrors.map(getErrorMessage).join('; ')}`,
+      );
     }
   };
 

@@ -1390,7 +1390,9 @@ test('repair is skipped and not repeated when PR has the repair marker label aft
   assert.equal(prAfter.draft, true);
   assert.ok(prAfter.labels.some((l) => l.name === EMPTY_DRAFT_REPAIR_LABEL));
   assert.ok(
-    harness.logs.some(([level, message]) => level === 'info' && message.includes('already-repaired')),
+    harness.logs.some(
+      ([level, message]) => level === 'info' && message.includes('already-repaired'),
+    ),
   );
 });
 
@@ -1552,6 +1554,49 @@ test('non-404 label removal failure during post-close drift rollback surfaces as
   );
 });
 
+test('post-close drift rollback surfaces reopen failure while still attempting label cleanup', async () => {
+  const harness = createHarness({
+    changedFilesByPull: new Map([[42, [0, 0, 3]]]),
+    updatePullStateErrors: new Map([['42:open', new Error('reopen failed')]]),
+  });
+
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    (err) => {
+      assert.match(err.message, /Failed to repair 1 empty Copilot draft PR shell/);
+      const causeMessages = [
+        err.message,
+        err.cause?.message,
+        ...(err.errors ?? []).map((e) => e?.message),
+      ]
+        .filter(Boolean)
+        .join('\n');
+      assert.match(causeMessages, /PR reopen failed/);
+      return true;
+    },
+  );
+
+  assert.ok(
+    harness.calls.some(
+      ([name, num, state]) => name === 'updatePullState' && num === 42 && state === 'open',
+    ),
+    'rollback must attempt reopen',
+  );
+  assert.ok(
+    harness.calls.some(([name]) => name === 'removePrLabel'),
+    'rollback must still attempt repair-label cleanup even when reopen fails',
+  );
+});
+
 test('post-close changed-files drift causes reopen and skip without issue writes', async () => {
   // Simulate: initial read = 0 files, confirmation = 0 files, then after close a
   // concurrent push lands and the post-close read shows 3 changed files.
@@ -1677,8 +1722,7 @@ test('absent changed_files in confirmation read skips without close', async () =
   );
   assert.ok(
     harness.logs.some(
-      ([level, message]) =>
-        level === 'info' && message.includes('confirmed-changed-files-absent'),
+      ([level, message]) => level === 'info' && message.includes('confirmed-changed-files-absent'),
     ),
   );
 });
