@@ -61,7 +61,7 @@ describe('Item Catalog', () => {
   it('snapshot: current item count per canonical tag (update when intentionally adding items)', () => {
     const expected: Record<string, number> = {
       Materials: 27,
-      Weapons: 28,
+      Weapons: 29,
       Consumables: 20,
       'Key Items': 20,
       Misc: 21,
