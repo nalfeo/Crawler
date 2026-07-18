@@ -2598,7 +2598,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
         } else {
           // Player is exactly at the circle center — flee along kite orbit tangent.
-          this.dodgeVecX = this.kiteOrbitSign;
+          this.dodgeVecX = this.kiteOrbitSign * PROJECTILE_DODGE_VECTOR_SCALE;
           this.dodgeVecY = 0;
         }
         return BTStatus.SUCCESS;
