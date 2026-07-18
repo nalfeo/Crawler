@@ -432,7 +432,6 @@ test('repair inspection confirmation rejects by node id drift, not just number c
   assert.deepEqual(confirmed, { eligible: false, reason: 'linked-issue-changed=1067' });
 });
 
-
 test('latestMatchingCopilotCloudRun picks run with newest updated_at even when another has newer created_at', () => {
   // Run A: created earlier but updated (completed) later
   const runA = makeRun({
@@ -579,8 +578,9 @@ test('repairs the exact eligible empty Copilot draft fixture', async () => {
     reviewerRemovals: 0,
   });
   assert.equal(
-    harness.calls.filter(([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees')
-      .length,
+    harness.calls.filter(
+      ([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+    ).length,
     2,
   );
   assert.deepEqual(
@@ -644,6 +644,41 @@ test('a successful repair is not repeated on the next scan because the PR is clo
       ([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees',
     ).length,
     firstReplaceCount,
+  );
+});
+
+test('a successful repair preserves requested-reviewer cleanup', async () => {
+  const harness = createHarness({
+    pulls: [
+      makePr({
+        requested_reviewers: [{ login: 'nalfeo' }],
+      }),
+    ],
+  });
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'schedule',
+    payloadAction: undefined,
+    triggeringPullNumber: undefined,
+    api: harness.api,
+    log: {
+      info: (message) => harness.logs.push(['info', message]),
+      warning: (message) => harness.logs.push(['warning', message]),
+      error: (message) => harness.logs.push(['error', message]),
+    },
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 1,
+    reviewerRemovals: 1,
+  });
+  assert.deepEqual(
+    harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
+    [['removeRequestedReviewer', 42, 'nalfeo']],
   );
 });
 
@@ -812,7 +847,9 @@ test('remove failure rolls back by reopening the PR and restoring the original a
     harness.calls
       .filter(
         ([name]) =>
-          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+          name === 'updatePullState' ||
+          name === 'removeIssueAssignees' ||
+          name === 'addIssueAssignees',
       )
       .map(([name, a, b]) => [name, a, b]),
     [
@@ -846,7 +883,9 @@ test('close failure surfaces immediately and makes no issue writes', async () =>
     /Failed to repair 1 empty Copilot draft PR shell\(s\)/,
   );
   assert.deepEqual(
-    harness.calls.filter(([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees'),
+    harness.calls.filter(
+      ([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+    ),
     [],
   );
   assert.deepEqual(
@@ -882,7 +921,9 @@ test('ambiguous close write is treated as closed and included in rollback path',
     harness.calls
       .filter(
         ([name]) =>
-          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+          name === 'updatePullState' ||
+          name === 'removeIssueAssignees' ||
+          name === 'addIssueAssignees',
       )
       .map(([name, a, b]) => [name, a, b]),
     [
@@ -919,7 +960,9 @@ test('reassignment failure rolls back by restoring the original assignees and re
     harness.calls
       .filter(
         ([name]) =>
-          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+          name === 'updatePullState' ||
+          name === 'removeIssueAssignees' ||
+          name === 'addIssueAssignees',
       )
       .map(([name, a, b]) => [name, a, b]),
     [
@@ -954,7 +997,10 @@ test('rollback surfaces issue-restore failure while preserving the original repa
       assert.equal(nested instanceof AggregateError, true);
       assert.equal(nested.errors.length, 2);
       assert.match(String(nested.errors[0]?.message || ''), /remove failed/);
-      assert.match(String(nested.errors[1]?.message || ''), /issue rollback failed: restore failed/);
+      assert.match(
+        String(nested.errors[1]?.message || ''),
+        /issue rollback failed: restore failed/,
+      );
       return true;
     },
   );
@@ -962,7 +1008,9 @@ test('rollback surfaces issue-restore failure while preserving the original repa
     harness.calls
       .filter(
         ([name]) =>
-          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+          name === 'updatePullState' ||
+          name === 'removeIssueAssignees' ||
+          name === 'addIssueAssignees',
       )
       .map(([name, a, b]) => [name, a, b]),
     [
@@ -1005,7 +1053,9 @@ test('rollback surfaces PR-reopen failure while preserving the original repair e
     harness.calls
       .filter(
         ([name]) =>
-          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+          name === 'updatePullState' ||
+          name === 'removeIssueAssignees' ||
+          name === 'addIssueAssignees',
       )
       .map(([name, a, b]) => [name, a, b]),
     [
@@ -1040,7 +1090,10 @@ test('rollback surfaces both issue-restore and PR-reopen failures', async () => 
       assert.equal(nested instanceof AggregateError, true);
       assert.equal(nested.errors.length, 3);
       assert.match(String(nested.errors[0]?.message || ''), /remove failed/);
-      assert.match(String(nested.errors[1]?.message || ''), /issue rollback failed: restore failed/);
+      assert.match(
+        String(nested.errors[1]?.message || ''),
+        /issue rollback failed: restore failed/,
+      );
       assert.match(String(nested.errors[2]?.message || ''), /PR reopen failed: reopen failed/);
       return true;
     },
@@ -1049,7 +1102,9 @@ test('rollback surfaces both issue-restore and PR-reopen failures', async () => 
     harness.calls
       .filter(
         ([name]) =>
-          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+          name === 'updatePullState' ||
+          name === 'removeIssueAssignees' ||
+          name === 'addIssueAssignees',
       )
       .map(([name, a, b]) => [name, a, b]),
     [

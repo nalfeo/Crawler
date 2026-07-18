@@ -97,7 +97,10 @@ export function changedFileRetryDelaysMs({
 
 export function matchingCopilotCloudRunRejection({ run, repository, headSha, headBranch }) {
   if (run?.path != null && run.path !== COPILOT_CLOUD_AGENT_WORKFLOW_PATH) return 'workflow-path';
-  if (run?.workflow_id != null && Number(run.workflow_id) !== Number(COPILOT_CLOUD_AGENT_WORKFLOW_ID))
+  if (
+    run?.workflow_id != null &&
+    Number(run.workflow_id) !== Number(COPILOT_CLOUD_AGENT_WORKFLOW_ID)
+  )
     return 'workflow-id';
   if (run?.repository?.full_name != null && !sameRepository(run.repository.full_name, repository))
     return 'run-repository';
@@ -249,6 +252,25 @@ async function changedFilesForDraft({
   }
 
   return changedFiles;
+}
+
+async function removeRequestedReviewerIfPresent({ api, pr, prNumber, reviewerLogin, log }) {
+  try {
+    const requestedReviewers = pr.requested_reviewers ?? [];
+    const reviewerToRemove = requestedReviewers.find(
+      (reviewer) => reviewer.login?.toLowerCase() === reviewerLogin,
+    );
+    if (!reviewerToRemove?.login) {
+      return false;
+    }
+    await api.removeRequestedReviewer(prNumber, reviewerToRemove.login);
+    log.info(`Removed @${reviewerToRemove.login} from requested reviewers on PR #${prNumber}.`);
+    return true;
+  } catch (error) {
+    const warn = log.warning ?? log.warn ?? log.info;
+    warn?.call(log, `Could not process reviewers for PR #${prNumber}: ${getErrorMessage(error)}`);
+    return false;
+  }
 }
 
 async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log, now, graceMs }) {
@@ -519,6 +541,7 @@ export async function runPrReadyReviewerGuard({
     const prNumber = pr.number;
     let closedByRepair = false;
     let attemptedRepair = false;
+    let reviewerCleanupAttempted = false;
 
     if (pr.draft) {
       try {
@@ -530,6 +553,16 @@ export async function runPrReadyReviewerGuard({
           triggeringPullNumber,
         });
         if (changedFiles === 0) {
+          reviewerCleanupAttempted = true;
+          reviewerRemovals += Number(
+            await removeRequestedReviewerIfPresent({
+              api,
+              pr,
+              prNumber,
+              reviewerLogin,
+              log,
+            }),
+          );
           attemptedRepair = true;
           const repairResult = await repairEmptyCopilotDraft({
             api,
@@ -572,20 +605,16 @@ export async function runPrReadyReviewerGuard({
       continue;
     }
 
-    try {
-      const requestedReviewers = pr.requested_reviewers ?? [];
-      const reviewerToRemove = requestedReviewers.find(
-        (reviewer) => reviewer.login?.toLowerCase() === reviewerLogin,
+    if (!reviewerCleanupAttempted) {
+      reviewerRemovals += Number(
+        await removeRequestedReviewerIfPresent({
+          api,
+          pr,
+          prNumber,
+          reviewerLogin,
+          log,
+        }),
       );
-      if (!reviewerToRemove?.login) {
-        continue;
-      }
-      await api.removeRequestedReviewer(prNumber, reviewerToRemove.login);
-      reviewerRemovals += 1;
-      log.info(`Removed @${reviewerToRemove.login} from requested reviewers on PR #${prNumber}.`);
-    } catch (error) {
-      const warn = log.warning ?? log.warn ?? log.info;
-      warn?.call(log, `Could not process reviewers for PR #${prNumber}: ${getErrorMessage(error)}`);
     }
   }
 
@@ -608,10 +637,7 @@ export async function runPrReadyReviewerGuard({
           ]
         : []),
     ];
-    throw new AggregateError(
-      [...publishFailures, ...repairFailures],
-      failureLines.join('\n'),
-    );
+    throw new AggregateError([...publishFailures, ...repairFailures], failureLines.join('\n'));
   }
 
   return { draftsPublished, emptyDraftRepairs, reviewerRemovals };
