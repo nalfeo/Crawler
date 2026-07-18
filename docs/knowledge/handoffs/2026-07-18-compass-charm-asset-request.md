@@ -21,6 +21,7 @@ sprite-workflow
 - Added a committed transparent equipment icon at `public/assets/generated/compass-charm-placeholder.png` for the `compass-charm` accessory request.
 - Registered the shipped asset in `public/assets/generated/manifest.json` under the exact manifest brief/runtime lineage `compass-charm` via the key `compass-charm-placeholder` so runtime manifest consumers can resolve it deterministically.
 - Kept the change art-only after reverting the temporary integration-test probe, so the final branch state does not require a review ledger.
+- Attempted to post the required pre-code plan comment to issue #1382 before making changes, but the sandbox GitHub token was invalid and `gh issue comment` failed with HTTP 403.
 
 ## Verification
 
@@ -38,7 +39,6 @@ sprite-workflow
 
 ## Unresolved issues
 
-- I attempted to post the required pre-code plan comment to issue #1382 before making changes, but the sandbox GitHub token was invalid and `gh issue comment` failed with HTTP 403.
 - The normal Azure-backed sprite-generation/check-in loop was unavailable in this sandbox (`CI=true`, no `.env.local`, no Azure credentials, `az account show` required login), so this session shipped a deterministic local silhouette asset instead of an Azure-generated approved variant.
 
 ## Recommended next steps
