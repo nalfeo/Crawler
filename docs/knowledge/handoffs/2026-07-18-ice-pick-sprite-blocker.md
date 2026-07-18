@@ -34,15 +34,15 @@ reported as a hard blocker — no placeholder was created.
 
 ## What is blocked
 
-| Step | Status | Reason |
-| ---- | ------ | ------ |
-| `npm run sprites:run -- --brief briefs/weapons/ice-pick.yaml` | ❌ BLOCKED | `AZURE_OPENAI_ENDPOINT` missing |
-| Judge candidates | ❌ BLOCKED | Generation never ran |
-| `npm run sprites:approve` | ❌ BLOCKED | No run artifacts |
-| `npm run sprites:checkin` | ❌ BLOCKED | Nothing to check in |
-| `npm run sprites:asset-pr` | ❌ BLOCKED | No checkin issue |
-| manifest.json entry for `equipment/weapon/ice-pick` | ❌ BLOCKED | Approve step skipped |
-| `npm run verify:fast` | ⏸ DEFERRED | Nothing changed that needs verification |
+| Step                                                          | Status     | Reason                                  |
+| ------------------------------------------------------------- | ---------- | --------------------------------------- |
+| `npm run sprites:run -- --brief briefs/weapons/ice-pick.yaml` | ❌ BLOCKED | `AZURE_OPENAI_ENDPOINT` missing         |
+| Judge candidates                                              | ❌ BLOCKED | Generation never ran                    |
+| `npm run sprites:approve`                                     | ❌ BLOCKED | No run artifacts                        |
+| `npm run sprites:checkin`                                     | ❌ BLOCKED | Nothing to check in                     |
+| `npm run sprites:asset-pr`                                    | ❌ BLOCKED | No checkin issue                        |
+| manifest.json entry for `equipment/weapon/ice-pick`           | ❌ BLOCKED | Approve step skipped                    |
+| `npm run verify:fast`                                         | ⏸ DEFERRED | Nothing changed that needs verification |
 
 ---
 
