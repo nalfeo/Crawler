@@ -28,3 +28,6 @@ variations:
 minVariations: 8
 judge:
   enabled: true
+# Floor 2 asset — production wave floor2-equipment-weapon-thrown.
+# Runtime key: equipment/weapon/throwing-knives (stable ID: weapon.throwing-knives).
+floor: 2
