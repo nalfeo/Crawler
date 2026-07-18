@@ -256,9 +256,10 @@ async function changedFilesForDraft({
 
 async function removeRequestedReviewerIfPresent({ api, pr, prNumber, reviewerLogin, log }) {
   try {
+    const normalizedReviewerLogin = normalize(reviewerLogin);
     const requestedReviewers = pr.requested_reviewers ?? [];
     const reviewerToRemove = requestedReviewers.find(
-      (reviewer) => reviewer.login?.toLowerCase() === reviewerLogin,
+      (reviewer) => normalize(reviewer.login) === normalizedReviewerLogin,
     );
     if (!reviewerToRemove?.login) {
       return false;

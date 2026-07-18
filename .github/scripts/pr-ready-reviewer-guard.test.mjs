@@ -680,6 +680,7 @@ test('a successful repair preserves requested-reviewer cleanup', async () => {
     harness.calls.filter(([name]) => name === 'removeRequestedReviewer'),
     [['removeRequestedReviewer', 42, 'NalFeO']],
   );
+  assert.deepEqual(harness.state.pulls[0].requested_reviewers, [{ login: 'helper' }]);
 });
 
 test('head drift after initial eligibility skips before any write', async () => {
