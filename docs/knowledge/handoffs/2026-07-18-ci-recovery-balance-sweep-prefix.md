@@ -13,16 +13,24 @@ two dispatch attempts without progress.
 
 ### Root cause
 
-`NIGHTLY_BALANCE_BRANCH_PREFIX` was hardcoded to `'copilot/balance-telemetry-driven-improvement-sweep'`
-in two files. The balance-sweep agent now generates branches under the shorter name
-`'copilot/balance-telemetry-improvement-sweep'` (no "driven" infix). Because the prefix didn't match,
-the branch-name safety check in `requiresHumanApproval()` silently failed (the label path still caught
-it via the closing issue, so the PR was correctly gated). The stale prefix means future balance-sweep
-branches would not be caught if the closing issue lacked the label.
+PR #1589 (`copilot/balance-telemetry-improvement-sweep`) had six unresolved review threads. The
+CI recovery reconciler dispatched tasks correctly — the `human-approval-required` label was
+detected by the label-first check in `requiresHumanApproval()`, and recovery task comments were
+posted. The dispatched agents made zero progress: the most likely explanation is that agents
+interpreted the `human-approval-required` label as a reason to skip all repairs, not just
+the merge step.
 
-A secondary root cause was that the recovery task body gave no hint to the dispatched Copilot agent
-that `human-approval-required` applies to the **merge step only**. The agent may have interpreted the
-label as a reason to skip thread repairs entirely.
+Two defense-in-depth improvements were made:
+
+1. **Stale branch prefix (`NIGHTLY_BALANCE_BRANCH_PREFIX`)** — the constant was pinned to
+   `'copilot/balance-telemetry-driven-improvement-sweep'` but current agents produce
+   `'copilot/balance-telemetry-improvement-sweep'` (no "driven" infix). Although the label path
+   caught PR #1589, a future balance-sweep branch without the label would silently bypass the
+   prefix check. Broadened to `'copilot/balance-telemetry'` to cover both variants.
+
+2. **Ambiguous recovery task body** — the dispatched task gave no instruction distinguishing the
+   merge gate from thread/CI repair work. Added an explicit warning so agents cannot reasonably
+   skip repairs when `pendingHumanApproval = true`.
 
 ## Files touched
 
@@ -34,12 +42,13 @@ label as a reason to skip thread repairs entirely.
 - `.github/scripts/merge-train/human-approval.test.mjs` — added regression test for
   `copilot/balance-telemetry-improvement-sweep` branch (the exact pattern that was missing)
 - `.github/scripts/ci-recovery/reconcile.test.mjs` — added regression test asserting that the task body
-  includes the human-approval clarification when `pendingHumanApproval = true`
+  includes the human-approval clarification when `pendingHumanApproval = true`; added a separate
+  branch-prefix-only regression that omits the label so the prefix path is tested in isolation
 - `docs/knowledge/review-ledgers/2026-07-18-ci-recovery-balance-sweep-prefix.review-ledger.json` — review ledger
 
 ## Systems touched
 
-ci-recovery, merge-train
+ci-policy
 
 ## Verification run
 
