@@ -23,6 +23,11 @@ import {
   type BarrierRegistry,
 } from './barriers/index.js';
 import {
+  createGeneratedEquipmentRegistry,
+  type GeneratedEquipmentRegistry,
+} from './generated-equipment-registry.js';
+import type { GeneratedEquipmentGenerationPolicyV1 } from '../shared/generated-equipment-types.js';
+import {
   Position,
   Velocity,
   Rotation,
@@ -175,6 +180,8 @@ export interface GameWorld {
   abilityTriggerEvents: AbilityTriggerEvent[];
   /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
   inventories: Map<number, InventoryBag>;
+  /** Authoritative generated-equipment records for this run. */
+  generatedEquipmentRegistry: GeneratedEquipmentRegistry;
   /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
   statusEffectsByEntity: Map<number, StatusEffect[]>;
   /** Per-door lock configurations (eid → lock config). */
@@ -397,6 +404,10 @@ export interface CreateWorldOptions {
   floor?: number;
   maxEntities?: number;
   entityCapacityMode?: 'game' | 'lab' | 'test';
+  /** Explicit immutable run identity required before generated equipment can be created. */
+  generatedEquipmentRunKey?: string;
+  /** Frozen-content generation policy; omitted to use the v1 contract policy. */
+  generatedEquipmentGenerationPolicy?: GeneratedEquipmentGenerationPolicyV1;
 }
 
 const DEFAULT_ENTITY_CAPACITY_BY_MODE = {
@@ -502,6 +513,10 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     abilityStatesByEntity: new Map(),
     abilityTriggerEvents: [],
     inventories: new Map(),
+    generatedEquipmentRegistry: createGeneratedEquipmentRegistry({
+      runKey: options.generatedEquipmentRunKey,
+      generationPolicy: options.generatedEquipmentGenerationPolicy,
+    }),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
