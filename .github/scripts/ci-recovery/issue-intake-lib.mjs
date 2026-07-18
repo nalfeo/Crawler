@@ -170,6 +170,62 @@ export async function replaceIssueAssignees({ graphql, token, assignableId, acto
   );
 }
 
+async function mutateIssueAssignees({
+  graphql,
+  token,
+  mutationField,
+  assignableId,
+  actorIds,
+}) {
+  const assignment = await graphql(
+    token,
+    `
+      mutation ($assignableId: ID!, $assigneeIds: [ID!]!) {
+        ${mutationField}(input: { assignableId: $assignableId, assigneeIds: $assigneeIds }) {
+          assignable {
+            ... on Issue {
+              assignees(first: 20) {
+                nodes {
+                  login
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+    {
+      assignableId,
+      assigneeIds: actorIds,
+    },
+  );
+  return (
+    assignment?.[mutationField]?.assignable?.assignees?.nodes?.map((assignee) =>
+      String(assignee.login || '').toLowerCase(),
+    ) || []
+  );
+}
+
+export async function addIssueAssignees({ graphql, token, assignableId, actorIds }) {
+  return mutateIssueAssignees({
+    graphql,
+    token,
+    mutationField: 'addAssigneesToAssignable',
+    assignableId,
+    actorIds,
+  });
+}
+
+export async function removeIssueAssignees({ graphql, token, assignableId, actorIds }) {
+  return mutateIssueAssignees({
+    graphql,
+    token,
+    mutationField: 'removeAssigneesFromAssignable',
+    assignableId,
+    actorIds,
+  });
+}
+
 function isTrustedMarkerComment(comment) {
   return (
     String(comment.body || '').includes(ISSUE_INTAKE_MARKER) &&

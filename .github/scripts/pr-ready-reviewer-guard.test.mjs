@@ -6,7 +6,7 @@ import { parse } from 'yaml';
 
 import {
   changedFileRetryDelaysMs,
-  COPILOT_CLOUD_AGENT_WORKFLOW_FILENAME,
+  COPILOT_CLOUD_AGENT_WORKFLOW_ID,
   COPILOT_CLOUD_AGENT_WORKFLOW_PATH,
   EMPTY_DRAFT_REPAIR_GRACE_MS,
   inspectEmptyCopilotDraftRepair,
@@ -66,6 +66,7 @@ function makeRun(overrides = {}) {
     id: 901,
     name: 'Copilot Setup Steps',
     path: COPILOT_CLOUD_AGENT_WORKFLOW_PATH,
+    workflow_id: COPILOT_CLOUD_AGENT_WORKFLOW_ID,
     status: 'completed',
     conclusion: 'success',
     created_at: completedAt,
@@ -107,6 +108,7 @@ function createHarness({
   replacePlan = [],
   markReadyError = null,
   updatePullStateErrors = new Map(),
+  updatePullStatePostApplyErrors = new Map(),
 } = {}) {
   const calls = [];
   const logs = [];
@@ -173,22 +175,48 @@ function createHarness({
       }
       return structuredClone(context);
     },
-    replaceIssueAssignees: async (assignableId, actorIds) => {
-      calls.push(['replaceIssueAssignees', assignableId, [...actorIds]]);
+    consumeAssigneeBehavior: () => {
       const behavior = replacePlan.shift();
       if (behavior instanceof Error) {
         throw behavior;
       }
+      return behavior;
+    },
+    removeIssueAssignees: async (assignableId, actorIds) => {
+      calls.push(['removeIssueAssignees', assignableId, [...actorIds]]);
+      const behavior = api.consumeAssigneeBehavior();
       const context = [...state.issueContextsByNumber.values()].find(
         (entry) => entry.issueId === assignableId,
       );
       if (!context) {
         throw new Error(`Missing issue assignable ${assignableId}`);
       }
-      context.assignees = actorIds.map((id) => ({
-        id,
-        login: context.actorCatalog[id] || `actor-${id}`,
-      }));
+      const removalIds = new Set(actorIds);
+      context.assignees = context.assignees.filter((assignee) => !removalIds.has(assignee.id));
+      if (behavior && Array.isArray(behavior.logins)) {
+        return behavior.logins.map((login) => String(login).toLowerCase());
+      }
+      return context.assignees.map((assignee) => String(assignee.login).toLowerCase());
+    },
+    addIssueAssignees: async (assignableId, actorIds) => {
+      calls.push(['addIssueAssignees', assignableId, [...actorIds]]);
+      const behavior = api.consumeAssigneeBehavior();
+      const context = [...state.issueContextsByNumber.values()].find(
+        (entry) => entry.issueId === assignableId,
+      );
+      if (!context) {
+        throw new Error(`Missing issue assignable ${assignableId}`);
+      }
+      const existingIds = new Set(context.assignees.map((assignee) => assignee.id));
+      for (const actorId of actorIds) {
+        if (!existingIds.has(actorId)) {
+          context.assignees.push({
+            id: actorId,
+            login: context.actorCatalog[actorId] || `actor-${actorId}`,
+          });
+          existingIds.add(actorId);
+        }
+      }
       if (behavior && Array.isArray(behavior.logins)) {
         return behavior.logins.map((login) => String(login).toLowerCase());
       }
@@ -205,6 +233,10 @@ function createHarness({
         throw new Error(`Missing PR #${pullNumber}`);
       }
       pull.state = nextState;
+      const postApplyError = updatePullStatePostApplyErrors.get(`${pullNumber}:${nextState}`);
+      if (postApplyError) {
+        throw postApplyError;
+      }
       return structuredClone(pull);
     },
   };
@@ -351,15 +383,13 @@ test('latestMatchingCopilotCloudRun picks run with newest updated_at even when a
   assert.equal(result?.id, 900, 'should pick run A which has the newer updated_at');
 });
 
-test('matchingCopilotCloudRunRejection accepts run when optional API fields are absent', () => {
-  // The GitHub REST endpoint may omit path/repository/head_repository in some contexts;
-  // the check must degrade gracefully so repairs are not blocked by missing API fields.
+test('matchingCopilotCloudRunRejection fails closed when workflow identity fields are missing', () => {
   const minimalRun = {
     id: 999,
     head_sha: HEAD_SHA,
     head_branch: HEAD_BRANCH,
     actor: { login: 'Copilot' },
-    // path, repository, head_repository intentionally absent
+    // path/workflow/repository identity intentionally absent
   };
   assert.equal(
     matchingCopilotCloudRunRejection({
@@ -368,8 +398,7 @@ test('matchingCopilotCloudRunRejection accepts run when optional API fields are 
       headSha: HEAD_SHA,
       headBranch: HEAD_BRANCH,
     }),
-    null,
-    'should not reject when optional fields are absent',
+    'workflow-path',
   );
 });
 
@@ -383,6 +412,19 @@ test('matchingCopilotCloudRunRejection still rejects run with wrong path when pa
       headBranch: HEAD_BRANCH,
     }),
     'workflow-path',
+  );
+});
+
+test('matchingCopilotCloudRunRejection rejects run with wrong workflow id', () => {
+  const wrongWorkflowIdRun = makeRun({ workflow_id: COPILOT_CLOUD_AGENT_WORKFLOW_ID + 1 });
+  assert.equal(
+    matchingCopilotCloudRunRejection({
+      run: wrongWorkflowIdRun,
+      repository: REPOSITORY,
+      headSha: HEAD_SHA,
+      headBranch: HEAD_BRANCH,
+    }),
+    'workflow-id',
   );
 });
 
@@ -408,9 +450,9 @@ test('listCopilotCloudWorkflowRuns uses workflow-specific endpoint and paginates
   assert.equal(seenPaths.length, 2);
   assert.match(
     seenPaths[0],
-    /\/actions\/workflows\/copilot-setup-steps\.yml\/runs\?branch=/,
+    new RegExp(`/actions/workflows/${COPILOT_CLOUD_AGENT_WORKFLOW_ID}/runs\\?branch=`),
   );
-  assert.ok(!seenPaths[0].includes('.github%2Fworkflows'));
+  assert.ok(!seenPaths[0].includes('dynamic%2Fcopilot-swe-agent%2Fcopilot'));
   assert.ok(!seenPaths[0].includes('head_sha='));
   assert.equal(runs.length, 101);
 });
@@ -463,14 +505,18 @@ test('repairs the exact eligible empty Copilot draft fixture', async () => {
     emptyDraftRepairs: 1,
     reviewerRemovals: 0,
   });
-  assert.equal(harness.calls.filter(([name]) => name === 'replaceIssueAssignees').length, 2);
+  assert.equal(
+    harness.calls.filter(([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees')
+      .length,
+    2,
+  );
   assert.deepEqual(
     harness.calls
-      .filter(([name]) => name === 'replaceIssueAssignees')
+      .filter(([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees')
       .map(([, assignableId, actorIds]) => [assignableId, actorIds]),
     [
-      ['ISSUE_1067', ['USER_NALFEO']],
-      ['ISSUE_1067', ['USER_NALFEO', 'BOT_COPILOT']],
+      ['ISSUE_1067', ['BOT_COPILOT']],
+      ['ISSUE_1067', ['BOT_COPILOT']],
     ],
   );
   assert.ok(
@@ -496,7 +542,7 @@ test('a successful repair is not repeated on the next scan because the PR is clo
     now: NOW,
   });
   const firstReplaceCount = harness.calls.filter(
-    ([name]) => name === 'replaceIssueAssignees',
+    ([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees',
   ).length;
 
   const summary = await runPrReadyReviewerGuard({
@@ -521,7 +567,9 @@ test('a successful repair is not repeated on the next scan because the PR is clo
     reviewerRemovals: 0,
   });
   assert.equal(
-    harness.calls.filter(([name]) => name === 'replaceIssueAssignees').length,
+    harness.calls.filter(
+      ([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+    ).length,
     firstReplaceCount,
   );
 });
@@ -689,12 +737,15 @@ test('remove failure rolls back by reopening the PR and restoring the original a
   );
   assert.deepEqual(
     harness.calls
-      .filter(([name]) => name === 'updatePullState' || name === 'replaceIssueAssignees')
+      .filter(
+        ([name]) =>
+          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+      )
       .map(([name, a, b]) => [name, a, b]),
     [
       ['updatePullState', 42, 'closed'],
-      ['replaceIssueAssignees', 'ISSUE_1067', ['USER_NALFEO']],
-      ['replaceIssueAssignees', 'ISSUE_1067', ['USER_NALFEO', 'BOT_COPILOT']],
+      ['removeIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['addIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
       ['updatePullState', 42, 'open'],
     ],
   );
@@ -722,12 +773,51 @@ test('close failure surfaces immediately and makes no issue writes', async () =>
     /Failed to repair 1 empty Copilot draft PR shell\(s\)/,
   );
   assert.deepEqual(
-    harness.calls.filter(([name]) => name === 'replaceIssueAssignees'),
+    harness.calls.filter(([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees'),
     [],
   );
   assert.deepEqual(
     harness.calls.filter(([name]) => name === 'updatePullState'),
     [['updatePullState', 42, 'closed']],
+  );
+});
+
+test('ambiguous close write is treated as closed and included in rollback path', async () => {
+  const harness = createHarness({
+    updatePullStatePostApplyErrors: new Map([['42:closed', new Error('response body truncated')]]),
+    replacePlan: [new Error('remove failed')],
+  });
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    /Failed to repair 1 empty Copilot draft PR shell\(s\)/,
+  );
+  assert.equal(
+    harness.calls.some(([name]) => name === 'getPull'),
+    true,
+    'should re-read PR state when close request throws',
+  );
+  assert.deepEqual(
+    harness.calls
+      .filter(
+        ([name]) =>
+          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+      )
+      .map(([name, a, b]) => [name, a, b]),
+    [
+      ['updatePullState', 42, 'closed'],
+      ['removeIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['addIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['updatePullState', 42, 'open'],
+    ],
   );
 });
 
@@ -754,13 +844,145 @@ test('reassignment failure rolls back by restoring the original assignees and re
   );
   assert.deepEqual(
     harness.calls
-      .filter(([name]) => name === 'updatePullState' || name === 'replaceIssueAssignees')
+      .filter(
+        ([name]) =>
+          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+      )
       .map(([name, a, b]) => [name, a, b]),
     [
       ['updatePullState', 42, 'closed'],
-      ['replaceIssueAssignees', 'ISSUE_1067', ['USER_NALFEO']],
-      ['replaceIssueAssignees', 'ISSUE_1067', ['USER_NALFEO', 'BOT_COPILOT']],
-      ['replaceIssueAssignees', 'ISSUE_1067', ['USER_NALFEO', 'BOT_COPILOT']],
+      ['removeIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['addIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['addIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['updatePullState', 42, 'open'],
+    ],
+  );
+});
+
+test('rollback surfaces issue-restore failure while preserving the original repair error', async () => {
+  const harness = createHarness({
+    replacePlan: [new Error('remove failed'), new Error('restore failed')],
+  });
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true);
+      assert.equal(error.errors.length, 1);
+      const nested = error.errors[0]?.cause;
+      assert.equal(nested instanceof AggregateError, true);
+      assert.equal(nested.errors.length, 2);
+      assert.match(String(nested.errors[0]?.message || ''), /remove failed/);
+      assert.match(String(nested.errors[1]?.message || ''), /issue rollback failed: restore failed/);
+      return true;
+    },
+  );
+  assert.deepEqual(
+    harness.calls
+      .filter(
+        ([name]) =>
+          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+      )
+      .map(([name, a, b]) => [name, a, b]),
+    [
+      ['updatePullState', 42, 'closed'],
+      ['removeIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['addIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['updatePullState', 42, 'open'],
+    ],
+  );
+});
+
+test('rollback surfaces PR-reopen failure while preserving the original repair error', async () => {
+  const harness = createHarness({
+    replacePlan: [new Error('remove failed')],
+    updatePullStateErrors: new Map([['42:open', new Error('reopen failed')]]),
+  });
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true);
+      assert.equal(error.errors.length, 1);
+      const nested = error.errors[0]?.cause;
+      assert.equal(nested instanceof AggregateError, true);
+      assert.equal(nested.errors.length, 2);
+      assert.match(String(nested.errors[0]?.message || ''), /remove failed/);
+      assert.match(String(nested.errors[1]?.message || ''), /PR reopen failed: reopen failed/);
+      return true;
+    },
+  );
+  assert.deepEqual(
+    harness.calls
+      .filter(
+        ([name]) =>
+          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+      )
+      .map(([name, a, b]) => [name, a, b]),
+    [
+      ['updatePullState', 42, 'closed'],
+      ['removeIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['addIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['updatePullState', 42, 'open'],
+    ],
+  );
+});
+
+test('rollback surfaces both issue-restore and PR-reopen failures', async () => {
+  const harness = createHarness({
+    replacePlan: [new Error('remove failed'), new Error('restore failed')],
+    updatePullStateErrors: new Map([['42:open', new Error('reopen failed')]]),
+  });
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    (error) => {
+      assert.equal(error instanceof AggregateError, true);
+      assert.equal(error.errors.length, 1);
+      const nested = error.errors[0]?.cause;
+      assert.equal(nested instanceof AggregateError, true);
+      assert.equal(nested.errors.length, 3);
+      assert.match(String(nested.errors[0]?.message || ''), /remove failed/);
+      assert.match(String(nested.errors[1]?.message || ''), /issue rollback failed: restore failed/);
+      assert.match(String(nested.errors[2]?.message || ''), /PR reopen failed: reopen failed/);
+      return true;
+    },
+  );
+  assert.deepEqual(
+    harness.calls
+      .filter(
+        ([name]) =>
+          name === 'updatePullState' || name === 'removeIssueAssignees' || name === 'addIssueAssignees',
+      )
+      .map(([name, a, b]) => [name, a, b]),
+    [
+      ['updatePullState', 42, 'closed'],
+      ['removeIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
+      ['addIssueAssignees', 'ISSUE_1067', ['BOT_COPILOT']],
       ['updatePullState', 42, 'open'],
     ],
   );
@@ -795,7 +1017,7 @@ test('changed-file draft publication stays unchanged', async () => {
     true,
   );
   assert.equal(
-    harness.calls.some(([name]) => name === 'replaceIssueAssignees'),
+    harness.calls.some(([name]) => name === 'removeIssueAssignees' || name === 'addIssueAssignees'),
     false,
   );
 });

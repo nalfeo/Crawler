@@ -3,10 +3,11 @@ import { pathToFileURL } from 'node:url';
 
 import { graphql, listClosingIssues, paginate, request } from './ci-recovery/github.mjs';
 import {
+  addIssueAssignees,
   buildIssueActorIds,
   getCopilotIssueAssignmentContext,
   isCopilotLogin,
-  replaceIssueAssignees,
+  removeIssueAssignees,
 } from './ci-recovery/issue-intake-lib.mjs';
 
 const READY_FOR_REVIEW_MUTATION = `
@@ -19,10 +20,8 @@ const READY_FOR_REVIEW_MUTATION = `
   }
 `;
 
-export const COPILOT_CLOUD_AGENT_WORKFLOW_PATH = '.github/workflows/copilot-setup-steps.yml';
-export const COPILOT_CLOUD_AGENT_WORKFLOW_FILENAME = COPILOT_CLOUD_AGENT_WORKFLOW_PATH.split(
-  '/',
-).at(-1);
+export const COPILOT_CLOUD_AGENT_WORKFLOW_PATH = 'dynamic/copilot-swe-agent/copilot';
+export const COPILOT_CLOUD_AGENT_WORKFLOW_ID = 288998107;
 export const EMPTY_DRAFT_REPAIR_GRACE_MS = 5 * 60 * 1000;
 const WORKFLOW_RUNS_PAGE_SIZE = 100;
 const WORKFLOW_RUNS_MAX_PAGES = 10;
@@ -62,13 +61,13 @@ export async function listCopilotCloudWorkflowRuns({
   headBranch,
   maxPages = WORKFLOW_RUNS_MAX_PAGES,
 }) {
-  const workflowFilename = encodeURIComponent(COPILOT_CLOUD_AGENT_WORKFLOW_FILENAME);
+  const workflowId = encodeURIComponent(COPILOT_CLOUD_AGENT_WORKFLOW_ID);
   const encodedBranch = encodeURIComponent(headBranch);
   const runs = [];
 
   for (let page = 1; page <= maxPages; page += 1) {
     const path =
-      `/repos/${owner}/${repo}/actions/workflows/${workflowFilename}/runs` +
+      `/repos/${owner}/${repo}/actions/workflows/${workflowId}/runs` +
       `?branch=${encodedBranch}&per_page=${WORKFLOW_RUNS_PAGE_SIZE}&page=${page}`;
     const response = await requestFn(token, path);
     const pageRuns = Array.isArray(response?.data?.workflow_runs)
@@ -97,14 +96,10 @@ export function changedFileRetryDelaysMs({
 }
 
 export function matchingCopilotCloudRunRejection({ run, repository, headSha, headBranch }) {
-  if (run?.path != null && run.path !== COPILOT_CLOUD_AGENT_WORKFLOW_PATH) return 'workflow-path';
-  if (run?.repository?.full_name != null && !sameRepository(run.repository.full_name, repository))
-    return 'run-repository';
-  if (
-    run?.head_repository?.full_name != null &&
-    !sameRepository(run.head_repository.full_name, repository)
-  )
-    return 'run-head-repository';
+  if (String(run?.path || '') !== COPILOT_CLOUD_AGENT_WORKFLOW_PATH) return 'workflow-path';
+  if (Number(run?.workflow_id) !== Number(COPILOT_CLOUD_AGENT_WORKFLOW_ID)) return 'workflow-id';
+  if (!sameRepository(run?.repository?.full_name, repository)) return 'run-repository';
+  if (!sameRepository(run?.head_repository?.full_name, repository)) return 'run-head-repository';
   if (normalize(run?.head_sha) !== normalize(headSha)) return 'head-sha';
   if (trimRef(run?.head_branch) !== trimRef(headBranch)) return 'head-branch';
   if (!isCopilotLogin(run?.actor?.login)) return 'actor';
@@ -319,23 +314,43 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
     return { status: 'skipped', reason };
   }
 
-  const originalActorIds = buildIssueActorIds({
-    assignees: assignmentContext.assignees,
-    copilotActorId: assignmentContext.copilot.id,
-    includeCopilot: true,
-  });
   const actorIdsWithoutCopilot = buildIssueActorIds({
     assignees: assignmentContext.assignees,
     copilotActorId: assignmentContext.copilot.id,
     includeCopilot: false,
   });
+  const copilotActorIds = buildIssueActorIds({
+    assignees: assignmentContext.assignees,
+    copilotActorId: assignmentContext.copilot.id,
+    includeCopilot: true,
+  }).filter((id) => !actorIdsWithoutCopilot.includes(id));
 
-  await api.updatePullState(pr.number, 'closed');
+  let closeApplied = false;
+  let closeRequestError = null;
+  try {
+    await api.updatePullState(pr.number, 'closed');
+    closeApplied = true;
+  } catch (error) {
+    closeRequestError = error;
+    try {
+      const observedPull = await api.getPull(pr.number);
+      if (normalize(observedPull?.state) === 'closed') {
+        closeApplied = true;
+      } else {
+        throw error;
+      }
+    } catch (observationError) {
+      const observationMessage = getErrorMessage(observationError);
+      throw new Error(
+        `close operation failed for PR #${pr.number}: ${getErrorMessage(error)} (observation: ${observationMessage})`,
+      );
+    }
+  }
 
   try {
-    const removedLogins = await api.replaceIssueAssignees(
+    const removedLogins = await api.removeIssueAssignees(
       assignmentContext.issueId,
-      actorIdsWithoutCopilot,
+      copilotActorIds,
     );
     if (removedLogins.some((login) => isCopilotLogin(login))) {
       throw new Error(
@@ -343,9 +358,9 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
       );
     }
 
-    const reassignedLogins = await api.replaceIssueAssignees(
+    const reassignedLogins = await api.addIssueAssignees(
       assignmentContext.issueId,
-      originalActorIds,
+      copilotActorIds,
     );
     if (!reassignedLogins.some((login) => isCopilotLogin(login))) {
       throw new Error(
@@ -355,9 +370,9 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
   } catch (repairError) {
     const rollbackErrors = [];
     try {
-      const restoredLogins = await api.replaceIssueAssignees(
+      const restoredLogins = await api.addIssueAssignees(
         assignmentContext.issueId,
-        originalActorIds,
+        copilotActorIds,
       );
       if (!restoredLogins.some((login) => isCopilotLogin(login))) {
         throw new Error(
@@ -367,16 +382,24 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
     } catch (rollbackError) {
       rollbackErrors.push(new Error(`issue rollback failed: ${getErrorMessage(rollbackError)}`));
     }
-    try {
-      await api.updatePullState(pr.number, 'open');
-    } catch (rollbackError) {
-      rollbackErrors.push(new Error(`PR reopen failed: ${getErrorMessage(rollbackError)}`));
+    if (closeApplied) {
+      try {
+        await api.updatePullState(pr.number, 'open');
+      } catch (rollbackError) {
+        rollbackErrors.push(new Error(`PR reopen failed: ${getErrorMessage(rollbackError)}`));
+      }
     }
     if (rollbackErrors.length > 0) {
       throw new AggregateError(
         [repairError, ...rollbackErrors],
         `repair failed for PR #${pr.number}: ${getErrorMessage(repairError)}; rollback also failed: ${rollbackErrors.map(getErrorMessage).join('; ')}`,
         { cause: repairError },
+      );
+    }
+
+    if (closeRequestError) {
+      log.info(
+        `close request for PR #${pr.number} errored but close state was confirmed; continuing repair flow.`,
       );
     }
     throw repairError;
@@ -436,8 +459,15 @@ function createApi({ token, owner, repo }) {
         repo,
         issueNumber,
       }),
-    replaceIssueAssignees: (assignableId, actorIds) =>
-      replaceIssueAssignees({
+    addIssueAssignees: (assignableId, actorIds) =>
+      addIssueAssignees({
+        graphql,
+        token,
+        assignableId,
+        actorIds,
+      }),
+    removeIssueAssignees: (assignableId, actorIds) =>
+      removeIssueAssignees({
         graphql,
         token,
         assignableId,
@@ -516,12 +546,12 @@ export async function runPrReadyReviewerGuard({
       } catch (error) {
         const prError = `PR #${prNumber}: ${getErrorMessage(error)}`;
         if (attemptedRepair) {
-          repairFailures.push(prError);
+          repairFailures.push(new Error(prError, { cause: error }));
           log.error(
             `Could not repair empty Copilot draft PR #${prNumber}: ${getErrorMessage(error)}`,
           );
         } else {
-          publishFailures.push(prError);
+          publishFailures.push(new Error(prError, { cause: error }));
           log.error(`Could not mark PR #${prNumber} ready: ${getErrorMessage(error)}`);
         }
       }
@@ -555,18 +585,24 @@ export async function runPrReadyReviewerGuard({
   );
 
   if (publishFailures.length > 0 || repairFailures.length > 0) {
-    const failures = [
+    const failureLines = [
       ...(publishFailures.length > 0
-        ? [`Failed to publish ${publishFailures.length} draft PR(s):`, ...publishFailures]
+        ? [
+            `Failed to publish ${publishFailures.length} draft PR(s):`,
+            ...publishFailures.map((failure) => failure.message),
+          ]
         : []),
       ...(repairFailures.length > 0
         ? [
             `Failed to repair ${repairFailures.length} empty Copilot draft PR shell(s):`,
-            ...repairFailures,
+            ...repairFailures.map((failure) => failure.message),
           ]
         : []),
     ];
-    throw new Error(failures.join('\n'));
+    throw new AggregateError(
+      [...publishFailures, ...repairFailures],
+      failureLines.join('\n'),
+    );
   }
 
   return { draftsPublished, emptyDraftRepairs, reviewerRemovals };
