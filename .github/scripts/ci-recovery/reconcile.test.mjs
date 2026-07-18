@@ -3834,6 +3834,127 @@ test('live reconcile task comment includes explicit review-thread reply comment 
   );
 });
 
+test('live reconcile annotates outdated review threads in task body', async (t) => {
+  const outdatedCommentId = '3607525827';
+  const nonOutdatedCommentId = '3607525788';
+  const outdatedThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${outdatedCommentId}`;
+  const nonOutdatedThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${nonOutdatedCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated',
+            isResolved: false,
+            isOutdated: true,
+            path: 'src/core/systems/equipmentSystem.ts',
+            line: null,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated',
+                  body: 'This duplicates logic in equip().',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: outdatedThreadUrl,
+                },
+              ],
+            },
+          },
+          {
+            id: 'thread-not-outdated',
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/shared/inventory.ts',
+            line: 83,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-not-outdated',
+                  body: 'Return copies for generated entries.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: nonOutdatedThreadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
+  const taskBody = taskCommentCall.body.body;
+  assert.ok(
+    taskBody.includes('(outdated)'),
+    'task comment should annotate the outdated thread with (outdated)',
+  );
+  assert.ok(
+    taskBody.match(/thread-outdated[^\n]*(outdated)/),
+    'task comment should place (outdated) on the outdated-thread line',
+  );
+  assert.doesNotMatch(
+    taskBody,
+    /thread-not-outdated[^\n]*(outdated)/,
+    'task comment must not annotate the non-outdated thread with (outdated)',
+  );
+  assert.ok(
+    taskBody.includes('Threads marked `(outdated)`'),
+    'task comment should include updated protocol explaining (outdated) threads',
+  );
+  assert.ok(
+    taskBody.includes('do not attempt to resolve it yourself'),
+    'task comment should clarify that recovery infrastructure handles thread resolution',
+  );
+});
+
 test('reconcile proceeds when copilot is assigned but no lease/state exists', async (t) => {
   // PR has Copilot as assignee, no owner label, no state comment, and one
   // failed CI check — recovery MUST proceed to detect the blocker, not exit
