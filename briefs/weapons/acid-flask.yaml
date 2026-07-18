@@ -1,7 +1,7 @@
 type: weapon
 name: acid-flask
 description: |
-  A small round-bottomed glass flask, nearly full of corrosive acid, held
+  A small round-bottomed glass flask, roughly two-thirds full of corrosive acid, held
   upright with the round base at the bottom and the sealed neck at the top.
   The glass body is dark-tinted but translucent — pale amber or pale
   yellow-green tint — so the sickly acid inside is visible. The liquid fill
@@ -23,6 +23,6 @@ floor: 2
 # Inherits: 64×64, 4×4 sheet, anchor at (32,56), judge enabled, kenney-roguelike palette.
 variations:
   - round squat amber-tinted glass flask with a dark cork and wrapped cloth wick
-  - elongated teardrop vial with pale green tint, metal crimp cap and knotted jute cord
-  - wide-shouldered apothecary bottle with slight blue-green glass tint and wax-sealed cork
+  - elongated teardrop vial with pale green tint, cork stopper and knotted jute/cloth wick wrapped around the neck
+  - wide-shouldered apothecary bottle with slight blue-green glass tint and a cork stopper wrapped with rough hemp/cloth wick
 minVariations: 8
