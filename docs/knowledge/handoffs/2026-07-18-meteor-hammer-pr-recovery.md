@@ -1,8 +1,8 @@
 # Meteor Hammer PR Recovery
 
 **Date:** 2026-07-18  
-**PR:** #1422 — Add Floor 2 meteor-hammer runtime-key icon asset  
-**Commits:** pending merge finalization  
+**PR:** nalfeo/Crawler#1422 — Add Floor 2 meteor-hammer runtime-key icon asset  
+**Commits:** `7b2dbe55`, `66dfc38b`, `81c5c664`  
 **Session type:** PR recovery (merge-conflict blocker)
 
 ## Systems touched
