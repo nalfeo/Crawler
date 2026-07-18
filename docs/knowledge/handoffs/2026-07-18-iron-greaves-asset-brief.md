@@ -31,8 +31,8 @@ Created a high-quality sprite brief for the `iron-greaves` Floor 2 equipment ico
 **Observation plan**:
 
 - Before (current state): `iron-greaves` in equipment panel shows the placeholder PNG at `public/assets/generated/iron-greaves-placeholder.png` (128×128 generic leg-armor icon)
-- After (once art is generated and approved): `resolveItemSprite(registry, 'iron-greaves', seed)` returns a TIER_BARE_REAL manifest entry; the legs equipment slot shows the real pixel-art iron greaves icon
-- Verification: `npm run dev` → open character → equip iron-greaves → observe legs slot icon; or headless probe via `EquipmentUI` screenshot assertion
+- After (once art is generated and approved): `resolveItemSprite(registry, 'iron-greaves', seed)` returns a TIER_BARE_REAL manifest entry; the feet equipment slot shows the real pixel-art iron greaves icon
+- Verification: `npm run dev` → open character → equip iron-greaves → observe feet slot icon; or headless probe via `EquipmentUI` screenshot assertion
 
 ## Key Decisions Made
 
