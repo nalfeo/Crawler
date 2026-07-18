@@ -421,6 +421,17 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   gear('beaded-bracelet', 'Beaded Bracelet', 'Lucky beads that rattle before a crit.', U),
   gear('band-of-fortune', 'Band of Fortune', 'A left-hand ring humming with dumb luck.', R),
   gear('signet-of-focus', 'Signet of Focus', 'A right-hand signet that sharpens the mind.', R),
+
+  // ── Floor 2 accessory equipment (icon scaffolding) ─────────────────
+  // Gear entries enable resolveItemSprite() auto-resolution once real art
+  // lands. No EquipmentItemDef yet — full slot wiring follows in the
+  // floor2 equipment contracts epic.
+  gear(
+    'surveyor-map',
+    'Surveyor Map',
+    "A battered cartographer's map folded into a compact accessory. Its charted passages hint at secret routes ahead.",
+    U,
+  ),
 ];
 
 // ---------------------------------------------------------------------------
