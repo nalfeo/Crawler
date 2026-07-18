@@ -57,7 +57,7 @@
       ],
       "escalated_to_human": {
         "after_round": 2,
-        "reason": "Round 2 remained non-clean, so the required bounded-review outcome was human escalation rather than the previously recorded third confirmation round.",
+        "reason": "Round 2 resolved one of its two valid concerns, but the remaining valid concern still left the stage non-clean. Under the 2-round cap, the required bounded-review outcome was human escalation rather than the previously recorded third confirmation round.",
         "unresolved_concerns": 1
       }
     }
