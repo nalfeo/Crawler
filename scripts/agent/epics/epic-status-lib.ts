@@ -2258,17 +2258,20 @@ export function auditGithub(
           drifts.push(`claimant: ${liveClaim.claimant} vs ${owns.claimant ?? 'none'}`);
         if (liveClaim.session !== owns.session)
           drifts.push(`session: ${liveClaim.session} vs ${owns.session ?? 'none'}`);
-        if (liveClaim.expiresAt !== owns.lease_expires_at)
-          drifts.push(`expires_at: ${liveClaim.expiresAt} vs ${owns.lease_expires_at ?? 'none'}`);
-        if (liveClaim.scope !== owns.scope)
-          drifts.push(`scope: ${liveClaim.scope} vs ${owns.scope ?? 'none'}`);
-        if (liveClaim.baseCommit !== owns.base_commit)
-          drifts.push(`base_commit: ${liveClaim.baseCommit} vs ${owns.base_commit ?? 'none'}`);
-        if (liveClaim.claimedAt !== owns.claimed_at)
-          drifts.push(`claimed_at: ${liveClaim.claimedAt} vs ${owns.claimed_at ?? 'none'}`);
         if (drifts.length > 0) {
+          // Claimant or session changed — this is a different owner posting a claim.
+          // Report all field-level deltas for operator visibility.
+          const allDiffs = [...drifts];
+          if (liveClaim.expiresAt !== owns.lease_expires_at)
+            allDiffs.push(`expires_at: ${liveClaim.expiresAt} vs ${owns.lease_expires_at ?? 'none'}`);
+          if (liveClaim.scope !== owns.scope)
+            allDiffs.push(`scope: ${liveClaim.scope} vs ${owns.scope ?? 'none'}`);
+          if (liveClaim.baseCommit !== owns.base_commit)
+            allDiffs.push(`base_commit: ${liveClaim.baseCommit} vs ${owns.base_commit ?? 'none'}`);
+          if (liveClaim.claimedAt !== owns.claimed_at)
+            allDiffs.push(`claimed_at: ${liveClaim.claimedAt} vs ${owns.claimed_at ?? 'none'}`);
           operatorActions.push(
-            `Live claim on ${nodeId} differs from cached ownership (${drifts.join('; ')}). ` +
+            `Live claim on ${nodeId} differs from cached ownership (${allDiffs.join('; ')}). ` +
               `Producer must verify and reconcile ${nodeId} ownership.`,
           );
         } else {
@@ -2341,6 +2344,35 @@ export function auditGithub(
     errors,
     warnings,
     proposal: { repo_patch: repoPatch, operator_actions: operatorActions },
+  };
+}
+
+/**
+ * Merges the offline validation result with a GitHub audit result, computing
+ * the final `release_ready` flag. Exported so the CLI payload logic can be
+ * unit-tested independently: `release_ready` is only true when both the
+ * offline validation is ready AND there are no GitHub audit errors.
+ */
+export function applyGithubAudit(
+  offline: ValidationResult,
+  audit: {
+    readonly errors: ReadonlyArray<Diagnostic>;
+    readonly warnings: ReadonlyArray<Diagnostic>;
+    readonly proposal: ReconciliationProposal;
+  },
+): ValidationResult {
+  const errors = [...offline.errors, ...audit.errors];
+  return {
+    state: offline.state,
+    errors,
+    warnings: [...offline.warnings, ...audit.warnings],
+    blockers: offline.blockers,
+    ready_queue: offline.ready_queue,
+    release_ready: offline.release_ready && errors.length === 0,
+    proposal: {
+      repo_patch: [...offline.proposal.repo_patch, ...audit.proposal.repo_patch],
+      operator_actions: [...offline.proposal.operator_actions, ...audit.proposal.operator_actions],
+    },
   };
 }
 

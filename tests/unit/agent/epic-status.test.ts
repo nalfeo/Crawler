@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  applyGithubAudit,
   auditGithub,
   buildMaterializationPlan,
   createDefaultGitReader,
@@ -14,6 +15,7 @@ import {
   type EpicState,
   type GitReader,
   type GithubRunner,
+  type ValidationResult,
 } from '../../../scripts/agent/epics/epic-status-lib';
 
 const REPO_ROOT = process.cwd();
@@ -1175,6 +1177,295 @@ describe('Floor 2 equipment epic status', () => {
       '/nodes/1/stacked_work/dependency/head_sha',
     );
   });
+
+  it('rejects stacked_work when github.issue is missing', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = null; // no materialized issue
+    a1.stacked_work = makeStackedWork();
+
+    expect(validate(state).errors.map((e) => e.code)).toContain('stacked.missing-issue');
+  });
+
+  it('rejects stacked_work with stale resync (beyond 48h threshold)', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    // Resync at is > 48h before NOW (2026-07-17T18:00:00Z)
+    a1.stacked_work = makeStackedWork({
+      resync: { head_sha: FULL_COMMIT, at: '2026-07-15T00:00:00.000Z' },
+    });
+
+    expect(validate(state).errors.map((e) => e.code)).toContain('stacked.stale-resync');
+  });
+
+  it('rejects stacked_work on a forbidden execution lane (verification)', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    a1.execution_lane = 'verification';
+    a1.stacked_work = makeStackedWork();
+
+    expect(validate(state).errors.map((e) => e.code)).toContain('stacked.invalid-lane');
+  });
+
+  it('rejects stacked_pr_open status when dependent.pr_number is null', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    a1.stacked_work = makeStackedWork({
+      status: 'stacked_pr_open',
+      dependent: { head_sha: HANDOFF_COMMIT, pr_number: null },
+    });
+
+    expect(validate(state).errors.map((e) => e.code)).toContain('stacked.pr-open-missing-number');
+  });
+
+  it('rejects stacked_work when dependency.node_id is not in the node dependency list', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    // 'slice:B1' is not in a1.dependencies (['slice:A0'])
+    a1.stacked_work = makeStackedWork({
+      dependency: {
+        node_id: 'slice:B1',
+        pr_number: 1271,
+        repository: 'nalfeo/Crawler',
+        branch: 'nalfeo-floor-2-epic-control',
+        head_sha: FULL_COMMIT,
+      },
+    });
+
+    expect(validate(state).errors.map((e) => e.code)).toContain('stacked.dependency-node-mismatch');
+  });
+
+  it('rejects stacked_work when dependency PR snapshot mismatches the node tracked PR', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    // A0's tracked PR is #1271; set a different pr_number to trigger snapshot mismatch
+    a1.stacked_work = makeStackedWork({
+      dependency: {
+        node_id: 'slice:A0',
+        pr_number: 9999, // mismatch — A0.github.pr.number === 1271
+        repository: 'nalfeo/Crawler',
+        branch: 'nalfeo-floor-2-epic-control',
+        head_sha: FULL_COMMIT,
+      },
+    });
+
+    expect(validate(state).errors.map((e) => e.code)).toContain(
+      'stacked.dependency-pr-snapshot-mismatch',
+    );
+  });
+
+  it('rejects premature rebase_to_main complete when dependency is not yet merged', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    // A0 is still 'in_progress' (not merged/validated) — rebase_to_main complete is premature
+    const a0 = state.nodes.find((node) => node.node_id === 'slice:A0');
+    if (a0) a0.status = 'in_progress';
+    a1.stacked_work = makeStackedWork({
+      rebase_to_main: {
+        state: 'complete',
+        completed_at: '2026-07-17T12:00:00.000Z',
+      },
+    });
+
+    expect(validate(state).errors.map((e) => e.code)).toContain('stacked.premature-rebase-complete');
+  });
+
+  it('rejects duplicate stacked_work ownership for the same claimant/session across nodes', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    const b1 = state.nodes.find((node) => node.node_id === 'slice:B1');
+    expect(a1).toBeDefined();
+    expect(b1).toBeDefined();
+    if (!a1 || !b1) return;
+
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    a1.stacked_work = makeStackedWork();
+
+    b1.status = 'blocked';
+    b1.github.issue = {
+      number: 1280,
+      url: 'https://github.com/nalfeo/Crawler/issues/1280',
+    };
+    // B1 depends on A1; use a placeholder pr_number (A1 has no github.pr, so snapshot check is skipped)
+    b1.stacked_work = makeStackedWork({
+      dependency: {
+        node_id: 'slice:A1',
+        pr_number: 9998,
+        repository: 'nalfeo/Crawler',
+        branch: 'agent-stack/slice-A1',
+        head_sha: FULL_COMMIT,
+      },
+    });
+    // Same owner.claimant + owner.session → duplicate ownership
+
+    expect(validate(state).errors.map((e) => e.code)).toContain('stacked.duplicate-ownership');
+  });
+
+  it('emits stacked.dependent-pr-merged when a stacked PR is merged on GitHub', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    a1.stacked_work = makeStackedWork({
+      status: 'stacked_pr_open',
+      dependent: { head_sha: HANDOFF_COMMIT, pr_number: 1300 },
+    });
+
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264') || path.endsWith('/issues/1279')) {
+          const n = path.endsWith('/issues/1264') ? 1264 : 1279;
+          return {
+            number: n,
+            state: 'open',
+            html_url: `https://github.com/nalfeo/Crawler/issues/${n}`,
+            url: `https://api.github.com/repos/nalfeo/Crawler/issues/${n}`,
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/repos/nalfeo/Crawler/pulls/1271')) {
+          // Dependency PR still open (head unchanged)
+          return {
+            number: 1271,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: FULL_COMMIT },
+          };
+        }
+        if (path.endsWith('/repos/nalfeo/Crawler/pulls/1300')) {
+          // Stacked PR was merged
+          return {
+            number: 1300,
+            state: 'closed',
+            merged: true,
+            merge_commit_sha: HANDOFF_COMMIT,
+            merged_at: '2026-07-17T20:00:00.000Z',
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1300',
+            head: { sha: HANDOFF_COMMIT },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    expect(audit.errors.map((e) => e.code)).toContain('stacked.dependent-pr-merged');
+  });
+
+  it('emits stacked.dependent-pr-closed when a stacked PR is closed without merging', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    a1.stacked_work = makeStackedWork({
+      status: 'stacked_pr_open',
+      dependent: { head_sha: HANDOFF_COMMIT, pr_number: 1301 },
+    });
+
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264') || path.endsWith('/issues/1279')) {
+          const n = path.endsWith('/issues/1264') ? 1264 : 1279;
+          return {
+            number: n,
+            state: 'open',
+            html_url: `https://github.com/nalfeo/Crawler/issues/${n}`,
+            url: `https://api.github.com/repos/nalfeo/Crawler/issues/${n}`,
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/repos/nalfeo/Crawler/pulls/1271')) {
+          return {
+            number: 1271,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: FULL_COMMIT },
+          };
+        }
+        if (path.endsWith('/repos/nalfeo/Crawler/pulls/1301')) {
+          // Stacked PR closed without merging
+          return {
+            number: 1301,
+            state: 'closed',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1301',
+            head: { sha: HANDOFF_COMMIT },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    expect(audit.errors.map((e) => e.code)).toContain('stacked.dependent-pr-closed');
+  });
 });
 
 describe('validateEvidenceRequirements', () => {
@@ -1429,8 +1720,12 @@ describe('validateEvidenceRequirements', () => {
     state.nodes[0]!.github.pr = null;
     const STALE_EXPIRY = '2026-07-18T10:00:00.000Z';
     const NEW_EXPIRY = '2026-07-19T10:00:00.000Z';
+    // Set cached ownership to match the live claim except for lease_expires_at.
     state.nodes[0]!.ownership.claimant = 'agent-y';
     state.nodes[0]!.ownership.session = 'sess-xyz';
+    state.nodes[0]!.ownership.scope = 'Slice A0 control plane only';
+    state.nodes[0]!.ownership.claimed_at = '2026-07-17T10:00:00.000Z';
+    state.nodes[0]!.ownership.base_commit = HANDOFF_COMMIT;
     state.nodes[0]!.ownership.lease_expires_at = STALE_EXPIRY;
     state.nodes[0]!.ownership.heartbeat_at = '2026-07-17T12:00:00.000Z';
     const makeRefreshedClaim = (): string =>
@@ -1454,7 +1749,16 @@ describe('validateEvidenceRequirements', () => {
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
           };
         }
-        if (path.includes('/comments?per_page=100&page=1')) {
+        if (path.endsWith('/issues/1279')) {
+          // A1 has github.issue = 1279 in this branch's canonical state; handle it.
+          return {
+            number: 1279,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1279',
+          };
+        }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) {
           return [
             {
               body: makeRefreshedClaim(),
@@ -1463,6 +1767,7 @@ describe('validateEvidenceRequirements', () => {
             },
           ];
         }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.includes('/comments?per_page=100&page=2')) return [];
         throw new Error(`Unexpected GitHub path ${path}`);
       },
@@ -1476,5 +1781,81 @@ describe('validateEvidenceRequirements', () => {
       (p) => p.path.endsWith('/ownership/lease_expires_at') && p.value === NEW_EXPIRY,
     );
     expect(expiryPatch).toBeDefined();
+  });
+});
+
+describe('applyGithubAudit (release gate)', () => {
+  it('keeps release_ready false in the final result when GitHub audit adds errors even if offline is ready', () => {
+    // Simulate an offline result that says ready (all nodes validated, no errors).
+    const offlineReady: ValidationResult = {
+      state: null,
+      errors: [],
+      warnings: [],
+      blockers: [],
+      ready_queue: [],
+      release_ready: true,
+      proposal: { repo_patch: [], operator_actions: [] },
+    };
+    // GitHub audit discovers a merge-fact discrepancy.
+    const auditWithError = {
+      errors: [{ code: 'github.merge-drift', message: 'Merge commit disagreement' }],
+      warnings: [],
+      proposal: { repo_patch: [], operator_actions: [] },
+    };
+
+    const combined = applyGithubAudit(offlineReady, auditWithError);
+
+    expect(combined.release_ready).toBe(false);
+    expect(combined.errors.map((e) => e.code)).toContain('github.merge-drift');
+  });
+
+  it('preserves release_ready true when offline is ready and audit is clean', () => {
+    const offlineReady: ValidationResult = {
+      state: null,
+      errors: [],
+      warnings: [],
+      blockers: [],
+      ready_queue: [],
+      release_ready: true,
+      proposal: { repo_patch: [], operator_actions: [] },
+    };
+    const cleanAudit = {
+      errors: [],
+      warnings: [],
+      proposal: { repo_patch: [], operator_actions: [] },
+    };
+
+    const combined = applyGithubAudit(offlineReady, cleanAudit);
+
+    expect(combined.release_ready).toBe(true);
+    expect(combined.errors).toHaveLength(0);
+  });
+
+  it('combines proposals from offline and audit results', () => {
+    const offline: ValidationResult = {
+      state: null,
+      errors: [],
+      warnings: [],
+      blockers: [],
+      ready_queue: [],
+      release_ready: false,
+      proposal: {
+        repo_patch: [{ op: 'replace', path: '/a', value: 'x', reason: 'offline patch' }],
+        operator_actions: ['offline action'],
+      },
+    };
+    const audit = {
+      errors: [],
+      warnings: [],
+      proposal: {
+        repo_patch: [{ op: 'replace' as const, path: '/b', value: 'y', reason: 'audit patch' }],
+        operator_actions: ['audit action'],
+      },
+    };
+
+    const combined = applyGithubAudit(offline, audit);
+
+    expect(combined.proposal.repo_patch).toHaveLength(2);
+    expect(combined.proposal.operator_actions).toEqual(['offline action', 'audit action']);
   });
 });
