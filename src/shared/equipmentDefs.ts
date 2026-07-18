@@ -164,6 +164,25 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     weaponId: 'landmine',
     weightLb: 3,
   }),
+  // --- Floor 2 weapons ---
+  weapon({
+    id: 'sun-hammer',
+    name: 'Sun Hammer',
+    slots: ['mainHand', 'offHand'],
+    statBonuses: {},
+    rarity: 'rare',
+    weaponId: 'sun-hammer',
+    weightLb: 8,
+  }),
+  weapon({
+    id: 'ember-wand',
+    name: 'Ember Wand',
+    slots: ['mainHand'],
+    statBonuses: {},
+    rarity: 'rare',
+    weaponId: 'ember-wand',
+    weightLb: 1.5,
+  }),
 ];
 
 // ---------------------------------------------------------------------------

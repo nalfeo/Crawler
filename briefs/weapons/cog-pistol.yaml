@@ -1,0 +1,21 @@
+type: weapon
+name: cog-pistol
+description: |
+  A steampunk/industrial single-action revolver pistol fitted with visible
+  cog-and-gear mechanisms. The barrel points upward (held vertically, grip at
+  the bottom). A large exposed gear or ratchet wheel sits at the cylinder
+  housing, and a secondary small cog is visible near the hammer — the gears
+  are mechanical, not decorative magic. Worn steel barrel with oil stains;
+  dark brown or black textured grip wrapped in leather strips; brass or
+  copper cogs with patina highlights. Visible rivet lines along the frame.
+  No glow, no energy beams, no magic effects. The silhouette must read as
+  "pistol with gears" at a glance — the cog detail is an accent, not the
+  dominant read.
+# Vertical orientation (default): grip at bottom, barrel pointing up.
+# Anchor at grip-bottom (inherited default 32,56) is correct for a vertically-
+# held pistol. All other type defaults (64x64, kenney-roguelike palette, 4x4
+# sheet, VLM judge enabled) are inherited from data/sprite-types/weapon.json.
+variations:
+  - elongated barrel with a machined spiral groove near the muzzle
+  - double-hammer with two visible cog wheels stacked at the cylinder
+minVariations: 8
