@@ -1,0 +1,30 @@
+type: weapon
+name: alchemist-sprayer
+floor: 2
+description: |
+  A compact alchemical spray weapon held vertically — grip at the bottom,
+  spray-head nozzle assembly at the top. The body is a chunky cylindrical
+  pressure canister of dark worn metal, about two-thirds of the frame height,
+  with a corroded brass or copper nozzle crown at the top that flares out
+  slightly. The grip is a short wrapped handle with a trigger guard visible
+  on one side. A faded warning-stripe band (yellow/black diagonal hazard
+  tape) wraps the middle of the canister. Chemical staining and corrosion
+  creep along the nozzle: yellowed-acid drips, crystalised residue, small
+  cracks that weep colour. The overall silhouette is unmistakably
+  "spray weapon" — a thick cylinder with a flared nozzle crown, not a blade
+  and not a staff. The silhouette should read at 64×64. Floor 2
+  retro-futurist corporate-decay aesthetic: this weapon looks like it
+  escaped a dungeon-level alchemist supply closet, not a fantasy forge.
+
+  Do NOT add glow, particle trails, or visible spray clouds — those are
+  runtime VFX, not part of the icon. No text, no labels on the canister
+  other than the hazard stripe and faint grime markings.
+# Vertical orientation (grip-down, nozzle-up) is the weapon default.
+# The canister body is wide enough that the default anchor (32, 56) and
+# centerToleranceX (3 px) from data/sprite-types/weapon.json are correct.
+# No sensor overrides needed.
+variations:
+  - twin-nozzle head with both ports showing corrosion crystals
+  - pressure gauge on the side of the canister with a broken needle
+  - hazard stripe replaced by a peeling corporate-sponsor decal
+minVariations: 8
