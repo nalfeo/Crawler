@@ -191,7 +191,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
   },
   {
     // Floor 2 batfolk headgear — lightweight membrane hood granting evasion
-    // and perception bonuses befitting batfolk echolocation lore.
+    // and dexterity bonuses (armor +1, dexterity +2, dodgeChance +4%).
     id: 'batfolk-hood',
     name: 'Batfolk Hood',
     slots: ['head'],
