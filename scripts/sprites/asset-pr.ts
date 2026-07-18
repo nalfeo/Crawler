@@ -282,6 +282,11 @@ export async function runAssetPrConsolidation(
   }
 
   const plan = planConsolidation({ issues, now: now(), baseBranch, slug: options.slug });
+  if (plan.baseBranch !== baseBranch) {
+    throw new Error(
+      `asset-pr: check-in base branch ${plan.baseBranch} does not match requested base ${baseBranch}`,
+    );
+  }
 
   await exec(deps.exec, repoRoot, 'git', ['fetch', remote, baseBranch]);
   for (const branch of plan.sourceBranches) {

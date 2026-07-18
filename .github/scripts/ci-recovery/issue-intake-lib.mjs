@@ -54,7 +54,11 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   const labels = (issue.labels || []).map((label) => String(label.name || '').toLowerCase());
   const blockingLabel = labels.find((label) => COPILOT_BLOCKING_LABELS.has(label));
   if (blockingLabel) {
-    return { eligible: false, reason: `issue #${issue.number} has ${blockingLabel} label` };
+    return {
+      eligible: false,
+      blocking: true,
+      reason: `issue #${issue.number} has ${blockingLabel} label`,
+    };
   }
   if (labels.includes('automation') && opener !== GITHUB_ACTIONS_LOGIN) {
     return {

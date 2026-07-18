@@ -20,7 +20,7 @@ const issue = payload.issue;
 
 const eligibility = issueIntakeEligibility(issue, issueOwner);
 if (!eligibility.eligible) {
-  if (eligibility.reason.includes('asset-request') || eligibility.reason.includes('no-copilot')) {
+  if (eligibility.blocking === true) {
     const removed = await removeCopilotAssignment({ graphql, token, owner, repo, issue });
     process.stdout.write(`skip: ${eligibility.reason}; copilot_removed=${removed}\n`);
     process.exit(0);
