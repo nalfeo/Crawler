@@ -54,9 +54,10 @@ ci-policy
 
 - Authoritative issue: #1570, open and maintainer-authored.
 - Branch base: `origin/main` at `84489aa693a18831b68c024630cf268eed35bd35`.
-- No gameplay/content behavior changed; this PR intentionally strengthens the fast
-  verifier's TypeScript gate from source-only coverage to full `tsconfig.json`
-  coverage.
+- No game runtime or gameplay behavior changed. The `verify:fast` gate itself is
+  intentionally strengthened: TypeScript coverage expands from source-only
+  (`tsconfig.src.json`) to the full project (`tsconfig.json`, covering
+  `src/**`, `tests/**`, and `scripts/**`).
 
 ## Follow-up
 

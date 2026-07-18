@@ -21,7 +21,7 @@ run_with_timeout() {
   ' "$timeout_seconds" "$@"
 }
 
-echo "🔍 Step 1/3: Full-project type checking + changed-file linting (parallel)..."
+echo "🔍 Step 1/3: Full-project type checking + linting (parallel)..."
 
 # The production verifier always uses the authoritative project, which includes
 # src/**/*.ts, tests/**/*.ts, and scripts/**/*.ts. TypeScript's existing
