@@ -1,8 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { z } from 'zod';
+
+// ajv is a transitive dependency available at runtime; load it via createRequire so that
+// ESM module resolution does not require it to be a direct package.json entry.
+const Ajv = createRequire(import.meta.url)('ajv') as typeof import('ajv');
 
 const SHA_PATTERN = /^[0-9a-f]{7,64}$/;
 const SHA40_PATTERN = /^[0-9a-f]{40}$/;
@@ -57,10 +62,17 @@ export const EXPECTED_NODE_IDS = [
 
 const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const nullableSha = z.string().regex(SHA_PATTERN).nullable();
-const GITHUB_ISSUE_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/issues\/[1-9][0-9]*$/;
-const GITHUB_PR_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/pull\/[1-9][0-9]*$/;
 const nonEmptyTrimmedString = z.string().trim().min(1);
 const nullableNonEmptyTrimmedString = nonEmptyTrimmedString.nullable();
+const GITHUB_ISSUE_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/issues\/[1-9][0-9]*$/;
+const GITHUB_PR_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/pull\/[1-9][0-9]*$/;
+
+/** Zod superRefine that enforces JSON Schema `uniqueItems` for string arrays. */
+function uniqueStringItems(arr: string[], ctx: z.RefinementCtx): void {
+  if (new Set(arr).size !== arr.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Items must be unique' });
+  }
+}
 const issueRefSchema = z
   .object({
     number: z.number().int().positive(),
@@ -74,36 +86,25 @@ const prRefSchema = z
     head_sha: z.string().regex(SHA40_PATTERN),
   })
   .strict();
-function parseTrailingGithubNumber(url: string): number | null {
-  const trailingSegment = url.split('/').at(-1);
-  if (!trailingSegment) return null;
-  const parsed = Number.parseInt(trailingSegment, 10);
-  return Number.isSafeInteger(parsed) ? parsed : null;
-}
-
 const stateIssueRefSchema = issueRefSchema
-  .extend({
-    url: z.string().regex(GITHUB_ISSUE_URL),
-  })
-  .superRefine((value, ctx) => {
-    if (parseTrailingGithubNumber(value.url) !== value.number) {
+  .extend({ url: z.string().regex(GITHUB_ISSUE_URL) })
+  .superRefine((data, ctx) => {
+    if (!data.url.endsWith(`/${data.number}`)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
+        message: `Issue URL does not match number ${data.number}`,
         path: ['url'],
-        message: 'Issue URL trailing number must match number field',
       });
     }
   });
 const statePrRefSchema = prRefSchema
-  .extend({
-    url: z.string().regex(GITHUB_PR_URL),
-  })
-  .superRefine((value, ctx) => {
-    if (parseTrailingGithubNumber(value.url) !== value.number) {
+  .extend({ url: z.string().regex(GITHUB_PR_URL) })
+  .superRefine((data, ctx) => {
+    if (!data.url.endsWith(`/${data.number}`)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
+        message: `PR URL does not match number ${data.number}`,
         path: ['url'],
-        message: 'PR URL trailing number must match number field',
       });
     }
   });
@@ -138,53 +139,50 @@ const reconciliationSchema = z
     drift: z.array(z.string()),
   })
   .strict();
-const GITHUB_REPO_PATTERN = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
+
+/**
+ * Schema for one stack-base entry — one per unvalidated direct prerequisite.
+ * Records the dependency PR facts needed to detect staleness and post-merge rebase requirements.
+ */
+const stackBaseSchema = z
+  .object({
+    dependency_node_id: z.string().regex(NODE_ID_PATTERN),
+    dependency_pr_number: z.number().int().positive(),
+    dependency_branch: z.string().min(1),
+    /** The dep's head SHA at the time speculative work was initiated (initial branch point). */
+    dependency_head_sha: z.string().regex(SHA40_PATTERN),
+    last_resynced_at: z.string().datetime({ offset: true }),
+    /**
+     * The dep's head SHA at the most recent resync. Stale when this differs
+     * from the dep node's cached github.pr.head_sha.
+     */
+    last_resynced_head: z.string().regex(SHA40_PATTERN),
+    /**
+     * Set to true once the dep PR merges. Blocks normal lifecycle advancement
+     * until the stacked branch is rebased onto main and stacked_work is cleared.
+     */
+    requires_main_rebase: z.boolean(),
+  })
+  .strict();
+
+/**
+ * Speculative stacked-work metadata on a lifecycle-blocked node.
+ * The node's main `status` stays `blocked`; this object tracks orthogonal
+ * progress on a stacked branch while prerequisites are under review.
+ */
 const stackedWorkSchema = z
   .object({
-    status: z.enum(['stacked_in_progress', 'stacked_pr_open']),
-    owner: z
-      .object({
-        claimant: z.string().min(1),
-        session: z.string().min(1),
-        branch: z.string().min(1),
-        claimed_at: z.string().datetime({ offset: true }),
-      })
-      .strict(),
-    dependency: z
-      .object({
-        node_id: z.string().regex(NODE_ID_PATTERN),
-        pr_number: z.number().int().positive(),
-        repository: z.string().regex(GITHUB_REPO_PATTERN),
-        branch: z.string().min(1),
-        head_sha: z.string().regex(SHA40_PATTERN),
-      })
-      .strict(),
-    dependent: z
-      .object({
-        head_sha: z.string().regex(SHA40_PATTERN),
-        pr_number: z.number().int().positive().nullable(),
-      })
-      .strict(),
-    resync: z
-      .object({
-        head_sha: z.string().regex(SHA40_PATTERN),
-        at: z.string().datetime({ offset: true }),
-      })
-      .strict(),
-    rebase_to_main: z
-      .object({
-        state: z.enum(['pending', 'complete']),
-        completed_at: nullableDateTime,
-      })
-      .strict(),
-    material_drift: z.string().nullable(),
-    block_reason: z.string().nullable(),
+    mode: z.enum(['stacked_in_progress', 'stacked_pr_open']),
+    issue: stateIssueRefSchema,
+    session: z.string().min(1),
+    branch: z.string().min(1),
+    /** Present only when mode is stacked_pr_open. */
+    pr: statePrRefSchema.nullable(),
+    /** One entry per unvalidated direct dependency. Must not be empty. */
+    stack_bases: z.array(stackBaseSchema).min(1),
+    drift_reason: z.string().nullable(),
   })
-  .strict()
-  .nullable();
-
-const STACKED_FORBIDDEN_LANES = new Set<string>(['verification']);
-const STACKED_STALE_RESYNC_MS = 48 * 3_600_000;
+  .strict();
 
 const nodeSchema = z
   .object({
@@ -209,7 +207,7 @@ const nodeSchema = z
       'verification',
     ]),
     persona: z.string().min(1),
-    dependencies: z.array(z.string().regex(NODE_ID_PATTERN)),
+    dependencies: z.array(z.string().regex(NODE_ID_PATTERN)).superRefine(uniqueStringItems),
     status: z.enum([
       'blocked',
       'ready',
@@ -237,11 +235,16 @@ const nodeSchema = z
         merged_at: nullableDateTime,
       })
       .strict(),
-    evidence_requirements: z.array(z.string().min(1)).min(1),
+    evidence_requirements: z.array(z.string().min(1)).min(1).superRefine(uniqueStringItems),
     evidence: z.array(evidenceSchema),
     reconciliation: reconciliationSchema,
     superseded_by: z.string().regex(NODE_ID_PATTERN).nullable(),
-    stacked_work: stackedWorkSchema,
+    /**
+     * Speculative stacked-work metadata. Optional — absent when there is no
+     * active speculative work on this node. When present, the node status must
+     * remain `blocked`; the field is orthogonal to the normal lifecycle.
+     */
+    stacked_work: stackedWorkSchema.nullable().optional(),
   })
   .strict();
 
@@ -293,6 +296,7 @@ const epicStateSchema = z
         maximum_without_heartbeat_hours: z.literal(48),
         protocol_headings: z.tuple([
           z.literal('CLAIMED'),
+          z.literal('STACKED-WORK'),
           z.literal('BLOCKED'),
           z.literal('UNBLOCKED'),
           z.literal('SCOPE-CHANGE-REQUEST'),
@@ -311,25 +315,88 @@ const epicStateSchema = z
         mode: z.literal('deterministic-plan-only'),
         parent_title: z.string().min(1),
         child_title_prefix: z.string().min(1),
-        labels: z.array(z.string().min(1)),
-        late_bound_fields: z.array(z.enum(['parent_issue_number', 'child_issue_number'])),
+        labels: z.array(z.string().min(1)).superRefine(uniqueStringItems),
+        late_bound_fields: z
+          .array(z.enum(['parent_issue_number', 'child_issue_number']))
+          .superRefine(uniqueStringItems),
       })
       .strict(),
     release: z
       .object({
         required_node_status: z.literal('validated'),
         all_required_nodes: z.literal(true),
-        flags: z
-          .array(
-            z
-              .object({
-                name: z.string().min(1),
-                default: z.literal(false),
-                validating_nodes: z.array(z.string().regex(/^slice:/)).min(1),
-              })
-              .strict(),
-          )
-          .min(7),
+        flags: z.tuple([
+          z
+            .object({
+              name: z.literal('floor2EquipmentRegistry'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentCatalog'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentRewards'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentEconomy'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentUx'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentWorld'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+          z
+            .object({
+              name: z.literal('floor2EquipmentAiMaintenance'),
+              default: z.literal(false),
+              validating_nodes: z
+                .array(z.string().regex(/^slice:/))
+                .min(1)
+                .superRefine(uniqueStringItems),
+            })
+            .strict(),
+        ]),
       })
       .strict(),
     nodes: z.array(nodeSchema),
@@ -417,12 +484,23 @@ const planContractSchema = z
         settlement_maintenance_required: z.literal(true),
       })
       .strict(),
+    graph: z
+      .object({
+        dependencies: z.record(
+          z.string().regex(NODE_ID_PATTERN),
+          z.array(z.string().regex(NODE_ID_PATTERN)),
+        ),
+        parent_slices: z.record(
+          z.string().regex(NODE_ID_PATTERN),
+          z.string().regex(NODE_ID_PATTERN).nullable(),
+        ),
+      })
+      .strict(),
   })
   .strict();
 
 export type EpicState = z.infer<typeof epicStateSchema>;
 export type EpicNode = EpicState['nodes'][number];
-type EvidenceRecord = EpicNode['evidence'][number];
 
 export interface Diagnostic {
   readonly code: string;
@@ -457,9 +535,31 @@ export interface ValidationResult {
  * implementation in tests to avoid requiring full git history.
  */
 export interface GitReader {
-  showContent(commit: string, filePath: string): string | null;
-  commitExists(commit: string): boolean;
-  commitStatus?(commit: string): 'missing' | 'not-a-commit' | 'commit';
+  /**
+   * Provide either `readContent` (preferred) or legacy `showContent`.
+   */
+  readContent?(
+    commit: string,
+    filePath: string,
+  ): { readonly content: string; readonly source: 'git' | 'working-tree' } | null;
+  /**
+   * Backward-compatible legacy alias kept for external tooling that still
+   * implements the pre-refactor GitReader shape.
+   */
+  showContent?(commit: string, filePath: string): string | null;
+  /**
+   * Provide either `commitStatus` (preferred) or legacy `commitExists`.
+   */
+  /**
+   * `not-a-commit` is accepted as a deprecated legacy alias of `not-commit`.
+   */
+  commitStatus?(commit: string): 'commit' | 'not-commit' | 'not-a-commit' | 'missing';
+  /**
+   * Backward-compatible legacy alias kept for external tooling that still
+   * implements the pre-refactor GitReader shape.
+   * Note: this boolean shape cannot distinguish non-commit objects from commits.
+   */
+  commitExists?(commit: string): boolean;
 }
 
 export interface ValidationOptions {
@@ -497,63 +597,48 @@ function gitShowContent(repoRoot: string, commit: string, filePath: string): str
   }
 }
 
-function gitCommitStatus(repoRoot: string, commit: string): 'missing' | 'not-a-commit' | 'commit' {
+function gitCommitStatus(repoRoot: string, commit: string): 'commit' | 'not-commit' | 'missing' {
   try {
-    return execFileSync('git', ['cat-file', '-t', commit], {
+    const objectType = execFileSync('git', ['cat-file', '-t', commit], {
       cwd: repoRoot,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim() === 'commit'
-      ? 'commit'
-      : 'not-a-commit';
+    });
+    return objectType.trim() === 'commit' ? 'commit' : 'not-commit';
   } catch {
     return 'missing';
   }
 }
 
-function validateEvidenceRecord(
-  repoRoot: string,
+function normalizeCommitStatus(
+  status: 'commit' | 'not-commit' | 'not-a-commit' | 'missing',
+): 'commit' | 'not-commit' | 'missing' {
+  // Legacy GitReader implementations reported non-commit objects as
+  // "not-a-commit"; the current contract uses "not-commit".
+  return status === 'not-a-commit' ? 'not-commit' : status;
+}
+
+function resolveCommitStatus(
   gitReader: GitReader,
-  node: EpicNode,
-  evidence: EvidenceRecord,
-  result: MutableValidation,
-): void {
-  const canonicalDir = EVIDENCE_CANONICAL_DIRS[evidence.kind];
-  if (canonicalDir && !evidence.path_or_check.startsWith(canonicalDir)) {
-    result.errors.push({
-      code: 'evidence.non-canonical-path',
-      node_id: node.node_id,
-      message: `${node.node_id} ${evidence.kind} evidence must be under ${canonicalDir}`,
-    });
-    return;
+  commit: string,
+): 'commit' | 'not-commit' | 'missing' {
+  if (gitReader.commitStatus) return normalizeCommitStatus(gitReader.commitStatus(commit));
+  if (gitReader.commitExists) return gitReader.commitExists(commit) ? 'commit' : 'missing';
+  throw new Error('Invalid GitReader: commitStatus or commitExists must be implemented');
+}
+
+function readContentAtCommit(
+  gitReader: GitReader,
+  commit: string,
+  filePath: string,
+): { readonly content: string; readonly source: 'git' | 'working-tree' } | null {
+  if (gitReader.readContent) return gitReader.readContent(commit, filePath);
+  if (!gitReader.showContent) {
+    throw new Error('Invalid GitReader: readContent or showContent must be implemented');
   }
-  if (!isRepoFile(repoRoot, evidence.path_or_check)) {
-    result.errors.push({
-      code: 'evidence.unsafe-path',
-      node_id: node.node_id,
-      message: `${node.node_id} evidence path is outside the repository`,
-    });
-    return;
-  }
-  const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
-  if (content === null) {
-    result.errors.push({
-      code: 'evidence.git-verification-failed',
-      node_id: node.node_id,
-      message:
-        `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ` +
-        `${evidence.path_or_check} (commit or file may not exist)`,
-    });
-    return;
-  }
-  const actualHash = sha256(content);
-  if (actualHash !== evidence.sha256) {
-    result.errors.push({
-      code: 'evidence.hash-drift',
-      node_id: node.node_id,
-      message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
-    });
-  }
+  // Legacy showContent readers were defined as git-backed lookups.
+  const content = gitReader.showContent(commit, filePath);
+  return content === null ? null : { content, source: 'git' };
 }
 
 /**
@@ -562,16 +647,31 @@ function validateEvidenceRecord(
  * implementation (e.g. a working-tree reader) via `ValidationOptions.gitReader`
  * to avoid depending on full git history being present in the checkout.
  */
-export function createDefaultGitReader(repoRoot: string): GitReader {
+export function createDefaultGitReader(
+  repoRoot: string,
+): GitReader & Required<Pick<GitReader, 'commitStatus'>> {
   return {
-    showContent(commit: string, filePath: string): string | null {
+    readContent(commit: string, filePath: string) {
+      const gitContent = gitShowContent(repoRoot, commit, filePath);
+      if (gitContent !== null) return { content: gitContent, source: 'git' as const };
+      if (gitCommitStatus(repoRoot, commit) !== 'missing') return null;
+      try {
+        return {
+          content: readFileSync(resolve(repoRoot, filePath), 'utf8'),
+          source: 'working-tree' as const,
+        };
+      } catch {
+        return null;
+      }
+    },
+    commitStatus(commit: string) {
+      return gitCommitStatus(repoRoot, commit);
+    },
+    showContent(commit: string, filePath: string) {
       return gitShowContent(repoRoot, commit, filePath);
     },
-    commitExists(commit: string): boolean {
+    commitExists(commit: string) {
       return gitCommitStatus(repoRoot, commit) === 'commit';
-    },
-    commitStatus(commit: string): 'missing' | 'not-a-commit' | 'commit' {
-      return gitCommitStatus(repoRoot, commit);
     },
   };
 }
@@ -617,80 +717,64 @@ export function extractPlanContract(markdown: string): {
   };
 }
 
-function validateCommittedSchema(schemaDocument: unknown, result: MutableValidation): void {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function sameMembers(actual: unknown, expected: ReadonlyArray<string>): boolean {
+  return (
+    Array.isArray(actual) &&
+    actual.length === expected.length &&
+    expected.every((item) => actual.includes(item))
+  );
+}
+
+/**
+ * Recursively transform a Draft 2020-12 JSON Schema into an ajv-v6–compatible
+ * (Draft 7) schema so we can apply it to manifest data without upgrading ajv.
+ *
+ * Transformations applied:
+ * - Strip the top-level `$schema` meta-URI (ajv v6 would try to resolve it).
+ * - Rename `$defs` → `definitions` and rewrite `#/$defs/` refs accordingly.
+ * - Replace `prefixItems`+`items:false` (2020-12 tuple syntax) with
+ *   `items`+`additionalItems:false` (Draft 7 tuple syntax).
+ */
+function transformSchemaForAjvV6(obj: unknown, depth = 0): unknown {
+  if (Array.isArray(obj)) return obj.map((v) => transformSchemaForAjvV6(v, depth + 1));
+  if (obj === null || typeof obj !== 'object') return obj;
+  const src = obj as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const k of Object.keys(src)) {
+    if (k === '$schema' && depth === 0) continue; // drop meta-schema URI
+    if (k === '$defs') {
+      result['definitions'] = transformSchemaForAjvV6(src[k], depth + 1);
+    } else if (k === 'prefixItems') {
+      // 2020-12 tuple → Draft 7 tuple
+      result['items'] = transformSchemaForAjvV6(src[k], depth + 1);
+      if (src['items'] === false) result['additionalItems'] = false;
+    } else if (k === 'items' && 'prefixItems' in src) {
+      // Already handled above alongside prefixItems
+    } else {
+      result[k] = transformSchemaForAjvV6(src[k], depth + 1);
+    }
+  }
+  return result;
+}
+
+function validateCommittedSchema(
+  schemaDocument: unknown,
+  input: unknown,
+  result: MutableValidation,
+): void {
   const schema = z
     .object({
       $schema: z.literal('https://json-schema.org/draft/2020-12/schema'),
       $id: z.string().url(),
-      properties: z
-        .object({
-          schema_version: z.object({ const: z.literal('crawler-epic-state/v1') }),
-          epic_id: z.object({ const: z.literal('floor-2-equipment') }),
-          nodes: z.object({ minItems: z.literal(37) }).passthrough(),
-          release: z
-            .object({
-              properties: z
-                .object({ flags: z.object({ minItems: z.literal(7) }).passthrough() })
-                .passthrough(),
-            })
-            .passthrough(),
-          authority: z
-            .object({
-              properties: z
-                .object({
-                  ordered_sources: z.object({ minItems: z.literal(4) }).passthrough(),
-                })
-                .passthrough(),
-            })
-            .passthrough(),
-          lifecycle: z
-            .object({
-              properties: z
-                .object({
-                  normal: z.object({ minItems: z.literal(7) }).passthrough(),
-                  terminal: z.object({ minItems: z.literal(2) }).passthrough(),
-                })
-                .passthrough(),
-            })
-            .passthrough(),
-          claim_policy: z
-            .object({
-              properties: z
-                .object({
-                  protocol_headings: z.object({ minItems: z.literal(5) }).passthrough(),
-                })
-                .passthrough(),
-            })
-            .passthrough(),
-        })
-        .passthrough(),
-      $defs: z
-        .object({
-          node: z.object({ type: z.literal('object') }).passthrough(),
-          issueRef: z
-            .object({
-              properties: z
-                .object({
-                  url: z
-                    .object({ pattern: z.string().includes('nalfeo/Crawler/issues') })
-                    .passthrough(),
-                })
-                .passthrough(),
-            })
-            .passthrough(),
-          prRef: z
-            .object({
-              properties: z
-                .object({
-                  url: z
-                    .object({ pattern: z.string().includes('nalfeo/Crawler/pull') })
-                    .passthrough(),
-                })
-                .passthrough(),
-            })
-            .passthrough(),
-        })
-        .passthrough(),
+      type: z.literal('object'),
+      additionalProperties: z.literal(false),
+      required: z.array(z.string()),
+      properties: z.record(z.string(), z.unknown()),
+      $defs: z.record(z.string(), z.unknown()),
     })
     .passthrough()
     .safeParse(schemaDocument);
@@ -698,6 +782,248 @@ function validateCommittedSchema(schemaDocument: unknown, result: MutableValidat
     result.errors.push({
       code: 'schema.invalid',
       message: schema.error.issues.map(formatZodIssue).join('; '),
+    });
+    return;
+  }
+  const data = schema.data;
+  const expectedRootRequired = [
+    '$schema',
+    'schema_version',
+    'epic_id',
+    'title',
+    'updated_at',
+    'plan',
+    'authority',
+    'lifecycle',
+    'claim_policy',
+    'github',
+    'issue_materialization',
+    'release',
+    'nodes',
+    'reconciliation',
+  ];
+  if (!sameMembers(data.required, expectedRootRequired)) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message: 'Committed JSON Schema root required fields drifted from the Zod contract',
+    });
+  }
+  const rootSchemaVersion = isRecord(data.properties.schema_version)
+    ? data.properties.schema_version
+    : null;
+  const rootEpicId = isRecord(data.properties.epic_id) ? data.properties.epic_id : null;
+  if (
+    rootSchemaVersion?.const !== 'crawler-epic-state/v1' ||
+    rootEpicId?.const !== 'floor-2-equipment'
+  ) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message: 'Committed JSON Schema root const fields drifted from the Zod contract',
+    });
+  }
+  const claimPolicy = isRecord(data.properties.claim_policy) ? data.properties.claim_policy : null;
+  const claimPolicyProps =
+    claimPolicy && isRecord(claimPolicy.properties) ? claimPolicy.properties : null;
+  const protocolHeadings =
+    claimPolicyProps && isRecord(claimPolicyProps.protocol_headings)
+      ? claimPolicyProps.protocol_headings
+      : null;
+  const expectedHeadings = [
+    'CLAIMED',
+    'STACKED-WORK',
+    'BLOCKED',
+    'UNBLOCKED',
+    'SCOPE-CHANGE-REQUEST',
+    'HANDOFF',
+  ];
+  const actualHeadings = Array.isArray(protocolHeadings?.prefixItems)
+    ? protocolHeadings.prefixItems.map((item) =>
+        isRecord(item) && typeof item.const === 'string' ? item.const : null,
+      )
+    : null;
+  if (
+    actualHeadings === null ||
+    protocolHeadings?.items !== false ||
+    actualHeadings.length !== expectedHeadings.length ||
+    expectedHeadings.some((heading, index) => actualHeadings[index] !== heading)
+  ) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message: 'Committed JSON Schema claim_policy.protocol_headings drifted from the Zod contract',
+    });
+  }
+  const defs = data.$defs;
+  const issueRef = isRecord(defs.issueRef) ? defs.issueRef : null;
+  const prRef = isRecord(defs.prRef) ? defs.prRef : null;
+  const node = isRecord(defs.node) ? defs.node : null;
+  const stackBase = isRecord(defs.stackBase) ? defs.stackBase : null;
+  const stackedWork = isRecord(defs.stackedWork) ? defs.stackedWork : null;
+  const nodeProps = node && isRecord(node.properties) ? node.properties : null;
+  const expectedNodeRequired = [
+    'node_id',
+    'display_id',
+    'kind',
+    'parent_slice',
+    'title',
+    'summary',
+    'execution_lane',
+    'persona',
+    'dependencies',
+    'status',
+    'release_requirement',
+    'deferred_reason',
+    'status_changed_at',
+    'github',
+    'ownership',
+    'merge',
+    'evidence_requirements',
+    'evidence',
+    'reconciliation',
+    'superseded_by',
+  ];
+  if (
+    !node ||
+    node.additionalProperties !== false ||
+    !sameMembers(node.required, expectedNodeRequired)
+  ) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message:
+        'Committed JSON Schema $defs.node required/additionalProperties drifted from the Zod contract',
+    });
+  }
+  const stackedWorkAnyOf =
+    nodeProps && isRecord(nodeProps.stacked_work) && Array.isArray(nodeProps.stacked_work.anyOf)
+      ? nodeProps.stacked_work.anyOf
+      : null;
+  const hasStackedWorkRef =
+    stackedWorkAnyOf?.some((entry) => isRecord(entry) && entry.$ref === '#/$defs/stackedWork') ??
+    false;
+  const hasStackedWorkNull =
+    stackedWorkAnyOf?.some((entry) => isRecord(entry) && entry.type === 'null') ?? false;
+  if (!hasStackedWorkRef || !hasStackedWorkNull) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message: 'Committed JSON Schema stacked_work node property drifted from the Zod contract',
+    });
+  }
+  const issueUrl =
+    issueRef && isRecord(issueRef.properties) && isRecord(issueRef.properties.url)
+      ? issueRef.properties.url
+      : null;
+  const prUrl =
+    prRef && isRecord(prRef.properties) && isRecord(prRef.properties.url)
+      ? prRef.properties.url
+      : null;
+  if (
+    issueUrl?.pattern !== '^https://github\\.com/nalfeo/Crawler/issues/[1-9][0-9]*$' ||
+    prUrl?.pattern !== '^https://github\\.com/nalfeo/Crawler/pull/[1-9][0-9]*$'
+  ) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message: 'Committed JSON Schema issue/PR URL patterns drifted from the Zod contract',
+    });
+  }
+  if (
+    !stackBase ||
+    stackBase.additionalProperties !== false ||
+    !sameMembers(stackBase.required, [
+      'dependency_node_id',
+      'dependency_pr_number',
+      'dependency_branch',
+      'dependency_head_sha',
+      'last_resynced_at',
+      'last_resynced_head',
+      'requires_main_rebase',
+    ])
+  ) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message: 'Committed JSON Schema $defs.stackBase drifted from the Zod contract',
+    });
+  }
+  const stackBaseProps = stackBase && isRecord(stackBase.properties) ? stackBase.properties : null;
+  if (
+    !stackBaseProps ||
+    !isRecord(stackBaseProps.dependency_head_sha) ||
+    stackBaseProps.dependency_head_sha.$ref !== '#/$defs/sha40' ||
+    !isRecord(stackBaseProps.last_resynced_head) ||
+    stackBaseProps.last_resynced_head.$ref !== '#/$defs/sha40'
+  ) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message: 'Committed JSON Schema $defs.stackBase SHA references drifted from the Zod contract',
+    });
+  }
+  if (
+    !stackedWork ||
+    stackedWork.additionalProperties !== false ||
+    !sameMembers(stackedWork.required, [
+      'mode',
+      'issue',
+      'session',
+      'branch',
+      'pr',
+      'stack_bases',
+      'drift_reason',
+    ])
+  ) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message: 'Committed JSON Schema $defs.stackedWork drifted from the Zod contract',
+    });
+  }
+  const stackedWorkProps =
+    stackedWork && isRecord(stackedWork.properties) ? stackedWork.properties : null;
+  const stackedWorkPrAnyOf =
+    stackedWorkProps && isRecord(stackedWorkProps.pr) && Array.isArray(stackedWorkProps.pr.anyOf)
+      ? stackedWorkProps.pr.anyOf
+      : null;
+  const hasStackedPrRef =
+    stackedWorkPrAnyOf?.some((entry) => isRecord(entry) && entry.$ref === '#/$defs/prRef') ?? false;
+  const hasStackedPrNull =
+    stackedWorkPrAnyOf?.some((entry) => isRecord(entry) && entry.type === 'null') ?? false;
+  if (
+    !stackedWorkProps ||
+    !isRecord(stackedWorkProps.mode) ||
+    !Array.isArray(stackedWorkProps.mode.enum) ||
+    !isRecord(stackedWorkProps.issue) ||
+    stackedWorkProps.issue.$ref !== '#/$defs/issueRef' ||
+    !hasStackedPrRef ||
+    !hasStackedPrNull ||
+    !isRecord(stackedWorkProps.stack_bases) ||
+    !isRecord(stackedWorkProps.stack_bases.items) ||
+    stackedWorkProps.stack_bases.items.$ref !== '#/$defs/stackBase'
+  ) {
+    result.errors.push({
+      code: 'schema.contract-parity',
+      message: 'Committed JSON Schema stackedWork references drifted from the Zod contract',
+    });
+  }
+
+  // Apply the committed JSON Schema to the manifest data so that any divergence
+  // between the schema document and the Zod runtime validator is caught immediately.
+  try {
+    const ajvCompatSchema = transformSchemaForAjvV6(schemaDocument);
+    const patched = JSON.parse(
+      JSON.stringify(ajvCompatSchema).replace(/#\/\$defs\//g, '#/definitions/'),
+    ) as object;
+    const ajv = new Ajv({ unknownFormats: 'ignore', schemaId: 'auto', allErrors: true });
+    const validate = ajv.compile(patched);
+    if (!validate(input)) {
+      const messages = (validate.errors ?? [])
+        .slice(0, 5)
+        .map((error) => `${error.dataPath || '.'}: ${error.message}`)
+        .join('; ');
+      result.errors.push({
+        code: 'schema.manifest-invalid',
+        message: `Manifest rejected by committed JSON Schema: ${messages}`,
+      });
+    }
+  } catch (err) {
+    result.errors.push({
+      code: 'schema.manifest-validation-error',
+      message: `Failed to apply JSON Schema to manifest: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
 }
@@ -728,11 +1054,17 @@ function computeReady(
   node: EpicNode,
   nodesById: ReadonlyMap<string, EpicNode>,
 ): boolean {
+  // Any active stacked_work (regardless of requires_main_rebase) prevents the
+  // node from entering the ready queue. The Producer must explicitly reconcile
+  // and clear the speculative metadata before normal lifecycle advancement can
+  // occur — even when all dependencies are otherwise validated.
+  // stacked_work is nullable().optional() so both null and undefined mean "absent".
   return (
     node.release_requirement === 'required' &&
     !TERMINAL_STATUSES.has(node.status) &&
     !POST_PR_STATUSES.has(node.status) &&
     !ACTIVE_STATUSES.has(node.status) &&
+    node.stacked_work == null &&
     dependenciesSatisfied(node, nodesById) &&
     hasIssueAuthority(state, node)
   );
@@ -741,10 +1073,13 @@ function computeReady(
 function validateDag(
   state: EpicState,
   nodesById: ReadonlyMap<string, EpicNode>,
+  contract: z.infer<typeof planContractSchema>,
   result: MutableValidation,
 ): void {
   const expected = new Set<string>(EXPECTED_NODE_IDS);
   const actual = new Set<string>();
+  const canonicalDependencies = new Map(Object.entries(contract.graph.dependencies));
+  const canonicalParentSlices = new Map(Object.entries(contract.graph.parent_slices));
   for (const node of state.nodes) {
     if (actual.has(node.node_id)) {
       result.errors.push({
@@ -831,9 +1166,137 @@ function validateDag(
     visited.add(nodeId);
   };
   for (const node of state.nodes) visit(node.node_id, []);
+
+  // Reject duplicate node_id entries: a Map silently overwrites duplicates, so
+  // check explicitly before building nodesById.
+  const nodeIdCounts = new Map<string, number>();
+  for (const node of state.nodes) {
+    nodeIdCounts.set(node.node_id, (nodeIdCounts.get(node.node_id) ?? 0) + 1);
+  }
+  for (const [dupId, count] of nodeIdCounts) {
+    if (count > 1) {
+      result.errors.push({
+        code: 'dag.duplicate-node-id',
+        node_id: dupId,
+        message: `${dupId} appears ${count} times in state.nodes; node_id must be unique`,
+      });
+    }
+  }
+
+  // Validate that dependencies and parent_slice exactly match the canonical plan graph.
+  for (const node of state.nodes) {
+    const contractDeps = canonicalDependencies.get(node.node_id);
+    if (contractDeps === undefined) {
+      result.errors.push({
+        code: 'dag.unknown-node',
+        node_id: node.node_id,
+        message: `${node.node_id} is not part of the canonical plan graph`,
+      });
+      continue;
+    }
+    const actualDeps = [...node.dependencies].sort();
+    const expectedDeps = [...contractDeps].sort();
+    if (actualDeps.join('\u0000') !== expectedDeps.join('\u0000')) {
+      result.errors.push({
+        code: 'dag.dependency-contract-drift',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} dependencies [${actualDeps.join(', ')}] do not match ` +
+          `canonical plan [${expectedDeps.join(', ')}]`,
+      });
+    }
+    if (!canonicalParentSlices.has(node.node_id)) {
+      result.errors.push({
+        code: 'dag.parent-slice-contract-missing',
+        node_id: node.node_id,
+        message: `${node.node_id} is missing a canonical parent-slice contract entry`,
+      });
+      continue;
+    }
+    const canonicalParent = canonicalParentSlices.get(node.node_id) ?? null;
+    if (node.parent_slice !== canonicalParent) {
+      result.errors.push({
+        code: 'dag.parent-slice-contract-drift',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} parent_slice ${String(node.parent_slice)} does not match ` +
+          `canonical plan ${String(canonicalParent)}`,
+      });
+    }
+  }
+
+  for (const canonicalNodeId of EXPECTED_NODE_IDS) {
+    if (!nodesById.has(canonicalNodeId)) {
+      result.errors.push({
+        code: 'dag.missing-canonical-node',
+        node_id: canonicalNodeId,
+        message: `Canonical node ${canonicalNodeId} is missing from state.nodes`,
+      });
+    }
+    if (!canonicalDependencies.has(canonicalNodeId)) {
+      result.errors.push({
+        code: 'dag.dependency-contract-missing',
+        node_id: canonicalNodeId,
+        message: `${canonicalNodeId} is missing a canonical dependency contract entry`,
+      });
+    }
+    if (!canonicalParentSlices.has(canonicalNodeId)) {
+      result.errors.push({
+        code: 'dag.parent-slice-contract-missing',
+        node_id: canonicalNodeId,
+        message: `${canonicalNodeId} is missing a canonical parent-slice contract entry`,
+      });
+    }
+  }
+  // Reverse check: reject extra keys in the contract that are not in the canonical node set.
+  for (const contractNodeId of canonicalDependencies.keys()) {
+    if (!expected.has(contractNodeId)) {
+      result.errors.push({
+        code: 'dag.unexpected-contract-dependency-key',
+        node_id: contractNodeId,
+        message: `contract.graph.dependencies has unexpected key ${contractNodeId} not in canonical node set`,
+      });
+    }
+  }
+  for (const contractNodeId of canonicalParentSlices.keys()) {
+    if (!expected.has(contractNodeId)) {
+      result.errors.push({
+        code: 'dag.unexpected-contract-parent-slice-key',
+        node_id: contractNodeId,
+        message: `contract.graph.parent_slices has unexpected key ${contractNodeId} not in canonical node set`,
+      });
+    }
+  }
+}
+
+/**
+ * Returns true if the candidate looks like a URI-scheme reference (not a
+ * file path).  Used to guard isRepoFile from treating `check:run/123` or
+ * `javascript:...` as relative paths.
+ */
+function hasUriScheme(candidate: string): boolean {
+  return /^(?![A-Za-z]:[\\/])[a-z][a-z0-9+.-]*:/i.test(candidate);
+}
+
+/**
+ * Returns true only for the supported `check:` evidence URI scheme.
+ *
+ * Accepted formats:
+ *   check:run/<positive-integer>   – a GitHub Actions workflow run
+ *   check:job/<positive-integer>   – a GitHub Actions job
+ *
+ * Any other scheme (file:, http:, javascript:, etc.) is rejected so an
+ * invented URI cannot satisfy a required evidence kind.  The recorded sha256
+ * is a pre-computed commitment made at evidence-record time; check: references
+ * cannot be re-verified offline (they require the GitHub API), so validation
+ * only confirms the URI format and the associated commit object.
+ */
+function isCheckEvidenceReference(candidate: string): boolean {
+  return /^check:(?:run|job)\/[1-9]\d*$/.test(candidate);
 }
 
 function isRepoFile(repoRoot: string, candidate: string): boolean {
+  if (hasUriScheme(candidate)) return false;
   if (isAbsolute(candidate)) return false;
   const root = realpathSync(repoRoot);
   const absolute = resolve(root, candidate);
@@ -860,10 +1323,307 @@ function validateEvidenceFiles(
         node_id: node.node_id,
         message: `${node.node_id} at ${node.status} requires ${kind} evidence`,
       });
+      continue;
+    }
+    const canonicalDir = EVIDENCE_CANONICAL_DIRS[kind];
+    if (canonicalDir && !evidence.path_or_check.startsWith(canonicalDir)) {
+      result.errors.push({
+        code: 'evidence.non-canonical-path',
+        node_id: node.node_id,
+        message: `${node.node_id} ${kind} evidence must be under ${canonicalDir}`,
+      });
+      continue;
+    }
+    if (!isRepoFile(repoRoot, evidence.path_or_check)) {
+      result.errors.push({
+        code: 'evidence.unsafe-path',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence path is outside the repository`,
+      });
+      continue;
+    }
+    const commitStat = resolveCommitStatus(gitReader, evidence.commit);
+    if (commitStat !== 'commit') {
+      result.errors.push({
+        code: 'evidence.git-verification-failed',
+        node_id: node.node_id,
+        message:
+          commitStat === 'not-commit'
+            ? `${node.node_id} evidence commit ${evidence.commit} is not a commit object: ${evidence.path_or_check}`
+            : `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
+      });
+      continue;
+    }
+    const verification = readContentAtCommit(gitReader, evidence.commit, evidence.path_or_check);
+    if (verification === null) {
+      result.errors.push({
+        code: 'evidence.git-verification-failed',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence file not found at commit ${evidence.commit}: ${evidence.path_or_check}`,
+      });
+      continue;
+    }
+    if (verification.source === 'working-tree') {
+      result.warnings.push({
+        code: 'evidence.commit-unavailable',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} evidence commit ${evidence.commit} is not locally available; ` +
+          `verified ${evidence.path_or_check} against working-tree content instead`,
+      });
+    }
+    const actualHash = sha256(verification.content);
+    if (actualHash !== evidence.sha256) {
+      result.errors.push({
+        code: 'evidence.hash-drift',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
+      });
     }
   }
-  for (const evidence of node.evidence) {
-    validateEvidenceRecord(repoRoot, gitReader, node, evidence, result);
+}
+
+function validateEvidenceRequirements(
+  repoRoot: string,
+  gitReader: GitReader,
+  node: EpicNode,
+  result: MutableValidation,
+): void {
+  const handledKinds = new Set(['handoff', 'review-ledger']);
+  for (const requirement of node.evidence_requirements) {
+    const evidence = node.evidence.find((item) => item.kind === requirement);
+    if (!evidence) {
+      result.errors.push({
+        code: 'evidence.missing-requirement',
+        node_id: node.node_id,
+        message: `${node.node_id} lacks required evidence kind ${requirement}`,
+      });
+      continue;
+    }
+    if (handledKinds.has(requirement)) continue;
+    if (isRepoFile(repoRoot, evidence.path_or_check)) {
+      const verification = readContentAtCommit(gitReader, evidence.commit, evidence.path_or_check);
+      if (verification === null) {
+        result.errors.push({
+          code: 'evidence.git-verification-failed',
+          node_id: node.node_id,
+          message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check}`,
+        });
+        continue;
+      }
+      if (verification.source === 'working-tree') {
+        result.warnings.push({
+          code: 'evidence.commit-unavailable',
+          node_id: node.node_id,
+          message:
+            `${node.node_id} evidence commit ${evidence.commit} is not locally available; ` +
+            `verified ${evidence.path_or_check} against working-tree content instead`,
+        });
+      }
+      if (sha256(verification.content) !== evidence.sha256) {
+        result.errors.push({
+          code: 'evidence.hash-drift',
+          node_id: node.node_id,
+          message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
+        });
+      }
+      continue;
+    }
+    if (!isCheckEvidenceReference(evidence.path_or_check)) {
+      result.errors.push({
+        code: 'evidence.unsafe-path',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence path is not a repo file or valid check: reference: ${evidence.path_or_check}`,
+      });
+      continue;
+    }
+    const nonFileCommitStatus = resolveCommitStatus(gitReader, evidence.commit);
+    if (nonFileCommitStatus !== 'commit') {
+      result.errors.push({
+        code: 'evidence.git-verification-failed',
+        node_id: node.node_id,
+        message:
+          nonFileCommitStatus === 'not-commit'
+            ? `${node.node_id} evidence commit ${evidence.commit} is not a commit object: ${evidence.path_or_check}`
+            : `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
+      });
+    }
+  }
+}
+
+/**
+ * Validates stacked_work metadata on a lifecycle-blocked node.
+ *
+ * Rules enforced:
+ * 1. Speculative work only on `blocked` nodes.
+ * 2. `stacked_pr_open` requires a PR ref.
+ * 3. One stack_base per unvalidated direct dependency (no extra, no missing).
+ * 4. Each dep must be `pr_open` (or `merged`/`validated` with requires_main_rebase: true).
+ * 5. Stale detection: dep's cached PR head must match last_resynced_head.
+ * 6. Post-merge: when dep is merged/validated, requires_main_rebase must be true
+ *    and an operator action is emitted.
+ * 7. No duplicate dependency node IDs within stack_bases.
+ */
+function validateStackedWork(
+  node: EpicNode,
+  nodesById: ReadonlyMap<string, EpicNode>,
+  result: MutableValidation,
+): void {
+  const sw = node.stacked_work;
+  if (!sw) return;
+
+  // Rule 1: node status must be blocked.
+  if (node.status !== 'blocked') {
+    result.errors.push({
+      code: 'stacked.not-blocked',
+      node_id: node.node_id,
+      message:
+        `${node.node_id} has stacked_work but status is ${node.status}; ` +
+        'speculative work requires status blocked',
+    });
+  }
+
+  // Rule 2: stacked_pr_open requires a PR ref.
+  if (sw.mode === 'stacked_pr_open' && !sw.pr) {
+    result.errors.push({
+      code: 'stacked.pr-open-missing-pr',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked_work mode is stacked_pr_open but pr is null`,
+    });
+  }
+
+  // Determine all direct dependencies and the subset that are unvalidated.
+  // Note: validateDag already catches unknown dependency IDs, so by the time
+  // validateStackedWork runs all node.dependencies exist in nodesById.
+  const directDepSet = new Set(node.dependencies);
+  const unvalidatedDepIds = node.dependencies.filter((depId) => {
+    const dep = nodesById.get(depId);
+    return dep !== undefined && !isDependencySatisfied(dep, nodesById);
+  });
+
+  // Build stack-base index for O(1) lookup.
+  const stackBasesByDepId = new Map<string, (typeof sw.stack_bases)[number]>();
+  for (const base of sw.stack_bases) {
+    stackBasesByDepId.set(base.dependency_node_id, base);
+  }
+
+  // Rule 3a: every stack_base dep must be a direct dependency (validated deps
+  // with requires_main_rebase=true are a valid transitional state — the
+  // stack_base survives until the child branch rebases onto main).
+  for (const base of sw.stack_bases) {
+    if (!directDepSet.has(base.dependency_node_id)) {
+      result.errors.push({
+        code: 'stacked.base-not-dependency',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work stack_bases includes ${base.dependency_node_id} ` +
+          'which is not a direct dependency',
+      });
+    }
+  }
+
+  // Rule 3b: every unvalidated direct dependency must have a stack_base.
+  for (const depId of unvalidatedDepIds) {
+    if (!stackBasesByDepId.has(depId)) {
+      result.errors.push({
+        code: 'stacked.missing-base',
+        node_id: node.node_id,
+        message: `${node.node_id} stacked_work is missing stack_base for unvalidated dependency ${depId}`,
+      });
+    }
+  }
+
+  // Rule 7: no duplicate dependency node IDs in stack_bases.
+  const seenDeps = new Set<string>();
+  for (const base of sw.stack_bases) {
+    if (seenDeps.has(base.dependency_node_id)) {
+      result.errors.push({
+        code: 'stacked.duplicate-base',
+        node_id: node.node_id,
+        message: `${node.node_id} stacked_work has duplicate stack_base for ${base.dependency_node_id}`,
+      });
+    }
+    seenDeps.add(base.dependency_node_id);
+  }
+
+  // Rules 4, 5, 6: per-dep head and state checks.
+  for (const base of sw.stack_bases) {
+    const dep = nodesById.get(base.dependency_node_id);
+    if (!dep) continue; // already caught by base-not-dependency
+
+    // Rule 4: dep must be pr_open or merged/validated (with rebase flag).
+    if (dep.status !== 'pr_open' && !POST_MERGE_STATUSES.has(dep.status)) {
+      result.errors.push({
+        code: 'stacked.dep-not-pr-open',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work dep ${base.dependency_node_id} is ${dep.status}; ` +
+          'speculative work requires dep status pr_open (or merged/validated with requires_main_rebase)',
+      });
+    }
+
+    // Rule 4b: pr_open dep must have a PR ref for stale detection.
+    if (dep.status === 'pr_open' && !dep.github.pr) {
+      result.errors.push({
+        code: 'stacked.dep-missing-pr',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work dep ${base.dependency_node_id} is pr_open ` +
+          'but has no PR ref; cannot verify stack base',
+      });
+      continue;
+    }
+
+    // Rule 4c: dependency_pr_number must match the dep's recorded PR number.
+    if (dep.github.pr && dep.github.pr.number !== base.dependency_pr_number) {
+      result.errors.push({
+        code: 'stacked.base-pr-mismatch',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work stack_base dependency_pr_number ${base.dependency_pr_number} ` +
+          `does not match dep ${base.dependency_node_id} recorded PR #${dep.github.pr.number}`,
+      });
+    }
+
+    // Rule 5: stale detection — dep's cached PR head must match last_resynced_head.
+    if (dep.github.pr && dep.github.pr.head_sha !== base.last_resynced_head) {
+      result.errors.push({
+        code: 'stacked.stale-dep-head',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work dep ${base.dependency_node_id} head has advanced ` +
+          `(cached: ${dep.github.pr.head_sha}, resynced: ${base.last_resynced_head}); ` +
+          'resynchronization required before continuing speculative work',
+      });
+    }
+
+    // Rules 6a/6b: post-merge rebase requirements.
+    if (POST_MERGE_STATUSES.has(dep.status)) {
+      if (!base.requires_main_rebase) {
+        result.errors.push({
+          code: 'stacked.merged-dep-rebase-required',
+          node_id: node.node_id,
+          message:
+            `${node.node_id} stacked_work dep ${base.dependency_node_id} is ${dep.status}; ` +
+            'stack_base must set requires_main_rebase: true',
+        });
+      } else {
+        // requires_main_rebase correctly set; rebase has not yet happened — block and emit operator action.
+        result.errors.push({
+          code: 'stacked.requires-main-rebase',
+          node_id: node.node_id,
+          message:
+            `${node.node_id} stacked branch must be rebased onto main ` +
+            `(dep ${base.dependency_node_id} is ${dep.status}); ` +
+            'Producer must reconcile after rebase completes and clear stacked_work',
+        });
+        result.proposal.operator_actions.push(
+          `${node.node_id}: dep ${base.dependency_node_id} has ${dep.status}. ` +
+            'Rebase the stacked branch onto main, verify the speculative work, ' +
+            'then clear stacked_work and advance through the normal lifecycle.',
+        );
+      }
+    }
   }
 }
 
@@ -909,6 +1669,8 @@ function validateNodeLifecycle(
     });
   }
 
+  validateStackedWork(node, nodesById, result);
+
   const ready = computeReady(state, node, nodesById);
   if (ready) result.readyQueue.push(node.node_id);
   if (node.status === 'ready' && !ready) {
@@ -948,15 +1710,18 @@ function validateNodeLifecycle(
 
   const owns = node.ownership;
   if (ACTIVE_STATUSES.has(node.status)) {
-    const requiredOwnership = [
+    // heartbeat_at is required only after claiming (i.e. in_progress, pr_open), not for the
+    // initial claimed state itself where the heartbeat has not yet been posted.
+    const claimFields = [
       owns.claimant,
       owns.session,
       owns.scope,
       owns.claimed_at,
       owns.lease_expires_at,
-      owns.heartbeat_at,
       owns.base_commit,
     ];
+    const requiredOwnership =
+      node.status === 'claimed' ? claimFields : [...claimFields, owns.heartbeat_at];
     if (
       owns.source === 'none' ||
       requiredOwnership.some((value) => value === null) ||
@@ -966,6 +1731,18 @@ function validateNodeLifecycle(
         code: 'ownership.incomplete',
         node_id: node.node_id,
         message: `${node.node_id} is ${node.status} without complete trusted claim metadata`,
+      });
+    }
+    if (
+      owns.source === 'parent-issue-bootstrap' &&
+      node.node_id !== state.claim_policy.bootstrap_node
+    ) {
+      result.errors.push({
+        code: 'ownership.invalid-bootstrap-source',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} uses parent-issue-bootstrap source but is not the configured ` +
+          `bootstrap node (${state.claim_policy.bootstrap_node})`,
       });
     }
     if (owns.lease_expires_at && Date.parse(owns.lease_expires_at) <= now.getTime()) {
@@ -1028,42 +1805,29 @@ function validateNodeLifecycle(
         message: `${node.node_id} at ${node.status} requires merge commit and timestamp`,
       });
     } else {
-      const commitStatus = gitReader.commitStatus?.(node.merge.commit);
-      if (commitStatus === 'not-a-commit') {
-        result.errors.push({
-          code: 'merge.not-a-commit',
-          node_id: node.node_id,
-          message: `${node.node_id} merge commit ${node.merge.commit} exists in git but is not a commit object`,
-        });
-      } else if (
-        commitStatus === 'missing' ||
-        (commitStatus === undefined && !gitReader.commitExists(node.merge.commit))
-      ) {
+      const mergeCommitStatus = resolveCommitStatus(gitReader, node.merge.commit);
+      if (mergeCommitStatus === 'missing') {
         result.errors.push({
           code: 'merge.commit-not-found',
           node_id: node.node_id,
           message: `${node.node_id} merge commit ${node.merge.commit} does not exist in git`,
         });
-      }
-    }
-  }
-  if (node.status === 'validated') {
-    const kinds = new Set(node.evidence.map((item) => item.kind));
-    for (const requirement of node.evidence_requirements) {
-      if (!kinds.has(requirement)) {
+      } else if (mergeCommitStatus === 'not-commit') {
         result.errors.push({
-          code: 'evidence.missing-requirement',
+          code: 'merge.not-a-commit',
           node_id: node.node_id,
-          message: `${node.node_id} lacks required evidence kind ${requirement}`,
+          message: `${node.node_id} merge commit ${node.merge.commit} is not a commit object`,
         });
       }
     }
   }
-  if (
-    node.status !== 'validated' &&
-    node.release_requirement === 'required' &&
-    !TERMINAL_STATUSES.has(node.status)
-  ) {
+  if (node.status === 'validated') {
+    validateEvidenceRequirements(repoRoot, gitReader, node, result);
+  }
+  const isEffectivelyDone =
+    node.status === 'validated' ||
+    (node.status === 'superseded' && isDependencySatisfied(node, nodesById));
+  if (!isEffectivelyDone && node.release_requirement === 'required') {
     result.blockers.push({
       code: 'release.node-not-validated',
       node_id: node.node_id,
@@ -1077,139 +1841,16 @@ function validateNodeLifecycle(
       message: `${node.node_id} has no materialized child issue`,
     });
   }
-}
 
-function validateStackedWork(
-  node: EpicNode,
-  nodesById: ReadonlyMap<string, EpicNode>,
-  now: Date,
-  result: MutableValidation,
-): void {
-  const sw = node.stacked_work;
-  if (!sw) return;
-
-  // stacked_work is only allowed while lifecycle status is 'blocked'
-  if (node.status !== 'blocked') {
-    result.errors.push({
-      code: 'stacked.non-blocked-status',
-      node_id: node.node_id,
-      message: `${node.node_id} has stacked_work but lifecycle status is ${node.status}; stacked_work is only valid when status is blocked`,
-    });
-  }
-
-  // stacked_work requires a materialized child issue for provenance
-  if (!node.github.issue) {
-    result.errors.push({
-      code: 'stacked.missing-issue',
-      node_id: node.node_id,
-      message: `${node.node_id} stacked_work requires a materialized child issue (node.github.issue)`,
-    });
-  }
-
-  // stacked_pr_open status requires a dependent PR number
-  if (sw.status === 'stacked_pr_open' && sw.dependent.pr_number === null) {
-    result.errors.push({
-      code: 'stacked.pr-open-missing-number',
-      node_id: node.node_id,
-      message: `${node.node_id} stacked_work.status is stacked_pr_open but dependent.pr_number is null`,
-    });
-  }
-
-  // Stale resync check: resync must be within the 48-hour window
-  if (now.getTime() - Date.parse(sw.resync.at) > STACKED_STALE_RESYNC_MS) {
-    result.errors.push({
-      code: 'stacked.stale-resync',
-      node_id: node.node_id,
-      message: `${node.node_id} stacked_work resync at ${sw.resync.at} is stale (exceeds 48h); rebase the stacked branch and update resync`,
-    });
-  }
-
-  // Invalid lane: verification lane cannot have stacked work
-  if (STACKED_FORBIDDEN_LANES.has(node.execution_lane)) {
-    result.errors.push({
-      code: 'stacked.invalid-lane',
-      node_id: node.node_id,
-      message: `${node.node_id} execution_lane '${node.execution_lane}' does not support stacked_work; speculative work requires a non-verification lane`,
-    });
-  }
-
-  // dependency.node_id must be one of the node's listed dependencies
-  if (!node.dependencies.includes(sw.dependency.node_id)) {
-    result.errors.push({
-      code: 'stacked.dependency-node-mismatch',
-      node_id: node.node_id,
-      message: `${node.node_id} stacked_work.dependency.node_id (${sw.dependency.node_id}) is not in the node's dependency list`,
-    });
-  } else {
-    // Cross-validate PR number against the dependency node's tracked PR, if present
-    const depNode = nodesById.get(sw.dependency.node_id);
-    if (depNode?.github.pr && depNode.github.pr.number !== sw.dependency.pr_number) {
-      result.errors.push({
-        code: 'stacked.dependency-pr-snapshot-mismatch',
-        node_id: node.node_id,
-        message:
-          `${node.node_id} stacked_work.dependency.pr_number (${sw.dependency.pr_number}) does not match ` +
-          `${sw.dependency.node_id}'s tracked PR #${depNode.github.pr.number}`,
-      });
-    }
-  }
-
-  // Premature rebase-to-main completion: complete only when all dependencies are in
-  // merged or validated status (or superseded→validated). Matching the recovery doc:
-  // rebase-to-main is performed the moment the dependency PR lands, so 'merged' is
-  // a valid gate — full 'validated' status is not required.
-  if (sw.rebase_to_main.state === 'complete') {
-    const allDepsLanded = node.dependencies.every((depId) => {
-      const dep = nodesById.get(depId);
-      if (!dep) return false;
-      if (POST_MERGE_STATUSES.has(dep.status)) return true;
-      // Superseded node: check its replacement
-      if (dep.status === 'superseded' && dep.superseded_by) {
-        const replacement = nodesById.get(dep.superseded_by);
-        return replacement ? POST_MERGE_STATUSES.has(replacement.status) : false;
-      }
-      return false;
-    });
-    if (!allDepsLanded) {
-      result.errors.push({
-        code: 'stacked.premature-rebase-complete',
-        node_id: node.node_id,
-        message: `${node.node_id} stacked_work marks rebase_to_main as complete but not all dependencies are merged or validated`,
-      });
-    }
-    // completed_at must be populated when state is complete
-    if (sw.rebase_to_main.completed_at === null) {
-      result.errors.push({
-        code: 'stacked.rebase-complete-missing-timestamp',
-        node_id: node.node_id,
-        message: `${node.node_id} stacked_work rebase_to_main.state is 'complete' but completed_at is null`,
-      });
-    }
-  }
-}
-
-function validateDuplicateStackedOwnership(state: EpicState, result: MutableValidation): void {
-  const stackedWorkByOwner = new Map<string, string>();
-  for (const node of state.nodes) {
-    const sw = node.stacked_work;
-    if (!sw) continue;
-    const key = `${sw.owner.claimant}\u0000${sw.owner.session}`;
-    const prior = stackedWorkByOwner.get(key);
-    if (prior) {
-      result.errors.push({
-        code: 'stacked.duplicate-ownership',
-        node_id: node.node_id,
-        message: `${sw.owner.claimant}/${sw.owner.session} has stacked_work on both ${prior} and ${node.node_id}; a session may only hold one stacked-work slot`,
-      });
-    } else {
-      stackedWorkByOwner.set(key, node.node_id);
-    }
-  }
+  // Validate speculative stacked-work metadata (orthogonal to the normal lifecycle).
+  validateStackedWork(node, nodesById, result);
 }
 
 function validateDuplicateOwnership(state: EpicState, result: MutableValidation): void {
   const ownership = new Map<string, string>();
   const issues = new Map<number, string>();
+  const stackedSessions = new Map<string, string>();
+  const stackedIssues = new Map<number, string>();
   for (const node of state.nodes) {
     if (ACTIVE_STATUSES.has(node.status) && node.ownership.claimant && node.ownership.session) {
       const key = `${node.ownership.claimant}\u0000${node.ownership.session}`;
@@ -1234,6 +1875,32 @@ function validateDuplicateOwnership(state: EpicState, result: MutableValidation)
         });
       } else {
         issues.set(node.github.issue.number, node.node_id);
+      }
+    }
+    if (node.stacked_work) {
+      const priorSession = stackedSessions.get(node.stacked_work.session);
+      if (priorSession) {
+        result.errors.push({
+          code: 'stacked.duplicate-session',
+          node_id: node.node_id,
+          message:
+            `stacked_work session ${node.stacked_work.session} is assigned to both ` +
+            `${priorSession} and ${node.node_id}`,
+        });
+      } else {
+        stackedSessions.set(node.stacked_work.session, node.node_id);
+      }
+      const priorIssue = stackedIssues.get(node.stacked_work.issue.number);
+      if (priorIssue) {
+        result.errors.push({
+          code: 'stacked.duplicate-issue',
+          node_id: node.node_id,
+          message:
+            `stacked_work issue #${node.stacked_work.issue.number} is assigned to both ` +
+            `${priorIssue} and ${node.node_id}`,
+        });
+      } else {
+        stackedIssues.set(node.stacked_work.issue.number, node.node_id);
       }
     }
   }
@@ -1276,13 +1943,15 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
   }
 
   if (options.schemaDocument !== undefined) {
-    validateCommittedSchema(options.schemaDocument, result);
+    validateCommittedSchema(options.schemaDocument, input, result);
   }
 
   const planMarkdown =
     options.planMarkdown ?? readFileSync(resolve(options.repoRoot, state.plan.path), 'utf8');
+  let planContract: z.infer<typeof planContractSchema> | null = null;
   try {
     const contract = extractPlanContract(planMarkdown);
+    planContract = contract.contract;
     if (contract.sha256 !== state.plan.contract_sha256) {
       result.errors.push({
         code: 'plan.contract-drift',
@@ -1302,16 +1971,20 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
     });
   }
 
+  const contractValid = !result.errors.some(
+    (e) => e.code === 'plan.contract-drift' || e.code === 'plan.contract-invalid',
+  );
+
   const nodesById = new Map(state.nodes.map((node) => [node.node_id, node]));
-  validateDag(state, nodesById, result);
+  if (planContract) {
+    validateDag(state, nodesById, planContract, result);
+  }
   const now = options.now ?? new Date();
   const gitReader = options.gitReader ?? createDefaultGitReader(options.repoRoot);
   for (const node of state.nodes) {
     validateNodeLifecycle(state, node, nodesById, now, options.repoRoot, gitReader, result);
-    validateStackedWork(node, nodesById, now, result);
   }
   validateDuplicateOwnership(state, result);
-  validateDuplicateStackedOwnership(state, result);
 
   for (const flag of state.release.flags) {
     for (const nodeId of flag.validating_nodes) {
@@ -1323,22 +1996,40 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
       }
     }
   }
+  // When the contract hash is invalid, suppress ready/proposal transitions: a changed
+  // PLAN must go through the full plan-change protocol before nodes can advance.
+  if (!contractValid) {
+    result.readyQueue.length = 0;
+  }
   result.readyQueue.sort();
   const allRequiredValidated =
     result.errors.length === 0 &&
     state.nodes
       .filter((node) => node.release_requirement === 'required')
-      .every((node) => node.status === 'validated');
+      .every((node) => isDependencySatisfied(node, nodesById));
   const allFlagNodesValidated = state.release.flags.every((flag) =>
-    flag.validating_nodes.every((nodeId) => nodesById.get(nodeId)?.status === 'validated'),
+    flag.validating_nodes.every((nodeId) => {
+      const n = nodesById.get(nodeId);
+      return n !== undefined && isDependencySatisfied(n, nodesById);
+    }),
   );
   const releaseReady = allRequiredValidated && allFlagNodesValidated;
+  const suppressedQueue =
+    result.errors.length > 0 && result.readyQueue.length > 0 ? result.readyQueue : null;
+  if (suppressedQueue) {
+    result.warnings.push({
+      code: 'ready-queue.suppressed',
+      message:
+        `Ready queue suppressed due to ${result.errors.length} validation error(s); ` +
+        `${suppressedQueue.length} node(s) would otherwise be ready: ${suppressedQueue.join(', ')}`,
+    });
+  }
   return {
     state,
     errors: result.errors,
     warnings: result.warnings,
     blockers: result.blockers,
-    ready_queue: result.readyQueue,
+    ready_queue: result.errors.length === 0 ? result.readyQueue : [],
     release_ready: releaseReady,
     proposal: result.proposal,
   };
@@ -1429,7 +2120,7 @@ export function buildMaterializationPlan(state: EpicState): ReadonlyArray<Materi
         ...node.evidence_requirements.map((requirement) => `- \`${requirement}\``),
         '',
         '## Coordination protocol',
-        'Use structured CLAIMED, BLOCKED, UNBLOCKED, SCOPE-CHANGE-REQUEST, and HANDOFF comments.',
+        'Use structured CLAIMED, BLOCKED, UNBLOCKED, SCOPE-CHANGE-REQUEST, STACKED-WORK, and HANDOFF comments.',
         'Do not edit the global epic state; the Producer is the sole global-state writer.',
       ].join('\n'),
     }));
@@ -1452,6 +2143,18 @@ interface GithubPull {
     readonly sha: string;
   };
 }
+
+const githubPullSchema = z
+  .object({
+    number: z.number().int().positive(),
+    state: z.enum(['open', 'closed']),
+    merged: z.boolean(),
+    merge_commit_sha: z.string().nullable(),
+    merged_at: z.string().nullable(),
+    html_url: z.string().url(),
+    head: z.object({ sha: z.string().regex(SHA40_PATTERN) }),
+  })
+  .passthrough();
 
 interface GithubComment {
   readonly body: string;
@@ -1487,36 +2190,24 @@ interface ParsedClaim {
   readonly postedAt: string;
 }
 
-function makeClaimKey(nodeId: string, claimant: string, session: string): string {
-  // Use NUL as the compound-key separator because these structured text fields
-  // cannot contain U+0000, so the joined key remains unambiguous.
-  return `${nodeId}\u0000${claimant}\u0000${session}`;
+interface ParsedBlockedEvent {
+  readonly nodeId: string;
+  readonly url: string;
 }
 
-function makeOwnerSessionKey(claimant: string, session: string): string {
-  return `${claimant}\u0000${session}`;
+function isTrustedAuthor(comment: GithubComment): boolean {
+  return ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association);
 }
 
-function parseTrustedStructuredFields(
-  comment: GithubComment,
-  heading: 'CLAIMED' | 'BLOCKED',
-): Map<string, string> | null {
-  if (!['OWNER', 'MEMBER', 'COLLABORATOR'].includes(comment.author_association)) {
-    return null;
-  }
+function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): ParsedClaim | null {
+  if (!isTrustedAuthor(comment)) return null;
   const lines = comment.body.split(/\r?\n/);
-  if (lines[0]?.trim() !== heading) return null;
+  if (lines[0]?.trim() !== 'CLAIMED') return null;
   const fields = new Map<string, string>();
   for (const line of lines.slice(1)) {
     const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
     if (match?.[1] && match[2]) fields.set(match[1], match[2]);
   }
-  return fields;
-}
-
-function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): ParsedClaim | null {
-  const fields = parseTrustedStructuredFields(comment, 'CLAIMED');
-  if (!fields) return null;
   const nodeId = fields.get('node');
   const claimant = fields.get('claimant');
   const session = fields.get('session');
@@ -1551,13 +2242,29 @@ function parseTrustedClaim(comment: GithubComment, expectedNodeId?: string): Par
   };
 }
 
-function parseTrustedBlockedNode(comment: GithubComment, expectedNodeId?: string): string | null {
-  const fields = parseTrustedStructuredFields(comment, 'BLOCKED');
-  if (!fields) return null;
+function parseTrustedBlockedEvent(
+  comment: GithubComment,
+  expectedNodeId?: string,
+): ParsedBlockedEvent | null {
+  if (!isTrustedAuthor(comment)) return null;
+  const lines = comment.body.split(/\r?\n/);
+  if (lines[0]?.trim() !== 'BLOCKED') return null;
+  const fields = new Map<string, string>();
+  for (const line of lines.slice(1)) {
+    const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
+    if (match?.[1] && match[2]) fields.set(match[1], match[2]);
+  }
   const nodeId = fields.get('node') ?? expectedNodeId;
   if (!nodeId) return null;
   if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
-  return nodeId;
+  return { nodeId, url: comment.html_url };
+}
+
+function findStaleHeadBoundEvidence(node: EpicNode, headSha: string): string[] {
+  return node.evidence
+    .filter((item) => ['handoff', 'review-ledger'].includes(item.kind) && item.commit !== headSha)
+    .map((item) => item.kind)
+    .sort();
 }
 
 export function auditGithub(
@@ -1583,6 +2290,7 @@ export function auditGithub(
   }
   const issueClaims: ParsedClaim[] = [];
   const auditedIssues = new Map<number, GithubIssue>();
+  const failedIssueAudits = new Set<number>();
   const proposeIssueState = (issue: GithubIssue, expectedNode?: EpicNode): void => {
     if (expectedNode && expectedNode.reconciliation.observed_issue_state !== issue.state) {
       repoPatch.push({
@@ -1625,25 +2333,55 @@ export function auditGithub(
         comments.push(...batch);
         if (batch.length < 100) break;
       }
+      // Fold CLAIMED and BLOCKED events in chronological order (comments arrive oldest-first).
+      // A BLOCKED event revokes the live claim set for that node, but a later CLAIMED
+      // comment can re-establish ownership in the same thread.
+      const latestClaimsByNodeAndOwner = new Map<string, Map<string, ParsedClaim>>();
+      const latestRevokeByNode = new Map<string, { nodeId: string; url: string }>();
       const expectedNodeId = expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
-      const liveClaims = new Map<string, ParsedClaim>();
       for (const comment of comments) {
-        const blockedNodeId = parseTrustedBlockedNode(comment, expectedNodeId);
-        if (blockedNodeId) {
-          const claimKeysToDelete = [...liveClaims.entries()]
-            .filter(([, claim]) => claim.nodeId === blockedNodeId)
-            .map(([claimKey]) => claimKey);
-          for (const claimKey of claimKeysToDelete) {
-            liveClaims.delete(claimKey);
-          }
+        const blocked = parseTrustedBlockedEvent(comment, expectedNodeId);
+        if (blocked) {
+          latestClaimsByNodeAndOwner.delete(blocked.nodeId);
+          latestRevokeByNode.set(blocked.nodeId, blocked);
           continue;
         }
         const claim = parseTrustedClaim(comment, expectedNodeId);
-        if (!claim || Date.parse(claim.expiresAt) <= now.getTime()) continue;
-        liveClaims.set(makeClaimKey(claim.nodeId, claim.claimant, claim.session), claim);
+        if (claim) {
+          const perOwner =
+            latestClaimsByNodeAndOwner.get(claim.nodeId) ?? new Map<string, ParsedClaim>();
+          const ownerKey = `${claim.claimant}\u0000${claim.session}`;
+          const prior = perOwner.get(ownerKey);
+          if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
+            perOwner.set(ownerKey, claim);
+          }
+          latestClaimsByNodeAndOwner.set(claim.nodeId, perOwner);
+        }
       }
-      issueClaims.push(...liveClaims.values());
+      const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
+      for (const [revokedNodeId, blocked] of latestRevokeByNode) {
+        const cacheNode = nodesById.get(revokedNodeId);
+        const cacheStillClaimed =
+          cacheNode !== undefined &&
+          ACTIVE_STATUSES.has(cacheNode.status) &&
+          cacheNode.ownership.claimant !== null &&
+          cacheNode.ownership.session !== null;
+        if (cacheStillClaimed && !latestClaimsByNodeAndOwner.has(revokedNodeId)) {
+          operatorActions.push(
+            `Ownership of ${revokedNodeId} was revoked by a BLOCKED event (${blocked.url}). ` +
+              `Verify cached ownership reflects the revocation or a subsequent re-claim.`,
+          );
+        }
+      }
+      for (const ownerMap of latestClaimsByNodeAndOwner.values()) {
+        for (const claim of ownerMap.values()) {
+          if (Date.parse(claim.expiresAt) > now.getTime()) {
+            issueClaims.push(claim);
+          }
+        }
+      }
     } catch (error) {
+      failedIssueAudits.add(issueNumber);
       errors.push({
         code: 'github.issue-audit',
         node_id: expectedNode?.node_id,
@@ -1657,29 +2395,40 @@ export function auditGithub(
   if (state.github.parent_issue) auditIssue(state.github.parent_issue.number);
   for (const node of state.nodes) {
     if (node.github.issue) auditIssue(node.github.issue.number, node);
+    const stackedIssue = node.stacked_work?.issue;
+    const mainIssue = node.github.issue;
+    if (stackedIssue && stackedIssue.number !== mainIssue?.number) {
+      auditIssue(stackedIssue.number, node);
+    }
     if (!node.github.pr) continue;
     try {
-      const pull = z
-        .object({
-          number: z.number().int().positive(),
-          state: z.enum(['open', 'closed']),
-          merged: z.boolean(),
-          merge_commit_sha: z.string().nullable(),
-          merged_at: z.string().nullable(),
-          html_url: z.string().url(),
-          head: z.object({ sha: z.string().regex(SHA40_PATTERN) }),
-        })
-        .passthrough()
-        .parse(runner.get(`/repos/${owner}/${repo}/pulls/${node.github.pr.number}`)) as GithubPull;
+      const pull = githubPullSchema.parse(
+        runner.get(`/repos/${owner}/${repo}/pulls/${node.github.pr.number}`),
+      ) as GithubPull;
       const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
       const observedMergeCommit = pull.merged ? pull.merge_commit_sha : null;
-      if (pull.head.sha !== node.github.pr.head_sha) {
-        repoPatch.push({
-          op: 'replace',
-          path: `/nodes/${state.nodes.indexOf(node)}/github/pr/head_sha`,
-          value: pull.head.sha,
-          reason: `Observed PR #${pull.number} head advanced on GitHub`,
-        });
+      if (node.status === 'pr_open' && pull.head.sha !== node.github.pr.head_sha) {
+        const staleEvidenceKinds = findStaleHeadBoundEvidence(node, pull.head.sha);
+        if (staleEvidenceKinds.length > 0) {
+          errors.push({
+            code: 'github.stale-pr-evidence',
+            node_id: node.node_id,
+            message:
+              `${node.node_id} PR #${pull.number} head advanced to ${pull.head.sha}, ` +
+              `but ${staleEvidenceKinds.join(', ')} evidence is still pinned to an older commit`,
+          });
+          operatorActions.push(
+            `Refresh ${node.node_id} handoff/review-ledger evidence for PR #${pull.number} at ` +
+              `${pull.head.sha}, then update cached PR head facts.`,
+          );
+        } else {
+          repoPatch.push({
+            op: 'replace',
+            path: `/nodes/${state.nodes.indexOf(node)}/github/pr/head_sha`,
+            value: pull.head.sha,
+            reason: `Observed PR #${pull.number} head advanced on GitHub`,
+          });
+        }
       }
       if (node.status === 'merged' || node.status === 'validated') {
         if (!pull.merged || pull.merge_commit_sha !== node.merge.commit) {
@@ -1746,7 +2495,8 @@ export function auditGithub(
     }
   }
 
-  // Audit stacked_work: reconcile dependency and dependent PR heads/state for blocked nodes
+  // Audit speculative stacked-work PRs (stacked_pr_open mode).
+  // Proposes head-SHA updates and flags merged/closed speculative PRs for Producer attention.
   const prSchema = z
     .object({
       number: z.number().int().positive(),
@@ -1760,139 +2510,73 @@ export function auditGithub(
     .passthrough();
   for (const node of state.nodes) {
     const sw = node.stacked_work;
-    if (!sw) continue;
-    const nodeIdx = state.nodes.indexOf(node);
-
-    // Audit the dependency PR
-    const [depOwner, depRepo] = sw.dependency.repository.split('/');
-    if (depOwner && depRepo) {
-      try {
-        const depPull = prSchema.parse(
-          runner.get(`/repos/${depOwner}/${depRepo}/pulls/${sw.dependency.pr_number}`),
-        ) as GithubPull;
-        // Propose update if dependency head drifted from our snapshot
-        if (depPull.head.sha !== sw.dependency.head_sha) {
-          repoPatch.push({
-            op: 'replace',
-            path: `/nodes/${nodeIdx}/stacked_work/dependency/head_sha`,
-            value: depPull.head.sha,
-            reason: `Dependency PR #${sw.dependency.pr_number} head advanced on GitHub; stacked branch may need rebase`,
-          });
-          operatorActions.push(
-            `${node.node_id} stacked_work dependency PR #${sw.dependency.pr_number} head advanced ` +
-              `from ${sw.dependency.head_sha} to ${depPull.head.sha}. ` +
-              `Rebase the stacked branch and update stacked_work.resync.`,
-          );
-        }
-        // Warn if the dependency PR has already merged (should trigger normal handoff)
-        if (depPull.merged) {
-          operatorActions.push(
-            `${node.node_id} stacked_work dependency PR #${sw.dependency.pr_number} is merged on GitHub ` +
-              `(merge_commit: ${depPull.merge_commit_sha ?? 'unknown'}). ` +
-              `Producer must complete rebase-to-main and transition ${node.node_id} through the normal lifecycle.`,
-          );
-        }
-      } catch (error) {
-        errors.push({
-          code: 'stacked.dependency-pr-audit',
-          node_id: node.node_id,
-          message: `Could not audit stacked dependency PR #${sw.dependency.pr_number}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+    if (!sw?.pr) continue;
+    try {
+      const pull = prSchema.parse(
+        runner.get(`/repos/${owner}/${repo}/pulls/${sw.pr.number}`),
+      ) as GithubPull;
+      if (pull.head.sha !== sw.pr.head_sha) {
+        repoPatch.push({
+          op: 'replace',
+          path: `/nodes/${state.nodes.indexOf(node)}/stacked_work/pr/head_sha`,
+          value: pull.head.sha,
+          reason: `Observed speculative PR #${pull.number} head advanced on GitHub`,
         });
       }
-    }
-
-    // Audit the dependent (speculative) PR, if present
-    if (sw.status === 'stacked_pr_open' && sw.dependent.pr_number !== null) {
-      try {
-        const depPull = prSchema.parse(
-          runner.get(`/repos/${owner}/${repo}/pulls/${sw.dependent.pr_number}`),
-        ) as GithubPull;
-        // Propose update if dependent head drifted
-        if (depPull.head.sha !== sw.dependent.head_sha) {
-          repoPatch.push({
-            op: 'replace',
-            path: `/nodes/${nodeIdx}/stacked_work/dependent/head_sha`,
-            value: depPull.head.sha,
-            reason: `Dependent stacked PR #${sw.dependent.pr_number} head advanced on GitHub`,
-          });
-        }
-        // Error if stacked PR is already merged or closed without a lifecycle transition
-        if (depPull.merged) {
-          errors.push({
-            code: 'stacked.dependent-pr-merged',
-            node_id: node.node_id,
-            message:
-              `${node.node_id} stacked PR #${sw.dependent.pr_number} is merged on GitHub but node lifecycle is still blocked. ` +
-              `Producer must verify and execute the stacked-work recovery handoff protocol.`,
-          });
-          operatorActions.push(
-            `${node.node_id} stacked PR #${sw.dependent.pr_number} merged unexpectedly ` +
-              `(merge_commit: ${depPull.merge_commit_sha ?? 'unknown'}). ` +
-              `Execute STACKED-WORK-RECOVERY.md handoff immediately.`,
-          );
-        } else if (!depPull.merged && depPull.state === 'closed') {
-          errors.push({
-            code: 'stacked.dependent-pr-closed',
-            node_id: node.node_id,
-            message:
-              `${node.node_id} stacked PR #${sw.dependent.pr_number} is closed without merging. ` +
-              `Producer must investigate and clear stacked_work or reopen the speculative PR.`,
-          });
-          operatorActions.push(
-            `${node.node_id} stacked PR #${sw.dependent.pr_number} was closed without merging. ` +
-              `Determine whether to reopen, abandon, or escalate the speculative work.`,
-          );
-        }
-      } catch (error) {
-        errors.push({
-          code: 'stacked.dependent-pr-audit',
-          node_id: node.node_id,
-          message: `Could not audit stacked dependent PR #${sw.dependent.pr_number}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        });
+      if (pull.merged && pull.merge_commit_sha) {
+        operatorActions.push(
+          `Speculative PR #${pull.number} for ${node.node_id} is merged on GitHub ` +
+            `(sha: ${pull.merge_commit_sha}, merged_at: ${pull.merged_at ?? 'unknown'}). ` +
+            'Producer must verify rebase-to-main is complete, clear stacked_work, and advance through normal lifecycle.',
+        );
+      } else if (!pull.merged && pull.state === 'closed') {
+        operatorActions.push(
+          `Speculative PR #${pull.number} for ${node.node_id} is closed without merging. ` +
+            'Producer must investigate and update stacked_work status accordingly.',
+        );
       }
+    } catch (error) {
+      errors.push({
+        code: 'github.stacked-pr-audit',
+        node_id: node.node_id,
+        message: `Could not audit speculative PR #${sw.pr.number}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
     }
   }
 
-  const claimsByNode = new Map<string, ParsedClaim[]>();
-  const claimsByOwner = new Map<string, ParsedClaim[]>();
-  for (const claim of issueClaims) {
-    const byNode = claimsByNode.get(claim.nodeId) ?? [];
-    byNode.push(claim);
-    claimsByNode.set(claim.nodeId, byNode);
-    const ownerKey = makeOwnerSessionKey(claim.claimant, claim.session);
-    const byOwner = claimsByOwner.get(ownerKey) ?? [];
-    byOwner.push(claim);
-    claimsByOwner.set(ownerKey, byOwner);
-  }
-  // Deduplicate: for same node+claimant+session, keep only the newest claim (heartbeat
-  // replacement pattern posts a new CLAIMED comment before the old one expires).
-  const deduplicatedClaims: ParsedClaim[] = [];
-  for (const [, claimsForNode] of claimsByNode) {
-    const uniqueSessions = new Map<string, ParsedClaim>();
-    for (const claim of claimsForNode) {
-      const sessionKey = makeOwnerSessionKey(claim.claimant, claim.session);
-      const prior = uniqueSessions.get(sessionKey);
-      if (!prior || Date.parse(claim.claimedAt) > Date.parse(prior.claimedAt)) {
-        uniqueSessions.set(sessionKey, claim);
-      }
-    }
-    deduplicatedClaims.push(...uniqueSessions.values());
-  }
-  // Rebuild per-node and per-owner maps from deduplicated claims.
+  // Group live claims by node to detect competing claimants.
+  // Within auditIssue, same-session heartbeat replacement is already collapsed.
   const deduplicatedByNode = new Map<string, ParsedClaim[]>();
   const deduplicatedByOwner = new Map<string, ParsedClaim[]>();
-  for (const claim of deduplicatedClaims) {
+  for (const claim of issueClaims) {
     const byNode = deduplicatedByNode.get(claim.nodeId) ?? [];
     byNode.push(claim);
     deduplicatedByNode.set(claim.nodeId, byNode);
-    const sessionKey = makeOwnerSessionKey(claim.claimant, claim.session);
+    const sessionKey = `${claim.claimant}\u0000${claim.session}`;
     const byOwner = deduplicatedByOwner.get(sessionKey) ?? [];
     byOwner.push(claim);
     deduplicatedByOwner.set(sessionKey, byOwner);
+  }
+  const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
+  for (const node of state.nodes) {
+    if (!ACTIVE_STATUSES.has(node.status)) continue;
+    if (!node.ownership.claimant || !node.ownership.session) continue;
+    const ownershipIssueNumber = node.github.issue?.number ?? state.github.parent_issue?.number;
+    if (ownershipIssueNumber && failedIssueAudits.has(ownershipIssueNumber)) continue;
+    if (deduplicatedByNode.has(node.node_id)) continue;
+    errors.push({
+      code: 'github.missing-live-claim',
+      node_id: node.node_id,
+      message:
+        `${node.node_id} is ${node.status} with cached owner ` +
+        `${node.ownership.claimant}/${node.ownership.session}, but no live trusted CLAIMED comment exists`,
+    });
+    operatorActions.push(
+      `Post a fresh trusted CLAIMED comment for ${node.node_id} or clear cached ownership ` +
+        `before continuing active work.`,
+    );
   }
   for (const [nodeId, claims] of deduplicatedByNode) {
     if (claims.length > 1) {
@@ -1908,16 +2592,66 @@ export function auditGithub(
     // Reconcile the single authoritative live claim against cached ownership.
     if (claims.length === 1) {
       const liveClaim = claims[0]!;
-      const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
       const epicNode = nodesById.get(nodeId);
       if (epicNode && ACTIVE_STATUSES.has(epicNode.status)) {
         const owns = epicNode.ownership;
-        if (liveClaim.claimant !== owns.claimant || liveClaim.session !== owns.session) {
+        const ownerIdentityDrifts: string[] = [];
+        if (liveClaim.claimant !== owns.claimant) {
+          ownerIdentityDrifts.push(`claimant: ${liveClaim.claimant} vs ${owns.claimant ?? 'none'}`);
+        }
+        if (liveClaim.session !== owns.session) {
+          ownerIdentityDrifts.push(`session: ${liveClaim.session} vs ${owns.session ?? 'none'}`);
+        }
+        if (ownerIdentityDrifts.length > 0) {
           operatorActions.push(
-            `Live claim on ${nodeId} (claimant: ${liveClaim.claimant}, session: ${liveClaim.session}) ` +
-              `differs from cached ownership (claimant: ${owns.claimant ?? 'none'}, session: ${owns.session ?? 'none'}). ` +
+            `Live claim on ${nodeId} differs from cached ownership (${ownerIdentityDrifts.join('; ')}). ` +
               `Producer must verify and reconcile ${nodeId} ownership.`,
           );
+        } else {
+          // Same owner/session — reconcile authoritative ownership fields that may have
+          // advanced (e.g. a heartbeat post with a newer expiry, scope, or base commit).
+          const nodeIdx = state.nodes.indexOf(epicNode);
+          if (liveClaim.expiresAt !== owns.lease_expires_at) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/lease_expires_at`,
+              value: liveClaim.expiresAt,
+              reason: `Live CLAIMED comment has newer expiry for ${nodeId}`,
+            });
+          }
+          if (liveClaim.scope !== owns.scope) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/scope`,
+              value: liveClaim.scope,
+              reason: `Live CLAIMED comment has updated scope for ${nodeId}`,
+            });
+          }
+          if (liveClaim.baseCommit !== owns.base_commit) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/base_commit`,
+              value: liveClaim.baseCommit,
+              reason: `Live CLAIMED comment has updated base_commit for ${nodeId}`,
+            });
+          }
+          if (liveClaim.claimedAt !== owns.claimed_at) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/claimed_at`,
+              value: liveClaim.claimedAt,
+              reason: `Live CLAIMED comment has updated claimed_at for ${nodeId}`,
+            });
+          }
+          // postedAt from the live claim is the most recent heartbeat timestamp.
+          if (liveClaim.postedAt !== owns.heartbeat_at) {
+            repoPatch.push({
+              op: 'replace',
+              path: `/nodes/${nodeIdx}/ownership/heartbeat_at`,
+              value: liveClaim.postedAt,
+              reason: `Live CLAIMED comment heartbeat for ${nodeId}`,
+            });
+          }
         }
       } else if (epicNode && !ACTIVE_STATUSES.has(epicNode.status)) {
         operatorActions.push(
@@ -1943,6 +2677,33 @@ export function auditGithub(
     errors,
     warnings,
     proposal: { repo_patch: repoPatch, operator_actions: operatorActions },
+  };
+}
+
+export function applyGithubAudit(
+  offline: ValidationResult,
+  audit: {
+    readonly errors: ReadonlyArray<Diagnostic>;
+    readonly warnings: ReadonlyArray<Diagnostic>;
+    readonly proposal: ReconciliationProposal;
+  },
+): ValidationResult {
+  const errors = [...offline.errors, ...audit.errors];
+  return {
+    state: offline.state,
+    errors,
+    warnings: [...offline.warnings, ...audit.warnings],
+    blockers: offline.blockers,
+    // GitHub facts are stronger authority than offline validation.
+    // Mirror the offline validator's own behaviour: suppress the queue when
+    // the stronger-authority source contributes errors so the caller never
+    // surfaces dispatchable nodes while the audit is invalid.
+    ready_queue: audit.errors.length > 0 ? [] : offline.ready_queue,
+    release_ready: offline.release_ready && errors.length === 0,
+    proposal: {
+      repo_patch: [...offline.proposal.repo_patch, ...audit.proposal.repo_patch],
+      operator_actions: [...offline.proposal.operator_actions, ...audit.proposal.operator_actions],
+    },
   };
 }
 
