@@ -39,6 +39,17 @@ const result = await runIssueIntake({
   issue,
 });
 
+// Re-check live labels to close the opened/labeled race: a blocking label applied
+// between event delivery and Copilot assignment would otherwise persist unnoticed.
+const liveResponse = await request(token, `/repos/${owner}/${repo}/issues/${issue.number}`);
+const liveIssue = liveResponse.data ?? liveResponse;
+const recheckEligibility = issueIntakeEligibility(liveIssue, issueOwner);
+if (!recheckEligibility.eligible && recheckEligibility.blocking === true) {
+  const removed = await removeCopilotAssignment({ graphql, token, owner, repo, issue: liveIssue });
+  process.stdout.write(`live-recheck: blocked; copilot_removed=${removed}\n`);
+  process.exit(0);
+}
+
 process.stdout.write(
   `intake-complete issue=#${issue.number} opener=@${issue.user?.login} assignee=@${result.assignee} comment=${result.comment}\n`,
 );

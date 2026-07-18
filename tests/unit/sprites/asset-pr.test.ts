@@ -37,6 +37,11 @@ function issueBody(branch: string, assets: CheckinAsset[]): string {
   return planAssetCheckin({ assets, now: NOW, slug: branch.replace('assets/', '') }).issueBody;
 }
 
+/** Build a minimal gh-issue-list JSON entry with a valid asset-checkin payload. */
+function makeIssue(number: number, branch = `assets/branch-${number}`): Record<string, unknown> {
+  return { number, title: `check-in #${number}`, body: issueBody(branch, [asset()]) };
+}
+
 describe('parseOpenAssetIssues', () => {
   it('extracts issues that carry a valid payload, sorted by number', () => {
     const json = JSON.stringify([
@@ -221,5 +226,63 @@ describe('runAssetPrConsolidation', () => {
         },
       }),
     ).rejects.toThrow(/dedicated asset-pr workflow/);
+  });
+
+  it('returns null when a marked PR exists on a different base branch', async () => {
+    // Regression for the case where --base filter excluded the marked PR,
+    // allowing the job to incorrectly open a second consolidation PR.
+    const markedBody = `${ASSET_PR_MARKER}\nsome content`;
+    const exec: Exec = (command, args) => {
+      if (command === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return Promise.resolve({ stdout: JSON.stringify([makeIssue(1)]), stderr: '', code: 0 });
+      }
+      if (command === 'gh' && args[0] === 'pr' && args[1] === 'list') {
+        // Marked PR is on a different base branch — would be invisible with --base main
+        return Promise.resolve({
+          stdout: JSON.stringify([{ body: markedBody }]),
+          stderr: '',
+          code: 0,
+        });
+      }
+      return Promise.resolve({ stdout: '', stderr: '', code: 0 });
+    };
+    const result = await runAssetPrConsolidation('/repo', {
+      exec,
+      makeTempDir: () => Promise.resolve('/tmp/x'),
+      removeDir: () => Promise.resolve(),
+      readJson: () => Promise.resolve({} as never),
+      writeJson: () => Promise.resolve(),
+      env: {},
+    });
+    expect(result).toBeNull();
+  });
+
+  it('returns null when a marked PR is beyond the first 100 results', async () => {
+    // Regression for the case where --limit 100 capped the search and an existing
+    // marked PR at position 101+ was invisible, leading to a duplicate consolidation PR.
+    const markedBody = `${ASSET_PR_MARKER}\nsome content`;
+    // Return 101 PRs; only the last one has the marker (would be missed by --limit 100).
+    const prs = [
+      ...Array.from({ length: 100 }, () => ({ body: 'unrelated PR' })),
+      { body: markedBody },
+    ];
+    const exec: Exec = (command, args) => {
+      if (command === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return Promise.resolve({ stdout: JSON.stringify([makeIssue(1)]), stderr: '', code: 0 });
+      }
+      if (command === 'gh' && args[0] === 'pr' && args[1] === 'list') {
+        return Promise.resolve({ stdout: JSON.stringify(prs), stderr: '', code: 0 });
+      }
+      return Promise.resolve({ stdout: '', stderr: '', code: 0 });
+    };
+    const result = await runAssetPrConsolidation('/repo', {
+      exec,
+      makeTempDir: () => Promise.resolve('/tmp/x'),
+      removeDir: () => Promise.resolve(),
+      readJson: () => Promise.resolve({} as never),
+      writeJson: () => Promise.resolve(),
+      env: {},
+    });
+    expect(result).toBeNull();
   });
 });

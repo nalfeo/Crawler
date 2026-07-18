@@ -265,12 +265,10 @@ export async function runAssetPrConsolidation(
     'list',
     '--state',
     'open',
-    '--base',
-    baseBranch,
     '--json',
     'body',
     '--limit',
-    '100',
+    '500',
   ]);
   try {
     const prs = JSON.parse(openPrs.stdout) as Array<{ body?: unknown }>;
