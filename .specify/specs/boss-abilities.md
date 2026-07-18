@@ -278,14 +278,14 @@ arena implementation. PR #1243 (the combat arena lab) was squash-merged into
 
 ## Constitutional Compliance
 
-| Principle                | Compliance                                                                                                                                    |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Lab-gated development | PR #1243's arena is mandatory for each implemented entry; authored animation additionally requires animation-lab proof                        |
-| 2. Deterministic core    | Timing has no jitter; patterns use explicit cast ordinals or `SeededRandom`                                                                   |
-| 3. Deterministic CI      | Catalog, timing, geometry, state, headless, and pixel/UI probes are deterministic; no LLM judge gates                                         |
-| 4. Layer separation      | Stable content is shared data; simulation remains Phaser-free; engine renders public cue/event state                                          |
-| 9. Observe before done   | Queen requires canonical arena repeated-cast evidence now; real Floor 2 Seed 42 headless validation is deferred to the production-enable gate |
-| 13. Wired systems        | Any exported runtime system must be present in real visual and headless wiring sites, never lab-only                                          |
+| Principle                | Compliance                                                                                                                                                                                                |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Lab-gated development | PR #1243's arena is mandatory for each implemented entry; authored animation additionally requires animation-lab proof                                                                                    |
+| 2. Deterministic core    | Timing has no jitter; patterns use explicit cast ordinals or `SeededRandom`                                                                                                                               |
+| 3. Deterministic CI      | Catalog, timing, geometry, state, headless, and pixel/UI probes are deterministic; no LLM judge gates                                                                                                     |
+| 4. Layer separation      | Stable content is shared data; simulation remains Phaser-free; engine renders public cue/event state                                                                                                      |
+| 9. Observe before done   | For this production-off arena slice, Queen requires canonical arena repeated-cast evidence now; real Floor 2 Seed 42 headless validation remains a required future artifact at the production-enable gate |
+| 13. Wired systems        | Any exported runtime system must be present in real visual and headless wiring sites, never lab-only                                                                                                      |
 
 ## Docs / index updates required
 
