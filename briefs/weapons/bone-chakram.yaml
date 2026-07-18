@@ -20,8 +20,17 @@ description: |
 # Diagonal orientation matches compact-disk (the only other thrown ring
 # weapon in the registry). The ring has no strong principal axis so we
 # open the tolerance window to 10° to avoid false rejections from the
-# orientation sensor. Anchor at center of the ring body rather than the
-# bottom-center grip default for vertical weapons.
+# orientation sensor.
+#
+# Anchor at center of the ring body rather than the bottom-center grip
+# default for vertical weapons. The brief targets 64×64 output from a
+# 256×256 source cell (4 source px = 1 output px). The ring center sits
+# at 32×40 in 64px space: horizontal center (32/64) and slightly above
+# the vertical center (40/64 ≈ 62%) to account for the slight tilt that
+# makes the ring read as a thrown weapon rather than a flat wheel. The
+# standard weapon grip anchor {x:32, y:56} places the attach-point at
+# the bottom of the frame — correct for a vertical hilt but wrong for
+# a centered ring that has no grip.
 anchor: { x: 32, y: 40 }
 sensors:
   weapon:

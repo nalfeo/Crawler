@@ -24,7 +24,7 @@ Added the sprite brief for the `bone-chakram` Floor 2 thrown-weapon equipment ic
 
 ## What remains
 
-- **Image generation**: The `asset-request.yml` CI workflow needs to run to completion for issue #1359. Both prior runs (01:27:50 and 02:17:10 UTC 2026-07-18) were cancelled before generation completed. A fresh `workflow_dispatch` or issue edit will trigger a new run.
+- **Image generation**: The `asset-request.yml` CI workflow needs to run to completion for issue #1359. Both prior runs (01:27:50 and 02:17:10 UTC 2026-07-18) showed `conclusion: cancelled`. The first run was at 01:27:50 — part of a large batch of ~30 floor-2 equipment requests that were all cancelled, likely due to the concurrency group serializing and then being externally cancelled. The second run (02:17:10–02:22:33, ~5 min) completed the synthesize/brief-promote stages (see issue comments) but was also cancelled before image generation could complete — likely an intentional cancellation by the maintainer or a timeout. A fresh `workflow_dispatch` or issue edit will trigger a new run.
 - **Approve/check-in/batch PR**: After a successful CI run produces generated variants, use `npm run sprites:approve` + `npm run sprites:checkin` + `npm run sprites:asset-pr`.
 - **Wiring**: `equipment/weapon/bone-chakram` runtime key needs to be wired once the art-only PR merges. Run `npm run sprites:generate-wiring -- --since main` to produce the wiring patch.
 
