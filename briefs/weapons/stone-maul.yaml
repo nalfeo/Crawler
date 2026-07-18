@@ -1,0 +1,28 @@
+type: weapon
+name: stone-maul
+description: |
+  A massive two-handed war maul held vertically, head at the top, long haft
+  straight down. The head is a single rough-hewn granite boulder lashed or
+  socketed onto the haft — irregular cracked surfaces, visible chipping along
+  the edges, coarse rock-grain texture dithered across the face. Pitted grey-
+  brown stone with a cooler deep-shadow undercut and a single pale highlight
+  where light catches the flattest face. The haft is thick hardwood or bone,
+  dark brown with a worn leather wrap at the grip and a simple iron ferrule
+  at the base. The maul is WIDE at the top — the stone head must dominate the
+  upper half of the frame and tower over the haft. No glow, no runes, no
+  enchantment, no blood. Silhouette must read as "giant rock on a stick" at
+  a glance and be clearly NOT a sword, axe, or mace — it is a BLUNT smashing
+  weapon with a bulky irregular stone head.
+# Vertical orientation, 4x4 sheet, palette, references, and anchor are all
+# inherited from data/sprite-types/weapon.json.
+# The stone-maul has a notably wide head, so we slightly relax the horizontal
+# center tolerance to allow the asymmetric rock mass to anchor correctly.
+sensors:
+  anchor:
+    derive: true
+    bandRows: 4
+    centerToleranceX: 5
+variations:
+  - obsidian-black stone head with jagged fracture lines
+  - round quartzite boulder head with iron binding-straps around the socket
+minVariations: 8
