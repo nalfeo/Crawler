@@ -2,7 +2,7 @@ type: weapon
 name: throwing-knives
 description: |
   A single throwing knife icon, centered in frame on a transparent background.
-  Side-profile blade angled up-right at about 45 degrees with a clean, readable
+  Side-profile blade angled diagonally up-right (sensor: diagonal ±8°) with a clean, readable
   silhouette at small size. Slim steel blade, compact dark wrapped grip, and a
   tiny pommel cap; no extra props and no duplicate knives. Keep the shape bold
   and uncluttered so it reads immediately as a thrown knife weapon. No glow, no
