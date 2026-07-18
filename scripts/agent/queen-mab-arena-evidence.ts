@@ -27,7 +27,7 @@ const TOTAL_FRAMES = 1300; // ~21.7s, past the second resolution at 21,000ms
 
 function makeWorld() {
   const world = createGameWorld({ seed: 42, floor: 1, entityCapacityMode: 'game' });
-  const roomPreset = getRoomPreset('medium-arena');
+  const roomPreset = getRoomPreset('boss-arena');
   world.floorMap = roomPreset.buildMap();
   const spawnWorld = world.floorMap.tileToWorld(
     roomPreset.playerSpawnTile.x,

@@ -21,6 +21,7 @@ import {
   computeEffectiveValue,
   statusEffectSystem,
   mobAbilitySystem,
+  healthSystem,
   registerMobAbility,
   clearMobAbility,
   setMobAbilitiesEnabled,
@@ -328,6 +329,18 @@ describe('Verdigris Glamour — Tarnished status effect', () => {
     expect(computeEffectiveValue(1, effects, 'attackSpeed')).toBeCloseTo(0.75, 10);
   });
 
+  it('clears Tarnished after the target dies from a later source', () => {
+    const h = buildHarness();
+    applyOnce(h);
+    expect(getStatusEffects(h.world, h.player)).toHaveLength(2);
+
+    h.world.stores.health.current[h.player] = 0;
+    healthSystem(h.world);
+
+    expect(h.world.state).toBe('game_over');
+    expect(getStatusEffects(h.world, h.player)).toHaveLength(0);
+  });
+
   it('expires after its 4-second duration', () => {
     const h = buildHarness();
     applyOnce(h);
@@ -454,6 +467,25 @@ describe('Verdigris Glamour — cleanup paths', () => {
     expect(inst.resolvedCasts).toBe(0); // No resolve call happened.
     const playerEffects = getStatusEffects(h.world, h.player);
     expect(playerEffects).toHaveLength(0); // No Tarnished applied to the dead player.
+  });
+
+  it('skips resolution if the locked target eid is recycled into a non-player entity', () => {
+    const h = buildHarness();
+    arm(h);
+    step(h.world, FIRST_TELEGRAPH_FRAME + 5);
+    const inst = h.world.mobAbilities.byEntity.get(h.queen)!;
+    expect(inst.phase).toBe('telegraph');
+    expect(inst.committedTargetEid).toBe(h.player);
+
+    removeEntity(h.world.ecs, h.player);
+    const recycled = spawnBehaviorEnemy(h.world, 40, 40, 200, AI_TYPE.CHASE, 0.17, 60, 0);
+    expect(recycled).toBe(h.player);
+
+    step(h.world, FIRST_RESOLUTION_FRAME + 5);
+
+    expect(inst.phase).toBe('cooldown');
+    expect(inst.resolvedCasts).toBe(0);
+    expect(getStatusEffects(h.world, recycled)).toHaveLength(0);
   });
 
   it('setMobAbilitiesEnabled(false) tears down the runtime', () => {

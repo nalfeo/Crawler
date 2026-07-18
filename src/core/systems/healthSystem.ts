@@ -23,6 +23,11 @@ export function healthSystem(world: GameWorld): void {
         continue;
       }
 
+      // Dead entities must not retain status effects (including owned
+      // mob-ability debuffs) after the death transition. Player death keeps the
+      // entity around for game-over state, so clear the sidecar explicitly here.
+      world.statusEffectsByEntity.delete(eid);
+
       if (hasComponent(world.ecs, eid, Player)) {
         world.state = 'game_over';
         logger.warn('Player health reached zero; transitioning to game_over', {

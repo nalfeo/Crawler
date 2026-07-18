@@ -2591,8 +2591,8 @@ export class BehaviorTreeAI implements AIInputProvider {
         const dx = ctx.playerX - geometry.x;
         const dy = ctx.playerY - geometry.y;
         const dist = Math.hypot(dx, dy);
-        // Trigger avoidance while inside the circle footprint.
-        if (dist >= geometry.radiusFt) continue;
+        // Trigger avoidance while inside OR exactly on the circle footprint.
+        if (dist > geometry.radiusFt) continue;
         if (dist > Number.EPSILON) {
           this.dodgeVecX = (dx / dist) * PROJECTILE_DODGE_VECTOR_SCALE;
           this.dodgeVecY = (dy / dist) * PROJECTILE_DODGE_VECTOR_SCALE;

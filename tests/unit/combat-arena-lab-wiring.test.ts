@@ -56,6 +56,13 @@ describe('combat-arena-lab wiring', () => {
     expect(statusIdx).toBeGreaterThanOrEqual(0);
   });
 
+  it('creates, syncs, and destroys the HUD announcement banner', () => {
+    const source = readFileSync('src/labs/combat-arena-lab/index.ts', 'utf-8');
+    expect(source).toContain('createHudAnnouncementBanner(this)');
+    expect(source).toContain('this.announcementBanner.sync(this.world);');
+    expect(source).toContain('this.announcementBanner?.destroy();');
+  });
+
   it('uses crypto.getRandomValues instead of Date.now for RNG seed', () => {
     const source = readFileSync('src/labs/combat-arena-lab/index.ts', 'utf-8');
     expect(source).toContain('globalThis.crypto.getRandomValues(');

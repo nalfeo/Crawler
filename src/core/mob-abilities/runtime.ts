@@ -170,14 +170,15 @@ function targetPosition(
 }
 
 /**
- * A target is valid iff it still exists and has non-zero health.
- * Recycled-id guard: we check liveness, but do NOT check Player component
- * persistence — the ID could be recycled into a different entity kind, so
- * resolve handlers must guard against applying effects to recycled IDs.
+ * A target is valid iff it still exists, is still the player, and has non-zero
+ * health. This preserves target identity across the telegraph window: if the
+ * locked player EID is recycled into any other health-bearing entity, the cast
+ * is canceled instead of resolving against the wrong target.
  */
 function isTargetValid(world: GameWorld, targetEid: number | null): boolean {
   if (targetEid === null || !entityExists(world.ecs, targetEid)) return false;
   if (!hasComponent(world.ecs, targetEid, Health)) return false;
+  if (!hasComponent(world.ecs, targetEid, Player)) return false;
   if ((world.stores.health.current[targetEid] ?? 0) <= 0) return false;
   return true;
 }
