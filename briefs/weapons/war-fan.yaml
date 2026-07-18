@@ -1,0 +1,29 @@
+type: weapon
+name: war-fan
+description: |
+  A tessen — a Japanese iron battle fan — displayed open as a thrown
+  weapon for Floor 2. The fan is fully deployed: rigid iron slats
+  radiating from the pivot rivet at the bottom into a wide arc, with
+  a fabric or lacquered panel spanning between them. Each outer slat
+  ends in a sharpened tip. The pivot rivet is the anchor point — it
+  sits at the bottom-center of the fan. Palette: dark iron/gunmetal
+  slats with a pop of deep red or lacquered crimson on the fabric
+  panel; dull gold or brass on the pivot rivet and tip reinforcement;
+  near-black outline. Worn dungeon-quality: slight dings on slat edges,
+  cracked lacquer on the panel, a faint bloodstain near one tip — but
+  silhouette still reads clearly as an open fan at gameplay scale.
+  No glow, no fire, no chains, no trailing effects. Silhouette must
+  read as "open battle fan" at a glance.
+# War fan is held diagonally — the open fan arc sweeps from
+# bottom-left (pivot/handle) to top-right (outer slat tips), matching
+# the compact-disk throwing-weapon convention. The anchor is at the
+# pivot rivet, centered horizontally and near the bottom of the icon.
+anchor: { x: 32, y: 48 }
+sensors:
+  weapon:
+    orientation: diagonal
+    diagonalToleranceDeg: 10
+variations:
+  - folded/closed tessen shown as a rigid iron rod gripped for throwing
+  - crescent moon cutout motif punched into slats
+minVariations: 6
