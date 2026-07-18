@@ -71,6 +71,24 @@ function getMap(world: GameWorld): Map<GeneratedEquipmentInstanceId, GeneratedEq
   return map;
 }
 
+/**
+ * Deep-freeze a GeneratedEquipmentInstanceV1 so all nested objects are
+ * immutable (Object.freeze is shallow — resolvedEffects, frozen.statBonuses,
+ * and frozen itself must be frozen individually).
+ */
+function deepFreezeInstance(instance: GeneratedEquipmentInstanceV1): GeneratedEquipmentInstanceV1 {
+  const frozenFrozen = Object.freeze({
+    ...instance.frozen,
+    statBonuses: Object.freeze({ ...instance.frozen.statBonuses }),
+  });
+  const frozenEffects = Object.freeze(instance.resolvedEffects.map((e) => Object.freeze({ ...e })));
+  return Object.freeze({
+    ...instance,
+    resolvedEffects: frozenEffects,
+    frozen: frozenFrozen,
+  }) as GeneratedEquipmentInstanceV1;
+}
+
 // ---------------------------------------------------------------------------
 // Deterministic instance ID creation
 // ---------------------------------------------------------------------------
@@ -262,11 +280,17 @@ export function validateInstanceStructure(instance: GeneratedEquipmentInstanceV1
 
   // Validate frozen fields
   const { frozen } = instance;
+  if (frozen === null || typeof frozen !== 'object') {
+    return `frozen must be an object`;
+  }
   if (typeof frozen.displayName !== 'string' || frozen.displayName.trim() === '') {
     return `frozen.displayName must be a non-empty string`;
   }
   if (typeof frozen.artKey !== 'string' || frozen.artKey.trim() === '') {
     return `frozen.artKey must be a non-empty string`;
+  }
+  if (frozen.statBonuses === null || typeof frozen.statBonuses !== 'object') {
+    return `frozen.statBonuses must be an object`;
   }
   for (const [statId, value] of Object.entries(frozen.statBonuses)) {
     if (!isValidStatId(statId)) {
@@ -352,7 +376,7 @@ export async function registerInstance(
   }
 
   // 6. Store frozen copy
-  map.set(instance.instanceId, Object.freeze({ ...instance }) as GeneratedEquipmentInstanceV1);
+  map.set(instance.instanceId, deepFreezeInstance(instance));
   return { ok: true };
 }
 
@@ -457,7 +481,7 @@ export async function hydrateRegistry(
       continue;
     }
 
-    map.set(instance.instanceId, Object.freeze({ ...instance }) as GeneratedEquipmentInstanceV1);
+    map.set(instance.instanceId, deepFreezeInstance(instance));
   }
 
   return errors;

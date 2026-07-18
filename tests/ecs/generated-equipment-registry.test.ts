@@ -443,6 +443,30 @@ describe('validateInstanceStructure', () => {
     };
     expect(validateInstanceStructure(bad)).not.toBeNull();
   });
+
+  it('rejects null frozen.statBonuses without throwing', async () => {
+    const base = makeInstanceBase();
+    const fp = await computeFingerprint(base);
+    const bad: GeneratedEquipmentInstanceV1 = {
+      ...base,
+      fingerprint: fp,
+      frozen: { ...base.frozen, statBonuses: null as unknown as Record<StatId, number> },
+    };
+    // Must return an error string, not throw a TypeError
+    expect(() => validateInstanceStructure(bad)).not.toThrow();
+    expect(validateInstanceStructure(bad)).not.toBeNull();
+  });
+
+  it('rejects null frozen without throwing', () => {
+    const base = makeInstanceBase();
+    const bad = {
+      ...base,
+      fingerprint: ('sha256:' + 'a'.repeat(64)) as unknown as EquipmentFingerprintV1,
+      frozen: null as unknown as FrozenEquipmentFieldsV1,
+    };
+    expect(() => validateInstanceStructure(bad as GeneratedEquipmentInstanceV1)).not.toThrow();
+    expect(validateInstanceStructure(bad as GeneratedEquipmentInstanceV1)).not.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -537,8 +561,11 @@ describe('registerInstance', () => {
 
     const stored = lookupInstance(world, instance.instanceId)!;
     expect(stored).toBeDefined();
-    // The stored object is frozen
+    // The stored object and all nested objects are deeply frozen
     expect(Object.isFrozen(stored)).toBe(true);
+    expect(Object.isFrozen(stored.frozen)).toBe(true);
+    expect(Object.isFrozen(stored.frozen.statBonuses)).toBe(true);
+    expect(Object.isFrozen(stored.resolvedEffects)).toBe(true);
   });
 });
 

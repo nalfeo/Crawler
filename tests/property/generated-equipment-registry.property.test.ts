@@ -25,6 +25,7 @@ import {
 } from '../../src/game/generated-equipment-registry.js';
 import type {
   GeneratedEquipmentInstanceV1,
+  GeneratedEquipmentInstanceId,
   ResolvedEquipmentEffectV1,
 } from '../../src/shared/generated-equipment-types.js';
 import { RARITY_EFFECT_BUDGET } from '../../src/shared/generated-equipment-types.js';
@@ -236,36 +237,40 @@ describe('Generated Equipment Registry — Property Tests', () => {
           const world1 = enableRegistry(createTestWorld());
           const world2 = enableRegistry(createTestWorld());
 
-          // Deduplicate by ordinal within each batch (fast-check may produce same ID)
+          // Ensure disjoint ID spaces: remap world2 IDs to a separate namespace
           const deduped1 = deduplicateByInstanceId(instances1Raw);
-          const deduped2 = deduplicateByInstanceId(instances2Raw);
+          const deduped2 = deduplicateByInstanceId(
+            instances2Raw.map((b) => ({
+              ...b,
+              instanceId: (b.instanceId + '-w2') as GeneratedEquipmentInstanceId,
+            })),
+          );
 
-          let _registered1 = 0;
+          const registered1Ids = new Set<GeneratedEquipmentInstanceId>();
           for (const base of deduped1) {
             const fp = await computeFingerprint(base);
             const inst: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
             const r = await registerInstance(world1, inst);
-            if (r.ok) _registered1++;
+            if (r.ok) registered1Ids.add(base.instanceId);
           }
 
-          let _registered2 = 0;
+          const registered2Ids = new Set<GeneratedEquipmentInstanceId>();
           for (const base of deduped2) {
             const fp = await computeFingerprint(base);
             const inst: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
             const r = await registerInstance(world2, inst);
-            if (r.ok) _registered2++;
+            if (r.ok) registered2Ids.add(base.instanceId);
           }
 
-          // Sizes are independent
-          void lookupAllSizes(world1, deduped1);
-          void lookupAllSizes(world2, deduped2);
-          // world2 should not see world1's instances and vice-versa
-          for (const base of deduped1) {
-            if (hasInstance(world1, base.instanceId) && !hasInstance(world2, base.instanceId)) {
-              // ok
-            }
+          // IDs registered only in world1 must not be visible in world2
+          for (const id of registered1Ids) {
+            if (hasInstance(world2, id)) return false; // isolation violation
           }
-          return true; // if we get here without throws, isolation is maintained
+          // IDs registered only in world2 must not be visible in world1
+          for (const id of registered2Ids) {
+            if (hasInstance(world1, id)) return false; // isolation violation
+          }
+          return true;
         },
       ),
       { numRuns: 20 },
@@ -302,13 +307,6 @@ function deduplicateByInstanceId<T extends { instanceId: string }>(arr: T[]): T[
     seen.add(x.instanceId);
     return true;
   });
-}
-
-function lookupAllSizes(
-  world: GameWorld,
-  bases: Array<{ instanceId: ReturnType<typeof createInstanceId> }>,
-): number {
-  return bases.filter((b) => hasInstance(world, b.instanceId)).length;
 }
 
 type Rarity = 'common' | 'uncommon' | 'rare';
