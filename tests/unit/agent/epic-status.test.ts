@@ -1089,7 +1089,7 @@ describe('validateEvidenceRequirements', () => {
     expect(reader.commitStatus(blobSha)).toBe('not-commit');
   });
 
-  it('rejects a validated node with a fabricated commit for non-handoff evidence', () => {
+  it('rejects a validated node with a fabricated commit in file-backed evidence', () => {
     const state = cloneState();
     const node = state.nodes[0]!;
     node.status = 'validated';
@@ -1102,7 +1102,8 @@ describe('validateEvidenceRequirements', () => {
         return {
           ...e,
           commit: FABRICATED_COMMIT,
-          path_or_check: 'docs/knowledge/epics/floor-2-equipment/PLAN.md',
+          // Use the offline-validator test file as the path (file-backed evidence kind)
+          path_or_check: 'tests/unit/agent/epic-status.test.ts',
         };
       }
       return e;
@@ -1574,6 +1575,40 @@ describe('speculative stacked-work metadata', () => {
 
     expect(result.errors.map((e) => e.code)).toContain('plan.contract-drift');
     expect(result.ready_queue).toEqual([]);
+  });
+
+  it('emits ready-queue.suppressed warning when nodes are ready but errors exist', () => {
+    const state = cloneState();
+    validateA0(state);
+    // Restore A1's issue (cloneState clears it) so A1 has issue authority and becomes ready.
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    if (a1) {
+      a1.github.issue = {
+        number: 1279,
+        url: 'https://github.com/nalfeo/Crawler/issues/1279',
+      };
+    }
+    // Inject a non-schema error that occurs AFTER readyQueue is populated:
+    // add a phantom node ID to an existing release flag's validating_nodes.
+    // The string matches the /^slice:/ pattern so Zod parses successfully,
+    // but the post-schema check emits release.flag-node (node does not exist).
+    state.release.flags[0]!.validating_nodes.push('slice:PHANTOM-X');
+
+    const result = validate(state);
+
+    // readyQueue is suppressed due to errors.
+    expect(result.ready_queue).toEqual([]);
+    expect(result.warnings.map((w) => w.code)).toContain('ready-queue.suppressed');
+    const warn = result.warnings.find((w) => w.code === 'ready-queue.suppressed');
+    expect(warn?.message).toContain('slice:A1');
+  });
+
+  it('does not emit ready-queue.suppressed when queue is empty or no errors', () => {
+    const state = cloneState();
+    validateA0(state);
+    // No errors, no ready nodes (A1 has no issue authority).
+    const result = validate(state);
+    expect(result.warnings.map((w) => w.code)).not.toContain('ready-queue.suppressed');
   });
 
   it('derives canonical dependency edges from the plan contract graph', () => {

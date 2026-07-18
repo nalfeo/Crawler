@@ -1886,6 +1886,16 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
     }),
   );
   const releaseReady = allRequiredValidated && allFlagNodesValidated;
+  const suppressedQueue =
+    result.errors.length > 0 && result.readyQueue.length > 0 ? result.readyQueue : null;
+  if (suppressedQueue) {
+    result.warnings.push({
+      code: 'ready-queue.suppressed',
+      message:
+        `Ready queue suppressed due to ${result.errors.length} validation error(s); ` +
+        `${suppressedQueue.length} node(s) would otherwise be ready: ${suppressedQueue.join(', ')}`,
+    });
+  }
   return {
     state,
     errors: result.errors,
