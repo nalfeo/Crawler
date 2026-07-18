@@ -208,3 +208,12 @@ assets:
     integration:
       kind: sprite-registry
       id: sponsor-sword
+
+  - id: harpoon-gun
+    type: weapon
+    label: 'Harpoon Gun'
+    brief: 'Harpoon Gun — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. A tethered harpoon launcher — fire a bolt and reel them in.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: harpoon-gun
