@@ -476,14 +476,14 @@
     "row": 0
   },
   {
-    "id": "generated:cactusfolk-boss-var-0",
+    "id": "generated:cactusfolk-boss-var-1",
     "kind": "sprite",
-    "label": "cactusfolk-boss-var-0",
-    "description": "Abuela Saguaro, cactusfolk grandmother boss. Stooped posture, deeply wrinkled flesh, wire-rimmed spectacles, faded floral rebozo, devotional charms, and salvage-armor dressing.",
+    "label": "cactusfolk-boss-var-1",
+    "description": "Abuela Saguaro, cactusfolk cartel matriarch. Current sprite is 64x64 v1 from the pre-redesign brief; a grandmother-themed variant with spectacles, floral rebozo, devotional charms, and salvage-armor dressing is pending regeneration.",
     "tags": ["enemy", "generated", "pipeline-approved"],
-    "spriteId": "cactusfolk-boss-var-0",
+    "spriteId": "cactusfolk-boss-var-1",
     "sheetKey": "generated-manifest",
-    "assetPath": "generated/cactusfolk-boss-var-0.png",
+    "assetPath": "generated/cactusfolk-boss-var-1.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -2844,7 +2844,7 @@
     "frame": 121,
     "col": 1,
     "row": 10,
-    "note": "Tiny Dungeon ghost (frame 121) — temp CC0 art.",
+    "note": "Tiny Dungeon goblin (frame 121) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }

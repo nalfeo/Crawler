@@ -492,6 +492,17 @@
       "judgeScore": null,
       "type": null
     },
+    "azure-mushroom-placeholder": {
+      "briefId": "azure-mushroom",
+      "spriteName": "azure-mushroom",
+      "assetPath": "generated/azure-mushroom-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.903Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "azure-mushroom-v1-var-0": {
       "briefId": "azure-mushroom-v1",
       "spriteName": "azure-mushroom-v1-var-0",
@@ -1196,6 +1207,40 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "cactusfolk-boss-var-1": {
+      "briefId": "cactusfolk-boss",
+      "spriteName": "cactusfolk-boss-var-1",
+      "assetPath": "generated/cactusfolk-boss-var-1.png",
+      "approvedAt": "2026-07-08T02:26:20.424Z",
+      "sourceRun": "generated/runs/cactusfolk-boss/2026-07-08T02-14-48-5fde1528",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 36,
+        "source": "manual"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 36,
+          "source": "manual"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 36,
+          "source": "manual"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "5",
+      "type": "enemy",
+      "contentHash": "9f47e32106ea23d679f48e7397b2b58cb21e98b1133a42fda48865111f585aa9",
+      "postprocessOverrideProfilePath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\cactusfolk-boss\\2026-07-08T02-14-48-5fde1528\\postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
+    },
     "cactusfolk-elite-desert-capo-v1-var-0": {
       "briefId": "cactusfolk-elite-desert-capo-v1",
       "spriteName": "cactusfolk-elite-desert-capo-v1-var-0",
@@ -1829,6 +1874,17 @@
       "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
+    "crimson-mushroom-placeholder": {
+      "briefId": "crimson-mushroom",
+      "spriteName": "crimson-mushroom",
+      "assetPath": "generated/crimson-mushroom-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.902Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "crimson-mushroom-v1-var-3": {
       "briefId": "crimson-mushroom-v1",
       "spriteName": "crimson-mushroom-v1-var-3",
@@ -2034,6 +2090,40 @@
       "judgeScore": null,
       "type": null
     },
+    "equipment/weapon/iron-cleaver": {
+      "briefId": "equipment/weapon/iron-cleaver",
+      "spriteName": "equipment/weapon/iron-cleaver",
+      "assetPath": "generated/equipment/weapon/iron-cleaver.png",
+      "approvedAt": "2026-07-18T02:27:00.000Z",
+      "sourceRun": "issue-request",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "issue-request",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "245058fad5a81c263a66e6924b4ca276dd829ef978b31613eb319f1414866b3a"
+    },
+    "equipment/weapon/moon-scythe": {
+      "briefId": "equipment/weapon/moon-scythe",
+      "spriteName": "equipment/weapon/moon-scythe",
+      "assetPath": "generated/equipment/weapon/moon-scythe.png",
+      "approvedAt": "2026-07-18T00:00:00.000Z",
+      "sourceRun": "manual-authored/moon-scythe",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual-authored",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "4fd795466d0eb0480e0667510313e77d5ca05cc36b1a64855343cadb3b8f7a33",
+      "equipment": {
+        "stableId": "weapon.moon-scythe",
+        "runtimeKey": "equipment/weapon/moon-scythe",
+        "category": "weapon",
+        "family": "magic-focus",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-magic-focus"
+      }
+    },
     "exp-candy-placeholder": {
       "briefId": "exp-candy",
       "spriteName": "exp-candy",
@@ -2137,6 +2227,17 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "fireball-placeholder": {
+      "briefId": "fireball",
+      "spriteName": "fireball",
+      "assetPath": "generated/fireball-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.893Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "flame-dagger-var-3": {
       "briefId": "flame-dagger",
@@ -2250,6 +2351,17 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "frost-lichen-placeholder": {
+      "briefId": "frost-lichen",
+      "spriteName": "frost-lichen",
+      "assetPath": "generated/frost-lichen-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.905Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "frost-lichen-v1-var-12": {
       "briefId": "frost-lichen-v1",
@@ -3232,6 +3344,28 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "landmine-placeholder": {
+      "briefId": "landmine",
+      "spriteName": "landmine",
+      "assetPath": "generated/landmine-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.897Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "laser-placeholder": {
+      "briefId": "laser",
+      "spriteName": "laser",
+      "assetPath": "generated/laser-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.894Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "laugh-track-tape-placeholder": {
       "briefId": "laugh-track-tape",
       "spriteName": "laugh-track-tape",
@@ -3599,6 +3733,17 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-burrower\\2026-07-08T05-05-46-350b03d1\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "moonbloom-flower-placeholder": {
+      "briefId": "moonbloom-flower",
+      "spriteName": "moonbloom-flower",
+      "assetPath": "generated/moonbloom-flower-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.904Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "moonbloom-flower-v1-var-0": {
       "briefId": "moonbloom-flower-v1",
@@ -4769,6 +4914,17 @@
       "effectiveAnchorSource": "manual",
       "facingDirection": "left"
     },
+    "punch-placeholder": {
+      "briefId": "punch",
+      "spriteName": "punch",
+      "assetPath": "generated/punch-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.895Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "purple-potion-bottle-v1-var-4": {
       "briefId": "purple-potion-bottle-v1",
       "spriteName": "purple-potion-bottle-v1-var-4",
@@ -5667,6 +5823,17 @@
       "type": "tile",
       "contentHash": "7199c43c07d8b31017cf0fad4815dfdb9dc2f9b020243b415f92c5f1fd099f1b"
     },
+    "shadow-lichen-placeholder": {
+      "briefId": "shadow-lichen",
+      "spriteName": "shadow-lichen",
+      "assetPath": "generated/shadow-lichen-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.905Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "shadow-lichen-v1-var-12": {
       "briefId": "shadow-lichen-v1",
       "spriteName": "shadow-lichen-v1-var-12",
@@ -6293,6 +6460,18 @@
       "judgeScore": null,
       "type": null
     },
+    "storm-sling-placeholder": {
+      "briefId": "storm-sling",
+      "spriteName": "storm-sling",
+      "assetPath": "generated/storm-sling-placeholder.png",
+      "approvedAt": "2026-07-18T03:40:52.652Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon"
+    },
     "stress-ball-placeholder": {
       "briefId": "stress-ball",
       "spriteName": "stress-ball",
@@ -6316,6 +6495,28 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": "item"
+    },
+    "sun-hammer-placeholder": {
+      "briefId": "sun-hammer",
+      "spriteName": "sun-hammer",
+      "assetPath": "generated/sun-hammer-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.898Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "sunpetal-flower-placeholder": {
+      "briefId": "sunpetal-flower",
+      "spriteName": "sunpetal-flower",
+      "assetPath": "generated/sunpetal-flower-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.904Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "sunpetal-flower-v1-var-0": {
       "briefId": "sunpetal-flower-v1",
@@ -6548,6 +6749,17 @@
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived"
+    },
+    "throwing-knife-placeholder": {
+      "briefId": "throwing-knife",
+      "spriteName": "throwing-knife",
+      "assetPath": "generated/throwing-knife-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.891Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "thunder-staff-placeholder": {
       "briefId": "thunder-staff",
