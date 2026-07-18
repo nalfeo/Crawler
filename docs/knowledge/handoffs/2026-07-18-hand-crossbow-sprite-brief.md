@@ -35,7 +35,8 @@ Brief details:
 - `anchor: {x:22, y:50}` — shifted to the pistol-grip area (lower-left
   quadrant), consistent with diagonal-held weapons
 - `sensors.anchor.derive: false` — explicitly uses the authored static grip
-  anchor instead of the weapon-default derived anchor behavior
+  anchor instead of the weapon-default derived-anchor sensor, which computes
+  the anchor from the detected grip region near the bottom-center
 - 2 authored variation seeds + `minVariations: 8` for generation diversity
 - Palette: muted dark brown (stock), iron-grey/slate-black (prod, hardware),
   single highlight; no glow, no enchantment
@@ -77,4 +78,5 @@ Verified: `npm run verify:fast` — 1260 tests pass, all guards green.
 
 - For diagonal weapon briefs, override `orientation`, set a matching static
   `anchor`, and set `sensors.anchor.derive: false` when the authored grip
-  should be enforced directly.
+  should be enforced directly (for example, non-centered lower-left pistol
+  grips).

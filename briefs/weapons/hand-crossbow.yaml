@@ -24,6 +24,6 @@ sensors:
 # minVariations: 8 tops this up via the Azure chat deployment so the sheet
 # explores the design space while always including the author seeds.
 variations:
-  - ornate carved stock with a carved trigger guard and iron fittings
+  - ornate carved stock with a detailed trigger guard and iron fittings
   - worn leather wrapped grip with scratched steel prod and exposed bolt tip
 minVariations: 8
