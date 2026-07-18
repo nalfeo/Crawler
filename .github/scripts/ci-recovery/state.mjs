@@ -386,7 +386,7 @@ export const TRUSTED_BOT_LOGINS = new Set([
 ]);
 
 const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
-const notApplicablePattern = /✅\s*not\s+applicable\b/i;
+const notApplicablePattern = /^\s*✅\s*not\s+applicable\s*(?::|—|–)\s*\S/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {

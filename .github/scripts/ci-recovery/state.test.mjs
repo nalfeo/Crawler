@@ -781,11 +781,26 @@ test('shouldResolveThread rejects "✅ Not applicable" when reviewer follows up'
 test('hasNotApplicableMarker recognises canonical and variant forms', () => {
   assert.equal(hasNotApplicableMarker('✅ Not applicable — reason'), true);
   assert.equal(hasNotApplicableMarker('✅ Not applicable: the path is correct'), true);
-  assert.equal(hasNotApplicableMarker('✅ not applicable'), true);
+  assert.equal(hasNotApplicableMarker('✅ not applicable'), false); // bare marker — no delimiter or reason
   assert.equal(hasNotApplicableMarker('✅ NOT APPLICABLE — multi-word reason'), true);
+  assert.equal(hasNotApplicableMarker('✅ Not applicable:'), false); // delimiter but empty reason
+  assert.equal(hasNotApplicableMarker('✅ Not applicable:   '), false); // delimiter but whitespace-only reason
   assert.equal(hasNotApplicableMarker('✅ Not applicablex'), false); // no word boundary
   assert.equal(hasNotApplicableMarker('✅ Addressed in abc1234: note'), false);
   assert.equal(hasNotApplicableMarker('Not applicable without checkmark'), false);
+  // quoted/disagreement form — marker not at start of comment
+  assert.equal(
+    hasNotApplicableMarker(
+      "I disagree with the agent's ✅ Not applicable claim; the issue remains",
+    ),
+    false,
+  );
+  assert.equal(
+    hasNotApplicableMarker(
+      'The finding is valid. The agent incorrectly replied ✅ Not applicable: reason here',
+    ),
+    false,
+  );
   assert.equal(hasNotApplicableMarker(''), false);
   assert.equal(hasNotApplicableMarker(null), false);
   assert.equal(hasNotApplicableMarker(undefined), false);
