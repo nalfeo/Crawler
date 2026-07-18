@@ -184,6 +184,86 @@ manifest rewrite. Changes inside the contract require the plan-change protocol.
     "real_apis_only": true,
     "existing_route_planner_only": true,
     "settlement_maintenance_required": true
+  },
+  "graph": {
+    "dependencies": {
+      "slice:A0": [],
+      "slice:A1": ["slice:A0"],
+      "slice:B1": ["slice:A1"],
+      "slice:B2": ["slice:B1"],
+      "slice:B3": ["slice:B2"],
+      "slice:C1": ["slice:A1"],
+      "slice:C2": ["slice:C1", "slice:B3"],
+      "slice:D1": ["slice:A1"],
+      "packet:D2-A": ["slice:D1", "slice:B1"],
+      "packet:D2-B": ["slice:D1", "slice:C1"],
+      "slice:D2": ["packet:D2-A", "packet:D2-B"],
+      "packet:D3-A": ["slice:D2", "slice:B2"],
+      "packet:D3-B": ["slice:D2", "slice:C1"],
+      "slice:D3": ["packet:D3-A", "packet:D3-B"],
+      "slice:E1": ["slice:A1"],
+      "slice:E2": ["slice:E1", "slice:C1"],
+      "packet:E3-A": ["slice:E2", "slice:B2"],
+      "packet:E3-B": ["slice:E2", "slice:D2"],
+      "packet:E3-C": ["slice:E2", "slice:C1"],
+      "slice:E3": ["packet:E3-A", "packet:E3-B", "packet:E3-C"],
+      "slice:F1": ["slice:B1", "slice:C1"],
+      "slice:F2": ["slice:F1", "slice:B2", "slice:C2"],
+      "slice:F3": ["slice:F2", "slice:C2"],
+      "slice:F4": ["slice:F3"],
+      "slice:G1": ["slice:A1", "slice:B1"],
+      "packet:G2-A": ["slice:G1", "slice:B2"],
+      "packet:G2-B+": ["slice:B3", "slice:C2", "slice:D3", "slice:E3", "slice:F4", "slice:H3"],
+      "slice:G2": ["packet:G2-A", "packet:G2-B+"],
+      "packet:G3": ["slice:G2"],
+      "slice:G3": ["packet:G3"],
+      "slice:H1": ["slice:A1", "slice:D1"],
+      "slice:H2": ["slice:H1", "slice:B2"],
+      "slice:H3": ["slice:H2", "slice:C2"],
+      "slice:I1": ["slice:A1", "slice:E1"],
+      "slice:I2": ["slice:I1"],
+      "slice:I3": ["slice:I2"],
+      "slice:J": ["slice:I3"]
+    },
+    "parent_slices": {
+      "slice:A0": null,
+      "slice:A1": null,
+      "slice:B1": null,
+      "slice:B2": null,
+      "slice:B3": null,
+      "slice:C1": null,
+      "slice:C2": null,
+      "slice:D1": null,
+      "packet:D2-A": "slice:D2",
+      "packet:D2-B": "slice:D2",
+      "slice:D2": null,
+      "packet:D3-A": "slice:D3",
+      "packet:D3-B": "slice:D3",
+      "slice:D3": null,
+      "slice:E1": null,
+      "slice:E2": null,
+      "packet:E3-A": "slice:E3",
+      "packet:E3-B": "slice:E3",
+      "packet:E3-C": "slice:E3",
+      "slice:E3": null,
+      "slice:F1": null,
+      "slice:F2": null,
+      "slice:F3": null,
+      "slice:F4": null,
+      "slice:G1": null,
+      "packet:G2-A": "slice:G2",
+      "packet:G2-B+": "slice:G2",
+      "slice:G2": null,
+      "packet:G3": "slice:G3",
+      "slice:G3": null,
+      "slice:H1": null,
+      "slice:H2": null,
+      "slice:H3": null,
+      "slice:I1": null,
+      "slice:I2": null,
+      "slice:I3": null,
+      "slice:J": null
+    }
   }
 }
 ```
@@ -227,13 +307,19 @@ A required node computes ready only when:
 2. a dependency is `superseded`, names a replacement, and that replacement is
    `validated`;
 3. the node has a materialized issue, except for A0's parent-issue bootstrap;
-4. the node itself is not terminal or already beyond ready; and
-5. no plan-change invalidation applies.
+4. the node itself is not terminal or already beyond ready;
+5. no plan-change invalidation applies; and
+6. the node has no pending `requires_main_rebase` in its `stacked_work`
+   (even if all deps would otherwise be `validated`).
 
 `cancelled` dependencies never satisfy readiness. If an active node loses
 readiness after a plan change or dependency invalidation, the Producer posts
 `BLOCKED`, revokes its lease, moves it to `blocked`, and invalidates downstream
 evidence. Child agents do not continue under a stale claim.
+
+Speculative stacked-work (`stacked_work` on a `blocked` node) is orthogonal to
+the lifecycle. The node status remains `blocked`; `stacked_work` never enters
+the ready queue. See "Speculative stacked-work protocol" for details.
 
 Status requirements:
 
@@ -288,15 +374,105 @@ Bulk online creation is outside A0. The acceptance path is:
 Use these exact structured headings in issue comments:
 
 - `CLAIMED`: owner, session, base commit, scope, claimed_at, expires_at.
+- `STACKED-WORK`: See "Speculative stacked-work protocol" below.
 - `BLOCKED`: blocker node/fact, evidence, requested action, lease disposition.
 - `UNBLOCKED`: resolving evidence and refreshed dependency snapshot.
 - `SCOPE-CHANGE-REQUEST`: requested delta, rationale, impacted nodes, evidence
   invalidation, apple/review impact. This never changes scope by itself.
+- `STACKED-WORK`: speculative child issue/session/PR, stacked base node/PR, and
+  whether a rebase onto `main` is now required before the node can re-enter the
+  authoritative ready queue.
 - `HANDOFF`: branch/PR, head SHA, handoff path/hash, ledger path/hash, tests,
   unresolved risks, and next owner.
 
 Free-form updates may follow the structured block, but automation and Producers
 use only the structured fields for reconciliation.
+
+## Speculative stacked-work protocol
+
+A lifecycle-blocked node whose unvalidated direct prerequisites are all `pr_open`
+may begin speculative work on a branch stacked from the dependency PR branch,
+without advancing the node's lifecycle status. The node remains `blocked`;
+speculative progress is orthogonal and never enters the ready queue.
+
+### When speculative work is permitted
+
+All of the following must hold before recording `stacked_work`:
+
+1. The node's `status` is `blocked`.
+2. Every unvalidated direct dependency has `status: pr_open`.
+3. Every unvalidated dependency has a PR ref (`github.pr`) recorded in state.
+4. A `stacked_work` block is present for every unvalidated dependency with exact
+   stack-base facts (see fields below).
+5. The `stacked_work.issue` ref is materialized (a live GitHub child issue).
+6. There is no other node with the same `stacked_work.session` or
+   `stacked_work.issue.number`.
+
+### stacked_work fields
+
+| Field          | Description                                                             |
+| -------------- | ----------------------------------------------------------------------- |
+| `mode`         | `stacked_in_progress` or `stacked_pr_open`                              |
+| `issue`        | Issue ref for the speculative work's child issue                        |
+| `session`      | Session identifier for the speculative work owner                       |
+| `branch`       | The stacked branch name                                                 |
+| `pr`           | PR ref for the speculative PR (required when mode is `stacked_pr_open`) |
+| `stack_bases`  | One entry per unvalidated direct dependency (see below)                 |
+| `drift_reason` | Optional material drift or block reason                                 |
+
+### stack_bases entry fields
+
+| Field                  | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `dependency_node_id`   | Node ID of the unvalidated direct dependency                |
+| `dependency_pr_number` | PR number of the dependency                                 |
+| `dependency_branch`    | Branch name of the dependency PR                            |
+| `dependency_head_sha`  | Dep's head SHA when speculative work was initiated          |
+| `last_resynced_at`     | Timestamp of the most recent resync with the dep            |
+| `last_resynced_head`   | Dep's head SHA at last resync                               |
+| `requires_main_rebase` | `true` once the dep PR merges; blocks lifecycle advancement |
+
+### Stale-head detection
+
+The offline validator compares `stack_base.last_resynced_head` against the dep
+node's cached `github.pr.head_sha`. If they differ, the dep's PR has advanced
+since the last resync and the stack is stale (`stacked.stale-dep-head` error).
+The child agent must fetch the latest dep commits, merge or rebase, update
+`last_resynced_head` and `last_resynced_at`, and post a `STACKED-WORK` update.
+
+### STACKED-WORK comment protocol
+
+Post a `STACKED-WORK` comment on the child issue to record or update speculative
+progress. The structured fields are:
+
+- `node`: the blocked node ID
+- `mode`: `stacked_in_progress` or `stacked_pr_open`
+- `session`: session identifier
+- `branch`: stacked branch name
+- `dep_snapshot`: comma-separated `<dep_node_id>:<dep_head_sha>` pairs
+
+The Producer records these facts in one global-state update.
+
+### Post-merge rebase and lifecycle handoff
+
+Once a dependency PR merges:
+
+1. The offline validator emits `stacked.merged-dep-rebase-required` if
+   `requires_main_rebase` is not set to `true`; the Producer must update the
+   stack_base flag.
+2. When `requires_main_rebase: true`, the validator emits
+   `stacked.requires-main-rebase` and an operator action requiring the Producer
+   to confirm the rebase and clear `stacked_work`.
+3. The child agent rebases the stacked branch onto `main`, resolves conflicts,
+   and posts a `STACKED-WORK` update confirming completion.
+4. The Producer verifies the rebase, clears `stacked_work` (sets it to `null`),
+   and advances the node through the normal lifecycle (`blocked → ready →
+claimed → ...`).
+5. Normal lifecycle checks then apply; the node enters the ready queue only when
+   all deps are `validated` and `stacked_work` is `null`.
+
+The Producer is the sole writer of `stacked_work` in the global state. Child
+agents post `STACKED-WORK` comments; they do not edit `epic-state.json` directly.
 
 ## Execution lanes
 
@@ -508,21 +684,32 @@ A fresh Producer must be able to resume with zero conversation context:
 3. Query the parent/child issues, PRs, workflow runs, and referenced branches.
 4. Inspect every referenced handoff and review ledger; verify content hashes and
    commits rather than trusting branch names.
-5. Run
+5. For any node with `stacked_work`, inspect the stacked branch and the
+   dependency PR to verify `last_resynced_head` is current and
+   `requires_main_rebase` is correct.
+6. Run
    `npm run epic:status -- floor-2-equipment --github --reconcile`.
-6. Review the emitted `repo_patch` and `operator_actions`; the command writes
+7. Review the emitted `repo_patch` and `operator_actions`; the command writes
    nothing.
-7. Resolve stronger-fact conflicts in authority order. Do not copy cached state
+8. Resolve stronger-fact conflicts in authority order. Do not copy cached state
    over GitHub or committed evidence.
-8. Post structured BLOCKED/UNBLOCKED/HANDOFF comments as needed.
-9. As sole global-state writer, apply one reviewed state update.
-10. Dispatch only nodes in the validator-computed ready queue with materialized
+9. Post structured BLOCKED/UNBLOCKED/STACKED-WORK/HANDOFF comments as needed.
+10. As sole global-state writer, apply one reviewed state update.
+11. Dispatch only nodes in the validator-computed ready queue with materialized
     child issues.
 
 If the parent issue is unavailable, merged git and deterministic evidence still
 permit recovery. Recreate the issue dashboard from the materialization plan,
 then reconcile issue numbers into state. A session transcript or local
 worktree is never authoritative.
+
+For stacked-work reconciliation after a prerequisite merges:
+
+1. Confirm the stacked branch has been rebased onto `main`.
+2. Verify the speculative work is still valid (no merge-conflict regressions).
+3. Update the stack_base `requires_main_rebase` to `true` if not already set.
+4. After rebase confirmation, clear `stacked_work` (set to `null`) and advance
+   the node through the normal lifecycle in one coordinated state update.
 
 ## Durable plan-change protocol
 
