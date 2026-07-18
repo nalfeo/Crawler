@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -134,6 +134,81 @@ describe('verify-fast full-project typecheck', () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Fast verifier static checks passed');
+    },
+    30_000,
+  );
+});
+
+/** Intentionally long: must outlast the SIGINT that interrupts the verifier. */
+const STUB_DURATION_SECONDS = 300;
+/** Brief wait after seeing "Step 1/3" to let background sleep stubs reach their wait state. */
+const STUB_STARTUP_DELAY_MS = 200;
+
+describe('verify-fast signal lifecycle', () => {
+  it.skipIf(!hasBash)(
+    'exits 130 on SIGINT and terminates background stub processes',
+    async () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+      });
+
+      const proc = spawn('bash', [SCRIPT], {
+        cwd: fixture,
+        env: bashEnv({
+          NODE_ENV: 'test',
+          VERIFY_FAST_TEST_STATIC_ONLY: '1',
+          VERIFY_FAST_TSC_PROJECT: path.join(fixture, 'tsconfig.json'),
+          // Replace real tsc + lint with sleep stubs so the verifier is blocked
+          // in its parallel wait and can be cleanly interrupted via SIGINT.
+          VERIFY_FAST_TSC_STUB_SECONDS: String(STUB_DURATION_SECONDS),
+        }),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let closed = false;
+      const closedPromise = new Promise<number | null>((resolve) => {
+        proc.on('close', (code) => {
+          closed = true;
+          resolve(code);
+        });
+      });
+
+      try {
+        // Wait until the parallel phase has been announced (both background jobs
+        // have been launched — the echo precedes the `&` invocations by only the
+        // LINT_CMD setup block, which completes in milliseconds).
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('Timed out waiting for Step 1/3 output')),
+            10_000,
+          );
+          proc.stdout?.on('data', (chunk: Buffer) => {
+            if (chunk.toString().includes('Step 1/3')) {
+              clearTimeout(timer);
+              // Brief delay to let the background sleep stubs reach their own wait.
+              setTimeout(resolve, STUB_STARTUP_DELAY_MS);
+            }
+          });
+          proc.on('exit', () => {
+            clearTimeout(timer);
+            reject(new Error('Process exited before Step 1/3 was printed'));
+          });
+        });
+
+        // Interrupt the verifier — should trigger `trap 'exit 130' INT` then
+        // `trap cleanup_parallel EXIT`, killing the background process groups.
+        proc.kill('SIGINT');
+
+        const exitCode = await closedPromise;
+        expect(exitCode).toBe(130);
+      } finally {
+        if (!closed && !proc.killed) {
+          proc.kill('SIGKILL');
+          await closedPromise;
+        }
+      }
     },
     30_000,
   );

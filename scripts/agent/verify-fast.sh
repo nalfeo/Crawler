@@ -74,7 +74,18 @@ elif [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
   fi
 fi
 
-npx tsc --noEmit --project "$TSC_PROJECT" &
+# In test_static_only mode, allow long-running stubs so signal-lifecycle tests
+# can send SIGINT and assert exit-130 behaviour without real compiler invocations.
+tsc_cmd=(npx tsc --noEmit --project "$TSC_PROJECT")
+if [ "$test_static_only" -eq 1 ] && [ -n "${VERIFY_FAST_TSC_STUB_SECONDS:-}" ]; then
+  stub_secs="${VERIFY_FAST_TSC_STUB_SECONDS//[^0-9]/}"
+  # Cap at 600 s to avoid runaway processes from an accidental large value.
+  if [ -n "$stub_secs" ] && [ "$stub_secs" -gt 600 ]; then stub_secs=600; fi
+  tsc_cmd=(sleep "${stub_secs:-1}")
+  LINT_CMD=(sleep "${stub_secs:-1}")
+fi
+
+"${tsc_cmd[@]}" &
 TSC_PID=$!
 "${LINT_CMD[@]}" &
 ESLINT_PID=$!
