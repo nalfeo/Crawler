@@ -3002,5 +3002,18 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:bone-saw-var-1",
+    "kind": "sprite",
+    "label": "bone-saw-var-1",
+    "description": "Generated sprite from brief: bone-saw.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "bone-saw-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/bone-saw-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
