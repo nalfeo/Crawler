@@ -617,7 +617,7 @@ function gitShowContent(repoRoot: string, commit: string, filePath: string): str
 
 function gitCommitExists(repoRoot: string, commit: string): boolean {
   try {
-    execFileSync('git', ['cat-file', '-e', commit], {
+    execFileSync('git', ['rev-parse', '--verify', `${commit}^{commit}`], {
       cwd: repoRoot,
       stdio: 'ignore',
     });
@@ -994,6 +994,14 @@ function validateEvidenceFiles(
         code: 'evidence.unsafe-path',
         node_id: node.node_id,
         message: `${node.node_id} evidence path is outside the repository`,
+      });
+      continue;
+    }
+    if (!gitReader.commitExists(evidence.commit)) {
+      result.errors.push({
+        code: 'evidence.git-verification-failed',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
       });
       continue;
     }

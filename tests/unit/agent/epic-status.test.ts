@@ -1691,6 +1691,46 @@ describe('Floor 2 equipment epic status', () => {
 });
 
 describe('validateEvidenceRequirements', () => {
+  it('rejects a validated node with a fabricated commit for handoff evidence', () => {
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'validated';
+    node.merge.commit = HANDOFF_COMMIT;
+    node.merge.merged_at = '2026-07-17T20:00:00.000Z';
+    const FABRICATED_COMMIT = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+    node.evidence = node.evidence.map((e) => {
+      if (e.kind === 'handoff') {
+        return {
+          ...e,
+          commit: FABRICATED_COMMIT,
+        };
+      }
+      return e;
+    });
+
+    const knownCommits = new Set([HANDOFF_COMMIT, LEDGER_COMMIT]);
+    const strictReader: GitReader = {
+      commitExists(sha) {
+        return knownCommits.has(sha);
+      },
+      showContent(_commit, filePath) {
+        try {
+          return readFileSync(resolve(REPO_ROOT, filePath), 'utf8');
+        } catch {
+          return null;
+        }
+      },
+    };
+
+    const errors = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      gitReader: strictReader,
+    }).errors;
+    expect(errors.map((e) => e.code)).toContain('evidence.git-verification-failed');
+  });
+
   it('rejects a validated node with a fabricated commit for non-handoff evidence', () => {
     const state = cloneState();
     const node = state.nodes[0]!;
