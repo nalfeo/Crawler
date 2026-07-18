@@ -22,4 +22,5 @@ description: |
 variations:
   - kite-shaped shield body with a central boss and four corner spikes
   - round tower-shield silhouette with seven radial spikes and visible arm-strap
+# Seed only: the text provider expands these to 8 total variation prompts at run time.
 minVariations: 8
