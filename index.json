@@ -1,5 +1,16 @@
 [
   {
+    "commit": "125456ffd9d786c729093814d62eb6a40e951a0a",
+    "commitDate": "2026-07-18T11:41:25Z",
+    "commitSubject": "fix(ci-recovery): detect stale ✅ Addressed markers with non-pushed commit SHAs (#1301)",
+    "capturedAt": "2026-07-18T13:06:00.410Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29643501118",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/125456ffd9d786c729093814d62eb6a40e951a0a.json"
+  },
+  {
     "commit": "84489aa693a18831b68c024630cf268eed35bd35",
     "commitDate": "2026-07-18T01:32:39Z",
     "commitSubject": "feat(floor2): guarantee one Quartermaster in every Floor 2 settlement (#1294)",
