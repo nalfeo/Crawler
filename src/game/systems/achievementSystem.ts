@@ -271,7 +271,7 @@ export function unlockAchievement(world: GameWorld, achievementId: string): bool
   return true;
 }
 
-export function snapshotCurrentFloorIntoRunGlobalAchievementFacts(world: GameWorld): void {
+function snapshotCurrentFloorIntoRunGlobalAchievementFacts(world: GameWorld): void {
   const floorFacts = collectFloorAchievementFacts(world);
   if (!floorFacts) return;
   mergeRunGlobalFacts(world, floorFacts);
