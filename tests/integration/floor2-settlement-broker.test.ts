@@ -10,7 +10,7 @@
 import { query } from 'bitecs';
 import { describe, expect, it, beforeEach } from 'vitest';
 import { SeededRandom } from '../../src/shared/random.js';
-import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
+import { BiomeType, RoomRole, TilePresets } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import { getGenerator } from '../../src/core/map/generators/registry.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
@@ -22,6 +22,8 @@ import {
 } from '../../src/core/faction-relations.js';
 import { initializeFloor2Settlement } from '../../src/game/floor2Settlement.js';
 import { DoorState } from '../../src/core/components.js';
+import { floodFill } from '../../src/core/map/grid-utils.js';
+import { FLOOR2_QUARTERMASTER_ARCHETYPE_ID } from '../../src/shared/data/shop-archetypes.js';
 import {
   getFloor2FamilyEliteArchetype,
   getFloor2FamilyFallbackArchetype,
@@ -87,7 +89,7 @@ describe('Floor 2 settlement · initialization', () => {
     _resetEmergentEventCache();
   });
 
-  it('spawns the Broker, a family defector, and 1-2 shops inside the settlement cluster', () => {
+  it('spawns the Broker, a family defector, one Quartermaster, and 1-2 other shops inside the settlement cluster', () => {
     const world = createTestWorld({ seed: 999 });
     world.floorMap = buildFloor2Map();
     spawnPlayer(world, 0, 0);
@@ -100,7 +102,13 @@ describe('Floor 2 settlement · initialization', () => {
     expect(presentFamilies).toContain(snap.defectorFamilyId as FamilyId);
     expect(snap.settlementRoomIds.length).toBeGreaterThanOrEqual(2);
     expect(snap.settlementRoomIds.length).toBeLessThanOrEqual(3);
-    expect(snap.shops.length).toBe(2);
+    expect(snap.shops.length).toBe(3);
+    expect(
+      snap.shops.filter((shop) => shop.archetypeId === FLOOR2_QUARTERMASTER_ARCHETYPE_ID),
+    ).toHaveLength(1);
+    expect(
+      snap.shops.filter((shop) => shop.archetypeId !== FLOOR2_QUARTERMASTER_ARCHETYPE_ID),
+    ).toHaveLength(2);
     for (const shop of snap.shops) {
       expect(shop.npcEid).toBeGreaterThan(0);
       expect(shop.inventory.length).toBeGreaterThan(0);
@@ -145,6 +153,14 @@ describe('Floor 2 settlement · initialization', () => {
     expect(seenDoorKeys).toEqual(expectedDoorKeys);
 
     const settlementDoorTiles = settlementRooms.flatMap((room) => room.doors);
+    const width = world.floorMap.config.widthTiles;
+    const height = world.floorMap.config.heightTiles;
+    const reachable = floodFill(
+      world.floorMap.playerSpawn.y * width + world.floorMap.playerSpawn.x,
+      width,
+      height,
+      (index) => world.floorMap!.tileMap.isPassable(index % width, Math.floor(index / width)),
+    );
     const npcEids = [snap.brokerEid, snap.defectorEid, ...snap.shops.map((shop) => shop.npcEid)];
     const npcTiles = npcEids.map((eid) => {
       const tile = world.floorMap!.worldToTile(
@@ -154,6 +170,7 @@ describe('Floor 2 settlement · initialization', () => {
       const roomId = world.floorMap!.roomGraph.getRoomAt(tile.x, tile.y);
       expect(roomId).toBeGreaterThanOrEqual(0);
       expect(snap.settlementRoomIds).toContain(roomId);
+      expect(reachable[tile.y * width + tile.x]).toBe(1);
       expect(
         settlementDoorTiles.some(
           (door) => Math.max(Math.abs(tile.x - door.x), Math.abs(tile.y - door.y)) <= 1,
@@ -196,6 +213,33 @@ describe('Floor 2 settlement · initialization', () => {
     expect(a.defectorFamilyId).toEqual(b.defectorFamilyId);
     expect(a.shops.map((s) => s.archetypeId)).toEqual(b.shops.map((s) => s.archetypeId));
     expect(a.shops.map((s) => s.inventory)).toEqual(b.shops.map((s) => s.inventory));
+  });
+
+  it('fails before mutating settlement state when strict placement capacity is unavailable', () => {
+    const world = createTestWorld({ seed: 999 });
+    world.floorMap = buildFloor2Map();
+    spawnPlayer(world, 0, 0);
+    world.floor = 2;
+    seedSettlementFamilyState(world);
+
+    const settlementRooms = world.floorMap.roomGraph.getRoomsByRole(RoomRole.SETTLEMENT);
+    for (const room of settlementRooms) {
+      for (const cell of room.interiorCells ?? []) {
+        world.floorMap.tileMap.flags[cell.y * WIDTH + cell.x] = TilePresets.WALL;
+      }
+    }
+    const rolesBefore = settlementRooms.map((room) => room.role);
+    const terrainBefore = world.floorMap.terrain.slice();
+    const doorCountBefore = query(world.ecs, [DoorState]).length;
+
+    expect(() => initializeFloor2Settlement(world, { shopCount: 2 })).toThrowError(
+      /settlement capacity insufficient; required=5/,
+    );
+    expect(settlementRooms.map((room) => room.role)).toEqual(rolesBefore);
+    expect(world.floorMap.terrain).toEqual(terrainBefore);
+    expect(query(world.ecs, [DoorState])).toHaveLength(doorCountBefore);
+    expect(world.floorExtendedState?.settlement).toBeUndefined();
+    expect(world.npcs.size).toBe(0);
   });
 });
 

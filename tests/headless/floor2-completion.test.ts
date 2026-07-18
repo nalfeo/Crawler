@@ -10,6 +10,7 @@ import {
 } from '../../src/game/floor2Scenario.js';
 import { resolveFloor2SettlementAnchor } from '../../src/core/floor2-settlement-anchor.js';
 import { AIState } from '../../src/game/ai/types.js';
+import { FLOOR2_QUARTERMASTER_ARCHETYPE_ID } from '../../src/shared/data/shop-archetypes.js';
 
 describe('Floor 2 headless completion', () => {
   it('starts direct Floor 2 headless runs at level 5 with the charm equipped', async () => {
@@ -65,6 +66,46 @@ describe('Floor 2 headless completion', () => {
       reason: 'Heading to the Floor 2 settlement',
     });
   });
+
+  it('boots exact-one Quartermaster plus 1-2 other shops in stressed real-pipeline layouts', async () => {
+    const cases = [
+      { seed: 6, expectedRooms: 2, expectedShops: 3 },
+      { seed: 1, expectedRooms: 3, expectedShops: 3 },
+    ] as const;
+
+    for (const { seed, expectedRooms, expectedShops } of cases) {
+      let observed:
+        | { roomCount: number; shopIds: readonly string[]; quartermasterCount: number }
+        | undefined;
+      await runHeadless(new BehaviorTreeAI({ seed }), {
+        seed,
+        floorId: 'floor2',
+        maxFrames: 1,
+        onFinish: (world) => {
+          const settlement = world.floorExtendedState?.settlement;
+          observed = {
+            roomCount: settlement?.settlementRoomIds.length ?? 0,
+            shopIds: settlement?.shops.map((shop) => shop.archetypeId) ?? [],
+            quartermasterCount:
+              settlement?.shops.filter(
+                (shop) => shop.archetypeId === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+              ).length ?? 0,
+          };
+        },
+      });
+
+      expect(observed).toMatchObject({
+        roomCount: expectedRooms,
+        quartermasterCount: 1,
+      });
+      expect(observed?.shopIds).toHaveLength(expectedShops);
+      expect(
+        observed?.shopIds.filter(
+          (archetypeId) => archetypeId !== FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+        ),
+      ).toHaveLength(expectedShops - 1);
+    }
+  }, 180_000);
 
   it('exercises floor 2 den-progress and boss-targeting flow without win gating', async () => {
     const stats = await runHeadless(new BehaviorTreeAI({ seed: 77 }), {
