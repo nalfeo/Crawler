@@ -75,6 +75,7 @@ function mockInstance() {
     timerMs: 1000,
     committedGeometry: { kind: 'circle', x: 40, y: 40, radiusFt: 12 },
     committedTargetEid: 1,
+    committedTargetGeneration: null,
     resolvedCasts: 0,
     announcementsEmitted: 1,
     registrationToken: 1,

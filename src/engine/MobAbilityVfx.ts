@@ -2,23 +2,24 @@
  * Mob-ability VFX renderer — the procedural presentation layer for Queen Mab's
  * Verdigris Glamour (and future generic mob abilities).
  *
- * It is a PURE CONSUMER of committed public state:
+ * Reads from committed public state:
  *   - `world.mobAbilities.cues` — the telegraph cue rebuilt each tick by the
  *     core executor (position/geometry locked at telegraph start, never tracked
  *     after). This renderer only ever reads that committed geometry, so the
  *     drawn danger footprint can never disagree with the resolution hitbox.
- *   - `world.mobAbilities.byEntity[*].resolvedCasts` — used only to detect the
- *     resolution frame so the burst fires once per cast.
- *   - `world.statusEffectsByEntity` — Tarnished indicator for any entity carrying
- *     a `mob-ability:`-sourced effect.
+ *   - `world.mobAbilities.pendingBursts` — a presentation-event queue drained
+ *     by this renderer via `shift()`. This is the single intentional write-back
+ *     into `world`: the runtime enqueues committed geometry here at resolution
+ *     and the renderer consumes (empties) the queue each tick so each burst
+ *     fires exactly once per cast.
+ *   - `world.statusEffectsByEntity` — Tarnished indicator for any entity
+ *     carrying a `mob-ability:`-sourced effect.
  *
  * Every required visual state is procedural (no generated art, no textures):
  * cast-start cue, locked hostile-red telegraph circle with the exact 12ft
  * footprint, a countdown/anticipation fill, a resolution burst with gratuitous
  * particles, a persistent Tarnished indicator, and a cleanup/expiry poof. The
  * announcement itself is rendered by `HudAnnouncementBanner`.
- *
- * No simulation ownership: this module never writes back into `world`.
  */
 import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';

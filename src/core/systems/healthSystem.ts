@@ -18,15 +18,16 @@ export function healthSystem(world: GameWorld): void {
     const currentHealth = health.current[eid] ?? 0;
 
     if (currentHealth <= 0) {
+      // Clear status-effect sidecar for every dead entity so that Tarnished
+      // indicators and other debuffs don't persist through the corpse linger.
+      // This must run before the DeathTimer early-return so entities with a
+      // linger timer are also cleaned up.
+      world.statusEffectsByEntity.delete(eid);
+
       // Skip entities with DeathTimer — they're handled by deathTimerSystem
       if (hasComponent(world.ecs, eid, DeathTimer)) {
         continue;
       }
-
-      // Dead entities must not retain status effects (including owned
-      // mob-ability debuffs) after the death transition. Player death keeps the
-      // entity around for game-over state, so clear the sidecar explicitly here.
-      world.statusEffectsByEntity.delete(eid);
 
       if (hasComponent(world.ecs, eid, Player)) {
         world.state = 'game_over';
