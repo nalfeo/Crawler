@@ -402,8 +402,9 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
   let closeApplied = false;
   let closeRequestError = null;
 
-  // Helper: best-effort rollback of a committed close by reopening and removing the repair label.
-  // Only called after closeApplied and labelApplied are in their final states.
+  // Helper: rollback of a committed close by reopening and removing the repair label.
+  // Reopen is best-effort (failure logged but suppressed). Label removal propagates
+  // non-404 errors so a stuck label surfaces rather than silently blocking future scans.
   const rollbackClose = async () => {
     if (closeApplied) {
       try {
@@ -413,11 +414,7 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
       }
     }
     if (labelApplied) {
-      try {
-        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
-      } catch (_) {
-        /* best-effort label removal */
-      }
+      await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
     }
   };
 
@@ -434,6 +431,15 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
         throw error;
       }
     } catch (observationError) {
+      // The close did not apply: remove the repair label before surfacing the failure
+      // so future scans are not permanently blocked by a stuck marker on an open PR.
+      if (labelApplied) {
+        try {
+          await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+        } catch (_) {
+          /* best-effort: suppress even non-404 since we are already in a definite failure path */
+        }
+      }
       const observationMessage = getErrorMessage(observationError);
       throw new Error(
         `close operation failed for PR #${pr.number}: ${getErrorMessage(error)} (observation: ${observationMessage})`,
@@ -516,8 +522,8 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
     if (labelApplied) {
       try {
         await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
-      } catch (_) {
-        /* best-effort label removal during rollback — does not block the error surface */
+      } catch (rollbackError) {
+        rollbackErrors.push(new Error(`label cleanup failed: ${getErrorMessage(rollbackError)}`));
       }
     }
     if (rollbackErrors.length > 0) {
@@ -626,11 +632,17 @@ function createApi({ token, owner, repo }) {
       }
     },
     removePrLabel: async (pullNumber, labelName) => {
-      await request(
-        token,
-        `/repos/${owner}/${repo}/issues/${pullNumber}/labels/${encodeURIComponent(labelName)}`,
-        { method: 'DELETE' },
-      ).catch(() => {});
+      try {
+        await request(
+          token,
+          `/repos/${owner}/${repo}/issues/${pullNumber}/labels/${encodeURIComponent(labelName)}`,
+          { method: 'DELETE' },
+        );
+      } catch (removeError) {
+        if (removeError?.status !== 404) {
+          throw removeError;
+        }
+      }
     },
   };
 }

@@ -1434,6 +1434,124 @@ test('repair label is added before close and removed on rollback', async () => {
   );
 });
 
+test('close failure removes the repair label before throwing so the PR is not permanently stuck', async () => {
+  // Default harness: close throws and the ambiguity check sees the PR is still open → definite failure.
+  const harness = createHarness({
+    updatePullStateErrors: new Map([['42:closed', new Error('close rejected')]]),
+  });
+
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    /Failed to repair 1 empty Copilot draft PR shell/,
+  );
+
+  assert.ok(
+    harness.calls.some(
+      ([name, , label]) => name === 'addPrLabel' && label === EMPTY_DRAFT_REPAIR_LABEL,
+    ),
+    'addPrLabel must have been called before the close attempt',
+  );
+  assert.ok(
+    harness.calls.some(
+      ([name, , label]) => name === 'removePrLabel' && label === EMPTY_DRAFT_REPAIR_LABEL,
+    ),
+    'removePrLabel must be called on definite close failure to unstick the PR',
+  );
+  // PR must not retain the label so a future scan can retry
+  const prAfterClose = harness.state.pulls.find((p) => p.number === 42);
+  assert.ok(
+    !prAfterClose.labels?.some((l) => l.name === EMPTY_DRAFT_REPAIR_LABEL),
+    'PR must not retain the repair label after a definite close failure',
+  );
+});
+
+test('non-404 label removal failure during issue-mutation rollback is aggregated in the AggregateError', async () => {
+  // removeIssueAssignees fails → rollback path runs → removePrLabel fails with non-404
+  const harness = createHarness({
+    replacePlan: [new Error('remove failed')],
+  });
+  const labelError = Object.assign(new Error('label API 500'), { status: 500 });
+  harness.api.removePrLabel = async (pullNumber, labelName) => {
+    harness.calls.push(['removePrLabel', pullNumber, labelName]);
+    throw labelError;
+  };
+
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    (err) => {
+      // Outer wrapper
+      assert.match(err.message, /Failed to repair 1 empty Copilot draft PR shell/);
+      // The AggregateError causes chain must include the label cleanup failure
+      const causes = [err, ...(err.errors ?? [])];
+      const causeMessages = causes.flatMap((e) => [
+        e?.message ?? '',
+        ...(e?.errors ?? []).map((ie) => ie?.message ?? ''),
+      ]);
+      assert.ok(
+        causeMessages.some((m) => m.includes('label cleanup failed')),
+        `expected "label cleanup failed" in cause chain; found: ${JSON.stringify(causeMessages)}`,
+      );
+      return true;
+    },
+  );
+
+  assert.ok(
+    harness.calls.some(([name]) => name === 'removePrLabel'),
+    'removePrLabel must be attempted during rollback',
+  );
+});
+
+test('non-404 label removal failure during post-close drift rollback surfaces as repair failure not silent skip', async () => {
+  // Post-close drift: initial+confirmation reads show 0 files, post-close read shows 3 (drift).
+  // removePrLabel throws a non-404 error → rollbackClose propagates → repair fails.
+  const harness = createHarness({
+    changedFilesByPull: new Map([[42, [0, 0, 3]]]),
+  });
+  const labelError = Object.assign(new Error('label API 500'), { status: 500 });
+  harness.api.removePrLabel = async (pullNumber, labelName) => {
+    harness.calls.push(['removePrLabel', pullNumber, labelName]);
+    throw labelError;
+  };
+
+  await assert.rejects(
+    runPrReadyReviewerGuard({
+      repository: REPOSITORY,
+      reviewerLoginRaw: 'nalfeo',
+      eventName: 'schedule',
+      payloadAction: undefined,
+      triggeringPullNumber: undefined,
+      api: harness.api,
+      log: harness.log,
+      now: NOW,
+    }),
+    /Failed to repair 1 empty Copilot draft PR shell/,
+    'non-404 label removal failure must propagate as a repair failure rather than a silent skip',
+  );
+
+  assert.ok(
+    harness.calls.some(([name]) => name === 'removePrLabel'),
+    'removePrLabel must have been attempted during drift rollback',
+  );
+});
+
 test('post-close changed-files drift causes reopen and skip without issue writes', async () => {
   // Simulate: initial read = 0 files, confirmation = 0 files, then after close a
   // concurrent push lands and the post-close read shows 3 changed files.
