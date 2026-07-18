@@ -244,48 +244,13 @@
           "maxItems": 7,
           "uniqueItems": true,
           "prefixItems": [
-            {
-              "allOf": [
-                { "$ref": "#/$defs/releaseFlag" },
-                { "properties": { "name": { "const": "floor2EquipmentRegistry" } } }
-              ]
-            },
-            {
-              "allOf": [
-                { "$ref": "#/$defs/releaseFlag" },
-                { "properties": { "name": { "const": "floor2EquipmentCatalog" } } }
-              ]
-            },
-            {
-              "allOf": [
-                { "$ref": "#/$defs/releaseFlag" },
-                { "properties": { "name": { "const": "floor2EquipmentRewards" } } }
-              ]
-            },
-            {
-              "allOf": [
-                { "$ref": "#/$defs/releaseFlag" },
-                { "properties": { "name": { "const": "floor2EquipmentEconomy" } } }
-              ]
-            },
-            {
-              "allOf": [
-                { "$ref": "#/$defs/releaseFlag" },
-                { "properties": { "name": { "const": "floor2EquipmentUx" } } }
-              ]
-            },
-            {
-              "allOf": [
-                { "$ref": "#/$defs/releaseFlag" },
-                { "properties": { "name": { "const": "floor2EquipmentWorld" } } }
-              ]
-            },
-            {
-              "allOf": [
-                { "$ref": "#/$defs/releaseFlag" },
-                { "properties": { "name": { "const": "floor2EquipmentAiMaintenance" } } }
-              ]
-            }
+            { "allOf": [{ "$ref": "#/$defs/releaseFlag" }, { "properties": { "name": { "const": "floor2EquipmentRegistry" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/releaseFlag" }, { "properties": { "name": { "const": "floor2EquipmentCatalog" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/releaseFlag" }, { "properties": { "name": { "const": "floor2EquipmentRewards" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/releaseFlag" }, { "properties": { "name": { "const": "floor2EquipmentEconomy" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/releaseFlag" }, { "properties": { "name": { "const": "floor2EquipmentUx" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/releaseFlag" }, { "properties": { "name": { "const": "floor2EquipmentWorld" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/releaseFlag" }, { "properties": { "name": { "const": "floor2EquipmentAiMaintenance" } } }] }
           ],
           "items": false
         }
