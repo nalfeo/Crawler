@@ -14,7 +14,7 @@ sprite-pipeline
 
 ## Apples
 
-1🍎 exact — pure art task: brief authoring for the gearwork-locket Floor 2
+1 apple (exact) — pure art task: brief authoring for the gearwork-locket Floor 2
 equipment icon. No gameplay code changes.
 
 ## What Was Done
@@ -45,8 +45,7 @@ Handled issue #1380 for the `gearwork-locket` Floor 2 equipment accessory icon:
 
 - The sprite has not yet been generated (requires Azure AI via GitHub Actions).
 - When CI generates and approves a variant, the `sprites:checkin` step adds
-  the entry to `public/assets/generated/manifest.json` with `briefId:
-'gearwork-locket'`.
+  the entry to `public/assets/generated/manifest.json` with `briefId: 'gearwork-locket'`.
 - After check-in, wiring the sprite to the Floor 2 equipment system
   (`gearwork-locket` item def + `equipmentDefs.ts` entry) is a separate task
   under the Floor 2 Equipment Epic (issue #1303).
@@ -59,8 +58,8 @@ Handled issue #1380 for the `gearwork-locket` Floor 2 equipment accessory icon:
   icon conventions used by other accessory items (`merchants-stained-charm`).
 - **`allowMainTouch: true`**: standard for pendant/chain accessories since the
   chain end naturally reaches the image border.
-- **`minVariations: 5`**: slightly above the item-type default of 3, giving the
-  judge loop more headroom to pick a high-quality silhouette.
+- **`minVariations: 3`**: matches the three explicit seeded variations and the
+  item-type default.
 - **Mechanical/clockwork aesthetic**: derived from "Gearwork" in the name and
   the Floor 2 industrial dungeon theme. Three explicit variations cover
   brass, dark-iron, and copper colorways.
