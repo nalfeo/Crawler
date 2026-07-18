@@ -51,9 +51,7 @@ function makeFloor2ExtendedState(killsByFamily?: Map<string, number>) {
       presentFamilies: [] as never[],
       contestedResource: 'gold-veins' as never,
       betrayerFlag: false,
-      ...(killsByFamily !== undefined
-        ? { trashKillsByFamily: killsByFamily as never }
-        : {}),
+      ...(killsByFamily !== undefined ? { trashKillsByFamily: killsByFamily as never } : {}),
     },
   };
 }
