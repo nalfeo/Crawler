@@ -2077,6 +2077,17 @@
       "type": "item",
       "contentHash": "856b6b7385148d4bf461a2b9de301105eac6660106add6809b44262726bb2ed7"
     },
+    "echo-bell-placeholder": {
+      "briefId": "echo-bell",
+      "spriteName": "echo-bell",
+      "assetPath": "generated/echo-bell-placeholder.png",
+      "approvedAt": "2026-07-18T03:05:06.443Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "ectoplasm-glob-placeholder": {
       "briefId": "ectoplasm-glob",
       "spriteName": "ectoplasm-glob",
