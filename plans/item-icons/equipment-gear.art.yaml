@@ -156,6 +156,15 @@ assets:
       kind: sprite-registry
       id: signet-of-focus
 
+  - id: batfolk-hood
+    type: item
+    label: 'Batfolk Hood'
+    brief: 'Batfolk Hood — a single centered headgear icon on a transparent background. Dark membrane-like hood with twin bat-ear protrusions, Floor 2 batfolk craftsmanship. Charcoal or midnight-purple coloring with tarnished metal accent rivets. Silhouette reads clearly as a bat-eared helmet hood at small scale.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: batfolk-hood
+
   - id: surveyor-map
     type: item
     label: 'Surveyor Map'
