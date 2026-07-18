@@ -442,7 +442,7 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(GENERATED_KEY_BY_NPC_DEF).toEqual(expectedByDef);
   });
 
-  it('loads and preloads the shipped Floor 2 tower-spear runtime key from the real manifest', async () => {
+  it('loads and preloads the shipped Floor 2 tower-spear runtime key from the real manifest', () => {
     if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
       return;
     }
@@ -469,7 +469,7 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     ).toBe(true);
   });
 
-  it('loads and preloads the shipped Floor 2 meteor-hammer runtime key from the real manifest', async () => {
+  it('loads and preloads the shipped Floor 2 meteor-hammer runtime key from the real manifest', () => {
     if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
       return;
     }
