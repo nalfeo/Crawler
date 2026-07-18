@@ -19,6 +19,8 @@ description: |
 # and VLM judge — all inherited from data/sprite-types/weapon.json.
 # Chain flail hangs vertically (haft bottom → chain → ball top), so the
 # default vertical sensor is correct; no orientation override needed.
+# Each variation is an independent design alternative — the generator
+# produces one of these per applicable variant slot, not combinations.
 variations:
   - ball replaced by a barbed pear-shaped iron weight instead of a round sphere
   - double-link chain (two side-by-side chains) connecting haft to ball

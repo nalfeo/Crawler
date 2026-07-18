@@ -11,7 +11,10 @@ Authored `briefs/weapons/chain-flail.yaml` for the Floor 2 bludgeon production w
 
 ## Systems touched
 
-- `briefs/weapons/chain-flail.yaml` — new weapon brief (pure art asset definition)
+None — this is a pure art/brief task. No engine systems were modified. Files changed:
+
+- `briefs/weapons/chain-flail.yaml` — new weapon brief (art asset definition, no runtime code)
+- `docs/knowledge/handoffs/2026-07-18-chain-flail-brief.md` — this handoff
 
 ## Design decisions
 
