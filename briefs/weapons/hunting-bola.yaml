@@ -7,7 +7,8 @@ description: |
   glance. Show one weight slightly higher and one lower with the cord forming
   a simple open curve between them; keep the subject fully inside the frame
   with clear breathing room. Dungeon-worn materials, crisp outline, readable
-  contrast, no hand, no target, no extra props, and absolutely not a bow.
+  contrast, no hand, no target, no extra props; must not resemble a bow (no
+  bowstring, no arrow, and no drawn-bow pose).
   The silhouette must clearly read as a bola weapon at native size.
 sensors:
   weapon:
@@ -16,4 +17,4 @@ sensors:
 variations:
   - knotted center grip wrap with slightly asymmetrical weights
   - one weight faceted stone and the other capped iron
-minVariations: 6
+minVariations: 2

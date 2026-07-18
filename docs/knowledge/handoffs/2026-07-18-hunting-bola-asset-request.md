@@ -18,9 +18,9 @@ sprite-pipeline, sprite-workflow
 
 ## Summary
 
-- Added `/home/runner/work/Crawler/Crawler/briefs/weapons/hunting-bola.yaml` as the canonical bare-key sprite brief for the `hunting-bola` asset request.
+- Added `briefs/weapons/hunting-bola.yaml` as the canonical bare-key sprite brief for the `hunting-bola` asset request.
 - Kept the runtime identity bare as `hunting-bola` so future approval/check-in can preserve the requested stable key without touching item resolver code or gameplay catalogs.
-- Treated the issue prose's "bow weapon" phrase as a copy/paste typo and biased the brief toward an unmistakable bola silhouette (`absolutely not a bow`) because the issue title/name/runtime key all identify the asset as `hunting-bola`.
+- Treated the issue prose's "bow weapon" phrase as a copy/paste typo and biased the brief toward an unmistakable bola silhouette with explicit bow-shape exclusions because the issue title/name/runtime key all identify the asset as `hunting-bola`.
 - Unshallowed the clone (`git fetch --unshallow origin && git fetch origin main:refs/remotes/origin/main`) so `verify:fast` would stop failing on missing historical git objects.
 
 ## Files touched
