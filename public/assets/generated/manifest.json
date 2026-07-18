@@ -7584,6 +7584,18 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "compass-charm-placeholder": {
+      "briefId": "compass-charm",
+      "spriteName": "compass-charm",
+      "assetPath": "generated/compass-charm-placeholder.png",
+      "approvedAt": "2026-07-18T04:15:33.306Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
     }
   }
 }
