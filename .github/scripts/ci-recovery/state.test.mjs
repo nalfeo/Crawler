@@ -722,10 +722,9 @@ test('shouldResolveThread accepts latest trusted commit URL marker on head linea
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
 });
 
-test('shouldResolveThread auto-resolves outdated thread without any marker (deterministic non-applicability)', () => {
-  // GitHub marks a thread isOutdated when the specific lines it referenced have
-  // changed since the review was posted.  This is "deterministic non-applicability"
-  // per ADR 0058 DEC-008 and must not block recovery indefinitely.
+test('shouldResolveThread does not auto-resolve outdated thread without a trusted marker', () => {
+  // isOutdated only means GitHub can no longer map the thread to the current diff.
+  // It does NOT prove the underlying concern is resolved (ADR 0058 DEC-008).
   const thread = {
     isOutdated: true,
     comments: {
@@ -738,12 +737,12 @@ test('shouldResolveThread auto-resolves outdated thread without any marker (dete
       ],
     },
   };
-  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
 });
 
-test('shouldResolveThread auto-resolves outdated thread even when last comment is untrusted reviewer', () => {
-  // isOutdated takes precedence: the referenced code changed, making the thread
-  // non-applicable regardless of comment authorship.
+test('shouldResolveThread does not auto-resolve outdated thread with substantive reviewer concern', () => {
+  // An outdated thread whose latest comment expresses ongoing concern must remain
+  // blocked — isOutdated alone is not "deterministic non-applicability."
   const thread = {
     isOutdated: true,
     comments: {
@@ -752,6 +751,28 @@ test('shouldResolveThread auto-resolves outdated thread even when last comment i
           body: 'Still concerned about this.',
           authorAssociation: 'NONE',
           author: { login: 'external-reviewer' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('shouldResolveThread resolves outdated thread when latest comment is a trusted marker', () => {
+  // An outdated thread can still be resolved by a trusted ✅ Addressed marker.
+  const thread = {
+    isOutdated: true,
+    comments: {
+      nodes: [
+        {
+          body: 'Still concerned about this.',
+          authorAssociation: 'NONE',
+          author: { login: 'external-reviewer' },
+        },
+        {
+          body: '✅ Addressed in abc123456789abcdef: concern addressed in refactor.',
+          authorAssociation: 'MEMBER',
+          author: { login: 'trusted-bot' },
         },
       ],
     },
@@ -773,6 +794,64 @@ test('shouldResolveThread does not auto-resolve non-outdated thread without mark
     },
   };
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('review-thread blocker fingerprint is stable when thread line changes from a number to null', () => {
+  // Regression: when GitHub ages a review thread, `line` changes from a valid
+  // number (e.g. 93) to null.  If the blocker object included `line`,
+  // normalizeBlockers() would include the field for numeric values (Number.isFinite)
+  // but omit it for null, producing a different JSON → different fingerprint → reset
+  // of the attempt counter, causing a perpetual retry loop.
+  //
+  // The fix in reconcile.mjs intentionally omits `line` from the review-thread
+  // blocker object.  This test guards that invariant: the fingerprint for a
+  // review-thread blocker must be equal whether the thread's line is 93 or null.
+  const baseThread = {
+    id: 'PRRT_kwDOSvo2Ms6R-test',
+    path: 'src/core/combat.ts',
+    comments: {
+      nodes: [
+        {
+          id: 'comment-1',
+          body: 'This code path is not covered by tests.',
+          author: { login: 'copilot-pull-request-reviewer' },
+          authorAssociation: 'NONE',
+          url: 'https://github.com/owner/repo/pull/1/files#r1',
+        },
+      ],
+    },
+  };
+  const threadRoot = baseThread.comments.nodes[0];
+
+  // Build the blocker exactly as reconcile.mjs does — no `line` field.
+  function makeThreadBlocker() {
+    return {
+      kind: 'review-thread',
+      id: reviewThreadBlockerId(baseThread),
+      threadId: baseThread.id,
+      path: baseThread.path,
+      summary: `${threadRoot.author.login}: ${threadRoot.body.slice(0, 500)}`,
+      url: threadRoot.url,
+    };
+  }
+
+  // With the fix applied (no `line` in the blocker), fingerprints are identical
+  // regardless of what line the source thread reported.
+  const fp1 = blockerFingerprint([makeThreadBlocker()]);
+  const fp2 = blockerFingerprint([makeThreadBlocker()]);
+  assert.equal(fp1, fp2, 'fingerprint must be stable across line: 93 → null transition');
+
+  // Confirm the regression: including `line` in the blocker object DOES cause
+  // a different fingerprint when the value changes from 93 to null.
+  const blockerWithNumericLine = { ...makeThreadBlocker(), line: 93 };
+  const blockerWithNullLine = { ...makeThreadBlocker(), line: null };
+  const fpWithLine = blockerFingerprint([blockerWithNumericLine]);
+  const fpWithNullLine = blockerFingerprint([blockerWithNullLine]);
+  assert.notEqual(
+    fpWithLine,
+    fpWithNullLine,
+    'sanity check: including line in a blocker causes fingerprint instability (regression scenario)',
+  );
 });
 
 test('collapseCheckRunsByName keeps latest attempt by id', () => {

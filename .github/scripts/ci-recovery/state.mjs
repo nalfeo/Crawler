@@ -447,22 +447,23 @@ function isTrustedComment(comment) {
 /**
  * Returns true when the thread can be deterministically auto-resolved.
  *
- * Two cases qualify (ADR 0058 DEC-008 — "marker-confirmed fixes or deterministic
- * non-applicability"):
+ * ADR 0058 DEC-008 permits auto-resolution only for "marker-confirmed fixes or
+ * deterministic non-applicability."  The single qualifying case here is a trusted
+ * `✅ Addressed in <sha>` marker naming the current head or a reachable ancestor:
  *
- * 1. **Outdated thread** (`isOutdated: true`): GitHub marks a thread outdated
- *    when the specific code lines it referenced have changed since the review
- *    was posted.  This is deterministic non-applicability — the original comment
- *    no longer applies to the current diff.  The reviewer may re-comment on the
- *    new code if the concern persists.
+ * - The last comment must be from a trusted author (OWNER, MEMBER, COLLABORATOR,
+ *   or a trusted-bot login).
+ * - The body must contain "✅ Addressed in <sha>" where <sha> is the current head
+ *   (full or ≥7-char prefix) or a known reachable ancestor.
+ * - A reopened thread with later reviewer feedback keeps returning false even if
+ *   an earlier comment had a valid marker.
  *
- * 2. **Trusted marker**: the last comment is from a trusted author and contains
- *    "✅ Addressed in <sha>" naming the current head (full or ≥7-char prefix)
- *    or a known ancestor.  A reopened thread with later reviewer feedback keeps
- *    returning false even if an earlier comment had a valid marker.
+ * Note: `isOutdated: true` means GitHub can no longer map the thread to the current
+ * diff, but it does NOT prove the underlying concern is resolved.  Outdated threads
+ * without a trusted marker remain as stable blockers (with the `line`-free
+ * fingerprint in reconcile.mjs preventing spurious retry-counter resets).
  */
 export function shouldResolveThread(thread, headSha, reachableCommitShas = null) {
-  if (thread.isOutdated) return true;
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) return false;
   const last = comments[comments.length - 1];
