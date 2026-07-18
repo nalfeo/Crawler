@@ -53,5 +53,14 @@ correct path that matches the repo's current shipped state:
 
 - I attempted to post the required pre-code plan comment directly on issue #1329,
   but GitHub write access is not available in this environment (`gh issue comment
--R nalfeo/Crawler 1329` returned HTTP 403). The exact plan text is preserved in
-  the session transcript and should be reused in the PR description.
+-R nalfeo/Crawler 1329` returned HTTP 403). To keep the PR auditable anyway, the
+  pre-code plan text is copied into the PR review-thread reply on PR #1403.
+- Pre-code plan text preserved for audit:
+  1. Confirm the shipped `baseball-bat-v1` asset/catalog/manifest lineage already
+     exists and matches the issue's requested `equipment/weapon/baseball-bat`
+     weapon icon.
+  2. Take the smallest correct path: add only the missing committed
+     `briefs/weapons/baseball-bat-v1.yaml` source brief for the approved lineage,
+     without regenerating pixels or renaming the runtime asset path.
+  3. Verify the brief loads cleanly, run `npm run verify:fast`, and record a
+     handoff explaining the minimal repair plus the deferred normalization follow-up.
