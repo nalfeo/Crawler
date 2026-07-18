@@ -33,7 +33,7 @@ const EPIC_DIR = resolve(REPO_ROOT, 'docs', 'knowledge', 'epics', 'floor-2-equip
 const PLAN = readFileSync(resolve(EPIC_DIR, 'PLAN.md'), 'utf8');
 const STATE = JSON.parse(readFileSync(resolve(EPIC_DIR, 'epic-state.json'), 'utf8')) as EpicState;
 
-const NOW = new Date('2026-07-17T18:00:00.000Z');
+const NOW = new Date('2026-07-17T19:00:00.000Z');
 
 function cloneState(): EpicState {
   return structuredClone(STATE);
