@@ -3741,9 +3741,11 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
-test('live reconcile task comment includes explicit review-thread reply comment IDs', async (t) => {
-  const reviewCommentId = '3606008324';
-  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+test('live reconcile task comment annotates outdated threads and includes review-thread reply comment IDs', async (t) => {
+  const outdatedReviewCommentId = '3606008324';
+  const freshReviewCommentId = '3606008325';
+  const outdatedThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${outdatedReviewCommentId}`;
+  const freshThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${freshReviewCommentId}`;
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
@@ -3776,19 +3778,37 @@ test('live reconcile task comment includes explicit review-thread reply comment 
       return {
         body: gqlReviewThreads([
           {
-            id: 'thread-review-target',
+            id: 'thread-review-target-outdated',
             isResolved: false,
-            isOutdated: false,
+            isOutdated: true,
             path: 'src/core/mob-abilities/runtime.ts',
             line: 93,
             comments: {
               nodes: [
                 {
-                  id: 'comment-review-target',
+                  id: 'comment-review-target-outdated',
                   body: 'Please resolve in-thread.',
                   author: { login: 'copilot-pull-request-reviewer' },
                   authorAssociation: 'NONE',
-                  url: threadUrl,
+                  url: outdatedThreadUrl,
+                },
+              ],
+            },
+          },
+          {
+            id: 'thread-review-target-fresh',
+            isResolved: false,
+            isOutdated: false,
+            path: 'src/core/mob-abilities/runtime.ts',
+            line: 99,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-review-target-fresh',
+                  body: 'Please resolve in-thread.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: freshThreadUrl,
                 },
               ],
             },
@@ -3829,8 +3849,28 @@ test('live reconcile task comment includes explicit review-thread reply comment 
   );
   assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
   assert.ok(
-    taskCommentCall.body.body.includes(`Reply target comment ID: \`${reviewCommentId}\``),
-    'task comment should include the review-thread reply target comment ID',
+    taskCommentCall.body.body.includes(`Reply target comment ID: \`${outdatedReviewCommentId}\``),
+    'task comment should include the outdated review-thread reply target comment ID',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(`Reply target comment ID: \`${freshReviewCommentId}\``),
+    'task comment should include the fresh review-thread reply target comment ID',
+  );
+  const outdatedThreadLine = taskCommentCall.body.body
+    .split('\n')
+    .find((line) => line.includes('thread-review-target-outdated'));
+  assert.ok(outdatedThreadLine, 'task comment should include the outdated review-thread blocker');
+  assert.ok(
+    outdatedThreadLine.includes('**(outdated — deterministic non-applicability candidate)**'),
+    'outdated review-thread blocker should include the outdated annotation',
+  );
+  const freshThreadLine = taskCommentCall.body.body
+    .split('\n')
+    .find((line) => line.includes('thread-review-target-fresh'));
+  assert.ok(freshThreadLine, 'task comment should include the fresh review-thread blocker');
+  assert.ok(
+    !freshThreadLine.includes('**(outdated — deterministic non-applicability candidate)**'),
+    'fresh review-thread blocker should not include the outdated annotation',
   );
 });
 
