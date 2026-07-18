@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9313f5daf3d2f67f8dd6fed7925898c549bbaca3",
+    "commitDate": "2026-07-18T21:28:24Z",
+    "commitSubject": "feat(art): add war-pick weapon brief for Floor 2 equipment slot (#1520)",
+    "capturedAt": "2026-07-18T22:50:46.374Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29662171600",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/9313f5daf3d2f67f8dd6fed7925898c549bbaca3.json"
+  },
+  {
     "commit": "156a9f11a9bd1212de79fd442e382cbc3e305173",
     "commitDate": "2026-07-18T21:28:01Z",
     "commitSubject": "feat(art): add gearwork-locket sprite brief for Floor 2 equipment icon (#1515)",
