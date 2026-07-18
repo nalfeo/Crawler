@@ -5744,6 +5744,17 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "runed-cuirass-placeholder": {
+      "briefId": "runed-cuirass",
+      "spriteName": "runed-cuirass",
+      "assetPath": "generated/runed-cuirass-placeholder.png",
+      "approvedAt": "2026-07-18T04:08:56.051Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "rusted-scrap-var-0": {
       "briefId": "rusted-scrap",
       "spriteName": "rusted-scrap-var-0",

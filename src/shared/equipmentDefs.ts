@@ -243,6 +243,14 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     weightLb: 15,
   },
   {
+    id: 'runed-cuirass',
+    name: 'Runed Cuirass',
+    slots: ['chest'],
+    statBonuses: { armor: 6, intelligence: 2, constitution: 1 },
+    rarity: 'rare',
+    weightLb: 14,
+  },
+  {
     id: 'travelers-cloak',
     name: "Traveler's Cloak",
     slots: ['back'],
