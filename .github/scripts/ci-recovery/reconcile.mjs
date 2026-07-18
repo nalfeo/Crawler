@@ -75,6 +75,14 @@ const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
+const KNOWN_RECOVERY_REPLY_LOGINS = new Set([
+  'copilot',
+  'copilot[bot]',
+  'app/copilot',
+  'copilot-swe-agent',
+  'copilot-swe-agent[bot]',
+  'app/copilot-swe-agent',
+]);
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -1055,7 +1063,7 @@ for (const thread of unresolvedThreads) {
 //
 // Only set for threads that are NOT already handled by staleAddressedMarkerByThread
 // (those have their own targeted hint) and where the last comment is from a
-// trusted author but carries no ✅ Addressed marker.
+// known recovery identity but carries no ✅ Addressed marker.
 const priorUnresolvedReplyByThread = new Map();
 for (const thread of unresolvedThreads) {
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
@@ -1068,8 +1076,7 @@ for (const thread of unresolvedThreads) {
   // auto-resolution above).
   if (extractAddressedMarkerSha(last?.body)) continue;
   const authorLogin = String(last?.author?.login ?? '').toLowerCase();
-  const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
-  if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
+  if (KNOWN_RECOVERY_REPLY_LOGINS.has(authorLogin)) {
     priorUnresolvedReplyByThread.set(thread.id, String(last?.body ?? '').slice(0, 300));
   }
 }

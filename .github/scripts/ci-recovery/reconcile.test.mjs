@@ -33,6 +33,10 @@ const LEASE_ID = 'test-lease-id';
 const LABEL = `ci-owner-pr-${PR_NUM}`;
 const TOKEN = 'x-test-token';
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Minimal open PR fixture. */
 function basePr() {
   return {
@@ -6307,6 +6311,13 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
     /do not re-post an identical reply/i,
     'task body must instruct the agent not to duplicate the prior reply',
   );
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(
+      String.raw`\[Prior recovery reply \(no marker posted — do not re-post an identical reply\): ${escapeRegex(priorBlockedReply)}\]`,
+    ),
+    'task body must include the prior blocked reply text inside the blocker hint',
+  );
 
   // The stale-marker hint must NOT appear (prior reply, not a stale marker).
   assert.doesNotMatch(
@@ -6320,5 +6331,118 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
     taskCommentCall.body.body,
     new RegExp(originalConcern.slice(0, 40)),
     'task body must still include the original reviewer concern',
+  );
+});
+
+test('prior-reply hint ignores non-recovery collaborator follow-up comments', async (t) => {
+  const threadId = 'PRRT_collaborator_followup_thread';
+  const originalConcern = 'Reviewer still wants an external follow-up before merge.';
+  const collaboratorFollowup =
+    'I agree this still needs follow-up, but I am not the recovery agent for this thread.';
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: false,
+            path: '.github/scripts/ci-recovery/reconcile.mjs',
+            line: 1072,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_reviewer_collab',
+                  body: originalConcern,
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                },
+                {
+                  id: 'PRIC_non_recovery_followup',
+                  body: collaboratorFollowup,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'trusted-maintainer' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1004 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the unresolved thread');
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(
+      String.raw`1\. \*\*review-thread\*\* [^\n]+\n   ${escapeRegex(`copilot-pull-request-reviewer: ${originalConcern}`)}`,
+    ),
+    'task body must render the blocker with the original reviewer summary and no prior-reply prefix',
+  );
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(originalConcern.slice(0, 40)),
+    'task body must still include the original reviewer concern',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    new RegExp(escapeRegex(collaboratorFollowup)),
+    'task body must not surface collaborator follow-up text inside the blocker hint',
   );
 });
