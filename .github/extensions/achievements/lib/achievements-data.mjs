@@ -195,7 +195,13 @@ export function parseAchievementCatalog(rawCatalog) {
       throw new Error(`achievements[${index}].reward must be an object with a string type`);
     }
   }
-  return rawCatalog.map(removeUnlockCriteriaDuplication);
+  return rawCatalog.map((entry) => {
+    const achievement = removeUnlockCriteriaDuplication(entry);
+    return {
+      ...achievement,
+      scope: achievement.scope === 'current_run' ? 'current_run' : 'floor',
+    };
+  });
 }
 
 /**

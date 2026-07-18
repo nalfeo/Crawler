@@ -10,6 +10,7 @@ import {
   isAchievementClaimed,
   unlockAchievement,
 } from '../../src/game/systems/achievementSystem.js';
+import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -109,6 +110,58 @@ describe('achievementSystem', () => {
     expect(world.achievements.unlockedIds.has('floor1-clear')).toBe(true);
     expect(world.achievements.unlockedIds.has('broke-speedrun')).toBe(true);
     expect(world.floorScenario?.runSummary?.outcome).toBe('cleared_floor');
+  });
+
+  it('carries run-global achievement facts across floor transitions and resets on a new run', () => {
+    const floor1 = createTestWorld({ seed: 42 });
+    const floor1Player = spawnPlayer(floor1, 0, 0);
+    initializeFloor1Scenario(floor1, floor1Player);
+
+    const objective = floor1.floorScenario!.objective;
+    objective.ratsKilled = 5;
+    objective.slimesKilled = 4;
+    objective.safeRoomDiscovered = true;
+    objective.staircaseSpawned = true;
+    objective.staircaseUnlocked = true;
+    objective.staircaseLocked = false;
+    floor1.state = 'playing';
+
+    floor1.questLog.set(
+      FLOOR1_FIND_WELCOME_QUEST_ID,
+      completeQuestState(FLOOR1_FIND_WELCOME_QUEST_ID),
+    );
+
+    expect(confirmFloor1StairDescend(floor1, floor1Player)).toBe(true);
+    expect(floor1.achievements.runGlobal.numberFacts.totalKills).toBe(9);
+    expect(floor1.achievements.runGlobal.completedQuestIds.has(FLOOR1_FIND_WELCOME_QUEST_ID)).toBe(
+      true,
+    );
+
+    const carryover = capturePlayerCarryover(floor1, floor1Player);
+    const floor2 = createTestWorld({ seed: 42, floor: 2 });
+    const floor2Player = spawnPlayer(floor2, 0, 0);
+    restorePlayerCarryover(floor2, floor2Player, carryover);
+
+    expect(floor2.achievements.runGlobal.numberFacts.totalKills).toBe(9);
+    expect(floor2.achievements.runGlobal.booleanFacts.staircaseDiscovered).toBe(true);
+    expect(floor2.achievements.runGlobal.completedQuestIds.has(FLOOR1_FIND_WELCOME_QUEST_ID)).toBe(
+      true,
+    );
+
+    const freshRun = createTestWorld({ seed: 42, floor: 2 });
+    expect(freshRun.achievements.runGlobal.numberFacts.totalKills).toBe(0);
+    expect(freshRun.achievements.runGlobal.completedQuestIds.size).toBe(0);
+  });
+
+  it('does not evaluate floor1 catalog entries on floor2', () => {
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    spawnPlayer(world, 0, 0);
+    world.achievements.runGlobal.numberFacts.totalKills = 999;
+    world.achievements.runGlobal.booleanFacts.staircaseUnlocked = true;
+
+    achievementSystem(world);
+
+    expect(world.achievements.unlockedIds.size).toBe(0);
   });
 });
 
