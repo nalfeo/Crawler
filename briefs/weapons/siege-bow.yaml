@@ -1,0 +1,26 @@
+type: weapon
+name: siege-bow
+description: |
+  A massive, heavy-duty siege bow held vertically, limb tips at the top,
+  grip straight down. Oversized recurved limbs — much thicker and wider than
+  a standard bow — reinforced with iron bands or straps. A thick bowstring
+  under tension between the limbs. Worn dark wood with iron or steel
+  reinforcement bands near the grip and at the limb tips; steel-grey metal
+  fittings with a subtle highlight; deep brown wood grain. No arrows, no
+  glow, no enchantment. The silhouette must read as an imposing, siege-scale
+  bow at a glance and clearly not be a sword or crossbow.
+# Siege-bow is a vertical weapon (grip at bottom, limb tips at top),
+# inheriting the weapon-default orientation. The oversized limbs make it
+# wider than a standard bow, so we relax the center tolerance slightly.
+sensors:
+  weapon:
+    orientation: vertical
+    diagonalToleranceDeg: 5
+  anchor:
+    derive: true
+    bandRows: 4
+    centerToleranceX: 5
+variations:
+  - extra-wide recurved limbs with visible wood lamination
+  - iron-reinforced limbs with bolted metal plates along the length
+minVariations: 8
