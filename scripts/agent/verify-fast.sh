@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Enable monitor mode: every background (&) job runs in its own process group.
+# This lets cleanup_parallel send SIGTERM to the entire group (e.g. npx + its
+# spawned node/tsc/eslint children) rather than just the top-level PID.
+set -m
 
 run_with_timeout() {
   local timeout_seconds="$1"
@@ -76,8 +80,13 @@ TSC_PID=$!
 ESLINT_PID=$!
 
 cleanup_parallel() {
-  kill "$TSC_PID" "$ESLINT_PID" 2>/dev/null || true
-  wait "$TSC_PID" "$ESLINT_PID" 2>/dev/null || true
+  # Kill the entire process group for each job (negative PID) so child processes
+  # (e.g. npx → node → tsc/eslint) cannot outlive their launcher.
+  # Works because set -m gives every background job its own process group whose
+  # PGID equals the job leader's PID.
+  kill -- -"$TSC_PID" -"$ESLINT_PID" 2>/dev/null || true
+  # No blocking wait in the EXIT trap — the shell exits immediately after and
+  # the OS reaps any remaining children.
 }
 trap cleanup_parallel EXIT
 trap 'exit 130' INT

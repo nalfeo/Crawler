@@ -115,7 +115,8 @@ describe('verify-fast full-project typecheck', () => {
       const result = runStaticVerifier(fixture);
 
       expect(result.status).not.toBe(0);
-      expect(`${result.stdout}\n${result.stderr}`).toContain("Property 'reason' does not exist");
+      // Assert on the stable TS error code; the message text varies across TS versions.
+      expect(`${result.stdout}\n${result.stderr}`).toMatch(/TS2339/);
     },
     30_000,
   );
