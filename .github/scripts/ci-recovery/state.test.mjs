@@ -818,6 +818,37 @@ test('shouldResolveThread rejects "✅ Addressed in <wrong-sha>" — does not fa
   assert.equal(shouldResolveThread(thread, 'abc12345678'), false);
 });
 
+test('hasBareAddressedMarker returns false when body contains both "✅ Addressed in <sha>" and bare marker', () => {
+  // Combined body: a wrong-SHA "in" marker followed by a separate bare marker.
+  // The "in <sha>" form is present anywhere in the body, so the bare path must not fire.
+  assert.equal(
+    hasBareAddressedMarker(
+      '✅ Addressed in wrongsha123: attempted fix\n✅ Addressed: also not applicable',
+    ),
+    false,
+  );
+  assert.equal(
+    hasBareAddressedMarker('Some text. ✅ Addressed in abc1234: note\n✅ Addressed: bare form'),
+    false,
+  );
+});
+
+test('shouldResolveThread rejects combined body with wrong-SHA "in" marker and separate bare marker', () => {
+  // Even though a bare "✅ Addressed" is present, the wrong-SHA "in" marker controls.
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed in def5678: wrong SHA\n✅ Addressed: not applicable',
+          authorAssociation: 'OWNER',
+          author: { login: 'dev' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc12345678'), false);
+});
+
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
   const runs = [
     { id: 100, name: 'CI', status: 'completed', conclusion: 'failure' },

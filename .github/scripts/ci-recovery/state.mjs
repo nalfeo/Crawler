@@ -434,9 +434,18 @@ export function extractAddressedMarkerSha(body) {
  * SHA exists to reference.  The check explicitly excludes the "✅ Addressed in
  * <sha>" form so a malformed or lineage-failing SHA marker cannot bypass the
  * stricter extractAddressedMarkerSha / markerNamesHead path.
+ *
+ * When the body contains any "✅ Addressed in <token>" marker (anywhere, not
+ * just at the same position), the SHA-bearing path is controlling and this
+ * function returns false to prevent a combined-body (wrong-SHA + bare) from
+ * falling through.
  */
 export function hasBareAddressedMarker(body) {
-  return addressedBarePattern.test(String(body ?? ''));
+  const s = String(body ?? '');
+  // If any "✅ Addressed in <token>" marker is present anywhere in the body,
+  // the SHA-bearing path controls; the bare form must not bypass it.
+  if (addressedInPrefixPattern.test(s)) return false;
+  return addressedBarePattern.test(s);
 }
 
 /** Returns true if body contains "✅ Addressed in <sha-or-commit-url>" and the
