@@ -8,6 +8,7 @@ import {
   type FrozenEquipmentFieldsV1,
   type GeneratedEquipmentCreateInputV1,
   type GeneratedEquipmentGenerationPolicyV1,
+  type GeneratedEquipmentInstanceId,
   type GeneratedEquipmentRarity,
   type ResolvedEquipmentEffectV1,
 } from '../../src/shared/generated-equipment-types.js';
@@ -31,7 +32,7 @@ import {
 } from '../../src/core/generated-equipment-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
-function weaponSnapshot(instanceId: string): ActiveWeaponSnapshotV1 {
+function weaponSnapshot(instanceId: GeneratedEquipmentInstanceId): ActiveWeaponSnapshotV1 {
   const def = getWeaponDef('sword');
   if (!def) throw new Error('Expected sword weapon definition');
   return createActiveWeaponSnapshotV1({ instanceId }, def);
