@@ -17,7 +17,19 @@ run_with_timeout() {
   ' "$timeout_seconds" "$@"
 }
 
-echo "🔍 Step 1-2/3: Type checking + Linting (parallel)..."
+echo "🔍 Step 1/3: Full-project type checking + changed-file linting (parallel)..."
+
+# The production verifier always uses the authoritative project, which includes
+# src/**/*.ts, tests/**/*.ts, and scripts/**/*.ts. TypeScript's existing
+# incremental metadata keeps repeat runs fast without changing compiler context.
+TSC_PROJECT="tsconfig.json"
+test_static_only=0
+if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]; then
+  # Regression tests exercise this real parallel gate against isolated projects
+  # and stop before the unrelated unit/headless phases.
+  test_static_only=1
+  TSC_PROJECT="${VERIFY_FAST_TSC_PROJECT:?VERIFY_FAST_TSC_PROJECT is required in test mode}"
+fi
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
 # lint only the files that changed vs the branch base + the working tree. This
@@ -28,7 +40,9 @@ echo "🔍 Step 1-2/3: Type checking + Linting (parallel)..."
 # typical change set is a handful of files (~3-5s), making this the biggest win
 # on the most frequently run command.
 LINT_CMD=(npx eslint src/ tests/ scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
-if [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
+if [ "$test_static_only" -eq 1 ]; then
+  LINT_CMD=(true)
+elif [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
   changed_ts=()
   while IFS= read -r f; do
@@ -56,17 +70,24 @@ if [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
   fi
 fi
 
-npx tsc --noEmit --project tsconfig.src.json &
+npx tsc --noEmit --project "$TSC_PROJECT" &
 TSC_PID=$!
 "${LINT_CMD[@]}" &
 ESLINT_PID=$!
-trap 'kill "$TSC_PID" "$ESLINT_PID" 2>/dev/null || true' EXIT
+
+cleanup_parallel() {
+  kill "$TSC_PID" "$ESLINT_PID" 2>/dev/null || true
+  wait "$TSC_PID" "$ESLINT_PID" 2>/dev/null || true
+}
+trap cleanup_parallel EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 tsc_status=0
 eslint_status=0
-wait $TSC_PID || tsc_status=$?
-wait $ESLINT_PID || eslint_status=$?
-trap - EXIT
+wait "$TSC_PID" || tsc_status=$?
+wait "$ESLINT_PID" || eslint_status=$?
+trap - EXIT INT TERM
 
 if [ "$tsc_status" -ne 0 ]; then
   exit "$tsc_status"
@@ -76,7 +97,12 @@ if [ "$eslint_status" -ne 0 ]; then
   exit "$eslint_status"
 fi
 
-echo "🔍 Step 3/3: Unit tests..."
+if [ "$test_static_only" -eq 1 ]; then
+  echo "✅ Fast verifier static checks passed."
+  exit 0
+fi
+
+echo "🔍 Step 2/3: Changed tests..."
 if [ -n "${CI:-}" ]; then
   npx vitest run --project unit --reporter=dot
   npx vitest run --project sprites --reporter=dot
@@ -88,7 +114,7 @@ else
   npx vitest run --changed --project sprites --reporter=dot --passWithNoTests
 fi
 
-echo "🔍 Step 4/4: Physics-defs sync + Size + Weight coverage checks..."
+echo "🔍 Step 3/3: Physics-defs sync + Size + Weight coverage checks..."
 # physics-defs-sync is cheap and checks data drift (a docs-only entity-sizing.md
 # edit is gameplay_safe yet must still be validated against the code), so it always
 # runs.
