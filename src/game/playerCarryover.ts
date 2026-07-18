@@ -11,6 +11,7 @@ import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import type { AbilityState } from '../shared/abilities.js';
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
+import type { AchievementBooleanFact, AchievementNumberFact } from '../shared/achievements.js';
 
 interface SkillStateSnapshot {
   readonly level: number;
@@ -59,6 +60,11 @@ export interface PlayerCarryoverSnapshot {
     readonly unlockedIds: readonly string[];
     readonly pendingUnlockIds: readonly string[];
     readonly claimedIds: readonly string[];
+    readonly runGlobal: {
+      readonly numberFacts: Readonly<Record<AchievementNumberFact, number>>;
+      readonly booleanFacts: Readonly<Record<AchievementBooleanFact, boolean>>;
+      readonly completedQuestIds: readonly string[];
+    };
   };
 }
 
@@ -224,6 +230,11 @@ export function capturePlayerCarryover(
       unlockedIds: [...world.achievements.unlockedIds],
       pendingUnlockIds: [...world.achievements.pendingUnlockIds],
       claimedIds: [...world.achievements.claimedIds],
+      runGlobal: {
+        numberFacts: { ...world.achievements.runGlobal.numberFacts },
+        booleanFacts: { ...world.achievements.runGlobal.booleanFacts },
+        completedQuestIds: [...world.achievements.runGlobal.completedQuestIds],
+      },
     },
   };
 }
@@ -250,6 +261,11 @@ export function restorePlayerCarryover(
     unlockedIds: new Set(snapshot.achievements.unlockedIds),
     pendingUnlockIds: [...snapshot.achievements.pendingUnlockIds],
     claimedIds: new Set(snapshot.achievements.claimedIds),
+    runGlobal: {
+      numberFacts: { ...snapshot.achievements.runGlobal.numberFacts },
+      booleanFacts: { ...snapshot.achievements.runGlobal.booleanFacts },
+      completedQuestIds: new Set(snapshot.achievements.runGlobal.completedQuestIds),
+    },
   };
 
   clearEquipmentState(world, playerEid);
