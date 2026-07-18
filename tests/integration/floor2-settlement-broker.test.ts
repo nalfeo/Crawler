@@ -272,6 +272,7 @@ describe('Floor 2 settlement · initialization', () => {
       expect(() => initializeFloor2Settlement(world)).toThrowError(
         new RegExp(`Quartermaster archetype "${QUARTERMASTER_ARCHETYPE_ID}" not found`),
       );
+      expect(loadSpy).toHaveBeenCalled();
     } finally {
       loadSpy.mockRestore();
     }
