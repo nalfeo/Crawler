@@ -22,7 +22,7 @@ label having been removed from all Floor 2 issues during the G2-B containment
 
 1. ✅ Ran `scripts/agent/preflight.sh` — clean
 2. ✅ Read Graphics Designer persona + sprite style guide
-3. ✅ Posted detailed plan comment on issue #1362 (plan comment on existing comment #5009154192)
+3. ✅ Posted detailed plan comment on issue #1362 (see https://github.com/nalfeo/Crawler/issues/1362#issuecomment-5009154192)
 4. ✅ Authored `briefs/weapons/brass-knuckles.yaml`:
    - **Orientation:** `diagonal` — brass knuckles are a flat, wide bludgeon weapon; vertical silhouette reads as a ring; diagonal shows the four-hole plate correctly
    - **Anchor:** `{x: 20, y: 48}` — grip/palm-side bottom-left, consistent with `compact-disk.yaml` diagonal weapon pattern
