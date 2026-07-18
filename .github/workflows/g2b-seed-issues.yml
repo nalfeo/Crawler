@@ -1,6 +1,6 @@
 # One-shot workflow: create the 70 Floor-2 equipment asset-request issues for G2-B.
-# Triggered on push to the g2-b session branch. Has a deduplication guard:
-# if any g2b-tagged asset-request issues already exist, the create step is skipped.
+# Also adds the asset-request label to any existing issues that lack it.
+# Triggered on push to the g2-b session branch.
 # Delete this file once all issues are created and the pipeline is drained.
 
 name: G2-B Seed Asset-Request Issues
@@ -17,10 +17,26 @@ permissions:
 
 jobs:
   seed:
-    name: Create 70 Floor-2 equipment asset-request issues
+    name: Create/label 70 Floor-2 equipment asset-request issues
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Ensure asset-request label on all 70 known issues
+        env:
+          GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          # Add asset-request label to all 70 known G2-B issue numbers.
+          # gh issue edit is idempotent: if label already present, no-op.
+          ISSUES="1306 1307 1308 1309 1310 1311 1312 1313 1314 1315 1317 1318 1319 1320 1321 1322 1323 1324 1325 1326 1329 1330 1331 1332 1333 1334 1335 1336 1337 1338 1340 1341 1342 1343 1344 1345 1346 1347 1348 1349 1354 1355 1356 1357 1358 1359 1360 1361 1362 1363 1368 1369 1370 1371 1372 1373 1374 1375 1376 1377 1380 1381 1382 1383 1384 1385 1386 1387 1388 1389"
+          for num in $ISSUES; do
+            echo "Labeling #${num}..."
+            gh issue edit "${num}" \
+              --repo nalfeo/Crawler \
+              --add-label "asset-request" 2>/dev/null || echo "WARN: could not label #${num}"
+            sleep 0.5
+          done
+          echo "Label pass complete."
+
       - name: Create Wave 1 – blade weapons (skips if already exists)
         env:
           GH_TOKEN: ${{ secrets.CRAWLER_CI_PAT || secrets.GITHUB_TOKEN }}
@@ -30,14 +46,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -63,14 +80,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -96,14 +114,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -129,14 +148,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -162,14 +182,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -195,14 +216,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -228,14 +250,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -261,14 +284,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -294,14 +318,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -327,14 +352,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -360,14 +386,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -392,14 +419,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -424,14 +452,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -455,14 +484,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
@@ -486,14 +516,15 @@ jobs:
             local title="Asset request: ${slug}"
             existing=$(gh issue list \
               --repo nalfeo/Crawler \
-              --label asset-request \
               --state open \
               --limit 200 \
-              --search "${title}" \
-              --json title \
-              --jq ".[] | select(.title == \"${title}\") | .title" 2>/dev/null || true)
+              --search "in:title ${title}" \
+              --json title,number \
+              --jq ".[] | select(.title == \"${title}\")" 2>/dev/null || true)
             if [ -n "${existing}" ]; then
-              echo "SKIP (exists): ${title}"
+              num=$(echo "${existing}" | python3 -c "import json,sys; print(json.loads(sys.stdin.read().strip()).get('number',''))" 2>/dev/null || true)
+              echo "ENSURE LABEL (exists as #${num}): ${title}"
+              [ -n "${num}" ] && gh issue edit "${num}" --repo nalfeo/Crawler --add-label "asset-request" 2>/dev/null || true
               return
             fi
             echo "CREATE: ${title}"
