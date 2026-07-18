@@ -1,0 +1,26 @@
+type: weapon
+name: quarterstaff
+description: |
+  A plain two-handed wooden quarterstaff held vertically, tip at the top,
+  grip in the lower half of the canvas. The staff is a single long straight
+  round pole — no blade, no spear-tip, no crossbar. Natural hardwood grain
+  in warm brown tones with a slightly lighter highlight running along one
+  side. The grip section has a wrapped cloth or leather band in a darker
+  brown. Simple metal ferrules at each end (small flat caps, dull iron grey).
+  No glow, no runes, no carvings, no magic effects. The silhouette must read
+  immediately as a plain wooden staff and not be mistaken for a spear or sword.
+# Vertical orientation, 4x4 sheet, palette, anchor — all inherited from
+# data/sprite-types/weapon.json. This brief only contains the bits that
+# make a quarterstaff specifically a quarterstaff.
+#
+# A quarterstaff is longer and thinner than a mace; the anchor should sit
+# at the grip-centre, which is lower on the canvas than a top-heavy weapon.
+# We override the default (32, 56) to (32, 44) so the grip-wrap lands near
+# the anchor and the ferrule-tip reads clearly above it.
+anchor: { x: 32, y: 44 }
+# `variations` seeds variety in the 4x4 sheet; `minVariations: 8` asks the
+# orchestrator to fill out to 8 variations via the text provider.
+variations:
+  - darker spalted-wood pattern with irregular grain lines
+  - wrapped grip bound with pale rope instead of leather
+minVariations: 8
