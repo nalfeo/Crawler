@@ -23,8 +23,8 @@ Added the `bone-chakram` Floor 2 thrown-weapon equipment icon end-to-end (issue 
    - Rare rarity (matching echo-bell and other Floor 2 weapons of similar character)
 
 3. **Test snapshots updated** — `tests/unit/items.test.ts`
-   - Catalog size: 126 → 127
-   - Weapons count: 23 → 24
+   - Catalog size: 131 → 132
+   - Weapons count: 28 → 29
 
 4. **Art plan entry added** — `plans/item-icons/weapons.art.yaml`
    - `id: bone-chakram`, `placeholderInUse: true`, `kind: sprite-registry`

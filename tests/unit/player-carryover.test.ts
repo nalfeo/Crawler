@@ -8,6 +8,8 @@ import {
   getEquipmentDefForStarterWeapon,
   MERCHANTS_CHARM_DEF,
 } from '../../src/shared/equipmentDefs.js';
+import { addGeneratedEquipmentReference } from '../../src/shared/inventory.js';
+import type { GeneratedEquipmentInstanceKey } from '../../src/shared/generated-equipment-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('player floor carryover', () => {
@@ -159,5 +161,19 @@ describe('player floor carryover', () => {
         expect.objectContaining({ sourceId: 'foreign-skill:level:5:1' }),
       ]),
     );
+  });
+
+  it('fails closed instead of silently dropping generated bag ownership before B3', () => {
+    const source = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(source, 0, 0);
+    const bag = source.inventories.get(player)!;
+    const instanceKey = 'gei:v1:carryover-test:0' as GeneratedEquipmentInstanceKey;
+    addGeneratedEquipmentReference(bag, instanceKey);
+    const bagBefore = structuredClone(bag);
+
+    expect(() => capturePlayerCarryover(source, player)).toThrow(
+      'Generated equipment carryover is not supported until the B3 persistence slice lands',
+    );
+    expect(bag).toEqual(bagBefore);
   });
 });

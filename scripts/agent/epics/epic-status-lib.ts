@@ -60,100 +60,10 @@ export const EXPECTED_NODE_IDS = [
   'slice:J',
 ] as const;
 
-/**
- * Canonical dependency edges for the Floor 2 equipment epic DAG.
- * Derived from the approved execution graph in PLAN.md.
- * Any change to these edges requires the plan-change protocol.
- */
-const CANONICAL_DEPENDENCIES: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
-  ['slice:A0', []],
-  ['slice:A1', ['slice:A0']],
-  ['slice:B1', ['slice:A1']],
-  ['slice:B2', ['slice:B1']],
-  ['slice:B3', ['slice:B2']],
-  ['slice:C1', ['slice:A1']],
-  ['slice:C2', ['slice:C1', 'slice:B3']],
-  ['slice:D1', ['slice:A1']],
-  ['packet:D2-A', ['slice:D1', 'slice:B1']],
-  ['packet:D2-B', ['slice:D1', 'slice:C1']],
-  ['slice:D2', ['packet:D2-A', 'packet:D2-B']],
-  ['packet:D3-A', ['slice:D2', 'slice:B2']],
-  ['packet:D3-B', ['slice:D2', 'slice:C1']],
-  ['slice:D3', ['packet:D3-A', 'packet:D3-B']],
-  ['slice:E1', ['slice:A1']],
-  ['slice:E2', ['slice:E1', 'slice:C1']],
-  ['packet:E3-A', ['slice:E2', 'slice:B2']],
-  ['packet:E3-B', ['slice:E2', 'slice:D2']],
-  ['packet:E3-C', ['slice:E2', 'slice:C1']],
-  ['slice:E3', ['packet:E3-A', 'packet:E3-B', 'packet:E3-C']],
-  ['slice:F1', ['slice:B1', 'slice:C1']],
-  ['slice:F2', ['slice:F1', 'slice:B2']],
-  ['slice:F3', ['slice:F2', 'slice:E2']],
-  ['slice:F4', ['slice:F3', 'slice:C2']],
-  ['slice:G1', ['slice:A1']],
-  ['packet:G2-A', ['slice:G1', 'slice:C1']],
-  ['packet:G2-B+', ['slice:G1', 'slice:B2']],
-  ['slice:G2', ['packet:G2-A', 'packet:G2-B+']],
-  ['packet:G3', ['slice:G2', 'slice:D3']],
-  ['slice:G3', ['packet:G3']],
-  ['slice:H1', ['slice:C1', 'slice:F1']],
-  ['slice:H2', ['slice:H1', 'slice:G2']],
-  ['slice:H3', ['slice:H2', 'slice:G3']],
-  [
-    'slice:I1',
-    ['slice:B3', 'slice:C2', 'slice:D3', 'slice:E3', 'slice:F4', 'slice:G3', 'slice:H3'],
-  ],
-  ['slice:I2', ['slice:I1']],
-  ['slice:I3', ['slice:I2']],
-  ['slice:J', ['slice:I3']],
-]);
-
-/**
- * Canonical parent-slice assignments for cloud packets.
- * A null value means the node is a slice with no parent.
- */
-const CANONICAL_PARENT_SLICES: ReadonlyMap<string, string | null> = new Map([
-  ['slice:A0', null],
-  ['slice:A1', null],
-  ['slice:B1', null],
-  ['slice:B2', null],
-  ['slice:B3', null],
-  ['slice:C1', null],
-  ['slice:C2', null],
-  ['slice:D1', null],
-  ['packet:D2-A', 'slice:D2'],
-  ['packet:D2-B', 'slice:D2'],
-  ['slice:D2', null],
-  ['packet:D3-A', 'slice:D3'],
-  ['packet:D3-B', 'slice:D3'],
-  ['slice:D3', null],
-  ['slice:E1', null],
-  ['slice:E2', null],
-  ['packet:E3-A', 'slice:E3'],
-  ['packet:E3-B', 'slice:E3'],
-  ['packet:E3-C', 'slice:E3'],
-  ['slice:E3', null],
-  ['slice:F1', null],
-  ['slice:F2', null],
-  ['slice:F3', null],
-  ['slice:F4', null],
-  ['slice:G1', null],
-  ['packet:G2-A', 'slice:G2'],
-  ['packet:G2-B+', 'slice:G2'],
-  ['slice:G2', null],
-  ['packet:G3', 'slice:G3'],
-  ['slice:G3', null],
-  ['slice:H1', null],
-  ['slice:H2', null],
-  ['slice:H3', null],
-  ['slice:I1', null],
-  ['slice:I2', null],
-  ['slice:I3', null],
-  ['slice:J', null],
-]);
-
 const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const nullableSha = z.string().regex(SHA_PATTERN).nullable();
+const nonEmptyTrimmedString = z.string().trim().min(1);
+const nullableNonEmptyTrimmedString = nonEmptyTrimmedString.nullable();
 const GITHUB_ISSUE_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/issues\/[1-9][0-9]*$/;
 const GITHUB_PR_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/pull\/[1-9][0-9]*$/;
 
@@ -209,10 +119,10 @@ const evidenceSchema = z
   .strict();
 const ownershipSchema = z
   .object({
-    claimant: z.string().nullable(),
-    session: z.string().nullable(),
+    claimant: nullableNonEmptyTrimmedString,
+    session: nullableNonEmptyTrimmedString,
     source: z.enum(['none', 'parent-issue-bootstrap', 'child-issue-comment']),
-    scope: z.string().nullable(),
+    scope: nullableNonEmptyTrimmedString,
     claimed_at: nullableDateTime,
     lease_expires_at: nullableDateTime,
     heartbeat_at: nullableDateTime,
@@ -574,6 +484,18 @@ const planContractSchema = z
         settlement_maintenance_required: z.literal(true),
       })
       .strict(),
+    graph: z
+      .object({
+        dependencies: z.record(
+          z.string().regex(NODE_ID_PATTERN),
+          z.array(z.string().regex(NODE_ID_PATTERN)),
+        ),
+        parent_slices: z.record(
+          z.string().regex(NODE_ID_PATTERN),
+          z.string().regex(NODE_ID_PATTERN).nullable(),
+        ),
+      })
+      .strict(),
   })
   .strict();
 
@@ -613,8 +535,31 @@ export interface ValidationResult {
  * implementation in tests to avoid requiring full git history.
  */
 export interface GitReader {
-  showContent(commit: string, filePath: string): string | null;
-  commitExists(commit: string): boolean;
+  /**
+   * Provide either `readContent` (preferred) or legacy `showContent`.
+   */
+  readContent?(
+    commit: string,
+    filePath: string,
+  ): { readonly content: string; readonly source: 'git' | 'working-tree' } | null;
+  /**
+   * Backward-compatible legacy alias kept for external tooling that still
+   * implements the pre-refactor GitReader shape.
+   */
+  showContent?(commit: string, filePath: string): string | null;
+  /**
+   * Provide either `commitStatus` (preferred) or legacy `commitExists`.
+   */
+  /**
+   * `not-a-commit` is accepted as a deprecated legacy alias of `not-commit`.
+   */
+  commitStatus?(commit: string): 'commit' | 'not-commit' | 'not-a-commit' | 'missing';
+  /**
+   * Backward-compatible legacy alias kept for external tooling that still
+   * implements the pre-refactor GitReader shape.
+   * Note: this boolean shape cannot distinguish non-commit objects from commits.
+   */
+  commitExists?(commit: string): boolean;
 }
 
 export interface ValidationOptions {
@@ -652,16 +597,48 @@ function gitShowContent(repoRoot: string, commit: string, filePath: string): str
   }
 }
 
-function gitCommitExists(repoRoot: string, commit: string): boolean {
+function gitCommitStatus(repoRoot: string, commit: string): 'commit' | 'not-commit' | 'missing' {
   try {
-    execFileSync('git', ['cat-file', '-e', `${commit}^{commit}`], {
+    const objectType = execFileSync('git', ['cat-file', '-t', commit], {
       cwd: repoRoot,
-      stdio: 'ignore',
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
     });
-    return true;
+    return objectType.trim() === 'commit' ? 'commit' : 'not-commit';
   } catch {
-    return false;
+    return 'missing';
   }
+}
+
+function normalizeCommitStatus(
+  status: 'commit' | 'not-commit' | 'not-a-commit' | 'missing',
+): 'commit' | 'not-commit' | 'missing' {
+  // Legacy GitReader implementations reported non-commit objects as
+  // "not-a-commit"; the current contract uses "not-commit".
+  return status === 'not-a-commit' ? 'not-commit' : status;
+}
+
+function resolveCommitStatus(
+  gitReader: GitReader,
+  commit: string,
+): 'commit' | 'not-commit' | 'missing' {
+  if (gitReader.commitStatus) return normalizeCommitStatus(gitReader.commitStatus(commit));
+  if (gitReader.commitExists) return gitReader.commitExists(commit) ? 'commit' : 'missing';
+  throw new Error('Invalid GitReader: commitStatus or commitExists must be implemented');
+}
+
+function readContentAtCommit(
+  gitReader: GitReader,
+  commit: string,
+  filePath: string,
+): { readonly content: string; readonly source: 'git' | 'working-tree' } | null {
+  if (gitReader.readContent) return gitReader.readContent(commit, filePath);
+  if (!gitReader.showContent) {
+    throw new Error('Invalid GitReader: readContent or showContent must be implemented');
+  }
+  // Legacy showContent readers were defined as git-backed lookups.
+  const content = gitReader.showContent(commit, filePath);
+  return content === null ? null : { content, source: 'git' };
 }
 
 /**
@@ -670,13 +647,31 @@ function gitCommitExists(repoRoot: string, commit: string): boolean {
  * implementation (e.g. a working-tree reader) via `ValidationOptions.gitReader`
  * to avoid depending on full git history being present in the checkout.
  */
-export function createDefaultGitReader(repoRoot: string): GitReader {
+export function createDefaultGitReader(
+  repoRoot: string,
+): GitReader & Required<Pick<GitReader, 'commitStatus'>> {
   return {
-    showContent(commit: string, filePath: string): string | null {
+    readContent(commit: string, filePath: string) {
+      const gitContent = gitShowContent(repoRoot, commit, filePath);
+      if (gitContent !== null) return { content: gitContent, source: 'git' as const };
+      if (gitCommitStatus(repoRoot, commit) !== 'missing') return null;
+      try {
+        return {
+          content: readFileSync(resolve(repoRoot, filePath), 'utf8'),
+          source: 'working-tree' as const,
+        };
+      } catch {
+        return null;
+      }
+    },
+    commitStatus(commit: string) {
+      return gitCommitStatus(repoRoot, commit);
+    },
+    showContent(commit: string, filePath: string) {
       return gitShowContent(repoRoot, commit, filePath);
     },
-    commitExists(commit: string): boolean {
-      return gitCommitExists(repoRoot, commit);
+    commitExists(commit: string) {
+      return gitCommitStatus(repoRoot, commit) === 'commit';
     },
   };
 }
@@ -1078,10 +1073,13 @@ function computeReady(
 function validateDag(
   state: EpicState,
   nodesById: ReadonlyMap<string, EpicNode>,
+  contract: z.infer<typeof planContractSchema>,
   result: MutableValidation,
 ): void {
   const expected = new Set<string>(EXPECTED_NODE_IDS);
   const actual = new Set<string>();
+  const canonicalDependencies = new Map(Object.entries(contract.graph.dependencies));
+  const canonicalParentSlices = new Map(Object.entries(contract.graph.parent_slices));
   for (const node of state.nodes) {
     if (actual.has(node.node_id)) {
       result.errors.push({
@@ -1169,24 +1167,54 @@ function validateDag(
   };
   for (const node of state.nodes) visit(node.node_id, []);
 
+  // Reject duplicate node_id entries: a Map silently overwrites duplicates, so
+  // check explicitly before building nodesById.
+  const nodeIdCounts = new Map<string, number>();
+  for (const node of state.nodes) {
+    nodeIdCounts.set(node.node_id, (nodeIdCounts.get(node.node_id) ?? 0) + 1);
+  }
+  for (const [dupId, count] of nodeIdCounts) {
+    if (count > 1) {
+      result.errors.push({
+        code: 'dag.duplicate-node-id',
+        node_id: dupId,
+        message: `${dupId} appears ${count} times in state.nodes; node_id must be unique`,
+      });
+    }
+  }
+
   // Validate that dependencies and parent_slice exactly match the canonical plan graph.
   for (const node of state.nodes) {
-    const canonicalDeps = CANONICAL_DEPENDENCIES.get(node.node_id);
-    if (canonicalDeps !== undefined) {
-      const actual = [...node.dependencies].sort();
-      const expected = [...canonicalDeps].sort();
-      if (actual.join('\u0000') !== expected.join('\u0000')) {
-        result.errors.push({
-          code: 'dag.dependency-contract-drift',
-          node_id: node.node_id,
-          message:
-            `${node.node_id} dependencies [${actual.join(', ')}] do not match ` +
-            `canonical plan [${expected.join(', ')}]`,
-        });
-      }
+    const contractDeps = canonicalDependencies.get(node.node_id);
+    if (contractDeps === undefined) {
+      result.errors.push({
+        code: 'dag.unknown-node',
+        node_id: node.node_id,
+        message: `${node.node_id} is not part of the canonical plan graph`,
+      });
+      continue;
     }
-    const canonicalParent = CANONICAL_PARENT_SLICES.get(node.node_id);
-    if (canonicalParent !== undefined && node.parent_slice !== canonicalParent) {
+    const actualDeps = [...node.dependencies].sort();
+    const expectedDeps = [...contractDeps].sort();
+    if (actualDeps.join('\u0000') !== expectedDeps.join('\u0000')) {
+      result.errors.push({
+        code: 'dag.dependency-contract-drift',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} dependencies [${actualDeps.join(', ')}] do not match ` +
+          `canonical plan [${expectedDeps.join(', ')}]`,
+      });
+    }
+    if (!canonicalParentSlices.has(node.node_id)) {
+      result.errors.push({
+        code: 'dag.parent-slice-contract-missing',
+        node_id: node.node_id,
+        message: `${node.node_id} is missing a canonical parent-slice contract entry`,
+      });
+      continue;
+    }
+    const canonicalParent = canonicalParentSlices.get(node.node_id) ?? null;
+    if (node.parent_slice !== canonicalParent) {
       result.errors.push({
         code: 'dag.parent-slice-contract-drift',
         node_id: node.node_id,
@@ -1196,9 +1224,79 @@ function validateDag(
       });
     }
   }
+
+  for (const canonicalNodeId of EXPECTED_NODE_IDS) {
+    if (!nodesById.has(canonicalNodeId)) {
+      result.errors.push({
+        code: 'dag.missing-canonical-node',
+        node_id: canonicalNodeId,
+        message: `Canonical node ${canonicalNodeId} is missing from state.nodes`,
+      });
+    }
+    if (!canonicalDependencies.has(canonicalNodeId)) {
+      result.errors.push({
+        code: 'dag.dependency-contract-missing',
+        node_id: canonicalNodeId,
+        message: `${canonicalNodeId} is missing a canonical dependency contract entry`,
+      });
+    }
+    if (!canonicalParentSlices.has(canonicalNodeId)) {
+      result.errors.push({
+        code: 'dag.parent-slice-contract-missing',
+        node_id: canonicalNodeId,
+        message: `${canonicalNodeId} is missing a canonical parent-slice contract entry`,
+      });
+    }
+  }
+  // Reverse check: reject extra keys in the contract that are not in the canonical node set.
+  for (const contractNodeId of canonicalDependencies.keys()) {
+    if (!expected.has(contractNodeId)) {
+      result.errors.push({
+        code: 'dag.unexpected-contract-dependency-key',
+        node_id: contractNodeId,
+        message: `contract.graph.dependencies has unexpected key ${contractNodeId} not in canonical node set`,
+      });
+    }
+  }
+  for (const contractNodeId of canonicalParentSlices.keys()) {
+    if (!expected.has(contractNodeId)) {
+      result.errors.push({
+        code: 'dag.unexpected-contract-parent-slice-key',
+        node_id: contractNodeId,
+        message: `contract.graph.parent_slices has unexpected key ${contractNodeId} not in canonical node set`,
+      });
+    }
+  }
+}
+
+/**
+ * Returns true if the candidate looks like a URI-scheme reference (not a
+ * file path).  Used to guard isRepoFile from treating `check:run/123` or
+ * `javascript:...` as relative paths.
+ */
+function hasUriScheme(candidate: string): boolean {
+  return /^(?![A-Za-z]:[\\/])[a-z][a-z0-9+.-]*:/i.test(candidate);
+}
+
+/**
+ * Returns true only for the supported `check:` evidence URI scheme.
+ *
+ * Accepted formats:
+ *   check:run/<positive-integer>   – a GitHub Actions workflow run
+ *   check:job/<positive-integer>   – a GitHub Actions job
+ *
+ * Any other scheme (file:, http:, javascript:, etc.) is rejected so an
+ * invented URI cannot satisfy a required evidence kind.  The recorded sha256
+ * is a pre-computed commitment made at evidence-record time; check: references
+ * cannot be re-verified offline (they require the GitHub API), so validation
+ * only confirms the URI format and the associated commit object.
+ */
+function isCheckEvidenceReference(candidate: string): boolean {
+  return /^check:(?:run|job)\/[1-9]\d*$/.test(candidate);
 }
 
 function isRepoFile(repoRoot: string, candidate: string): boolean {
+  if (hasUriScheme(candidate)) return false;
   if (isAbsolute(candidate)) return false;
   const root = realpathSync(repoRoot);
   const absolute = resolve(root, candidate);
@@ -1217,7 +1315,6 @@ function validateEvidenceFiles(
   node: EpicNode,
   result: MutableValidation,
 ): void {
-  // Verify handoff and review-ledger evidence (required for every post-PR node).
   for (const kind of ['handoff', 'review-ledger']) {
     const evidence = node.evidence.find((item) => item.kind === kind);
     if (!evidence) {
@@ -1245,16 +1342,37 @@ function validateEvidenceFiles(
       });
       continue;
     }
-    const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
-    if (content === null) {
+    const commitStat = resolveCommitStatus(gitReader, evidence.commit);
+    if (commitStat !== 'commit') {
       result.errors.push({
         code: 'evidence.git-verification-failed',
         node_id: node.node_id,
-        message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check} (commit or file may not exist)`,
+        message:
+          commitStat === 'not-commit'
+            ? `${node.node_id} evidence commit ${evidence.commit} is not a commit object: ${evidence.path_or_check}`
+            : `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
       });
       continue;
     }
-    const actualHash = sha256(content);
+    const verification = readContentAtCommit(gitReader, evidence.commit, evidence.path_or_check);
+    if (verification === null) {
+      result.errors.push({
+        code: 'evidence.git-verification-failed',
+        node_id: node.node_id,
+        message: `${node.node_id} evidence file not found at commit ${evidence.commit}: ${evidence.path_or_check}`,
+      });
+      continue;
+    }
+    if (verification.source === 'working-tree') {
+      result.warnings.push({
+        code: 'evidence.commit-unavailable',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} evidence commit ${evidence.commit} is not locally available; ` +
+          `verified ${evidence.path_or_check} against working-tree content instead`,
+      });
+    }
+    const actualHash = sha256(verification.content);
     if (actualHash !== evidence.sha256) {
       result.errors.push({
         code: 'evidence.hash-drift',
@@ -1282,32 +1400,52 @@ function validateEvidenceRequirements(
       });
       continue;
     }
-    // handoff and review-ledger are already verified in validateEvidenceFiles.
     if (handledKinds.has(requirement)) continue;
-    // For non-canonical kinds, verify commit existence and sha256 for file-like paths.
-    if (!gitReader.commitExists(evidence.commit)) {
+    if (isRepoFile(repoRoot, evidence.path_or_check)) {
+      const verification = readContentAtCommit(gitReader, evidence.commit, evidence.path_or_check);
+      if (verification === null) {
+        result.errors.push({
+          code: 'evidence.git-verification-failed',
+          node_id: node.node_id,
+          message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check}`,
+        });
+        continue;
+      }
+      if (verification.source === 'working-tree') {
+        result.warnings.push({
+          code: 'evidence.commit-unavailable',
+          node_id: node.node_id,
+          message:
+            `${node.node_id} evidence commit ${evidence.commit} is not locally available; ` +
+            `verified ${evidence.path_or_check} against working-tree content instead`,
+        });
+      }
+      if (sha256(verification.content) !== evidence.sha256) {
+        result.errors.push({
+          code: 'evidence.hash-drift',
+          node_id: node.node_id,
+          message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
+        });
+      }
+      continue;
+    }
+    if (!isCheckEvidenceReference(evidence.path_or_check)) {
       result.errors.push({
-        code: 'evidence.git-verification-failed',
+        code: 'evidence.unsafe-path',
         node_id: node.node_id,
-        message: `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
+        message: `${node.node_id} evidence path is not a repo file or valid check: reference: ${evidence.path_or_check}`,
       });
       continue;
     }
-    if (!isRepoFile(repoRoot, evidence.path_or_check)) continue;
-    const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
-    if (content === null) {
+    const nonFileCommitStatus = resolveCommitStatus(gitReader, evidence.commit);
+    if (nonFileCommitStatus !== 'commit') {
       result.errors.push({
         code: 'evidence.git-verification-failed',
         node_id: node.node_id,
-        message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check}`,
-      });
-      continue;
-    }
-    if (sha256(content) !== evidence.sha256) {
-      result.errors.push({
-        code: 'evidence.hash-drift',
-        node_id: node.node_id,
-        message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
+        message:
+          nonFileCommitStatus === 'not-commit'
+            ? `${node.node_id} evidence commit ${evidence.commit} is not a commit object: ${evidence.path_or_check}`
+            : `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
       });
     }
   }
@@ -1666,18 +1804,30 @@ function validateNodeLifecycle(
         node_id: node.node_id,
         message: `${node.node_id} at ${node.status} requires merge commit and timestamp`,
       });
-    } else if (!gitReader.commitExists(node.merge.commit)) {
-      result.errors.push({
-        code: 'merge.commit-not-found',
-        node_id: node.node_id,
-        message: `${node.node_id} merge commit ${node.merge.commit} does not exist in git`,
-      });
+    } else {
+      const mergeCommitStatus = resolveCommitStatus(gitReader, node.merge.commit);
+      if (mergeCommitStatus === 'missing') {
+        result.errors.push({
+          code: 'merge.commit-not-found',
+          node_id: node.node_id,
+          message: `${node.node_id} merge commit ${node.merge.commit} does not exist in git`,
+        });
+      } else if (mergeCommitStatus === 'not-commit') {
+        result.errors.push({
+          code: 'merge.not-a-commit',
+          node_id: node.node_id,
+          message: `${node.node_id} merge commit ${node.merge.commit} is not a commit object`,
+        });
+      }
     }
   }
   if (node.status === 'validated') {
     validateEvidenceRequirements(repoRoot, gitReader, node, result);
   }
-  if (node.status !== 'validated' && node.release_requirement === 'required') {
+  const isEffectivelyDone =
+    node.status === 'validated' ||
+    (node.status === 'superseded' && isDependencySatisfied(node, nodesById));
+  if (!isEffectivelyDone && node.release_requirement === 'required') {
     result.blockers.push({
       code: 'release.node-not-validated',
       node_id: node.node_id,
@@ -1798,8 +1948,10 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
 
   const planMarkdown =
     options.planMarkdown ?? readFileSync(resolve(options.repoRoot, state.plan.path), 'utf8');
+  let planContract: z.infer<typeof planContractSchema> | null = null;
   try {
     const contract = extractPlanContract(planMarkdown);
+    planContract = contract.contract;
     if (contract.sha256 !== state.plan.contract_sha256) {
       result.errors.push({
         code: 'plan.contract-drift',
@@ -1824,7 +1976,9 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
   );
 
   const nodesById = new Map(state.nodes.map((node) => [node.node_id, node]));
-  validateDag(state, nodesById, result);
+  if (planContract) {
+    validateDag(state, nodesById, planContract, result);
+  }
   const now = options.now ?? new Date();
   const gitReader = options.gitReader ?? createDefaultGitReader(options.repoRoot);
   for (const node of state.nodes) {
@@ -1860,6 +2014,16 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
     }),
   );
   const releaseReady = allRequiredValidated && allFlagNodesValidated;
+  const suppressedQueue =
+    result.errors.length > 0 && result.readyQueue.length > 0 ? result.readyQueue : null;
+  if (suppressedQueue) {
+    result.warnings.push({
+      code: 'ready-queue.suppressed',
+      message:
+        `Ready queue suppressed due to ${result.errors.length} validation error(s); ` +
+        `${suppressedQueue.length} node(s) would otherwise be ready: ${suppressedQueue.join(', ')}`,
+    });
+  }
   return {
     state,
     errors: result.errors,
@@ -2090,7 +2254,7 @@ function parseTrustedBlockedEvent(
     const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
     if (match?.[1] && match[2]) fields.set(match[1], match[2]);
   }
-  const nodeId = fields.get('node');
+  const nodeId = fields.get('node') ?? expectedNodeId;
   if (!nodeId) return null;
   if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
   return { nodeId, url: comment.html_url };
@@ -2126,6 +2290,7 @@ export function auditGithub(
   }
   const issueClaims: ParsedClaim[] = [];
   const auditedIssues = new Map<number, GithubIssue>();
+  const failedIssueAudits = new Set<number>();
   const proposeIssueState = (issue: GithubIssue, expectedNode?: EpicNode): void => {
     if (expectedNode && expectedNode.reconciliation.observed_issue_state !== issue.state) {
       repoPatch.push({
@@ -2169,17 +2334,16 @@ export function auditGithub(
         if (batch.length < 100) break;
       }
       // Fold CLAIMED and BLOCKED events in chronological order (comments arrive oldest-first).
-      // A BLOCKED event from a trusted author revokes the live claim for that node.
-      // A subsequent CLAIMED event re-establishes ownership.
-      // Track live claims per-node per claimant/session so heartbeat deduplication and
-      // competing-claimant detection still work correctly.
+      // A BLOCKED event revokes the live claim set for that node, but a later CLAIMED
+      // comment can re-establish ownership in the same thread.
       const latestClaimsByNodeAndOwner = new Map<string, Map<string, ParsedClaim>>();
+      const latestRevokeByNode = new Map<string, { nodeId: string; url: string }>();
       const expectedNodeId = expectedNode?.node_id ?? state.claim_policy.bootstrap_node;
       for (const comment of comments) {
         const blocked = parseTrustedBlockedEvent(comment, expectedNodeId);
         if (blocked) {
-          // BLOCKED revokes all live claims for the blocked node only.
           latestClaimsByNodeAndOwner.delete(blocked.nodeId);
+          latestRevokeByNode.set(blocked.nodeId, blocked);
           continue;
         }
         const claim = parseTrustedClaim(comment, expectedNodeId);
@@ -2194,6 +2358,21 @@ export function auditGithub(
           latestClaimsByNodeAndOwner.set(claim.nodeId, perOwner);
         }
       }
+      const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
+      for (const [revokedNodeId, blocked] of latestRevokeByNode) {
+        const cacheNode = nodesById.get(revokedNodeId);
+        const cacheStillClaimed =
+          cacheNode !== undefined &&
+          ACTIVE_STATUSES.has(cacheNode.status) &&
+          cacheNode.ownership.claimant !== null &&
+          cacheNode.ownership.session !== null;
+        if (cacheStillClaimed && !latestClaimsByNodeAndOwner.has(revokedNodeId)) {
+          operatorActions.push(
+            `Ownership of ${revokedNodeId} was revoked by a BLOCKED event (${blocked.url}). ` +
+              `Verify cached ownership reflects the revocation or a subsequent re-claim.`,
+          );
+        }
+      }
       for (const ownerMap of latestClaimsByNodeAndOwner.values()) {
         for (const claim of ownerMap.values()) {
           if (Date.parse(claim.expiresAt) > now.getTime()) {
@@ -2202,6 +2381,7 @@ export function auditGithub(
         }
       }
     } catch (error) {
+      failedIssueAudits.add(issueNumber);
       errors.push({
         code: 'github.issue-audit',
         node_id: expectedNode?.node_id,
@@ -2218,7 +2398,7 @@ export function auditGithub(
     const stackedIssue = node.stacked_work?.issue;
     const mainIssue = node.github.issue;
     if (stackedIssue && stackedIssue.number !== mainIssue?.number) {
-      auditIssue(stackedIssue.number);
+      auditIssue(stackedIssue.number, node);
     }
     if (!node.github.pr) continue;
     try {
@@ -2379,6 +2559,25 @@ export function auditGithub(
     byOwner.push(claim);
     deduplicatedByOwner.set(sessionKey, byOwner);
   }
+  const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
+  for (const node of state.nodes) {
+    if (!ACTIVE_STATUSES.has(node.status)) continue;
+    if (!node.ownership.claimant || !node.ownership.session) continue;
+    const ownershipIssueNumber = node.github.issue?.number ?? state.github.parent_issue?.number;
+    if (ownershipIssueNumber && failedIssueAudits.has(ownershipIssueNumber)) continue;
+    if (deduplicatedByNode.has(node.node_id)) continue;
+    errors.push({
+      code: 'github.missing-live-claim',
+      node_id: node.node_id,
+      message:
+        `${node.node_id} is ${node.status} with cached owner ` +
+        `${node.ownership.claimant}/${node.ownership.session}, but no live trusted CLAIMED comment exists`,
+    });
+    operatorActions.push(
+      `Post a fresh trusted CLAIMED comment for ${node.node_id} or clear cached ownership ` +
+        `before continuing active work.`,
+    );
+  }
   for (const [nodeId, claims] of deduplicatedByNode) {
     if (claims.length > 1) {
       errors.push({
@@ -2393,7 +2592,6 @@ export function auditGithub(
     // Reconcile the single authoritative live claim against cached ownership.
     if (claims.length === 1) {
       const liveClaim = claims[0]!;
-      const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
       const epicNode = nodesById.get(nodeId);
       if (epicNode && ACTIVE_STATUSES.has(epicNode.status)) {
         const owns = epicNode.ownership;
@@ -2479,6 +2677,33 @@ export function auditGithub(
     errors,
     warnings,
     proposal: { repo_patch: repoPatch, operator_actions: operatorActions },
+  };
+}
+
+export function applyGithubAudit(
+  offline: ValidationResult,
+  audit: {
+    readonly errors: ReadonlyArray<Diagnostic>;
+    readonly warnings: ReadonlyArray<Diagnostic>;
+    readonly proposal: ReconciliationProposal;
+  },
+): ValidationResult {
+  const errors = [...offline.errors, ...audit.errors];
+  return {
+    state: offline.state,
+    errors,
+    warnings: [...offline.warnings, ...audit.warnings],
+    blockers: offline.blockers,
+    // GitHub facts are stronger authority than offline validation.
+    // Mirror the offline validator's own behaviour: suppress the queue when
+    // the stronger-authority source contributes errors so the caller never
+    // surfaces dispatchable nodes while the audit is invalid.
+    ready_queue: audit.errors.length > 0 ? [] : offline.ready_queue,
+    release_ready: offline.release_ready && errors.length === 0,
+    proposal: {
+      repo_patch: [...offline.proposal.repo_patch, ...audit.proposal.repo_patch],
+      operator_actions: [...offline.proposal.operator_actions, ...audit.proposal.operator_actions],
+    },
   };
 }
 
