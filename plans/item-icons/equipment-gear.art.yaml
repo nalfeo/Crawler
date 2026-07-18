@@ -2,6 +2,15 @@ id: item-icons-equipment-gear
 title: 'Item Icons — Equipment Gear'
 summary: 'Placeholder wearable-gear icons covering every non-weapon, non-neck paper-doll slot (head, face, shoulders, chest, back, belt, legs, feet, gloves, arms, wrists, rings). These render the InventoryUI/EquipmentUI text fallback today; each needs real authored pixel art generated via the sprite pipeline when provider access is available.'
 assets:
+  - id: alchemist-goggles
+    type: item
+    label: 'Alchemist Goggles'
+    brief: 'Alchemist Goggles — Floor 2 head-slot equipment icon. Oversized dual-lens brass/copper goggles with tinted scratched lenses, verdigris patina, riveted bridge, worn leather strap. Retro-futurist corporate-decay aesthetic. Silhouette reads as dungeon headgear at a glance.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: alchemist-goggles
+
   - id: iron-helm
     type: item
     label: 'Iron Helm'
