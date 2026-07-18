@@ -90,7 +90,7 @@ const ENEMY_RIGHTWARD_FLIP_EPSILON = 0.001;
 const ENEMY_MOVEMENT_MOTION_EPSILON = 0.0001;
 const ENEMY_MOVEMENT_MOTION_EPSILON_SQ = ENEMY_MOVEMENT_MOTION_EPSILON ** 2;
 const SPEED_STATUS_TINT = 0xaadfff;
-/** Phaser 4's fill tint mode; kept numeric to preserve Node-safe type-only imports. */
+/** Fill tint mode value; kept numeric to preserve Node-safe type-only imports. */
 const PHASER_TINT_MODE_FILL = 1;
 const logger = createLogger('engine:phaser-bridge');
 
@@ -1488,7 +1488,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               mobFlashOverlays.set(eid, flashOverlay);
             } else if (
               flashOverlay.texture.key !== img.texture.key ||
-              flashOverlay.frame?.name !== frame
+              String(flashOverlay.frame?.name) !== String(frame)
             ) {
               flashOverlay.setTexture(img.texture.key, frame);
             }

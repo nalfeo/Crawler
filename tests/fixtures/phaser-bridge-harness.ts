@@ -81,7 +81,7 @@ export class MockImage {
     return this;
   }
 
-  setTintMode(mode: number | Phaser.TintModes): this {
+  setTintMode(mode: number): this {
     this.tintMode = mode;
     return this;
   }

@@ -452,14 +452,16 @@ function spawnBossFromArchetype(
   setComponent(world.ecs, eid, Damage, { amount: FLOOR2_BOSS_CONTACT_DAMAGE });
   if (def.familyId !== undefined) {
     const familyIdIndex = FLOOR2_FAMILY_IDS.indexOf(def.familyId);
-    addComponent(
-      world.ecs,
-      eid,
-      set(FamilyMembership, {
-        familyId: familyIdIndex >= 0 ? familyIdIndex : 0,
-        isBoss: 1,
-      }),
-    );
+    if (familyIdIndex >= 0) {
+      addComponent(
+        world.ecs,
+        eid,
+        set(FamilyMembership, {
+          familyId: familyIdIndex,
+          isBoss: 1,
+        }),
+      );
+    }
   }
   return eid;
 }
