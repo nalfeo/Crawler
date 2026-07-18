@@ -14,7 +14,7 @@ ci-policy
 
 ## Apples
 
-Estimated 2 apples, actual 2 apples.
+Estimated 2 apples, actual 1 apple.
 
 ## What changed
 
