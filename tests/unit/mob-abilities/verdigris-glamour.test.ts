@@ -674,6 +674,7 @@ describe('weaponSystem — zero attackSpeed multiplier', () => {
      value: 0,
      durationMs: null,
      stackRule: { mode: 'replace' },
+     sourceType: 'debug',
      sourceId: 'test:zero-attack-speed',
     });
 
