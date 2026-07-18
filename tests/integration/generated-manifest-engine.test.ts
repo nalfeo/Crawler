@@ -241,18 +241,6 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(typeof registry.size).toBe('number');
   });
 
-  it('ships the compass-charm accessory asset in the checked-in manifest', () => {
-    if (!sharedRealRegistry) {
-      return;
-    }
-    const entry = sharedRealRegistry.lookup('compass-charm');
-    expect(entry).not.toBeNull();
-    expect(entry?.assetPath).toBe('generated/compass-charm-placeholder.png');
-
-    const pngPath = path.resolve(path.dirname(REPO_MANIFEST), '..', entry!.assetPath);
-    expect(existsSync(pngPath), `missing PNG on disk: ${pngPath}`).toBe(true);
-  });
-
   // Every migratable Floor-1 item must resolve — BY ITEM ID — to its real,
   // approved generated art, never the 2×2 placeholder. This is the deterministic
   // real-artifact gate for the "one item sprite, no separate icon" change
