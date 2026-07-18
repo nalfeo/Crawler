@@ -238,9 +238,7 @@ describe('Floor 2 boss ability delivery status', () => {
     const queen = records.find((record) => record.ability.bossArchetypeId === 'faerie-boss');
     expect(queen?.status.arenaLabState).toBe('verified');
     expect(queen?.status.runtimeState).toBe('verified');
-    expect(queen?.unresolvedBlockers).toEqual([
-      'floor2-boss-production-enable',
-    ]);
+    expect(queen?.unresolvedBlockers).toEqual(['floor2-boss-production-enable']);
     // The other 17 abilities remain blocked purely by the production-enable
     // gate; the arena slice must not promote them to ready.
     for (const record of records.filter(

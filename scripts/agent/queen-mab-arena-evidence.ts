@@ -16,7 +16,11 @@ import { GAME } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
 import { enemyAISystem, weaponSystem } from '../../src/game/index.js';
 import { SeededRandom } from '../../src/shared/random.js';
-import { getEnemyPreset, getRoomPreset, spawnPresetAroundCenter } from '../../src/labs/combat-arena-lab/arena-data.js';
+import {
+  getEnemyPreset,
+  getRoomPreset,
+  spawnPresetAroundCenter,
+} from '../../src/labs/combat-arena-lab/arena-data.js';
 
 const DELTA = GAME.DELTA_MS;
 const TOTAL_FRAMES = 1300; // ~21.7s, past the second resolution at 21,000ms
