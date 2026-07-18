@@ -1,0 +1,21 @@
+type: weapon
+name: shock-baton
+description: |
+  A compact one-handed shock baton held perfectly vertical and centered in
+  the frame, grip at the bottom and emitter tip at the top. The shaft should
+  read as a straight reinforced baton body (not a sword blade), with a short
+  textured grip and a small guarded emitter head. Floor 2 palette: dark
+  graphite or near-black baton body, muted steel accents, and a restrained
+  electric-cyan glow only at the top emitter. Keep any electricity effect
+  minimal — one tight spark or short arc near the tip is enough. Transparent
+  background, no floor shadow, no hand, no character, no muzzle flash, no
+  beam extending beyond the weapon silhouette. The silhouette must read as an
+  electrified baton at a glance and stay clear at icon scale.
+# Uses weapon defaults from data/sprite-types/weapon.json:
+# vertical orientation, 64x64 output, kenney-roguelike palette family, and
+# derived anchor behavior. The issue asks for a centered, readable icon, so
+# the default centered vertical constraints are intentionally preserved.
+variations:
+  - baton body with segmented insulated rings along the shaft
+  - dual-prong emitter tip instead of a capped single-head tip
+minVariations: 6
