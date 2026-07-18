@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-no-sha-loop",
+  "task_title": "fix(ci-recovery): require in <sha> in thread-resolution marker",
+  "estimated_apples": 1,
+  "stages": {}
+}
