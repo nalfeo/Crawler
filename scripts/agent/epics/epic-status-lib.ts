@@ -1173,6 +1173,25 @@ function validateDag(
       });
     }
   }
+  // Reverse check: reject extra keys in the contract that are not in the canonical node set.
+  for (const contractNodeId of canonicalDependencies.keys()) {
+    if (!expected.has(contractNodeId)) {
+      result.errors.push({
+        code: 'dag.unexpected-contract-dependency-key',
+        node_id: contractNodeId,
+        message: `contract.graph.dependencies has unexpected key ${contractNodeId} not in canonical node set`,
+      });
+    }
+  }
+  for (const contractNodeId of canonicalParentSlices.keys()) {
+    if (!expected.has(contractNodeId)) {
+      result.errors.push({
+        code: 'dag.unexpected-contract-parent-slice-key',
+        node_id: contractNodeId,
+        message: `contract.graph.parent_slices has unexpected key ${contractNodeId} not in canonical node set`,
+      });
+    }
+  }
 }
 
 function isNonFileEvidenceReference(candidate: string): boolean {
@@ -2539,7 +2558,7 @@ export function applyGithubAudit(
     errors,
     warnings: [...offline.warnings, ...audit.warnings],
     blockers: offline.blockers,
-    ready_queue: offline.ready_queue,
+    ready_queue: audit.errors.length > 0 ? [] : offline.ready_queue,
     release_ready: offline.release_ready && errors.length === 0,
     proposal: {
       repo_patch: [...offline.proposal.repo_patch, ...audit.proposal.repo_patch],

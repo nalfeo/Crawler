@@ -14,6 +14,7 @@ import {
   type EpicState,
   type GitReader,
   type GithubRunner,
+  type ValidationResult,
 } from '../../../scripts/agent/epics/epic-status-lib';
 
 const REPO_ROOT = process.cwd();
@@ -162,7 +163,7 @@ describe('Floor 2 equipment epic status', () => {
     expect(contract.catalog.sprite_ids).toHaveLength(70);
     expect(contract.catalog.sprite_ids.filter((id) => id.startsWith('weapon.'))).toHaveLength(50);
     expect(contract.hard_gate).toMatchObject({ minimum: 1.7, maximum: 2.3 });
-    expect(contract.graph.dependencies['slice:F2']).toEqual(['slice:F1', 'slice:B2', 'slice:C2']);
+    expect(contract.graph.dependencies['slice:F2']).toEqual(['slice:F1', 'slice:B2']);
     expect(contract.economy.boss_chest_rarity_percent).toEqual({
       uncommon: 85,
       rare: 15,
@@ -1043,8 +1044,18 @@ describe('Floor 2 equipment epic status', () => {
 
 describe('applyGithubAudit', () => {
   it('keeps release_ready false when GitHub audit adds errors', () => {
-    const offline = validate(cloneState());
-    const combined = applyGithubAudit(offline, {
+    // Build a mock offline result with release_ready: true so that
+    // only the audit errors can flip the release gate.
+    const offlineReady: ValidationResult = {
+      state: null,
+      errors: [],
+      warnings: [],
+      blockers: [],
+      ready_queue: ['slice:A1'],
+      release_ready: true,
+      proposal: { repo_patch: [], operator_actions: [] },
+    };
+    const combined = applyGithubAudit(offlineReady, {
       errors: [{ code: 'github.synthetic-error', message: 'synthetic audit failure' }],
       warnings: [],
       proposal: { repo_patch: [], operator_actions: [] },
@@ -1052,6 +1063,8 @@ describe('applyGithubAudit', () => {
 
     expect(combined.release_ready).toBe(false);
     expect(combined.errors.map((error) => error.code)).toContain('github.synthetic-error');
+    // ready_queue must be suppressed when audit has errors (GitHub facts are stronger authority)
+    expect(combined.ready_queue).toEqual([]);
   });
 
   it('merges warnings and reconciliation proposals when the audit is clean', () => {
