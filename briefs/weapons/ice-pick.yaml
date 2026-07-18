@@ -12,7 +12,7 @@ description: |
   glance — clearly not a sword or club.
 # Vertical orientation, 4x4 sheet, palette, anchor, and references are all
 # inherited from data/sprite-types/weapon.json. This brief only describes
-# the ice-pick's distinct pick-axe head silhouette and colour language.
+# the ice-pick's distinct pick-axe head silhouette and color language.
 #
 # Runtime key: equipment/weapon/ice-pick — preserved exactly as specified
 # in the asset-request issue.
