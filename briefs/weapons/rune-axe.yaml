@@ -1,0 +1,29 @@
+type: weapon
+name: rune-axe
+description: |
+  A one-handed rune axe held vertically, blade at the top, haft straight
+  down. The axe head is a broad single-bitted blade of dark iron or dark
+  steel, slightly crescent-shaped with a flat poll on the back side — the
+  silhouette must read immediately as an axe, not a sword or mace. The
+  blade face is etched with angular runic glyphs (two or three glyphs,
+  simple lines and angles, no circular motifs); the etchings emit a faint
+  cool-blue or violet glow, visible as thin bright pixels along the groove
+  edges. Blade body is deep charcoal with a blue-grey highlight along the
+  cutting edge and a darker shadow on the poll side. The haft is a short
+  wood-and-leather wrapped grip, dark brown with a simple iron collar
+  where the head seats. Pommel is a rounded iron cap. No chains, no
+  flames, no magic aura cloud — only the rune etching itself glows.
+  Silhouette test: painted solid black, it must still read unmistakably
+  as an axe (wide crescent head, narrow haft).
+# Vertical orientation, 4x4 sheet (16 variants), kenney-roguelike palette,
+# 64x64 output, default anchor (32, 56), and VLM judge — all inherited
+# from data/sprite-types/weapon.json.
+#
+# Variations seed strong visual sub-reads we want represented; the runner
+# tops up to 8 via Azure chat completions.
+variations:
+  - bearded axe head with exaggerated lower beard sweep and two rune glyphs on cheek
+  - double-bitted (mirror blade on both sides of haft) with rune groove down center spine
+  - pale bone or antler accent strip along haft with rune carved into it
+  - wider poll with a small spike, violet rune glow more prominent
+minVariations: 8
