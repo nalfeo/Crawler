@@ -386,16 +386,89 @@ export function spawnFromArchetype(
   // in FLOOR2_FAMILY_IDS which is consistent with the game's floor-2 assignment.
   if (def.familyId !== undefined) {
     const familyIdIndex = FLOOR2_FAMILY_IDS.indexOf(def.familyId);
-    addComponent(
-      world.ecs,
-      eid,
-      set(FamilyMembership, {
-        familyId: familyIdIndex >= 0 ? familyIdIndex : 0,
-        isBoss: def.isBoss ? 1 : 0,
-      }),
-    );
+    if (familyIdIndex >= 0) {
+      addComponent(
+        world.ecs,
+        eid,
+        set(FamilyMembership, {
+          familyId: familyIdIndex,
+          isBoss: def.isBoss ? 1 : 0,
+        }),
+      );
+    }
   }
 
+  return eid;
+}
+
+/**
+ * Production-compatible Floor 2 boss spawn for the arena lab.
+ *
+ * Mirrors `spawnFamilyBoss` from `floor2Scenario.ts`:
+ * - HP scaled by `FLOOR2_BOSS_HP_SCALE` (0.03) instead of full pack HP.
+ * - Contact damage set to `FLOOR2_BOSS_CONTACT_DAMAGE` (2) instead of the
+ *   archetype fallback (5).
+ * - Ranged bosses use `max(160, detectRange × 4)` attack range instead of
+ *   the trash-mob `detectRange × 0.65` so they maintain long-range distance.
+ *
+ * This function is only used for Floor 2 family boss entries in the arena lab
+ * so playtesting reproduces the actual production boss encounter.
+ */
+const FLOOR2_BOSS_HP_SCALE = 0.03;
+const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
+/**
+ * Minimum attack range (ft) for ranged Floor 2 bosses.
+ * Mirrors the `max(160, detectRange × 4)` formula in `spawnFamilyBoss`
+ * (`floor2Scenario.ts`) so arena playtesting reproduces production spacing.
+ */
+const FLOOR2_BOSS_MIN_RANGED_RANGE = 160;
+
+function spawnBossFromArchetype(
+  world: GameWorld,
+  x: number,
+  y: number,
+  def: EnemyArchetypeDef,
+): number {
+  const aiType = archetypeToAiType(def);
+  const attackRange =
+    aiType === AI_TYPE.RANGED ? Math.max(FLOOR2_BOSS_MIN_RANGED_RANGE, def.detectRange * 4) : 0;
+
+  const eid = spawnBehaviorEnemy(
+    world,
+    x,
+    y,
+    Math.max(1, Math.round(def.hp * FLOOR2_BOSS_HP_SCALE)),
+    aiType,
+    def.speed,
+    def.detectRange,
+    attackRange,
+  );
+  setComponent(world.ecs, eid, Sprite, {
+    textureId: def.spriteTexture,
+    width: def.spriteWidth,
+    height: def.spriteHeight,
+  });
+  setComponent(world.ecs, eid, Size, {
+    radius: def.collisionRadius ?? Math.max(def.spriteWidth, def.spriteHeight) * 0.5,
+    halfWidth: 0,
+    halfHeight: 0,
+    shape: SHAPE_CIRCLE,
+  });
+  setEnemyAppearanceKey(world, eid, def.id);
+  setComponent(world.ecs, eid, Damage, { amount: FLOOR2_BOSS_CONTACT_DAMAGE });
+  if (def.familyId !== undefined) {
+    const familyIdIndex = FLOOR2_FAMILY_IDS.indexOf(def.familyId);
+    if (familyIdIndex >= 0) {
+      addComponent(
+        world.ecs,
+        eid,
+        set(FamilyMembership, {
+          familyId: familyIdIndex,
+          isBoss: 1,
+        }),
+      );
+    }
+  }
   return eid;
 }
 
@@ -604,7 +677,13 @@ export function spawnPresetAroundCenter(
       const rawX = cx + Math.cos(angle + jitter) * spread;
       const rawY = cy + Math.sin(angle + jitter) * spread;
       const pos = findWalkablePosition(map, rawX, rawY, rng);
-      eids.push(spawnFromArchetype(world, pos.x, pos.y, entry.def));
+      // Floor 2 boss entries must use production-compatible stats (HP × 0.03,
+      // contact damage 2, extended ranged range) to match live encounter balance.
+      const spawnFn =
+        entry.def.isBoss === true && entry.def.familyId !== undefined
+          ? spawnBossFromArchetype
+          : spawnFromArchetype;
+      eids.push(spawnFn(world, pos.x, pos.y, entry.def));
       angle += angleStep;
     }
   }

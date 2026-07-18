@@ -88,8 +88,12 @@ _…and 37 older, see `archive/`._
 
 ## sprite-pipeline
 
+<<<<<<< HEAD
 - [2026-07-18-alchemist-sprayer-brief](2026-07-18-alchemist-sprayer-brief.md) — Authored `briefs/weapons/alchemist-sprayer.yaml` for issue nalfeo/Crawler#1332 (Floor 2 beam
 - [2026-07-18-baseball-bat-brief](2026-07-18-baseball-bat-brief.md) — Handled issue #1329 for the `baseball-bat` asset request by taking the smallest
+=======
+- [2026-07-18-powder-keg-sprite-brief](2026-07-18-powder-keg-sprite-brief.md) — Brief + art plan for powder-keg weapon icon (issue #1343); generation pending `asset-request` label
+>>>>>>> origin/main
 - [2026-07-18-boarding-axe](2026-07-18-boarding-axe.md) — Handoff: boarding-axe Floor 2 Equipment Icon
 - [2026-07-18-bone-saw-pr-merge-recovery](2026-07-18-bone-saw-pr-merge-recovery.md) — Handoff: bone-saw PR merge recovery
 - [2026-07-18-butcher-hook-asset-request](2026-07-18-butcher-hook-asset-request.md) — Handoff: butcher-hook asset request
