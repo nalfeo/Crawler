@@ -20,6 +20,7 @@ import {
   getEnemyPreset,
   getRoomPreset,
   spawnPresetAroundCenter,
+  ARENA_OBSERVER_PLAYER_HP,
 } from '../../src/labs/combat-arena-lab/arena-data.js';
 
 const DELTA = GAME.DELTA_MS;
@@ -34,8 +35,11 @@ function makeWorld() {
     roomPreset.playerSpawnTile.y,
   );
   const player = spawnPlayer(world, spawnWorld.x, spawnWorld.y);
-  world.stores.health.current[player] = 100_000;
-  world.stores.health.max[player] = 100_000;
+  // Observer HP: shared with the arena lab's passive-observer / immortal-mode
+  // setup. The player carries no weapon, so Queen cannot be killed before the
+  // second cast and the full cadence is proven deterministically.
+  world.stores.health.current[player] = ARENA_OBSERVER_PLAYER_HP;
+  world.stores.health.max[player] = ARENA_OBSERVER_PLAYER_HP;
   return { world, player };
 }
 

@@ -689,3 +689,18 @@ export function spawnPresetAroundCenter(
   }
   return eids;
 }
+
+/**
+ * Player HP used by the arena's headless evidence observer (and by any
+ * passive-observer-mode run that needs the player to survive the full
+ * encounter without a weapon). Setting this to a very large value acts as
+ * a deterministic stand-in for immortal mode so the evidence harness and
+ * unit tests can complete without equipping a weapon or attaching the
+ * `Invincible` component (which requires the engine layer).
+ *
+ * The arena lab's interactive immortal mode (`PlayerMode === 'immortal'`)
+ * achieves the same effect by attaching `Invincible`; both share this value
+ * as the authoritative "observer" health so the two setups are explicitly
+ * linked.
+ */
+export const ARENA_OBSERVER_PLAYER_HP = 100_000;

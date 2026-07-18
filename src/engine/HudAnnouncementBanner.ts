@@ -13,7 +13,7 @@
  * This module has no simulation side-effects (no writes back into `world`),
  * so headless runs that skip HUD rendering behave identically.
  */
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import type { AnnouncementEvent, AnnouncementKind } from '../shared/announcement-events.js';
 import { GAME } from '../shared/constants.js';
