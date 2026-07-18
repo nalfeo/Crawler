@@ -217,6 +217,7 @@ function createHarness({
 test('workflow runs trusted default-branch script with global serialization', () => {
   assert.equal(workflow.permissions.contents, 'read');
   assert.equal(workflow.permissions['pull-requests'], undefined);
+  assert.equal(workflow.jobs['enforce-pr-state']['timeout-minutes'], 15);
   assert.equal(workflow.jobs['enforce-pr-state'].concurrency.group, 'pr-ready-reviewer-guard');
   assert.equal(workflow.jobs['enforce-pr-state'].steps[0].uses, 'actions/checkout@v4');
   assert.equal(
@@ -321,6 +322,32 @@ for (const [name, mutate, expectedReason] of [
     assert.deepEqual(result, { eligible: false, reason: expectedReason });
   });
 }
+
+test('skips local-ineligible empty-draft repairs before linked-issue or workflow-run reads', async () => {
+  const harness = createHarness({
+    pulls: [makePr({ user: { login: 'octocat' } })],
+  });
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'pull_request_target',
+    payloadAction: 'opened',
+    triggeringPullNumber: 42,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    reviewerRemovals: 0,
+  });
+  assert.equal(
+    harness.calls.some(([name]) => name === 'listClosingIssues' || name === 'listWorkflowRuns'),
+    false,
+  );
+});
 
 test('repairs the exact eligible empty Copilot draft fixture', async () => {
   const harness = createHarness();

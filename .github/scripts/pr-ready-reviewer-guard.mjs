@@ -94,6 +94,19 @@ export function latestMatchingCopilotCloudRun({ runs, repository, headSha, headB
     })[0];
 }
 
+function localEmptyCopilotDraftRepairRejection({ pr, changedFiles, repository }) {
+  if (normalize(pr?.state) !== 'open') return 'not-open';
+  if (pr?.draft !== true) return 'not-draft';
+  if (!sameRepository(pr?.head?.repo?.full_name, repository)) return 'fork';
+  if (Number(changedFiles) !== 0) {
+    return `changed-files=${Number(changedFiles) || 0}`;
+  }
+  if (!isCopilotLogin(pr?.user?.login)) {
+    return `author=${String(pr?.user?.login || 'unknown')}`;
+  }
+  return null;
+}
+
 export function inspectEmptyCopilotDraftRepair({
   pr,
   changedFiles,
@@ -104,17 +117,15 @@ export function inspectEmptyCopilotDraftRepair({
   graceMs = EMPTY_DRAFT_REPAIR_GRACE_MS,
   expectedIssueNumber = null,
 }) {
-  if (normalize(pr?.state) !== 'open') return { eligible: false, reason: 'not-open' };
-  if (pr?.draft !== true) return { eligible: false, reason: 'not-draft' };
-  if (!sameRepository(pr?.head?.repo?.full_name, repository))
-    return { eligible: false, reason: 'fork' };
-  if (Number(changedFiles) !== 0) {
-    return { eligible: false, reason: `changed-files=${Number(changedFiles) || 0}` };
-  }
-  if (!isCopilotLogin(pr?.user?.login)) {
+  const localRejection = localEmptyCopilotDraftRepairRejection({
+    pr,
+    changedFiles,
+    repository,
+  });
+  if (localRejection) {
     return {
       eligible: false,
-      reason: `author=${String(pr?.user?.login || 'unknown')}`,
+      reason: localRejection,
     };
   }
 
@@ -195,6 +206,16 @@ async function changedFilesForDraft({
 }
 
 async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log, now, graceMs }) {
+  const localRejection = localEmptyCopilotDraftRepairRejection({
+    pr,
+    changedFiles,
+    repository,
+  });
+  if (localRejection) {
+    log.info(`skip empty-draft repair pr=#${pr.number} reason=${localRejection}`);
+    return { status: 'skipped', reason: localRejection };
+  }
+
   const linkedIssues = await api.listClosingIssues(pr.number);
   const runs = await api.listWorkflowRuns(pr.head.sha, pr.head.ref);
   const initialDecision = inspectEmptyCopilotDraftRepair({
@@ -339,7 +360,7 @@ function parseRepository(fullName) {
 
 function createApi({ token, owner, repo }) {
   return {
-    listOpenPulls: () => paginate(token, `/repos/${owner}/${repo}/pulls?state=open`),
+    listOpenPulls: () => paginate(token, `/repos/${owner}/${repo}/pulls?state=open&per_page=100`),
     getPull: async (pullNumber) =>
       (await request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}`)).data,
     markReadyForReview: async (pullRequestId) =>
