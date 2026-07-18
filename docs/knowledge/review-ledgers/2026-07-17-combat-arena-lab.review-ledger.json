@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "combat-arena-lab",
+  "task_title": "Create combat arena lab",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "major_fork",
+      "notes": "4 blocking + 2 non-blocking concerns. (1) Headless exports in Phaser-bound module → split into arena-data.ts, pure Phaser-free module; tests now import directly from arena-data.ts. (2) Boss spawn path missing attackRange/FamilyMembership → spawnFromArchetype now computes attackRange = detectRange*0.65 for ranged, adds FamilyMembership for floor-2 archetypes. (3) Manual system loop → replaced with runCoreSimulationStep(preSystems=[weaponSystem,enemyAISystem]). (4) Spawn in walls → findWalkablePosition validates FloorMap.isPassableAt, searches 8 neighbors then 16 random fallbacks. (5) Reproducibility → arenaSeed added to settings, crypto.getRandomValues, seed displayed in GUI with new-seed button. (6) Test depth → tests now import from arena-data.ts directly, include FloorMap.isPassableAt validation and attackRange assertions."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

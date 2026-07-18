@@ -1,182 +1,794 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "floor-2-equipment-epic-state",
-  "title": "Epic State",
-  "description": "Tracks all slices of a Crawler feature epic: their planning status, dependencies, GitHub issue/PR refs, and the hard release gate.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nalfeo/Crawler/docs/knowledge/epics/floor-2-equipment/epic-state.schema.json",
+  "title": "Crawler durable epic state",
   "type": "object",
-  "required": ["epic_id", "title", "schema_version", "updated_at", "hard_release_gate", "slices"],
   "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "epic_id",
+    "title",
+    "updated_at",
+    "plan",
+    "authority",
+    "lifecycle",
+    "claim_policy",
+    "github",
+    "issue_materialization",
+    "release",
+    "nodes",
+    "reconciliation"
+  ],
   "properties": {
-    "$schema": { "type": "string" },
+    "$schema": {
+      "const": "./epic-state.schema.json"
+    },
+    "schema_version": {
+      "const": "crawler-epic-state/v1"
+    },
     "epic_id": {
-      "type": "string",
-      "description": "Kebab-case identifier for this epic, matching the directory name.",
-      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      "const": "floor-2-equipment"
     },
     "title": {
       "type": "string",
-      "minLength": 1,
-      "description": "Human-readable epic title."
-    },
-    "github_issue": {
-      "description": "Parent GitHub issue number, or null if not yet created.",
-      "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
-    },
-    "schema_version": {
-      "type": "string",
-      "description": "Semver of the epic-state schema used to author this file.",
-      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+      "minLength": 1
     },
     "updated_at": {
       "type": "string",
-      "format": "date-time",
-      "description": "ISO-8601 timestamp of the last authoritative state update."
+      "format": "date-time"
     },
-    "hard_release_gate": {
-      "$ref": "#/definitions/HardReleaseGate"
-    },
-    "slices": {
-      "type": "array",
-      "description": "All slices (work units) in the epic, in tier/seq order.",
-      "items": { "$ref": "#/definitions/SliceNode" },
-      "minItems": 1
-    }
-  },
-  "definitions": {
-    "HardReleaseGate": {
+    "plan": {
       "type": "object",
-      "description": "The measurable success criterion the epic must meet before release.",
-      "required": ["description", "checkpoints", "status"],
       "additionalProperties": false,
+      "required": ["path", "contract_version", "contract_sha256"],
       "properties": {
-        "description": {
+        "path": {
+          "const": "docs/knowledge/epics/floor-2-equipment/PLAN.md"
+        },
+        "contract_version": {
+          "const": "floor-2-equipment/v1"
+        },
+        "contract_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state_role", "sole_global_writer", "ordered_sources"],
+      "properties": {
+        "state_role": {
+          "const": "index-cache"
+        },
+        "sole_global_writer": {
+          "const": "Producer"
+        },
+        "ordered_sources": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "merged-git-and-pr-facts"
+            },
+            {
+              "const": "deterministic-commit-addressed-evidence"
+            },
+            {
+              "const": "trusted-issue-ownership-and-comments"
+            },
+            {
+              "const": "epic-state-index-cache"
+            }
+          ],
+          "items": false,
+          "minItems": 4
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normal", "terminal"],
+      "properties": {
+        "normal": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "blocked"
+            },
+            {
+              "const": "ready"
+            },
+            {
+              "const": "claimed"
+            },
+            {
+              "const": "in_progress"
+            },
+            {
+              "const": "pr_open"
+            },
+            {
+              "const": "merged"
+            },
+            {
+              "const": "validated"
+            }
+          ],
+          "items": false,
+          "minItems": 7
+        },
+        "terminal": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "cancelled"
+            },
+            {
+              "const": "superseded"
+            }
+          ],
+          "items": false,
+          "minItems": 2
+        }
+      }
+    },
+    "claim_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "bootstrap_node",
+        "default_lease_hours",
+        "maximum_without_heartbeat_hours",
+        "protocol_headings"
+      ],
+      "properties": {
+        "authority": {
+          "const": "trusted-issue-comments"
+        },
+        "bootstrap_node": {
+          "const": "slice:A0"
+        },
+        "default_lease_hours": {
+          "const": 24
+        },
+        "maximum_without_heartbeat_hours": {
+          "const": 48
+        },
+        "protocol_headings": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "const": "CLAIMED"
+            },
+            {
+              "const": "BLOCKED"
+            },
+            {
+              "const": "UNBLOCKED"
+            },
+            {
+              "const": "SCOPE-CHANGE-REQUEST"
+            },
+            {
+              "const": "HANDOFF"
+            }
+          ],
+          "items": false,
+          "minItems": 5
+        }
+      }
+    },
+    "github": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "parent_issue"],
+      "properties": {
+        "repository": {
+          "const": "nalfeo/Crawler"
+        },
+        "parent_issue": {
+          "$ref": "#/$defs/nullableIssueRef"
+        }
+      }
+    },
+    "issue_materialization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "parent_title", "child_title_prefix", "labels", "late_bound_fields"],
+      "properties": {
+        "mode": {
+          "const": "deterministic-plan-only"
+        },
+        "parent_title": {
           "type": "string",
           "minLength": 1
         },
-        "checkpoints": {
+        "child_title_prefix": {
+          "type": "string",
+          "minLength": 1
+        },
+        "labels": {
           "type": "array",
-          "items": { "$ref": "#/definitions/GateCheckpoint" },
-          "minItems": 1
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
         },
-        "status": {
-          "type": "string",
-          "enum": ["pending", "measuring", "passed", "failed"],
-          "description": "Aggregate gate status across all checkpoints."
-        },
-        "evidence_commit": {
-          "description": "Short commit SHA that first produced passing evidence, or null.",
-          "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{7,40}$" }, { "type": "null" }]
+        "late_bound_fields": {
+          "type": "array",
+          "items": {
+            "enum": ["parent_issue_number", "child_issue_number"]
+          },
+          "uniqueItems": true
         }
       }
     },
-    "GateCheckpoint": {
+    "release": {
       "type": "object",
-      "required": ["id", "label", "target_min", "target_max", "status"],
       "additionalProperties": false,
+      "required": ["required_node_status", "all_required_nodes", "flags"],
       "properties": {
-        "id": {
-          "type": "string",
-          "pattern": "^[a-z0-9_]+$",
-          "description": "Stable machine-readable identifier."
+        "required_node_status": {
+          "const": "validated"
         },
-        "label": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Human-readable label."
+        "all_required_nodes": {
+          "const": true
         },
-        "target_min": {
-          "type": "number",
-          "description": "Inclusive lower bound for the measured ratio."
-        },
-        "target_max": {
-          "type": "number",
-          "description": "Inclusive upper bound for the measured ratio."
-        },
-        "measured_value": {
-          "description": "Last measured value, or null.",
-          "oneOf": [{ "type": "number" }, { "type": "null" }]
-        },
-        "status": {
-          "type": "string",
-          "enum": ["pending", "measuring", "passed", "failed"]
-        },
-        "evidence_commit": {
-          "description": "Short commit SHA for the evidence run, or null.",
-          "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{7,40}$" }, { "type": "null" }]
+        "flags": {
+          "type": "array",
+          "minItems": 7,
+          "items": {
+            "$ref": "#/$defs/releaseFlag"
+          }
         }
       }
     },
-    "SliceNode": {
+    "nodes": {
+      "type": "array",
+      "minItems": 37,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "reconciliation": {
       "type": "object",
-      "required": ["id", "title", "tier", "seq", "status", "scope", "deferred", "dependencies"],
       "additionalProperties": false,
+      "required": [
+        "mode",
+        "last_offline_validation_at",
+        "last_github_audit_at",
+        "last_reconciled_by",
+        "drift"
+      ],
       "properties": {
-        "id": {
+        "mode": {
+          "const": "read-only-proposal"
+        },
+        "last_offline_validation_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "last_github_audit_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "last_reconciled_by": {
+          "type": ["string", "null"]
+        },
+        "drift": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,64}$"
+    },
+    "sha40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nullableDateTime": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "nullableSha": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sha"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableSha40": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sha40"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "issueRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "url"],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
           "type": "string",
-          "description": "Stable node slug, e.g. 'slice:A0', 'slice:B1'.",
-          "pattern": "^slice:[A-Z][0-9]+$"
+          "pattern": "^https://github\\.com/nalfeo/Crawler/issues/[1-9][0-9]*$"
+        }
+      }
+    },
+    "nullableIssueRef": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/issueRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "prRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "url", "head_sha"],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://github\\.com/nalfeo/Crawler/pull/[1-9][0-9]*$"
+        },
+        "head_sha": {
+          "$ref": "#/$defs/sha40"
+        }
+      }
+    },
+    "nullablePrRef": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/prRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path_or_check", "sha256", "commit", "recorded_at"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path_or_check": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "commit": {
+          "$ref": "#/$defs/sha40"
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claimant",
+        "session",
+        "source",
+        "scope",
+        "claimed_at",
+        "lease_expires_at",
+        "heartbeat_at",
+        "base_commit"
+      ],
+      "properties": {
+        "claimant": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "session": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "source": {
+          "enum": ["none", "parent-issue-bootstrap", "child-issue-comment"]
+        },
+        "scope": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "claimed_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "lease_expires_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "heartbeat_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "base_commit": {
+          "$ref": "#/$defs/nullableSha"
+        }
+      }
+    },
+    "merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "merged_at"],
+      "properties": {
+        "commit": {
+          "$ref": "#/$defs/nullableSha40"
+        },
+        "merged_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        }
+      }
+    },
+    "nodeReconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "last_audited_at",
+        "observed_issue_state",
+        "observed_pr_state",
+        "observed_head_sha",
+        "observed_merge_commit",
+        "drift"
+      ],
+      "properties": {
+        "last_audited_at": {
+          "$ref": "#/$defs/nullableDateTime"
+        },
+        "observed_issue_state": {
+          "enum": ["open", "closed", null]
+        },
+        "observed_pr_state": {
+          "enum": ["OPEN", "CLOSED", "MERGED", null]
+        },
+        "observed_head_sha": {
+          "$ref": "#/$defs/nullableSha40"
+        },
+        "observed_merge_commit": {
+          "$ref": "#/$defs/nullableSha40"
+        },
+        "drift": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_id",
+        "display_id",
+        "kind",
+        "parent_slice",
+        "title",
+        "summary",
+        "execution_lane",
+        "persona",
+        "dependencies",
+        "status",
+        "release_requirement",
+        "deferred_reason",
+        "status_changed_at",
+        "github",
+        "ownership",
+        "merge",
+        "evidence_requirements",
+        "evidence",
+        "reconciliation",
+        "superseded_by",
+        "stacked_work"
+      ],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "pattern": "^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$"
+        },
+        "display_id": {
+          "type": "string",
+          "pattern": "^[A-Z0-9][A-Z0-9+.-]*$"
+        },
+        "kind": {
+          "enum": ["slice", "cloud_packet"]
+        },
+        "parent_slice": {
+          "type": ["string", "null"],
+          "pattern": "^slice:[A-Z0-9][A-Z0-9+.-]*$"
         },
         "title": {
           "type": "string",
           "minLength": 1
         },
-        "tier": {
+        "summary": {
           "type": "string",
-          "enum": ["A", "B", "C"],
-          "description": "Planning tier: A=bootstrap, B=implementation, C=validation."
+          "minLength": 1
         },
-        "seq": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Sequence number within the tier."
-        },
-        "status": {
-          "type": "string",
+        "execution_lane": {
           "enum": [
-            "planned",
-            "claimed",
-            "in_progress",
-            "merged",
-            "validated",
-            "deferred",
-            "blocked"
-          ],
-          "description": "Current lifecycle status."
+            "control",
+            "registry",
+            "catalog-balance",
+            "progression",
+            "economy",
+            "accessible-ux",
+            "world-integration",
+            "ai-settlement",
+            "verification"
+          ]
         },
-        "scope": {
+        "persona": {
           "type": "string",
-          "minLength": 1,
-          "description": "One-sentence description of what this slice delivers."
-        },
-        "deferred": {
-          "type": "boolean",
-          "description": "When true, this slice is intentionally deferred and does not block the release gate."
-        },
-        "github_issue": {
-          "description": "Child GitHub issue number, or null before materialization.",
-          "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
-        },
-        "pr": {
-          "description": "Merged PR number, or null.",
-          "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
-        },
-        "commit_evidence": {
-          "description": "Short commit SHA of the validation evidence, or null.",
-          "oneOf": [{ "type": "string", "pattern": "^[0-9a-f]{7,40}$" }, { "type": "null" }]
+          "minLength": 1
         },
         "dependencies": {
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^slice:[A-Z][0-9]+$"
+            "pattern": "^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$"
           },
-          "description": "IDs of slices that must be validated or merged before this slice can start."
+          "uniqueItems": true
         },
-        "notes": {
+        "status": {
+          "enum": [
+            "blocked",
+            "ready",
+            "claimed",
+            "in_progress",
+            "pr_open",
+            "merged",
+            "validated",
+            "cancelled",
+            "superseded"
+          ]
+        },
+        "release_requirement": {
+          "enum": ["required", "deferred"]
+        },
+        "deferred_reason": {
+          "type": ["string", "null"]
+        },
+        "status_changed_at": {
           "type": "string",
-          "description": "Optional free-text notes for the current status."
+          "format": "date-time"
+        },
+        "github": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["issue", "pr"],
+          "properties": {
+            "issue": {
+              "$ref": "#/$defs/nullableIssueRef"
+            },
+            "pr": {
+              "$ref": "#/$defs/nullablePrRef"
+            }
+          }
+        },
+        "ownership": {
+          "$ref": "#/$defs/ownership"
+        },
+        "merge": {
+          "$ref": "#/$defs/merge"
+        },
+        "evidence_requirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "reconciliation": {
+          "$ref": "#/$defs/nodeReconciliation"
+        },
+        "superseded_by": {
+          "type": ["string", "null"],
+          "pattern": "^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$"
+        },
+        "stacked_work": {
+          "$ref": "#/$defs/stackedWork"
         }
       }
+    },
+    "releaseFlag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "default", "validating_nodes"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {
+          "const": false
+        },
+        "validating_nodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^slice:[A-Z0-9][A-Z0-9+.-]*$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "stackedWork": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "owner",
+            "dependency",
+            "dependent",
+            "resync",
+            "rebase_to_main",
+            "material_drift",
+            "block_reason"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["stacked_in_progress", "stacked_pr_open"]
+            },
+            "owner": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["claimant", "session", "branch", "claimed_at"],
+              "properties": {
+                "claimant": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "session": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claimed_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "dependency": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["node_id", "pr_number", "repository", "branch", "head_sha"],
+              "properties": {
+                "node_id": {
+                  "type": "string",
+                  "pattern": "^(slice|packet):[A-Z0-9][A-Z0-9+.-]*$"
+                },
+                "pr_number": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "repository": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$"
+                },
+                "branch": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "head_sha": {
+                  "$ref": "#/$defs/sha40"
+                }
+              }
+            },
+            "dependent": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["head_sha", "pr_number"],
+              "properties": {
+                "head_sha": {
+                  "$ref": "#/$defs/sha40"
+                },
+                "pr_number": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "resync": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["head_sha", "at"],
+              "properties": {
+                "head_sha": {
+                  "$ref": "#/$defs/sha40"
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "rebase_to_main": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["state", "completed_at"],
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": ["pending", "complete"]
+                },
+                "completed_at": {
+                  "$ref": "#/$defs/nullableDateTime"
+                }
+              }
+            },
+            "material_drift": {
+              "type": ["string", "null"]
+            },
+            "block_reason": {
+              "type": ["string", "null"]
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   }
 }
