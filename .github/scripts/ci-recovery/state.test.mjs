@@ -9,6 +9,7 @@ import {
   blockerFingerprint,
   collapseCheckRunsByName,
   extractAddressedMarkerSha,
+  hasNotApplicableMarker,
   hasSubstantiveCopilotReview,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
@@ -720,6 +721,74 @@ test('shouldResolveThread accepts latest trusted commit URL marker on head linea
     true,
   );
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
+});
+
+test('shouldResolveThread accepts trusted "✅ Not applicable" marker without a SHA', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Some concern here.',
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'reviewer' },
+        },
+        {
+          body: '✅ Not applicable — the path calculation is correct, two `..` segments reach the repo root.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread rejects "✅ Not applicable" from untrusted author', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Not applicable — the concern is invalid.',
+          authorAssociation: 'NONE',
+          author: { login: 'random-user' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('shouldResolveThread rejects "✅ Not applicable" when reviewer follows up', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Not applicable — the finding is wrong.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+        {
+          body: 'I disagree, the issue is still present.',
+          authorAssociation: 'MEMBER',
+          author: { login: 'reviewer' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('hasNotApplicableMarker recognises canonical and variant forms', () => {
+  assert.equal(hasNotApplicableMarker('✅ Not applicable — reason'), true);
+  assert.equal(hasNotApplicableMarker('✅ Not applicable: the path is correct'), true);
+  assert.equal(hasNotApplicableMarker('✅ not applicable'), true);
+  assert.equal(hasNotApplicableMarker('✅ NOT APPLICABLE — multi-word reason'), true);
+  assert.equal(hasNotApplicableMarker('✅ Not applicablex'), false); // no word boundary
+  assert.equal(hasNotApplicableMarker('✅ Addressed in abc1234: note'), false);
+  assert.equal(hasNotApplicableMarker('Not applicable without checkmark'), false);
+  assert.equal(hasNotApplicableMarker(''), false);
+  assert.equal(hasNotApplicableMarker(null), false);
+  assert.equal(hasNotApplicableMarker(undefined), false);
 });
 
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
