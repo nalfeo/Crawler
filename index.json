@@ -1,5 +1,16 @@
 [
   {
+    "commit": "85f8d626d1152ce1a84b11fa9797f03e1df47bdd",
+    "commitDate": "2026-07-18T18:01:43Z",
+    "commitSubject": "art(sprites): add iron-visor Floor 2 equipment brief (#1504)",
+    "capturedAt": "2026-07-18T19:28:24.235Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29655747223",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/85f8d626d1152ce1a84b11fa9797f03e1df47bdd.json"
+  },
+  {
     "commit": "c5530faeaf25055a8d0ce6a08c459aed734af3f3",
     "commitDate": "2026-07-18T18:01:36Z",
     "commitSubject": "feat(assets): add alchemist-goggles Floor 2 equipment icon brief (#1502)",
