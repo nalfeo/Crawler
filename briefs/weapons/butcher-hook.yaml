@@ -1,0 +1,17 @@
+type: weapon
+name: butcher-hook
+description: |
+  A large, heavy meat-hook held vertically, handle at the bottom and the
+  hooked end curving up and over at the top. The hook body is a thick
+  J-shaped or S-shaped curve of dark iron, with a sharp tapering point
+  at the tip. A short wrapped haft or wooden handle sits at the base,
+  bound with leather strip or chain link. The iron is dark and pitted —
+  rust-brown shadows in the grooves, a faint highlight on the outer curve
+  of the hook. No blood, no drip effects, no decorative flourishes. The
+  silhouette must read instantly as "large curved hook" at game scale.
+  Floor 2 intensity: the metal looks like it has genuinely been used.
+  Industrial, brutal, unsettling in the right way. Single subject, centered.
+
+# Vertical orientation (default for weapons): handle at the bottom-center,
+# hook curves upward. Default 64x64, 4x4 sheet, kenney-roguelike palette —
+# all inherited from data/sprite-types/weapon.json.

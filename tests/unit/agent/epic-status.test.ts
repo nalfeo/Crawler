@@ -314,7 +314,10 @@ describe('Floor 2 equipment epic status', () => {
   it('rejects merge facts that point at a non-commit git object', () => {
     const state = cloneState();
     validateA0(state);
-    const treeObject = execFileSync('git', ['rev-parse', `${HANDOFF_COMMIT}^{tree}`], {
+    // Use HEAD^{tree} rather than a hardcoded commit SHA that may not be
+    // present in shallow CI checkouts. We only need any tree object SHA to
+    // verify the validator correctly rejects non-commit objects.
+    const treeObject = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
     }).trim();
