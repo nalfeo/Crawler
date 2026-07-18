@@ -166,6 +166,51 @@ describe('Floor 2 boss ability catalog', () => {
     ).toThrow(/sequential-annuli telegraph requires metric.*band-width/);
   });
 
+  it('rejects malformed telegraph metric value types and units at the catalog boundary', () => {
+    const queen = getFloor2BossAbilityByBossId('faerie-boss');
+    if (queen === undefined) throw new Error('Expected Queen Mab ability');
+
+    const mutateRadius = (value: string | number, unit: string) => ({
+      ...FLOOR2_BOSS_ABILITY_CATALOG,
+      entries: FLOOR2_BOSS_ABILITY_CATALOG.entries.map((ability) =>
+        ability.id === queen.id
+          ? {
+              ...ability,
+              telegraph: {
+                ...ability.telegraph,
+                metrics: ability.telegraph.metrics.map((metric) =>
+                  metric.id === 'radius' ? { ...metric, value, unit } : metric,
+                ),
+              },
+            }
+          : ability,
+      ),
+    });
+
+    const wrongUnit = bossAbilityCatalogSchema.safeParse(mutateRadius('wide', 'mode'));
+    expect(wrongUnit.success).toBe(false);
+    expect(wrongUnit.error?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: 'metric "radius" must have unit "feet", got "mode"',
+        }),
+        expect.objectContaining({
+          message: 'metric "radius" must be a positive finite number',
+        }),
+      ]),
+    );
+
+    const wrongValueType = bossAbilityCatalogSchema.safeParse(mutateRadius('wide', 'feet'));
+    expect(wrongValueType.success).toBe(false);
+    expect(wrongValueType.error?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: 'metric "radius" must be a positive finite number',
+        }),
+      ]),
+    );
+  });
+
   it('preserves Queen Mab Tarnish as the exact first vertical slice', () => {
     const queen = getFloor2BossAbilityByBossId('faerie-boss');
     expect(queen).toMatchObject({
