@@ -947,30 +947,33 @@ function validateEvidenceRequirements(
     }
     // handoff and review-ledger are already verified in validateEvidenceFiles.
     if (handledKinds.has(requirement)) continue;
-    // For non-canonical kinds, verify commit existence and sha256 for file-like paths.
+    // For non-canonical kinds:
+    // - file-backed evidence is verified by content hash at commit (or safe fallback),
+    // - non-file check evidence must still point at an existing commit.
+    if (isRepoFile(repoRoot, evidence.path_or_check)) {
+      const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
+      if (content === null) {
+        result.errors.push({
+          code: 'evidence.git-verification-failed',
+          node_id: node.node_id,
+          message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check}`,
+        });
+        continue;
+      }
+      if (sha256(content) !== evidence.sha256) {
+        result.errors.push({
+          code: 'evidence.hash-drift',
+          node_id: node.node_id,
+          message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
+        });
+      }
+      continue;
+    }
     if (!gitReader.commitExists(evidence.commit)) {
       result.errors.push({
         code: 'evidence.git-verification-failed',
         node_id: node.node_id,
         message: `${node.node_id} evidence commit ${evidence.commit} does not exist: ${evidence.path_or_check}`,
-      });
-      continue;
-    }
-    if (!isRepoFile(repoRoot, evidence.path_or_check)) continue;
-    const content = gitReader.showContent(evidence.commit, evidence.path_or_check);
-    if (content === null) {
-      result.errors.push({
-        code: 'evidence.git-verification-failed',
-        node_id: node.node_id,
-        message: `${node.node_id} evidence could not be verified at commit ${evidence.commit}: ${evidence.path_or_check}`,
-      });
-      continue;
-    }
-    if (sha256(content) !== evidence.sha256) {
-      result.errors.push({
-        code: 'evidence.hash-drift',
-        node_id: node.node_id,
-        message: `${node.node_id} evidence hash drifted at commit ${evidence.commit}: ${evidence.path_or_check}`,
       });
     }
   }
@@ -1519,8 +1522,11 @@ function parseTrustedBlockedEvent(
     if (match?.[1] && match[2]) fields.set(match[1], match[2]);
   }
   const nodeId = fields.get('node');
+  const leaseDisposition = fields.get('lease_disposition');
   if (!nodeId) return null;
   if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
+  // BLOCKED events revoke ownership only when lease disposition explicitly requests it.
+  if (leaseDisposition !== 'revoke') return null;
   return { nodeId, url: comment.html_url };
 }
 

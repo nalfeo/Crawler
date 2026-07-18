@@ -497,7 +497,12 @@ describe('Floor 2 equipment epic status', () => {
         'scope: Slice A0 control plane only',
       ].join('\n');
     const makeBlocked = (): string =>
-      ['BLOCKED', 'node: slice:A0', 'reason: dependency unresolved'].join('\n');
+      [
+        'BLOCKED',
+        'node: slice:A0',
+        'reason: dependency unresolved',
+        'lease_disposition: revoke',
+      ].join('\n');
     const runner: GithubRunner = {
       get(path) {
         if (path.endsWith('/issues/1264')) {
@@ -531,6 +536,55 @@ describe('Floor 2 equipment epic status', () => {
     // No duplicate-live-claims and no operator action for the revoked claim.
     expect(audit.errors.map((e) => e.code)).not.toContain('github.duplicate-live-claims');
     expect(audit.proposal.operator_actions.filter((a) => a.includes('session-z'))).toHaveLength(0);
+  });
+
+  it('does not revoke a live claim when BLOCKED lacks explicit revoke lease disposition', () => {
+    const state = cloneState();
+    const makeClaim = (): string =>
+      [
+        'CLAIMED',
+        'node: slice:A0',
+        'claimant: agent-b',
+        'session: session-z',
+        'expires_at: 2026-07-18T18:00:00.000Z',
+        'claimed_at: 2026-07-17T16:00:00.000Z',
+        `base_commit: ${HANDOFF_COMMIT}`,
+        'scope: Slice A0 control plane only',
+      ].join('\n');
+    const makeBlockedWithoutRevoke = (): string =>
+      ['BLOCKED', 'node: slice:A0', 'reason: dependency unresolved'].join('\n');
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: makeClaim(),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-22',
+            },
+            {
+              body: makeBlockedWithoutRevoke(),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-23',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+    const audit = auditGithub(state, runner, NOW);
+    expect(
+      audit.proposal.operator_actions.filter((a) => a.includes('session-z')).length,
+    ).toBeGreaterThan(0);
   });
 
   it('keeps release_ready false when GitHub audit adds errors', () => {
@@ -853,7 +907,7 @@ describe('Floor 2 equipment epic status', () => {
 });
 
 describe('validateEvidenceRequirements', () => {
-  it('rejects a validated node with a fabricated commit for non-handoff evidence', () => {
+  it('rejects a validated node with a fabricated commit for non-file check evidence', () => {
     const state = cloneState();
     const node = state.nodes[0]!;
     node.status = 'validated';
@@ -866,7 +920,7 @@ describe('validateEvidenceRequirements', () => {
         return {
           ...e,
           commit: FABRICATED_COMMIT,
-          path_or_check: 'docs/knowledge/epics/floor-2-equipment/PLAN.md',
+          path_or_check: 'check:offline-validator-and-focused-tests',
         };
       }
       return e;
@@ -894,5 +948,48 @@ describe('validateEvidenceRequirements', () => {
       gitReader: strictReader,
     }).errors;
     expect(errors.map((e) => e.code)).toContain('evidence.git-verification-failed');
+  });
+
+  it('accepts file-backed required evidence when commit is unavailable but content hash matches', () => {
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'validated';
+    node.merge.commit = HANDOFF_COMMIT;
+    node.merge.merged_at = '2026-07-17T20:00:00.000Z';
+    const FABRICATED_COMMIT = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef';
+    node.evidence = node.evidence.map((e) => {
+      if (e.kind === 'offline-validator-and-focused-tests') {
+        const filePath = 'tests/unit/agent/epic-status.test.ts';
+        return {
+          ...e,
+          commit: FABRICATED_COMMIT,
+          path_or_check: filePath,
+          sha256: sha256OfFile(REPO_ROOT, filePath),
+        };
+      }
+      return e;
+    });
+
+    const readerWithUnavailableCommit: GitReader = {
+      commitExists() {
+        return false;
+      },
+      showContent(_commit, filePath) {
+        try {
+          return readFileSync(resolve(REPO_ROOT, filePath), 'utf8');
+        } catch {
+          return null;
+        }
+      },
+    };
+
+    const errors = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      gitReader: readerWithUnavailableCommit,
+    }).errors;
+    expect(errors.map((e) => e.code)).not.toContain('evidence.git-verification-failed');
+    expect(errors.map((e) => e.code)).not.toContain('evidence.hash-drift');
   });
 });
