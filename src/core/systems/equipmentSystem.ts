@@ -611,6 +611,41 @@ function equipmentSourceId(instanceId: EquipmentInstanceId): string {
   return `equipment:${instanceId}`;
 }
 
+function commitEquipInstance(
+  world: GameWorld,
+  entity: number,
+  state: EquipmentState,
+  instance: EquipmentInstance,
+  options?: { persistLegacyInstance?: boolean },
+): void {
+  for (const slotId of instance.def.slots) {
+    state.equipped[slotId] = instance.instanceId;
+  }
+  if (options?.persistLegacyInstance !== false) {
+    if (typeof instance.instanceId !== 'number') {
+      throw new Error('commitEquipInstance expected a numeric legacy instance id');
+    }
+    state.instances.set(instance.instanceId, instance);
+  }
+
+  recomputeEffectiveStats(world, entity);
+
+  for (const spec of instance.def.grantsStatusEffects ?? []) {
+    applyStatusEffect(world, entity, {
+      ...spec,
+      sourceType: 'equipment',
+      sourceId: equipmentSourceId(instance.instanceId),
+    });
+  }
+
+  if (instance.def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    const weaponDef = getWeaponDef(instance.def.weaponId);
+    if (weaponDef !== undefined) {
+      setActiveWeaponDef(world, weaponDef);
+    }
+  }
+}
+
 /** Equip an item. Atomic — either fully succeeds or no state change. */
 export function equip(
   world: GameWorld,
@@ -634,37 +669,7 @@ export function equip(
   const state = getOrCreateState(world, entity);
   const instanceId = getNextInstanceId(world);
   const instance: EquipmentInstance = { instanceId, def: itemDef };
-
-  for (const slotId of itemDef.slots) {
-    state.equipped[slotId] = instanceId;
-  }
-  state.instances.set(instanceId, instance);
-
-  recomputeEffectiveStats(world, entity);
-
-  // Grant any timed/tracked status effects this item provides. Specs were
-  // pre-validated in canEquip (validateItemDef), so these writes are infallible
-  // and equip() stays atomic. Both sourceType and sourceId are normalized to this
-  // equipment instance so unequip() clears them symmetrically (a def's granted spec
-  // can never leak via a non-'equipment' sourceType), and duplicate-capable items
-  // (e.g. two rings) track independently.
-  for (const spec of itemDef.grantsStatusEffects ?? []) {
-    applyStatusEffect(world, entity, {
-      ...spec,
-      sourceType: 'equipment',
-      sourceId: equipmentSourceId(instanceId),
-    });
-  }
-
-  // Weapon-typed equipment: activate the underlying WeaponDef when the player
-  // equips it. Non-player entities silently skip this (equipment is entity-
-  // agnostic in principle; only the player has an active weapon today).
-  if (itemDef.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
-    const weaponDef = getWeaponDef(itemDef.weaponId);
-    if (weaponDef !== undefined) {
-      setActiveWeaponDef(world, weaponDef);
-    }
-  }
+  commitEquipInstance(world, entity, state, instance);
 
   return { ok: true, instanceId };
 }
@@ -694,6 +699,9 @@ export function unequip(
   if (!instance) return { ok: false, reason: 'Instance not found' };
 
   let generatedBagEntry: GeneratedEquipmentInventoryEntry | undefined;
+  let bagWithValidatedGeneratedOwnership:
+    | NonNullable<ReturnType<GameWorld['inventories']['get']>>
+    | undefined;
   if (typeof instId !== 'number') {
     const bag = world.inventories.get(entity);
     if (!bag) return { ok: false, reason: 'Entity has no inventory' };
@@ -704,6 +712,7 @@ export function unequip(
     if (hasGeneratedEquipmentReference(bag, instId)) {
       return { ok: false, reason: `Generated equipment already exists in bag: ${instId}` };
     }
+    bagWithValidatedGeneratedOwnership = bag;
     generatedBagEntry = generatedInventoryEntry(instId);
   }
 
@@ -731,8 +740,11 @@ export function unequip(
     clearActiveWeaponDef(world);
   }
 
-  if (generatedBagEntry) {
-    addGeneratedEquipmentReference(world.inventories.get(entity)!, generatedBagEntry.instanceKey);
+  if (generatedBagEntry && bagWithValidatedGeneratedOwnership) {
+    addGeneratedEquipmentReference(
+      bagWithValidatedGeneratedOwnership,
+      generatedBagEntry.instanceKey,
+    );
   }
   recomputeEffectiveStats(world, entity);
   return {
@@ -968,24 +980,7 @@ export function equipFromBag(
   removeItem(bag, itemId, 1);
   const instanceId = getNextInstanceId(world);
   const instance: EquipmentInstance = { instanceId, def };
-  for (const slotId of def.slots) {
-    state.equipped[slotId] = instanceId;
-  }
-  state.instances.set(instanceId, instance);
-  for (const spec of def.grantsStatusEffects ?? []) {
-    applyStatusEffect(world, entity, {
-      ...spec,
-      sourceType: 'equipment',
-      sourceId: equipmentSourceId(instanceId),
-    });
-  }
-  if (def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
-    const weaponDef = getWeaponDef(def.weaponId);
-    if (weaponDef !== undefined) {
-      setActiveWeaponDef(world, weaponDef);
-    }
-  }
-  recomputeEffectiveStats(world, entity);
+  commitEquipInstance(world, entity, state, instance);
 
   return {
     ok: true,
