@@ -1,0 +1,19 @@
+type: item
+name: merchant-sandals
+floor: 2
+description: |
+  Merchant Sandals — a single centered small object icon with a clear, readable
+  silhouette on a transparent background. A matched pair of rugged open-toe
+  merchant sandals presented as one compact footwear subject, with reinforced
+  leather soles, broad crossing straps, and a sturdy heel loop or ankle wrap
+  that still reads cleanly at icon scale. Floor 2 salvage-merchant cues should
+  come through in the materials: worn dark leather, tarnished brass buckles or
+  coin-like trade tags, and a practical armored finish rather than delicate
+  beachwear. Keep the silhouette unmistakably sandals — not boots, shoes,
+  slippers, or bare feet. Leave 1-2 pixels of breathing room around the icon;
+  no detached props, no floating coins, no background, and no visible ankle or
+  leg portions above the footwear.
+variations:
+  - darker charcoal leather with two broad crossed straps and a rectangular brass buckle
+  - red-brown leather with heel loops and small tarnished coin charms stitched into the straps
+  - heavy travel-sandal variant with thicker sole, riveted ankle wrap, and brighter brass toe-guard accents
