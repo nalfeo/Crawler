@@ -555,6 +555,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           cooldownByAbilityId: new Map<string, number>(),
           cooldownFramesByAbilityId: new Map<string, number>(),
           appliedPassiveAbilityIds: new Set<string>(),
+          activeAbilityGrantSources: new Map<
+            string,
+            import('../../shared/abilities.js').AbilityGrantSource[]
+          >(),
+          passiveAbilityGrantSources: new Map<
+            string,
+            import('../../shared/abilities.js').AbilityGrantSource[]
+          >(),
         };
         if (state.learnedSpellIds.length === 0 && state.equippedActiveAbilityIds.length === 0) {
           state.learnedSpellIds = ['fireball'];
