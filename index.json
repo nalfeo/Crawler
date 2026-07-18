@@ -1,5 +1,16 @@
 [
   {
+    "commit": "caae14f52fd6f128076f43c788725d47b470a459",
+    "commitDate": "2026-07-18T21:55:59Z",
+    "commitSubject": "feat(art): add baseball-bat weapon brief for Floor 2 equipment icon (#1528)",
+    "capturedAt": "2026-07-18T23:39:00.389Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29663559843",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/caae14f52fd6f128076f43c788725d47b470a459.json"
+  },
+  {
     "commit": "9313f5daf3d2f67f8dd6fed7925898c549bbaca3",
     "commitDate": "2026-07-18T21:28:24Z",
     "commitSubject": "feat(art): add war-pick weapon brief for Floor 2 equipment slot (#1520)",
