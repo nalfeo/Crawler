@@ -1,4 +1,11 @@
-import { addComponent, hasComponent, removeEntity, set, setComponent } from 'bitecs';
+import {
+  addComponent,
+  hasComponent,
+  removeComponent,
+  removeEntity,
+  set,
+  setComponent,
+} from 'bitecs';
 import { expect, it } from 'vitest';
 import {
   Damage,
@@ -8,6 +15,7 @@ import {
   Health,
   Position,
   Size,
+  SpawnAnim,
   Spawner,
   Sprite,
   Velocity,
@@ -530,4 +538,75 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
   expect(staleNewImage.x, 'generation-safe: new occupant must not show stale hit reaction').toBe(
     ftToPx(NEW_OCCUPANT_X),
   );
+});
+
+it('spawner child with 240 ms SpawnAnim stays settled after SpawnAnim expires (no residual pop-scale)', () => {
+  // SPAWNER_CHILD_SPAWN_ANIM_MS = 240 in spawnerSystem.ts; MINI_SLIME_SPAWN_ANIM_MS = 280.
+  // Before this fix the bridge used the 280 ms window regardless: at T=241 ms after first-seen,
+  // spawnAnimSystem had already removed SpawnAnim (at 240 ms), so the inner
+  //   `if (hasComponent(..., SpawnAnim)) { ...scaleX: 1, scaleY: 1 }`
+  // no longer fired, and sampleSpawnMotion(241) returned scaleX ≈ 1.05 — a 40 ms visible glitch.
+  // The fix stores spawnAnimDurationMs from SpawnAnim.totalMs at first-seen, so the spawn block
+  // exits cleanly after 240 ms.
+  const CHILD_SPAWN_ANIM_MS = 240;
+  const SPAWN_X = 15;
+  const SPAWN_Y = 20;
+
+  const childWorld = createTestWorld({ seed: 77, floor: 1 });
+  childWorld.floorScenario = {
+    enemyArchetypes: new Map(),
+    objective: { bossBattles: new Map() },
+  } as typeof childWorld.floorScenario;
+  childWorld.floorExtendedState = { ambientEnemyArchetypes: new Map() };
+
+  // Spawn a slime — it has a runtime motion profile.
+  const childEid = spawnBehaviorEnemy(childWorld, SPAWN_X, SPAWN_Y, 100, 0, 1, 30, 8);
+  setComponent(childWorld.ecs, childEid, Sprite, { textureId: 1, width: 3, height: 3 });
+  setEnemyAppearanceKey(childWorld, childEid, 'slime');
+  // Attach SpawnAnim with the spawner-child duration (shorter than MINI_SLIME_SPAWN_ANIM_MS).
+  addComponent(
+    childWorld.ecs,
+    childEid,
+    set(SpawnAnim, { remainingMs: CHILD_SPAWN_ANIM_MS, totalMs: CHILD_SPAWN_ANIM_MS }),
+  );
+
+  const { scene, images } = createSceneStub({ kenneyLoaded: true });
+  const childBridge = createPhaserBridge(scene);
+
+  // T=0: first sync registers firstSeenMs=0 and captures spawnAnimDurationMs=240.
+  // The image is created here; spawnAnimDurationMs is locked in for this generation.
+  childBridge.sync(childWorld, 0);
+  const childImage = images[0] as (typeof images)[0];
+
+  // Simulate the spawn animation reaching completion (remainingMs→0):
+  // computeEnemyScale reads remainingMs/totalMs for the pop-scale; when remainingMs=0,
+  // progress=1 and pop={x:1,y:1} so scaleX = baseScale (fully settled).
+  childWorld.stores.spawnAnim.remainingMs[childEid] = 0;
+
+  // T=239ms: SpawnAnim still present and animation done — scale is at full (base) scale.
+  // mobMotion.scaleX is still suppressed to 1 by the inner hasComponent check.
+  childBridge.sync(childWorld, 239);
+  const settledScaleX = childImage.scaleX;
+  const settledScaleY = childImage.scaleY;
+  // Settled scale must be positive (sanity check on test setup).
+  expect(settledScaleX, 'at T=239ms settled scale must be positive').toBeGreaterThan(0);
+
+  // Simulate spawnAnimSystem removing the component at 240ms.
+  removeComponent(childWorld.ecs, childEid, SpawnAnim);
+
+  // T=241ms: past the 240ms spawner window, SpawnAnim removed.
+  // Old code (MINI_SLIME_SPAWN_ANIM_MS=280): spawnElapsedMs 241 < 280 → sampleSpawnMotion fires
+  //   and returns scaleX ≈ 1.05, applied without SpawnAnim override → final = baseScale × 1.05
+  //   (a 40 ms visible glitch).
+  // New code: spawnElapsedMs 241 >= spawnAnimDurationMs (240) → block skipped, neutral motion
+  //   applied → final = baseScale × 1 = settledScaleX (no glitch).
+  childBridge.sync(childWorld, 241);
+  expect(
+    childImage.scaleX,
+    'at T=241ms after SpawnAnim removed: no residual pop-scale (must match settled scale)',
+  ).toBe(settledScaleX);
+  expect(
+    childImage.scaleY,
+    'at T=241ms after SpawnAnim removed: no residual pop-scale (must match settled scale)',
+  ).toBe(settledScaleY);
 });

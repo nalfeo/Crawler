@@ -122,6 +122,14 @@ interface PropVisual {
 interface MobMotionRenderState {
   readonly generation: number;
   readonly firstSeenMs: number;
+  /**
+   * Spawn-animation window (ms). Captured at entity first-seen time from
+   * `SpawnAnim.totalMs` when the component is present (e.g. 240 ms for
+   * spawner children), otherwise `MINI_SLIME_SPAWN_ANIM_MS` (280 ms). Using
+   * the entity-specific duration prevents the generic pop-scale from firing
+   * for the residual 40 ms after `spawnAnimSystem` removes the component.
+   */
+  readonly spawnAnimDurationMs: number;
   lastFireMs: number;
   releaseAtMs?: number;
   contactAtMs?: number;
@@ -535,9 +543,17 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const generation = world.entityRenderGeneration[eid] ?? 0;
         const existing = mobMotionStates.get(eid);
         if (existing?.generation === generation) return existing;
+        // Capture the entity-specific spawn-animation duration. Spawner children
+        // carry a SpawnAnim component with a shorter totalMs (e.g. 240 ms); using
+        // that value as the window prevents the generic pop-scale from firing for
+        // the residual frames after spawnAnimSystem removes the component.
+        const spawnAnimDurationMs = hasComponent(world.ecs, eid, SpawnAnim)
+          ? (world.stores.spawnAnim.totalMs[eid] ?? MINI_SLIME_SPAWN_ANIM_MS)
+          : MINI_SLIME_SPAWN_ANIM_MS;
         const state: MobMotionRenderState = {
           generation,
           firstSeenMs: renderElapsedMs,
+          spawnAnimDurationMs,
           lastFireMs: initialLastFireMs,
         };
         mobMotionStates.set(eid, state);
@@ -1127,7 +1143,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             }
 
             const spawnElapsedMs = renderElapsedMs - state.firstSeenMs;
-            if (spawnElapsedMs < MINI_SLIME_SPAWN_ANIM_MS) {
+            if (spawnElapsedMs < state.spawnAnimDurationMs) {
               mobMotion = sampleSpawnMotion(spawnElapsedMs);
               if (hasComponent(world.ecs, eid, SpawnAnim)) {
                 mobMotion = { ...mobMotion, scaleX: 1, scaleY: 1 };
