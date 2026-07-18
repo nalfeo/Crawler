@@ -143,6 +143,8 @@ describe('verify-fast full-project typecheck', () => {
 const STUB_DURATION_SECONDS = 300;
 /** Brief wait after seeing "Step 1/3" to let background sleep stubs reach their wait state. */
 const STUB_STARTUP_DELAY_MS = 200;
+/** Bound close wait so regressions cannot hang and leak background stub processes. */
+const CLOSE_TIMEOUT_MS = 5_000;
 
 describe('verify-fast signal lifecycle', () => {
   it.skipIf(!hasBash)(
@@ -201,10 +203,20 @@ describe('verify-fast signal lifecycle', () => {
         // `trap cleanup_parallel EXIT`, killing the background process groups.
         proc.kill('SIGINT');
 
-        const exitCode = await closedPromise;
-        expect(exitCode).toBe(130);
+        const closeResult = await Promise.race([
+          closedPromise.then((code) => ({ timedOut: false as const, code })),
+          new Promise<{ timedOut: true; code: null }>((resolve) => {
+            setTimeout(() => resolve({ timedOut: true, code: null }), CLOSE_TIMEOUT_MS);
+          }),
+        ]);
+        if (closeResult.timedOut) {
+          proc.kill('SIGKILL');
+          await closedPromise;
+          throw new Error(`Timed out waiting ${CLOSE_TIMEOUT_MS}ms for SIGINT shutdown`);
+        }
+        expect(closeResult.code).toBe(130);
       } finally {
-        if (!closed && !proc.killed) {
+        if (!closed) {
           proc.kill('SIGKILL');
           await closedPromise;
         }
