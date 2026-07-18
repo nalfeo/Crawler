@@ -40,17 +40,20 @@ credentials to prevent exfiltration).
 **Remaining pipeline steps (require maintainer action to unblock):**
 
 1. **Add `asset-request` label to issue #1306** → triggers `asset-request.yml`
-   CI workflow which has the Azure credentials and will:
-   - Synthesize/generate the 4×4 sprite sheet via Azure OpenAI
+   CI workflow which has Azure credentials and will:
+   - Synthesize a draft brief from the issue body
+   - Generate the 4×4 sprite sheet via Azure OpenAI
    - Judge all 16 variants (deterministic sensors + VLM judge ≥3 bar)
-   - Approve the best passing variant
-   - Check it in to an `asset-checkin` branch
-   - Post a completion comment on the issue
+   - Post a completion comment on the issue with run outputs
 
-2. **Batch art PR** (`npm run sprites:asset-pr`) → consolidates the checkin
+2. **Local approval + check-in** (maintainer workstation): run
+   `npm run sprites:approve` then `npm run sprites:checkin` for the chosen
+   run. (CI intentionally cannot approve or check in artifacts.)
+
+3. **Batch art PR** (`npm run sprites:asset-pr`) → consolidates the checkin
    branch into one art-only PR that closes issue #1306.
 
-3. **Wire** → after art lands, a separate code PR maps runtime key
+4. **Wire** → after art lands, a separate code PR maps runtime key
    `equipment/weapon/stone-maul` to the approved sprite entry.
 
 ## Brief quality notes
@@ -75,8 +78,9 @@ inherited from `data/sprite-types/weapon.json`) with these specifics:
 
 - Issue #1306 missing `asset-request` label → maintainer must add it
 - Azure credentials unavailable in Copilot agent session (by design)
-- Generation, approval, check-in, and PR batch remain to be executed by
-  the CI pipeline once the label is added
+- CI can only synthesize/generate/judge and post outputs once labeled
+- Approval + check-in must run locally after CI produces run outputs
+- Batch PR and wiring remain after local check-in
 
 ## Recovery instructions
 
