@@ -1178,6 +1178,19 @@
     "row": 0
   },
   {
+    "id": "generated:merchant-sandals-var-0",
+    "kind": "sprite",
+    "label": "merchant-sandals-var-0",
+    "description": "Generated sprite from brief: merchant-sandals.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "merchant-sandals-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/merchant-sandals-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:merchants-stained-charm-var-0",
     "kind": "sprite",
     "label": "merchants-stained-charm-var-0",
