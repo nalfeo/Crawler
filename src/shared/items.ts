@@ -180,7 +180,7 @@ function gear(id: string, name: string, desc: string, rarity: ItemRarity): ItemD
 }
 
 export const ITEM_CATALOG: readonly ItemDef[] = [
-  // ── Materials (20) ──────────────────────────────────────────────────
+  // ── Materials ───────────────────────────────────────────────────────
   mat('iron-ore', 'Iron Ore', 'A chunk of crude iron. Smells like ambition.', C),
   mat('copper-ore', 'Copper Ore', 'Greenish and crumbly. Better than nothing.', C),
   mat('gold-nugget', 'Gold Nugget', 'Shiny enough to distract the audience.', U),
@@ -206,7 +206,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   mat('rusted-scrap', 'Rusted Scrap', 'Junk to most. Treasure to crafters.', C),
   mat('celestial-ingot', 'Celestial Ingot', "Forged in a star that hasn't been born yet.", L),
 
-  // ── Weapons (24) ────────────────────────────────────────────────────
+  // ── Weapons ─────────────────────────────────────────────────────────
   wpn('throwing-knife', 'Throwing Knife', 'Balanced for a clean throw and a cleaner escape.', C),
   wpn('iron-sword', 'Sword', 'Serviceable. Boring. Gets the job done.', C),
   wpn('flame-dagger', 'Flame Dagger', 'The blade is warm. Always.', U),
@@ -232,7 +232,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('sponsor-sword', 'Sponsor Sword', 'Brought to you by GalactiCorp™.', L),
   wpn('ember-wand', 'Ember Wand', 'Channels smoldering intent into a focused bolt of heat.', R),
 
-  // ── Consumables (20) ────────────────────────────────────────────────
+  // ── Consumables ─────────────────────────────────────────────────────
   con('health-vial', 'Health Vial', 'Tastes like pennies and hope.', C),
   con('recharge-tonic', 'Recharge Tonic', 'Fizzy, electric, and rude to your cooldowns.', C),
   con('stim-shot', 'Stim Shot', 'Speed boost. Side effects undisclosed.', U),
@@ -258,7 +258,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   con('sponsor-energy-drink', 'Sponsor Energy Drink', 'GalactiCorp™ keeps you going!', U),
   con('revival-kit', 'Revival Kit', 'Contains everything needed for a dramatic comeback.', L),
 
-  // ── Key Items (20) ──────────────────────────────────────────────────
+  // ── Key Items ───────────────────────────────────────────────────────
   key('floor-key-bronze', 'Bronze Floor Key', 'Opens the next floor. Probably.', C),
   key('floor-key-silver', 'Silver Floor Key', 'A slightly fancier door opener.', U),
   key('floor-key-gold', 'Gold Floor Key', 'Opens doors and impresses audiences.', R),
@@ -286,7 +286,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     [customTag('Smelly Stuff')],
   ),
 
-  // ── Misc (20) ───────────────────────────────────────────────────────
+  // ── Misc ────────────────────────────────────────────────────────────
   misc('broken-circuit', 'Broken Circuit', 'Sparks occasionally. Mostly useless.', C),
   misc('alien-tooth', 'Alien Tooth', 'From a species with too many mouths.', U, [
     customTag('Smelly Stuff'),
