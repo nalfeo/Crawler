@@ -1,5 +1,16 @@
 [
   {
+    "commit": "91d07a4aaeda8c47d17a6f64e76369b946dabff3",
+    "commitDate": "2026-07-18T12:07:16Z",
+    "commitSubject": "feat(weapon): add sun-hammer Floor 2 bludgeon weapon with sprite brief and placeholder (#1378)",
+    "capturedAt": "2026-07-18T13:38:14.573Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29644459092",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/91d07a4aaeda8c47d17a6f64e76369b946dabff3.json"
+  },
+  {
     "commit": "200d5649ada06f3716e49b7b5bf18f65c79e6095",
     "commitDate": "2026-07-18T11:41:39Z",
     "commitSubject": "feat(sprites): add hand-crossbow weapon brief for Floor 2 equipment sprite (#1327)",
