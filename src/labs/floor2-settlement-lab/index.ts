@@ -115,6 +115,11 @@ function createSettlementLab(canvasHost: HTMLElement, controls: HTMLElement): ()
       quartermasterShop = { arch: qmArch, inv: generateShopInventory(settlementRng, qmArch) };
     }
     const randomPool = archetypes.filter((a) => a.id !== QUARTERMASTER_ARCHETYPE_ID);
+    if (randomPool.length === 0) {
+      throw new Error(
+        'floor2-settlement-lab: no non-Quartermaster archetypes available; check shop-archetypes data',
+      );
+    }
     const shuffled = [...randomPool];
     rng.shuffle(shuffled);
     shops = shuffled.slice(0, state.shopCount).map((arch) => ({
