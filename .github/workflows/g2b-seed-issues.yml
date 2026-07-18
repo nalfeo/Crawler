@@ -15,6 +15,12 @@ permissions:
   issues: write
   contents: read
 
+# Cancel older queued/in-progress runs when a new push arrives.
+# This prevents stale workflow versions (with dedup bugs) from creating duplicates.
+concurrency:
+  group: g2b-seed-issues
+  cancel-in-progress: true
+
 jobs:
   seed:
     name: Create/label 70 Floor-2 equipment asset-request issues
