@@ -1,0 +1,22 @@
+type: weapon
+name: ice-pick
+description: |
+  A single-handed ice pick held vertically, spike pointing upward. The
+  head is a curved, hooked pick — like a compact mountaineering axe head —
+  mounted on a short straight shaft with a wrapped grip and a blunt pommel
+  at the base. The pick tip is sharp and tapered; the inner curve of the
+  hook is slightly concave. Cold gunmetal-grey pick head with a thin
+  highlight along the outer edge and the spike tip; dark wrapped shaft;
+  muted grey or brown pommel. No glow, no ice or frost effects, no blood,
+  no rope. Silhouette must read as a single curved pick-head weapon at a
+  glance — clearly not a sword or club.
+# Vertical orientation, 4x4 sheet, palette, anchor, and references are all
+# inherited from data/sprite-types/weapon.json. This brief only describes
+# the ice-pick's distinct pick-axe head silhouette and colour language.
+#
+# Runtime key: equipment/weapon/ice-pick — preserved exactly as specified
+# in the asset-request issue.
+variations:
+  - broader, more axe-like pick head with a shallow curve
+  - longer spike tip with a more pronounced hook
+minVariations: 6
