@@ -10,6 +10,7 @@ import {
   EXPECTED_NODE_IDS,
   extractPlanContract,
   validateEpicState,
+  type EpicNode,
   type EpicState,
   type GitReader,
   type GithubRunner,
@@ -24,16 +25,14 @@ const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
 const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
 const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
 const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
-let TREE_OBJECT_SHA: string;
+let TREE_OBJECT_SHA: string | null = null;
 try {
   TREE_OBJECT_SHA = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
   }).trim();
 } catch {
-  // Fall back to a placeholder that is a valid 40-char hex string but will not
-  // match any real commit object (used to test merge.not-a-commit detection).
-  TREE_OBJECT_SHA = '0'.repeat(40);
+  TREE_OBJECT_SHA = null;
 }
 const TEST_GIT_READER = createDefaultGitReader(REPO_ROOT);
 
@@ -124,6 +123,42 @@ function validateA0(state: EpicState): void {
       recorded_at: '2026-07-17T17:55:00.000Z',
     },
   ];
+}
+
+function makeStackedWork(
+  overrides: Partial<NonNullable<EpicNode['stacked_work']>> = {},
+): NonNullable<EpicNode['stacked_work']> {
+  return {
+    status: 'stacked_in_progress',
+    owner: {
+      claimant: 'agent-stack',
+      session: 'session-stack',
+      branch: 'agent-stack/slice-A1',
+      claimed_at: '2026-07-17T16:00:00.000Z',
+    },
+    dependency: {
+      node_id: 'slice:A0',
+      pr_number: 1271,
+      repository: 'nalfeo/Crawler',
+      branch: 'nalfeo-floor-2-epic-control',
+      head_sha: FULL_COMMIT,
+    },
+    dependent: {
+      head_sha: HANDOFF_COMMIT,
+      pr_number: null,
+    },
+    resync: {
+      head_sha: FULL_COMMIT,
+      at: '2026-07-17T17:00:00.000Z',
+    },
+    rebase_to_main: {
+      state: 'pending',
+      completed_at: null,
+    },
+    material_drift: null,
+    block_reason: null,
+    ...(overrides as object),
+  };
 }
 
 describe('Floor 2 equipment epic status', () => {
@@ -255,16 +290,13 @@ describe('Floor 2 equipment epic status', () => {
     expect(validate(state).errors.map((error) => error.code)).toContain('evidence.hash-drift');
   });
 
-  it.skipIf(TREE_OBJECT_SHA === '0'.repeat(40))(
-    'rejects a merge fact that points at a non-commit git object',
-    () => {
-      const state = cloneState();
-      validateA0(state);
-      state.nodes[0]!.merge.commit = TREE_OBJECT_SHA;
+  it.skipIf(!TREE_OBJECT_SHA)('rejects a merge fact that points at a non-commit git object', () => {
+    const state = cloneState();
+    validateA0(state);
+    state.nodes[0]!.merge.commit = TREE_OBJECT_SHA!;
 
-      expect(validate(state).errors.map((error) => error.code)).toContain('merge.not-a-commit');
-    },
-  );
+    expect(validate(state).errors.map((error) => error.code)).toContain('merge.not-a-commit');
+  });
 
   it('rejects whitespace-only ownership metadata', () => {
     const state = cloneState();
@@ -501,6 +533,17 @@ describe('Floor 2 equipment epic status', () => {
 
     const codes = validate(state).errors.map((error) => error.code);
     expect(codes).toContain('dag.unknown-node');
+  });
+
+  it('rejects missing canonical nodes even when node count is preserved via duplicates', () => {
+    const state = cloneState();
+    state.nodes = state.nodes.filter((node) => node.node_id !== 'slice:H2');
+    state.nodes.push(structuredClone(state.nodes[0]!));
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('dag.duplicate-node');
+    expect(codes).toContain('dag.missing-canonical-node');
   });
 
   it('includes required terminal nodes in release blockers', () => {
@@ -1049,6 +1092,88 @@ describe('Floor 2 equipment epic status', () => {
       expect(audit.errors.map((e) => e.code)).not.toContain('github.duplicate-live-claims');
       expect(audit.proposal.operator_actions.filter((a) => a.includes('agent-c'))).toHaveLength(0);
     }
+  });
+
+  it('accepts valid stacked_work on a blocked node with an issue', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    a1.stacked_work = makeStackedWork();
+
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).not.toContain('stacked.non-blocked-status');
+    expect(codes).not.toContain('stacked.missing-issue');
+    expect(codes).not.toContain('stacked.stale-resync');
+  });
+
+  it('rejects stacked_work when node status is not blocked', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'in_progress';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    a1.stacked_work = makeStackedWork();
+
+    expect(validate(state).errors.map((error) => error.code)).toContain(
+      'stacked.non-blocked-status',
+    );
+  });
+
+  it('proposes stacked dependency head resync when dependency PR advances', () => {
+    const state = cloneState();
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (!a1) return;
+    a1.status = 'blocked';
+    a1.github.issue = {
+      number: 1279,
+      url: 'https://github.com/nalfeo/Crawler/issues/1279',
+    };
+    a1.stacked_work = makeStackedWork();
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264') || path.endsWith('/issues/1279')) {
+          return {
+            number: path.endsWith('/issues/1264') ? 1264 : 1279,
+            state: 'open',
+            html_url: path.endsWith('/issues/1264')
+              ? 'https://github.com/nalfeo/Crawler/issues/1264'
+              : 'https://github.com/nalfeo/Crawler/issues/1279',
+            url: path.endsWith('/issues/1264')
+              ? 'https://api.github.com/repos/nalfeo/Crawler/issues/1264'
+              : 'https://api.github.com/repos/nalfeo/Crawler/issues/1279',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/repos/nalfeo/Crawler/pulls/1271')) {
+          return {
+            number: 1271,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: 'f'.repeat(40) },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    expect(audit.proposal.repo_patch.map((op) => op.path)).toContain(
+      '/nodes/1/stacked_work/dependency/head_sha',
+    );
   });
 });
 

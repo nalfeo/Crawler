@@ -154,7 +154,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:A1",
@@ -195,7 +196,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:B1",
@@ -233,7 +235,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:B2",
@@ -271,7 +274,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:B3",
@@ -309,7 +313,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:C1",
@@ -347,7 +352,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:C2",
@@ -385,7 +391,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:D1",
@@ -423,7 +430,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:D2-A",
@@ -461,7 +469,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:D2-B",
@@ -499,7 +508,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:D2",
@@ -537,7 +547,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:D3-A",
@@ -575,7 +586,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:D3-B",
@@ -613,7 +625,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:D3",
@@ -651,7 +664,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:E1",
@@ -689,7 +703,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:E2",
@@ -727,7 +742,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:E3-A",
@@ -765,7 +781,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:E3-B",
@@ -803,7 +820,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:E3-C",
@@ -841,7 +859,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:E3",
@@ -879,7 +898,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:F1",
@@ -917,7 +937,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:F2",
@@ -955,7 +976,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:F3",
@@ -993,7 +1015,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:F4",
@@ -1031,7 +1054,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:G1",
@@ -1069,7 +1093,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:G2-A",
@@ -1107,7 +1132,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:G2-B+",
@@ -1145,7 +1171,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:G2",
@@ -1183,7 +1210,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "packet:G3",
@@ -1221,7 +1249,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:G3",
@@ -1259,7 +1288,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:H1",
@@ -1297,7 +1327,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:H2",
@@ -1335,7 +1366,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:H3",
@@ -1373,7 +1405,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:I1",
@@ -1419,7 +1452,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:I2",
@@ -1457,7 +1491,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:I3",
@@ -1495,7 +1530,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     },
     {
       "node_id": "slice:J",
@@ -1533,7 +1569,8 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null
+      "superseded_by": null,
+      "stacked_work": null
     }
   ],
   "reconciliation": {

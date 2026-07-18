@@ -14,6 +14,7 @@ const POST_MERGE_STATUSES = new Set(['merged', 'validated']);
 const TERMINAL_STATUSES = new Set(['cancelled', 'superseded']);
 const PLAN_BEGIN = '<!-- EPIC-CONTRACT:BEGIN -->';
 const PLAN_END = '<!-- EPIC-CONTRACT:END -->';
+const nonEmptyTrimmedString = z.string().trim().min(1);
 
 export const EXPECTED_NODE_IDS = [
   'slice:A0',
@@ -149,8 +150,10 @@ const CANONICAL_PARENT_SLICES: ReadonlyMap<string, string | null> = new Map([
 
 const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const nullableSha = z.string().regex(SHA_PATTERN).nullable();
+const nullableNonEmptyTrimmedString = nonEmptyTrimmedString.nullable();
 const GITHUB_ISSUE_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/issues\/[1-9][0-9]*$/;
 const GITHUB_PR_URL = /^https:\/\/github\.com\/nalfeo\/Crawler\/pull\/[1-9][0-9]*$/;
+const GITHUB_REPO_PATTERN = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
 
 /** Zod superRefine that enforces JSON Schema `uniqueItems` for string arrays. */
 function uniqueStringItems(arr: string[], ctx: z.RefinementCtx): void {
@@ -204,10 +207,10 @@ const evidenceSchema = z
   .strict();
 const ownershipSchema = z
   .object({
-    claimant: z.string().trim().min(1).nullable(),
-    session: z.string().trim().min(1).nullable(),
+    claimant: nullableNonEmptyTrimmedString,
+    session: nullableNonEmptyTrimmedString,
     source: z.enum(['none', 'parent-issue-bootstrap', 'child-issue-comment']),
-    scope: z.string().trim().min(1).nullable(),
+    scope: nullableNonEmptyTrimmedString,
     claimed_at: nullableDateTime,
     lease_expires_at: nullableDateTime,
     heartbeat_at: nullableDateTime,
@@ -224,6 +227,52 @@ const reconciliationSchema = z
     drift: z.array(z.string()),
   })
   .strict();
+const stackedWorkSchema = z
+  .object({
+    status: z.enum(['stacked_in_progress', 'stacked_pr_open']),
+    owner: z
+      .object({
+        claimant: nonEmptyTrimmedString,
+        session: nonEmptyTrimmedString,
+        branch: nonEmptyTrimmedString,
+        claimed_at: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    dependency: z
+      .object({
+        node_id: z.string().regex(NODE_ID_PATTERN),
+        pr_number: z.number().int().positive(),
+        repository: nonEmptyTrimmedString.regex(GITHUB_REPO_PATTERN),
+        branch: nonEmptyTrimmedString,
+        head_sha: z.string().regex(SHA40_PATTERN),
+      })
+      .strict(),
+    dependent: z
+      .object({
+        head_sha: z.string().regex(SHA40_PATTERN),
+        pr_number: z.number().int().positive().nullable(),
+      })
+      .strict(),
+    resync: z
+      .object({
+        head_sha: z.string().regex(SHA40_PATTERN),
+        at: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    rebase_to_main: z
+      .object({
+        state: z.enum(['pending', 'complete']),
+        completed_at: nullableDateTime,
+      })
+      .strict(),
+    material_drift: z.string().nullable(),
+    block_reason: z.string().nullable(),
+  })
+  .strict()
+  .nullable();
+
+const STACKED_FORBIDDEN_LANES = new Set(['verification']);
+const STACKED_STALE_RESYNC_MS = 48 * 3_600_000;
 const nodeSchema = z
   .object({
     node_id: z.string().regex(NODE_ID_PATTERN),
@@ -279,6 +328,7 @@ const nodeSchema = z
     evidence: z.array(evidenceSchema),
     reconciliation: reconciliationSchema,
     superseded_by: z.string().regex(NODE_ID_PATTERN).nullable(),
+    stacked_work: stackedWorkSchema,
   })
   .strict();
 
@@ -865,13 +915,38 @@ function validateDag(
       });
     }
     const canonicalParent = CANONICAL_PARENT_SLICES.get(node.node_id);
-    if (canonicalParent !== undefined && node.parent_slice !== canonicalParent) {
+    if (canonicalParent === undefined) {
+      result.errors.push({
+        code: 'dag.parent-slice-contract-missing',
+        node_id: node.node_id,
+        message: `${node.node_id} is missing a canonical parent-slice contract entry`,
+      });
+      continue;
+    }
+    if (node.parent_slice !== canonicalParent) {
       result.errors.push({
         code: 'dag.parent-slice-contract-drift',
         node_id: node.node_id,
         message:
           `${node.node_id} parent_slice ${String(node.parent_slice)} does not match ` +
           `canonical plan ${String(canonicalParent)}`,
+      });
+    }
+  }
+
+  for (const canonicalNodeId of CANONICAL_DEPENDENCIES.keys()) {
+    if (!nodesById.has(canonicalNodeId)) {
+      result.errors.push({
+        code: 'dag.missing-canonical-node',
+        node_id: canonicalNodeId,
+        message: `Canonical node ${canonicalNodeId} is missing from state.nodes`,
+      });
+    }
+    if (!CANONICAL_PARENT_SLICES.has(canonicalNodeId)) {
+      result.errors.push({
+        code: 'dag.parent-slice-contract-missing',
+        node_id: canonicalNodeId,
+        message: `${canonicalNodeId} is missing a canonical parent-slice contract entry`,
       });
     }
   }
@@ -1242,6 +1317,128 @@ function validateNodeLifecycle(
   }
 }
 
+function validateStackedWork(
+  node: EpicNode,
+  nodesById: ReadonlyMap<string, EpicNode>,
+  now: Date,
+  result: MutableValidation,
+): void {
+  const sw = node.stacked_work;
+  if (!sw) return;
+
+  if (node.status !== 'blocked') {
+    result.errors.push({
+      code: 'stacked.non-blocked-status',
+      node_id: node.node_id,
+      message: `${node.node_id} has stacked_work but lifecycle status is ${node.status}; stacked_work is only valid when status is blocked`,
+    });
+  }
+
+  if (!node.github.issue) {
+    result.errors.push({
+      code: 'stacked.missing-issue',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked_work requires a materialized child issue (node.github.issue)`,
+    });
+  }
+
+  if (sw.status === 'stacked_pr_open' && sw.dependent.pr_number === null) {
+    result.errors.push({
+      code: 'stacked.pr-open-missing-number',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked_work.status is stacked_pr_open but dependent.pr_number is null`,
+    });
+  }
+
+  const resyncAtMs = Date.parse(sw.resync.at);
+  if (Number.isNaN(resyncAtMs)) {
+    result.errors.push({
+      code: 'stacked.invalid-resync-at',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked_work.resync.at is not a valid date-time: ${sw.resync.at}`,
+    });
+  } else if (now.getTime() - resyncAtMs > STACKED_STALE_RESYNC_MS) {
+    result.errors.push({
+      code: 'stacked.stale-resync',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked_work resync at ${sw.resync.at} is stale (exceeds 48h); rebase the stacked branch and update resync`,
+    });
+  }
+
+  if (STACKED_FORBIDDEN_LANES.has(node.execution_lane)) {
+    result.errors.push({
+      code: 'stacked.invalid-lane',
+      node_id: node.node_id,
+      message: `${node.node_id} execution_lane '${node.execution_lane}' does not support stacked_work; speculative work requires a non-verification lane`,
+    });
+  }
+
+  if (!node.dependencies.includes(sw.dependency.node_id)) {
+    result.errors.push({
+      code: 'stacked.dependency-node-mismatch',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked_work.dependency.node_id (${sw.dependency.node_id}) is not in the node's dependency list`,
+    });
+  } else {
+    const depNode = nodesById.get(sw.dependency.node_id);
+    if (depNode?.github.pr && depNode.github.pr.number !== sw.dependency.pr_number) {
+      result.errors.push({
+        code: 'stacked.dependency-pr-snapshot-mismatch',
+        node_id: node.node_id,
+        message:
+          `${node.node_id} stacked_work.dependency.pr_number (${sw.dependency.pr_number}) does not match ` +
+          `${sw.dependency.node_id}'s tracked PR #${depNode.github.pr.number}`,
+      });
+    }
+  }
+
+  if (sw.rebase_to_main.state === 'complete') {
+    const allDepsLanded = node.dependencies.every((depId) => {
+      const dep = nodesById.get(depId);
+      if (!dep) return false;
+      if (POST_MERGE_STATUSES.has(dep.status)) return true;
+      if (dep.status === 'superseded' && dep.superseded_by) {
+        const replacement = nodesById.get(dep.superseded_by);
+        return replacement ? POST_MERGE_STATUSES.has(replacement.status) : false;
+      }
+      return false;
+    });
+    if (!allDepsLanded) {
+      result.errors.push({
+        code: 'stacked.premature-rebase-complete',
+        node_id: node.node_id,
+        message: `${node.node_id} stacked_work marks rebase_to_main as complete but not all dependencies are merged or validated`,
+      });
+    }
+    if (sw.rebase_to_main.completed_at === null) {
+      result.errors.push({
+        code: 'stacked.rebase-complete-missing-timestamp',
+        node_id: node.node_id,
+        message: `${node.node_id} stacked_work rebase_to_main.state is 'complete' but completed_at is null`,
+      });
+    }
+  }
+}
+
+function validateDuplicateStackedOwnership(state: EpicState, result: MutableValidation): void {
+  const stackedWorkByOwner = new Map<string, string>();
+  for (const node of state.nodes) {
+    const sw = node.stacked_work;
+    if (!sw) continue;
+    const key = `${sw.owner.claimant}\u0000${sw.owner.session}`;
+    const prior = stackedWorkByOwner.get(key);
+    if (prior) {
+      result.errors.push({
+        code: 'stacked.duplicate-ownership',
+        node_id: node.node_id,
+        message: `${sw.owner.claimant}/${sw.owner.session} has stacked_work on both ${prior} and ${node.node_id}; a session may only hold one stacked-work slot`,
+      });
+    } else {
+      stackedWorkByOwner.set(key, node.node_id);
+    }
+  }
+}
+
 function validateDuplicateOwnership(state: EpicState, result: MutableValidation): void {
   const ownership = new Map<string, string>();
   const issues = new Map<number, string>();
@@ -1343,8 +1540,10 @@ export function validateEpicState(input: unknown, options: ValidationOptions): V
   const gitReader = options.gitReader ?? createDefaultGitReader(options.repoRoot);
   for (const node of state.nodes) {
     validateNodeLifecycle(state, node, nodesById, now, options.repoRoot, gitReader, result);
+    validateStackedWork(node, nodesById, now, result);
   }
   validateDuplicateOwnership(state, result);
+  validateDuplicateStackedOwnership(state, result);
 
   for (const flag of state.release.flags) {
     for (const nodeId of flag.validating_nodes) {
@@ -1795,6 +1994,111 @@ export function auditGithub(
           error instanceof Error ? error.message : String(error)
         }`,
       });
+    }
+  }
+
+  // Audit stacked_work: reconcile dependency and dependent PR heads/state for blocked nodes.
+  const prSchema = z
+    .object({
+      number: z.number().int().positive(),
+      state: z.enum(['open', 'closed']),
+      merged: z.boolean(),
+      merge_commit_sha: z.string().nullable(),
+      merged_at: z.string().nullable(),
+      html_url: z.string().url(),
+      head: z.object({ sha: z.string().regex(SHA40_PATTERN) }),
+    })
+    .passthrough();
+  for (const node of state.nodes) {
+    const sw = node.stacked_work;
+    if (!sw) continue;
+    const nodeIdx = state.nodes.indexOf(node);
+
+    const [depOwner, depRepo] = sw.dependency.repository.split('/');
+    if (depOwner && depRepo) {
+      try {
+        const depPull = prSchema.parse(
+          runner.get(`/repos/${depOwner}/${depRepo}/pulls/${sw.dependency.pr_number}`),
+        ) as GithubPull;
+        if (depPull.head.sha !== sw.dependency.head_sha) {
+          repoPatch.push({
+            op: 'replace',
+            path: `/nodes/${nodeIdx}/stacked_work/dependency/head_sha`,
+            value: depPull.head.sha,
+            reason: `Dependency PR #${sw.dependency.pr_number} head advanced on GitHub; stacked branch may need rebase`,
+          });
+          operatorActions.push(
+            `${node.node_id} stacked_work dependency PR #${sw.dependency.pr_number} head advanced ` +
+              `from ${sw.dependency.head_sha} to ${depPull.head.sha}. ` +
+              `Rebase the stacked branch and update stacked_work.resync.`,
+          );
+        }
+        if (depPull.merged) {
+          operatorActions.push(
+            `${node.node_id} stacked_work dependency PR #${sw.dependency.pr_number} is merged on GitHub ` +
+              `(merge_commit: ${depPull.merge_commit_sha ?? 'unknown'}). ` +
+              `Producer must complete rebase-to-main and transition ${node.node_id} through the normal lifecycle.`,
+          );
+        }
+      } catch (error) {
+        errors.push({
+          code: 'stacked.dependency-pr-audit',
+          node_id: node.node_id,
+          message: `Could not audit stacked dependency PR #${sw.dependency.pr_number}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      }
+    }
+
+    if (sw.status === 'stacked_pr_open' && sw.dependent.pr_number !== null) {
+      try {
+        const depPull = prSchema.parse(
+          runner.get(`/repos/${owner}/${repo}/pulls/${sw.dependent.pr_number}`),
+        ) as GithubPull;
+        if (depPull.head.sha !== sw.dependent.head_sha) {
+          repoPatch.push({
+            op: 'replace',
+            path: `/nodes/${nodeIdx}/stacked_work/dependent/head_sha`,
+            value: depPull.head.sha,
+            reason: `Dependent stacked PR #${sw.dependent.pr_number} head advanced on GitHub`,
+          });
+        }
+        if (depPull.merged) {
+          errors.push({
+            code: 'stacked.dependent-pr-merged',
+            node_id: node.node_id,
+            message:
+              `${node.node_id} stacked PR #${sw.dependent.pr_number} is merged on GitHub but node lifecycle is still blocked. ` +
+              `Producer must verify and execute the stacked-work recovery handoff protocol.`,
+          });
+          operatorActions.push(
+            `${node.node_id} stacked PR #${sw.dependent.pr_number} merged unexpectedly ` +
+              `(merge_commit: ${depPull.merge_commit_sha ?? 'unknown'}). ` +
+              `Execute STACKED-WORK-RECOVERY.md handoff immediately.`,
+          );
+        } else if (depPull.state === 'closed') {
+          errors.push({
+            code: 'stacked.dependent-pr-closed',
+            node_id: node.node_id,
+            message:
+              `${node.node_id} stacked PR #${sw.dependent.pr_number} is closed without merging. ` +
+              `Producer must investigate and clear stacked_work or reopen the speculative PR.`,
+          });
+          operatorActions.push(
+            `${node.node_id} stacked PR #${sw.dependent.pr_number} was closed without merging. ` +
+              `Determine whether to reopen, abandon, or escalate the speculative work.`,
+          );
+        }
+      } catch (error) {
+        errors.push({
+          code: 'stacked.dependent-pr-audit',
+          node_id: node.node_id,
+          message: `Could not audit stacked dependent PR #${sw.dependent.pr_number}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        });
+      }
     }
   }
 
