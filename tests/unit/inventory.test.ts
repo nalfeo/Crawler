@@ -2,8 +2,12 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import {
   createInventoryBag,
   createTabPreferences,
+  addGeneratedEquipmentReference,
   addItem,
+  hasGeneratedEquipmentReference,
+  listInventoryEntries,
   removeItem,
+  removeGeneratedEquipmentReference,
   hasItem,
   getItemCount,
   search,
@@ -20,6 +24,7 @@ import {
   type TabPreferences,
 } from '../../src/shared/inventory.js';
 import { customTag, ItemRarity, type ItemDef } from '../../src/shared/items.js';
+import type { GeneratedEquipmentInstanceKey } from '../../src/shared/generated-equipment-types.js';
 
 // Small test catalog for deterministic tests
 const testCatalog: ItemDef[] = [
@@ -62,6 +67,43 @@ describe('InventoryBag', () => {
 
   beforeEach(() => {
     bag = createInventoryBag();
+  });
+
+  describe('generated equipment references', () => {
+    const first = 'gei:v1:inventory-test:0' as GeneratedEquipmentInstanceKey;
+    const second = 'gei:v1:inventory-test:1' as GeneratedEquipmentInstanceKey;
+
+    it('exposes static stacks and exact generated keys as discriminated entries', () => {
+      addItem(bag, 'test-ore', 3, testCatalog);
+      addGeneratedEquipmentReference(bag, first);
+
+      expect(listInventoryEntries(bag)).toEqual([
+        { kind: 'stackable-static-item', itemId: 'test-ore', quantity: 3 },
+        { kind: 'generated-instance', instanceKey: first },
+      ]);
+    });
+
+    it('rejects a duplicate exact key without changing the bag', () => {
+      addGeneratedEquipmentReference(bag, first);
+      const before = structuredClone(bag);
+
+      expect(() => addGeneratedEquipmentReference(bag, first)).toThrow(
+        'Generated equipment instance already exists in bag',
+      );
+      expect(bag).toEqual(before);
+    });
+
+    it('removes only the requested key and leaves distinct instances intact', () => {
+      addGeneratedEquipmentReference(bag, first);
+      addGeneratedEquipmentReference(bag, second);
+
+      expect(removeGeneratedEquipmentReference(bag, first)).toEqual({
+        kind: 'generated-instance',
+        instanceKey: first,
+      });
+      expect(hasGeneratedEquipmentReference(bag, first)).toBe(false);
+      expect(hasGeneratedEquipmentReference(bag, second)).toBe(true);
+    });
   });
 
   describe('addItem', () => {

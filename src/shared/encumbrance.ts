@@ -6,7 +6,7 @@
  * 2) Gear-only threshold helpers used by Equipment UI/lab compatibility tests.
  */
 
-import type { EquipmentInstanceId, EquipmentState } from './equipment-types.js';
+import type { EquipmentInstance, EquipmentInstanceId, EquipmentState } from './equipment-types.js';
 import type { EquipmentSlotId } from './equipment-slots.js';
 
 export type EncumbranceBand = 'unburdened' | 'encumbered' | 'heavy' | 'overloaded';
@@ -126,7 +126,12 @@ export function getEncumbranceMovePenalty(band: EncumbranceBand): number {
 }
 
 /** Compute the total equipped gear weight (lb) with multi-slot instance deduplication. */
-export function computeEquippedWeightLb(equipmentState: EquipmentState | undefined): number {
+export function computeEquippedWeightLb(
+  equipmentState: EquipmentState | undefined,
+  resolveInstance: (instanceId: EquipmentInstanceId) => EquipmentInstance | undefined = (
+    instanceId,
+  ) => equipmentState?.instances.get(instanceId),
+): number {
   if (!equipmentState) return 0;
   const seen = new Set<EquipmentInstanceId>();
   let total = 0;
@@ -134,7 +139,7 @@ export function computeEquippedWeightLb(equipmentState: EquipmentState | undefin
     const instId = equipmentState.equipped[slotId] ?? null;
     if (instId === null || seen.has(instId)) continue;
     seen.add(instId);
-    const inst = equipmentState.instances.get(instId);
+    const inst = resolveInstance(instId);
     if (!inst) continue;
     const w = Number.isFinite(inst.def.weightLb) ? Math.max(0, inst.def.weightLb) : 0;
     total += w;
