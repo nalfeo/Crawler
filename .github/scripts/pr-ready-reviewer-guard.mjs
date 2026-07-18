@@ -63,9 +63,14 @@ export function changedFileRetryDelaysMs({
 }
 
 export function matchingCopilotCloudRunRejection({ run, repository, headSha, headBranch }) {
-  if (run?.path !== COPILOT_CLOUD_AGENT_WORKFLOW_PATH) return 'workflow-path';
-  if (!sameRepository(run?.repository?.full_name, repository)) return 'run-repository';
-  if (!sameRepository(run?.head_repository?.full_name, repository)) return 'run-head-repository';
+  if (run?.path != null && run.path !== COPILOT_CLOUD_AGENT_WORKFLOW_PATH) return 'workflow-path';
+  if (run?.repository?.full_name != null && !sameRepository(run.repository.full_name, repository))
+    return 'run-repository';
+  if (
+    run?.head_repository?.full_name != null &&
+    !sameRepository(run.head_repository.full_name, repository)
+  )
+    return 'run-head-repository';
   if (normalize(run?.head_sha) !== normalize(headSha)) return 'head-sha';
   if (trimRef(run?.head_branch) !== trimRef(headBranch)) return 'head-branch';
   if (!isCopilotLogin(run?.actor?.login)) return 'actor';
@@ -87,6 +92,9 @@ export function latestMatchingCopilotCloudRun({ runs, repository, headSha, headB
         }),
     )
     .sort((left, right) => {
+      const rightUpdated = Date.parse(String(right?.updated_at ?? '')) || 0;
+      const leftUpdated = Date.parse(String(left?.updated_at ?? '')) || 0;
+      if (rightUpdated !== leftUpdated) return rightUpdated - leftUpdated;
       const rightCreated = Date.parse(String(right?.created_at ?? '')) || 0;
       const leftCreated = Date.parse(String(left?.created_at ?? '')) || 0;
       if (rightCreated !== leftCreated) return rightCreated - leftCreated;

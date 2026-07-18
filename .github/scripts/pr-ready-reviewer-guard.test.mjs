@@ -9,6 +9,8 @@ import {
   COPILOT_CLOUD_AGENT_WORKFLOW_PATH,
   EMPTY_DRAFT_REPAIR_GRACE_MS,
   inspectEmptyCopilotDraftRepair,
+  latestMatchingCopilotCloudRun,
+  matchingCopilotCloudRunRejection,
   runPrReadyReviewerGuard,
 } from './pr-ready-reviewer-guard.mjs';
 
@@ -225,8 +227,10 @@ test('workflow runs trusted default-branch script with global serialization', ()
     '${{ github.event.repository.default_branch }}',
   );
   assert.equal(workflow.jobs['enforce-pr-state'].steps[0].with['persist-credentials'], false);
+  assert.equal(workflow.jobs['enforce-pr-state'].steps[1].uses, 'actions/setup-node@v4');
+  assert.equal(workflow.jobs['enforce-pr-state'].steps[1].with['node-version'], 22);
   assert.equal(
-    workflow.jobs['enforce-pr-state'].steps[1].run,
+    workflow.jobs['enforce-pr-state'].steps[2].run,
     'node .github/scripts/pr-ready-reviewer-guard.mjs',
   );
 });
@@ -322,6 +326,63 @@ for (const [name, mutate, expectedReason] of [
     assert.deepEqual(result, { eligible: false, reason: expectedReason });
   });
 }
+
+test('latestMatchingCopilotCloudRun picks run with newest updated_at even when another has newer created_at', () => {
+  // Run A: created earlier but updated (completed) later
+  const runA = makeRun({
+    id: 900,
+    created_at: olderThanGrace(10_000),
+    updated_at: olderThanGrace(1_000),
+  });
+  // Run B: created later but updated (completed) earlier
+  const runB = makeRun({
+    id: 901,
+    created_at: olderThanGrace(5_000),
+    updated_at: olderThanGrace(8_000),
+  });
+  const result = latestMatchingCopilotCloudRun({
+    runs: [runB, runA],
+    repository: REPOSITORY,
+    headSha: HEAD_SHA,
+    headBranch: HEAD_BRANCH,
+  });
+  assert.equal(result?.id, 900, 'should pick run A which has the newer updated_at');
+});
+
+test('matchingCopilotCloudRunRejection accepts run when optional API fields are absent', () => {
+  // The GitHub REST endpoint may omit path/repository/head_repository in some contexts;
+  // the check must degrade gracefully so repairs are not blocked by missing API fields.
+  const minimalRun = {
+    id: 999,
+    head_sha: HEAD_SHA,
+    head_branch: HEAD_BRANCH,
+    actor: { login: 'Copilot' },
+    // path, repository, head_repository intentionally absent
+  };
+  assert.equal(
+    matchingCopilotCloudRunRejection({
+      run: minimalRun,
+      repository: REPOSITORY,
+      headSha: HEAD_SHA,
+      headBranch: HEAD_BRANCH,
+    }),
+    null,
+    'should not reject when optional fields are absent',
+  );
+});
+
+test('matchingCopilotCloudRunRejection still rejects run with wrong path when path is present', () => {
+  const wrongPathRun = makeRun({ path: '.github/workflows/other.yml' });
+  assert.equal(
+    matchingCopilotCloudRunRejection({
+      run: wrongPathRun,
+      repository: REPOSITORY,
+      headSha: HEAD_SHA,
+      headBranch: HEAD_BRANCH,
+    }),
+    'workflow-path',
+  );
+});
 
 test('skips local-ineligible empty-draft repairs before linked-issue or workflow-run reads', async () => {
   const harness = createHarness({
