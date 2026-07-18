@@ -3,7 +3,7 @@
 **Date:** 2026-07-18  
 **Session slug:** ci-recovery-isoutdated-reland  
 **Branch:** `copilot/fix-ci-recovery-loop-1624`  
-**Closes issue:** #1624  
+**Related issue:** #1624 _(late issue-plan comment required a timing waiver; do not auto-close without maintainer sign-off)_  
 **Apple estimate:** 2🍎
 
 ## Systems touched
@@ -50,7 +50,7 @@ When a review thread transitions from `isOutdated: false → true`, the normaliz
 +  `${index + 1}. **${blocker.kind}** \`${blocker.id}\`${...path...}${blocker.isOutdated ? ' **(outdated — deterministic non-applicability candidate)**' : ''}`
 ```
 
-Recovery agents now see explicit `**(outdated — deterministic non-applicability candidate)**` annotations for threads whose source lines have been modified/removed, so they can resolve deterministically without over-validating.
+Recovery agents now see explicit `**(outdated — deterministic non-applicability candidate)**` annotations for threads whose source lines have been modified/removed. The annotation is a triage hint only: a separate validator must still confirm deterministic non-applicability before the thread can be resolved.
 
 ## Regression Tests
 
@@ -71,4 +71,6 @@ Recovery agents now see explicit `**(outdated — deterministic non-applicabilit
 
 - `node --test .github/scripts/ci-recovery/state.test.mjs` — 32/32 pass (up from 31)
 - `node --test .github/scripts/ci-recovery/reconcile.test.mjs` — 86/86 pass (up from 85)
+- `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-07-18-ci-recovery-isoutdated-reland.review-ledger.json` — valid 2🍎 ledger
+- `npm run verify:pr-prereqs` — passes (`pr-review-ledger: ✅ valid review ledger`)
 - `npm run verify:fast` — passes (1294 tests, 89 test files)
