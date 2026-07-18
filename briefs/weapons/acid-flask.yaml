@@ -1,0 +1,27 @@
+type: weapon
+name: acid-flask
+description: |
+  A squat, sealed glass or ceramic thrown weapon — a small bottle held
+  upright, grip at the bottom, stopper at the top. The bottle body is
+  round-shouldered and squat, with visible thin glass walls. Inside, vivid
+  acid-green or yellow-green corrosive liquid fills roughly two-thirds of
+  the bottle; the empty headspace and liquid level line are clearly visible.
+  The stopper is a dark cork, wax blob, or metal cap seated firmly at the
+  neck. Glass should appear brittle and fragile — thin dark outline, pale
+  amber or pale-green glass tint on the body, no cracks (it has not been
+  thrown yet). The acid inside is the dominant saturated hue: vivid
+  acid-green (#7fff00 range) or bright yellow-green, with a slightly
+  brighter highlight on the liquid surface. One thin glass-sheen highlight
+  runs vertically along the left side of the bottle body. No glow, no
+  enchantment aura, no cracks, no splash. No text or labels. The silhouette
+  must read instantly as a small corked bottle/flask at game scale — not a
+  potion, not a barrel, not a grenade.
+# Vertical orientation, 4×4 sheet, 64×64 output, anchor at grip base —
+# all inherited from data/sprite-types/weapon.json.
+# The flask stands upright (bottle vertical), which IS the weapon-default
+# orientation, so no orientation override is needed.
+variations:
+  - round squat ceramic bottle with a wax blob seal, pale amber glass tint
+  - elongated teardrop vial with a metal crimp cap, pale green glass
+  - wide-shouldered apothecary bottle with a cork stopper, slight blue-green glass tint
+minVariations: 8
