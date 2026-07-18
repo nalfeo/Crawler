@@ -18,10 +18,10 @@ sprite-pipeline, sprite-workflow
 
 ## What changed
 
-- Added a new item brief: `/home/runner/work/Crawler/Crawler/briefs/items/shadow-boots.yaml`.
-- Added generated asset PNG: `/home/runner/work/Crawler/Crawler/public/assets/generated/shadow-boots-var-0.png`.
-- Registered the approved sprite in `/home/runner/work/Crawler/Crawler/public/assets/generated/manifest.json` as `shadow-boots-var-0` (`briefId: shadow-boots`).
-- Added catalog entry in `/home/runner/work/Crawler/Crawler/src/shared/data/sprite-catalog.json` as `generated:shadow-boots-var-0`.
+- Added a new item brief: `briefs/items/shadow-boots.yaml`.
+- Added generated asset PNG: `public/assets/generated/shadow-boots-var-0.png`.
+- Registered the approved sprite in `public/assets/generated/manifest.json` as `shadow-boots-var-0` (`briefId: shadow-boots`).
+- Added catalog entry in `src/shared/data/sprite-catalog.json` as `generated:shadow-boots-var-0`.
 
 ## Verification
 
