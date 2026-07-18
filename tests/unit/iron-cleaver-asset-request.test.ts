@@ -13,12 +13,22 @@ describe('iron-cleaver asset request', () => {
   it('ships a generated-manifest entry keyed by the exact runtime key', () => {
     const manifestPath = repoPath('public/assets/generated/manifest.json');
     const raw = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      readonly entries: Record<string, { readonly assetPath: string; readonly briefId: string }>;
+      readonly entries: Record<
+        string,
+        {
+          readonly assetPath: string;
+          readonly briefId: string;
+          readonly spriteName: string;
+          readonly type: 'weapon';
+        }
+      >;
     };
     const entry = raw.entries[RUNTIME_KEY];
     expect(entry).toBeDefined();
     expect(entry?.briefId).toBe(RUNTIME_KEY);
     expect(entry?.assetPath).toBe('generated/equipment/weapon/iron-cleaver.png');
+    expect(entry?.spriteName).toBe(RUNTIME_KEY);
+    expect(entry?.type).toBe('weapon');
   });
 
   it('ships a centered transparent 128×128 icon silhouette', () => {
@@ -31,6 +41,8 @@ describe('iron-cleaver asset request', () => {
 
     let minX = png.width;
     let maxX = -1;
+    let minY = png.height;
+    let maxY = -1;
     let opaqueCount = 0;
     for (let y = 0; y < png.height; y++) {
       for (let x = 0; x < png.width; x++) {
@@ -39,6 +51,8 @@ describe('iron-cleaver asset request', () => {
         opaqueCount += 1;
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
     }
 
@@ -46,5 +60,8 @@ describe('iron-cleaver asset request', () => {
     const centerX = (minX + maxX) / 2;
     expect(centerX).toBeGreaterThanOrEqual(60);
     expect(centerX).toBeLessThanOrEqual(68);
+    const centerY = (minY + maxY) / 2;
+    expect(centerY).toBeGreaterThanOrEqual(60);
+    expect(centerY).toBeLessThanOrEqual(68);
   });
 });
