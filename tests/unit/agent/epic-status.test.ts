@@ -1187,7 +1187,10 @@ describe('Floor 2 equipment epic status', () => {
     a1.github.issue = null; // no materialized issue
     a1.stacked_work = makeStackedWork();
 
-    expect(validate(state).errors.map((e) => e.code)).toContain('stacked.missing-issue');
+    const errors = validate(state).errors;
+    const missingIssueError = errors.find((e) => e.code === 'stacked.missing-issue');
+    expect(missingIssueError).toBeDefined();
+    expect(missingIssueError?.node_id).toBe('slice:A1');
   });
 
   it('rejects stacked_work with stale resync (beyond 48h threshold)', () => {
