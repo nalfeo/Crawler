@@ -422,6 +422,7 @@ const planContractSchema = z
 
 export type EpicState = z.infer<typeof epicStateSchema>;
 export type EpicNode = EpicState['nodes'][number];
+type EvidenceRecord = EpicNode['evidence'][number];
 
 export interface Diagnostic {
   readonly code: string;
