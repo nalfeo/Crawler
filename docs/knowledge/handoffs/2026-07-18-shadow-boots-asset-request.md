@@ -27,11 +27,13 @@ sprite-pipeline, sprite-workflow
 
 - `npm run verify:fast` (post-change): pass.
 - `npm run verify:pr-prereqs`: pass (`pr-review-ledger` reports docs/art/deps-only, ledger not required).
+- Re-run during PR recovery (`d4eeecb` head): `npm run verify:fast` pass, `npm run verify:pr-prereqs` pass.
 - Manual asset sanity check: PNG is transparent 32x32 with centered opaque bbox `[4,9]..[29,22]`.
 
 ## Unresolved / blockers
 
 - Could not post the requested detailed plan comment directly on issue #1386 from this sandbox because GitHub comment calls are blocked by the DNS monitoring proxy (`HTTP 403`).
+- PR-body metadata edits are not available from this sandbox, so this handoff section is the canonical in-branch mirror reviewers can reference.
 
 ## Detailed plan (mirrored in-branch due issue-comment 403)
 
