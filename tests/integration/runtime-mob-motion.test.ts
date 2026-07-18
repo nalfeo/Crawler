@@ -19,8 +19,8 @@ import { WORLD_VFX_DEPTH } from '../../src/shared/render-depths.js';
 import { floor1EnemyPack, floor2EnemyPack } from '../../src/shared/enemy-packs.js';
 import {
   CONTACT_ATTACK_MOTION_MS,
+  getRuntimeMobMotionProfiles,
   HIT_REACTION_MOTION_MS,
-  RUNTIME_MOB_MOTION_PROFILES,
   RANGED_RELEASE_MOTION_MS,
   sampleContactAttackMotion,
   sampleHitReactionMotion,
@@ -102,20 +102,21 @@ function gameplaySnapshot(world: ReturnType<typeof createTestWorld>, eids: reado
 }
 
 it('renders every eligible Floor 1-2 mob state through the real PhaserBridge with zero gameplay deltas', () => {
+  const runtimeMobMotionProfiles = getRuntimeMobMotionProfiles();
   const expectedIds = [
     ...floor1EnemyPack.archetypes.map((archetype) => archetype.id),
     ...SPECIAL_FLOOR_1_MOBS,
     ...SPAWNER_FLOOR_1_MOBS,
     ...floor2EnemyPack.archetypes.map((archetype) => archetype.id),
   ].sort();
-  const actualIds = RUNTIME_MOB_MOTION_PROFILES.map((profile) => profile.archetypeId).sort();
+  const actualIds = runtimeMobMotionProfiles.map((profile) => profile.archetypeId).sort();
   expect(actualIds).toEqual(expectedIds);
   expect(new Set(actualIds).size).toBe(actualIds.length);
   expect(actualIds).not.toContain('rat-nest-v2');
   expect(actualIds).not.toContain('slime-pool-v1');
 
   const world = createTestWorld({ seed: 42, floor: 1 });
-  const spawned = RUNTIME_MOB_MOTION_PROFILES.map((profile, index) => {
+  const spawned = runtimeMobMotionProfiles.map((profile, index) => {
     const x = 10 + index * 4;
     const eid = spawnBehaviorEnemy(world, x, 20, 100, 0, 1, 30, 8);
     setComponent(world.ecs, eid, Sprite, {

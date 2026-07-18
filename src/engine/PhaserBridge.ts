@@ -88,6 +88,7 @@ const MOB_HEALTH_BAR_Y_GAP_PX = 2;
 const MOB_HEALTH_BAR_DEFAULT_SPRITE_HALF_HEIGHT_PX = 8;
 const ENEMY_RIGHTWARD_FLIP_EPSILON = 0.001;
 const ENEMY_MOVEMENT_MOTION_EPSILON = 0.0001;
+const ENEMY_MOVEMENT_MOTION_EPSILON_SQ = ENEMY_MOVEMENT_MOTION_EPSILON ** 2;
 const SPEED_STATUS_TINT = 0xaadfff;
 /** Phaser 4's fill tint mode; kept numeric to preserve Node-safe type-only imports. */
 const PHASER_TINT_MODE_FILL = 1;
@@ -527,15 +528,17 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
         world.stores;
 
-      const ensureMobMotionState = (eid: number): MobMotionRenderState | undefined => {
-        if (!resolveMobMotionProfile(world, eid)) return undefined;
+      const ensureMobMotionState = (
+        eid: number,
+        initialLastFireMs: number,
+      ): MobMotionRenderState => {
         const generation = world.entityRenderGeneration[eid] ?? 0;
         const existing = mobMotionStates.get(eid);
         if (existing?.generation === generation) return existing;
         const state: MobMotionRenderState = {
           generation,
           firstSeenMs: renderElapsedMs,
-          lastFireMs: world.stores.enemyBehavior.lastFireMs[eid] ?? 0,
+          lastFireMs: initialLastFireMs,
         };
         mobMotionStates.set(eid, state);
         return state;
@@ -547,6 +550,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       for (const event of world.combatEvents) {
         if (event.type !== 'hit') continue;
         if (event.targetType === 'enemy' && event.targetEid !== undefined) {
+          if (!resolveMobMotionProfile(world, event.targetEid)) continue;
           const expectedGen = event.targetRenderGeneration;
           if (
             expectedGen !== undefined &&
@@ -554,14 +558,18 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           ) {
             continue;
           }
-          const state = ensureMobMotionState(event.targetEid);
-          if (state) state.hitAtMs = event.timestamp;
+          const state = ensureMobMotionState(
+            event.targetEid,
+            world.stores.enemyBehavior.lastFireMs[event.targetEid] ?? 0,
+          );
+          state.hitAtMs = event.timestamp;
         }
         if (
           event.targetType === 'player' &&
           event.delivery === 'contact' &&
           event.sourceEid !== undefined
         ) {
+          if (!resolveMobMotionProfile(world, event.sourceEid)) continue;
           const expectedGen = event.sourceRenderGeneration;
           if (
             expectedGen !== undefined &&
@@ -569,8 +577,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           ) {
             continue;
           }
-          const state = ensureMobMotionState(event.sourceEid);
-          if (state) state.contactAtMs = event.timestamp;
+          const state = ensureMobMotionState(
+            event.sourceEid,
+            world.stores.enemyBehavior.lastFireMs[event.sourceEid] ?? 0,
+          );
+          state.contactAtMs = event.timestamp;
         }
       }
 
@@ -1105,7 +1116,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         let speedStatusActive = false;
         if (entityType === 'enemy' && !isDeadEnemy) {
           const profile = resolveMobMotionProfile(world, eid);
-          const state = profile ? ensureMobMotionState(eid) : undefined;
+          const state = profile
+            ? ensureMobMotionState(eid, world.stores.enemyBehavior.lastFireMs[eid] ?? 0)
+            : undefined;
           if (profile && state) {
             const currentLastFireMs = world.stores.enemyBehavior.lastFireMs[eid] ?? 0;
             if (currentLastFireMs !== state.lastFireMs) {
@@ -1139,7 +1152,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             ) {
               mobMotion = sampleRangedReleaseMotion(renderElapsedMs - state.releaseAtMs);
             } else if (
-              Math.hypot(velocity.x[eid] ?? 0, velocity.y[eid] ?? 0) > ENEMY_MOVEMENT_MOTION_EPSILON
+              (velocity.x[eid] ?? 0) ** 2 + (velocity.y[eid] ?? 0) ** 2 >
+              ENEMY_MOVEMENT_MOTION_EPSILON_SQ
             ) {
               mobMotion = sampleMovementMotion(renderElapsedMs, profile.movementStyle);
             }

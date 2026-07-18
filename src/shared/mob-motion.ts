@@ -403,78 +403,94 @@ function profileFromPack(archetype: EnemyArchetypeDef, floor: 1 | 2): RuntimeMob
   };
 }
 
-const floor1Slime = floor1EnemyPack.archetypes.find((archetype) => archetype.id === 'slime');
-if (!floor1Slime) {
-  throw new Error('Floor 1 slime archetype is required for special mob-motion profiles.');
+function requireFloor1Archetype(id: string, context: string): EnemyArchetypeDef {
+  const archetype = floor1EnemyPack.archetypes.find((candidate) => candidate.id === id);
+  if (!archetype) {
+    throw new Error(`Floor 1 ${id} archetype is required for ${context}.`);
+  }
+  return archetype;
 }
 
-const floor1Rat = floor1EnemyPack.archetypes.find((archetype) => archetype.id === 'rat');
-if (!floor1Rat) {
-  throw new Error('Floor 1 rat archetype is required for spawner mob-motion profiles.');
+function buildRuntimeMobMotionProfiles(): readonly RuntimeMobMotionProfile[] {
+  const floor1Slime = requireFloor1Archetype('slime', 'special mob-motion profiles');
+  const floor1Rat = requireFloor1Archetype('rat', 'spawner mob-motion profiles');
+
+  /**
+   * Special runtime profiles for Floor 1 mobs that are not in the regular pack:
+   * - slime-mini: split from the slime archetype by the drop system
+   * - slime-rat / rat-slime: the two Floor 1 bosses (both use AI_TYPE.CHASE, but
+   *   fire projectiles via attackRange + fireCooldownMs — enemyAISystem calls
+   *   tryFireEnemyProjectile for any enemy with attackRange > 0 in range regardless
+   *   of AI type, see enemyAISystem.ts:1994-1995)
+   */
+  const specialFloor1Profiles: readonly RuntimeMobMotionProfile[] = [
+    {
+      ...profileFromPack(floor1Slime, 1),
+      archetypeId: 'slime-mini',
+      name: 'Mini Slime',
+    },
+    {
+      ...profileFromPack(floor1Slime, 1),
+      archetypeId: 'slime-rat',
+      name: 'Slime Rat',
+      movementStyle: 'stomp',
+      hasProjectile: true,
+      isBoss: true,
+    },
+    {
+      ...profileFromPack(floor1Slime, 1),
+      archetypeId: 'rat-slime',
+      name: 'Rat Slime',
+      movementStyle: 'stomp',
+      hasProjectile: true,
+      isBoss: true,
+    },
+  ];
+
+  /**
+   * Profiles for the Floor 1 spawner-emitted mob variants.
+   * These are spawned by the rat-nest and slime-pool spawners (defined in
+   * src/game/spawners/registry.ts) and do not appear in floor1EnemyPack.
+   * They inherit the base archetype's texture and locomotion style.
+   */
+  const spawnerFloor1Profiles: readonly RuntimeMobMotionProfile[] = [
+    { ...profileFromPack(floor1Rat, 1), archetypeId: 'rat-brute', name: 'Rat Brute' },
+    { ...profileFromPack(floor1Rat, 1), archetypeId: 'rat-king', name: 'Rat King' },
+    { ...profileFromPack(floor1Rat, 1), archetypeId: 'rat-queen', name: 'Rat Queen' },
+    { ...profileFromPack(floor1Slime, 1), archetypeId: 'mama-slime', name: 'Mama Slime' },
+    { ...profileFromPack(floor1Slime, 1), archetypeId: 'papa-slime', name: 'Papa Slime' },
+  ];
+
+  return [
+    ...floor1EnemyPack.archetypes.map((archetype) => profileFromPack(archetype, 1)),
+    ...specialFloor1Profiles,
+    ...spawnerFloor1Profiles,
+    ...floor2EnemyPack.archetypes.map((archetype) => profileFromPack(archetype, 2)),
+  ].sort(
+    (a, b) =>
+      a.floor - b.floor ||
+      a.name.localeCompare(b.name) ||
+      a.archetypeId.localeCompare(b.archetypeId),
+  );
 }
 
-/**
- * Special runtime profiles for Floor 1 mobs that are not in the regular pack:
- * - slime-mini: split from the slime archetype by the drop system
- * - slime-rat / rat-slime: the two Floor 1 bosses (both use AI_TYPE.CHASE, but
- *   fire projectiles via attackRange + fireCooldownMs — enemyAISystem calls
- *   tryFireEnemyProjectile for any enemy with attackRange > 0 in range regardless
- *   of AI type, see enemyAISystem.ts:1994-1995)
- */
-const SPECIAL_FLOOR_1_PROFILES: readonly RuntimeMobMotionProfile[] = [
-  {
-    ...profileFromPack(floor1Slime, 1),
-    archetypeId: 'slime-mini',
-    name: 'Mini Slime',
-  },
-  {
-    ...profileFromPack(floor1Slime, 1),
-    archetypeId: 'slime-rat',
-    name: 'Slime Rat',
-    movementStyle: 'stomp',
-    hasProjectile: true,
-    isBoss: true,
-  },
-  {
-    ...profileFromPack(floor1Slime, 1),
-    archetypeId: 'rat-slime',
-    name: 'Rat Slime',
-    movementStyle: 'stomp',
-    hasProjectile: true,
-    isBoss: true,
-  },
-];
+let runtimeMobMotionProfilesCache: readonly RuntimeMobMotionProfile[] | undefined;
+let runtimeMobMotionProfileByIdCache: ReadonlyMap<string, RuntimeMobMotionProfile> | undefined;
 
-/**
- * Profiles for the Floor 1 spawner-emitted mob variants.
- * These are spawned by the rat-nest and slime-pool spawners (defined in
- * src/game/spawners/registry.ts) and do not appear in floor1EnemyPack.
- * They inherit the base archetype's texture and locomotion style.
- */
-const SPAWNER_FLOOR_1_PROFILES: readonly RuntimeMobMotionProfile[] = [
-  { ...profileFromPack(floor1Rat, 1), archetypeId: 'rat-brute', name: 'Rat Brute' },
-  { ...profileFromPack(floor1Rat, 1), archetypeId: 'rat-king', name: 'Rat King' },
-  { ...profileFromPack(floor1Rat, 1), archetypeId: 'rat-queen', name: 'Rat Queen' },
-  { ...profileFromPack(floor1Slime, 1), archetypeId: 'mama-slime', name: 'Mama Slime' },
-  { ...profileFromPack(floor1Slime, 1), archetypeId: 'papa-slime', name: 'Papa Slime' },
-];
-
-export const RUNTIME_MOB_MOTION_PROFILES: readonly RuntimeMobMotionProfile[] = [
-  ...floor1EnemyPack.archetypes.map((archetype) => profileFromPack(archetype, 1)),
-  ...SPECIAL_FLOOR_1_PROFILES,
-  ...SPAWNER_FLOOR_1_PROFILES,
-  ...floor2EnemyPack.archetypes.map((archetype) => profileFromPack(archetype, 2)),
-].sort(
-  (a, b) =>
-    a.floor - b.floor || a.name.localeCompare(b.name) || a.archetypeId.localeCompare(b.archetypeId),
-);
-
-const RUNTIME_MOB_MOTION_PROFILE_BY_ID = new Map(
-  RUNTIME_MOB_MOTION_PROFILES.map((profile) => [profile.archetypeId, profile]),
-);
+export function getRuntimeMobMotionProfiles(): readonly RuntimeMobMotionProfile[] {
+  if (runtimeMobMotionProfilesCache) return runtimeMobMotionProfilesCache;
+  runtimeMobMotionProfilesCache = buildRuntimeMobMotionProfiles();
+  return runtimeMobMotionProfilesCache;
+}
 
 export function getRuntimeMobMotionProfile(
   archetypeId: string | undefined,
 ): RuntimeMobMotionProfile | undefined {
-  return archetypeId === undefined ? undefined : RUNTIME_MOB_MOTION_PROFILE_BY_ID.get(archetypeId);
+  if (archetypeId === undefined) return undefined;
+  if (!runtimeMobMotionProfileByIdCache) {
+    runtimeMobMotionProfileByIdCache = new Map(
+      getRuntimeMobMotionProfiles().map((profile) => [profile.archetypeId, profile]),
+    );
+  }
+  return runtimeMobMotionProfileByIdCache.get(archetypeId);
 }
