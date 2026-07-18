@@ -22,6 +22,7 @@ sprite-pipeline, ci-policy
 - Merged `origin/main` into `copilot/nalfeocrawler-1314-create-bone-saw-icon` to clear PR #1366's `mergeable_state: dirty` blocker.
 - Resolved the single content conflict in `public/assets/generated/manifest.json` by keeping both shipped equipment entries: this branch's `equipment/weapon/bone-saw` and mainline's `equipment/weapon/iron-cleaver`.
 - Re-validated the shipped bone-saw runtime-key path after the merge so the PR still proves the stable generated-asset key resolves through the real manifest loader/preloader path.
+- Removed an accidental format-only diff in `docs/knowledge/epics/floor-2-equipment/epic-state.schema.json` so the PR no longer trips the unrelated epic-drift workflow path filter.
 
 ## Before / after observation
 
@@ -36,4 +37,4 @@ sprite-pipeline, ci-policy
 
 ## Notes
 
-- Existing PR CI on head `44a9ea6` was green before recovery; this session addressed branch drift rather than a failing test/check regression.
+- Existing PR CI on head `44a9ea6` was green before recovery; the only post-merge CI failure came from the accidental epic-schema diff, not from the bone-saw asset/runtime-key change set.
