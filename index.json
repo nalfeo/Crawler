@@ -1,5 +1,16 @@
 [
   {
+    "commit": "200d5649ada06f3716e49b7b5bf18f65c79e6095",
+    "commitDate": "2026-07-18T11:41:39Z",
+    "commitSubject": "feat(sprites): add hand-crossbow weapon brief for Floor 2 equipment sprite (#1327)",
+    "capturedAt": "2026-07-18T13:16:20.217Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29643712399",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/200d5649ada06f3716e49b7b5bf18f65c79e6095.json"
+  },
+  {
     "commit": "125456ffd9d786c729093814d62eb6a40e951a0a",
     "commitDate": "2026-07-18T11:41:25Z",
     "commitSubject": "fix(ci-recovery): detect stale ✅ Addressed markers with non-pushed commit SHAs (#1301)",
