@@ -1272,7 +1272,9 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
     path: thread.path || undefined,
-    line: thread.isOutdated ? undefined : (thread.line ?? undefined),
+    line: thread.isOutdated
+      ? undefined // Omit unstable line for outdated threads — GitHub returns non-deterministic values on stale threads.
+      : thread.line,
     summary: `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 500)}`,
     url: root?.url,
   });

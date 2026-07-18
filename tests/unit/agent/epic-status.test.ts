@@ -24,6 +24,7 @@ const FULL_COMMIT = 'abcdef1234567890abcdef1234567890abcdef12';
 const HANDOFF_COMMIT = '461b8a334a018ebbf6e81aa7b31f81c74e08aa6b';
 const LEDGER_COMMIT = '065591b1717588fd7acdb8e28936946e4a7e63e6';
 const TEST_MERGE_COMMIT = HANDOFF_COMMIT;
+const MOCK_NON_COMMIT_OBJECT_SHA = 'b'.repeat(40);
 // This test file is itself the immutable evidence target for A0, so any static hash
 // embedded here would immediately drift when the file changes. Compute the current
 // working-tree hash once and use it only for the in-test fixture normalization.
@@ -313,10 +314,9 @@ describe('Floor 2 equipment epic status', () => {
   it('rejects merge facts that point at a non-commit git object', () => {
     const state = cloneState();
     validateA0(state);
-    const nonCommitObject = 'b'.repeat(40);
     state.nodes[0]!.status = 'merged';
     state.nodes[0]!.merge = {
-      commit: nonCommitObject,
+      commit: MOCK_NON_COMMIT_OBJECT_SHA,
       merged_at: '2026-07-17T17:50:00.000Z',
     };
     const gitReader = makeWorkingTreeGitReader(REPO_ROOT);
@@ -328,7 +328,7 @@ describe('Floor 2 equipment epic status', () => {
       gitReader: {
         ...gitReader,
         commitStatus(commit: string) {
-          return commit === nonCommitObject ? 'not-a-commit' : 'commit';
+          return commit === MOCK_NON_COMMIT_OBJECT_SHA ? 'not-a-commit' : 'commit';
         },
       },
     });

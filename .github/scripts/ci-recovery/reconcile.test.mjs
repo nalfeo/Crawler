@@ -4042,7 +4042,11 @@ test('outdated review thread still dispatches a recovery task when it is the onl
       call.body.body.includes('crawler-ci-task:v1'),
   );
   assert.ok(taskCall, 'outdated-only thread must trigger a recovery task comment');
-  assert.match(taskCall.body.body, /discussion_r99999/);
+  assert.match(
+    taskCall.body.body,
+    /discussion_r99999/,
+    'the dispatched task must include the outdated review thread blocker',
+  );
   assert.equal((taskCall.body.body.match(/\*\*review-thread\*\*/g) ?? []).length, 1);
 });
 
