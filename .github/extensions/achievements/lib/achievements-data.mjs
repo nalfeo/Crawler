@@ -195,7 +195,12 @@ export function parseAchievementCatalog(rawCatalog) {
       throw new Error(`achievements[${index}].reward must be an object with a string type`);
     }
   }
-  return rawCatalog.map(removeUnlockCriteriaDuplication);
+  return rawCatalog.map((achievement) =>
+    removeUnlockCriteriaDuplication({
+      ...achievement,
+      scope: achievement.scope ?? { type: 'floor' },
+    }),
+  );
 }
 
 /**

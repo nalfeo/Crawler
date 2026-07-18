@@ -81,6 +81,10 @@ import type {
   FactionRelationDelta,
   Floor2State,
 } from './faction-relations.js';
+import {
+  createEmptyAchievementFactSnapshot,
+  type AchievementFactSnapshot,
+} from '../shared/achievements.js';
 
 const logger = createLogger('core:world');
 
@@ -378,6 +382,8 @@ export interface GameWorld {
     pendingUnlockIds: string[];
     /** Achievement IDs whose reward has been opened/claimed this run. */
     claimedIds: Set<string>;
+    /** Aggregate facts from completed floors only; the active floor stays live. */
+    carriedRunFacts: AchievementFactSnapshot;
   };
   /**
    * True when the player entity's current position is inside a safe room.
@@ -541,6 +547,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       unlockedIds: new Set(),
       pendingUnlockIds: [],
       claimedIds: new Set(),
+      carriedRunFacts: createEmptyAchievementFactSnapshot(),
     },
     debugFlags: {
       showAllRooms: false,

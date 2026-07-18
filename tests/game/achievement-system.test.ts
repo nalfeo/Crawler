@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
+import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
 import {
   initializeFloor1Scenario,
   confirmFloor1StairDescend,
@@ -7,9 +8,18 @@ import {
 import {
   achievementSystem,
   claimAchievementReward,
+  collectCurrentFloorAchievementFacts,
+  evaluateAchievementUnlocksForPhase,
   isAchievementClaimed,
   unlockAchievement,
 } from '../../src/game/systems/achievementSystem.js';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
+import {
+  createAchievementCatalog,
+  createAchievementCatalogRegistry,
+  createEmptyAchievementFactSnapshot,
+  FLOOR1_ACHIEVEMENTS,
+} from '../../src/shared/achievements.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -29,6 +39,20 @@ function completeQuestState(questId: string): QuestState {
     tracked: false,
     progress: {},
     done: {},
+  };
+}
+
+function scopedAchievement(
+  id: string,
+  scope: { readonly type: 'floor' } | { readonly type: 'currentRun'; introducedOnFloor: 2 },
+  fact: 'playerGold' | 'goldCollected',
+) {
+  return {
+    ...FLOOR1_ACHIEVEMENTS[0],
+    id,
+    floor: 2,
+    scope,
+    unlockRules: [{ type: 'numberCompare' as const, fact, op: '>=' as const, value: 50 }],
   };
 }
 
@@ -76,6 +100,22 @@ describe('achievementSystem', () => {
 
     achievementSystem(world);
 
+    expect(world.achievements.pendingUnlockIds).toEqual([
+      'first-bonk',
+      'slime-no-more',
+      'rat-retired',
+      'crowd-control',
+      'skill-first-blood',
+      'skill-five',
+      'stat-point-spender',
+      'gold-goblin',
+      'stairs-unlocked',
+      'quest-accepted',
+      'quest-completed',
+      'all-floor1-quests',
+      'safe-room-discovered',
+      'merchant-customer',
+    ]);
     expect(world.achievements.unlockedIds.has('first-bonk')).toBe(true);
     expect(world.achievements.unlockedIds.has('rat-retired')).toBe(true);
     expect(world.achievements.unlockedIds.has('slime-no-more')).toBe(true);
@@ -109,6 +149,95 @@ describe('achievementSystem', () => {
     expect(world.achievements.unlockedIds.has('floor1-clear')).toBe(true);
     expect(world.achievements.unlockedIds.has('broke-speedrun')).toBe(true);
     expect(world.floorScenario?.runSummary?.outcome).toBe('cleared_floor');
+  });
+
+  it('keeps carried run facts out of Floor 2 floor-scoped evaluation', () => {
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(2, [
+        scopedAchievement('floor2-local-gold', { type: 'floor' }, 'playerGold'),
+        scopedAchievement(
+          'floor2-run-gold',
+          { type: 'currentRun', introducedOnFloor: 2 },
+          'goldCollected',
+        ),
+      ]),
+    ]);
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floorId = 'floor2';
+    world.playerGold = 0;
+    world.achievements.carriedRunFacts = {
+      ...createEmptyAchievementFactSnapshot(),
+      numberFacts: {
+        ...createEmptyAchievementFactSnapshot().numberFacts,
+        playerGold: 100,
+        goldCollected: 100,
+      },
+      reachedFloorIds: [1],
+    };
+
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+
+    expect(world.achievements.unlockedIds.has('floor2-local-gold')).toBe(false);
+    expect(world.achievements.unlockedIds.has('floor2-run-gold')).toBe(true);
+  });
+
+  it('does not activate a Floor 2-introduced current-run definition on Floor 1', () => {
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(1, []),
+      createAchievementCatalog(2, [
+        scopedAchievement(
+          'floor2-run-gold',
+          { type: 'currentRun', introducedOnFloor: 2 },
+          'playerGold',
+        ),
+      ]),
+    ]);
+    const world = createTestWorld({ seed: 42 });
+    world.playerGold = 100;
+
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+    expect(world.achievements.unlockedIds.has('floor2-run-gold')).toBe(false);
+
+    world.floor = 2;
+    world.floorId = 'floor2';
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+    expect(world.achievements.unlockedIds.has('floor2-run-gold')).toBe(true);
+  });
+
+  it('runs the Floor 2-safe evaluator through the real scene post-system pipeline', () => {
+    const options = createFloorMainSceneOptions('floor2');
+    const wiredAchievementSystem = options.postSystems?.find(
+      (system) => system === achievementSystem,
+    );
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floorId = 'floor2';
+    world.floorScenario = null;
+
+    expect(wiredAchievementSystem).toBe(achievementSystem);
+    expect(() => wiredAchievementSystem?.(world)).not.toThrow();
+  });
+
+  it('collects Floor 2 player-attributed trash kills into the current-run total', () => {
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    const mirekin = asFamilyId('mirekin');
+    const chitinous = asFamilyId('chitinous');
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [mirekin, chitinous],
+        contestedResource: asResourceId('glimmercap'),
+        betrayerFlag: false,
+        trashKillsByFamily: new Map([
+          [mirekin, 4],
+          [chitinous, 7],
+        ]),
+      },
+    };
+
+    const facts = collectCurrentFloorAchievementFacts(world);
+
+    expect(facts.numberFacts.totalKills).toBe(11);
+    expect(facts.numberFacts.ratsKilled).toBe(0);
+    expect(facts.numberFacts.slimesKilled).toBe(0);
   });
 });
 

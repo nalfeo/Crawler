@@ -4,6 +4,8 @@ import { spawnPlayer } from '../../src/core/helpers.js';
 import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem.js';
 import { addStatModifier } from '../../src/game/systems/statsSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
+import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
+import { createEmptyAchievementFactSnapshot } from '../../src/shared/achievements.js';
 import {
   getEquipmentDefForStarterWeapon,
   MERCHANTS_CHARM_DEF,
@@ -153,5 +155,66 @@ describe('player floor carryover', () => {
         expect.objectContaining({ sourceId: 'foreign-skill:level:5:1' }),
       ]),
     );
+  });
+
+  it('accumulates each completed floor once across capture and restore', () => {
+    const source = createTestWorld({ seed: 42 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    initializeFloor1Scenario(source, sourcePlayer);
+    source.floorScenario!.objective.ratsKilled = 5;
+    source.floorScenario!.objective.slimesKilled = 2;
+    source.floorScenario!.objective.goldCollected = 7;
+    source.floorScenario!.runSummary = {
+      outcome: 'cleared_floor',
+      viewsEarned: 0,
+      fansEarned: 0,
+    };
+
+    const firstSnapshot = capturePlayerCarryover(source, sourcePlayer);
+    expect(firstSnapshot.achievements.carriedRunFacts?.numberFacts.totalKills).toBe(7);
+    expect(firstSnapshot.achievements.carriedRunFacts?.reachedFloorIds).toEqual([1]);
+    expect(firstSnapshot.achievements.carriedRunFacts?.clearedFloorIds).toEqual([1]);
+
+    const destination = createTestWorld({ seed: 42, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    destination.floorId = 'floor2';
+    restorePlayerCarryover(destination, destinationPlayer, firstSnapshot);
+    const secondSnapshot = capturePlayerCarryover(destination, destinationPlayer);
+
+    expect(secondSnapshot.achievements.carriedRunFacts?.numberFacts.totalKills).toBe(7);
+    expect(secondSnapshot.achievements.carriedRunFacts?.numberFacts.goldCollected).toBe(7);
+    expect(secondSnapshot.achievements.carriedRunFacts?.reachedFloorIds).toEqual([1, 2]);
+    expect(secondSnapshot.achievements.carriedRunFacts?.clearedFloorIds).toEqual([1]);
+  });
+
+  it('migrates legacy carryover without scoped facts and preserves unlock state', () => {
+    const source = createTestWorld({ seed: 42 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    source.achievements.unlockedIds.add('first-bonk');
+    source.achievements.pendingUnlockIds.push('first-bonk');
+    source.achievements.claimedIds.add('first-bonk');
+    const currentSnapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...currentSnapshot,
+      achievements: {
+        unlockedIds: currentSnapshot.achievements.unlockedIds,
+        pendingUnlockIds: currentSnapshot.achievements.pendingUnlockIds,
+        claimedIds: currentSnapshot.achievements.claimedIds,
+      },
+    };
+    const destination = createTestWorld({ seed: 42, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(destination.achievements.unlockedIds).toEqual(new Set(['first-bonk']));
+    expect(destination.achievements.pendingUnlockIds).toEqual(['first-bonk']);
+    expect(destination.achievements.claimedIds).toEqual(new Set(['first-bonk']));
+    expect(destination.achievements.carriedRunFacts).toEqual(createEmptyAchievementFactSnapshot());
+  });
+
+  it('starts a new run with no carried achievement facts', () => {
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    expect(world.achievements.carriedRunFacts).toEqual(createEmptyAchievementFactSnapshot());
   });
 });

@@ -177,6 +177,7 @@ test('parseAchievementCatalog applies the flavor transform', () => {
     }),
   ]);
   assert.equal(entry.directorFlavor, 'Wow.');
+  assert.deepEqual(entry.scope, { type: 'floor' });
 });
 
 test('loadAchievementsData returns the full view model via an injected reader', () => {

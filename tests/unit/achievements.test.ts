@@ -1,11 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALL_ACHIEVEMENTS,
+  ACHIEVEMENT_CATALOG_REGISTRY,
   ACHIEVEMENT_ART_BACKLOG,
+  createAchievementCatalog,
+  createAchievementCatalogRegistry,
   FLOOR1_ACHIEVEMENT_COUNT,
   FLOOR1_ACHIEVEMENTS,
+  getAchievementCatalogForFloor,
+  getCurrentRunGlobalAchievements,
   LOOT_BOX_TIERS,
   parseAchievementCatalog,
 } from '../../src/shared/achievements.js';
+
+function rawAchievement(
+  overrides: Partial<(typeof FLOOR1_ACHIEVEMENTS)[number]> = {},
+): Record<string, unknown> {
+  return {
+    ...FLOOR1_ACHIEVEMENTS[0],
+    id: 'test-achievement',
+    floor: 2,
+    scope: { type: 'floor' },
+    unlockRules: [],
+    ...overrides,
+  };
+}
 
 describe('floor1 achievements catalog', () => {
   it('contains exactly 103 achievements', () => {
@@ -46,6 +65,75 @@ describe('floor1 achievements catalog', () => {
     for (const achievement of FLOOR1_ACHIEVEMENTS) {
       expect(Array.isArray(achievement.unlockRules)).toBe(true);
     }
+  });
+
+  it('normalizes legacy Floor 1 entries to explicit floor scope without changing order', () => {
+    expect(FLOOR1_ACHIEVEMENTS.every((achievement) => achievement.scope.type === 'floor')).toBe(
+      true,
+    );
+    expect(FLOOR1_ACHIEVEMENTS.slice(0, 3).map((achievement) => achievement.id)).toEqual([
+      'first-bonk',
+      'slime-no-more',
+      'rat-retired',
+    ]);
+  });
+
+  it('looks up deterministic floor catalogs and gates current-run definitions by introduction floor', () => {
+    expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(2)?.all).toEqual([]);
+
+    const floor2Catalog = createAchievementCatalog(2, [
+      rawAchievement({
+        id: 'floor2-local',
+      }),
+      rawAchievement({
+        id: 'run-global-b',
+        scope: { type: 'currentRun', introducedOnFloor: 2 },
+      }),
+      rawAchievement({
+        id: 'run-global-a',
+        scope: { type: 'currentRun', introducedOnFloor: 2 },
+      }),
+    ]);
+    const registry = createAchievementCatalogRegistry([floor2Catalog]);
+
+    expect(getCurrentRunGlobalAchievements([1], registry)).toEqual([]);
+    expect(getCurrentRunGlobalAchievements([1, 2], registry).map((entry) => entry.id)).toEqual([
+      'run-global-b',
+      'run-global-a',
+    ]);
+  });
+
+  it('rejects cross-floor ownership and duplicate ids', () => {
+    expect(() => createAchievementCatalog(2, [rawAchievement({ floor: 1 })])).toThrow(
+      /belongs to floor 1/,
+    );
+    expect(() =>
+      createAchievementCatalog(2, [
+        rawAchievement({ id: 'duplicate' }),
+        rawAchievement({ id: 'duplicate' }),
+      ]),
+    ).toThrow(/Duplicate achievement id/);
+    expect(() =>
+      createAchievementCatalogRegistry([
+        createAchievementCatalog(1, []),
+        createAchievementCatalog(1, []),
+      ]),
+    ).toThrow(/Duplicate achievement catalog/);
+    expect(ACHIEVEMENT_CATALOG_REGISTRY.byId.size).toBe(FLOOR1_ACHIEVEMENT_COUNT);
+    expect(ALL_ACHIEVEMENTS).toEqual(
+      ACHIEVEMENT_CATALOG_REGISTRY.catalogs.flatMap((catalog) => catalog.all),
+    );
+  });
+
+  it('rejects a current-run definition introduced on a different floor', () => {
+    expect(() =>
+      createAchievementCatalog(2, [
+        rawAchievement({
+          scope: { type: 'currentRun', introducedOnFloor: 1 },
+        }),
+      ]),
+    ).toThrow(/introduced on their catalog floor/);
   });
 
   it('tracks placeholder art backlog for all icon packs and loot-box tiers', () => {
