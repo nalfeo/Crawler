@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-18
 **Session slug:** butcher-hook-floor2-icon
-**Apple estimate:** 🍎 (1 apple — pure art pipeline, no code changes)
+**Apple estimate:** 🍎 (1 apple — sprite brief + pre-existing test fix)
 **Persona:** Graphics Designer
 
 ## Systems touched
