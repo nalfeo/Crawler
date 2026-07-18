@@ -128,6 +128,15 @@ assets:
       kind: sprite-registry
       id: toxic-blowgun
 
+  - id: thorn-whip
+    type: weapon
+    label: 'Thorn Whip'
+    brief: 'Thorn Whip — a single centered weapon icon with a clear, readable silhouette on a transparent background. A vine whip studded with hooked thorns, vertical orientation, grip at the bottom. Vines that bite back.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: thorn-whip
+
   - id: chain-whip
     type: weapon
     label: 'Chain Whip'
