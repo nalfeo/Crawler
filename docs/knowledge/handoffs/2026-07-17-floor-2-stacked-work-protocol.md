@@ -1,94 +1,99 @@
-# Session Handoff: Durable speculative stacked-work protocol
+# Session Handoff: Floor 2 speculative stacked-work protocol
 
-**Date:** 2026-07-17  
-**Session slug:** floor-2-stacked-work-protocol  
-**Branch:** copilot/add-durable-speculative-tracking  
-**PR base:** nalfeo-floor-2-epic-control  
-**Issue:** #1282 (closes)  
-**Apples:** 🍎🍎🍎 estimated → 🍎🍎🍎 actual (exact)
+## Date
+
+2026-07-17
+
+## Persona
+
+Producer / Systems Engineer
 
 ## Systems touched
 
-epics
+ci-policy, docs-tooling, agent-personas
+
+## Apples
+
+3 apples estimated -> 3 apples actual. Full JSON:
+`docs/knowledge/metrics/apples/2026-07-17-floor-2-stacked-work-protocol.json`.
 
 ## What Was Done
 
-Added the durable speculative stacked-work protocol to the Floor 2 equipment epic
-control plane (`scripts/agent/epics/epic-status-lib.ts`). This allows nodes that are
-lifecycle `blocked` to track speculative work proceeding on an exact stacked branch,
-without weakening lifecycle status, dependency validation, or downstream readiness.
+Implemented the A0.1 control-plane follow-up without changing equipment gameplay
+or A0 PR #1271:
 
-### Schema changes
+- Bumped the Floor 2 epic state to `crawler-epic-state/v2` and added an
+  orthogonal `stacked_work` model. Lifecycle remains `blocked`; speculative
+  states never satisfy dependencies or enter the ready queue.
+- Added durable stacked owner, issue, session, branch, prerequisite PR,
+  stack-base, resync, dependent PR, material-drift, and rebase-to-main facts.
+- Kept every unvalidated prerequisite head exact while treating the dependent
+  branch's own `observed_head_sha` as a nullable GitHub cache. A committed
+  self-head cannot be exact because the cache-refresh commit changes that same
+  head.
+- Added deterministic offline rejection for ineligible lanes, missing or
+  conflicting ownership, incomplete prerequisite coverage, stale dependency
+  heads/bases/resyncs, closed PRs, and invalid merge/rebase transitions.
+- Added read-only GitHub reconciliation for owner and PR drift. It proposes
+  cache patches and operator actions but never mutates lifecycle or completion.
+- Made trusted `BLOCKED` comments revoke both normal and speculative ownership,
+  so stale stacked metadata can be cleared without waiting for lease expiry.
+- Expanded the focused suite to 39 tests, including nullable dependent-head
+  caching, prerequisite closure, dependent drift, ownership conflicts, and
+  GitHub-observed rebase head/base proof.
+- Preserved the approved 37 delivery nodes. Protocol issue #1282 is the sole
+  A0.1 tracker; #1281 and #1285 are closed duplicates. A1's authoritative issue
+  remains #1279.
 
-- Added `stackedWorkSchema` Zod schema (nullable) to each node
-- Fields: `status` (`stacked_in_progress` | `stacked_pr_open`), `owner` (claimant/session/branch/claimed_at), `dependency` (node_id/pr_number/repository/branch/head_sha), `dependent` (head_sha/pr_number), `resync` (head_sha/at), `rebase_to_main` (state/completed_at), `material_drift`, `block_reason`
-- Updated `epic-state.schema.json` with `stackedWork` JSON Schema definition
-- Added `stacked_work: null` to all 37 nodes in `epic-state.json`
+## Final State
 
-### Offline validation (7 rules)
+A0 PR #1271 is still open. After A0.1 publication, A0 advanced and A0.1 was
+resynced onto exact A0 head
+`90b6350ac82c835cf11802042d81f5547c6a96eb`. At initial publication A1 had
+not yet rebased, so its stale speculative lease was revoked with a trusted
+`BLOCKED` comment and canonical A1 `stacked_work` was cleared. A1's subsequent
+stack evidence remains owned by its dependent branch; A0.1 does not commit the
+mutable dependent head. A1 remains lifecycle `blocked`, and downstream
+readiness remains empty.
 
-| Code                                        | Rule                                             |
-| ------------------------------------------- | ------------------------------------------------ |
-| `stacked.non-blocked-status`                | stacked_work only while lifecycle is blocked     |
-| `stacked.missing-issue`                     | requires materialized child issue                |
-| `stacked.stale-resync`                      | resync must be within 48 hours                   |
-| `stacked.invalid-lane`                      | verification lane forbidden                      |
-| `stacked.dependency-node-mismatch`          | dependency.node_id must be in node.dependencies  |
-| `stacked.dependency-pr-snapshot-mismatch`   | pr_number must match tracked dep PR if present   |
-| `stacked.premature-rebase-complete`         | complete only when all deps are merged/validated |
-| `stacked.rebase-complete-missing-timestamp` | completed_at must be non-null when complete      |
-| `stacked.pr-open-missing-number`            | stacked_pr_open requires dependent.pr_number     |
+A0.1 is independently finalizable: after its ready PR is open, A1 may rebase
+once onto the published A0.1 head, retarget PR #1276, and post fresh
+`STACKED-WORK` evidence. A0.1 must not chase A1's resulting self-head in another
+commit.
 
-Plus cross-node: `stacked.duplicate-ownership` (one stacked-work slot per session).
+## Review and Validation
 
-### GitHub audit extension
+- Separate-model plan review: seven concerns, all adopted; divergence `minor`.
+- Code-review round 1: two coverage gaps, both resolved.
+- Code-review round 2: prerequisite-closure coverage and missing
+  GitHub-observed-main-base completion proof, both resolved.
+- Focused suite: 39 tests pass.
+- `npm run verify:fast` passes.
+- Offline and credentialed read-only GitHub audits are valid with zero errors,
+  warnings, proposals, or operator actions and report `writes=false`.
+- Review ledger:
+  `docs/knowledge/review-ledgers/2026-07-17-floor-2-stacked-work-protocol.review-ledger.json`.
 
-For nodes with `stacked_work`, `auditGithub()` now:
+## Recovery
 
-- Audits the dependency PR: proposes head_sha patch + operator action on advancement/merge
-- Audits the dependent PR (stacked_pr_open): proposes head_sha patch; errors on unexpected merge or close
+1. Read the canonical PLAN, schema, state, issue #1282, A0 PR #1271, and A1
+   issue #1279.
+2. Run `npm run epic:status -- floor-2-equipment`.
+3. Run
+   `npm run epic:status -- floor-2-equipment --github --reconcile` and confirm
+   it remains read-only.
+4. For each stacked node, require one live trusted owner, exact open
+   prerequisite snapshots, one exact stack base, and stable dependent
+   PR/branch/base identity. Treat `dependent.observed_head_sha` only as a
+   nullable GitHub cache.
+5. If the stack base merges, record exact merge facts and the GitHub-observed
+   pre-rebase dependent head; rebase/retarget; require GitHub-observed new head
+   and `base: main`; then clear stacked metadata.
+6. Keep lifecycle blocked until every prerequisite is validated. Only normal
+   readiness may advance the node afterward.
 
-### Recovery documentation
+## What's Next
 
-Created `docs/knowledge/epics/floor-2-equipment/STACKED-WORK-RECOVERY.md` covering:
-
-- Preconditions for starting stacked work
-- Resync cadence (48h window)
-- Rebase-to-main steps (after dependency merges)
-- Normal-lifecycle handoff steps (after dependency validates)
-- Abandonment procedure
-- GitHub audit signal table
-- Complete invariants table
-
-### Tests
-
-31 total tests (16 new stacked-work focused tests), all passing.
-
-## Key Design Decisions
-
-1. **Nullable sub-object (not new top-level status)** — stacked work is orthogonal to lifecycle. Status stays `blocked`. No risk of false readiness.
-2. **`merged` is sufficient for rebase gate** — Matches the recovery doc and practical workflow (rebase on merge, not after full CI validation).
-3. **`dependency.node_id` required** — Ties the stacked work explicitly to one of the node's listed dependencies; enables cross-validation with the dep node's tracked PR.
-4. **`verification` lane forbidden** — Can't verify speculatively.
-5. **Read-only GitHub audit** — Proposes patches, never writes completion state.
-
-## Code Review
-
-Round 1 (rubber-duck plan review): 5 concerns → 5 resolved
-Round 1 (code review): 2 bugs → 2 fixed (premature-rebase gate allowed `merged`; missing null `completed_at` check)
-Round 2 (code review): 3 style/doc issues → 3 resolved
-
-Ledger: `docs/knowledge/review-ledgers/2026-07-17-floor-2-stacked-work-protocol.review-ledger.json`
-
-## Files Changed
-
-- `scripts/agent/epics/epic-status-lib.ts` — Core schema + validation + audit
-- `docs/knowledge/epics/floor-2-equipment/epic-state.json` — stacked_work: null on all nodes
-- `docs/knowledge/epics/floor-2-equipment/epic-state.schema.json` — stackedWork def
-- `docs/knowledge/epics/floor-2-equipment/STACKED-WORK-RECOVERY.md` — Recovery doc
-- `tests/unit/agent/epic-status.test.ts` — 16 new focused tests
-
-## Lessons
-
-- When gating on "dependency landed," use `merged OR validated` rather than `dependenciesSatisfied()` (which requires `validated`). The latter is the right predicate for readiness; the former is the right predicate for rebase timing.
-- Always cross-check recovery doc semantics against validation code during plan review.
+Open A0.1 as a ready PR targeting `nalfeo-floor-2-epic-control`. Verify its PR
+head equals the remote branch head, then give that exact 40-character SHA and PR
+number to A1 and the parent coordinator. Do not merge or arm auto-merge.

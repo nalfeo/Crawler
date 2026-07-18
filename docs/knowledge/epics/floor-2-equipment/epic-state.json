@@ -1,9 +1,9 @@
 {
   "$schema": "./epic-state.schema.json",
-  "schema_version": "crawler-epic-state/v1",
+  "schema_version": "crawler-epic-state/v2",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-17T17:32:38.205Z",
+  "updated_at": "2026-07-17T23:44:12.576Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
@@ -28,7 +28,21 @@
     "bootstrap_node": "slice:A0",
     "default_lease_hours": 24,
     "maximum_without_heartbeat_hours": 48,
-    "protocol_headings": ["CLAIMED", "BLOCKED", "UNBLOCKED", "SCOPE-CHANGE-REQUEST", "HANDOFF"]
+    "protocol_headings": [
+      "CLAIMED",
+      "STACKED-WORK",
+      "BLOCKED",
+      "UNBLOCKED",
+      "SCOPE-CHANGE-REQUEST",
+      "HANDOFF"
+    ]
+  },
+  "stacked_work_policy": {
+    "states": ["stacked_in_progress", "stacked_pr_open"],
+    "allowed_execution_lanes": ["control"],
+    "maximum_without_resync_hours": 24,
+    "comment_heading": "STACKED-WORK",
+    "main_branch": "main"
   },
   "github": {
     "repository": "nalfeo/Crawler",
@@ -108,23 +122,20 @@
         "pr": {
           "number": 1271,
           "url": "https://github.com/nalfeo/Crawler/pull/1271",
-          "head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6"
+          "head_sha": "90b6350ac82c835cf11802042d81f5547c6a96eb"
         }
       },
       "ownership": {
         "claimant": "Producer",
         "session": "7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd",
         "source": "parent-issue-bootstrap",
-        "scope": "Slice A0 control plane only; no gameplay",
+        "scope": "Durable control plane only; no equipment gameplay",
         "claimed_at": "2026-07-17T17:32:38.205Z",
         "lease_expires_at": "2026-07-18T17:32:38.205Z",
         "heartbeat_at": "2026-07-17T17:32:38.205Z",
         "base_commit": "41c5f2aa"
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["offline-validator-and-focused-tests"],
       "evidence": [
         {
@@ -144,21 +155,20 @@
         {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
-          "sha256": "bbb2912c21ab7db87494372da1efa2b14e6e5fc7cc40453ee8a879077449408e",
-          "commit": "8cc19153bb8881a4faba5b696eb117c7abc820c2",
+          "sha256": "ad25d7c665b0fab256d3e71179664ace6070d14066f55eb8f941f97f02eab018",
+          "commit": "065591b1717588fd7acdb8e28936946e4a7e63e6",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         }
       ],
       "reconciliation": {
-        "last_audited_at": "2026-07-17T18:25:00.000Z",
+        "last_audited_at": "2026-07-17T23:37:36.885Z",
         "observed_issue_state": "open",
         "observed_pr_state": "OPEN",
-        "observed_head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6",
+        "observed_head_sha": "90b6350ac82c835cf11802042d81f5547c6a96eb",
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:A1",
@@ -166,7 +176,7 @@
       "kind": "slice",
       "parent_slice": null,
       "title": "Implementation contract lock",
-      "summary": "Lock registry APIs, release flags, migration boundaries, and implementation acceptance contracts.",
+      "summary": "Lock registry APIs, release flags, migration boundaries, and implementation acceptance contracts. Unique equipment is deferred outside this DAG to https://github.com/nalfeo/Crawler/issues/1274.",
       "execution_lane": "control",
       "persona": "Producer / Systems Engineer",
       "dependencies": ["slice:A0"],
@@ -175,7 +185,7 @@
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
       "github": {
-        "issue": null,
+        "issue": { "number": 1279, "url": "https://github.com/nalfeo/Crawler/issues/1279" },
         "pr": null
       },
       "ownership": {
@@ -188,22 +198,96 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["reviewed-contract-specification"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
-        "observed_issue_state": null,
+        "observed_issue_state": "open",
         "observed_pr_state": null,
         "observed_head_sha": null,
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "stacked_work": {
+        "state": "stacked_pr_open",
+        "owner": {
+          "node_id": "slice:A1",
+          "issue": {
+            "number": 1279,
+            "url": "https://github.com/nalfeo/Crawler/issues/1279"
+          },
+          "claimant": "nalfeo",
+          "session": "6f852b99-3c14-4037-b6b2-7ec3947fe4fc",
+          "branch": "nalfeo-floor-2-equipment-contracts",
+          "claimed_at": "2026-07-17T21:37:42.000Z",
+          "lease_expires_at": "2026-07-18T23:44:12.576Z",
+          "heartbeat_at": "2026-07-17T23:44:12.576Z"
+        },
+        "dependency_pull_requests": [
+          {
+            "node_id": "slice:A0",
+            "tracking_issue": null,
+            "repository": "nalfeo/Crawler",
+            "branch": "nalfeo-floor-2-epic-control",
+            "pull_request": {
+              "number": 1271,
+              "url": "https://github.com/nalfeo/Crawler/pull/1271"
+            },
+            "head_sha": "90b6350ac82c835cf11802042d81f5547c6a96eb",
+            "base_branch": "main",
+            "is_stack_base": false,
+            "observed_pr_state": "OPEN",
+            "observed_head_sha": "90b6350ac82c835cf11802042d81f5547c6a96eb",
+            "observed_head_branch": "nalfeo-floor-2-epic-control",
+            "observed_base_branch": "main",
+            "observed_merge_commit": null
+          },
+          {
+            "node_id": null,
+            "tracking_issue": {
+              "number": 1282,
+              "url": "https://github.com/nalfeo/Crawler/issues/1282"
+            },
+            "repository": "nalfeo/Crawler",
+            "branch": "nalfeo-floor-2-stacked-work-protocol",
+            "pull_request": {
+              "number": 1287,
+              "url": "https://github.com/nalfeo/Crawler/pull/1287"
+            },
+            "head_sha": "f4f058d35af7b9c3df116fbc05e1042b6f44eba0",
+            "base_branch": "nalfeo-floor-2-epic-control",
+            "is_stack_base": true,
+            "observed_pr_state": "OPEN",
+            "observed_head_sha": "f4f058d35af7b9c3df116fbc05e1042b6f44eba0",
+            "observed_head_branch": "nalfeo-floor-2-stacked-work-protocol",
+            "observed_base_branch": "nalfeo-floor-2-epic-control",
+            "observed_merge_commit": null
+          }
+        ],
+        "dependent": {
+          "branch": "nalfeo-floor-2-equipment-contracts",
+          "base_branch": "nalfeo-floor-2-stacked-work-protocol",
+          "pull_request": {
+            "number": 1276,
+            "url": "https://github.com/nalfeo/Crawler/pull/1276"
+          },
+          "observed_pr_state": "OPEN",
+          "observed_head_sha": null,
+          "observed_head_branch": "nalfeo-floor-2-equipment-contracts",
+          "observed_base_branch": "nalfeo-floor-2-stacked-work-protocol"
+        },
+        "last_resynced_dependency_head_sha": "f4f058d35af7b9c3df116fbc05e1042b6f44eba0",
+        "last_resynced_at": "2026-07-17T23:44:12.576Z",
+        "rebase_to_main": {
+          "pending": false,
+          "pre_rebase_dependent_head_sha": null,
+          "prerequisite_merge_commit": null
+        },
+        "material_contract_drift": null,
+        "blocked_reason": null
+      },
+      "superseded_by": null
     },
     {
       "node_id": "slice:B1",
@@ -219,10 +303,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -233,10 +314,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["instance-schema-and-constructor-tests"],
       "evidence": [],
       "reconciliation": {
@@ -247,8 +325,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:B2",
@@ -264,10 +341,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -278,10 +352,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["inventory-equip-registry-integration-tests"],
       "evidence": [],
       "reconciliation": {
@@ -292,8 +363,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:B3",
@@ -309,10 +379,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -323,10 +390,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["save-load-carryover-compatibility-tests"],
       "evidence": [],
       "reconciliation": {
@@ -337,8 +401,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:C1",
@@ -354,10 +417,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -368,10 +428,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["catalog-count-and-sprite-coverage-tests"],
       "evidence": [],
       "reconciliation": {
@@ -382,8 +439,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:C2",
@@ -399,10 +455,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -413,10 +466,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["rarity-invariants-and-representative-dps-harness"],
       "evidence": [],
       "reconciliation": {
@@ -427,8 +477,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:D1",
@@ -444,10 +493,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -458,10 +504,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["immutable-reward-resolution-contract-tests"],
       "evidence": [],
       "reconciliation": {
@@ -472,8 +515,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:D2-A",
@@ -489,10 +531,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -503,10 +542,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["achievement-definitions-1-through-15-tests"],
       "evidence": [],
       "reconciliation": {
@@ -517,8 +553,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:D2-B",
@@ -534,10 +569,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -548,10 +580,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["achievement-definitions-16-through-30-tests"],
       "evidence": [],
       "reconciliation": {
@@ -562,8 +591,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:D2",
@@ -579,10 +607,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -593,10 +618,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["exactly-30-floor2-achievements-integration-tests"],
       "evidence": [],
       "reconciliation": {
@@ -607,8 +629,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:D3-A",
@@ -624,10 +645,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -638,10 +656,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["run-global-achievements-1-through-3-tests"],
       "evidence": [],
       "reconciliation": {
@@ -652,8 +667,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:D3-B",
@@ -669,10 +683,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -683,10 +694,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["run-global-achievements-4-through-6-tests"],
       "evidence": [],
       "reconciliation": {
@@ -697,8 +705,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:D3",
@@ -714,10 +721,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -728,10 +732,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["exactly-six-run-global-achievements-integration-tests"],
       "evidence": [],
       "reconciliation": {
@@ -742,8 +743,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:E1",
@@ -759,10 +759,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -773,10 +770,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["reviewed-equipment-economy-contract"],
       "evidence": [],
       "reconciliation": {
@@ -787,8 +781,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:E2",
@@ -804,10 +797,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -818,10 +808,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["deterministic-shop-count-and-quartermaster-tests"],
       "evidence": [],
       "reconciliation": {
@@ -832,8 +819,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:E3-A",
@@ -849,10 +835,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -863,10 +846,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["quartermaster-stock-rarity-tests"],
       "evidence": [],
       "reconciliation": {
@@ -877,8 +857,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:E3-B",
@@ -894,10 +873,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -908,10 +884,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["random-shop-stock-rarity-tests"],
       "evidence": [],
       "reconciliation": {
@@ -922,8 +895,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:E3-C",
@@ -939,10 +911,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -953,10 +922,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["boss-chest-85-15-table-and-selection-tests"],
       "evidence": [],
       "reconciliation": {
@@ -967,8 +933,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:E3",
@@ -984,10 +949,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -998,10 +960,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["merchant-and-chest-registry-integration-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1012,8 +971,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:F1",
@@ -1029,10 +987,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1043,10 +998,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["item-details-and-rarity-accessibility-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1057,8 +1009,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:F2",
@@ -1074,10 +1025,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1088,10 +1036,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["inventory-equip-input-and-focus-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1102,8 +1047,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:F3",
@@ -1119,10 +1063,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1133,10 +1074,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["merchant-equipment-accessibility-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1147,8 +1085,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:F4",
@@ -1164,10 +1101,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1178,10 +1112,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["shared-chest-keyboard-pointer-touch-focus-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1192,8 +1123,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:G1",
@@ -1209,10 +1139,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1223,10 +1150,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["floor1-off-floor2-boundary-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1237,8 +1161,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:G2-A",
@@ -1254,10 +1177,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1268,10 +1188,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["deterministic-chest-placement-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1282,8 +1199,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:G2-B+",
@@ -1299,10 +1215,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1313,10 +1226,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["drop-pickup-overflow-registry-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1327,8 +1237,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:G2",
@@ -1344,10 +1253,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1358,10 +1264,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["world-equipment-end-to-end-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1372,8 +1275,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:G3",
@@ -1389,10 +1291,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1403,10 +1302,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["floor-transition-carryover-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1417,8 +1313,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:G3",
@@ -1434,10 +1329,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1448,10 +1340,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["real-transition-and-persistence-integration-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1462,8 +1351,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:H1",
@@ -1479,10 +1367,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1493,10 +1378,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["deterministic-ai-equipment-evaluation-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1507,8 +1389,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:H2",
@@ -1524,10 +1405,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1538,10 +1416,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["real-api-ai-settlement-maintenance-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1552,8 +1427,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:H3",
@@ -1569,10 +1443,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1583,10 +1454,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["existing-route-planner-ai-maintenance-tests"],
       "evidence": [],
       "reconciliation": {
@@ -1597,8 +1465,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:I1",
@@ -1622,10 +1489,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1636,10 +1500,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["deterministic-equipment-end-to-end-suite"],
       "evidence": [],
       "reconciliation": {
@@ -1650,8 +1511,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:I2",
@@ -1667,10 +1527,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1681,10 +1538,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["median-aggregate-dps-ratios-1.7-to-2.3-for-both-intervals"],
       "evidence": [],
       "reconciliation": {
@@ -1695,8 +1549,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:I3",
@@ -1712,10 +1565,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1726,10 +1576,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["complete-commit-addressed-release-evidence"],
       "evidence": [],
       "reconciliation": {
@@ -1740,8 +1587,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:J",
@@ -1757,10 +1603,7 @@
       "release_requirement": "required",
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
-      "github": {
-        "issue": null,
-        "pr": null
-      },
+      "github": { "issue": null, "pr": null },
       "ownership": {
         "claimant": null,
         "session": null,
@@ -1771,10 +1614,7 @@
         "heartbeat_at": null,
         "base_commit": null
       },
-      "merge": {
-        "commit": null,
-        "merged_at": null
-      },
+      "merge": { "commit": null, "merged_at": null },
       "evidence_requirements": ["all-required-nodes-validated-and-flags-observed"],
       "evidence": [],
       "reconciliation": {
@@ -1785,8 +1625,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     }
   ],
   "reconciliation": {
