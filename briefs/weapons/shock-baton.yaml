@@ -11,10 +11,10 @@ description: |
   background, no floor shadow, no hand, no character, no muzzle flash, no
   beam extending beyond the weapon silhouette. The silhouette must read as an
   electrified baton at a glance and stay clear at icon scale.
-# Uses weapon defaults from data/sprite-types/weapon.json:
-# vertical orientation, 64x64 output, kenney-roguelike palette family, and
-# derived anchor behavior. The issue asks for a centered, readable icon, so
-# the default centered vertical constraints are intentionally preserved.
+# Uses weapon-family defaults from data/sprite-types/weapon.json for output
+# size, palette, and derived anchor behavior. The issue asks for a centered,
+# readable icon, so the default centered vertical constraints are
+# intentionally preserved.
 variations:
   - baton body with segmented insulated rings along the shaft
   - dual-prong emitter tip instead of a capped single-head tip

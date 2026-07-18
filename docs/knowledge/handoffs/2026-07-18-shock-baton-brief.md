@@ -23,7 +23,7 @@ sprite-pipeline, sprite-workflow
 - **Preserved runtime key contract via brief name:** `name: shock-baton` keeps the canonical item/brief identity aligned for downstream `equipment/weapon/shock-baton` wiring.
 - **Kept default weapon orientation/anchor behavior:** issue asks for centered, silhouette-readable output; weapon defaults already enforce centered vertical constraints.
 - **Constrained effect intensity:** only minimal electric accent at the emitter tip so the icon remains silhouette-first at slot scale.
-- **`minVariations: 6` with two seed variants:** enough controlled diversity without drifting from the core “compact beam baton” shape.
+- **`minVariations: 6` with two seed variants:** enough controlled diversity without drifting from the core “compact shock baton” shape.
 
 ## Verification
 
