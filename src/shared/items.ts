@@ -398,6 +398,12 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   gear('iron-visor', 'Iron Visor', 'A slitted faceplate. You see less, you flinch less.', C),
   gear('steel-pauldrons', 'Steel Pauldrons', 'Broad shoulder plates. Makes doorways a gamble.', U),
   gear('iron-breastplate', 'Iron Breastplate', 'Heavy, honest protection for the vitals.', U),
+  gear(
+    'runed-cuirass',
+    'Runed Cuirass',
+    'Dark-metal chest plate etched with glowing arcane runes.',
+    R,
+  ),
   gear('travelers-cloak', "Traveler's Cloak", 'Frayed at the hem, quick on the feet.', U),
   gear('sturdy-belt', 'Sturdy Belt', 'Cinches the gut and steadies the nerves.', C),
   gear('iron-greaves', 'Iron Greaves', 'Shin plates that have met many shins.', U),

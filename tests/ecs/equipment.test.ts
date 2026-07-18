@@ -630,14 +630,14 @@ describe('equippable slot coverage', () => {
     }
   });
 
-  it('GEAR_ITEM_IDS covers 15 armor/accessory slots and excludes hands + neck', () => {
+  it('GEAR_ITEM_IDS covers 16 armor/accessory slots and excludes hands + neck', () => {
     const gearSlots = new Set<string>();
     for (const id of GEAR_ITEM_IDS) {
       const def = getEquipmentDefForItem(id);
       expect(def, `gear id ${id} has no equipment def`).toBeDefined();
       for (const slotId of def!.slots) gearSlots.add(slotId);
     }
-    expect(GEAR_ITEM_IDS).toHaveLength(15);
+    expect(GEAR_ITEM_IDS).toHaveLength(16);
     expect(gearSlots.has('mainHand')).toBe(false);
     expect(gearSlots.has('offHand')).toBe(false);
     expect(gearSlots.has('neck')).toBe(false);
