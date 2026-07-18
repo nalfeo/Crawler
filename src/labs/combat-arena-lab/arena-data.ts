@@ -382,14 +382,16 @@ export function spawnFromArchetype(
   // in FLOOR2_FAMILY_IDS which is consistent with the game's floor-2 assignment.
   if (def.familyId !== undefined) {
     const familyIdIndex = FLOOR2_FAMILY_IDS.indexOf(def.familyId);
-    addComponent(
-      world.ecs,
-      eid,
-      set(FamilyMembership, {
-        familyId: familyIdIndex >= 0 ? familyIdIndex : 0,
-        isBoss: def.isBoss ? 1 : 0,
-      }),
-    );
+    if (familyIdIndex >= 0) {
+      addComponent(
+        world.ecs,
+        eid,
+        set(FamilyMembership, {
+          familyId: familyIdIndex,
+          isBoss: def.isBoss ? 1 : 0,
+        }),
+      );
+    }
   }
 
   return eid;

@@ -182,6 +182,7 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
       targetType: 'player',
       timestamp: 100,
       sourceEid: eid,
+      sourceRenderGeneration: world.entityRenderGeneration[eid],
       delivery: 'contact',
     });
   }
@@ -283,6 +284,7 @@ it('renders every eligible Floor 1-2 mob state through the real PhaserBridge wit
       amount: 5,
       targetType: 'enemy',
       targetEid: eid,
+      targetRenderGeneration: world.entityRenderGeneration[eid],
       timestamp: 1_500,
     });
   }

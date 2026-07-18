@@ -1391,6 +1391,7 @@ describe('createPhaserBridge', () => {
       amount: 2,
       targetType: 'player',
       sourceEid: enemy,
+      sourceRenderGeneration: world.entityRenderGeneration[enemy],
       delivery: 'contact',
       timestamp: 1_000,
     });
@@ -1433,6 +1434,7 @@ describe('createPhaserBridge', () => {
       amount: 2,
       targetType: 'enemy',
       targetEid: enemy,
+      targetRenderGeneration: world.entityRenderGeneration[enemy],
       delivery: 'projectile',
       timestamp: 500,
     });

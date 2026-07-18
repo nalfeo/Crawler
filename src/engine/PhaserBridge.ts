@@ -91,7 +91,7 @@ const ENEMY_MOVEMENT_MOTION_EPSILON = 0.0001;
 const ENEMY_MOVEMENT_MOTION_EPSILON_SQ = ENEMY_MOVEMENT_MOTION_EPSILON ** 2;
 const SPEED_STATUS_TINT = 0xaadfff;
 /** Fill tint mode value; kept numeric to preserve Node-safe type-only imports. */
-const PHASER_TINT_MODE_FILL = 1;
+export const PHASER_TINT_MODE_FILL = 1;
 const logger = createLogger('engine:phaser-bridge');
 
 interface EntityVisual {
@@ -553,7 +553,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (!resolveMobMotionProfile(world, event.targetEid)) continue;
           const expectedGen = event.targetRenderGeneration;
           if (
-            expectedGen !== undefined &&
+            expectedGen === undefined ||
             world.entityRenderGeneration[event.targetEid] !== expectedGen
           ) {
             continue;
@@ -572,7 +572,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (!resolveMobMotionProfile(world, event.sourceEid)) continue;
           const expectedGen = event.sourceRenderGeneration;
           if (
-            expectedGen !== undefined &&
+            expectedGen === undefined ||
             world.entityRenderGeneration[event.sourceEid] !== expectedGen
           ) {
             continue;

@@ -1,6 +1,7 @@
 import { ENEMY_PROJECTILE } from './constants.js';
 import { floor1EnemyPack, floor2EnemyPack, type EnemyArchetypeDef } from './enemy-packs.js';
 import { computeSpawnPopScale, MINI_SLIME_SPAWN_ANIM_MS } from './spawn-anim.js';
+import { PIXELS_PER_FOOT } from './units.js';
 
 export type MobLocomotionStyle = 'stride' | 'hop' | 'hover' | 'slither' | 'stomp';
 export type MobStatusTreatment = 'freeze' | 'burn' | 'stun';
@@ -36,11 +37,10 @@ export interface RuntimeMobMotionProfile {
 
 // Shared motion is authored in feet (ADR 0023). These constants keep the prior
 // visual tuning by expressing legacy pixel amplitudes in feet.
-const MOTION_RENDER_PIXELS_PER_FOOT = 8;
-const MOTION_OFFSET_STEP_FT = 0.5 / MOTION_RENDER_PIXELS_PER_FOOT;
+const MOTION_OFFSET_STEP_FT = 0.5 / PIXELS_PER_FOOT;
 
 function legacyPixelsToFeet(pixels: number): number {
-  return pixels / MOTION_RENDER_PIXELS_PER_FOOT;
+  return pixels / PIXELS_PER_FOOT;
 }
 
 const FAMILY_MOVEMENT_STYLES: Readonly<Partial<Record<string, MobLocomotionStyle>>> = {

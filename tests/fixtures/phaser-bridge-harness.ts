@@ -23,8 +23,8 @@ import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
-/** Phaser 4's fill tint mode, exposed so renderer tests can distinguish it from multiply. */
-export const PHASER_TINT_MODE_FILL = 1;
+/** Fill tint mode value re-exported from PhaserBridge; used by tests to distinguish fill from multiply mode. */
+export { PHASER_TINT_MODE_FILL } from '../../src/engine/PhaserBridge.js';
 
 /**
  * Records the mutable visual state the bridge drives on a Phaser image, so tests
