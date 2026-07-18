@@ -121,6 +121,29 @@ export type {
   SkillUsageEvent,
   UsageMetric,
 } from './skills.js';
+export {
+  ACTIVE_ABILITY_SLOT_LIMIT,
+  ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+  learnedAbilityGrantSourceId,
+  skillAbilityGrantSourceId,
+  equipmentAbilityGrantSourceId,
+  legacyAbilityGrantSourceId,
+  isAbilityGrantSourceId,
+  abilityGrantSourceCategory,
+} from './abilities.js';
+export type {
+  AbilityState,
+  SourceOwnedAbilityState,
+  LegacyAbilityState,
+  AbilityStateLike,
+  AbilityGrantKind,
+  AbilityGrantSourceId,
+  AbilityGrantOwnership,
+  LearnedAbilityGrantSourceId,
+  SkillAbilityGrantSourceId,
+  EquipmentGrantSourceId,
+  LegacyAbilityGrantSourceId,
+} from './abilities.js';
 export * from './items.js';
 export * from './inventory.js';
 export {

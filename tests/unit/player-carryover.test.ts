@@ -5,6 +5,15 @@ import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem
 import { addStatModifier } from '../../src/game/systems/statsSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
 import {
+  abilitySystem,
+  grantAbilitySources,
+  normalizeAbilityState,
+} from '../../src/game/systems/abilitySystem.js';
+import {
+  learnedAbilityGrantSourceId,
+  skillAbilityGrantSourceId,
+} from '../../src/shared/abilities.js';
+import {
   getEquipmentDefForStarterWeapon,
   MERCHANTS_CHARM_DEF,
 } from '../../src/shared/equipmentDefs.js';
@@ -152,6 +161,130 @@ describe('player floor carryover', () => {
         expect.objectContaining({ sourceId: 'foreign-passive:passive:1:0' }),
         expect.objectContaining({ sourceId: 'foreign-skill:level:5:1' }),
       ]),
+    );
+  });
+
+  it('round-trips ownership and reconstructs passives without duplicating modifiers', () => {
+    const source = createTestWorld({ seed: 91 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    const learned = learnedAbilityGrantSourceId('fireball');
+    const skill = skillAbilityGrantSourceId('iron-skin', 5);
+    grantAbilitySources(source, sourcePlayer, [
+      { kind: 'active', abilityId: 'fireball', sourceId: learned },
+      { kind: 'passive', abilityId: 'veteran-instinct', sourceId: skill },
+    ]);
+    abilitySystem(source);
+
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    expect(snapshot.persistentStatModifiers).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceId: expect.stringContaining(':passive:') }),
+      ]),
+    );
+
+    const destination = createTestWorld({ seed: 91, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    restorePlayerCarryover(destination, destinationPlayer, snapshot);
+    restorePlayerCarryover(destination, destinationPlayer, snapshot);
+
+    const restoredState = destination.abilityStatesByEntity.get(destinationPlayer);
+    if (!restoredState) throw new Error('Expected restored ability state');
+    const state = normalizeAbilityState(restoredState);
+    expect(state).toEqual(
+      expect.objectContaining({
+        learnedSpellIds: ['fireball'],
+        passiveAbilityIds: ['veteran-instinct'],
+      }),
+    );
+    expect(state.grantOwnership.activeSourcesByAbilityId.get('fireball')).toEqual(
+      new Set([learned]),
+    );
+    expect(state.grantOwnership.passiveSourcesByAbilityId.get('veteran-instinct')).toEqual(
+      new Set([skill]),
+    );
+    expect(
+      destination.statModifiers.filter((modifier) =>
+        modifier.sourceId.startsWith(`veteran-instinct:passive:${destinationPlayer}:`),
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('restores old plain-id snapshots through deterministic legacy migration', () => {
+    const source = createTestWorld({ seed: 17 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    source.abilityStatesByEntity.set(sourcePlayer, {
+      learnedSpellIds: ['fireball'],
+      equippedActiveAbilityIds: ['fireball', 'battle-focus'],
+      passiveAbilityIds: ['veteran-instinct'],
+      cooldownByAbilityId: new Map(),
+      cooldownFramesByAbilityId: new Map(),
+      appliedPassiveAbilityIds: new Set(),
+    });
+    const currentSnapshot = capturePlayerCarryover(source, sourcePlayer);
+    const abilityState = currentSnapshot.abilityState!;
+    const { grantOwnership: _grantOwnership, ...legacyAbilityState } = abilityState;
+    const legacySnapshot = {
+      ...currentSnapshot,
+      abilityState: {
+        ...legacyAbilityState,
+        equippedActiveAbilityIds: [...legacyAbilityState.equippedActiveAbilityIds, 'retired-spell'],
+        passiveAbilityIds: [...legacyAbilityState.passiveAbilityIds, 'retired-passive'],
+      },
+    };
+    const destination = createTestWorld({ seed: 17, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    const restoredState = destination.abilityStatesByEntity.get(destinationPlayer);
+    if (!restoredState) throw new Error('Expected restored ability state');
+    const restored = normalizeAbilityState(restoredState);
+    expect(restored.grantOwnership.activeSourcesByAbilityId.get('fireball')).toEqual(
+      new Set(['learned:fireball']),
+    );
+    expect(restored.grantOwnership.activeSourcesByAbilityId.get('battle-focus')).toEqual(
+      new Set(['legacy:active:battle-focus']),
+    );
+    expect(restored.grantOwnership.passiveSourcesByAbilityId.get('veteran-instinct')).toEqual(
+      new Set(['legacy:passive:veteran-instinct']),
+    );
+    expect(restored.grantOwnership.activeSourcesByAbilityId.get('retired-spell')).toEqual(
+      new Set(['legacy:active:retired-spell']),
+    );
+    expect(restored.grantOwnership.passiveSourcesByAbilityId.get('retired-passive')).toEqual(
+      new Set(['legacy:passive:retired-passive']),
+    );
+    expect(restored.learnedSpellIds).not.toContain('retired-spell');
+    expect(restored.equippedActiveAbilityIds).not.toContain('retired-spell');
+    expect(restored.passiveAbilityIds).not.toContain('retired-passive');
+  });
+
+  it('rejects unsupported ownership snapshot versions explicitly', () => {
+    const source = createTestWorld({ seed: 27 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    grantAbilitySources(source, sourcePlayer, [
+      {
+        kind: 'active',
+        abilityId: 'fireball',
+        sourceId: learnedAbilityGrantSourceId('fireball'),
+      },
+    ]);
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const invalidSnapshot = {
+      ...snapshot,
+      abilityState: {
+        ...snapshot.abilityState!,
+        grantOwnership: {
+          ...snapshot.abilityState!.grantOwnership!,
+          schemaVersion: 'ability-grant-ownership/v999',
+        },
+      },
+    };
+    const destination = createTestWorld({ seed: 27, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    expect(() => restorePlayerCarryover(destination, destinationPlayer, invalidSnapshot)).toThrow(
+      /unsupported ability grant ownership version/i,
     );
   });
 });
