@@ -401,6 +401,26 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
 
   let closeApplied = false;
   let closeRequestError = null;
+
+  // Helper: best-effort rollback of a committed close by reopening and removing the repair label.
+  // Only called after closeApplied and labelApplied are in their final states.
+  const rollbackClose = async () => {
+    if (closeApplied) {
+      try {
+        await api.updatePullState(pr.number, 'open');
+      } catch (_) {
+        /* best-effort reopen */
+      }
+    }
+    if (labelApplied) {
+      try {
+        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
+      } catch (_) {
+        /* best-effort label removal */
+      }
+    }
+  };
+
   try {
     await api.updatePullState(pr.number, 'closed');
     closeApplied = true;
@@ -428,63 +448,25 @@ async function repairEmptyCopilotDraft({ api, repository, pr, changedFiles, log,
   try {
     postCloseVerification = await api.getPull(pr.number);
   } catch (verifyError) {
-    if (closeApplied) {
-      try {
-        await api.updatePullState(pr.number, 'open');
-      } catch (_) {
-        /* best-effort reopen */
-      }
-    }
-    if (labelApplied) {
-      try {
-        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
-      } catch (_) {
-        /* best-effort label removal */
-      }
-    }
+    await rollbackClose();
     throw new Error(
       `post-close verification failed for PR #${pr.number}: ${getErrorMessage(verifyError)}`,
     );
   }
   const postCloseFiles = postCloseVerification?.changed_files;
-  if (postCloseFiles == null || !Number.isFinite(Number(postCloseFiles)) || Number(postCloseFiles) > 0) {
+  const postCloseNum = Number(postCloseFiles);
+  if (postCloseFiles == null || !Number.isFinite(postCloseNum) || postCloseNum > 0) {
     const driftReason =
-      postCloseFiles == null || !Number.isFinite(Number(postCloseFiles))
+      postCloseFiles == null || !Number.isFinite(postCloseNum)
         ? 'post-close-changed-files-invalid'
-        : `post-close-drift-files=${Number(postCloseFiles)}`;
-    if (closeApplied) {
-      try {
-        await api.updatePullState(pr.number, 'open');
-      } catch (_) {
-        /* best-effort reopen */
-      }
-    }
-    if (labelApplied) {
-      try {
-        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
-      } catch (_) {
-        /* best-effort label removal */
-      }
-    }
+        : `post-close-drift-files=${postCloseNum}`;
+    await rollbackClose();
     log.info(`skip empty-draft repair pr=#${pr.number} reason=${driftReason}`);
     return { status: 'skipped', reason: driftReason };
   }
   if (normalize(postCloseVerification?.head?.sha) !== normalize(pr.head.sha)) {
     const driftReason = `post-close-drift-sha=${String(postCloseVerification?.head?.sha || 'unknown')}`;
-    if (closeApplied) {
-      try {
-        await api.updatePullState(pr.number, 'open');
-      } catch (_) {
-        /* best-effort reopen */
-      }
-    }
-    if (labelApplied) {
-      try {
-        await api.removePrLabel(pr.number, EMPTY_DRAFT_REPAIR_LABEL);
-      } catch (_) {
-        /* best-effort label removal */
-      }
-    }
+    await rollbackClose();
     log.info(`skip empty-draft repair pr=#${pr.number} reason=${driftReason}`);
     return { status: 'skipped', reason: driftReason };
   }

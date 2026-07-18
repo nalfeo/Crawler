@@ -1378,11 +1378,17 @@ test('repair is skipped and not repeated when PR has the repair marker label aft
       ([name]) =>
         name === 'updatePullState' ||
         name === 'removeIssueAssignees' ||
-        name === 'addIssueAssignees',
+        name === 'addIssueAssignees' ||
+        name === 'removePrLabel',
     ),
     false,
     'no writes must be made for an already-repaired PR',
   );
+  // Confirm PR state is unchanged: still open, still draft, still has the repair label
+  const prAfter = harness.state.pulls[0];
+  assert.equal(prAfter.state, 'open');
+  assert.equal(prAfter.draft, true);
+  assert.ok(prAfter.labels.some((l) => l.name === EMPTY_DRAFT_REPAIR_LABEL));
   assert.ok(
     harness.logs.some(([level, message]) => level === 'info' && message.includes('already-repaired')),
   );

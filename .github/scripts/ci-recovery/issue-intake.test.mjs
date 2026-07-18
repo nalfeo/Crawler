@@ -256,6 +256,10 @@ test('addIssueAssignees sends correct mutation field, variables, and parses retu
 
   assert.equal(captured.length, 1);
   assert.ok(
+    /^\s*mutation\b/.test(captured[0].query.trim()),
+    'operation must be declared as a mutation, not a query',
+  );
+  assert.ok(
     captured[0].query.includes('addAssigneesToAssignable'),
     'mutation must use addAssigneesToAssignable field',
   );
@@ -293,6 +297,10 @@ test('removeIssueAssignees sends correct mutation field, variables, and parses r
   });
 
   assert.equal(captured.length, 1);
+  assert.ok(
+    /^\s*mutation\b/.test(captured[0].query.trim()),
+    'operation must be declared as a mutation, not a query',
+  );
   assert.ok(
     captured[0].query.includes('removeAssigneesFromAssignable'),
     'mutation must use removeAssigneesFromAssignable field',
