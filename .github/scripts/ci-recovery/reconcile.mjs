@@ -963,9 +963,13 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // network errors, etc.) as a non-reachable marker so recovery can proceed.
   }
 }
-for (const thread of unresolvedThreads.filter((candidate) =>
-  shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
+for (const thread of unresolvedThreads.filter(
+  (candidate) =>
+    candidate.isOutdated === true ||
+    shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
 )) {
+  const resolutionReason =
+    thread.isOutdated === true ? 'deterministic-non-applicable-outdated' : 'trusted-marker';
   if (live) {
     await assertExpectedMetadataUnchanged('resolve-thread');
     await graphql(
@@ -983,7 +987,9 @@ for (const thread of unresolvedThreads.filter((candidate) =>
     );
   }
   thread.isResolved = true;
-  process.stdout.write(`${live ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
+  process.stdout.write(
+    `${live ? 'resolved' : 'would-resolve'} thread=${thread.id} reason=${resolutionReason}\n`,
+  );
 }
 
 const blockers = [];
