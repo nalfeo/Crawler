@@ -2558,6 +2558,10 @@ export function applyGithubAudit(
     errors,
     warnings: [...offline.warnings, ...audit.warnings],
     blockers: offline.blockers,
+    // GitHub facts are stronger authority than offline validation.
+    // Mirror the offline validator's own behaviour: suppress the queue when
+    // the stronger-authority source contributes errors so the caller never
+    // surfaces dispatchable nodes while the audit is invalid.
     ready_queue: audit.errors.length > 0 ? [] : offline.ready_queue,
     release_ready: offline.release_ready && errors.length === 0,
     proposal: {
