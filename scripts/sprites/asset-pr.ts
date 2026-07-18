@@ -35,6 +35,8 @@ export interface AssetIssue {
   readonly payload: AssetCheckinPayload;
 }
 
+export const ASSET_PR_MARKER = '<!-- crawler-asset-pr:v1 -->';
+
 interface RawIssue {
   readonly number?: unknown;
   readonly title?: unknown;
@@ -100,6 +102,10 @@ export function planConsolidation(input: PlanConsolidationInput): ConsolidationP
   if (input.issues.length === 0) {
     throw new Error('planConsolidation: no asset-checkin issues to consolidate');
   }
+  const baseBranches = new Set(input.issues.map((issue) => issue.payload.baseBranch));
+  if (baseBranches.size !== 1) {
+    throw new Error('planConsolidation: check-in issues have mixed base branches');
+  }
   const baseBranch = input.issues[0]!.payload.baseBranch ?? input.baseBranch ?? 'main';
   const slug = input.slug ?? `batch-${formatStamp(input.now)}`;
   const batchBranch = `assets/${slug}`;
@@ -131,6 +137,7 @@ function renderPrBody(
   baseBranch: string,
 ): string {
   const lines: string[] = [];
+  lines.push(ASSET_PR_MARKER);
   lines.push('## Consolidated asset check-ins');
   lines.push('');
   lines.push(
@@ -221,11 +228,15 @@ export async function runAssetPrConsolidation(
   options: AssetPrOptions = {},
 ): Promise<AssetPrResult | null> {
   const env = deps.env ?? process.env;
-  if (env.CI !== undefined) {
+  const workflowRef = 'nalfeo/Crawler/.github/workflows/asset-pr.yml@refs/heads/main';
+  const authorizedCi =
+    env.SPRITES_ALLOW_CI_ASSET_PR === 'true' &&
+    env.GITHUB_REPOSITORY === 'nalfeo/Crawler' &&
+    env.GITHUB_WORKFLOW_REF === workflowRef;
+  if (env.CI !== undefined && !authorizedCi) {
     throw new CheckinError(
       'ci-refused',
-      'Per Constitutional §3, asset-PR consolidation is local-only: it pushes a ' +
-        'batch branch and opens a PR. Run it on a dev box (npm run sprites:asset-pr).',
+      'asset-PR consolidation is local-only except for the dedicated asset-pr workflow.',
     );
   }
 
@@ -248,6 +259,27 @@ export async function runAssetPrConsolidation(
   ]);
   const issues = parseOpenAssetIssues(listed.stdout);
   if (issues.length === 0) return null;
+
+  const openPrs = await exec(deps.exec, repoRoot, 'gh', [
+    'pr',
+    'list',
+    '--state',
+    'open',
+    '--base',
+    baseBranch,
+    '--json',
+    'body',
+    '--limit',
+    '100',
+  ]);
+  try {
+    const prs = JSON.parse(openPrs.stdout) as Array<{ body?: unknown }>;
+    if (prs.some((pr) => typeof pr.body === 'string' && pr.body.includes(ASSET_PR_MARKER))) {
+      return null;
+    }
+  } catch {
+    throw new Error('asset-pr: gh returned invalid open pull-request JSON');
+  }
 
   const plan = planConsolidation({ issues, now: now(), baseBranch, slug: options.slug });
 

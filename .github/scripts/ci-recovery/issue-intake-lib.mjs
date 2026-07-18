@@ -2,6 +2,7 @@ import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './state.mjs';
 
 export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
+export const COPILOT_BLOCKING_LABELS = new Set(['asset-request', 'no-copilot']);
 const COPILOT_OPENER_LOGINS = new Set([
   'copilot',
   'copilot[bot]',
@@ -51,6 +52,10 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   }
 
   const labels = (issue.labels || []).map((label) => String(label.name || '').toLowerCase());
+  const blockingLabel = labels.find((label) => COPILOT_BLOCKING_LABELS.has(label));
+  if (blockingLabel) {
+    return { eligible: false, reason: `issue #${issue.number} has ${blockingLabel} label` };
+  }
   if (labels.includes('automation') && opener !== GITHUB_ACTIONS_LOGIN) {
     return {
       eligible: false,
@@ -59,6 +64,66 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   }
 
   return { eligible: true, reason: 'trusted issue opener' };
+}
+
+export async function removeCopilotAssignment({ graphql, token, owner, repo, issue }) {
+  if (!issue?.node_id) return false;
+  const actors = await graphql(
+    token,
+    `
+      query ($owner: String!, $repo: String!, $assignableId: ID!) {
+        node(id: $assignableId) {
+          ... on Issue {
+            assignees(first: 50) {
+              nodes {
+                id
+                login
+              }
+            }
+          }
+        }
+        repository(owner: $owner, name: $repo) {
+          suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
+            nodes {
+              id
+              login
+            }
+          }
+        }
+      }
+    `,
+    { owner, repo, assignableId: issue.node_id },
+  );
+  const assignees = actors.node?.assignees?.nodes || [];
+  const copilotIds = new Set(
+    (actors.repository?.suggestedActors?.nodes || [])
+      .filter((actor) => isCopilotLogin(actor.login))
+      .map((actor) => actor.id),
+  );
+  const actorIds = assignees
+    .filter((assignee) => !copilotIds.has(assignee.id) && !isCopilotLogin(assignee.login))
+    .map((a) => a.id);
+  if (actorIds.length === assignees.length) return false;
+  await graphql(
+    token,
+    `
+      mutation ($assignableId: ID!, $actorIds: [ID!]!) {
+        replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
+          assignable {
+            ... on Issue {
+              assignees(first: 50) {
+                nodes {
+                  login
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+    { assignableId: issue.node_id, actorIds },
+  );
+  return true;
 }
 
 function isTrustedMarkerComment(comment) {

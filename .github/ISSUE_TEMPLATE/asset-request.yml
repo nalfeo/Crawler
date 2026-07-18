@@ -1,7 +1,7 @@
 name: Asset request
 description: Request a new sprite through the automated asset pipeline.
 title: 'Asset request: <name>'
-labels: ['asset-request']
+labels: ['asset-request', 'no-copilot']
 body:
   - type: input
     id: name

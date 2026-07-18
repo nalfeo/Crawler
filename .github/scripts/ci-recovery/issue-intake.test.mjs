@@ -39,6 +39,18 @@ test('issue intake accepts only trusted opener and label combinations', () => {
       labels: ['automation'],
       eligible: false,
     },
+    {
+      name: 'asset request',
+      login: 'nalfeo',
+      labels: ['asset-request'],
+      eligible: false,
+    },
+    {
+      name: 'explicit no-copilot label',
+      login: 'nalfeo',
+      labels: ['no-copilot'],
+      eligible: false,
+    },
   ];
 
   for (const entry of cases) {

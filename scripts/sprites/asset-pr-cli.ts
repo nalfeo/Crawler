@@ -86,7 +86,9 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
   try {
     const result = await runAssetPrConsolidation(cwd, makeDeps(), options);
     if (result === null) {
-      process.stdout.write('No open asset-checkin issues — nothing to consolidate.\n');
+      process.stdout.write(
+        'No open asset-checkin issues or active asset PR — nothing to consolidate.\n',
+      );
       return 0;
     }
     process.stdout.write(

@@ -1,5 +1,9 @@
 import { graphql, paginate, request } from './github.mjs';
-import { issueIntakeEligibility, runIssueIntake } from './issue-intake-lib.mjs';
+import {
+  issueIntakeEligibility,
+  removeCopilotAssignment,
+  runIssueIntake,
+} from './issue-intake-lib.mjs';
 
 const token = process.env.CRAWLER_CI_PAT || '';
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -16,6 +20,11 @@ const issue = payload.issue;
 
 const eligibility = issueIntakeEligibility(issue, issueOwner);
 if (!eligibility.eligible) {
+  if (eligibility.reason.includes('asset-request') || eligibility.reason.includes('no-copilot')) {
+    const removed = await removeCopilotAssignment({ graphql, token, owner, repo, issue });
+    process.stdout.write(`skip: ${eligibility.reason}; copilot_removed=${removed}\n`);
+    process.exit(0);
+  }
   process.stdout.write(`skip: ${eligibility.reason}\n`);
   process.exit(0);
 }

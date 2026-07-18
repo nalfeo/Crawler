@@ -1,0 +1,21 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "asset-automation-ownership",
+  "task_title": "Separate asset requests from hourly art ingestion",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Addressed five concerns: intake now rejects asset-request/no-copilot labels and runs on labeling to close the race; CI authorization will require immutable workflow context plus an explicit marker; active batch PRs will use a stable body marker; mixed base branches will fail closed; and workflow shape/authorization tests will be added."
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    }
+  }
+}

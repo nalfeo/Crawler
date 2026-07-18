@@ -13,6 +13,7 @@ import {
   type Exec,
 } from '../../../scripts/sprites/checkin.js';
 import {
+  ASSET_PR_MARKER,
   parseOpenAssetIssues,
   planConsolidation,
   runAssetPrConsolidation,
@@ -126,6 +127,21 @@ describe('planConsolidation', () => {
   it('throws on an empty issue list', () => {
     expect(() => planConsolidation({ issues: [], now: NOW })).toThrow();
   });
+
+  it('fails closed when check-ins were cut from different base branches', () => {
+    const mixed = [
+      issues[0]!,
+      {
+        ...issues[1]!,
+        payload: { ...issues[1]!.payload, baseBranch: 'release' },
+      },
+    ];
+    expect(() => planConsolidation({ issues: mixed, now: NOW })).toThrow(/mixed base branches/);
+  });
+
+  it('marks the generated PR body for active-run detection', () => {
+    expect(planConsolidation({ issues: [issues[0]!], now: NOW }).prBody).toContain(ASSET_PR_MARKER);
+  });
 });
 
 describe('runAssetPrConsolidation', () => {
@@ -161,5 +177,49 @@ describe('runAssetPrConsolidation', () => {
         env: { CI: 'true' },
       }),
     ).rejects.toThrow(/local-only/);
+  });
+
+  it('allows only the dedicated main-branch workflow to run in CI', async () => {
+    const exec: Exec = (command, args) => {
+      if (command === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return Promise.resolve({ stdout: '[]', stderr: '', code: 0 });
+      }
+      return Promise.resolve({ stdout: '', stderr: '', code: 0 });
+    };
+    const result = await runAssetPrConsolidation('/repo', {
+      exec,
+      makeTempDir: () => Promise.resolve('/tmp/x'),
+      removeDir: () => Promise.resolve(),
+      readJson: () => Promise.resolve({} as never),
+      writeJson: () => Promise.resolve(),
+      env: {
+        CI: 'true',
+        SPRITES_ALLOW_CI_ASSET_PR: 'true',
+        GITHUB_REPOSITORY: 'nalfeo/Crawler',
+        GITHUB_WORKFLOW_REF: 'nalfeo/Crawler/.github/workflows/asset-pr.yml@refs/heads/main',
+      },
+    });
+    expect(result).toBeNull();
+  });
+
+  it('rejects the CI marker from another workflow or branch', async () => {
+    const exec: Exec = () => {
+      throw new Error('exec must not run when CI authorization fails');
+    };
+    await expect(
+      runAssetPrConsolidation('/repo', {
+        exec,
+        makeTempDir: () => Promise.resolve('/tmp/x'),
+        removeDir: () => Promise.resolve(),
+        readJson: () => Promise.resolve({} as never),
+        writeJson: () => Promise.resolve(),
+        env: {
+          CI: 'true',
+          SPRITES_ALLOW_CI_ASSET_PR: 'true',
+          GITHUB_REPOSITORY: 'nalfeo/Crawler',
+          GITHUB_WORKFLOW_REF: 'nalfeo/Crawler/.github/workflows/other.yml@refs/heads/main',
+        },
+      }),
+    ).rejects.toThrow(/dedicated asset-pr workflow/);
   });
 });
