@@ -1,6 +1,23 @@
 type: weapon
 name: flame-tongs
+floor: 2
 description: |
-  Flame Tongs Floor 2 equipment icon for stable runtime key
-  equipment/weapon/flame-tongs. Create one centered,
-  silhouette-readable flame-tongs weapon icon on a transparent background.
+  Flame Tongs — a Floor 2 beam-class weapon. A pair of industrial gripping
+  tongs held vertically, grip handle at the bottom, jaw tips at the top,
+  radiating intense heat. The tong body is heavy-gauge dark steel with
+  riveted joints at the hinge point, mid-frame. The jaw tips glow orange-
+  to-white-hot at the contact faces, with a faint heat-shimmer indicated by
+  subtle bright accent pixels. The handle has a wrapped leather grip. No
+  flame cloud, no particles extending beyond the silhouette — heat is conveyed
+  by the glowing tong tips only. Transparent background, no floor shadow, no
+  hand. The silhouette must read as tongs (two-arm tool, hinge visible) at a
+  glance and stay clear at icon scale.
+# Floor 2 beam/channel-class weapon. Vertical orientation (grip bottom-center,
+# jaw tips at top), all size/palette/sheet/judge defaults inherited from
+# data/sprite-types/weapon.json (64×64, 4×4 sheet, kenney-roguelike palette,
+# judge enabled, anchor at grip center).
+variations:
+  - wider jaw spread with visible orange glow band between the open tips
+  - elongated arm shafts with a visible locking ring on the hinge
+  - heavier, more industrial silhouette with chain-link hanging from the hinge
+minVariations: 6
