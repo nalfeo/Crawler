@@ -367,7 +367,7 @@ _…and 75 older, see `archive/`._
 - [2026-07-01-pages-generated-sprite-basepath](2026-07-01-pages-generated-sprite-basepath.md) — Made generated sprite manifest and PNG URLs resolve against the Vite/GitHub Pages base path in `src/engine/generatedAssets/preload.ts`.
 - [2026-06-30-codex-repair-azure-bounce-gate](2026-06-30-codex-repair-azure-bounce-gate.md) — Three bundled features on this branch, plus review-harness hardening:
 - [2026-06-30-sidecar-shared-selector-deployment](2026-06-30-sidecar-shared-selector-deployment.md) — Handoff - sidecar shared selector deployment
-- [2026-06-29-azure-foundry-content-gen](2026-06-29-azure-foundry-content-gen.md) — Authored \*\*ADR 0033 — Migrate Content Generation from Direct Azure OpenAI to
+- [2026-06-29-azure-foundry-content-gen](2026-06-29-azure-foundry-content-gen.md) — Authored **ADR 0033 — Migrate Content Generation from Direct Azure OpenAI to
 - [2026-06-29-azure-openai-provider](2026-06-29-azure-openai-provider.md) — Added a third provider, **`azure`** (Azure OpenAI), to the codex-repair autonomous
 - [2026-06-29-azure-sheet-triage-controls](2026-06-29-azure-sheet-triage-controls.md) — Handoff: Azure sheet triage controls
 - [2026-06-29-azure-sidecar-policy-and-sprite-checkin](2026-06-29-azure-sidecar-policy-and-sprite-checkin.md) — Built and launched devtools/sidecar, then corrected sidecar launch behavior to Azure-first.
@@ -455,7 +455,7 @@ _…and 31 older, see `archive/`._
 - [2026-07-17-floor-2-epic-control-pr-recovery](2026-07-17-floor-2-epic-control-pr-recovery.md) — Recovered PR #1286's epic-control blockers without widening scope beyond the
 - [2026-07-11-stop-pre-pr-full-verify](2026-07-11-stop-pre-pr-full-verify.md) — Removed the unconditional instruction to run full `npm run verify` before committing or creating a PR. The top-level agent instructions, re…
 - [2026-07-09-sprite-editor-canvas-ux](2026-07-09-sprite-editor-canvas-ux.md) — 2026-07-09 - Sprite editor canvas UX upgrades
-- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built \*\*on top of the existing pipeline i…
+- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built **on top of the existing pipeline i…
 - [2026-07-05-session-plans-chat](2026-07-05-session-plans-chat.md) — Updated the top-level session instructions in `AGENTS.md` and `.github/copilot-instructions.md` so new sessions must explicitly say whether…
 
 ## docs-tooling
