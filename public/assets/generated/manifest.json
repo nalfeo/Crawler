@@ -2198,6 +2198,19 @@
       "type": "weapon",
       "contentHash": "245058fad5a81c263a66e6924b4ca276dd829ef978b31613eb319f1414866b3a"
     },
+    "equipment/weapon/void-rapier": {
+      "briefId": "equipment/weapon/void-rapier",
+      "spriteName": "equipment/weapon/void-rapier",
+      "assetPath": "generated/equipment/weapon/void-rapier.png",
+      "approvedAt": "2026-07-19T01:27:48.843Z",
+      "sourceRun": "issue-request",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "issue-request",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "12196cb6c74279bb8f658beed669dc0ffac2924b97e644da5c2b2df64aca512a"
+    },
     "equipment/weapon/moon-scythe": {
       "briefId": "equipment/weapon/moon-scythe",
       "spriteName": "equipment/weapon/moon-scythe",
