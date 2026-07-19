@@ -12,6 +12,7 @@ import {
   normalizeBlockers,
   reviewThreadBlockerId,
   extractAddressedMarkerSha,
+  hasNotApplicableMarker,
   shouldMutateRecoveryState,
   shouldDispatchMergeTrainFill,
   ownerLabel,
@@ -121,6 +122,18 @@ function extractTaskReviewThreadBlockerIds(body) {
 
 function extractStableReviewThreadId(blockerId) {
   return String(blockerId ?? '').match(REVIEW_THREAD_BLOCKER_ID_PATTERN)?.[1] ?? null;
+}
+
+function isTrustedComment(comment) {
+  const authorLogin = String(comment?.user?.login ?? comment?.author?.login ?? '').toLowerCase();
+  const authorAssociation = String(
+    comment?.author_association ?? comment?.authorAssociation ?? '',
+  ).toUpperCase();
+  return TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin);
+}
+
+function hasResolutionMarker(body) {
+  return Boolean(extractAddressedMarkerSha(body) || hasNotApplicableMarker(body));
 }
 
 function summarizePriorRecoveryIssueComment(body) {
@@ -1134,6 +1147,7 @@ for (const thread of unresolvedThreads) {
 
 const taskReviewThreadBlockersByFingerprint = new Map();
 for (const comment of comments) {
+  if (!isTrustedComment(comment)) continue;
   const taskFingerprint = extractTaskFingerprint(comment?.body);
   if (!taskFingerprint) continue;
   const blockerIds = extractTaskReviewThreadBlockerIds(comment?.body);
@@ -1159,7 +1173,7 @@ for (const comment of comments) {
     .split(/\r?\n/)
     .filter((line) => !line.trimStart().startsWith('>'))
     .join('\n');
-  if (extractAddressedMarkerSha(unquotedBody)) continue;
+  if (hasResolutionMarker(unquotedBody)) continue;
   const taskFingerprint = extractTaskFingerprint(comment?.body);
   if (!taskFingerprint) continue;
   const blockerIds = taskReviewThreadBlockersByFingerprint.get(taskFingerprint);
@@ -1210,7 +1224,7 @@ for (const thread of unresolvedThreads) {
     const lastAssoc = String(last?.authorAssociation ?? '').toUpperCase();
     if (
       (TRUSTED_ASSOCIATIONS.has(lastAssoc) || TRUSTED_BOT_LOGINS.has(lastLogin)) &&
-      extractAddressedMarkerSha(last?.body)
+      hasResolutionMarker(last?.body)
     )
       continue;
     let markerFound = false;
@@ -1224,7 +1238,7 @@ for (const thread of unresolvedThreads) {
       // syntactically-valid marker.
       if (
         (TRUSTED_ASSOCIATIONS.has(assoc) || TRUSTED_BOT_LOGINS.has(login)) &&
-        extractAddressedMarkerSha(c?.body)
+        hasResolutionMarker(c?.body)
       ) {
         markerFound = true;
         break;
