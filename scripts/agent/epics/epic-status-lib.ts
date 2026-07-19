@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
@@ -2816,7 +2816,9 @@ function listIssuesByLabels(
     const raw = runner.get(path);
     const parsed = z.array(githubIssueApiSchema).safeParse(raw);
     if (!parsed.success) {
-      throw new Error(`GitHub API returned unexpected issue list shape (page ${page})`);
+      throw new Error(
+        `GitHub API returned unexpected issue list shape (page ${page}): ${parsed.error.message}`,
+      );
     }
     // Filter out pull requests — the Issues API can return PRs for the same labels.
     const issues = parsed.data.filter((item) => item.pull_request === undefined);
@@ -2830,12 +2832,7 @@ function listIssuesByLabels(
     );
     if (parsed.data.length < 100) break;
   }
-  return allIssues.map((issue) => ({
-    number: issue.number,
-    title: issue.title,
-    html_url: issue.html_url,
-    body: issue.body ?? null,
-  }));
+  return allIssues;
 }
 
 /**
@@ -2890,6 +2887,8 @@ export function materializeChildIssues(
   for (const issue of existingIssues) {
     const nodeId = extractNodeIdFromBody(issue.body);
     if (nodeId) existingByNodeId.set(nodeId, issue);
+    // Title fallback is legacy-only: once an issue has a stable Node marker,
+    // it must be matched by marker to prevent cross-node collisions.
     if (!nodeId) existingByTitle.set(issue.title, issue);
   }
 
@@ -2974,7 +2973,7 @@ export function patchEpicStateIssues(
     if (gh['issue'] !== null && gh['issue'] !== undefined) continue;
     gh['issue'] = { number: entry.number, url: entry.url };
   }
-  const tempPath = `${stateFilePath}.tmp-${process.pid}-${Date.now()}`;
+  const tempPath = `${stateFilePath}.tmp-${process.pid}-${randomUUID()}`;
   let tempWritten = false;
   try {
     writeFileSync(tempPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
