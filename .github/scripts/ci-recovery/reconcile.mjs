@@ -1010,6 +1010,7 @@ for (const thread of unresolvedThreads.filter((candidate) => {
   // new outdated-marker here would cause the resolution loop to auto-resolve them,
   // losing the stale-marker signal.
   const staleComments = candidate.comments?.nodes ?? [];
+  if (staleComments.length === 0) return true;
   const staleLastComment = staleComments[staleComments.length - 1];
   const staleMSha = extractAddressedMarkerSha(staleLastComment?.body);
   if (staleMSha && definitivelyUnreachableMarkerShas.has(staleMSha)) {
