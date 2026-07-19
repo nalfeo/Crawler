@@ -81,12 +81,12 @@ describe('generated equipment properties', () => {
           );
           expect(instance.frozen.abilityGrants).toEqual(
             instance.resolvedEffects.flatMap((effect) =>
-              effect.kind === 'abilityGrant' ? [effect.grantId] : [],
+              'kind' in effect && effect.kind === 'abilityGrant' ? [effect.grantId] : [],
             ),
           );
           expect(instance.frozen.passiveGrants).toEqual(
             instance.resolvedEffects.flatMap((effect) =>
-              effect.kind === 'passiveGrant' ? [effect.grantId] : [],
+              'kind' in effect && effect.kind === 'passiveGrant' ? [effect.grantId] : [],
             ),
           );
         },

@@ -72,11 +72,16 @@ describe('deterministic generated equipment', () => {
     expect(instance.rarity).toBe('rare');
     expect(instance.enhancementLevel).toBe(2);
     expect(instance.frozen.activeWeaponSnapshot?.baseDamage).toBe(expectedDamage);
-    expect(instance.frozen.activeWeaponSnapshot?.baseWeaponId).toBe('pistol');
+    expect(instance.frozen.activeWeaponSnapshot?.sourceWeaponDefId).toBe('pistol');
     expect(instance.frozen.activeWeaponSnapshot?.name).toBe(staticWeapon.name);
     expect(instance.frozen.displayName).toMatch(/Pistol \+2$/);
     expect(instance.frozen.artKey).toBe('plasma-pistol');
-    expect(instance.resolvedEffects.reduce((sum, effect) => sum + effect.unitCost, 0)).toBe(2);
+    expect(
+      instance.resolvedEffects.reduce(
+        (sum, effect) => sum + ('unitCost' in effect ? effect.unitCost : effect.units),
+        0,
+      ),
+    ).toBe(2);
     expect(instance.fingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(Object.isFrozen(instance)).toBe(true);
     expect(Object.isFrozen(instance.frozen.activeWeaponSnapshot)).toBe(true);
@@ -91,7 +96,9 @@ describe('deterministic generated equipment', () => {
     const affixArmor = generateEquipmentInstance(world, GENERATED_ARMOR_REQUEST);
     const effectArmor = affixArmor.resolvedEffects.reduce(
       (sum, effect) =>
-        effect.kind === 'stat' && effect.stat === 'armor' ? sum + effect.value : sum,
+        'kind' in effect && effect.kind === 'stat' && effect.stat === 'armor'
+          ? sum + effect.value
+          : sum,
       0,
     );
     const expectedArmor = Math.floor(
@@ -99,7 +106,9 @@ describe('deterministic generated equipment', () => {
     );
     const effectConstitution = affixArmor.resolvedEffects.reduce(
       (sum, effect) =>
-        effect.kind === 'stat' && effect.stat === 'constitution' ? sum + effect.value : sum,
+        'kind' in effect && effect.kind === 'stat' && effect.stat === 'constitution'
+          ? sum + effect.value
+          : sum,
       0,
     );
 
@@ -109,7 +118,12 @@ describe('deterministic generated equipment', () => {
     );
     expect(affixArmor.frozen.activeWeaponSnapshot).toBeNull();
     expect(affixArmor.frozen.displayName).toMatch(/Iron Breastplate \+3$/);
-    expect(affixArmor.resolvedEffects.reduce((sum, effect) => sum + effect.unitCost, 0)).toBe(2);
+    expect(
+      affixArmor.resolvedEffects.reduce(
+        (sum, effect) => sum + ('unitCost' in effect ? effect.unitCost : effect.units),
+        0,
+      ),
+    ).toBe(2);
   });
 
   it('mirrors generated active and passive grant effects into frozen grant fields', () => {

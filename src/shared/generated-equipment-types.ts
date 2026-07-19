@@ -97,6 +97,78 @@ export interface FrozenEquipmentFieldsV1 {
   readonly activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null;
 }
 
+/**
+ * Overrides that the generated-equipment generator may apply on top of a
+ * weapon def's static fields when creating a weapon snapshot during item
+ * generation.  Validated against {@link ACTIVE_WEAPON_SNAPSHOT_OVERRIDE_KEYS}
+ * inside the registry before the snapshot is built.
+ */
+export type ActiveWeaponCombatOverridesV1 = Partial<
+  Pick<
+    WeaponDef,
+    | 'name'
+    | 'weaponType'
+    | 'baseDamage'
+    | 'cooldownMs'
+    | 'range'
+    | 'projectileSpeed'
+    | 'aoeRadius'
+    | 'durationMs'
+    | 'beamTickMs'
+    | 'beamLength'
+    | 'trapArmMs'
+    | 'trapTriggerRadius'
+    | 'trapExplosionRadius'
+    | 'returnSpeed'
+    | 'maxRange'
+    | 'swingArcDeg'
+    | 'meleeStyle'
+    | 'headRadius'
+    | 'shaftDamageMult'
+    | 'knockback'
+    | 'pierce'
+    | 'bounceCount'
+    | 'goreFactor'
+    | 'baseAccuracy'
+    | 'weaponClassSkillId'
+    | 'weaponTypeSkillId'
+  >
+>;
+
+/**
+ * Deferred form of an active-weapon snapshot used only inside a
+ * {@link FrozenEquipmentFieldsCreateInputV1}.  The registry resolves this into
+ * a full {@link ActiveWeaponSnapshotV1} (with the correct instance ID and
+ * fingerprint) when {@link createGeneratedEquipmentInstance} is called.
+ */
+export interface ActiveWeaponSnapshotCreateInputV1 {
+  readonly weaponDefId: string;
+  readonly overrides?: ActiveWeaponCombatOverridesV1;
+}
+
+/**
+ * Input form of {@link FrozenEquipmentFieldsV1} accepted by
+ * {@link GeneratedEquipmentCreateInputV1}.  The `activeWeaponSnapshot` field
+ * additionally allows a deferred {@link ActiveWeaponSnapshotCreateInputV1};
+ * the registry resolves it to a full snapshot before persisting the instance.
+ *
+ * {@link FrozenEquipmentFieldsV1} is structurally assignable here, so existing
+ * create-input objects that already carry a fully-built snapshot (or `null`)
+ * require no changes.
+ */
+export interface FrozenEquipmentFieldsCreateInputV1 {
+  readonly schemaVersion: typeof FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION;
+  readonly displayName: string;
+  readonly artKey: string;
+  readonly slots: readonly EquipmentSlotId[];
+  readonly tags: readonly string[];
+  readonly weightLb: number;
+  readonly statBonuses: Readonly<Partial<Record<StatId, number>>>;
+  readonly abilityGrants: readonly string[];
+  readonly passiveGrants: readonly string[];
+  readonly activeWeaponSnapshot: ActiveWeaponSnapshotV1 | ActiveWeaponSnapshotCreateInputV1 | null;
+}
+
 export interface GeneratedEquipmentGenerationPolicyV1 {
   readonly schemaVersion: typeof GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION;
   readonly generationVersion: typeof GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION;
@@ -135,7 +207,14 @@ export interface GeneratedEquipmentCreateInputV1 {
   readonly rarity: GeneratedEquipmentRarity;
   readonly enhancementLevel: GeneratedEquipmentEnhancementLevel;
   readonly resolvedEffects: readonly ResolvedEquipmentEffectV1[];
-  readonly frozen: FrozenEquipmentFieldsV1;
+  /**
+   * Frozen display/stat/slot data for the new instance.  The
+   * `activeWeaponSnapshot` field may carry a deferred
+   * {@link ActiveWeaponSnapshotCreateInputV1}; the registry resolves it to a
+   * full snapshot before persisting.  Objects typed as
+   * {@link FrozenEquipmentFieldsV1} are structurally compatible here.
+   */
+  readonly frozen: FrozenEquipmentFieldsCreateInputV1;
 }
 
 export interface GeneratedEquipmentRegistrySnapshotV1 {
