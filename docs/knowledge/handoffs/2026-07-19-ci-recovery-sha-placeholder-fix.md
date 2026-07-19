@@ -68,31 +68,39 @@ Both usages of `ADDRESSED_MARKER_REPLY` in the task body are replaced with
 
 Agents only need to fill in `<one-line note>` — the correct SHA is pre-filled.
 
-## Pre-existing failing test fixed
+## Stale-marker fixture reconciliation
 
-`stale-marker thread includes recovery hint in blocker summary` had `isOutdated: true`
-on the test thread. The `isOutdated` auto-resolution feature (added 2026-07-18) fires
-for any outdated thread without a valid current-head marker, so it posted an
-outdated-marker and resolved the thread — violating the test's `doesNotMatch` assertion.
+The original branch changed the stale-marker fixture from `isOutdated: true` to
+`isOutdated: false` while the test still expected a blocker summary. Current `main`
+subsequently changed that test's contract: an outdated stale-marker thread should receive
+the reconciler's trusted marker and auto-resolve without a blocker summary. The fixture
+was left at `false`, making the renamed test deterministically fail before the outdated
+path ran.
 
-The stale-SHA scenario (commit created locally, never pushed) should have
-`isOutdated: false` because the code is still at the reviewed location; GitHub only
-sets `isOutdated` when the reviewed lines have moved. Fixing `isOutdated: false`
-restores the correct semantics.
+During the refresh, the fixture was aligned with current `main`'s asserted behavior by
+setting `isOutdated: true`, and the reconciler now lets GitHub's authoritative outdated
+signal take precedence over an older unreachable marker. This is a current-main
+implementation/test correction absorbed by the PR, not the earlier `true` → `false`
+correction described by the pre-refresh handoff.
 
 ## Files Changed
 
 - `.github/scripts/ci-recovery/reconcile.mjs`: compute `concreteMarkerReply` from
-  `ADDRESSED_MARKER_REPLY.replace('<sha>', headSha)` and use it in the task body
+  `ADDRESSED_MARKER_REPLY.replace('<sha>', headSha)` and use it in the task body; allow
+  outdated threads with stale markers to follow the authoritative outdated-resolution path
 - `.github/scripts/ci-recovery/reconcile.test.mjs`:
-  - Added two regression assertions to the existing task-comment test: task body must
-    include `HEAD_SHA` and must NOT include the literal `<sha>` placeholder
-  - Fixed pre-existing `isOutdated: true` in stale-marker test → `isOutdated: false`
+  - Added targeted regression assertions that both actionable reply instructions contain
+    the concrete `HEAD_SHA`
+  - Preserved the generic review-protocol template and deterministic
+    `✅ Not applicable` guidance from current `main`
+  - Aligned the outdated stale-marker fixture with its current auto-resolution contract
 
 ## Regression Tests Added
 
-1. `task comment should contain the concrete current head SHA in the marker instruction` — asserts `HEAD_SHA` appears in the task body marker instruction
-2. `task comment must not contain the literal <sha> placeholder in the marker instruction` — asserts the `<sha>` placeholder is gone
+1. `top-level-comment warning should contain the concrete current head SHA` — asserts
+   the exact-thread instruction embeds `HEAD_SHA`
+2. `reply_to_comment instruction should contain the concrete current head SHA` — asserts
+   the actionable reply body embeds `HEAD_SHA`
 
 ## Verification
 
