@@ -1,0 +1,280 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
+import { describe, expect, it } from 'vitest';
+
+/**
+ * Structural regression coverage for the AI Sweep Eval round-DAG redesign
+ * (`.github/workflows/ai-sweep.yml`).
+ *
+ * BACKGROUND: the prior design flattened one round's candidates × weapons ×
+ * seeds into ONE 4-worker job per combo, so wall time scaled as
+ * totalTasks/workers -- one round (13 configs × 3 weapons × 80 seeds = 3,120
+ * runs) projected ~5h25m, well past the workflow timeout. Run 29606086471 was
+ * cancelled after ~3h40 with ZERO artifacts, because the old `search` job
+ * only emitted its shard at the very end (no checkpointing).
+ *
+ * This test parses the REAL YAML (not a re-implementation) so a future edit
+ * cannot silently reintroduce either failure mode:
+ *   - the monolithic `search` job must be gone (replaced by baseline +
+ *     checkpoint-init + an explicit bounded round1-3 DAG);
+ *   - every round's candidate-eval matrix job must be independently timed at
+ *     <=90 minutes (the hard timing gate), with NO `max-parallel` cap (so
+ *     GitHub schedules maximum concurrency rather than an artificial
+ *     bottleneck);
+ *   - every round-select (checkpoint fold-in) job must be gated with
+ *     `always()` so a `fail-fast:false` partial candidate failure upstream
+ *     never causes the checkpoint-persistence step itself to be skipped --
+ *     that is the actual "timeout/failure never discards prior progress"
+ *     mechanism;
+ *   - `validate` and `aggregate` must ALSO be gated with `always()`, so a
+ *     partially-failed round or partially-failed validate matrix still
+ *     produces a leaderboard from whatever DID succeed;
+ *   - `rounds` must remain hard-capped at the explicit bounded 0-3 DAG this
+ *     workflow implements (a `rounds` value beyond what the DAG has explicit
+ *     job triples for must be rejected before any runner spins up);
+ *   - every original `workflow_dispatch` input must still be present, valid,
+ *     and untouched in shape (no default-mode flip).
+ */
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+interface WorkflowStrategy {
+  'fail-fast'?: boolean;
+  'max-parallel'?: number;
+  matrix?: Record<string, unknown>;
+}
+
+interface WorkflowJob {
+  name?: string;
+  needs?: string | string[];
+  if?: string;
+  'runs-on'?: string;
+  'timeout-minutes'?: number;
+  strategy?: WorkflowStrategy;
+  outputs?: Record<string, string>;
+  steps?: Array<{ name?: string; run?: string; uses?: string; with?: Record<string, unknown> }>;
+}
+
+interface WorkflowInput {
+  type: string;
+  default?: unknown;
+  description?: string;
+}
+
+interface WorkflowDoc {
+  on: { workflow_dispatch: { inputs: Record<string, WorkflowInput> } };
+  permissions?: Record<string, string>;
+  jobs: Record<string, WorkflowJob>;
+}
+
+function loadWorkflow(): WorkflowDoc {
+  const raw = readFileSync(path.join(REPO_ROOT, '.github/workflows/ai-sweep.yml'), 'utf8');
+  return parse(raw) as WorkflowDoc;
+}
+
+function getJob(doc: WorkflowDoc, name: string): WorkflowJob {
+  const job = doc.jobs[name];
+  if (!job) throw new Error(`job "${name}" not found in ai-sweep.yml`);
+  return job;
+}
+
+function needsList(job: WorkflowJob): string[] {
+  if (!job.needs) return [];
+  return Array.isArray(job.needs) ? job.needs : [job.needs];
+}
+
+function allRunSteps(job: WorkflowJob): string {
+  return (job.steps ?? []).map((s) => s.run ?? '').join('\n---\n');
+}
+
+const ROUND_NUMBERS = [1, 2, 3] as const;
+
+describe('ai-sweep.yml structure (round-DAG redesign)', () => {
+  it('parses and no longer contains the old monolithic `search` job', () => {
+    const doc = loadWorkflow();
+    expect(doc.jobs.search).toBeUndefined();
+  });
+
+  it('keeps every original workflow_dispatch input present with an unchanged shape (no default-mode flip)', () => {
+    const doc = loadWorkflow();
+    const inputs = doc.on.workflow_dispatch.inputs;
+    expect(Object.keys(inputs).sort()).toEqual(
+      [
+        'combos',
+        'rounds',
+        'secondary',
+        'train_seeds',
+        'validate_seeds',
+        'weapons',
+        'workers',
+      ].sort(),
+    );
+    expect(inputs.combos).toMatchObject({ type: 'string', default: 'all' });
+    expect(inputs.train_seeds).toMatchObject({ type: 'string', default: '1-24' });
+    expect(inputs.validate_seeds).toMatchObject({ type: 'string', default: '1-40' });
+    expect(inputs.weapons).toMatchObject({ type: 'string', default: 'sword,bow,baseball-bat' });
+    expect(inputs.workers).toMatchObject({ type: 'string', default: '4' });
+    // `rounds` keeps its original type/default -- only its semantics/description
+    // and the preflight cap change, per "no default mode flip".
+    expect(inputs.rounds).toMatchObject({ type: 'string', default: '2' });
+    expect(inputs.secondary).toMatchObject({ type: 'boolean', default: false });
+  });
+
+  it('stays read-only (contents: read) with no elevated default permissions', () => {
+    const doc = loadWorkflow();
+    expect(doc.permissions).toEqual({ contents: 'read' });
+  });
+
+  it('preflight hard-caps rounds to the explicit bounded 0-3 DAG before any runner spins up', () => {
+    const doc = loadWorkflow();
+    const preflight = getJob(doc, 'preflight');
+    const script = allRunSteps(preflight);
+    expect(script).toMatch(/ROUNDS/);
+    expect(script).toMatch(/-gt 3/);
+  });
+
+  it('has a baseline + checkpoint-init stage that runs once per combo before any round', () => {
+    const doc = loadWorkflow();
+    const baseline = getJob(doc, 'baseline');
+    const checkpointInit = getJob(doc, 'checkpoint-init');
+    expect(needsList(baseline)).toContain('preflight');
+    expect(allRunSteps(baseline)).toContain('--stage search-baseline');
+    expect(needsList(checkpointInit)).toContain('baseline');
+    expect(allRunSteps(checkpointInit)).toContain('--mode init');
+    // Checkpoint artifact must be overwritten in place -- the core
+    // checkpoint-persistence mechanism this whole redesign relies on.
+    const uploadStep = (checkpointInit.steps ?? []).find((s) =>
+      s.uses?.startsWith('actions/upload-artifact'),
+    );
+    expect(uploadStep?.with?.overwrite).toBe(true);
+    expect(uploadStep?.with?.name).toContain('search-checkpoint-');
+  });
+
+  it('gates checkpoint-init and round1-candidates with always() so a partial baseline matrix failure never skips them for every combo (adversarial-review fix)', () => {
+    // A `baseline` matrix leg failing for ONE combo must not, under the
+    // implicit if:success() default, skip checkpoint-init/round1-candidates
+    // for ALL combos -- that would discard every other combo's otherwise-
+    // successful baseline results. Both downstream jobs re-scope to their own
+    // `matrix.combo` and must run per-combo regardless of sibling failures.
+    const doc = loadWorkflow();
+    expect(getJob(doc, 'checkpoint-init').if).toContain('always()');
+    expect(getJob(doc, 'round1-candidates').if).toContain('always()');
+  });
+
+  describe.each(ROUND_NUMBERS)('round %d job triple', (n) => {
+    const candidatesJob = `round${n}-candidates`;
+    const evalJob = `round${n}-eval`;
+    const selectJob = `round${n}-select`;
+
+    it(`${candidatesJob} is gated on rounds >= ${n} and fans in every combo's checkpoint`, () => {
+      const doc = loadWorkflow();
+      const job = getJob(doc, candidatesJob);
+      expect(job.if).toContain(`fromJSON(inputs.rounds) >= ${n}`);
+      expect(job.outputs?.hasCandidates).toBeDefined();
+      expect(job.outputs?.matrix).toBeDefined();
+      const script = allRunSteps(job);
+      expect(script).toContain(`--mode plan --round ${n}`);
+      expect(script).toContain('--cap 200');
+    });
+
+    it(`${evalJob} is one independent matrix job per candidate, timed <=90min, with unrestricted concurrency`, () => {
+      const doc = loadWorkflow();
+      const job = getJob(doc, evalJob);
+      expect(job.if).toContain(`needs.${candidatesJob}.outputs.hasCandidates == 'true'`);
+      expect(job.strategy?.matrix).toBeDefined();
+      // No max-parallel cap: let GitHub's real concurrent-runner ceiling be
+      // the only limiter, so a combo's candidates get scheduled as promptly
+      // as the account allows (see workflow header "residual limitation").
+      expect(job.strategy?.['max-parallel']).toBeUndefined();
+      expect(job.strategy?.['fail-fast']).toBe(false);
+      const timeout = job['timeout-minutes'];
+      expect(timeout).toBeDefined();
+      expect(timeout!).toBeLessThanOrEqual(90);
+      const script = allRunSteps(job);
+      expect(script).toContain('--stage search-eval');
+      expect(script).toContain('--config-id');
+      expect(script).toContain('--config-json');
+    });
+
+    it(`${selectJob} is gated with always() so a partial ${evalJob} failure never skips checkpoint persistence`, () => {
+      const doc = loadWorkflow();
+      const job = getJob(doc, selectJob);
+      expect(job.if).toContain('always()');
+      expect(job.if).toContain(`fromJSON(inputs.rounds) >= ${n}`);
+      expect(needsList(job)).toContain(evalJob);
+      // Must also depend on this round's own candidates job so it can
+      // download the candidate plan and compute how many were actually
+      // planned (gate-aware promotion + infra-failure detection fix).
+      expect(needsList(job)).toContain(candidatesJob);
+      const script = allRunSteps(job);
+      expect(script).toContain(`--mode select --round ${n}`);
+      expect(script).toContain('--planned-count');
+      // Re-uploads to the SAME artifact name with overwrite -- this is the
+      // checkpoint-persistence mechanism itself.
+      const uploadStep = (job.steps ?? []).find((s) =>
+        s.uses?.startsWith('actions/upload-artifact'),
+      );
+      expect(uploadStep?.with?.overwrite).toBe(true);
+      expect(uploadStep?.with?.name).toBe('search-checkpoint-${{ matrix.combo }}');
+      // Shard download tolerates zero candidates this round for this combo
+      // (e.g. every knob already converged) without hard-failing.
+      const downloadShards = (job.steps ?? []).find(
+        (s) =>
+          s.uses?.startsWith('actions/download-artifact') &&
+          s.name?.toLowerCase().includes('shard'),
+      );
+      expect(downloadShards?.with?.['if-no-artifact-found']).toBe('warn');
+      // Candidate-plan download must ALSO tolerate the "zero candidates
+      // planned this round" case (e.g. all knobs already converged) without
+      // hard-failing the job.
+      const downloadCandidates = (job.steps ?? []).find(
+        (s) =>
+          s.uses?.startsWith('actions/download-artifact') &&
+          s.name?.toLowerCase().includes('candidate'),
+      );
+      expect(downloadCandidates?.with?.['if-no-artifact-found']).toBe('warn');
+    });
+  });
+
+  it('chains the rounds so round N depends on round N-1 select (or checkpoint-init for round 1)', () => {
+    const doc = loadWorkflow();
+    expect(needsList(getJob(doc, 'round1-candidates'))).toContain('checkpoint-init');
+    expect(needsList(getJob(doc, 'round2-candidates'))).toContain('round1-select');
+    expect(needsList(getJob(doc, 'round3-candidates'))).toContain('round2-select');
+  });
+
+  it('validate is gated with always() and downloads the (possibly partial-round) checkpoint directly', () => {
+    const doc = loadWorkflow();
+    const job = getJob(doc, 'validate');
+    expect(job.if).toContain('always()');
+    for (const dep of [
+      'preflight',
+      'checkpoint-init',
+      'round1-select',
+      'round2-select',
+      'round3-select',
+    ]) {
+      expect(needsList(job)).toContain(dep);
+    }
+    const script = allRunSteps(job);
+    expect(script).toContain('--stage validate');
+    expect(script).toContain('--search-artifact "search-checkpoint-$COMBO.json"');
+  });
+
+  it('aggregate is gated with always() so a partial validate failure still produces a leaderboard', () => {
+    const doc = loadWorkflow();
+    const job = getJob(doc, 'aggregate');
+    expect(job.if).toContain('always()');
+    expect(needsList(job)).toContain('validate');
+  });
+
+  it('every round-eval and round-select job stays within the 200-job matrix cap used by planRoundMatrix', () => {
+    const doc = loadWorkflow();
+    for (const n of ROUND_NUMBERS) {
+      const candidatesScript = allRunSteps(getJob(doc, `round${n}-candidates`));
+      expect(candidatesScript).toContain('--cap 200');
+    }
+  });
+});

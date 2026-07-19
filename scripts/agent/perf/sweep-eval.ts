@@ -7,15 +7,35 @@
  * for (weapon × seed) parallelism — so a single cloud job self-parallelises
  * without a config×seed matrix (see the plan's post-adversarial-review revision).
  *
- * Two stages:
- *   --stage search   For ONE combo, coordinate-ascent over its tunable knobs on
- *                    the TRAIN seeds, emitting every evaluated run + the tuned
- *                    best config. No holdout seeds are ever touched here.
- *   --stage validate For ONE combo, evaluate its tuned finalist (from a search
- *                    artifact) on the FULL panel incl. holdout, plus the untuned
- *                    LEGACY+LEGACY incumbent control (so every validate shard
- *                    carries a flip baseline; the aggregator collapses the
- *                    identical incumbent copies as a determinism proof).
+ * Four stages:
+ *   --stage search          LEGACY, kept for local/small-scale iteration. For ONE
+ *                            combo, coordinate-ascent over its tunable knobs on
+ *                            the TRAIN seeds IN-PROCESS (all of a round's
+ *                            candidates share one 4-worker pool), emitting every
+ *                            evaluated run + the tuned best config. Wall time
+ *                            scales as (candidates × weapons × seeds / workers),
+ *                            which is why the cloud workflow no longer uses this
+ *                            stage for its round loop (see search-baseline/
+ *                            search-eval below) — it remains for local smoke runs.
+ *   --stage search-baseline For ONE combo, evaluate ONLY its SSOT base config on
+ *                            the TRAIN seeds. Emits a plain shard (one config);
+ *                            the workflow wraps it into a round-0 checkpoint via
+ *                            `round-plan.ts --mode init`.
+ *   --stage search-eval     For ONE combo and ONE candidate config (given via
+ *                            --config-id/--config-json), evaluate it on the TRAIN
+ *                            seeds. Emits a plain shard (one config). This is the
+ *                            unit of work each parallel round-eval matrix job
+ *                            runs — fanning a round's candidates into independent
+ *                            jobs is what bounds wall time by (candidates /
+ *                            concurrency) instead of (candidates × weapons ×
+ *                            seeds / workers).
+ *   --stage validate        For ONE combo, evaluate its tuned finalist (from a
+ *                            search artifact OR a round checkpoint — same shape)
+ *                            on the FULL panel incl. holdout, plus the untuned
+ *                            LEGACY+LEGACY incumbent control (so every validate
+ *                            shard carries a flip baseline; the aggregator
+ *                            collapses the identical incumbent copies as a
+ *                            determinism proof). Unchanged by the round redesign.
  *
  * The SSOT tournament win is `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)`:
  * `outcome==='victory' && (gameTimeMs - safeRoomMs) < FLOOR1_TIME_BUDGET_MS`
@@ -36,8 +56,10 @@
  *
  * Usage
  * -----
- *   npm run ai:sweep-eval -- --stage search   --combo legacy+legacy --train-seeds 1-80 --workers 4 --rounds 3 --out search.json
- *   npm run ai:sweep-eval -- --stage validate --combo navmeshFused+slackAware --search-artifact search.json --seeds 1-100 --workers 4 --out validate.json
+ *   npm run ai:sweep-eval -- --stage search          --combo legacy+legacy --train-seeds 1-80 --workers 4 --rounds 3 --out search.json
+ *   npm run ai:sweep-eval -- --stage search-baseline --combo legacy+legacy --train-seeds 1-80 --workers 4 --out baseline.json
+ *   npm run ai:sweep-eval -- --stage search-eval     --combo legacy+legacy --config-id <id> --config-json '{"...":...}' --train-seeds 1-80 --workers 4 --out shard.json
+ *   npm run ai:sweep-eval -- --stage validate        --combo navmeshFused+slackAware --search-artifact search.json --seeds 1-100 --workers 4 --out validate.json
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -67,6 +89,7 @@ import {
   type ShardArtifact,
   type ShardMeta,
 } from './aggregate-shards.js';
+import { halveSteps } from './round-plan.js';
 import {
   runWorkerPool,
   type WorkerPoolTaskPayload,
@@ -299,23 +322,6 @@ async function searchCombo(
   return { rows: allRows, configs, bestConfigId: currentId };
 }
 
-/** Halve every knob's step; return whether any step is still ≥ its minStep. */
-function halveSteps(
-  steps: Partial<Record<TunableKnob, number>>,
-  knobs: readonly TunableKnob[],
-): boolean {
-  let anyAboveMin = false;
-  for (const knob of knobs) {
-    const range = rangeFor(knob);
-    const next = (steps[knob] ?? range.step) / 2;
-    steps[knob] = next;
-    if (next >= range.minStep) {
-      anyAboveMin = true;
-    }
-  }
-  return anyAboveMin;
-}
-
 function packageLockHash(): string {
   try {
     const url = new URL('../../../package-lock.json', import.meta.url);
@@ -341,9 +347,14 @@ function buildMeta(stage: string, floorId: string): ShardMeta {
 
 type SearchArtifact = ShardArtifact & { combo: string; bestConfigId: string };
 
+type Stage = 'search' | 'search-baseline' | 'search-eval' | 'validate';
+const STAGES: readonly Stage[] = ['search', 'search-baseline', 'search-eval', 'validate'];
+
 interface CliArgs {
-  stage: 'search' | 'validate';
+  stage: Stage;
   combo: string | null;
+  configId: string | null;
+  configJson: string | null;
   trainSeeds: number[];
   seeds: number[];
   weapons: string[];
@@ -360,6 +371,8 @@ function parseArgs(argv: readonly string[]): CliArgs {
   const args: CliArgs = {
     stage: 'search',
     combo: null,
+    configId: null,
+    configJson: null,
     trainSeeds: parseSeeds('1-80'),
     seeds: parseSeeds('1-100'),
     weapons: FLOOR1_WEAPONS,
@@ -375,13 +388,19 @@ function parseArgs(argv: readonly string[]): CliArgs {
     const arg = argv[i];
     const next = argv[i + 1];
     if (arg === '--stage' && next) {
-      if (next !== 'search' && next !== 'validate') {
-        throw new Error(`--stage must be search|validate, got ${JSON.stringify(next)}`);
+      if (!STAGES.includes(next as Stage)) {
+        throw new Error(`--stage must be one of ${STAGES.join('|')}, got ${JSON.stringify(next)}`);
       }
-      args.stage = next;
+      args.stage = next as Stage;
       i++;
     } else if (arg === '--combo' && next) {
       args.combo = next;
+      i++;
+    } else if (arg === '--config-id' && next) {
+      args.configId = next;
+      i++;
+    } else if (arg === '--config-json' && next) {
+      args.configJson = next;
       i++;
     } else if (arg === '--train-seeds' && next) {
       args.trainSeeds = parseSeeds(next);
@@ -416,6 +435,9 @@ function parseArgs(argv: readonly string[]): CliArgs {
   if (!args.combo) {
     throw new Error('--combo is required (e.g. --combo legacy+legacy)');
   }
+  if (args.stage === 'search-eval' && (!args.configId || !args.configJson)) {
+    throw new Error('--stage search-eval requires --config-id <id> --config-json <json>');
+  }
   if (args.floorId !== 'floor1') {
     throw new Error(
       `--floor '${args.floorId}' is not supported: this sweep is Floor-1-calibrated ` +
@@ -424,6 +446,34 @@ function parseArgs(argv: readonly string[]): CliArgs {
     );
   }
   return args;
+}
+
+/**
+ * Evaluate exactly ONE config (baseline or a single round candidate) across
+ * weapons × trainSeeds, emitting a plain single-config shard. Shared by
+ * `--stage search-baseline` and `--stage search-eval` — the two stages that
+ * replace the old monolithic per-combo round loop with independently
+ * schedulable units of work (one GitHub Actions matrix job each).
+ */
+async function evalStandalone(
+  comboStr: string,
+  id: string,
+  config: SweepConfig,
+  opts: { trainSeeds: number[]; weapons: string[]; workers: number; floorId: string },
+  stage: string,
+): Promise<ShardArtifact> {
+  const shared: EvalShared = {
+    maxFrames: MAX_FRAMES,
+    budgetMs: FLOOR1_TIME_BUDGET_MS,
+    wallCapMs: WALL_CAP_MS,
+    floorId: opts.floorId,
+  };
+  const rows = await runTasks(
+    buildTasks([{ id, config }], comboStr, opts.weapons, opts.trainSeeds),
+    shared,
+    opts.workers,
+  );
+  return { meta: buildMeta(stage, opts.floorId), configs: { [id]: config }, rows };
 }
 
 async function main(argv: readonly string[]): Promise<void> {
@@ -452,6 +502,52 @@ async function main(argv: readonly string[]): Promise<void> {
     };
     emit(artifact, args.out);
     console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${result.rows.length} runs`);
+    return;
+  }
+
+  if (args.stage === 'search-baseline') {
+    const base = baseConfigForCombo(combo);
+    const id = configId(base);
+    console.log(
+      `🔎 SEARCH-BASELINE ${comboId(combo)} · ${id.slice(0, 48)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers}`,
+    );
+    const artifact = await evalStandalone(
+      comboId(combo),
+      id,
+      base,
+      {
+        trainSeeds: args.trainSeeds,
+        weapons: args.weapons,
+        workers: args.workers,
+        floorId: args.floorId,
+      },
+      'search',
+    );
+    emit(artifact, args.out);
+    console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${artifact.rows.length} runs`);
+    return;
+  }
+
+  if (args.stage === 'search-eval') {
+    const id = args.configId!;
+    const config = JSON.parse(args.configJson!) as SweepConfig;
+    console.log(
+      `🔎 SEARCH-EVAL ${comboId(combo)} · ${id.slice(0, 48)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers}`,
+    );
+    const artifact = await evalStandalone(
+      comboId(combo),
+      id,
+      config,
+      {
+        trainSeeds: args.trainSeeds,
+        weapons: args.weapons,
+        workers: args.workers,
+        floorId: args.floorId,
+      },
+      'search',
+    );
+    emit(artifact, args.out);
+    console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${artifact.rows.length} runs`);
     return;
   }
 

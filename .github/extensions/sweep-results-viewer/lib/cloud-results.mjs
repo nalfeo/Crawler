@@ -4,10 +4,18 @@ const SWEEP_JOB_PATTERN = /^(?:weapon-sweep|aggregate) \(([a-z0-9][a-z0-9-]*)/;
 /** Artifact name for the AI Sweep Eval final leaderboard. */
 export const LEADERBOARD_ARTIFACT_NAME = 'leaderboard';
 
-/** Maps AI Sweep Eval job name prefixes to their phase keys. */
+/**
+ * Maps AI Sweep Eval job name prefixes to their phase keys.
+ *
+ * The "search" phase key covers BOTH the legacy single `Search <combo>` job
+ * (pre round-DAG runs) and the bounded round-DAG's `Baseline <combo>`,
+ * `Checkpoint init <combo>`, and `Round N — plan candidates` / `Round N eval
+ * <combo>` / `Round N select <combo>` jobs, so historical and current runs
+ * both surface progress under the same "Search in progress" UI copy.
+ */
 const AI_SWEEP_PHASE_PATTERNS = /** @type {const} */ ([
   ['preflight', /^preflight\b/i],
-  ['search', /^search\b/i],
+  ['search', /^(?:search|baseline|checkpoint init|round\s*\d+)\b/i],
   ['validate', /^validate\b/i],
   ['aggregate', /^aggregate\b/i],
 ]);

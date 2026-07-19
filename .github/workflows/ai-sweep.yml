@@ -1,15 +1,58 @@
 # AI combo × hill-climb evaluation pipeline (cloud-parallel, dispatch-only).
 #
 # WHAT IT DOES
-#   For each selected pathing×decision COMBO it runs an in-process coordinate-ascent
-#   knob search on the TRAIN seed panel (job = one combo, worker-pool for weapon×seed
-#   parallelism), then VALIDATES each combo's tuned finalist — plus the untuned
-#   LEGACY/LEGACY incumbent control — on a full seed panel, then fans the shard
-#   artifacts into ONE leaderboard (Σ composite score, win count, flips-vs-incumbent,
-#   clear time, xp, gold, min-HP) rendered to the run summary + a JSON artifact.
+#   For each selected pathing×decision COMBO it runs a bounded, CHECKPOINTED
+#   round-DAG knob search on the TRAIN seed panel, then VALIDATES each combo's
+#   tuned finalist — plus the untuned LEGACY/LEGACY incumbent control — on a
+#   full seed panel, then fans the shard artifacts into ONE leaderboard (Σ
+#   composite score, win count, flips-vs-incumbent, clear time, xp, gold,
+#   min-HP) AND a safety-gated qualified-winner recommendation (>=90% wins AND
+#   zero incumbent win→loss flips — see `selectQualifiedWinner` in
+#   aggregate-shards.ts), rendered to the run summary + a JSON artifact.
 #
 #   It only MEASURES. It never flips the shipped default (that is the separate,
 #   human-gated Stage-5 PR). Main stays LEGACY/LEGACY byte-identical.
+#
+# WHY THE ROUND-DAG REDESIGN (2026-07 timing fix)
+#   The prior design flattened an ENTIRE round's candidates × weapons × seeds
+#   into ONE 4-worker job per combo, so wall time scaled as
+#   (candidates × weapons × seeds / workers) — one round of 13 configs × 3
+#   weapons × 80 seeds = 3,120 runs took a projected ~5h25m (observed baseline:
+#   240 runs / 4 workers ≈ 25 min ⇒ ~100s/run serialized-equivalent), well
+#   beyond this workflow's timeout. Run 29606086471 was cancelled after ~3h40
+#   with ZERO artifacts, because the old `search` job only emitted its shard at
+#   the very end.
+#
+#   The fix fans each round's candidates into INDEPENDENT matrix jobs (one
+#   config per job, self-parallelised over weapon×seed by the existing
+#   4-worker pool) and checkpoints every round to an artifact that is
+#   OVERWRITTEN in place (`search-checkpoint-<combo>`), so:
+#     - one combo's one-round search is bounded by (candidates / concurrency),
+#       not (candidates × weapons × seeds / workers) — ~25-40 min per
+#       candidate job, running in parallel, comfortably under 90 minutes for
+#       one combo's one round even with modest concurrency;
+#     - a timeout or a partial matrix failure NEVER discards earlier rounds'
+#       progress — the last successfully-uploaded checkpoint is always a valid
+#       input to `validate` (see `applyRoundResult` in round-plan.ts, which is
+#       explicitly designed to advance-or-degrade gracefully on zero/partial
+#       candidate shards rather than throw).
+#   GitHub Actions matrices can't express a fully generic "repeat until
+#   converged" loop with dynamic job counts across rounds, so this is an
+#   EXPLICIT bounded 1–3 round DAG (round1-*/round2-*/round3-* job triples)
+#   rather than a generic loop — see the plan's adversarial review for why a
+#   fully generic design was rejected as impractical on this platform.
+#
+#   RESIDUAL LIMITATION (documented, not hidden): the <=90-minute bound is
+#   proven at the PER-COMBO PER-ROUND grain (the grain this task's hard gate
+#   asks for) — one combo's ~12 primary-knob candidates, run with unrestricted
+#   matrix concurrency (no `max-parallel` set on round-eval, so GitHub schedules
+#   as many as the account's real concurrent-runner ceiling allows). A FULL
+#   8-combo × 3-round graduation run's aggregate wall-clock additionally
+#   depends on that (unknown-to-us) account/org concurrent-job ceiling, since
+#   all combos' round-eval candidates share one flat matrix per round. This is
+#   a materially better bound than the old design (which had NO per-round
+#   parallelism at all) but is not independently proven to keep the FULL
+#   8-combo scope under 90 minutes.
 #
 # HOW TO RUN (staged, per the plan)
 #   - Cheap screen / calibration (DEFAULTS): rounds=2, train 1-24, validate 1-40.
@@ -53,7 +96,7 @@ on:
         type: string
         default: '4'
       rounds:
-        description: 'Coordinate-ascent rounds. 0 = screen only (no tuning). Full run: 3'
+        description: 'Round-DAG stages to run, bounded 0-3 (each round fans candidates into parallel matrix jobs — see header). 0 = baseline/screen only, no tuning. Full run: 3'
         type: string
         default: '2'
       secondary:
@@ -67,8 +110,9 @@ permissions:
 
 jobs:
   # Derive the combo matrix from the SSOT generator (not hard-coded here), validate
-  # any user-supplied subset against the real enum, and hard-fail on an oversized
-  # matrix (adversarial-review cardinality guard).
+  # any user-supplied subset against the real enum, hard-fail on an oversized
+  # matrix (adversarial-review cardinality guard), and cap `rounds` to the
+  # explicit bounded 1-3 round DAG this workflow implements.
   preflight:
     name: Preflight (derive + cap combo matrix)
     runs-on: ubuntu-latest
@@ -106,12 +150,30 @@ jobs:
           fi
           echo "combos=$SELECTED" >> "$GITHUB_OUTPUT"
 
-  # One job per combo: full in-process coordinate-ascent knob search on TRAIN seeds.
-  search:
-    name: Search ${{ matrix.combo }}
+      - name: Validate rounds is within the explicit bounded round-DAG (0-3)
+        env:
+          ROUNDS: ${{ inputs.rounds }}
+        run: |
+          set -euo pipefail
+          case "$ROUNDS" in
+            ''|*[!0-9]*)
+              echo "::error::rounds='$ROUNDS' is not a non-negative integer."
+              exit 1
+              ;;
+          esac
+          if [ "$ROUNDS" -gt 3 ]; then
+            echo "::error::rounds=$ROUNDS out of bounds — this workflow implements an explicit bounded 0-3 round-DAG (round1-*/round2-*/round3-* job triples), not a generic loop."
+            exit 1
+          fi
+
+  # One job per combo: evaluate ONLY the SSOT base config on TRAIN seeds. This
+  # replaces the old flat `search` job's implicit round-0 evaluation with an
+  # explicit, independently-timed stage (see header for the timing rationale).
+  baseline:
+    name: Baseline ${{ matrix.combo }}
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -121,36 +183,586 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Coordinate-ascent search (TRAIN panel)
+      - name: Evaluate SSOT base config (TRAIN panel)
         env:
           COMBO: ${{ matrix.combo }}
           TRAIN_SEEDS: ${{ inputs.train_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
-          ROUNDS: ${{ inputs.rounds }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage search-baseline --combo "$COMBO" \
+            --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" \
+            --out "baseline-$COMBO.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: search-baseline-${{ matrix.combo }}
+          path: baseline-*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # One job per combo: wrap the baseline shard into a round-0 checkpoint. Every
+  # later round-select job OVERWRITES this exact artifact name, so `validate`
+  # always downloads whichever round actually ran last — no separate
+  # "finalize" job needed, and a downstream timeout/failure never discards a
+  # prior round's progress.
+  checkpoint-init:
+    name: Checkpoint init ${{ matrix.combo }}
+    needs: [preflight, baseline]
+    # if: always() — `baseline` is a fail-fast:false MATRIX job, so the job-level
+    # `needs.baseline` conclusion is 'failure' if even ONE combo's leg failed,
+    # even though every other combo's baseline artifact uploaded fine. Without
+    # always() the implicit `if: success()` would SKIP this entire job (all
+    # combos) on any single combo's flakiness, discarding every other combo's
+    # progress — exactly what the checkpoint redesign exists to prevent. Each
+    # combo's OWN download-artifact step below is what actually gates that one
+    # combo (it fails in isolation, thanks to this job's own fail-fast:false).
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Download this combo's baseline shard
+        uses: actions/download-artifact@v4
+        with:
+          name: search-baseline-${{ matrix.combo }}
+
+      - name: Build round-0 checkpoint
+        env:
+          COMBO: ${{ matrix.combo }}
           SECONDARY: ${{ inputs.secondary }}
         run: |
           set -euo pipefail
           SECONDARY_FLAG=""
           if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
-          npx tsx scripts/agent/perf/sweep-eval.ts \
-            --stage search --combo "$COMBO" \
-            --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
-            --workers "$WORKERS" --rounds "$ROUNDS" $SECONDARY_FLAG \
-            --out "search-$COMBO.json"
+          npx tsx scripts/agent/perf/round-plan.ts \
+            --mode init --combo "$COMBO" --baseline "baseline-$COMBO.json" $SECONDARY_FLAG \
+            --out "search-checkpoint-$COMBO.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-${{ matrix.combo }}
-          path: search-*.json
+          name: search-checkpoint-${{ matrix.combo }}
+          path: search-checkpoint-*.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  # ---------------------------------------------------------------------------
+  # ROUND 1 — one job triple: candidates (fan-in all combos' checkpoints → one
+  # flattened, cap-guarded candidate list) → eval (one independent matrix job
+  # PER CANDIDATE, across all open combos) → select (fan-in each combo's shards
+  # of this round back into its checkpoint, adopt-or-halve).
+  # ---------------------------------------------------------------------------
+  round1-candidates:
+    name: Round 1 — plan candidates
+    needs: checkpoint-init
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # if: always() — `checkpoint-init` is a fail-fast:false MATRIX job; one
+    # combo's leg failing (e.g. its baseline never uploaded) makes the
+    # job-level `needs.checkpoint-init` conclusion 'failure' even though most
+    # combos succeeded. Without always() this single (non-matrixed) planning
+    # job would be skipped OUTRIGHT — losing every combo's round-1 candidates,
+    # not just the failed one. The download step below (pattern-based,
+    # `merge-multiple`) simply won't find the failed combo's checkpoint, so
+    # that combo is naturally excluded from this round's plan without
+    # crashing the others. Same rationale as `checkpoint-init` above.
+    if: always() && fromJSON(inputs.rounds) >= 1
+    outputs:
+      hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Download every combo's checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          pattern: search-checkpoint-*
+          merge-multiple: true
+          path: checkpoints
+
+      - name: Plan round 1 candidates
+        id: plan
+        env:
+          SECONDARY: ${{ inputs.secondary }}
+        run: |
+          set -euo pipefail
+          SECONDARY_FLAG=""
+          if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
+          npx tsx scripts/agent/perf/round-plan.ts \
+            --mode plan --round 1 $SECONDARY_FLAG --cap 200 \
+            --out candidates.json checkpoints/*.json
+          HAS=$(jq -r '.hasCandidates' candidates.json)
+          echo "hasCandidates=$HAS" >> "$GITHUB_OUTPUT"
+          {
+            echo 'matrix<<MTRX_EOF'
+            jq -c '.candidates' candidates.json
+            echo 'MTRX_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: round1-candidates
+          path: candidates.json
           if-no-files-found: error
           retention-days: 7
 
+  round1-eval:
+    name: Round 1 eval ${{ matrix.candidate.combo }}
+    needs: round1-candidates
+    if: needs.round1-candidates.outputs.hasCandidates == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: ${{ fromJSON(needs.round1-candidates.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Hash candidate id (artifact-safe name)
+        id: hash
+        env:
+          CONFIG_ID: ${{ matrix.candidate.configId }}
+        run: |
+          set -euo pipefail
+          HASH=$(printf '%s' "$CONFIG_ID" | sha256sum | cut -c1-12)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Evaluate candidate (TRAIN panel)
+        env:
+          COMBO: ${{ matrix.candidate.combo }}
+          CONFIG_ID: ${{ matrix.candidate.configId }}
+          CONFIG_JSON: ${{ toJSON(matrix.candidate.config) }}
+          TRAIN_SEEDS: ${{ inputs.train_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage search-eval --combo "$COMBO" \
+            --config-id "$CONFIG_ID" --config-json "$CONFIG_JSON" \
+            --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" \
+            --out shard.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: round1-shard-${{ matrix.candidate.combo }}-${{ steps.hash.outputs.hash }}
+          path: shard.json
+          if-no-files-found: error
+          retention-days: 7
+
+  round1-select:
+    name: Round 1 select ${{ matrix.combo }}
+    needs: [preflight, checkpoint-init, round1-candidates, round1-eval]
+    if: always() && fromJSON(inputs.rounds) >= 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Download this combo's checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: search-checkpoint-${{ matrix.combo }}
+
+      - name: Download round 1's candidate plan (to know this combo's PLANNED count)
+        uses: actions/download-artifact@v4
+        with:
+          name: round1-candidates
+          if-no-artifact-found: warn
+
+      - name: Download this combo's round-1 shards (if any)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: round1-shard-${{ matrix.combo }}-*
+          merge-multiple: true
+          path: shards
+          if-no-artifact-found: warn
+
+      - name: Fold round 1 into checkpoint
+        env:
+          COMBO: ${{ matrix.combo }}
+          SECONDARY: ${{ inputs.secondary }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          SECONDARY_FLAG=""
+          if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
+          SHARDS=(shards/*.json)
+          # PLANNED = how many candidates this round actually planned for THIS
+          # combo (0 if candidates.json is missing, e.g. round1-candidates
+          # itself failed). Lets round-plan.ts tell "every candidate genuinely
+          # failed this round" (do NOT halve/converge — retry the same
+          # neighbours next round) apart from "nothing was planned" (already
+          # converged) — see applyRoundResult's plannedCount doc comment.
+          PLANNED=0
+          if [ -f candidates.json ]; then
+            PLANNED=$(jq --arg combo "$COMBO" '[.candidates[] | select(.combo==$combo)] | length' candidates.json)
+          fi
+          npx tsx scripts/agent/perf/round-plan.ts \
+            --mode select --round 1 --checkpoint "search-checkpoint-$COMBO.json" \
+            --planned-count "$PLANNED" $SECONDARY_FLAG \
+            --out "search-checkpoint-$COMBO.json" "${SHARDS[@]}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: search-checkpoint-${{ matrix.combo }}
+          path: search-checkpoint-*.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  # ---------------------------------------------------------------------------
+  # ROUND 2 — identical shape to round 1, gated one level deeper.
+  # ---------------------------------------------------------------------------
+  round2-candidates:
+    name: Round 2 — plan candidates
+    needs: round1-select
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always() && fromJSON(inputs.rounds) >= 2
+    outputs:
+      hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Download every combo's checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          pattern: search-checkpoint-*
+          merge-multiple: true
+          path: checkpoints
+
+      - name: Plan round 2 candidates
+        id: plan
+        env:
+          SECONDARY: ${{ inputs.secondary }}
+        run: |
+          set -euo pipefail
+          SECONDARY_FLAG=""
+          if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
+          npx tsx scripts/agent/perf/round-plan.ts \
+            --mode plan --round 2 $SECONDARY_FLAG --cap 200 \
+            --out candidates.json checkpoints/*.json
+          HAS=$(jq -r '.hasCandidates' candidates.json)
+          echo "hasCandidates=$HAS" >> "$GITHUB_OUTPUT"
+          {
+            echo 'matrix<<MTRX_EOF'
+            jq -c '.candidates' candidates.json
+            echo 'MTRX_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: round2-candidates
+          path: candidates.json
+          if-no-files-found: error
+          retention-days: 7
+
+  round2-eval:
+    name: Round 2 eval ${{ matrix.candidate.combo }}
+    needs: round2-candidates
+    if: needs.round2-candidates.outputs.hasCandidates == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: ${{ fromJSON(needs.round2-candidates.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Hash candidate id (artifact-safe name)
+        id: hash
+        env:
+          CONFIG_ID: ${{ matrix.candidate.configId }}
+        run: |
+          set -euo pipefail
+          HASH=$(printf '%s' "$CONFIG_ID" | sha256sum | cut -c1-12)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Evaluate candidate (TRAIN panel)
+        env:
+          COMBO: ${{ matrix.candidate.combo }}
+          CONFIG_ID: ${{ matrix.candidate.configId }}
+          CONFIG_JSON: ${{ toJSON(matrix.candidate.config) }}
+          TRAIN_SEEDS: ${{ inputs.train_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage search-eval --combo "$COMBO" \
+            --config-id "$CONFIG_ID" --config-json "$CONFIG_JSON" \
+            --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" \
+            --out shard.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: round2-shard-${{ matrix.candidate.combo }}-${{ steps.hash.outputs.hash }}
+          path: shard.json
+          if-no-files-found: error
+          retention-days: 7
+
+  round2-select:
+    name: Round 2 select ${{ matrix.combo }}
+    needs: [preflight, round1-select, round2-candidates, round2-eval]
+    if: always() && fromJSON(inputs.rounds) >= 2
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Download this combo's checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: search-checkpoint-${{ matrix.combo }}
+
+      - name: Download round 2's candidate plan (to know this combo's PLANNED count)
+        uses: actions/download-artifact@v4
+        with:
+          name: round2-candidates
+          if-no-artifact-found: warn
+
+      - name: Download this combo's round-2 shards (if any)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: round2-shard-${{ matrix.combo }}-*
+          merge-multiple: true
+          path: shards
+          if-no-artifact-found: warn
+
+      - name: Fold round 2 into checkpoint
+        env:
+          COMBO: ${{ matrix.combo }}
+          SECONDARY: ${{ inputs.secondary }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          SECONDARY_FLAG=""
+          if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
+          SHARDS=(shards/*.json)
+          PLANNED=0
+          if [ -f candidates.json ]; then
+            PLANNED=$(jq --arg combo "$COMBO" '[.candidates[] | select(.combo==$combo)] | length' candidates.json)
+          fi
+          npx tsx scripts/agent/perf/round-plan.ts \
+            --mode select --round 2 --checkpoint "search-checkpoint-$COMBO.json" \
+            --planned-count "$PLANNED" $SECONDARY_FLAG \
+            --out "search-checkpoint-$COMBO.json" "${SHARDS[@]}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: search-checkpoint-${{ matrix.combo }}
+          path: search-checkpoint-*.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  # ---------------------------------------------------------------------------
+  # ROUND 3 — identical shape, gated one level deeper still. This is the last
+  # round the explicit bounded DAG supports (preflight hard-fails rounds > 3).
+  # ---------------------------------------------------------------------------
+  round3-candidates:
+    name: Round 3 — plan candidates
+    needs: round2-select
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always() && fromJSON(inputs.rounds) >= 3
+    outputs:
+      hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Download every combo's checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          pattern: search-checkpoint-*
+          merge-multiple: true
+          path: checkpoints
+
+      - name: Plan round 3 candidates
+        id: plan
+        env:
+          SECONDARY: ${{ inputs.secondary }}
+        run: |
+          set -euo pipefail
+          SECONDARY_FLAG=""
+          if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
+          npx tsx scripts/agent/perf/round-plan.ts \
+            --mode plan --round 3 $SECONDARY_FLAG --cap 200 \
+            --out candidates.json checkpoints/*.json
+          HAS=$(jq -r '.hasCandidates' candidates.json)
+          echo "hasCandidates=$HAS" >> "$GITHUB_OUTPUT"
+          {
+            echo 'matrix<<MTRX_EOF'
+            jq -c '.candidates' candidates.json
+            echo 'MTRX_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: round3-candidates
+          path: candidates.json
+          if-no-files-found: error
+          retention-days: 7
+
+  round3-eval:
+    name: Round 3 eval ${{ matrix.candidate.combo }}
+    needs: round3-candidates
+    if: needs.round3-candidates.outputs.hasCandidates == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: ${{ fromJSON(needs.round3-candidates.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Hash candidate id (artifact-safe name)
+        id: hash
+        env:
+          CONFIG_ID: ${{ matrix.candidate.configId }}
+        run: |
+          set -euo pipefail
+          HASH=$(printf '%s' "$CONFIG_ID" | sha256sum | cut -c1-12)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Evaluate candidate (TRAIN panel)
+        env:
+          COMBO: ${{ matrix.candidate.combo }}
+          CONFIG_ID: ${{ matrix.candidate.configId }}
+          CONFIG_JSON: ${{ toJSON(matrix.candidate.config) }}
+          TRAIN_SEEDS: ${{ inputs.train_seeds }}
+          WEAPONS: ${{ inputs.weapons }}
+          WORKERS: ${{ inputs.workers }}
+        run: |
+          set -euo pipefail
+          npx tsx scripts/agent/perf/sweep-eval.ts \
+            --stage search-eval --combo "$COMBO" \
+            --config-id "$CONFIG_ID" --config-json "$CONFIG_JSON" \
+            --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
+            --workers "$WORKERS" \
+            --out shard.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: round3-shard-${{ matrix.candidate.combo }}-${{ steps.hash.outputs.hash }}
+          path: shard.json
+          if-no-files-found: error
+          retention-days: 7
+
+  round3-select:
+    name: Round 3 select ${{ matrix.combo }}
+    needs: [preflight, round2-select, round3-candidates, round3-eval]
+    if: always() && fromJSON(inputs.rounds) >= 3
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        combo: ${{ fromJSON(needs.preflight.outputs.combos) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+
+      - name: Download this combo's checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: search-checkpoint-${{ matrix.combo }}
+
+      - name: Download round 3's candidate plan (to know this combo's PLANNED count)
+        uses: actions/download-artifact@v4
+        with:
+          name: round3-candidates
+          if-no-artifact-found: warn
+
+      - name: Download this combo's round-3 shards (if any)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: round3-shard-${{ matrix.combo }}-*
+          merge-multiple: true
+          path: shards
+          if-no-artifact-found: warn
+
+      - name: Fold round 3 into checkpoint
+        env:
+          COMBO: ${{ matrix.combo }}
+          SECONDARY: ${{ inputs.secondary }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          SECONDARY_FLAG=""
+          if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
+          SHARDS=(shards/*.json)
+          PLANNED=0
+          if [ -f candidates.json ]; then
+            PLANNED=$(jq --arg combo "$COMBO" '[.candidates[] | select(.combo==$combo)] | length' candidates.json)
+          fi
+          npx tsx scripts/agent/perf/round-plan.ts \
+            --mode select --round 3 --checkpoint "search-checkpoint-$COMBO.json" \
+            --planned-count "$PLANNED" $SECONDARY_FLAG \
+            --out "search-checkpoint-$COMBO.json" "${SHARDS[@]}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: search-checkpoint-${{ matrix.combo }}
+          path: search-checkpoint-*.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
   # One job per combo: validate that combo's tuned finalist + the untuned incumbent
   # control on the validation panel (full graduation run touches holdout here once).
+  # Downloads whichever round actually ran last — the checkpoint artifact name is
+  # constant across every round, and a `RoundCheckpoint` is a strict superset of
+  # the legacy `SearchArtifact` shape `sweep-eval --stage validate` consumes, so
+  # no reshape step is needed. `if: always()` so a skipped or partially-failed
+  # round-select job upstream (e.g. `fail-fast:false` round-eval leaving a
+  # `failure` conclusion on the aggregate round-select job even though most of
+  # its per-combo legs succeeded) never silently skips validation of whatever
+  # the search DID manage to produce — each combo's OWN download-artifact step
+  # is what actually gates that specific combo (it fails only if that combo
+  # truly never got as far as `checkpoint-init`).
   validate:
     name: Validate ${{ matrix.combo }}
-    needs: [preflight, search]
+    needs: [preflight, checkpoint-init, round1-select, round2-select, round3-select]
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -162,10 +774,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Download this combo's search artifact
+      - name: Download this combo's checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: search-${{ matrix.combo }}
+          name: search-checkpoint-${{ matrix.combo }}
 
       - name: Validate finalist + incumbent
         env:
@@ -177,7 +789,7 @@ jobs:
           set -euo pipefail
           npx tsx scripts/agent/perf/sweep-eval.ts \
             --stage validate --combo "$COMBO" \
-            --search-artifact "search-$COMBO.json" \
+            --search-artifact "search-checkpoint-$COMBO.json" \
             --seeds "$VALIDATE_SEEDS" --weapons "$WEAPONS" \
             --workers "$WORKERS" \
             --out "validate-$COMBO.json"
@@ -189,10 +801,19 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Fan-in: merge every validate shard → recompute totals from rows → leaderboard.
+  # Fan-in: merge every validate shard → recompute totals from rows → leaderboard
+  # + safety-gated qualified winner. `if: always()` so a `fail-fast:false` partial
+  # validate failure (some combos' legs failed, marking the aggregate `validate`
+  # job conclusion `failure` even though other combos succeeded) still aggregates
+  # whatever DID succeed instead of silently skipping — same timeout/partial-
+  # progress principle as the round-select and validate jobs above. (The original
+  # pre-redesign workflow had no `if:` here at all, so ANY single validate leg
+  # failing anywhere silently skipped the entire leaderboard — fixed as part of
+  # this change.)
   aggregate:
     name: Aggregate → leaderboard
     needs: validate
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
