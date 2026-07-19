@@ -11,6 +11,17 @@
     "path": "by-sha/9d853d1369aed238f5154068ba3d803c711bd081.json"
   },
   {
+    "commit": "d20c55579c05643078d440775c538ec8d7174add",
+    "commitDate": "2026-07-19T00:09:01Z",
+    "commitSubject": "Add `shock-baton` weapon brief for Floor 2 equipment icon pipeline (#1550)",
+    "capturedAt": "2026-07-19T01:44:01.654Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29667119774",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/d20c55579c05643078d440775c538ec8d7174add.json"
+  },
+  {
     "commit": "2eca04dbdea3fac558e394e91cbf731f3d868c6e",
     "commitDate": "2026-07-18T23:48:50Z",
     "commitSubject": "feat(items): add ember-wand Floor 2 magic-focus weapon (#1545)",
