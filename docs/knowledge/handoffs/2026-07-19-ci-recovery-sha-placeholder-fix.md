@@ -62,38 +62,34 @@ marker reply that replaces `<sha>` with the actual `headSha`:
 const concreteMarkerReply = ADDRESSED_MARKER_REPLY.replace('<sha>', headSha);
 ```
 
-Both usages of `ADDRESSED_MARKER_REPLY` in the task body are replaced with
-`concreteMarkerReply`. The task body now says e.g.:
+Every addressed-marker instruction in the task body uses `concreteMarkerReply`.
+The task body now says e.g.:
 `` `✅ Addressed in 2a12315feb55be26270f2024009ec9410e17238b: <one-line note>` ``
 
 Agents only need to fill in `<one-line note>` — the correct SHA is pre-filled.
 
 ## Stale-marker fixture reconciliation
 
-The original branch changed the stale-marker fixture from `isOutdated: true` to
-`isOutdated: false` while the test still expected a blocker summary. Current `main`
-subsequently changed that test's contract: an outdated stale-marker thread should receive
-the reconciler's trusted marker and auto-resolve without a blocker summary. The fixture
-was left at `false`, making the renamed test deterministically fail before the outdated
-path ran.
+Current `main` gained explicit `✅ Not applicable: <reason>` semantics and a guard
+that prevents definitively stale markers from being masked by automatic
+outdated-thread resolution. The conflict resolution preserves both changes and
+updates the stale-marker regression to prove an outdated thread with a
+never-pushed marker remains blocked with a targeted recovery hint.
 
-During the refresh, the fixture was aligned with current `main`'s asserted behavior by
-setting `isOutdated: true`, and the reconciler now lets GitHub's authoritative outdated
-signal take precedence over an older unreachable marker. This is a current-main
-implementation/test correction absorbed by the PR, not the earlier `true` → `false`
-correction described by the pre-refresh handoff.
+The pre-refresh branch had changed this fixture to `isOutdated: false`. That historical
+correction is no longer part of the refreshed PR: the fixture is now `true`, and the test
+asserts the existing stale-marker safety behavior instead.
 
 ## Files Changed
 
 - `.github/scripts/ci-recovery/reconcile.mjs`: compute `concreteMarkerReply` from
-  `ADDRESSED_MARKER_REPLY.replace('<sha>', headSha)` and use it in the task body; allow
-  outdated threads with stale markers to follow the authoritative outdated-resolution path
+  `ADDRESSED_MARKER_REPLY.replace('<sha>', headSha)` and use it throughout the task body;
+  preserve the stale-marker guard and deterministic non-applicability guidance
 - `.github/scripts/ci-recovery/reconcile.test.mjs`:
-  - Added targeted regression assertions that both actionable reply instructions contain
-    the concrete `HEAD_SHA`
-  - Preserved the generic review-protocol template and deterministic
-    `✅ Not applicable` guidance from current `main`
-  - Aligned the outdated stale-marker fixture with its current auto-resolution contract
+  - Added targeted assertions that actionable instructions contain `HEAD_SHA` and the
+    task body does not retain the literal marker placeholder
+  - Preserved current-main non-applicability coverage and corrected the stale-marker /
+    outdated-thread regression expectations
 
 ## Regression Tests Added
 
