@@ -564,6 +564,27 @@ test('hasCopilotPlanComment recognises existing Copilot plan and recovery plan m
     ]),
     false,
   );
+  // Standalone non-plan headings reset section parsing and must not satisfy required sections.
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: [
+          '**High-level design and approach**',
+          'Create the weapon brief in the shared catalog.',
+          '',
+          '**Key decisions and alternatives**',
+          '- Keep the current manifest format.',
+          '',
+          '**Checklist**',
+          '',
+          '## Status',
+          '- [x] Still investigating.',
+        ].join('\n'),
+        user: { login: 'copilot-swe-agent' },
+      },
+    ]),
+    false,
+  );
   // Trusted recovery plan marker counts.
   assert.equal(
     hasCopilotPlanComment([
