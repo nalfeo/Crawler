@@ -170,7 +170,13 @@ export async function replaceIssueAssignees({ graphql, token, assignableId, acto
   );
 }
 
-async function mutateIssueAssignees({ graphql, token, mutationField, assignableId, actorIds }) {
+async function mutateIssueAssignees({
+  graphql,
+  token,
+  mutationField,
+  assignableId,
+  actorIds,
+}) {
   const assignment = await graphql(
     token,
     `
