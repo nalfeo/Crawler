@@ -992,23 +992,23 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
-// Threads that already carry a trusted ✅ Addressed marker pointing to a
-// definitively unreachable SHA should NOT receive an outdated-marker reply —
-// doing so would inject a new trusted marker that auto-resolves the thread and
-// masks the real issue (a pushed-but-not-deployed or abandoned commit).  These
-// threads are handled exclusively via the stale-marker hint in the task comment.
-const threadsWithStaleMarker = new Set(
-  unresolvedThreads
-    .filter((thread) => {
-      const comments = thread.comments?.nodes ?? [];
-      const last = comments[comments.length - 1];
-      if (!last) return false;
-      const markerSha = extractAddressedMarkerSha(last.body);
-      if (!markerSha || headSha.startsWith(markerSha)) return false;
-      return definitivelyUnreachableMarkerShas.has(markerSha);
-    })
-    .map((thread) => thread.id),
-);
+function shouldAutoPostOutdatedMarker(candidate) {
+  if (!candidate.isOutdated) return false;
+  if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
+
+  const comments = candidate.comments?.nodes ?? [];
+  const last = comments[comments.length - 1];
+  const hasTrustedMarker =
+    last &&
+    extractAddressedMarkerSha(last.body) !== null &&
+    (TRUSTED_ASSOCIATIONS.has(String(last.authorAssociation ?? '').toUpperCase()) ||
+      TRUSTED_BOT_LOGINS.has(String(last.author?.login ?? '').toLowerCase()));
+
+  // Preserve trusted markers whose lineage is stale or temporarily indeterminate.
+  // A definitive stale marker needs the recovery hint below; an indeterminate one
+  // must remain a generic blocker until GitHub can validate its lineage.
+  return !hasTrustedMarker;
+}
 
 // Post reconciler-authored marker replies for outdated threads that have no trusted marker.
 // thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
@@ -1019,12 +1019,7 @@ const threadsWithStaleMarker = new Set(
 //
 // This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
-for (const thread of unresolvedThreads.filter(
-  (candidate) =>
-    candidate.isOutdated &&
-    !shouldResolveThread(candidate, headSha, reachableMarkerShas) &&
-    !threadsWithStaleMarker.has(candidate.id),
-)) {
+for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
   if (!replyCommentId) {

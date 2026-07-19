@@ -6757,7 +6757,7 @@ test('transient compare failure does not produce a stale-marker hint (generic bl
           {
             id: threadId,
             isResolved: false,
-            isOutdated: false,
+            isOutdated: true,
             path: 'src/core/systems/damageSystem.ts',
             line: 42,
             comments: {
@@ -6806,6 +6806,11 @@ test('transient compare failure does not produce a stale-marker hint (generic bl
 
   // Thread must NOT be auto-resolved (lineage was indeterminate).
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`posted outdated-marker thread=${threadId}`),
+    'must not replace a trusted marker while its lineage is indeterminate',
+  );
 
   // A task comment must still be posted for the generic review-thread blocker.
   const taskCommentCall = mutatingCalls.find(

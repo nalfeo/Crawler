@@ -3,6 +3,6 @@
   "date": "2026-07-19",
   "session_slug": "ci-recovery-stale-marker-fix",
   "task_title": "fix(ci-recovery): prevent stale-marker threads from being incorrectly auto-resolved",
-  "estimated_apples": 1,
+  "estimated_apples": 2,
   "stages": {}
 }

@@ -4,7 +4,7 @@
 **Session slug:** ci-recovery-stale-marker-fix  
 **Branch:** copilot/fix-ci-recovery-loop-again  
 **PR:** Closes #1664 (CI recovery loop incident for PR #1638)  
-**Apple estimate:** 1🍎
+**Apple estimate:** 2🍎
 
 ## Systems touched
 
@@ -45,30 +45,24 @@ without the stale-marker hint needed to identify the real problem.
 
 ## Fix
 
-Added a `threadsWithStaleMarker` guard set before the outdated-marker loop in
+Added a trusted-marker predicate before the outdated-marker loop in
 `.github/scripts/ci-recovery/reconcile.mjs`:
 
 ```javascript
-const threadsWithStaleMarker = new Set(
-  unresolvedThreads
-    .filter((thread) => {
-      const comments = thread.comments?.nodes ?? [];
-      const last = comments[comments.length - 1];
-      if (!last) return false;
-      const markerSha = extractAddressedMarkerSha(last.body);
-      if (!markerSha || headSha.startsWith(markerSha)) return false;
-      return definitivelyUnreachableMarkerShas.has(markerSha);
-    })
-    .map((thread) => thread.id),
-);
+function shouldAutoPostOutdatedMarker(candidate) {
+  if (!candidate.isOutdated) return false;
+  if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
+  // Return false when the latest comment is a trusted addressed marker.
+}
 ```
 
-The outdated-marker loop now excludes threads in this set:
+The outdated-marker loop now excludes threads whose latest comment is a trusted
+addressed marker. This covers both definitively stale markers and markers whose
+lineage check failed transiently, while untrusted marker text cannot suppress the
+normal outdated-thread path.
 
 ```javascript
-candidate.isOutdated &&
-!shouldResolveThread(candidate, headSha, reachableMarkerShas) &&
-!threadsWithStaleMarker.has(candidate.id),  // ← NEW
+unresolvedThreads.filter(shouldAutoPostOutdatedMarker);
 ```
 
 ## Tests
@@ -82,6 +76,21 @@ candidate.isOutdated &&
     'must not post an auto-marker for a stale-marker thread (would mask the real issue)',
   );
   ```
+- Strengthened the transient-lineage regression to use an outdated thread and
+  assert that the reconciler neither replaces its trusted marker nor resolves it.
+
+## Consolidation
+
+- Compared current `main` and sibling PRs #1663, #1615, #1614, #1601, #1598,
+  #1597, #1625, and #1603.
+- Absorbed #1663's compatible fail-closed trusted-marker predicate.
+- Rejected sibling semantics that resolve malformed markers, discard outdated
+  blockers, or alter blocker fingerprints; those contradict this PR's
+  marker-gated stale-recovery contract.
+
+## Apples
+
+Estimated 2 apples, actual 2 apples.
 
 ## PR #1638 unblocking
 
