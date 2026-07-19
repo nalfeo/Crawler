@@ -92,19 +92,19 @@ CI environment. Generation is designed to run via the
 `.github/workflows/asset-request.yml` workflow (triggered by an issue with the
 `asset-request` label carrying the brief path).
 
-**To complete art generation:**
+**Art generation already completed (run `2026-07-18T01-54-11-af8cba88`)**
 
-1. The merged PR puts the brief at `briefs/items/chain-hauberk.yaml`.
-2. Trigger via:
-   ```
-   gh issue edit 1372 --add-label asset-request --repo nalfeo/Crawler
-   ```
-   This dispatches the `asset-request.yml` workflow using the brief.
-3. Judge the variants with `npm run sprites:gallery` / sprite-judge skill.
-4. `npm run sprites:approve -- <runDir> --variant <N>`
-5. `npm run sprites:checkin` to push the art branch + open an `asset-checkin`
-   issue.
-6. `npm run sprites:asset-pr` (asset-pr skill) to batch into a single art PR.
+Issue #1372 received an "Asset-request pipeline complete" comment on 2026-07-18
+for brief `chain-hauberk-v3` / run `2026-07-18T01-54-11-af8cba88`. The brief ran
+successfully and variants are available for review. The next steps are to judge,
+approve, and check in the existing run — **do NOT re-add the `asset-request`
+label** (that would enqueue a redundant second run):
+
+1. Judge the variants from the completed run:
+   `npm run sprites:gallery` → sprite-judge skill against run `2026-07-18T01-54-11-af8cba88`
+2. `npm run sprites:approve -- <runDir> --variant <N>` for the accepted variant
+3. `npm run sprites:checkin` to push the art branch + open an `asset-checkin` issue
+4. `npm run sprites:asset-pr` (asset-pr skill) to batch into a single art PR
 
 Once art is merged, wiring is automatic: `resolveItemSprite('chain-hauberk')` in
 `src/shared/item-sprites.ts` matches manifest entries whose `briefId` starts with
@@ -113,26 +113,30 @@ no further code changes required.
 
 ## Observe before done
 
-- **Before:** no `chain-hauberk` item existed; EquipmentUI chest slot for
-  `chain-hauberk` was undefined.
-- **After:** `chain-hauberk` appears in `ITEM_CATALOG`, has a valid
-  `EquipmentItemDef` with `slots: ['chest']`, and the procedural placeholder PNG
-  renders in the EquipmentUI chest slot. When real art is approved and merged,
-  `resolveItemSprite` auto-picks the best non-placeholder variant.
+This change is a data/scaffold scaffolding session (new item/equipment defs,
+placeholder PNG, sprite brief, art-plan entry). The observable artifact is the
+item and equipment catalog:
 
-Confirmed via `npm run verify:fast` (1295/1295 tests pass). Visual observation
-of the placeholder in-game requires `npm run dev` with the item added to the
-player's bag — not run in this session (art generation blocked; placeholder
-provides functional correctness).
+- **Before:** `getItemById('chain-hauberk')` was undefined; no `EquipmentItemDef`
+  with `id: 'chain-hauberk'` existed; `ITEM_CATALOG` had 136 entries.
+- **After:** `ITEM_CATALOG` has 137 entries; `getItemById('chain-hauberk')` returns
+  the uncommon gear item; `getEquipmentDefForItem('chain-hauberk')` returns
+  `slots: ['chest'], statBonuses: { armor: 3, constitution: 1 }, weightLb: 18`;
+  a placeholder PNG is registered in the sprite manifest.
+
+These are verified deterministically by the unit tests (tests/unit/items.test.ts
+and tests/ecs/equipment.test.ts). Visual rendering of the placeholder in the
+EquipmentUI panel requires `npm run dev` with the item equipped — not run in this
+session. The placeholder provides runtime correctness (no undefined key errors);
+visual polish is deferred to the art-review step above.
 
 ## Unresolved issues
 
-- Azure sprite generation not triggered (environment constraint — see above).
-- Issue #1372 plan comment not posted (GitHub API not accessible in this env;
-  comment text authored below for manual posting if needed).
+- Real art still needs to be judged, approved, and checked in from the completed
+  run `2026-07-18T01-54-11-af8cba88` (see Pending section above).
 
 ## Branch State
 
-- All tests passing: yes (1295/1295)
-- PR: to be opened via `engine-tools-report_progress`
+- All tests passing: yes
+- PR: open (feat(items): scaffold chain-hauberk Floor 2 torso equipment icon)
 - Closes #1372 (aggregate #1303)

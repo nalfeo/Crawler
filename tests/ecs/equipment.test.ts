@@ -903,4 +903,13 @@ describe('equippable slot coverage', () => {
     expect(gearSlots.has('offHand')).toBe(false);
     expect(gearSlots.has('neck')).toBe(false);
   });
+
+  it('chain-hauberk equipment def: chest slot, armor 3, constitution 1, weightLb 18, uncommon', () => {
+    const def = getEquipmentDefForItem('chain-hauberk');
+    expect(def).toBeDefined();
+    expect(def!.slots).toEqual(['chest']);
+    expect(def!.statBonuses).toEqual({ armor: 3, constitution: 1 });
+    expect(def!.rarity).toBe('uncommon');
+    expect(def!.weightLb).toBe(18);
+  });
 });

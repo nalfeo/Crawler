@@ -19,6 +19,18 @@ describe('Item Catalog', () => {
     expect(ITEM_CATALOG).toHaveLength(137);
   });
 
+  it('registers chain-hauberk as uncommon non-stackable gear', () => {
+    expect(getItemById('chain-hauberk')).toEqual({
+      id: 'chain-hauberk',
+      name: 'Chain Hauberk',
+      description:
+        'Thousands of interlocking rings, each one a quiet argument against dying today.',
+      tags: [customTag('Gear')],
+      rarity: ItemRarity.Uncommon,
+      maxStack: 1,
+    });
+  });
+
   it('registers runed-cuirass as rare non-stackable gear', () => {
     expect(getItemById('runed-cuirass')).toEqual({
       id: 'runed-cuirass',
