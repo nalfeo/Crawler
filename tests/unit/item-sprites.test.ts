@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../src/shared/data/floor2-equipment-art.js';
 import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
 import {
   canonicalItemBriefId,
@@ -236,6 +237,17 @@ describe('itemArtIdentitySet', () => {
     expect(itemSpriteConcepts('bone-club')).toContain('baseball-bat');
   });
 
+  it('includes all 70 Floor 2 equipment runtime item identities exactly once', () => {
+    const floor2RuntimeSlugs = FLOOR2_EQUIPMENT_ART_DEFINITIONS.map((definition) =>
+      definition.runtimeKey.slice(definition.runtimeKey.lastIndexOf('/') + 1),
+    );
+    expect(floor2RuntimeSlugs).toHaveLength(70);
+    expect(new Set(floor2RuntimeSlugs).size).toBe(70);
+    for (const slug of floor2RuntimeSlugs) {
+      expect(identity.has(slug)).toBe(true);
+    }
+  });
+
   it('excludes non-item concepts (enemies, set-pieces)', () => {
     expect(identity.has('angry-roomba')).toBe(false);
     expect(identity.has('rat')).toBe(false);
@@ -270,6 +282,11 @@ describe('canonicalItemBriefId', () => {
   it('strips -vN for a weaponId alias that is not an ItemDef.id (baseball-bat)', () => {
     expect(canonicalItemBriefId('baseball-bat-v1', identity)).toBe('baseball-bat');
     expect(canonicalItemBriefId('baseball-bat-v3', identity)).toBe('baseball-bat');
+  });
+
+  it('strips -vN for representative Floor 2 weapon/UI item identities', () => {
+    expect(canonicalItemBriefId('bone-saw-v1', identity)).toBe('bone-saw');
+    expect(canonicalItemBriefId('iron-visor-v2', identity)).toBe('iron-visor');
   });
 
   it('leaves genuinely non-item versioned concepts versioned', () => {

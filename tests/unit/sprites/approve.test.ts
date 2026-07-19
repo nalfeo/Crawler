@@ -8,7 +8,15 @@
  */
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -793,6 +801,46 @@ describe('approveVariant', () => {
 
       expect(entry.briefId).toBe('baseball-bat');
       expect(entry.spriteName).toBe('baseball-bat-var-0');
+    });
+
+    it('canonicalizes a copied immutable bone-saw-v1 run across manifest key + entry fields', () => {
+      const source = writeFakeRun(repoRoot, {
+        briefId: 'bone-saw-v1',
+        runId: '2026-07-18T02-59-09-48cadc',
+        variantIndices: [1],
+        chosenIndex: 1,
+      });
+      const copiedRunDir = path.join(
+        repoRoot,
+        'generated',
+        'runs',
+        'bone-saw-v1',
+        'assets-checkin-20260718-025909-48cadc-copy',
+      );
+      cpSync(source.runDir, copiedRunDir, { recursive: true });
+
+      const entry = approveVariant({
+        runDir: copiedRunDir,
+        variantIndex: 1,
+        manifestPath,
+        catalogPath,
+        publicAssetsDir,
+        repoRoot,
+        now: fixedNow,
+      });
+
+      expect(entry.briefId).toBe('bone-saw');
+      expect(entry.spriteName).toBe('bone-saw-var-1');
+      expect(entry.assetPath).toBe('generated/bone-saw-var-1.png');
+
+      const manifest = readManifest(manifestPath);
+      expect(manifest.entries).toHaveProperty('bone-saw-var-1');
+      expect(manifest.entries).not.toHaveProperty('bone-saw-v1-var-1');
+      expect(manifest.entries['bone-saw-var-1']).toMatchObject({
+        briefId: 'bone-saw',
+        spriteName: 'bone-saw-var-1',
+        assetPath: 'generated/bone-saw-var-1.png',
+      });
     });
 
     it('leaves a genuine non-item versioned brief VERSIONED (angry-roomba-v2)', () => {

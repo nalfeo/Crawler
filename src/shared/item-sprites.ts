@@ -33,6 +33,7 @@ import type { GeneratedSpriteEntry, GeneratedSpriteRegistry } from './generated-
 import { HARVESTABLE_DEFS } from './harvestableDefs.js';
 import { ITEM_CATALOG } from './items.js';
 import { SeededRandom } from './random.js';
+import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from './data/floor2-equipment-art.js';
 
 /** Quality tiers for a candidate entry; lower is preferred. */
 const TIER_BARE_REAL = 0;
@@ -129,6 +130,18 @@ export function itemArtIdentitySet(): ReadonlySet<string> {
     if (weaponId !== undefined) {
       identity.add(weaponId);
     }
+  }
+  // G2-A Floor 2 equipment art definitions intentionally lead gameplay catalogs.
+  // Include every canonical identity lane that can appear in approval inputs so
+  // `canonicalItemBriefId` normalizes all Floor 2 item art to BARE keys:
+  //   - stable id (`weapon.bone-saw`)
+  //   - runtime key (`equipment/weapon/bone-saw`)
+  //   - runtime item slug (`bone-saw`)
+  for (const definition of FLOOR2_EQUIPMENT_ART_DEFINITIONS) {
+    identity.add(definition.stableId);
+    identity.add(definition.runtimeKey);
+    const runtimeSlug = definition.runtimeKey.slice(definition.runtimeKey.lastIndexOf('/') + 1);
+    identity.add(runtimeSlug);
   }
   // Harvestable world-node ids (e.g. `azure-mushroom`) also register as Materials
   // ItemDefs, but their generated art ships as a VERSIONED world-node key
