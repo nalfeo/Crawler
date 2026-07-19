@@ -30,11 +30,16 @@ CI-recovery behavior:
 - preserved a known recovery reply when a reviewer adds a later follow-up by
   scanning backward to the newest non-marker recovery comment, while stopping
   at any newer addressed marker
+- merged the later `main` queue, regenerated the handoff index conflict, and
+  kept the stale-marker regression on its intended blocker-summary path
+- repaired the newly merged verifier fixture so Windows-host paths stay native
+  for `npx tsc` while files consumed directly by WSL bash use translated paths
 
 ## Files touched
 
 - `.github/scripts/ci-recovery/reconcile.mjs`
 - `.github/scripts/ci-recovery/reconcile.test.mjs`
+- `tests/unit/verify-fast-typecheck.test.ts`
 - `src/shared/data/sprite-catalog.json`
 - `docs/knowledge/handoffs/2026-07-19-ci-recovery-merge-conflict-recovery.md`
 
@@ -44,6 +49,7 @@ CI-recovery behavior:
 cd /home/runner/work/Crawler/Crawler
 node --test .github/scripts/ci-recovery/reconcile.test.mjs --test-name-pattern='stale-marker thread includes recovery hint|prior-reply thread includes hint|prior-reply hint ignores non-recovery collaborator|transient compare failure|outdated-marker'
 node --test .github/scripts/ci-recovery/reconcile.test.mjs
+npx vitest run tests/unit/verify-fast-typecheck.test.ts --project unit
 npm run verify:fast
 npm run verify:pr-prereqs
 ```
