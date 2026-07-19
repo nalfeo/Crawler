@@ -845,9 +845,9 @@ export async function runHeadless(
         const event = combatEvents[eventIndex]!;
         if (event.type === 'hit' && event.targetType === 'player' && event.amount > 0) {
           // Prefer the pre-snapshotted stable archetype key over the EID lookup:
-          // sourceEid is best-effort (may reference a recycled entity), but
-          // sourceArchetypeKey is captured at hit creation while the source is
-          // still live and is therefore always stable.
+          // sourceEid is best-effort (may reference a recycled entity). For
+          // projectile/AoE hits, sourceArchetypeKey is captured at spawn time;
+          // for direct melee hits it is resolved live at hit time.
           const source =
             event.sourceArchetypeKey ??
             (event.sourceEid === undefined
