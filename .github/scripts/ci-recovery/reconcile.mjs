@@ -1387,7 +1387,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
     path: thread.path || undefined,
-    line: thread.line || undefined,
+    line: thread.isOutdated ? undefined : thread.line || undefined,
     summary,
     url: root?.url,
   });
