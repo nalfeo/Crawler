@@ -666,15 +666,15 @@ export function selectQualifiedWinner(
  * higher `totalScore` → faster `meanClearTimeMsWins` (lower) → higher
  * `meanMinHealthPercent` → higher `meanXp` → higher `meanGold`.
  *
- * Pass `undefined` for `b` (e.g. when the current position's row is not yet
- * in the leaderboard) to treat it as "nothing to beat" — returns `false` so
- * an unknown current position is never blindly displaced.
+ * When `b` is undefined (e.g. the current position's row is not yet in the
+ * leaderboard), `a` is treated as unconditionally better so any qualifying
+ * candidate displaces an unknown current position.
  */
 export function isBetterQualifiedCandidate(
   a: LeaderboardRow,
   b: LeaderboardRow | undefined,
 ): boolean {
-  if (!b) return false;
+  if (!b) return true;
   if (a.totalScore !== b.totalScore) return a.totalScore > b.totalScore;
   const aTime = a.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
   const bTime = b.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;

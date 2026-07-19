@@ -1003,9 +1003,14 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
 //
 // Skip threads whose last trusted comment already carries a ✅ Addressed marker that
-// points to a SHA the compare API confirmed as definitively unreachable.  Posting an
-// outdated-marker on top of a stale one would wrongly resolve the thread before the
-// stale-marker hint loop below can surface it in the task body.
+// points to a SHA the compare API confirmed as definitively unreachable.  A SHA is
+// "definitively unreachable" when the compare API returned a concrete answer: either a 404
+// (commit never existed on GitHub) or a successful compare whose status is not
+// 'identical'/'ahead' (commit exists but is not an ancestor of HEAD).  SHAs with
+// transient failures (rate-limits, 5xx, 422 ambiguous SHA, network errors) stay out of
+// definitivelyUnreachableMarkerShas so we never wrongly treat a recoverable failure as a
+// definitive stale marker. Posting an outdated-marker on top of a stale one would wrongly
+// resolve the thread before the stale-marker hint loop below can surface it in the task body.
 for (const thread of unresolvedThreads.filter((candidate) => {
   if (!candidate.isOutdated) return false;
   if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;

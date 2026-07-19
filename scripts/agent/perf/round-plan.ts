@@ -42,6 +42,7 @@ import {
   assertMatrixWithinCap,
   comboId,
   configId,
+  LEGACY_COMBO_ID,
   knobsForCombo,
   neighbors,
   parseComboId,
@@ -60,6 +61,26 @@ import type { LeaderboardRow, RunRow, ShardArtifact, ShardMeta } from './aggrega
 /** Σ composite score for one config's rows — the search hill-climb heuristic. */
 function totalScoreOf(rows: readonly RunRow[], id: string): number {
   return rows.filter((r) => r.configId === id).reduce((a, r) => a + r.score, 0);
+}
+
+/** Dedup/conflict key for a run row: `configId\0weapon\0seed`. */
+function rowKey(r: RunRow): string {
+  return `${r.configId}\u0000${r.weapon}\u0000${r.seed}`;
+}
+
+/** Returns true when two rows for the same key share identical run facts. */
+function rowFactsMatch(a: RunRow, b: RunRow): boolean {
+  return (
+    a.outcome === b.outcome &&
+    a.officialWin === b.officialWin &&
+    a.gameTimeMs === b.gameTimeMs &&
+    a.safeRoomMs === b.safeRoomMs &&
+    a.score === b.score &&
+    a.xp === b.xp &&
+    a.gold === b.gold &&
+    a.minHealthPercent === b.minHealthPercent &&
+    a.finalLevel === b.finalLevel
+  );
 }
 
 /**
@@ -147,7 +168,7 @@ export function initCheckpoint(
   // for non-LEGACY combos so that the in-search flip check mirrors the final
   // graduation gate (`selectQualifiedWinner`). For `legacy+legacy` the combo
   // IS the LEGACY incumbent, so no separate baseline is needed.
-  const comboIsLegacy = comboStr === 'legacy+legacy';
+  const comboIsLegacy = comboStr === LEGACY_COMBO_ID;
   let incumbentConfigId = baseId;
   const allConfigs: Record<string, SweepConfig> = { ...baseline.configs };
   const allRows: RunRow[] = [...baseline.rows];
@@ -324,7 +345,7 @@ export function applyRoundResult(
   const configs = { ...checkpoint.configs };
   const rows = [...checkpoint.rows];
   const seenRows = new Map<string, RunRow>(
-    rows.map((r) => [`${r.configId}\u0000${r.weapon}\u0000${r.seed}`, r]),
+    rows.map((r) => [rowKey(r), r]),
   );
   const newCandidateIds = new Set<string>();
 
@@ -341,10 +362,10 @@ export function applyRoundResult(
       newCandidateIds.add(id);
     }
     for (const r of shard.rows) {
-      const key = `${r.configId}\u0000${r.weapon}\u0000${r.seed}`;
+      const key = rowKey(r);
       const existing = seenRows.get(key);
       if (existing !== undefined) {
-        if (JSON.stringify(existing) !== JSON.stringify(r)) {
+        if (!rowFactsMatch(existing, r)) {
           throw new Error(
             `applyRoundResult(${checkpoint.combo}): conflicting run result for key ${key} — determinism violation across shards.`,
           );
