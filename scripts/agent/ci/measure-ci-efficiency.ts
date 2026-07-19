@@ -120,6 +120,11 @@ interface Report {
   avoidableMinutes: number;
   avoidablePercent: number;
   supersededMinutes: number;
+  /**
+   * Percentage reduction in superseded runner-minutes vs. the baseline.
+   * Null when baseline.supersededMinutes is 0 (no prior superseded waste to compare against),
+   * which would indicate the baseline was already optimal in this dimension.
+   */
   supersededReductionVsBaseline: number | null;
   nonVisualE2eMinutes: number;
   nonSimHeadlessMinutes: number;
@@ -204,7 +209,8 @@ async function ghGet(path: string, token: string, retries = 3): Promise<unknown>
     } catch (err) {
       const msg = String(err);
       if ((msg.includes('429') || msg.includes('503')) && attempt < retries) {
-        const delayMs = 1000 * Math.pow(2, attempt);
+        // Cap backoff at 8s (500ms × 2^4) to avoid excessive waits in analysis runs
+        const delayMs = Math.min(500 * Math.pow(2, attempt), 8000);
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }
@@ -214,7 +220,12 @@ async function ghGet(path: string, token: string, retries = 3): Promise<unknown>
 }
 
 /** Fetch all pages from a paginated GitHub API endpoint. */
-async function ghGetAll(basePath: string, token: string, pageLimit = 500): Promise<unknown[]> {
+async function ghGetAll(
+  basePath: string,
+  token: string,
+  // 100 pages × 100 items = 10,000 items; sufficient for any 7-day PR file listing
+  pageLimit = 100,
+): Promise<unknown[]> {
   const results: unknown[] = [];
   for (let page = 1; page <= pageLimit; page++) {
     const sep = basePath.includes('?') ? '&' : '?';
@@ -404,7 +415,7 @@ function detectSupersededRuns(runs: WorkflowRun[]): Set<number> {
       // Check if any newer run started before the older one completed
       for (let j = i + 1; j < sorted.length; j++) {
         const newer = sorted[j]!;
-        if (newer.created_at < completedAtProxy && newer.id !== older.id) {
+        if (new Date(newer.created_at) < new Date(completedAtProxy) && newer.id !== older.id) {
           superseded.add(older.id);
           break;
         }
@@ -504,8 +515,8 @@ async function fetchRunsInWindow(
     if (passedWindow || !foundAny) break;
     page++;
 
-    // Throttle: 1 req/sec to stay well within GitHub rate limits
-    await new Promise((r) => setTimeout(r, 100));
+    // Throttle at ~5 req/sec to stay well within GitHub rate limits (5000 req/hr)
+    await new Promise((r) => setTimeout(r, 200));
     if (page % 10 === 0) process.stderr.write('.');
   }
 
@@ -570,7 +581,8 @@ function percentile(values: number[], p: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   // nearest-rank: rank = ceil(p/100 * n), 1-based → 0-based index = rank - 1
   const rank = Math.ceil((p / 100) * sorted.length);
-  return sorted[Math.max(0, rank - 1)] ?? 0;
+  const idx = Math.min(Math.max(0, rank - 1), sorted.length - 1);
+  return sorted[idx] ?? 0;
 }
 
 async function analyze(args: {
@@ -619,7 +631,6 @@ async function analyze(args: {
         } catch {
           files = [];
         }
-        await new Promise((r) => setTimeout(r, 50));
       }
       impact = files.length > 0 ? classifyFiles(files) : 'unknown';
     }
@@ -631,7 +642,6 @@ async function analyze(args: {
     } catch {
       // Use empty jobs on error
     }
-    await new Promise((r) => setTimeout(r, 50));
 
     const totalMinutes = jobs.reduce((s, j) => s + j.durationMinutes, 0);
     const superseded = supersededIds.has(run.id);
@@ -740,8 +750,11 @@ async function analyze(args: {
 
   // Wall-clock latency (minutes from run.created_at to run.completedAt)
   const latencies = analyses
-    .filter((a) => a.completedAt)
-    .map((a) => (new Date(a.completedAt!).getTime() - new Date(a.createdAt).getTime()) / 60000);
+    .filter((a): a is RunAnalysis & { completedAt: string } => a.completedAt !== null)
+    .map((a) => {
+      const completed = new Date(a.completedAt).getTime();
+      return (completed - new Date(a.createdAt).getTime()) / 60000;
+    });
 
   // Baseline for comparison
   const baseline = {
@@ -853,7 +866,7 @@ Window: ${report.analysisWindow.start} → ${report.analysisWindow.end}
 |--------|----------|--------------|--------|--------|
 | Total runner-minutes | ${fmtMin(b.totalMinutes)} | ${fmtMin(report.totalMinutes)} | ${fmt(((report.totalMinutes - b.totalMinutes) / b.totalMinutes) * 100)}% | — |
 | Avoidable % | ${pct(b.avoidablePercent)} | ${pct(report.avoidablePercent)} | ${fmt(deltaAvoidable)}pp | <15% |
-| Superseded minutes | ${fmtMin(b.supersededMinutes)} | ${fmtMin(report.supersededMinutes)} | ${deltaSuperseded !== null ? `−${fmt(deltaSuperseded)}%` : 'N/A'} | −90% |
+| Superseded minutes | ${fmtMin(b.supersededMinutes)} | ${fmtMin(report.supersededMinutes)} | ${deltaSuperseded !== null ? `-${fmt(deltaSuperseded)}%` : 'N/A'} | -90% |
 | Non-visual E2E min | ${fmtMin(b.nonVisualE2eMinutes)} | ${fmtMin(report.nonVisualE2eMinutes)} | — | — |
 | Non-sim headless min | ${fmtMin(b.nonSimHeadlessMinutes)} | ${fmtMin(report.nonSimHeadlessMinutes)} | — | — |
 | Non-coverage min | ${fmtMin(b.nonCoverageMinutes)} | ${fmtMin(report.nonCoverageMinutes)} | — | — |
@@ -956,7 +969,7 @@ async function main(): Promise<void> {
   if (windowDays < ACCEPTANCE.minWindowDays) {
     console.error(
       `❌ Window is ${windowDays.toFixed(1)} days, but the acceptance criterion requires at least` +
-        ` ${ACCEPTANCE.minWindowDays} representative post-rollout days (issue #1702).`,
+        ` ${ACCEPTANCE.minWindowDays} representative post-rollout days.`,
     );
     console.error(
       '   Run after all dependency issues (#1688, #1689, #1696, #1697, #1698) have merged',
