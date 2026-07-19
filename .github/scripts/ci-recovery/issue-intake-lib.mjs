@@ -190,11 +190,13 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
   if (!mentionsPlanRequirement) return [];
 
   const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
-  const explicitMatches = issueNumbers.filter((issueNumber) =>
-    new RegExp(`(?:\\bissue\\s+#?|#)${issueNumber}\\b`, 'i').test(text),
+  const explicitReferences = [...text.matchAll(/(?:\bissue\s+#?|#)(\d+)\b/gi)].map((match) =>
+    Number.parseInt(match[1], 10),
   );
-  if (explicitMatches.length > 0) return explicitMatches;
-  if (/(?:\bissue\s+#?|#)\d+\b/i.test(text)) return [];
+  if (explicitReferences.length > 0) {
+    if (explicitReferences.some((issueNumber) => !issueNumbers.includes(issueNumber))) return [];
+    return [...new Set(explicitReferences)];
+  }
 
   if (
     issueNumbers.length === 1 &&
