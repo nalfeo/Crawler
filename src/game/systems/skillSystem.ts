@@ -87,7 +87,7 @@ export function skillSystem(world: GameWorld): void {
           if (abilityId !== undefined) {
             const targetEid = event.holderEid ?? query(world.ecs, [Player])[0];
             if (targetEid !== undefined) {
-              grantPassiveAbility(world, targetEid, abilityId);
+              grantPassiveAbility(world, targetEid, abilityId, { kind: 'skill', skillId: def.id });
             }
           }
         }

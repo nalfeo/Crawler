@@ -127,6 +127,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Visual review (LLM)       | `npm run review:visual:llm`               |
 | Visual review (equip.)    | `npm run review:visual:equipment`         |
 | Producer agent            | `npm run producer`                        |
+| Epic status               | `npm run epic:status`                     |
 | Perf find baseline        | `npm run perf:find-baseline`              |
 | Merge train protection    | `npm run train:protection`                |
 | Train protection status   | `npm run train:protection:status`         |
@@ -286,7 +287,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   (`C:\Windows\System32\bash.exe`, a genuine Linux `x86_64-pc-linux-gnu` bash),
   not Git-Bash/MSYS2. Two things silently break tests that `spawnSync('bash', ...)`
   a script by absolute path: (1) a `path.resolve()`-built Windows path
-  (`C:\Users\...`) is meaningless to WSL, which needs the `/mnt/c/Users/...`
+  (`C:\Users\...`) is meaningless to WSL, which needs the corresponding WSL
   mount form instead; (2) WSL does **not** forward the parent process's env
   vars into the Linux session unless they're named in the `WSLENV`
   allow-list, so custom env-var test hooks (e.g. `SCOPE_FILES_OVERRIDE`) are

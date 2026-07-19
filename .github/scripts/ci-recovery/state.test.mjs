@@ -451,6 +451,63 @@ test('automation staleness waits, retries once, then releases without treating w
   );
 });
 
+test('legacy state without progressKey is never exhausted regardless of historical attempt count', () => {
+  // Regression for Thread 5 (PRRT_kwDOSvo2Ms6Rv6pU): legacy automation states
+  // have no progressKey and carry a historical cumulative attempt count that must
+  // NOT trigger the new progressKey-scoped exhaustion gate (attempt>=2 → release).
+  // Such states should always resolve to 'retry' so they get at least one more
+  // chance under the new per-progress-key budget.
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
+  ]);
+  const legacyStateAttempt2 = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
+    attempt: 2,
+    // No progressKey / progressAt — legacy state
+    updatedAt: '2026-07-17T12:00:00.000Z',
+  });
+  const legacyStateAttempt5 = { ...legacyStateAttempt2, attempt: 5 };
+
+  // Fresh enough — should wait regardless of attempt
+  assert.equal(
+    automationStallAction({
+      state: legacyStateAttempt2,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:10:00.000Z'),
+    }),
+    'wait',
+    'legacy attempt=2 within window should wait',
+  );
+  // Stale — legacy state with attempt=2 must retry, not release
+  assert.equal(
+    automationStallAction({
+      state: legacyStateAttempt2,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    'retry',
+    'legacy attempt=2 should resolve to retry, not release',
+  );
+  // Legacy state with very high historical attempt also retries once
+  assert.equal(
+    automationStallAction({
+      state: legacyStateAttempt5,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    'retry',
+    'legacy attempt=5 should also resolve to retry under new semantics',
+  );
+});
+
 test('broad sweeps suppress only healthy consistent owners', () => {
   const automation = makeState({
     prNumber: 42,
@@ -640,6 +697,47 @@ test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL mar
   for (const body of rejected) {
     assert.equal(extractAddressedMarkerSha(body), null, body);
   }
+});
+
+test('extractAddressedMarkerSha parses slash-separated SHA pair by taking the second (later) SHA', () => {
+  // Agents sometimes write two SHAs when a fix spans multiple commits, e.g.
+  // "✅ Addressed in 9adef25/28f3d0f: ...". The second (later) SHA is returned
+  // so its ancestry in the lineage check proves the complete pair is present.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in 9adef25/28f3d0f: note'), '28f3d0f');
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/def5678abc: note'), 'def5678abc');
+  // Malformed: non-SHA first component → rejected.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in not-a-sha/abc1234def: note'), null);
+  // Malformed: non-SHA second component → rejected.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/not-a-sha: note'), null);
+  // Malformed: empty second component (trailing slash) → rejected.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/: note'), null);
+  // Malformed: more than two components → rejected (not exactly a pair).
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/def5678abc/extra: note'), null);
+});
+
+test('shouldResolveThread accepts slash-separated SHA pair when second (later) SHA is a reachable ancestor', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Needs fixing.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed in 9adef25/28f3d0f: Handoff and PR description fully reconciled.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  // Second SHA in the pair is a reachable ancestor of head → should resolve.
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set(['28f3d0f'])), true);
+  // Not in reachable set and not head prefix → should not resolve.
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
+  // Second SHA matches head prefix → should resolve.
+  assert.equal(shouldResolveThread(thread, '28f3d0fabc123456'), true);
 });
 
 test('shouldResolveThread accepts latest trusted commit URL marker on head lineage', () => {

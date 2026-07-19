@@ -56,17 +56,17 @@ These are aspirational per-layer targets. Mechanical enforcement currently uses 
 
 ### 9. Rapid Five-Level Build Growth
 
-Equipment and other build progression must preserve Crawler's high-stakes feel.
-Every representative build must grow meaningfully stronger every five levels.
-The quantitative gate is a **median aggregate realized-DPS ratio of 1.7×–2.3×**,
-measured independently at each five-level representative-build band
-(initially Level 1 → 6 and Level 6 → 11 for the Floor 2 equipment epic).
+Equipment and other build progression must preserve Crawler's rapid
+fragile-to-dominant power curve. For one fixed representative build cohort,
+median aggregate realized DPS over committed deterministic encounter fixtures
+must grow by **1.7x-2.3x every five player levels**.
 
-Measurement authority: `computeEffectiveStatsFromLoadout` in
-`src/core/effective-stats.ts` and `computeTypedPrimaryMultiplier` in
-`src/shared/stats.ts`. Deviating from these helpers risks tuning against the
-wrong formula. The deterministic representative-build fixture is the release
-authority — not hand-picked examples or visual feel estimates.
+The initial release gate evaluates level 1 -> 6 and level 6 -> 11 as independent
+bands; both must pass. Results may be spiky for an individual build, encounter,
+or seed, but neither cherry-picked weapons nor averaging one failing band into a
+passing band may satisfy the principle. Later progression extends the same
+five-level windows (11 -> 16, 16 -> 21, and so on) with new representative
+fixtures; extending coverage never changes the 1.7x-2.3x target.
 
 ### 10. Hashimoto's Loop
 
