@@ -3753,8 +3753,15 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
       status: 404,
       body: { message: 'Not Found' },
     }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${outdatedReviewCommentId}/replies`]:
+      () => ({
+        body: { id: 99998, body: '✅ Addressed in abc123' },
+      }),
     [`POST /graphql`]: (_url, parsed) => {
       const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
       if (query.includes('suggestedActors')) {
         return {
           body: {
@@ -3851,6 +3858,23 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
   assert.ok(
     taskCommentCall.body.body.includes(`Reply target comment ID: \`${freshReviewCommentId}\``),
     'task comment should include the fresh review-thread reply target comment ID',
+  );
+  const outdatedReplyCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url ===
+        `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${outdatedReviewCommentId}/replies`,
+  );
+  assert.ok(outdatedReplyCall, 'expected a reply to be posted on the outdated review thread');
+  const outdatedResolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === 'thread-review-target-outdated',
+  );
+  assert.ok(
+    outdatedResolveCall,
+    'expected the outdated review thread to be resolved via GraphQL mutation',
   );
   assert.match(stdout, /posted outdated-marker thread=thread-review-target-outdated/);
   assert.match(stdout, /resolved thread=thread-review-target-outdated/);
