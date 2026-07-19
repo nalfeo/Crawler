@@ -180,7 +180,7 @@ function gear(id: string, name: string, desc: string, rarity: ItemRarity): ItemD
 }
 
 export const ITEM_CATALOG: readonly ItemDef[] = [
-  // ── Materials (20) ──────────────────────────────────────────────────
+  // ── Materials ───────────────────────────────────────────────────────
   mat('iron-ore', 'Iron Ore', 'A chunk of crude iron. Smells like ambition.', C),
   mat('copper-ore', 'Copper Ore', 'Greenish and crumbly. Better than nothing.', C),
   mat('gold-nugget', 'Gold Nugget', 'Shiny enough to distract the audience.', U),
@@ -206,7 +206,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   mat('rusted-scrap', 'Rusted Scrap', 'Junk to most. Treasure to crafters.', C),
   mat('celestial-ingot', 'Celestial Ingot', "Forged in a star that hasn't been born yet.", L),
 
-  // ── Weapons (25) ────────────────────────────────────────────────────
+  // ── Weapons ─────────────────────────────────────────────────────────
   wpn('throwing-knife', 'Throwing Knife', 'Balanced for a clean throw and a cleaner escape.', C),
   wpn('iron-sword', 'Sword', 'Serviceable. Boring. Gets the job done.', C),
   wpn('flame-dagger', 'Flame Dagger', 'The blade is warm. Always.', U),
@@ -236,11 +236,19 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('sling-of-shame', 'Sling of Shame', 'Rated #1 by audience vote.', U),
   wpn('oil-lantern', 'Oil Lantern', 'A glass trap that shatters warmly.', U),
   wpn('anchor-mace', 'Anchor Mace', 'For when you need to make a point. Slowly.', R),
+  wpn('harpoon-gun', 'Harpoon Gun', 'Fire a tethered bolt and reel them in.', R),
   wpn('twin-fangs', 'Twin Fangs', 'A pair of daggers that hum in harmony.', E),
   wpn('sponsor-sword', 'Sponsor Sword', 'Brought to you by GalactiCorp™.', L),
+  wpn(
+    'bone-chakram',
+    'Bone Chakram',
+    'A razor ring carved from dungeon bone. Comes back. Usually.',
+    R,
+  ),
   wpn('ember-wand', 'Ember Wand', 'Channels smoldering intent into a focused bolt of heat.', R),
+  wpn('echo-bell', 'Echo Bell', 'A resonant beam weapon that rings once and never stops.', R),
 
-  // ── Consumables (20) ────────────────────────────────────────────────
+  // ── Consumables ─────────────────────────────────────────────────────
   con('health-vial', 'Health Vial', 'Tastes like pennies and hope.', C),
   con('recharge-tonic', 'Recharge Tonic', 'Fizzy, electric, and rude to your cooldowns.', C),
   con('stim-shot', 'Stim Shot', 'Speed boost. Side effects undisclosed.', U),
@@ -266,7 +274,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   con('sponsor-energy-drink', 'Sponsor Energy Drink', 'GalactiCorp™ keeps you going!', U),
   con('revival-kit', 'Revival Kit', 'Contains everything needed for a dramatic comeback.', L),
 
-  // ── Key Items (20) ──────────────────────────────────────────────────
+  // ── Key Items ───────────────────────────────────────────────────────
   key('floor-key-bronze', 'Bronze Floor Key', 'Opens the next floor. Probably.', C),
   key('floor-key-silver', 'Silver Floor Key', 'A slightly fancier door opener.', U),
   key('floor-key-gold', 'Gold Floor Key', 'Opens doors and impresses audiences.', R),
@@ -294,7 +302,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     [customTag('Smelly Stuff')],
   ),
 
-  // ── Misc (20) ───────────────────────────────────────────────────────
+  // ── Misc ────────────────────────────────────────────────────────────
   misc('broken-circuit', 'Broken Circuit', 'Sparks occasionally. Mostly useless.', C),
   misc('alien-tooth', 'Alien Tooth', 'From a species with too many mouths.', U, [
     customTag('Smelly Stuff'),
@@ -387,9 +395,21 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   // Slug mirrors an EquipmentItemDef in equipmentDefs.ts (same id) so the
   // item round-trips bag → equip → unequip → bag. Tagged only 'Gear'.
   gear('iron-helm', 'Iron Helm', 'A dented pot with eyeholes. Surprisingly reassuring.', C),
+  gear(
+    'batfolk-hood',
+    'Batfolk Hood',
+    'Cured membrane hide with twin bat-ear protrusions. Floor 2 souvenir.',
+    U,
+  ),
   gear('iron-visor', 'Iron Visor', 'A slitted faceplate. You see less, you flinch less.', C),
   gear('steel-pauldrons', 'Steel Pauldrons', 'Broad shoulder plates. Makes doorways a gamble.', U),
   gear('iron-breastplate', 'Iron Breastplate', 'Heavy, honest protection for the vitals.', U),
+  gear(
+    'runed-cuirass',
+    'Runed Cuirass',
+    'Dark-metal chest plate etched with glowing arcane runes.',
+    R,
+  ),
   gear('travelers-cloak', "Traveler's Cloak", 'Frayed at the hem, quick on the feet.', U),
   gear('sturdy-belt', 'Sturdy Belt', 'Cinches the gut and steadies the nerves.', C),
   gear('iron-greaves', 'Iron Greaves', 'Shin plates that have met many shins.', U),
@@ -401,6 +421,17 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   gear('beaded-bracelet', 'Beaded Bracelet', 'Lucky beads that rattle before a crit.', U),
   gear('band-of-fortune', 'Band of Fortune', 'A left-hand ring humming with dumb luck.', R),
   gear('signet-of-focus', 'Signet of Focus', 'A right-hand signet that sharpens the mind.', R),
+
+  // ── Floor 2 accessory equipment (icon scaffolding) ─────────────────
+  // Gear entries enable resolveItemSprite() auto-resolution once real art
+  // lands. No EquipmentItemDef yet — full slot wiring follows in the
+  // floor2 equipment contracts epic.
+  gear(
+    'surveyor-map',
+    'Surveyor Map',
+    "A battered cartographer's map folded into a compact accessory. Its charted passages hint at secret routes ahead.",
+    U,
+  ),
 ];
 
 // ---------------------------------------------------------------------------

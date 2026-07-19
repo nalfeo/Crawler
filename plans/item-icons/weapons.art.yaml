@@ -227,6 +227,48 @@ assets:
       kind: sprite-registry
       id: sponsor-sword
 
+  - id: alchemist-sprayer
+    type: weapon
+    label: 'Alchemist Sprayer'
+    brief: >-
+      Alchemist Sprayer — a compact chemical-spray weapon icon for Floor 2.
+      Chunky cylindrical pressure canister with a corroded brass nozzle crown
+      at the top and a wrapped grip at the bottom. Hazard stripes, chemical
+      staining, retro-futurist corporate-decay aesthetic. Silhouette reads as
+      spray weapon at a glance.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: alchemist-sprayer
+
+  - id: harpoon-gun
+    type: weapon
+    label: 'Harpoon Gun'
+    brief: 'Harpoon Gun — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. A tethered harpoon launcher — fire a bolt and reel them in.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: harpoon-gun
+  - id: bone-chakram
+    type: weapon
+    label: 'Bone Chakram'
+    brief: >-
+      Bone Chakram — a centered thrown weapon icon on a transparent background.
+      Diagonal ring of carved bone with a silhouette that reads clearly as a
+      circular blade. Bone-ivory texture, cracked surface, Floor 2 intensity.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: bone-chakram
+
+  - id: echo-bell
+    type: weapon
+    label: 'Echo Bell'
+    brief: 'Echo Bell — a Floor 2 beam weapon: a sleek resonance bell on a short handle, held vertically. Bell-head at top, grip at bottom. Metallic body with a glowing accent ring. Silhouette reads as bell-on-a-handle at a glance.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: echo-bell
   - id: ember-wand
     type: weapon
     label: 'Ember Wand'

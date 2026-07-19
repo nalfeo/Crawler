@@ -22,6 +22,7 @@ import {
   getEffectiveStats,
   getEquipmentState,
   previewEquipDelta,
+  resolveEquipmentInstance,
   type EquipDeltaPreview,
 } from '../core/systems/equipmentSystem.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
@@ -29,7 +30,8 @@ import { PRIMARY_STATS, SECONDARY_STATS, ALL_STAT_IDS, type StatId } from '../sh
 import { getEntityEncumbranceSnapshot } from '../core/encumbrance.js';
 import { addItem, filterByEquipmentSlot, filterEquippable } from '../shared/inventory.js';
 import type { InventoryBag, InventorySlot } from '../shared/inventory.js';
-import { getItemById, RARITY_COLORS, type ItemDef } from '../shared/items.js';
+import { getItemById, ItemRarity, RARITY_COLORS, type ItemDef } from '../shared/items.js';
+import type { EquipmentItemDef } from '../shared/equipment-types.js';
 import {
   emptyGeneratedSpriteRegistry,
   type GeneratedSpriteEntry,
@@ -490,7 +492,7 @@ export function createEquipmentUI(
 
   function createItemIcon(
     itemId: string,
-    itemDef: ItemDef,
+    itemDef: Pick<ItemDef, 'name'>,
     x: number,
     y: number,
     boxSize: number,
@@ -688,6 +690,28 @@ export function createEquipmentUI(
     ]);
   }
 
+  function showGeneratedEquipmentTooltip(def: EquipmentItemDef): void {
+    const rarityColor =
+      def.rarity === 'common'
+        ? RARITY_COLORS[ItemRarity.Common]
+        : def.rarity === 'uncommon'
+          ? RARITY_COLORS[ItemRarity.Uncommon]
+          : def.rarity === 'rare'
+            ? RARITY_COLORS[ItemRarity.Rare]
+            : def.rarity === 'epic'
+              ? RARITY_COLORS[ItemRarity.Epic]
+              : RARITY_COLORS[ItemRarity.Legendary];
+    renderInspector([
+      { text: truncateToWidth(def.name, 9), color: rarityColor, size: 9 },
+      { text: 'GENERATED EQUIPMENT', color: COLORS.textSecondary, size: 8 },
+      {
+        text: truncateToWidth(`${def.rarity.toUpperCase()} · [${(def.tags ?? []).join(', ')}]`, 8),
+        color: 0x8792ad,
+        size: 8,
+      },
+    ]);
+  }
+
   function showEmptySlotTooltip(slotLabel: string): void {
     renderInspector([
       { text: slotLabel.toUpperCase(), color: COLORS.textPrimary, size: 9 },
@@ -724,7 +748,7 @@ export function createEquipmentUI(
     }
     if (preview.swappedOut.length > 0) {
       const names = preview.swappedOut
-        .map((swapped) => getItemById(swapped.id)?.name ?? swapped.id)
+        .map((swapped) => getItemById(swapped.id)?.name ?? swapped.name)
         .join(', ');
       lines.push({ text: truncateToWidth(`REPLACES: ${names}`, 8), color: 0x8792ad, size: 8 });
     } else if (!preview.canEquip) {
@@ -751,7 +775,12 @@ export function createEquipmentUI(
     if (!currentBag || playerEid < 0 || !lastWorld) return;
     const result = unequip(lastWorld, playerEid, slotId);
     if (result.ok) {
-      addItem(currentBag, result.item.def.id, 1);
+      if (!result.bagUpdated) {
+        addItem(currentBag, result.item.def.id, 1);
+      }
+      // TODO(C2→D): call revokeEquipmentAbilityGrants(lastWorld, playerEid, result.item.instanceId)
+      // here once equipment-ability wiring is implemented so unequipping revokes
+      // only this instance's ability grants (see src/game/systems/abilitySystem.ts).
       invalidate();
       config.onInventoryChanged?.();
     }
@@ -816,7 +845,10 @@ export function createEquipmentUI(
       const cy = dollY + innerPadY + SLOT_H / 2 + py * usableH;
 
       const instId = state?.equipped[slot.id] ?? null;
-      const instance = instId !== null ? (state?.instances.get(instId) ?? null) : null;
+      const instance =
+        instId !== null && state
+          ? (resolveEquipmentInstance(lastWorld, state, instId) ?? null)
+          : null;
       const slotBorderColor = instance ? COLORS.panelBorder : COLORS.slotEmptyBorder;
       const itemDef = instance ? getItemById(instance.def.id) : undefined;
 
@@ -911,10 +943,9 @@ export function createEquipmentUI(
         0x1f2d48,
         0.95,
       );
-      const iconObject =
-        instance && itemDef
-          ? createItemIcon(instance.def.id, itemDef, cx, cy, boxH - 4)
-          : createSlotPlaceholder(slot.id, cx, cy + 2);
+      const iconObject = instance
+        ? createItemIcon(instance.def.id, itemDef ?? instance.def, cx, cy, boxH - 4)
+        : createSlotPlaceholder(slot.id, cx, cy + 2);
       const occupiedFill =
         instance !== null
           ? scene.add.rectangle(
@@ -931,6 +962,8 @@ export function createEquipmentUI(
         box.setFillStyle(COLORS.slotHover);
         if (itemDef) {
           showTooltip(itemDef, 1);
+        } else if (instance) {
+          showGeneratedEquipmentTooltip(instance.def);
         } else {
           showEmptySlotTooltip(slot.label);
         }
@@ -1295,7 +1328,8 @@ export function createEquipmentUI(
     if (state) {
       for (const slot of SLOT_REGISTRY) {
         const instId = state.equipped[slot.id] ?? null;
-        const inst = instId !== null ? state.instances.get(instId) : null;
+        const inst =
+          instId !== null ? resolveEquipmentInstance(lastWorld, state, instId) : undefined;
         const itemId = inst?.def.id ?? '';
         const entry = itemId ? selectGeneratedEntry(itemId) : null;
         const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;

@@ -1,0 +1,20 @@
+type: item
+name: runed-cuirass
+description: |
+  A heavy chest-armor breastplate for a Floor 2 dungeon fighter. Dark-metal plate
+  construction — blackened iron or obsidian-tinted steel — with bold arcane runes
+  etched deep into the surface and glowing with electric-blue bioluminescent light.
+  The cuirass is a symmetrical torso-covering shape: flat chest plate, flanged
+  shoulders, a stepped lower lip. Worn dungeon-grime: scratches, dents, and faint
+  verdigris in the deepest recesses. The rune glow is the single saturated accent —
+  one or two carved symbols on the chest face, clearly distinct from the dark metal.
+  Silhouette reads immediately as "chest armor / breastplate" at 64×64. Centered,
+  square aspect, fully inside the frame. Transparent background only.
+floor: 2
+variations:
+  - cuirass with a central vertical rune channel, the glow pooling brightest at the sternum
+  - cuirass with a scattered field of small runes across the chest face, uniform faint glow
+  - cuirass with asymmetric rune placement, heavier on the left breast, suggesting enchanted repair
+minVariations: 3
+judge:
+  enabled: true
