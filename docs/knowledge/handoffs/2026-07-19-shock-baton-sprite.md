@@ -39,11 +39,16 @@ The previous zero-code wiring conclusion was incorrect for current `main`:
 
 So: generated + approved art can land in the manifest/catalog, but inventory/equipment UI will not request `resolveItemSprite('shock-baton', ...)` until the item/equipment registrations exist.
 
+To complete runtime wiring later, add:
+
+- a `wpn('shock-baton', ...)` entry in `src/shared/items.ts` (`ITEM_CATALOG`)
+- a `weapon({ id: 'shock-baton', weaponId: 'shock-baton', ... })` entry in `src/shared/equipmentDefs.ts` (`WEAPON_EQUIPMENT_DEFS`)
+
 ---
 
 ## Required maintainer unblock steps
 
-Issue #1348 currently has **no labels**. Add `asset-request` first.
+Ensure issue #1348 has the `asset-request` label. If it is not already present, add it first.
 
 ```bash
 gh issue edit 1348 --add-label asset-request --repo nalfeo/Crawler
@@ -85,12 +90,14 @@ After a successful worker run, you still need approval/check-in/PR flow.
 
 ### Auto path (with caveat)
 
-`g2b-harvest-approve.yml` can automate download + approve + PR creation, but current `ci-harvest-approve.ts` reconstructs run keys as `<base>-v1/<runId>/...` and can miss runs when selector output is `-v2`/`-v3`.
+`g2b-harvest-approve.yml` can automate download + approve + PR creation, but current `ci-harvest-approve.ts` reconstructs run keys as `<base>-v1/<runId>/...` and can miss runs when selector output is `-v2`/`-v3` (the selector chooses one of multiple synthesized candidates, so the promoted brief is not guaranteed to be `-v1`).
 
 ```bash
 gh workflow run g2b-harvest-approve.yml --repo nalfeo/Crawler \
   --field dry_run=false --field create_pr=true
 ```
+
+If this auto path reports `No files found in store`, switch to the manual path below for the same run.
 
 ### Manual path
 
@@ -123,6 +130,7 @@ npm run sprites:asset-pr
    - Use `npm run dev`
    - Equip/inspect where inventory/equipment icons render
    - Do **not** use `sprite-gallery` for this step (read-only run browser; no inventory/equip UI)
+   - Capture before/after evidence: confirm the slot renders the approved `shock-baton-var-N.png` sprite instead of a placeholder icon
 
 ---
 
