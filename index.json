@@ -1,5 +1,16 @@
 [
   {
+    "commit": "549674ed638ab4a592354dd5c68235bc03b8f0b0",
+    "commitDate": "2026-07-19T00:54:11Z",
+    "commitSubject": "fix(epics): update A0 evidence commit from squash-merged branch residue (8cc19153 → 89ff7827) (#1585)",
+    "capturedAt": "2026-07-19T03:23:32.086Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29669256829",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/549674ed638ab4a592354dd5c68235bc03b8f0b0.json"
+  },
+  {
     "commit": "070d11e3524440c2ea55d224be84ed5d2487c658",
     "commitDate": "2026-07-19T00:09:15Z",
     "commitSubject": "Add merchant-sandals generated equipment icon (#1553)",
