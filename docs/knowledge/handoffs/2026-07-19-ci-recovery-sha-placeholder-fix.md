@@ -59,7 +59,10 @@ In `reconcile.mjs`, two module-level constants are introduced:
 
 ```javascript
 const POST_PUSH_HEAD_SHA_PLACEHOLDER = '<post-push-head-sha>';
-const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace('<sha>', POST_PUSH_HEAD_SHA_PLACEHOLDER);
+const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace(
+  '<sha>',
+  POST_PUSH_HEAD_SHA_PLACEHOLDER,
+);
 ```
 
 `POST_PUSH_ADDRESSED_MARKER_REPLY` is derived from `ADDRESSED_MARKER_REPLY` (single

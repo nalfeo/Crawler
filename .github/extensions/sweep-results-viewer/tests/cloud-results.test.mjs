@@ -5,6 +5,7 @@ import {
   aiSweepWarning,
   cloudResultWarning,
   expectedWeaponsFromJobs,
+  floorProvenanceWarning,
   isLeaderboardArtifact,
   isTerminalRun,
   mergeAggregateOutputs,
@@ -43,6 +44,7 @@ function aggregate(weapon, options = {}) {
   }));
   return {
     runAt: '2026-07-16T00:00:00Z',
+    ...(options.floors === null ? {} : { floors: options.floors ?? [1] }),
     seeds,
     weapons: [weapon],
     maxFrames: options.maxFrames ?? 19_800,
@@ -139,9 +141,34 @@ test('merges per-weapon aggregates in expected order using workflow timing', () 
     },
   );
   assert.equal(merged.runAt, '2026-07-16T06:36:35Z');
+  assert.deepEqual(merged.floors, [1]);
   assert.deepEqual(merged.weapons, ['sword', 'bow']);
   assert.equal(merged.summaries.length, 2);
   assert.equal(merged.allRecords.length, 4);
+});
+
+test('normalizes floor provenance and preserves Unknown for mixed legacy aggregates', () => {
+  const normalized = mergeAggregateOutputs([
+    { weapon: 'sword', data: aggregate('sword', { floors: [2, 1, 2] }) },
+    { weapon: 'bow', data: aggregate('bow', { floors: [3, 2] }) },
+  ]);
+  assert.deepEqual(normalized.floors, [1, 2, 3]);
+  assert.equal(floorProvenanceWarning([{ data: normalized }]), null);
+
+  const legacyEntries = [
+    { weapon: 'sword', data: aggregate('sword', { floors: [1] }) },
+    { weapon: 'bow', data: aggregate('bow', { floors: null }) },
+  ];
+  const legacy = mergeAggregateOutputs(legacyEntries);
+  assert.equal(Object.hasOwn(legacy, 'floors'), false);
+  assert.match(floorProvenanceWarning(legacyEntries), /Floors are Unknown/);
+});
+
+test('rejects malformed present cloud floor metadata', () => {
+  assert.throws(
+    () => mergeAggregateOutputs([{ weapon: 'sword', data: aggregate('sword', { floors: ['1'] }) }]),
+    /floors must be a non-empty array of positive integers/,
+  );
 });
 
 test('rejects inconsistent aggregate payloads', () => {
