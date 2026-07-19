@@ -992,6 +992,26 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+// Pre-compute threads whose last trusted ✅ Addressed marker points to a definitively
+// unreachable SHA.  These need explicit recovery-agent re-marking and must NOT be
+// auto-resolved by the outdated-marker path below (doing so would suppress the
+// stale-marker hint and cause an indefinite recovery loop).
+const staleMarkerThreadIds = new Set();
+for (const thread of unresolvedThreads) {
+  if (shouldResolveThread(thread, headSha, reachableMarkerShas)) continue;
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) continue;
+  const last = comments[comments.length - 1];
+  const markerSha = extractAddressedMarkerSha(last?.body);
+  if (!markerSha) continue;
+  if (headSha.startsWith(markerSha) || reachableMarkerShas.has(markerSha)) continue;
+  if (!definitivelyUnreachableMarkerShas.has(markerSha)) continue;
+  const authorLogin = String(last?.author?.login ?? '').toLowerCase();
+  const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
+  if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
+    staleMarkerThreadIds.add(thread.id);
+  }
+}
 // Post reconciler-authored marker replies for outdated threads that have no trusted marker.
 // thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
 // no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
@@ -1001,9 +1021,14 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 //
 // This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
+//
+// Threads with definitively stale markers are excluded: they need recovery-agent
+// re-marking, not auto-resolution, so the stale-marker hint can be surfaced.
 for (const thread of unresolvedThreads.filter(
   (candidate) =>
-    candidate.isOutdated && !shouldResolveThread(candidate, headSha, reachableMarkerShas),
+    candidate.isOutdated &&
+    !shouldResolveThread(candidate, headSha, reachableMarkerShas) &&
+    !staleMarkerThreadIds.has(candidate.id),
 )) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
