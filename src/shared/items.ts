@@ -405,6 +405,12 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   gear('steel-pauldrons', 'Steel Pauldrons', 'Broad shoulder plates. Makes doorways a gamble.', U),
   gear('iron-breastplate', 'Iron Breastplate', 'Heavy, honest protection for the vitals.', U),
   gear(
+    'chain-hauberk',
+    'Chain Hauberk',
+    'Thousands of interlocking rings, each one a quiet argument against dying today.',
+    U,
+  ),
+  gear(
     'runed-cuirass',
     'Runed Cuirass',
     'Dark-metal chest plate etched with glowing arcane runes.',

@@ -16,7 +16,7 @@ describe('Item Catalog', () => {
   });
 
   it('snapshot: current catalog size (update when intentionally adding items)', () => {
-    expect(ITEM_CATALOG).toHaveLength(136);
+    expect(ITEM_CATALOG).toHaveLength(137);
   });
 
   it('registers runed-cuirass as rare non-stackable gear', () => {

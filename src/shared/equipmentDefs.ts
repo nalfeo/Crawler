@@ -243,6 +243,16 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     weightLb: 15,
   },
   {
+    // Floor 2 chain-mail torso armor — flexible mail coat granting solid
+    // protection with modest constitution bonus from the weighty ring count.
+    id: 'chain-hauberk',
+    name: 'Chain Hauberk',
+    slots: ['chest'],
+    statBonuses: { armor: 3, constitution: 1 },
+    rarity: 'uncommon',
+    weightLb: 18,
+  },
+  {
     id: 'runed-cuirass',
     name: 'Runed Cuirass',
     slots: ['chest'],

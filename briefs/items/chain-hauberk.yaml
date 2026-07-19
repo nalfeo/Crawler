@@ -1,0 +1,27 @@
+type: item
+name: chain-hauberk
+description: |
+  A chain-mail hauberk — a long coat of mail reaching from neck to mid-thigh,
+  crafted from thousands of interlocking steel rings. Viewed as an equipment icon
+  laid flat and slightly angled: the torso portion shows the dense interlocked
+  ring texture with a subtle metallic sheen, the short sleeves flare slightly
+  outward, and the hem of the skirt fans below. The rings are individually
+  legible at the edges but merge into a convincing mail texture at the center.
+  The steel is a cool blue-grey with highlights where rings catch the light;
+  dark recesses between ring rows give depth. A reinforced neck opening and
+  perhaps a simple clasp or aventail edge at the collar add visual interest.
+  Silhouette must read immediately as "chain mail armor" at 64×64 — broad
+  inverted-trapezoid shape with slightly flared sleeve stubs. Transparent
+  background only. Centered, no decorative border, no UI chrome.
+floor: 2
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - classic hauberk with tight riveted ring pattern, reinforced collar, and distinct alternating row highlights showing the ring interlock
+  - hauberk with butted ring construction, slight bluish tinge from blued steel, short split-hem skirt visible below
+  - heavy hauberk with doubled rings at the shoulders and a visible aventail tab at the neck opening, rings slightly larger and more dimensional
+  - lighter hauberk with a finer ring gauge, overall silvery sheen, worn rings at the elbows catching more light than the torso center
+minVariations: 4
+judge:
+  enabled: true
