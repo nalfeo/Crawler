@@ -35,11 +35,14 @@
 #   Unknown paths → true (fail closed). Used to gate the E2E visual regression job.
 #
 # sim_touched=true — the change can affect the deterministic simulation.
-#   Computed independently of gameplay_safe with a broader safe list that covers
-#   ALL scripts/**, tests/unit/**, tests/integration/**, public/**, engine, labs,
-#   package-lock.json, and src/shared/data/sprite-catalog.json. Unknown → true.
-#   NOT safe: tests/headless/**, src/core/**, src/game/**, src/shared (non-catalog),
-#   package.json with non-script changes.
+#   Computed independently of gameplay_safe with a broader safe list covering
+#   .github/**, docs/**, .specify/**, scripts/**, tests/unit/**, tests/e2e/**,
+#   tests/integration/**, public/**, *.md, *.txt, package-lock.json,
+#   src/shared/data/sprite-catalog.json, and safe package.json scripts.
+#   NOT safe: src/engine/**, src/labs/**, tests/headless/**, src/core/**,
+#   src/game/**, src/shared (non-catalog) — headless tests import from engine
+#   and labs, so engine/labs changes must still trigger the gate.
+#   Unknown paths → true (fail closed). Used to gate the headless Floor-1 job.
 #
 # coverage_touched=true — the change could affect unit test coverage.
 #   False only when every changed file is in the "not coverage" safe list:
@@ -366,10 +369,12 @@ done <<<"$changed"
 
 # sim_touched: true when the change could affect the deterministic simulation.
 # Computed independently of gameplay_safe with a broader safe list that covers
-# ALL scripts and ALL unit tests, so CI-tooling-only changes produce
-# sim_touched=false even when gameplay_safe is false.
-# NOT safe: tests/headless (exercises the sim directly), src/core, src/game,
-# src/shared (non-catalog), package.json with non-script changes.
+# ALL scripts/**, tests/unit/**, tests/integration/**, public/**, and lock files,
+# so CI-tooling-only changes produce sim_touched=false even when gameplay_safe=false.
+# src/engine/** and src/labs/** are NOT in the safe list because headless tests
+# import from both surfaces (fov-discovered-darkening.test.ts → src/engine/lighting;
+# spawner-sealable-room-entry.test.ts → src/labs/ai-runner-lab).
+# Unknown or unclassified paths → true (fail closed).
 sim_touched=false
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -378,8 +383,6 @@ while IFS= read -r file; do
     docs/*) ;;
     .specify/*) ;;
     scripts/*) ;;
-    src/engine/*) ;;
-    src/labs/*) ;;
     tests/e2e/*) ;;
     tests/unit/*) ;;
     tests/integration/*) ;;

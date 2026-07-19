@@ -6,18 +6,27 @@
   "estimated_apples": 5,
   "stages": {
     "plan_review": {
-      "completed": false,
-      "reviewer_model": "",
-      "concerns_count": 0,
-      "resolved_count": 0,
-      "adversarial": false,
-      "alternatives_considered": 0,
-      "plan_divergence": "",
-      "notes": ""
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Blocking: concurrency collision (fixed), visual_touched public/pkg-lock (fixed), sim_touched derivation (fixed to independent), npm audit removal unsafe (kept with dependency gate). Non-blocking: coverage drift, E2E splitting. Architecture: wave-ordered PRs preferred (acknowledged; single PR per user mandate). All blocking concerns resolved before implementation."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "One medium finding: src/engine/* and src/labs/* incorrectly in sim_touched safe list — headless tests import from both surfaces. Fixed by removing those entries; engine/labs changes now produce sim_touched=true. All other areas (fail-closed defaults, concurrency groups, YAML syntax, merge-gate compatibility, security gating) checked clean."
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,

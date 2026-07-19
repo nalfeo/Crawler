@@ -33,8 +33,10 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 emit_all_false() {
-  # Mirror detect-art-only.sh's fail-safe output contract exactly so consumers can
-  # parse one shape regardless of which path produced it.
+  # Returns the conservative all-run shape: gameplay_safe=false and positive-
+  # signal flags (visual_touched, sim_touched, coverage_touched, dependencies_touched)
+  # are false here because local-scope.sh only uses gameplay_safe for its gating;
+  # the CI fail-safe in detect-art-only.sh emits the positive flags as true.
   printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nvisual_touched=false\nsim_touched=false\ncoverage_touched=false\nsprite_pipeline_touched=false\ndependencies_touched=false\n'
 }
 

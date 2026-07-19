@@ -180,12 +180,12 @@ const cases: Case[] = [
     name: 'engine-only (rendering)',
     files: ['src/engine/render/floorRenderer.ts'],
     //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, true, false, true, false, false),
+    expected: F(false, false, true, false, false, true, true, true, false, false),
   },
   {
     name: 'labs-only',
     files: ['src/labs/combatLab.ts'],
-    expected: F(false, false, true, false, false, false, false, false, false, false),
+    expected: F(false, false, true, false, false, false, true, false, false, false),
   },
   {
     name: 'e2e tests',
@@ -196,7 +196,7 @@ const cases: Case[] = [
   {
     name: 'docs + engine mixed',
     files: ['docs/x.md', 'src/engine/foo.ts'],
-    expected: F(false, false, true, false, false, true, false, true, false, false),
+    expected: F(false, false, true, false, false, true, true, true, false, false),
   },
   // Anything that CAN change the sim must force the gate to run.
   {
@@ -251,7 +251,7 @@ const cases: Case[] = [
     name: 'mixed workflow + engine (non-gameplay)',
     files: ['.github/workflows/ci.yml', 'src/engine/render/foo.ts'],
     //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, true, false, true, false, false),
+    expected: F(false, false, true, false, false, true, true, true, false, false),
   },
   {
     name: 'workflow + game code (gameplay-unsafe)',
@@ -290,7 +290,7 @@ const cases: Case[] = [
     name: 'sprites pipeline + engine code → sprites_only=false, gameplay_safe=true, sprites_touched=true',
     files: ['scripts/sprites/run-full.ts', 'src/engine/renderer.ts'],
     //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, true, true, false, true, true, false),
+    expected: F(false, false, true, false, true, true, true, true, true, false),
   },
   // Root pipeline integration tests: in sprites surface, so sprites_only=true, sprites_touched=true.
   {
@@ -335,9 +335,9 @@ const cases: Case[] = [
     expected: F(false, false, false, false, false, false, false, false, false, false),
   },
   {
-    name: '.specify spec + engine (mixed) → visual, coverage touched; not sim',
+    name: '.specify spec + engine (mixed) → visual, sim, coverage touched; not deps',
     files: ['.specify/specs/foo.md', 'src/engine/rendering/debugLayer.ts'],
-    expected: F(false, false, true, false, false, true, false, true, false, false),
+    expected: F(false, false, true, false, false, true, true, true, false, false),
   },
   {
     name: 'package-lock.json + workflow → visual+deps_touched, gameplay_safe',
