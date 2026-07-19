@@ -113,7 +113,16 @@ const prIdentitySchema = z
     number: z.number().int().positive(),
     url: z.string().regex(GITHUB_PR_URL),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    if (!data.url.endsWith(`/${data.number}`)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `PR URL does not match number ${data.number}`,
+        path: ['url'],
+      });
+    }
+  });
 const observedPrStateSchema = z.enum(['OPEN', 'CLOSED', 'MERGED']).nullable();
 const evidenceSchema = z
   .object({
@@ -1673,7 +1682,14 @@ function validateStackedWork(
     });
   }
   const maxOwnershipHeartbeatMs = state.claim_policy.maximum_without_heartbeat_hours * 3_600_000;
-  if (now.getTime() - Date.parse(stacked.owner.heartbeat_at) > maxOwnershipHeartbeatMs) {
+  const ownerHeartbeatMs = Date.parse(stacked.owner.heartbeat_at);
+  if (ownerHeartbeatMs > now.getTime()) {
+    result.errors.push({
+      code: 'stacked.owner-heartbeat-future',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner heartbeat_at is in the future`,
+    });
+  } else if (now.getTime() - ownerHeartbeatMs > maxOwnershipHeartbeatMs) {
     result.errors.push({
       code: 'stacked.owner-heartbeat-stale',
       node_id: node.node_id,
@@ -1860,7 +1876,14 @@ function validateStackedWork(
     }
   }
   const maxResyncMs = state.stacked_work_policy.maximum_without_resync_hours * 3_600_000;
-  if (now.getTime() - Date.parse(stacked.last_resynced_at) > maxResyncMs) {
+  const lastResyncMs = Date.parse(stacked.last_resynced_at);
+  if (lastResyncMs > now.getTime()) {
+    result.errors.push({
+      code: 'stacked.resync-future',
+      node_id: node.node_id,
+      message: `${node.node_id} last_resynced_at is in the future`,
+    });
+  } else if (now.getTime() - lastResyncMs > maxResyncMs) {
     result.errors.push({
       code: 'stacked.resync-stale',
       node_id: node.node_id,
@@ -2051,7 +2074,14 @@ function validateNodeLifecycle(
     }
     if (owns.heartbeat_at) {
       const maxHeartbeatMs = (state.claim_policy.maximum_without_heartbeat_hours ?? 48) * 3_600_000;
-      if (now.getTime() - Date.parse(owns.heartbeat_at) > maxHeartbeatMs) {
+      const heartbeatMs = Date.parse(owns.heartbeat_at);
+      if (heartbeatMs > now.getTime()) {
+        result.errors.push({
+          code: 'ownership.heartbeat-future',
+          node_id: node.node_id,
+          message: `${node.node_id} heartbeat_at is in the future`,
+        });
+      } else if (now.getTime() - heartbeatMs > maxHeartbeatMs) {
         result.errors.push({
           code: 'ownership.stale-heartbeat',
           node_id: node.node_id,

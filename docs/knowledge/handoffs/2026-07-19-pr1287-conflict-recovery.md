@@ -66,7 +66,11 @@ implementations independently reached `main`. Full calibration:
 - Multi-model review: four valid round-one concerns resolved; terminal review by
   Claude Opus 4.8, Gemini 3.1 Pro, and GPT-5.3 Codex security review adjudicated
   clean by GPT-5.4.
-- Focused epic-status suite: 73 tests pass.
+- Different-model validation covered all 19 GitHub review threads: 16 were
+  already addressed by the recovered tree; the remaining three fixed stale test
+  counts, stacked PR number/URL consistency, and future-dated heartbeat/resync
+  acceptance.
+- Focused epic-status suite: 75 tests pass.
 - Source typecheck passes.
 - Offline and credentialed read-only GitHub audits are valid with zero errors,
   warnings, proposals, or operator actions and report `writes_performed=false`.

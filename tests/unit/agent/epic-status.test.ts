@@ -79,7 +79,7 @@ function cloneState(includeStackedWork = false): EpicState {
     scope: 'Durable control plane only; no equipment gameplay',
     claimed_at: '2026-07-17T17:32:38.205Z',
     lease_expires_at: '2026-07-25T18:26:00.000Z',
-    heartbeat_at: '2026-07-18T18:26:00.000Z',
+    heartbeat_at: '2026-07-17T21:00:00.000Z',
     base_commit: '41c5f2aa',
   };
   a0.merge = { commit: null, merged_at: null };
@@ -201,7 +201,7 @@ function stackedFixture(): {
       branch: 'nalfeo-floor-2-equipment-contracts',
       claimed_at: '2026-07-17T20:48:43.643Z',
       lease_expires_at: '2026-07-18T22:20:26.015Z',
-      heartbeat_at: '2026-07-17T22:20:26.015Z',
+      heartbeat_at: '2026-07-17T21:00:00.000Z',
     },
     dependency_pull_requests: [
       {
@@ -236,7 +236,7 @@ function stackedFixture(): {
       observed_base_branch: 'nalfeo-floor-2-epic-control',
     },
     last_resynced_dependency_head_sha: dependencyHead,
-    last_resynced_at: '2026-07-17T22:20:26.015Z',
+    last_resynced_at: '2026-07-17T21:00:00.000Z',
     rebase_to_main: {
       pending: false,
       pre_rebase_dependent_head_sha: null,
@@ -467,6 +467,12 @@ describe('Floor 2 equipment epic status', () => {
     expect(validate(staleResync.state).errors.map((error) => error.code)).toContain(
       'stacked.resync-stale',
     );
+
+    const futureResync = stackedFixture();
+    futureResync.stacked.last_resynced_at = new Date(NOW.getTime() + 3_600_000).toISOString();
+    expect(validate(futureResync.state).errors.map((error) => error.code)).toContain(
+      'stacked.resync-future',
+    );
   });
 
   it('rejects missing prerequisite coverage and conflicting stacked ownership', () => {
@@ -551,6 +557,9 @@ describe('Floor 2 equipment epic status', () => {
     });
     expectStackedDiagnostic('stacked.owner-heartbeat-stale', ({ stacked }) => {
       stacked.owner.heartbeat_at = new Date(NOW.getTime() - 49 * 3_600_000).toISOString();
+    });
+    expectStackedDiagnostic('stacked.owner-heartbeat-future', ({ stacked }) => {
+      stacked.owner.heartbeat_at = new Date(NOW.getTime() + 3_600_000).toISOString();
     });
     expectStackedDiagnostic('stacked.dependent-pr-missing', ({ stacked }) => {
       stacked.dependent.pull_request = null;
@@ -1309,6 +1318,25 @@ describe('Floor 2 equipment epic status', () => {
     expect(messages.some((message) => message.includes('PR URL does not match number'))).toBe(true);
   });
 
+  it('rejects mismatched stacked PR number/url pairs on dependency and dependent', () => {
+    // dependency_pull_requests[0].pull_request uses prIdentitySchema
+    expectStackedDiagnostic('state.schema', ({ stacked }) => {
+      stacked.dependency_pull_requests[0]!.pull_request = {
+        number: 1271,
+        url: 'https://github.com/nalfeo/Crawler/pull/9999',
+      };
+    });
+    // dependent.pull_request also uses prIdentitySchema
+    expectStackedDiagnostic('state.schema', ({ stacked }) => {
+      if (stacked.dependent.pull_request) {
+        stacked.dependent.pull_request = {
+          number: 1276,
+          url: 'https://github.com/nalfeo/Crawler/pull/9999',
+        };
+      }
+    });
+  });
+
   it('rejects unverifiable required evidence paths for validated nodes', () => {
     const state = cloneState();
     validateA0(state);
@@ -1601,6 +1629,17 @@ describe('Floor 2 equipment epic status', () => {
     const codes = validate(state).errors.map((error) => error.code);
 
     expect(codes).toContain('ownership.stale-heartbeat');
+  });
+
+  it('rejects future heartbeat_at on ownership (bypasses staleness check)', () => {
+    const state = cloneState();
+    // Set heartbeat_at 1 hour in the future — must be rejected, not silently ignored
+    state.nodes[0]!.ownership.heartbeat_at = new Date(NOW.getTime() + 3_600_000).toISOString();
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('ownership.heartbeat-future');
+    expect(codes).not.toContain('ownership.stale-heartbeat');
   });
 
   it('rejects non-canonical evidence paths for handoff and review-ledger', () => {
