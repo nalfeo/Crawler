@@ -212,15 +212,20 @@ jobs:
   checkpoint-init:
     name: Checkpoint init ${{ matrix.combo }}
     needs: [preflight, baseline]
-    # if: always() — `baseline` is a fail-fast:false MATRIX job, so the job-level
-    # `needs.baseline` conclusion is 'failure' if even ONE combo's leg failed,
-    # even though every other combo's baseline artifact uploaded fine. Without
-    # always() the implicit `if: success()` would SKIP this entire job (all
-    # combos) on any single combo's flakiness, discarding every other combo's
-    # progress — exactly what the checkpoint redesign exists to prevent. Each
-    # combo's OWN download-artifact step below is what actually gates that one
-    # combo (it fails in isolation, thanks to this job's own fail-fast:false).
-    if: always()
+    # if: !cancelled() — `baseline` is a fail-fast:false MATRIX job, so the
+    # job-level `needs.baseline` conclusion is 'failure' if even ONE combo's
+    # leg failed, even though every other combo's baseline artifact uploaded
+    # fine. Without this the implicit `if: success()` would SKIP this entire
+    # job (all combos) on any single combo's flakiness, discarding every other
+    # combo's progress — exactly what the checkpoint redesign exists to
+    # prevent. Each combo's OWN download-artifact step below is what actually
+    # gates that one combo (it fails in isolation, thanks to this job's own
+    # fail-fast:false). `!cancelled()` (not `always()`) so a MANUAL workflow
+    # cancellation still stops this job — `always()` runs even through a
+    # user-initiated cancellation, which would keep burning runner minutes on
+    # every downstream round-select/validate/aggregate job the user just
+    # asked to stop (found in multi-model review, gemini-3.1-pro-preview).
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -268,16 +273,18 @@ jobs:
     needs: checkpoint-init
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # if: always() — `checkpoint-init` is a fail-fast:false MATRIX job; one
+    # if: !cancelled() — `checkpoint-init` is a fail-fast:false MATRIX job; one
     # combo's leg failing (e.g. its baseline never uploaded) makes the
     # job-level `needs.checkpoint-init` conclusion 'failure' even though most
-    # combos succeeded. Without always() this single (non-matrixed) planning
+    # combos succeeded. Without this, this single (non-matrixed) planning
     # job would be skipped OUTRIGHT — losing every combo's round-1 candidates,
     # not just the failed one. The download step below (pattern-based,
     # `merge-multiple`) simply won't find the failed combo's checkpoint, so
     # that combo is naturally excluded from this round's plan without
-    # crashing the others. Same rationale as `checkpoint-init` above.
-    if: always() && fromJSON(inputs.rounds) >= 1
+    # crashing the others. `!cancelled()` rather than `always()` so a manual
+    # workflow cancellation still stops the round DAG instead of continuing to
+    # burn runner minutes (same rationale as `checkpoint-init` above).
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 1 }}
     outputs:
       hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -349,6 +356,7 @@ jobs:
           TRAIN_SEEDS: ${{ inputs.train_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
+          HASH: ${{ steps.hash.outputs.hash }}
         run: |
           set -euo pipefail
           npx tsx scripts/agent/perf/sweep-eval.ts \
@@ -356,19 +364,28 @@ jobs:
             --config-id "$CONFIG_ID" --config-json "$CONFIG_JSON" \
             --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
             --workers "$WORKERS" \
-            --out shard.json
+            --out "shard-$HASH.json"
 
       - uses: actions/upload-artifact@v4
         with:
           name: round1-shard-${{ matrix.candidate.combo }}-${{ steps.hash.outputs.hash }}
-          path: shard.json
+          # Filename MUST be unique per candidate, not the fixed "shard.json"
+          # used before this fix: round1-select downloads every candidate's
+          # artifact for a combo with merge-multiple:true into ONE shared
+          # "shards/" directory, and download-artifact silently OVERWRITES
+          # same-named files across merged artifacts -- with a fixed
+          # "shard.json" name, only the LAST-downloaded candidate's shard
+          # would survive and every other candidate's result would be
+          # silently discarded every round (found in multi-model review,
+          # gemini-3.1-pro-preview).
+          path: shard-${{ steps.hash.outputs.hash }}.json
           if-no-files-found: error
           retention-days: 7
 
   round1-select:
     name: Round 1 select ${{ matrix.combo }}
     needs: [preflight, checkpoint-init, round1-candidates, round1-eval]
-    if: always() && fromJSON(inputs.rounds) >= 1
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 1 }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -440,7 +457,7 @@ jobs:
     needs: round1-select
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: always() && fromJSON(inputs.rounds) >= 2
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 2 }}
     outputs:
       hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -512,6 +529,7 @@ jobs:
           TRAIN_SEEDS: ${{ inputs.train_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
+          HASH: ${{ steps.hash.outputs.hash }}
         run: |
           set -euo pipefail
           npx tsx scripts/agent/perf/sweep-eval.ts \
@@ -519,19 +537,22 @@ jobs:
             --config-id "$CONFIG_ID" --config-json "$CONFIG_JSON" \
             --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
             --workers "$WORKERS" \
-            --out shard.json
+            --out "shard-$HASH.json"
 
       - uses: actions/upload-artifact@v4
         with:
           name: round2-shard-${{ matrix.candidate.combo }}-${{ steps.hash.outputs.hash }}
-          path: shard.json
+          # Unique per-candidate filename -- see round1-eval's identical
+          # upload step comment for why a fixed "shard.json" name silently
+          # loses every candidate but the last under merge-multiple:true.
+          path: shard-${{ steps.hash.outputs.hash }}.json
           if-no-files-found: error
           retention-days: 7
 
   round2-select:
     name: Round 2 select ${{ matrix.combo }}
     needs: [preflight, round1-select, round2-candidates, round2-eval]
-    if: always() && fromJSON(inputs.rounds) >= 2
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 2 }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -598,7 +619,7 @@ jobs:
     needs: round2-select
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: always() && fromJSON(inputs.rounds) >= 3
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 3 }}
     outputs:
       hasCandidates: ${{ steps.plan.outputs.hasCandidates }}
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -670,6 +691,7 @@ jobs:
           TRAIN_SEEDS: ${{ inputs.train_seeds }}
           WEAPONS: ${{ inputs.weapons }}
           WORKERS: ${{ inputs.workers }}
+          HASH: ${{ steps.hash.outputs.hash }}
         run: |
           set -euo pipefail
           npx tsx scripts/agent/perf/sweep-eval.ts \
@@ -677,19 +699,22 @@ jobs:
             --config-id "$CONFIG_ID" --config-json "$CONFIG_JSON" \
             --train-seeds "$TRAIN_SEEDS" --weapons "$WEAPONS" \
             --workers "$WORKERS" \
-            --out shard.json
+            --out "shard-$HASH.json"
 
       - uses: actions/upload-artifact@v4
         with:
           name: round3-shard-${{ matrix.candidate.combo }}-${{ steps.hash.outputs.hash }}
-          path: shard.json
+          # Unique per-candidate filename -- see round1-eval's identical
+          # upload step comment for why a fixed "shard.json" name silently
+          # loses every candidate but the last under merge-multiple:true.
+          path: shard-${{ steps.hash.outputs.hash }}.json
           if-no-files-found: error
           retention-days: 7
 
   round3-select:
     name: Round 3 select ${{ matrix.combo }}
     needs: [preflight, round2-select, round3-candidates, round3-eval]
-    if: always() && fromJSON(inputs.rounds) >= 3
+    if: ${{ !cancelled() && fromJSON(inputs.rounds) >= 3 }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -752,17 +777,20 @@ jobs:
   # Downloads whichever round actually ran last — the checkpoint artifact name is
   # constant across every round, and a `RoundCheckpoint` is a strict superset of
   # the legacy `SearchArtifact` shape `sweep-eval --stage validate` consumes, so
-  # no reshape step is needed. `if: always()` so a skipped or partially-failed
-  # round-select job upstream (e.g. `fail-fast:false` round-eval leaving a
-  # `failure` conclusion on the aggregate round-select job even though most of
-  # its per-combo legs succeeded) never silently skips validation of whatever
-  # the search DID manage to produce — each combo's OWN download-artifact step
-  # is what actually gates that specific combo (it fails only if that combo
-  # truly never got as far as `checkpoint-init`).
+  # no reshape step is needed. `if: !cancelled()` so a skipped or
+  # partially-failed round-select job upstream (e.g. `fail-fast:false`
+  # round-eval leaving a `failure` conclusion on the aggregate round-select
+  # job even though most of its per-combo legs succeeded) never silently
+  # skips validation of whatever the search DID manage to produce — each
+  # combo's OWN download-artifact step is what actually gates that specific
+  # combo (it fails only if that combo truly never got as far as
+  # `checkpoint-init`). `!cancelled()` rather than `always()` so a manual
+  # workflow cancellation still stops validation instead of continuing to
+  # burn runner minutes (found in multi-model review, gemini-3.1-pro-preview).
   validate:
     name: Validate ${{ matrix.combo }}
     needs: [preflight, checkpoint-init, round1-select, round2-select, round3-select]
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -802,18 +830,21 @@ jobs:
           retention-days: 7
 
   # Fan-in: merge every validate shard → recompute totals from rows → leaderboard
-  # + safety-gated qualified winner. `if: always()` so a `fail-fast:false` partial
-  # validate failure (some combos' legs failed, marking the aggregate `validate`
-  # job conclusion `failure` even though other combos succeeded) still aggregates
-  # whatever DID succeed instead of silently skipping — same timeout/partial-
-  # progress principle as the round-select and validate jobs above. (The original
-  # pre-redesign workflow had no `if:` here at all, so ANY single validate leg
-  # failing anywhere silently skipped the entire leaderboard — fixed as part of
-  # this change.)
+  # + safety-gated qualified winner. `if: !cancelled()` so a `fail-fast:false`
+  # partial validate failure (some combos' legs failed, marking the aggregate
+  # `validate` job conclusion `failure` even though other combos succeeded)
+  # still aggregates whatever DID succeed instead of silently skipping — same
+  # timeout/partial-progress principle as the round-select and validate jobs
+  # above. (The original pre-redesign workflow had no `if:` here at all, so
+  # ANY single validate leg failing anywhere silently skipped the entire
+  # leaderboard — fixed as part of this change.) `!cancelled()` rather than
+  # `always()` so a manual workflow cancellation still stops aggregation
+  # instead of continuing to burn runner minutes (found in multi-model
+  # review, gemini-3.1-pro-preview).
   aggregate:
     name: Aggregate → leaderboard
     needs: validate
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

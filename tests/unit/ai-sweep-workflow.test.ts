@@ -24,13 +24,24 @@ import { describe, expect, it } from 'vitest';
  *     GitHub schedules maximum concurrency rather than an artificial
  *     bottleneck);
  *   - every round-select (checkpoint fold-in) job must be gated with
- *     `always()` so a `fail-fast:false` partial candidate failure upstream
+ *     `!cancelled()` so a `fail-fast:false` partial candidate failure upstream
  *     never causes the checkpoint-persistence step itself to be skipped --
  *     that is the actual "timeout/failure never discards prior progress"
- *     mechanism;
- *   - `validate` and `aggregate` must ALSO be gated with `always()`, so a
+ *     mechanism -- while a MANUAL workflow cancellation still stops the DAG
+ *     (unlike `always()`, which runs through cancellation too and would keep
+ *     burning runner minutes on every downstream job the user just asked to
+ *     stop; multi-model review, gemini-3.1-pro-preview);
+ *   - `validate` and `aggregate` must ALSO be gated with `!cancelled()`, so a
  *     partially-failed round or partially-failed validate matrix still
- *     produces a leaderboard from whatever DID succeed;
+ *     produces a leaderboard from whatever DID succeed, while still
+ *     respecting a manual cancellation;
+ *   - every round-eval candidate's shard artifact must be uploaded under a
+ *     per-candidate-unique local filename (not a fixed `shard.json`), since
+ *     round-select downloads all of a round's shards with
+ *     `merge-multiple: true` into one shared directory -- same-named files
+ *     across merged artifacts are silently overwritten, which previously
+ *     collapsed every candidate but the last down to one shard per combo per
+ *     round (multi-model review, gemini-3.1-pro-preview);
  *   - `rounds` must remain hard-capped at the explicit bounded 0-3 DAG this
  *     workflow implements (a `rounds` value beyond what the DAG has explicit
  *     job triples for must be rejected before any runner spins up);
@@ -152,15 +163,29 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(uploadStep?.with?.name).toContain('search-checkpoint-');
   });
 
-  it('gates checkpoint-init and round1-candidates with always() so a partial baseline matrix failure never skips them for every combo (adversarial-review fix)', () => {
+  it('gates checkpoint-init and round1-candidates with !cancelled() (not always()) so a partial baseline matrix failure never skips them for every combo, while a manual cancellation still stops the DAG', () => {
     // A `baseline` matrix leg failing for ONE combo must not, under the
     // implicit if:success() default, skip checkpoint-init/round1-candidates
     // for ALL combos -- that would discard every other combo's otherwise-
     // successful baseline results. Both downstream jobs re-scope to their own
     // `matrix.combo` and must run per-combo regardless of sibling failures.
+    // `always()` would ALSO run through a user-initiated cancellation
+    // (gemini-3.1-pro-preview finding); `!cancelled()` gets the partial-
+    // failure tolerance without that footgun.
     const doc = loadWorkflow();
-    expect(getJob(doc, 'checkpoint-init').if).toContain('always()');
-    expect(getJob(doc, 'round1-candidates').if).toContain('always()');
+    expect(getJob(doc, 'checkpoint-init').if).toContain('!cancelled()');
+    expect(getJob(doc, 'checkpoint-init').if).not.toContain('always()');
+    expect(getJob(doc, 'round1-candidates').if).toContain('!cancelled()');
+    expect(getJob(doc, 'round1-candidates').if).not.toContain('always()');
+  });
+
+  it('never reintroduces if: always() anywhere in the workflow (must be !cancelled() for cancellation-safety)', () => {
+    const doc = loadWorkflow();
+    for (const [name, job] of Object.entries(doc.jobs ?? {})) {
+      const condition = (job as { if?: string }).if;
+      if (condition === undefined) continue;
+      expect(condition, `job "${name}" if: condition`).not.toContain('always()');
+    }
   });
 
   describe.each(ROUND_NUMBERS)('round %d job triple', (n) => {
@@ -198,10 +223,11 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       expect(script).toContain('--config-json');
     });
 
-    it(`${selectJob} is gated with always() so a partial ${evalJob} failure never skips checkpoint persistence`, () => {
+    it(`${selectJob} is gated with !cancelled() (not always()) so a partial ${evalJob} failure never skips checkpoint persistence, while a manual cancellation still stops it`, () => {
       const doc = loadWorkflow();
       const job = getJob(doc, selectJob);
-      expect(job.if).toContain('always()');
+      expect(job.if).toContain('!cancelled()');
+      expect(job.if).not.toContain('always()');
       expect(job.if).toContain(`fromJSON(inputs.rounds) >= ${n}`);
       expect(needsList(job)).toContain(evalJob);
       // Must also depend on this round's own candidates job so it can
@@ -244,6 +270,27 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       );
       expect(downloadCandidates?.with?.['if-no-artifact-found']).toBe('warn');
     });
+
+    it(`${evalJob} uploads its shard under a per-candidate-unique filename, not a fixed shard.json (merge-multiple collision fix)`, () => {
+      // round-select downloads every candidate's shard artifact for this round
+      // with `merge-multiple: true` into one shared directory. If every
+      // candidate wrote to the SAME local filename (e.g. `shard.json`),
+      // download-artifact would silently overwrite same-named files across
+      // merged artifacts, leaving only the last-downloaded candidate's shard
+      // -- permanently starving the leaderboard of every other candidate's
+      // result (multi-model review, gemini-3.1-pro-preview).
+      const doc = loadWorkflow();
+      const job = getJob(doc, evalJob);
+      const script = allRunSteps(job);
+      expect(script).not.toContain('--out shard.json');
+      expect(script).toMatch(/--out "shard-\$HASH\.json"/);
+      const uploadStep = (job.steps ?? []).find((s) =>
+        s.uses?.startsWith('actions/upload-artifact'),
+      );
+      expect(uploadStep?.with?.path).not.toBe('shard.json');
+      expect(String(uploadStep?.with?.path)).toContain('shard-');
+      expect(String(uploadStep?.with?.path)).toContain('steps.hash.outputs.hash');
+    });
   });
 
   it('chains the rounds so round N depends on round N-1 select (or checkpoint-init for round 1)', () => {
@@ -253,10 +300,11 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(needsList(getJob(doc, 'round3-candidates'))).toContain('round2-select');
   });
 
-  it('validate is gated with always() and downloads the (possibly partial-round) checkpoint directly', () => {
+  it('validate is gated with !cancelled() (not always()) and downloads the (possibly partial-round) checkpoint directly', () => {
     const doc = loadWorkflow();
     const job = getJob(doc, 'validate');
-    expect(job.if).toContain('always()');
+    expect(job.if).toContain('!cancelled()');
+    expect(job.if).not.toContain('always()');
     for (const dep of [
       'preflight',
       'checkpoint-init',
@@ -271,10 +319,11 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(script).toContain('--search-artifact "search-checkpoint-$COMBO.json"');
   });
 
-  it('aggregate is gated with always() so a partial validate failure still produces a leaderboard', () => {
+  it('aggregate is gated with !cancelled() (not always()) so a partial validate failure still produces a leaderboard', () => {
     const doc = loadWorkflow();
     const job = getJob(doc, 'aggregate');
-    expect(job.if).toContain('always()');
+    expect(job.if).toContain('!cancelled()');
+    expect(job.if).not.toContain('always()');
     expect(needsList(job)).toContain('validate');
   });
 
