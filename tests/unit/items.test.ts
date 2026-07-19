@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ITEM_CATALOG,
+  ItemRarity,
   getItemById,
   getItemByIndex,
   getItemIndex,
@@ -15,7 +16,18 @@ describe('Item Catalog', () => {
   });
 
   it('snapshot: current catalog size (update when intentionally adding items)', () => {
-    expect(ITEM_CATALOG).toHaveLength(129);
+    expect(ITEM_CATALOG).toHaveLength(136);
+  });
+
+  it('registers runed-cuirass as rare non-stackable gear', () => {
+    expect(getItemById('runed-cuirass')).toEqual({
+      id: 'runed-cuirass',
+      name: 'Runed Cuirass',
+      description: 'Dark-metal chest plate etched with glowing arcane runes.',
+      tags: [customTag('Gear')],
+      rarity: ItemRarity.Rare,
+      maxStack: 1,
+    });
   });
 
   it('has unique IDs', () => {
@@ -53,7 +65,7 @@ describe('Item Catalog', () => {
   it('snapshot: current item count per canonical tag (update when intentionally adding items)', () => {
     const expected: Record<string, number> = {
       Materials: 27,
-      Weapons: 26,
+      Weapons: 30,
       Consumables: 20,
       'Key Items': 20,
       Misc: 21,

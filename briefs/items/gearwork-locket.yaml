@@ -1,0 +1,21 @@
+type: item
+name: gearwork-locket
+description: |
+  A small clockwork locket pendant on a short brass chain, shown face-on
+  and centered. The locket body is a rounded oval made of aged brass with
+  a hinge on one side and a tiny latch on the other. The front face bears
+  an engraved gear-wheel pattern; a small keyhole sits at the center, and
+  around it a half-moon cutout reveals the tops of miniature gear teeth —
+  the mechanical heart of the device. The chain links are thick and
+  mechanical, each link a squat rectangular loop with notched edges. The
+  whole piece has a warm patina of old oil and use. Silhouette of the locket
+  body plus short chain must read clearly as a wearable mechanical pendant
+  at a glance.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - brass locket with a visible small gear at the center cutout, cog-shaped chain links
+  - dark iron locket with a glowing amber keyhole, clockwork etchings around the face
+  - copper-toned locket with a cracked face revealing a tiny escapement wheel inside
+minVariations: 3

@@ -1,0 +1,12 @@
+type: item
+name: shadow-boots
+description: |
+  Floor 2 equipment icon for brief/runtime concept key shadow-boots (feet slot).
+  A single pair of dark stealth boots shown centered on transparent background.
+  Keep the silhouette bold and readable at small size: ankle-high armored footwear,
+  toe caps slightly pointed, subtle straps, muted charcoal/indigo palette, no floor shadow.
+variations:
+  - paired boots angled slightly inward with soft indigo trim and reinforced toe plates
+  - compact silhouette with thicker soles and matte black leather with faint purple highlights
+  - sharper ninja-like boot profile with darker uppers and steel-gray buckles
+minVariations: 3
