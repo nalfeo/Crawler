@@ -221,7 +221,9 @@ function makeResolveHandler(ability: BossAbilityDef) {
       const dx = (world.stores.position.x[eid] ?? 0) - geometry.x;
       const dy = (world.stores.position.y[eid] ?? 0) - geometry.y;
       if (dx * dx + dy * dy > r2) continue;
-      applyDamage(world, eid, tuning.damageAmount, geometry.x, geometry.y, {
+      const targetX = world.stores.position.x[eid] ?? 0;
+      const targetY = world.stores.position.y[eid] ?? 0;
+      applyDamage(world, eid, tuning.damageAmount, targetX, targetY, {
         origin: 'enemy',
         affinity: 'magic',
         scaleWithPrimary: false,
