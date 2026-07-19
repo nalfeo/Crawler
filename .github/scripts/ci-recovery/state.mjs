@@ -395,6 +395,7 @@ export const TRUSTED_BOT_LOGINS = new Set([
 ]);
 
 const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
+const notApplicablePattern = /^\s*✅\s*not\s+applicable\s*(?::|—|–)\s*\S/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {
@@ -443,6 +444,13 @@ export function extractAddressedMarkerSha(body) {
   return parseMarkerShaToken(match[1]);
 }
 
+/** Returns true if body contains a "✅ Not applicable" marker, which signals
+ *  that the reviewer's finding has been deterministically assessed as
+ *  inapplicable to the current code (no fix needed, no SHA to reference). */
+export function hasNotApplicableMarker(body) {
+  return notApplicablePattern.test(String(body ?? ''));
+}
+
 /** Returns true if body contains "✅ Addressed in <sha-or-commit-url>" and the
  *  extracted commit names the current head (full or ≥7-char prefix), or is a
  *  known ancestor from reachableCommitShas. */
@@ -466,7 +474,9 @@ function isTrustedComment(comment) {
 
 /**
  * Returns true only when the last comment in the thread is a trusted marker
- * that explicitly names the current head SHA (full or ≥7-char prefix).
+ * that either explicitly names the current head SHA (full or ≥7-char prefix),
+ * or carries a "✅ Not applicable" marker signalling the finding is
+ * deterministically inapplicable (no code change needed, no SHA to reference).
  * A reopened thread with later reviewer feedback keeps returning false even if
  * an earlier comment had a valid marker.
  */
@@ -474,7 +484,10 @@ export function shouldResolveThread(thread, headSha, reachableCommitShas = null)
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) return false;
   const last = comments[comments.length - 1];
-  return isTrustedComment(last) && markerNamesHead(last.body, headSha, reachableCommitShas);
+  if (!isTrustedComment(last)) return false;
+  return (
+    markerNamesHead(last.body, headSha, reachableCommitShas) || hasNotApplicableMarker(last.body)
+  );
 }
 
 /**
