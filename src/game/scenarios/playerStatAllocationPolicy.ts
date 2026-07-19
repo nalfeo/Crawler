@@ -17,9 +17,9 @@ import type { PrimaryStatId } from '../../shared/stats.js';
  *   5. Offense -> 11
  *   6. Constitution for the remainder
  *
- * Weapon personas (see `game/ai/weapon-personas.ts`) stay disabled by default
- * and take over via `computeAiStatAllocation`'s branch — this function is the
- * shared/default path exercised whenever personas are off.
+ * Weapon personas (see `game/ai/weapon-personas.ts`) are enabled by default.
+ * This function is the shared fallback path exercised whenever personas are
+ * explicitly disabled.
  */
 const CON_SURVIVAL_TARGET = 8;
 const OFFENSE_FLOOR_TARGET = 5;

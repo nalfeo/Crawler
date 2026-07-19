@@ -55,7 +55,7 @@ export function defaultCLIArgs(
     floorId: 'floor1',
     startPlayerLevel: 1,
     weaponTelemetry: false,
-    weaponPersonas: false,
+    weaponPersonas: true,
     pathingMode: AIPathingMode.LEGACY,
     decisionMode: AIDecisionMode.LEGACY,
     merchantWeaponPurchase:
@@ -145,6 +145,8 @@ export function parseArgs(
       args.weaponTelemetry = true;
     } else if (arg === '--weapon-personas') {
       args.weaponPersonas = true;
+    } else if (arg === '--no-weapon-personas') {
+      args.weaponPersonas = false;
     } else if (arg === '--merchant-weapon-purchase') {
       args.merchantWeaponPurchase = true;
     } else if (arg === '--pathing-mode' && next) {
@@ -193,11 +195,12 @@ Options:
                            Multiply hostile Damage values (default: 1)
   --enemy-telegraph-ms <n>
                            Delay (ms) enemy projectiles telegraph before firing;
-                           0 reproduces legacy immediate-fire behavior (default: ${ENEMY_PROJECTILE.TELEGRAPH_MS})
+                           0 disables the cue and fires immediately (default: ${ENEMY_PROJECTILE.TELEGRAPH_MS})
   --floor <id>            Scenario floor id (default: floor1)
   --start-level <n>       Start at player character level N (default: 1, no boost)
   --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)
-  --weapon-personas       Enable experimental weapon-specific stat/gear personas
+  --weapon-personas       Enable weapon-specific stat/gear personas (default)
+  --no-weapon-personas    Disable weapon personas for the legacy A/B control
   --merchant-weapon-purchase
                            Enable optional post-quest merchant weapon purchase
   --pathing-mode <mode>   AI pathing A/B axis: legacy | riskRewardFused | navmesh | navmeshFused (default: legacy)

@@ -48,7 +48,7 @@ function parseArgs(): CLIArgs {
     seeds: [2, 4, 7],
     weapons: DEFAULT_FLOOR1_WEAPONS,
     maxFrames: 19_800, // ~330 s at 60 fps — same budget as the hill-climb baseline
-    weaponPersonas: false,
+    weaponPersonas: true,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -68,6 +68,8 @@ function parseArgs(): CLIArgs {
       i++;
     } else if (arg === '--weapon-personas') {
       args.weaponPersonas = true;
+    } else if (arg === '--no-weapon-personas') {
+      args.weaponPersonas = false;
     }
   }
 

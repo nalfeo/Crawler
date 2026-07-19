@@ -43,15 +43,32 @@ export function isCurrentLocalSelection(state, selection) {
   );
 }
 
+/**
+ * Default completeness check for weapon-sweep snapshots.
+ * Returns true when all expected weapon aggregates have arrived or an artifact expired.
+ */
+function defaultIsComplete(snapshot) {
+  return (
+    (snapshot.expectedWeapons?.length > 0 &&
+      snapshot.aggregateOutputs?.length >= snapshot.expectedWeapons?.length) ||
+    snapshot.expiredArtifactCount > 0
+  );
+}
+
 export async function stabilizeTerminalSnapshot(snapshot, options) {
-  const { attempts, delayMs, signal, isTerminalRun, loadSnapshot, sleep = defaultSleep } = options;
+  const {
+    attempts,
+    delayMs,
+    signal,
+    isTerminalRun,
+    loadSnapshot,
+    isComplete = defaultIsComplete,
+    sleep = defaultSleep,
+  } = options;
   if (!isTerminalRun(snapshot.run)) return snapshot;
   let current = snapshot;
   for (let attempt = 0; attempt < Math.max(0, attempts - 1); attempt += 1) {
-    const complete =
-      current.expectedWeapons.length > 0 &&
-      current.aggregateOutputs.length >= current.expectedWeapons.length;
-    if (complete || current.expiredArtifactCount > 0) {
+    if (isComplete(current)) {
       break;
     }
     await sleep(delayMs, signal);

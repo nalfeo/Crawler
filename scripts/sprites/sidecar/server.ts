@@ -70,8 +70,11 @@ import { loadRecordedReferencePngs } from '../load-reference-pngs.js';
 import type { PostprocessOptions } from '../postprocess.js';
 import {
   removeManualAnchor,
+  removeManualWeaponAnchor,
   writeManualAnchor,
+  writeManualWeaponAnchor,
   type ManualAnchorOverride,
+  type ManualWeaponAnchorOverride,
 } from '../postprocess-overrides.js';
 import type { RunSummary } from '../run-artifacts.js';
 import {
@@ -234,6 +237,7 @@ interface RunPostprocessBody {
   readonly sheet?: unknown;
   readonly mode?: unknown;
   readonly manualAnchor?: unknown;
+  readonly weaponAnchor?: unknown;
   readonly facing?: unknown;
   readonly variantIndexes?: unknown;
 }
@@ -242,6 +246,14 @@ interface RunManualAnchorBody {
   readonly variantIndex?: unknown;
   readonly x?: unknown;
   readonly y?: unknown;
+  readonly clear?: unknown;
+}
+
+interface RunWeaponAnchorBody {
+  readonly variantIndex?: unknown;
+  readonly x?: unknown;
+  readonly y?: unknown;
+  readonly applyToAllVariants?: unknown;
   readonly clear?: unknown;
 }
 
@@ -1052,6 +1064,15 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         message: 'body.manualAnchor must be { variantIndex, x, y, applyToAllVariants? }',
       };
     }
+    const weaponAnchor = parseManualAnchorPayload(body.weaponAnchor);
+    const clearWeaponAnchor = body.weaponAnchor === null;
+    if (body.weaponAnchor !== undefined && body.weaponAnchor !== null && weaponAnchor === null) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'body.weaponAnchor must be { variantIndex, x, y, applyToAllVariants? }',
+      };
+    }
     const facing = parseFacingPayload(body.facing);
     const clearFacing = body.facing === null;
     if (body.facing !== undefined && body.facing !== null && facing === null) {
@@ -1099,6 +1120,18 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         await removeManualAnchor(store, `${briefId}/${runId}`);
         persistedManualAnchor = null;
       }
+      let persistedWeaponAnchor: ManualWeaponAnchorOverride | null | undefined = undefined;
+      if (weaponAnchor) {
+        persistedWeaponAnchor = await writeManualWeaponAnchor(
+          store,
+          `${briefId}/${runId}`,
+          weaponAnchor,
+          new Date().toISOString(),
+        );
+      } else if (clearWeaponAnchor) {
+        await removeManualWeaponAnchor(store, `${briefId}/${runId}`);
+        persistedWeaponAnchor = null;
+      }
       const result = await repostprocessRun({
         store,
         briefId,
@@ -1109,6 +1142,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         ...(options ? { options } : {}),
         ...(mode ? { optionsMode: mode } : {}),
         ...(persistedManualAnchor !== undefined ? { manualAnchor: persistedManualAnchor } : {}),
+        ...(persistedWeaponAnchor !== undefined
+          ? { manualWeaponAnchor: persistedWeaponAnchor }
+          : {}),
         ...(clearFacing ? { facing: null } : facing ? { facing } : {}),
         ...(variantIndexes ? { variantIndexes } : {}),
         ...(sheet ? { sheetFile: sheet } : {}),
@@ -1254,6 +1290,46 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       new Date().toISOString(),
     );
     return { status: 'set' as const, manualAnchor };
+  });
+
+  // POST /api/runs/:briefId/:runId/weapon-anchor — set or clear the run-level
+  // weapon anchor. This writes the override file used by repostprocessRun to
+  // emit per-variant NN.anchor.weapon.json sidecars on the next postprocess.
+  app.post<{
+    Params: { briefId: string; runId: string };
+    Body: RunWeaponAnchorBody;
+  }>('/api/runs/:briefId/:runId/weapon-anchor', async (req, reply) => {
+    const { briefId, runId } = req.params;
+    if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
+      reply.code(403);
+      return { error: 'forbidden-path' };
+    }
+    const summaryKey = `${briefId}/${runId}/summary.json`;
+    if (!(await store.has(summaryKey))) {
+      reply.code(404);
+      return { error: 'run-not-found', briefId, runId };
+    }
+    const body = (req.body ?? {}) as RunWeaponAnchorBody;
+    if (body.clear === true) {
+      await removeManualWeaponAnchor(store, `${briefId}/${runId}`);
+      return { status: 'cleared' as const };
+    }
+    const parsed = parseManualAnchorPayload(body);
+    if (!parsed) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message:
+          'body must include clear:true or weapon anchor { variantIndex, x, y, applyToAllVariants? }',
+      };
+    }
+    const weaponAnchor = await writeManualWeaponAnchor(
+      store,
+      `${briefId}/${runId}`,
+      parsed,
+      new Date().toISOString(),
+    );
+    return { status: 'set' as const, weaponAnchor };
   });
 
   app.post<{
@@ -2203,6 +2279,7 @@ async function hydrateRunDirForApproveFromStore(
     `${prefix}processed/${paddedIndex}.png`,
     `${prefix}processed/${paddedIndex}.anchor.json`,
     `${prefix}processed/${paddedIndex}.anchor.cog.json`,
+    `${prefix}processed/${paddedIndex}.anchor.weapon.json`,
   ];
   const runKeys = await store.list(prefix);
   if (runKeys.length === 0) {

@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { CanvasError, createCanvas, joinSession } from '@github/copilot-sdk/extension';
 import {
+  aiSweepWarning,
   cloudResultWarning,
   floorProvenanceWarning,
   isTerminalRun,
@@ -9,7 +10,12 @@ import {
   selectDefaultRun,
   shouldPollRun,
 } from './lib/cloud-results.mjs';
-import { listWeaponSweepRuns, loadCloudRun, resolveProjectContext } from './lib/github-client.mjs';
+import {
+  listAllSweepRuns,
+  loadAiSweepRun,
+  loadCloudRun,
+  resolveProjectContext,
+} from './lib/github-client.mjs';
 import { tokensMatch } from './lib/http-security.mjs';
 import { listLocalSweepResults, readLocalSweepFile } from './lib/local-results.mjs';
 import {
@@ -53,6 +59,7 @@ function safeRun(run) {
     url: run.url,
     event: run.event,
     attempt: run.attempt,
+    workflowType: run.workflowType ?? null,
   };
 }
 
@@ -81,9 +88,11 @@ function stateSnapshot(state) {
     runs: state.runs.map(safeRun),
     selectedRun: safeRun(state.selectedRun),
     selectionReason: state.selectionReason,
+    workflowType: state.selectedRun?.workflowType ?? null,
     expectedWeapons: state.expectedWeapons,
     availableWeapons: state.availableWeapons,
     expiredArtifactCount: state.expiredArtifactCount,
+    jobPhases: state.jobPhases,
     pollIntervalMs: POLL_INTERVAL_MS,
     polling: Boolean(state.pollTimer),
     refreshing: state.refreshing,
@@ -194,7 +203,7 @@ async function refreshCloudState(instanceId, options = {}) {
   state.refreshPromise = (async () => {
     let runs = state.runs;
     if (options.refreshRuns || runs.length === 0) {
-      runs = await listWeaponSweepRuns(state.context.repository, controller.signal);
+      runs = await listAllSweepRuns(state.context.repository, controller.signal);
       if (state.closed || state.generation !== generation || state.source !== 'cloud') {
         return state;
       }
@@ -209,53 +218,104 @@ async function refreshCloudState(instanceId, options = {}) {
       state.selectionReason = selection.reason;
     }
     if (!state.selectedRun) {
-      throw new Error('No weapon-sweep workflow runs were found for this repository.');
+      throw new Error(
+        'No weapon-sweep or AI Sweep Eval workflow runs were found for this repository.',
+      );
     }
 
-    let cloud = await loadCloudRun(
-      state.context.repository,
-      state.selectedRun.id,
-      controller.signal,
-    );
-    cloud = await stabilizeTerminalSnapshot(cloud, {
-      attempts: TERMINAL_SYNC_ATTEMPTS,
-      delayMs: TERMINAL_SYNC_DELAY_MS,
-      signal: controller.signal,
-      isTerminalRun,
-      loadSnapshot: (signal) =>
-        loadCloudRun(state.context.repository, state.selectedRun.id, signal),
-    });
-    if (state.closed || state.generation !== generation || state.source !== 'cloud') {
-      return state;
-    }
+    const workflowType = state.selectedRun.workflowType ?? 'weapon-sweep';
 
-    const merged = mergeAggregateOutputs(cloud.aggregateOutputs, {
-      expectedWeapons: cloud.expectedWeapons,
-      runCreatedAt: cloud.run.createdAt,
-    });
-    state.runs = runs
-      .map((run) => (run.id === cloud.run.id ? cloud.run : run))
-      .sort(compareRunsDesc);
-    state.selectedRun = cloud.run;
-    state.expectedWeapons = cloud.expectedWeapons;
-    state.availableWeapons = merged?.weapons ?? [];
-    state.expiredArtifactCount = cloud.expiredArtifactCount;
-    state.data = merged;
-    state.loadedAt = Date.now();
-    state.lastRefreshedAt = new Date().toISOString();
-    state.warning =
-      [
-        cloudResultWarning({
-          run: cloud.run,
-          expectedWeapons: state.expectedWeapons,
-          availableWeapons: state.availableWeapons,
-          expiredCount: state.expiredArtifactCount,
-        }),
-        floorProvenanceWarning(cloud.aggregateOutputs),
-      ]
-        .filter(Boolean)
-        .join(' ') || null;
-    state.error = null;
+    if (workflowType === 'ai-sweep') {
+      // ── AI Sweep Eval path ─────────────────────────────────────────────────
+      let cloud = await loadAiSweepRun(
+        state.context.repository,
+        state.selectedRun.id,
+        controller.signal,
+      );
+      cloud = await stabilizeTerminalSnapshot(cloud, {
+        attempts: TERMINAL_SYNC_ATTEMPTS,
+        delayMs: TERMINAL_SYNC_DELAY_MS,
+        signal: controller.signal,
+        isTerminalRun,
+        loadSnapshot: (signal) =>
+          loadAiSweepRun(state.context.repository, state.selectedRun.id, signal),
+        isComplete: (snapshot) =>
+          Boolean(snapshot.leaderboardData) || snapshot.expiredArtifactCount > 0,
+      });
+      if (state.closed || state.generation !== generation || state.source !== 'cloud') {
+        return state;
+      }
+
+      // Preserve workflowType on the updated run object returned from the API.
+      const updatedRun = { ...cloud.run, workflowType: 'ai-sweep' };
+      state.runs = runs
+        .map((run) => (run.id === updatedRun.id ? updatedRun : run))
+        .sort(compareRunsDesc);
+      state.selectedRun = updatedRun;
+      state.jobPhases = cloud.jobPhases;
+      state.expiredArtifactCount = cloud.expiredArtifactCount;
+      // Reset weapon-sweep fields that don't apply to AI sweeps.
+      state.expectedWeapons = [];
+      state.availableWeapons = [];
+      state.data = cloud.leaderboardData;
+      state.loadedAt = Date.now();
+      state.lastRefreshedAt = new Date().toISOString();
+      state.warning = aiSweepWarning({
+        run: updatedRun,
+        jobPhases: cloud.jobPhases,
+        hasLeaderboard: Boolean(cloud.leaderboardData),
+        expiredArtifactCount: cloud.expiredArtifactCount,
+      });
+      state.error = null;
+    } else {
+      // ── Weapon Sweep path (original logic) ─────────────────────────────────
+      let cloud = await loadCloudRun(
+        state.context.repository,
+        state.selectedRun.id,
+        controller.signal,
+      );
+      cloud = await stabilizeTerminalSnapshot(cloud, {
+        attempts: TERMINAL_SYNC_ATTEMPTS,
+        delayMs: TERMINAL_SYNC_DELAY_MS,
+        signal: controller.signal,
+        isTerminalRun,
+        loadSnapshot: (signal) =>
+          loadCloudRun(state.context.repository, state.selectedRun.id, signal),
+      });
+      if (state.closed || state.generation !== generation || state.source !== 'cloud') {
+        return state;
+      }
+
+      const updatedRun = { ...cloud.run, workflowType: 'weapon-sweep' };
+      const merged = mergeAggregateOutputs(cloud.aggregateOutputs, {
+        expectedWeapons: cloud.expectedWeapons,
+        runCreatedAt: updatedRun.createdAt,
+      });
+      state.runs = runs
+        .map((run) => (run.id === updatedRun.id ? updatedRun : run))
+        .sort(compareRunsDesc);
+      state.selectedRun = updatedRun;
+      state.expectedWeapons = cloud.expectedWeapons;
+      state.availableWeapons = merged?.weapons ?? [];
+      state.expiredArtifactCount = cloud.expiredArtifactCount;
+      state.jobPhases = null;
+      state.data = merged;
+      state.loadedAt = Date.now();
+      state.lastRefreshedAt = new Date().toISOString();
+      state.warning =
+        [
+          cloudResultWarning({
+            run: updatedRun,
+            expectedWeapons: state.expectedWeapons,
+            availableWeapons: state.availableWeapons,
+            expiredCount: state.expiredArtifactCount,
+          }),
+          floorProvenanceWarning(cloud.aggregateOutputs),
+        ]
+          .filter(Boolean)
+          .join(' ') || null;
+      state.error = null;
+    }
     return state;
   })()
     .catch((error) => {
@@ -422,7 +482,7 @@ async function switchToCloudRun(instanceId, runId) {
     await runCancellableOperation(state, async (signal) => {
       const context =
         state.context ?? (await resolveProjectContext(state.workingDirectory, signal));
-      const runs = await listWeaponSweepRuns(context.repository, signal);
+      const runs = await listAllSweepRuns(context.repository, signal);
       state.context = context;
       state.runs = runs;
     });
@@ -431,7 +491,7 @@ async function switchToCloudRun(instanceId, runId) {
   if (!selectedRun) {
     throw new CanvasError(
       'run_not_found',
-      `Run ${parsedRunId} is not a weapon-sweep workflow run in ${state.context.repository}.`,
+      `Run ${parsedRunId} is not a weapon-sweep or AI Sweep Eval workflow run in ${state.context.repository}.`,
     );
   }
   cancelRefresh(state);
@@ -441,6 +501,7 @@ async function switchToCloudRun(instanceId, runId) {
   state.expectedWeapons = [];
   state.availableWeapons = [];
   state.expiredArtifactCount = 0;
+  state.jobPhases = null;
   state.warning = null;
   state.error = null;
   state.data = null;
@@ -483,7 +544,7 @@ async function initializeCloud(instanceId, explicitRunId) {
   try {
     await runCancellableOperation(state, async (signal) => {
       const context = await resolveProjectContext(state.workingDirectory, signal);
-      const runs = await listWeaponSweepRuns(context.repository, signal);
+      const runs = await listAllSweepRuns(context.repository, signal);
       if (!isCurrentCloudGeneration(state, generation)) {
         return;
       }
@@ -497,7 +558,7 @@ async function initializeCloud(instanceId, explicitRunId) {
       const selected = state.runs.find((run) => run.id === Number(explicitRunId));
       if (!selected) {
         throw new Error(
-          `Run ${explicitRunId} is not a weapon-sweep workflow run in ${state.context.repository}.`,
+          `Run ${explicitRunId} is not a weapon-sweep or AI Sweep Eval workflow run in ${state.context.repository}.`,
         );
       }
       state.selectedRun = selected;
@@ -608,6 +669,26 @@ async function startServer(instanceId, token, sessionLogger) {
 }
 
 function summaryPayload(state) {
+  const workflowType = state.selectedRun?.workflowType ?? null;
+  if (workflowType === 'ai-sweep') {
+    // For an AI sweep run, return leaderboard data if available, otherwise live phase status.
+    if (!state.data && !state.jobPhases) {
+      throw new CanvasError('no_data', state.error ?? state.warning ?? 'No AI sweep data loaded');
+    }
+    return {
+      source: state.source,
+      repository: state.context?.repository ?? null,
+      run: safeRun(state.selectedRun),
+      workflowType: 'ai-sweep',
+      jobPhases: state.jobPhases,
+      warning: state.warning,
+      polling: Boolean(state.pollTimer),
+      leaderboard: state.data?.byComposite ?? null,
+      leaderboardByLexicographic: state.data?.byLexicographic ?? null,
+      winnersDiverge: state.data?.winnersDiverge ?? null,
+    };
+  }
+
   if (!state.data) {
     throw new CanvasError('no_data', state.error ?? state.warning ?? 'No sweep data loaded');
   }
@@ -615,7 +696,8 @@ function summaryPayload(state) {
     source: state.source,
     path: state.source === 'local' ? state.path : null,
     repository: state.context?.repository ?? null,
-    run: state.source === 'cloud' ? safeRun(state.selectedRun) : null,
+    run: safeRun(state.selectedRun),
+    workflowType: workflowType ?? 'weapon-sweep',
     runAt: state.data.runAt,
     floors: state.data.floors ?? null,
     seeds: state.data.seeds,
@@ -640,14 +722,15 @@ const session = await joinSession({
       id: 'sweep-results-viewer',
       displayName: 'Sweep Results Viewer',
       description:
-        'Browse GitHub Actions weapon-sweep runs with live partial results, or load a local sweep JSON file.',
+        'Browse GitHub Actions weapon-sweep and AI Sweep Eval runs with live progress, or load a local sweep JSON file.',
       inputSchema: {
         type: 'object',
         properties: {
           runId: {
             type: 'integer',
             minimum: 1,
-            description: 'Optional GitHub Actions weapon-sweep run id to select.',
+            description:
+              'Optional GitHub Actions run id to select (weapon-sweep or AI Sweep Eval).',
           },
           path: {
             type: 'string',
@@ -722,7 +805,8 @@ const session = await joinSession({
         },
         {
           name: 'select_cloud_run',
-          description: 'Select and load a GitHub Actions weapon-sweep workflow run.',
+          description:
+            'Select and load a GitHub Actions weapon-sweep or AI Sweep Eval workflow run by run id.',
           inputSchema: {
             type: 'object',
             properties: { runId: { type: 'integer', minimum: 1 } },
@@ -731,14 +815,19 @@ const session = await joinSession({
           handler: async (ctx) => {
             const state = await switchToCloudRun(ctx.instanceId, ctx.input.runId);
             if (state.error) throw new CanvasError('cloud_refresh_failed', state.error);
+            const workflowType = state.selectedRun?.workflowType ?? null;
             if (!state.data) {
               return {
                 run: safeRun(state.selectedRun),
+                workflowType,
                 selectionReason: state.selectionReason,
                 warning: state.warning,
                 polling: Boolean(state.pollTimer),
+                // weapon-sweep fields
                 expectedWeapons: state.expectedWeapons,
                 availableWeapons: state.availableWeapons,
+                // ai-sweep fields
+                jobPhases: state.jobPhases,
               };
             }
             return summaryPayload(state);
@@ -746,14 +835,15 @@ const session = await joinSession({
         },
         {
           name: 'list_cloud_runs',
-          description: 'List every cloud weapon-sweep workflow run, newest first.',
+          description:
+            'List every cloud weapon-sweep and AI Sweep Eval workflow run, newest first.',
           handler: async (ctx) => {
             const state = states.get(ctx.instanceId);
             if (!state) throw new CanvasError('no_state', 'Canvas not open');
             await runCancellableOperation(state, async (signal) => {
               const context =
                 state.context ?? (await resolveProjectContext(state.workingDirectory, signal));
-              const runs = await listWeaponSweepRuns(context.repository, signal);
+              const runs = await listAllSweepRuns(context.repository, signal);
               state.context = context;
               state.runs = runs;
             });
@@ -809,6 +899,7 @@ const session = await joinSession({
             expectedWeapons: [],
             availableWeapons: [],
             expiredArtifactCount: 0,
+            jobPhases: null,
             data: null,
             error: null,
             warning: null,
@@ -833,12 +924,12 @@ const session = await joinSession({
           state.source = 'cloud';
           await initializeCloud(ctx.instanceId, ctx.input?.runId);
         }
+        const workflowType = state.selectedRun?.workflowType ?? null;
         return {
-          title: '🗡️ Sweep Results',
-          status:
-            state.source === 'cloud' && state.selectedRun
-              ? `${state.selectedRun.status}${state.selectedRun.conclusion ? ` · ${state.selectedRun.conclusion}` : ''}`
-              : state.source,
+          title: workflowType === 'ai-sweep' ? '🤖 AI Sweep Eval' : '🗡️ Sweep Results',
+          status: state.selectedRun
+            ? `${state.selectedRun.status}${state.selectedRun.conclusion ? ` · ${state.selectedRun.conclusion}` : ''}`
+            : state.source,
           url: `${entry.url}?token=${entry.token}`,
         };
       },

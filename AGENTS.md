@@ -14,6 +14,7 @@
 - **Kickoff verdict is mandatory:** At session kickoff, explicitly say whether the ask is **recommended**, **risky**, or **not recommended**, with a short reason.
 - **Plans stay in session chat:** When giving a plan, write the full plan in session chat. Do **not** hide plans in repo files unless the human explicitly asks for a file artifact.
 - **Broad sweeps default to GitHub:** For sweeps or batch evals with **more than 10 runs**, default to GitHub-backed `workflow_dispatch`/CI execution (for example `.github/workflows/weapon-sweep.yml` or `.github/workflows/ai-sweep.yml`) instead of local/session compute unless a human explicitly asks for local.
+- **Sweep Results Viewer deep links are required:** Whenever you discuss, start, check, check the status of, or report results for any sweep (weapon-sweep **or** AI Sweep Eval), you **MUST** include an app-native Sweep Results Viewer reference in your response. Use the canvas `runId` input: `project:sweep-results-viewer runId=<run-id>`. A raw GitHub Actions URL may appear as a **secondary** fallback only — never as the sole navigation path. This applies to every mention of a sweep run id, workflow dispatch confirmation, status update, and results summary.
 - **Investigation sessions are process-light:** Investigation/repro/debug sessions with no merge-intent fix may stay lightweight (no review ledger/full PR paperwork). If a fix should land, spin a separate implementation child session/PR and run the normal full process there.
 
 ## Request Intake
@@ -126,6 +127,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Visual review (LLM)       | `npm run review:visual:llm`               |
 | Visual review (equip.)    | `npm run review:visual:equipment`         |
 | Producer agent            | `npm run producer`                        |
+| Epic status               | `npm run epic:status`                     |
 | Perf find baseline        | `npm run perf:find-baseline`              |
 | Merge train protection    | `npm run train:protection`                |
 | Train protection status   | `npm run train:protection:status`         |
@@ -231,7 +233,8 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 13. **Apple-scaled review harness before PR**: Every code-touching change runs the review harness scaled to its apple estimate and records it in a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`). **≥3🍎** → separate-model **plan review** **and** a **code-review loop until no concerns _or_ a 2-round cap then human escalation**; >3🍎 → the plan review must be **adversarial** (one reviewer enumerates ≥2 alternatives and argues against the chosen design) **and** **multi-model review** with adjudication (same 2-round-cap/escalation rule). Every plan review (≥3🍎) records a `plan_divergence` signal so the real design fork-rate can be measured. 1–2🍎 require no review stages (plan-review floor raised 2🍎→3🍎 on 2026-07-07 to match the code-review floor, ADR 0036; dual-plan synthesis retired as a required 4–5🍎 stage on 2026-07-08, ADR 0051 — replaced by the adversarial plan review). The `pr-review-ledger` guard hard-denies `create_pull_request` without a valid ledger for the tier (docs/art/deps-only diffs are exempt). Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #11) — escalate to a human instead. Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
 14. **Every game system must be wired or explicitly allowlisted**: Any `*System` exported from `src/core/**` or `src/game/**` MUST be referenced by a real runtime wiring site (`src/bootstrap/floor-main-scene-options.ts`, `src/engine/sim/simulation-step.ts`, `src/game/ai/simulation-step.ts`, `src/game/ai/headless-runner.ts`, `src/engine/scenes/MainGameScene.ts`) or added to the documented allowlist in `scripts/agent/health/orphaned-systems-lib.ts` with a reason. Lab/test references do NOT count. Enforced by `npm run check:wired-systems` (ADR 0039), run in `verify` and the `check-format-and-labs` CI job. Never allowlist a system just to go green (see rule #11) — allowlisting is only for systems intentionally not-yet-wired, and the reason must say so.
 15. **Broad sweeps (>10 runs) use GitHub infrastructure by default**: Prefer GitHub Actions `workflow_dispatch`/CI runners over local or session compute for broad sweeps so sampling is parallelized and local resources stay available. Keep local sweeps for small smoke checks or explicit human override.
-16. **Split investigation from landing implementation**: Investigation/repro/debug sessions can be scrappy and low-overhead when they are not landing code. Once an investigation identifies a fix to ship, open a separate implementation child session/PR that follows the full normal process (apple accounting, verify gates, review harness/ledger, and handoff).
+16. **Split investigation from landing implementation**: Investigation/repro/debug sessions can be scrappy and low-overhead when they are not landing code. Once an investigation identifies a fix to ship, open a separate implementation child session/PR and run the normal full process there.
+17. **Sweep Results Viewer deep links are required for any sweep discussion**: Whenever you discuss, start, check, report status for, or summarize results of any sweep (weapon-sweep **or** AI Sweep Eval), include an app-native Sweep Results Viewer reference. Use the canvas `runId` input — `project:sweep-results-viewer runId=<run-id>` — so the viewer opens directly on that session. A raw GitHub Actions URL is a permitted secondary fallback only; never provide it as the sole navigation path.
 
 > Several of these rules are now **hard-enforced** at the tool-call boundary by
 > the `copilot-guards` extension. See
@@ -284,7 +287,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
   (`C:\Windows\System32\bash.exe`, a genuine Linux `x86_64-pc-linux-gnu` bash),
   not Git-Bash/MSYS2. Two things silently break tests that `spawnSync('bash', ...)`
   a script by absolute path: (1) a `path.resolve()`-built Windows path
-  (`C:\Users\...`) is meaningless to WSL, which needs the `/mnt/c/Users/...`
+  (`C:\Users\...`) is meaningless to WSL, which needs the corresponding WSL
   mount form instead; (2) WSL does **not** forward the parent process's env
   vars into the Linux session unless they're named in the `WSLENV`
   allow-list, so custom env-var test hooks (e.g. `SCOPE_FILES_OVERRIDE`) are

@@ -20,3 +20,29 @@ test('does not embed GitHub credentials or authenticated API URLs', () => {
   const html = renderHtml('sweep-test');
   assert.doesNotMatch(html, /GH_TOKEN|GITHUB_TOKEN|api\.github\.com|Bearer /);
 });
+
+test('render includes AI sweep leaderboard section markers', () => {
+  const html = renderHtml('sweep-test');
+  assert.match(html, /renderAiSweepLeaderboard/);
+  assert.match(html, /renderAiJobPhases/);
+  assert.match(html, /phase-grid/);
+  assert.match(html, /AI Sweep Eval Results/);
+});
+
+test('run label includes [AI] or [W] type prefix', () => {
+  const html = renderHtml('sweep-test');
+  assert.match(html, /\[AI\]|\[W\]/);
+});
+
+test('page-title element is present and updated dynamically', () => {
+  const html = renderHtml('sweep-test');
+  assert.match(html, /id="page-title"/);
+  assert.match(html, /titleEl\.textContent/);
+  assert.match(html, /ai-sweep.*AI Sweep Eval Results/);
+});
+
+test('run selector aria-label is generic (not weapon-sweep-specific)', () => {
+  const html = renderHtml('sweep-test');
+  assert.match(html, /aria-label="Cloud sweep run"/);
+  assert.doesNotMatch(html, /aria-label="Cloud weapon-sweep run"/);
+});

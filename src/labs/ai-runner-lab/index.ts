@@ -644,7 +644,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     visualNavmesh: persisted?.aiConfig?.visualNavmesh ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
-    weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? false,
+    weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? true,
     merchantWeaponPurchase: persisted?.aiConfig?.merchantWeaponPurchase ?? false,
     seamWeight: persisted?.aiConfig?.seamWeight ?? 0,
   };
@@ -845,7 +845,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // scenario preset's world tweaks on top of the floor's own configureWorld.
   // Shared by the initial build and changeFloor so switching floors preserves
   // the active scenario preset instead of clobbering it.
-  const composeSceneOptions = (base: ReturnType<typeof createFloorMainSceneOptions>) => ({
+  const composeSceneOptions: (
+    base: ReturnType<typeof createFloorMainSceneOptions>,
+  ) => ReturnType<typeof createFloorMainSceneOptions> = (base) => ({
     ...base,
     configureWorld: (world: GameWorld, playerEid: number) => {
       base.configureWorld(world, playerEid);
@@ -860,6 +862,20 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         ? null
         : computeAiStatAllocation(world, playerEid, available, aiConfig.weaponPersonas),
     sessionRecorderFactory: recorderControls.factory,
+    recomposeFloorTransitionOptions: (nextFloorOptions) => {
+      // Synchronize lab state with the destination floor before composing.
+      // Mirrors the non-reseed portion of applyRunSettings so that currentFloor,
+      // selectedScenarioPresetId, and the visual profile stay consistent after an
+      // automatic in-process floor transition. resolveScenarioPresetForFloor
+      // forces the default for non-floor1 destinations, matching manual switching.
+      const destinationFloorId = nextFloorOptions.floorId ?? currentFloor;
+      const resolved = resolveScenarioPresetForFloor(destinationFloorId, selectedScenarioPresetId);
+      currentFloor = destinationFloorId;
+      selectedScenarioPresetId = resolved.presetId;
+      applyScenarioVisualProfile(selectedScenarioPresetId);
+      persistLabState();
+      return composeSceneOptions(nextFloorOptions);
+    },
   });
 
   const sceneOptions = composeSceneOptions(createFloorMainSceneOptions(currentFloor));
@@ -1256,7 +1272,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const aiModesFolder = gui.addFolder('AI Modes (A/B)');
   aiModesFolder
     .add(aiConfig, 'weaponPersonas')
-    .name('Weapon personas (experimental)')
+    .name('Weapon personas')
     .onChange(() => {
       persistLabState();
     });

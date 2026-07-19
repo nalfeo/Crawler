@@ -30,6 +30,7 @@ import {
   spawnXpGem,
 } from '../helpers.js';
 import type { GameWorld } from '../world.js';
+import { MAX_BLOOD_POOLS, createBloodPoolSurface } from '../../shared/blood-surfaces.js';
 import {
   getEnemyDropConfig,
   rollLootTable,
@@ -49,6 +50,7 @@ import { getFloorManifest } from '../../shared/floor-registry.js';
 import { SPAWNER_MAX_BANKED_CHILDREN } from '../spawner-arena.js';
 import { getBodyHalfWidth, getBodyHalfHeight } from '../physics-body.js';
 import { SHAPE_CIRCLE } from '../physics-defs.js';
+import { CORPSE } from '../../shared/constants.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -58,8 +60,6 @@ const DEATH_KNOCKBACK_BASE = 1;
 const DEATH_KNOCKBACK_MAX = 8;
 /** Knockback speed (feet per frame-step). */
 const DEATH_KNOCKBACK_SPEED = 0.75;
-/** How long a dead entity persists before removal (ms). */
-const DEATH_LINGER_MS = 3000;
 const DEFAULT_CONTACT_DAMAGE = 5;
 // Keep in sync with AI_TYPE.LEAPER in src/game/enemyAISystem.ts.
 const SLIME_LEAPER_AI_TYPE = 3;
@@ -301,7 +301,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
   const { health, position } = world.stores;
   const processed = getProcessedDeaths(world);
   const spawnLoot = options.spawnLoot ?? true;
-  const deathLingerMs = options.deathLingerMs ?? DEATH_LINGER_MS;
+  const deathLingerMs = options.deathLingerMs ?? CORPSE.LINGER_MS;
   // Floor 1 onboarding pacing: gold, XP, and junk only start dropping after the
   // player finds the Welcome Office and the Tutorial Goon explains the rules.
   // Off-floor (e.g. labs) drops are always enabled.
@@ -470,6 +470,20 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
     const isBoss = hasComponent(world.ecs, eid, FamilyMembership)
       ? ((world.stores.familyMembership.isBoss[eid] ?? 0) as 0 | 1)
       : 0;
+    world.bloodPools.push(
+      createBloodPoolSurface({
+        worldSeed: world.seed,
+        poolId: world.bloodyFootprintState.nextPoolId++,
+        x,
+        y,
+        color: bloodColor,
+        overkill,
+        createdAtMs: world.elapsedMs,
+      }),
+    );
+    if (world.bloodPools.length > MAX_BLOOD_POOLS) {
+      world.bloodPools.splice(0, world.bloodPools.length - MAX_BLOOD_POOLS);
+    }
     world.combatEvents.push({
       type: 'death',
       x,

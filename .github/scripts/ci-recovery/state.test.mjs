@@ -4,12 +4,15 @@ import test from 'node:test';
 import {
   admissionWaitReasons,
   assertOwnershipInvariant,
+  automationProgressKey,
+  automationStallAction,
   blockerFingerprint,
   collapseCheckRunsByName,
   extractAddressedMarkerSha,
   hasSubstantiveCopilotReview,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
+  isHealthyRecoveryOwner,
   isLeaseExpired,
   isRecoveryStateSemanticallyEqual,
   isTrainFastPathPushRun,
@@ -25,6 +28,7 @@ import {
   shouldResolveThread,
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
+  shouldDispatchMergeTrainFill,
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
@@ -391,6 +395,183 @@ test('rejects duplicate dispatches for the same blocker fingerprint regardless o
   );
 });
 
+test('automation staleness waits, retries once, then releases without treating writes as progress', () => {
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
+  ]);
+  const progressKey = automationProgressKey('abc', fingerprint);
+  const state = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
+    attempt: 1,
+    progressKey,
+    progressAt: '2026-07-17T12:00:00.000Z',
+    updatedAt: '2026-07-17T12:20:00.000Z',
+  });
+
+  assert.equal(
+    automationStallAction({
+      state,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:29:59.000Z'),
+    }),
+    'wait',
+  );
+  assert.equal(
+    automationStallAction({
+      state,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    'retry',
+  );
+  assert.equal(
+    automationStallAction({
+      state: { ...state, attempt: 2 },
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    'release',
+  );
+  assert.equal(
+    automationStallAction({
+      state,
+      headSha: 'def',
+      fingerprint,
+      now: new Date('2026-07-17T13:00:00.000Z'),
+    }),
+    'progressed',
+  );
+});
+
+test('legacy state without progressKey is never exhausted regardless of historical attempt count', () => {
+  // Regression for Thread 5 (PRRT_kwDOSvo2Ms6Rv6pU): legacy automation states
+  // have no progressKey and carry a historical cumulative attempt count that must
+  // NOT trigger the new progressKey-scoped exhaustion gate (attempt>=2 → release).
+  // Such states should always resolve to 'retry' so they get at least one more
+  // chance under the new per-progress-key budget.
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
+  ]);
+  const legacyStateAttempt2 = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
+    attempt: 2,
+    // No progressKey / progressAt — legacy state
+    updatedAt: '2026-07-17T12:00:00.000Z',
+  });
+  const legacyStateAttempt5 = { ...legacyStateAttempt2, attempt: 5 };
+
+  // Fresh enough — should wait regardless of attempt
+  assert.equal(
+    automationStallAction({
+      state: legacyStateAttempt2,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:10:00.000Z'),
+    }),
+    'wait',
+    'legacy attempt=2 within window should wait',
+  );
+  // Stale — legacy state with attempt=2 must retry, not release
+  assert.equal(
+    automationStallAction({
+      state: legacyStateAttempt2,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    'retry',
+    'legacy attempt=2 should resolve to retry, not release',
+  );
+  // Legacy state with very high historical attempt also retries once
+  assert.equal(
+    automationStallAction({
+      state: legacyStateAttempt5,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    'retry',
+    'legacy attempt=5 should also resolve to retry under new semantics',
+  );
+});
+
+test('broad sweeps suppress only healthy consistent owners', () => {
+  const automation = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint: blockerFingerprint([]),
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [],
+    attempt: 1,
+    progressKey: automationProgressKey('abc', blockerFingerprint([])),
+    progressAt: '2026-07-17T12:00:00.000Z',
+    updatedAt: '2026-07-17T12:10:00.000Z',
+  });
+  const shepherd = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint: blockerFingerprint([]),
+    owner: 'shepherd',
+    status: 'active',
+    leaseId: 'lease-1',
+    blockers: [],
+    updatedAt: '2026-07-17T12:00:00.000Z',
+  });
+
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: automation,
+      now: new Date('2026-07-17T12:29:59.000Z'),
+    }),
+    true,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: automation,
+      now: new Date('2026-07-17T12:30:01.000Z'),
+    }),
+    false,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: shepherd,
+      now: new Date('2026-07-17T12:34:59.000Z'),
+    }),
+    true,
+  );
+  assert.equal(
+    isHealthyRecoveryOwner({
+      prNumber: 42,
+      state: shepherd,
+      now: new Date('2026-07-17T12:35:01.000Z'),
+    }),
+    false,
+  );
+  assert.equal(isHealthyRecoveryOwner({ prNumber: 43, state: automation }), false);
+});
+
+test('merge-train fill dispatches only on queue admission edges', () => {
+  assert.equal(shouldDispatchMergeTrainFill(false), true);
+  assert.equal(shouldDispatchMergeTrainFill(true), false);
+});
+
 test('shouldResolveThread rejects old marker with later reviewer comment', () => {
   const thread = {
     comments: {
@@ -489,15 +670,80 @@ test('markerNamesHead accepts full SHA and unambiguous prefix', () => {
   assert.equal(markerNamesHead('✅ Addressed in abc12: note', 'abc12345'), false); // < 7 chars
 });
 
-test('extractAddressedMarkerSha parses raw SHA and commit URL markers', () => {
-  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def: note'), 'abc1234def');
+test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL markers', () => {
+  const commitSha = 'def5678abc1234ff00aa11bb22cc33dd44ee55ff';
+  const commitUrl = `https://github.com/nalfeo/Crawler/commit/${commitSha}`;
+  const accepted = new Map([
+    ['✅ Addressed in abc1234def: note', 'abc1234def'],
+    ['✅ Addressed in abc1234def).', 'abc1234def'],
+    [`✅ Addressed in <${commitUrl}>`, commitSha],
+    [`✅ Addressed in ${commitUrl},`, commitSha],
+    ['✅ Addressed in `abc1234def`: note', 'abc1234def'],
+    ['✅ Addressed in ``abc1234def``).', 'abc1234def'],
+    [`✅ Addressed in \`${commitUrl}\`: note`, commitSha],
+  ]);
+  for (const [body, expected] of accepted) {
+    assert.equal(extractAddressedMarkerSha(body), expected, body);
+  }
+
+  const rejected = [
+    '✅ Addressed in not-a-commit-link',
+    '✅ Addressed in https://github.com/nalfeo/Crawler/pull/1234',
+    '✅ Addressed in `abc1234def: note',
+    '✅ Addressed in abc1234def`: note',
+    '✅ Addressed in `abc1234`def`: note',
+    '✅ Addressed in ``abc1234def`: note',
+  ];
+  for (const body of rejected) {
+    assert.equal(extractAddressedMarkerSha(body), null, body);
+  }
+});
+
+test('extractAddressedMarkerSha parses slash-separated SHA pair by taking the second (later) SHA', () => {
+  // Agents sometimes write two SHAs when a fix spans multiple commits, e.g.
+  // "✅ Addressed in 9adef25/28f3d0f: ...". The second (later) SHA is returned
+  // so its ancestry in the lineage check proves the complete pair is present.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in 9adef25/28f3d0f: note'), '28f3d0f');
   assert.equal(
-    extractAddressedMarkerSha(
-      '✅ Addressed in <https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff>',
-    ),
-    'def5678abc1234ff00aa11bb22cc33dd44ee55ff',
+    extractAddressedMarkerSha('✅ Addressed in abc1234def/def5678abc: note'),
+    'def5678abc',
   );
-  assert.equal(extractAddressedMarkerSha('✅ Addressed in not-a-commit-link'), null);
+  // Malformed: non-SHA first component → rejected.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in not-a-sha/abc1234def: note'), null);
+  // Malformed: non-SHA second component → rejected.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/not-a-sha: note'), null);
+  // Malformed: empty second component (trailing slash) → rejected.
+  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def/: note'), null);
+  // Malformed: more than two components → rejected (not exactly a pair).
+  assert.equal(
+    extractAddressedMarkerSha('✅ Addressed in abc1234def/def5678abc/extra: note'),
+    null,
+  );
+});
+
+test('shouldResolveThread accepts slash-separated SHA pair when second (later) SHA is a reachable ancestor', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Needs fixing.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed in 9adef25/28f3d0f: Handoff and PR description fully reconciled.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  // Second SHA in the pair is a reachable ancestor of head → should resolve.
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set(['28f3d0f'])), true);
+  // Not in reachable set and not head prefix → should not resolve.
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
+  // Second SHA matches head prefix → should resolve.
+  assert.equal(shouldResolveThread(thread, '28f3d0fabc123456'), true);
 });
 
 test('shouldResolveThread accepts latest trusted commit URL marker on head lineage', () => {
@@ -665,4 +911,40 @@ test('isTrainFastPathPushRun requires a push-triggered CI run carrying a trusted
     'no trusted check present',
   );
   assert.equal(isTrainFastPathPushRun(null, trustedAppId, trustedCheckRuns), false, 'missing run');
+});
+
+test('legacy v1 automation state without progressKey is never classified as exhausted', () => {
+  // Regression for Thread 3: before this PR `attempt` was a cumulative
+  // dispatch count in v1 comments that have no `progressKey`. Treating
+  // `attempt >= 2` as exhausted would silently skip the promised one retry
+  // on all in-flight tasks immediately after rollout.  Without a stored
+  // `progressKey`, the stall action must return 'retry' regardless of
+  // `attempt`.
+  const fingerprint = blockerFingerprint([
+    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
+  ]);
+  const legacyState = makeState({
+    prNumber: 42,
+    headSha: 'abc',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
+    attempt: 2,
+    // Deliberately omit progressKey — this simulates a legacy v1 comment.
+    updatedAt: '2026-07-01T12:00:00.000Z',
+  });
+  // Verify the fixture is actually missing progressKey.
+  assert.equal(legacyState.progressKey, undefined);
+
+  assert.equal(
+    automationStallAction({
+      state: legacyState,
+      headSha: 'abc',
+      fingerprint,
+      now: new Date('2026-07-01T12:31:00.000Z'),
+    }),
+    'retry',
+    'legacy v1 state with attempt>=2 but no progressKey must be retried, not released',
+  );
 });

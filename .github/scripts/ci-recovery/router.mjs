@@ -2,7 +2,15 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { paginate, request } from './github.mjs';
-import { WAITING_LABEL, WAITING_TRANSITION_LABEL } from './state.mjs';
+import {
+  isHealthyRecoveryOwner,
+  OWNER_LABEL_PREFIX,
+  ownerLabel,
+  parseStateComment,
+  STATE_MARKER,
+  WAITING_LABEL,
+  WAITING_TRANSITION_LABEL,
+} from './state.mjs';
 import {
   BLOCKED_LABEL,
   NOOP_LABEL,
@@ -32,6 +40,7 @@ const TRAIN_OWNED_LABELS = new Set([
   NOOP_LABEL,
   VALIDATION_FAILED_LABEL,
 ]);
+const OWNERSHIP_HYDRATION_BATCH_SIZE = 6;
 
 function parsePositiveInt(raw, fallback) {
   const parsed = Number.parseInt(String(raw ?? ''), 10);
@@ -138,9 +147,15 @@ export function collectPrNumbers({
   scheduledPulls = [],
   maxDispatchPerRun = DEFAULT_MAX_DISPATCH_PER_RUN,
   trainEnabled = false,
+  now = new Date(),
 }) {
   if (trainEnabled) {
     const directlyTriggeredPrs = eventPrNumbers(payload);
+    const repairWindowSweep = isRepairWindowSweepEvent({
+      payload,
+      eventName,
+      trainEnabled,
+    });
     const eligiblePulls = scheduledPulls
       .filter((pullRequest) => {
         const directlyTriggered = directlyTriggeredPrs.has(pullRequest.number);
@@ -169,6 +184,11 @@ export function collectPrNumbers({
     const direct = eligiblePulls.filter((pullRequest) =>
       directlyTriggeredPrs.has(pullRequest.number),
     );
+
+    if (!repairWindowSweep) {
+      return direct.map((pullRequest) => pullRequest.number);
+    }
+
     const waitingTransitions = eligiblePulls.filter(
       (pullRequest) =>
         !directlyTriggeredPrs.has(pullRequest.number) &&
@@ -178,11 +198,7 @@ export function collectPrNumbers({
       (pullRequest) =>
         !directlyTriggeredPrs.has(pullRequest.number) &&
         !(pullRequest.labels || []).some((label) => label.name === WAITING_TRANSITION_LABEL) &&
-        (eventName === 'schedule' ||
-          eventName === 'workflow_dispatch' ||
-          !(pullRequest.labels || []).some((label) =>
-            String(label.name || '').startsWith('ci-owner-pr-'),
-          )),
+        !hasHealthyOwnerForSweep(pullRequest, now),
     );
     return [...direct, ...waitingTransitions, ...sweep]
       .slice(0, Math.max(REPAIR_WINDOW_SIZE, direct.length))
@@ -256,6 +272,138 @@ export function collectPrNumbers({
     return [...prioritized, ...remaining].slice(0, maxDispatchPerRun);
   }
   return eligible;
+}
+
+export function recoveryStateFromComments(comments) {
+  const stateComments = (comments || []).filter((comment) =>
+    String(comment.body || '')
+      .trimStart()
+      .startsWith(STATE_MARKER),
+  );
+  if (stateComments.length !== 1) return null;
+  try {
+    return parseStateComment(stateComments[0].body);
+  } catch {
+    return null;
+  }
+}
+
+export function hasHealthyOwnerForSweep(pullRequest, now = new Date()) {
+  const ownerLabels = (pullRequest.labels || []).filter((label) =>
+    String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
+  );
+  if (
+    ownerLabels.length !== 1 ||
+    ownerLabels[0].name !== ownerLabel(pullRequest.number) ||
+    pullRequest.recoveryStateUnreadable
+  ) {
+    return false;
+  }
+  // An automation state recorded for an older head incorrectly suppresses the
+  // PR for up to 30 minutes after a push or rebase. Require the state head to
+  // match the live PR head for automation owners so any head advance clears
+  // suppression immediately. Shepherd leases are governed by their explicit
+  // lease expiry and are not gated on head SHA.
+  const state = pullRequest.recoveryState;
+  if (state?.owner === 'automation') {
+    const liveHead = String(pullRequest.head?.sha || '').toLowerCase();
+    const stateHead = String(state.headSha || '').toLowerCase();
+    if (liveHead && stateHead !== liveHead) {
+      return false;
+    }
+  }
+  return isHealthyRecoveryOwner({
+    prNumber: pullRequest.number,
+    state: pullRequest.recoveryState,
+    now,
+  });
+}
+
+export async function hydrateRecoveryOwnership(
+  pulls,
+  loadComments,
+  batchSize = OWNERSHIP_HYDRATION_BATCH_SIZE,
+  { targetDispatchable = null, countDispatchable = null } = {},
+) {
+  const hydrated = [...pulls];
+  const orderedPulls = hydrated
+    .map((pullRequest, index) => ({ pullRequest, index }))
+    .sort(
+      (left, right) =>
+        (Date.parse(left.pullRequest.created_at) || 0) -
+          (Date.parse(right.pullRequest.created_at) || 0) ||
+        left.pullRequest.number - right.pullRequest.number,
+    )
+    .map((entry, orderIndex) => ({ ...entry, orderIndex }));
+  const ownerIndexes = orderedPulls.filter(({ pullRequest }) =>
+    (pullRequest.labels || []).some((label) =>
+      String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
+    ),
+  );
+
+  const resolvedDispatchableCount = (endOrderIndex) => {
+    if (!countDispatchable) return 0;
+    return countDispatchable(
+      orderedPulls.slice(0, endOrderIndex).map(({ index }) => hydrated[index]),
+    );
+  };
+
+  const firstOwnerOrderIndex = ownerIndexes[0]?.orderIndex ?? orderedPulls.length;
+  if (
+    targetDispatchable !== null &&
+    resolvedDispatchableCount(firstOwnerOrderIndex) >= targetDispatchable
+  ) {
+    return hydrated;
+  }
+
+  for (let offset = 0; offset < ownerIndexes.length; offset += batchSize) {
+    const batch = ownerIndexes.slice(offset, offset + batchSize);
+    await Promise.all(
+      batch.map(async ({ pullRequest, index }) => {
+        try {
+          const comments = await loadComments(pullRequest.number);
+          hydrated[index] = {
+            ...pullRequest,
+            recoveryState: recoveryStateFromComments(comments),
+          };
+        } catch (error) {
+          hydrated[index] = {
+            ...pullRequest,
+            recoveryState: null,
+            recoveryStateUnreadable: String(error?.message || error),
+          };
+        }
+      }),
+    );
+    const nextOwner = ownerIndexes[offset + batch.length];
+    const resolvedEndOrderIndex = nextOwner?.orderIndex ?? orderedPulls.length;
+    if (
+      targetDispatchable !== null &&
+      resolvedDispatchableCount(resolvedEndOrderIndex) >= targetDispatchable
+    ) {
+      break;
+    }
+  }
+  return hydrated;
+}
+
+export function isRepairWindowSweepEvent({ payload, eventName, trainEnabled }) {
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+    return true;
+  }
+  if (!trainEnabled) {
+    return false;
+  }
+  if (eventName === 'pull_request_target' && payload.action === 'closed') {
+    return true;
+  }
+  if (eventName !== 'workflow_run' || eventPrNumbers(payload).size > 0) {
+    return false;
+  }
+
+  const workflowRun = payload.workflow_run;
+  const defaultBranch = payload.repository?.default_branch || 'main';
+  return workflowRun?.name === 'CI' && workflowRun.head_branch === defaultBranch;
 }
 
 function hasTrainOwnedLabel(pullRequest) {
@@ -332,6 +480,40 @@ export async function runFromEnv(env = process.env) {
         ),
       { label: 'list-open-prs' },
     );
+    if (
+      trainEnabled &&
+      isRepairWindowSweepEvent({
+        payload,
+        eventName,
+        trainEnabled,
+      })
+    ) {
+      // Snapshot the reference time before hydration so the age-ordering and
+      // "healthy owner" checks inside the callback all share the same clock.
+      const hydrateNow = new Date();
+      scheduledPulls = await hydrateRecoveryOwnership(
+        scheduledPulls,
+        (number) =>
+          requestWithBackoff(
+            () => paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`),
+            { label: `load-owner-state-${number}` },
+          ),
+        OWNERSHIP_HYDRATION_BATCH_SIZE,
+        {
+          targetDispatchable: REPAIR_WINDOW_SIZE,
+          countDispatchable: (resolvedPulls) =>
+            collectPrNumbers({
+              payload: {},
+              eventName: 'workflow_dispatch',
+              repository,
+              scheduledPulls: resolvedPulls,
+              maxDispatchPerRun: REPAIR_WINDOW_SIZE,
+              trainEnabled: true,
+              now: hydrateNow,
+            }).length,
+        },
+      );
+    }
   }
 
   const prNumbers = collectPrNumbers({
@@ -341,6 +523,7 @@ export async function runFromEnv(env = process.env) {
     scheduledPulls,
     maxDispatchPerRun,
     trainEnabled,
+    now: new Date(),
   });
   const directlyTriggeredPrs = eventPrNumbers(payload);
 

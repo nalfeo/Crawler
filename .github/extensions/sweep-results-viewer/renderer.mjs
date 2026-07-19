@@ -140,7 +140,7 @@ export function renderHtml(instanceId) {
       font-weight: var(--font-weight-semibold, 600);
     }
     tr:last-child td { border-bottom: none; }
-    .weapon-name { font-weight: var(--font-weight-semibold, 600); }
+    .weapon-name, .combo-name { font-weight: var(--font-weight-semibold, 600); }
     .winrate {
       display: inline-block;
       min-width: 50px;
@@ -151,6 +151,39 @@ export function renderHtml(instanceId) {
     .winrate.high { background: color-mix(in srgb, var(--win) 20%, transparent); color: var(--win); }
     .winrate.mid { background: color-mix(in srgb, var(--timeout) 20%, transparent); color: var(--timeout); }
     .winrate.low { background: color-mix(in srgb, var(--loss) 20%, transparent); color: var(--loss); }
+    .incumbent-row { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .flip-positive { color: var(--win); font-weight: var(--font-weight-semibold, 600); }
+    .flip-negative { color: var(--loss); font-weight: var(--font-weight-semibold, 600); }
+    .phase-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .phase-card {
+      padding: 10px 12px;
+      border: 1px solid var(--border-color-default, #30363d);
+      border-radius: 6px;
+      background: var(--panel);
+    }
+    .phase-card .phase-name {
+      font-size: var(--text-body-small, 12px);
+      font-weight: var(--font-weight-semibold, 600);
+      color: var(--text-color-muted, #8b949e);
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .phase-card .phase-count {
+      font-size: var(--text-title-medium, 20px);
+      font-weight: var(--font-weight-semibold, 600);
+    }
+    .phase-card.running { border-color: var(--accent); }
+    .phase-card.running .phase-name { color: var(--accent); }
+    .phase-card.done { border-color: var(--win); }
+    .phase-card.done .phase-name { color: var(--win); }
+    .phase-card.failed { border-color: var(--loss); }
+    .phase-card.failed .phase-name { color: var(--loss); }
     .grid {
       display: grid;
       gap: 2px;
@@ -212,7 +245,7 @@ export function renderHtml(instanceId) {
 <body>
   <header>
     <div>
-      <h1>Weapon Sweep Results</h1>
+      <h1 id="page-title">Sweep Results</h1>
       <div id="meta" class="meta">Loading attached project context…</div>
     </div>
   </header>
@@ -221,7 +254,7 @@ export function renderHtml(instanceId) {
       <option value="cloud">Cloud runs</option>
       <option value="local">Local session</option>
     </select>
-    <select id="run-select" aria-label="Cloud weapon-sweep run">
+    <select id="run-select" aria-label="Cloud sweep run">
       <option>Loading cloud runs…</option>
     </select>
     <button id="reload" type="button">Refresh</button>
@@ -238,6 +271,7 @@ export function renderHtml(instanceId) {
   const apiUrl = (path) => path + '?token=' + encodeURIComponent(token || '');
   const fmtPct = (value) => Number.isFinite(Number(value)) ? (Number(value) * 100).toFixed(1) + '%' : '—';
   const fmtNum = (value, digits = 1) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '—';
+  const fmtMs = (ms) => Number.isFinite(Number(ms)) ? fmtNum(Number(ms) / 1000, 1) + 's' : '—';
   const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   let currentState = null;
 
@@ -256,7 +290,8 @@ export function renderHtml(instanceId) {
   function runLabel(run) {
     const created = run.createdAt ? new Date(run.createdAt).toLocaleString() : 'unknown time';
     const result = run.status === 'completed' ? (run.conclusion || 'completed') : run.status;
-    return '#' + run.id + ' · ' + created + ' · ' + (run.headBranch || 'detached') + ' · ' + result;
+    const typeTag = run.workflowType === 'ai-sweep' ? '[AI] ' : '[W] ';
+    return typeTag + '#' + run.id + ' · ' + created + ' · ' + (run.headBranch || 'detached') + ' · ' + result;
   }
 
   function localRunLabel(run) {
@@ -269,22 +304,24 @@ export function renderHtml(instanceId) {
     const select = document.getElementById('run-select');
     const cloud = state.source === 'cloud';
     const runs = cloud ? (state.runs || []) : (state.localRuns || []);
-    select.setAttribute('aria-label', cloud ? 'Cloud weapon-sweep run' : 'Local weapon-sweep result');
+    select.setAttribute('aria-label', cloud ? 'Cloud sweep run' : 'Local sweep result');
     if (!runs.length) {
       if (!cloud && state.path) {
         select.innerHTML = '<option value="' + esc(state.path) + '" selected>Explicit path · ' + esc(state.path) + '</option>';
         select.disabled = state.refreshing;
         return;
       }
-      select.innerHTML = '<option value="">No ' + (cloud ? 'cloud weapon-sweep runs' : 'local session results') + ' found</option>';
+      select.innerHTML = '<option value="">No ' + (cloud ? 'cloud sweep runs' : 'local session results') + ' found</option>';
       select.disabled = true;
       return;
     }
     if (cloud) {
+      select.setAttribute('aria-label', 'Cloud sweep run');
       select.innerHTML = runs.map((run) =>
         '<option value="' + run.id + '"' + (run.id === state.selectedRun?.id ? ' selected' : '') + '>' + esc(runLabel(run)) + '</option>'
       ).join('');
     } else {
+      select.setAttribute('aria-label', 'Local sweep result');
       const explicitOption = state.path && !runs.some((run) => run.path === state.path)
         ? '<option value="' + esc(state.path) + '" selected>Explicit path · ' + esc(state.path) + '</option>'
         : '';
@@ -314,13 +351,21 @@ export function renderHtml(instanceId) {
     const run = state.selectedRun;
     const pieces = [];
     pieces.push('<span class="pill">' + esc(state.source === 'cloud' ? 'GitHub Actions' : 'Local session') + '</span>');
-    if (state.source === 'cloud' && run) {
+    if (run) {
+      const workflowType = state.workflowType || run.workflowType;
+      if (workflowType === 'ai-sweep') {
+        pieces.push('<span class="pill">AI Sweep Eval</span>');
+      } else {
+        pieces.push('<span class="pill">Weapon Sweep</span>');
+      }
       const statusClass = run.status === 'completed' ? esc(run.conclusion || 'completed') : 'active';
       pieces.push('<span class="pill ' + statusClass + '">' + esc(run.status === 'completed' ? (run.conclusion || 'completed') : run.status) + '</span>');
-      if (state.expectedWeapons?.length) {
-        pieces.push('<span class="pill">' + state.availableWeapons.length + '/' + state.expectedWeapons.length + ' weapons</span>');
-      } else {
-        pieces.push('<span class="pill">' + state.availableWeapons.length + ' weapon result' + (state.availableWeapons.length === 1 ? '' : 's') + '</span>');
+      if (workflowType !== 'ai-sweep') {
+        if (state.expectedWeapons?.length) {
+          pieces.push('<span class="pill">' + state.availableWeapons.length + '/' + state.expectedWeapons.length + ' weapons</span>');
+        } else {
+          pieces.push('<span class="pill">' + (state.availableWeapons || []).length + ' weapon result' + ((state.availableWeapons || []).length === 1 ? '' : 's') + '</span>');
+        }
       }
       if (state.polling) pieces.push('<span class="pill active">auto-refresh 30s</span>');
       if (run.url) pieces.push('<a href="' + esc(run.url) + '" target="_blank" rel="noreferrer">Open workflow run</a>');
@@ -338,7 +383,102 @@ export function renderHtml(instanceId) {
     status.innerHTML = pieces.join('');
   }
 
-  function renderResults(state) {
+  function renderPhaseCard(name, phase) {
+    if (!phase || phase.total === 0) return '';
+    let cardClass = '';
+    let countText = '';
+    if (phase.running > 0) {
+      cardClass = 'running';
+      countText = phase.done + '+' + phase.running + ' / ' + phase.total;
+    } else if (phase.failed > 0) {
+      cardClass = 'failed';
+      countText = phase.done + ' done, ' + phase.failed + ' failed';
+    } else if (phase.done === phase.total) {
+      cardClass = 'done';
+      countText = phase.total + ' / ' + phase.total;
+    } else {
+      countText = phase.done + ' / ' + phase.total;
+    }
+    return '<div class="phase-card ' + cardClass + '"><div class="phase-name">' + esc(name) + '</div>'
+      + '<div class="phase-count">' + esc(countText) + '</div></div>';
+  }
+
+  function renderAiJobPhases(state) {
+    const phases = state.jobPhases;
+    if (!phases) return '<div class="empty-state">' + (state.refreshing ? 'Loading AI Sweep Eval status…' : 'No job phase data available yet.') + '</div>';
+    let html = '<section><h2>Live phase progress</h2><div class="phase-grid">';
+    html += renderPhaseCard('Preflight', phases.preflight);
+    html += renderPhaseCard('Search', phases.search);
+    html += renderPhaseCard('Validate', phases.validate);
+    html += renderPhaseCard('Aggregate', phases.aggregate);
+    html += '</div></section>';
+    return html;
+  }
+
+  function renderLeaderboardTable(rows, headingText) {
+    if (!rows || !rows.length) return '<div class="empty-state">Leaderboard is empty.</div>';
+    let html = '<section><h2>' + esc(headingText) + '</h2>';
+    html += '<div class="table-wrap"><table><thead><tr>'
+      + '<th>Rank</th><th>Combo</th><th>Runs</th><th>Wins</th><th>Win rate</th>'
+      + '<th>Σ score</th><th>Mean score</th><th>Mean clear</th><th>Mean XP</th>'
+      + '<th>Flips vs incumbent</th><th>Win Δ vs incumbent</th>'
+      + '</tr></thead><tbody>';
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const rowClass = row.isIncumbent ? ' class="incumbent-row"' : '';
+      html += '<tr' + rowClass + '>';
+      html += '<td>' + (i + 1) + (row.isIncumbent ? ' ★' : '') + '</td>';
+      html += '<td class="combo-name">' + esc(row.combo) + '</td>';
+      html += '<td>' + esc(row.runs) + '</td><td>' + esc(row.wins) + '</td>';
+      html += '<td><span class="winrate ' + winRateClass(row.winRate) + '">' + fmtPct(row.winRate) + '</span></td>';
+      html += '<td>' + fmtNum(row.totalScore, 0) + '</td>';
+      html += '<td>' + fmtNum(row.meanScore, 0) + '</td>';
+      html += '<td>' + fmtMs(row.meanClearTimeMsWins) + '</td>';
+      html += '<td>' + fmtNum(row.meanXp, 0) + '</td>';
+      const flips = row.flipsVsIncumbent;
+      const flipCell = flips == null ? '—' : (flips > 0 ? '<span class="flip-negative">' + flips + '</span>' : '0');
+      html += '<td>' + flipCell + '</td>';
+      const delta = row.winRateDeltaVsIncumbent;
+      const deltaCell = delta == null ? '—' : (delta > 0 ? '<span class="flip-positive">+' + fmtPct(delta) + '</span>' : (delta < 0 ? '<span class="flip-negative">' + fmtPct(delta) + '</span>' : '0%'));
+      html += '<td>' + deltaCell + '</td>';
+      html += '</tr>';
+    }
+    html += '</tbody></table></div></section>';
+    return html;
+  }
+
+  function renderAiSweepLeaderboard(state) {
+    const data = state.data;
+    if (!data) return '';
+    let html = '';
+    if (data.winnersDiverge) {
+      html += '<div class="message warning">⚠️ Composite-score winner differs from win-count winner — both orderings are shown below.</div>';
+      html += renderLeaderboardTable(data.byComposite, 'Leaderboard — composite score ordering');
+      html += renderLeaderboardTable(data.byLexicographic, 'Leaderboard — win-count ordering');
+    } else {
+      html += renderLeaderboardTable(data.byComposite, 'Leaderboard — composite score (by-combo, tuned finalist)');
+    }
+    return html;
+  }
+
+  function renderAiSweepResults(state) {
+    const content = document.getElementById('content');
+    let html = '';
+    // Always show job phases if available.
+    if (state.jobPhases) {
+      html += renderAiJobPhases(state);
+    }
+    if (state.data) {
+      html += renderAiSweepLeaderboard(state);
+    } else if (!state.jobPhases) {
+      html += '<div class="empty-state">'
+        + (state.refreshing ? 'Loading AI Sweep Eval results…' : 'No leaderboard results available yet. The run is still in progress.')
+        + '</div>';
+    }
+    content.innerHTML = html;
+  }
+
+  function renderWeaponSweepResults(state) {
     const content = document.getElementById('content');
     if (!state.data) {
       const detail = state.source === 'local'
@@ -397,6 +537,15 @@ export function renderHtml(instanceId) {
     content.innerHTML = html;
   }
 
+  function renderResults(state) {
+    const workflowType = state.workflowType || state.selectedRun?.workflowType;
+    if (workflowType === 'ai-sweep') {
+      renderAiSweepResults(state);
+    } else {
+      renderWeaponSweepResults(state);
+    }
+  }
+
   function render(state) {
     currentState = state;
     document.getElementById('source-select').value = state.source;
@@ -406,6 +555,11 @@ export function renderHtml(instanceId) {
       ? (state.repository || 'Unknown repository') + ' · attached branch ' + (state.branch || 'detached')
       : (state.path || state.localDirectory || 'No local path');
     document.getElementById('reload').disabled = state.refreshing;
+    const workflowType = state.workflowType || state.selectedRun?.workflowType;
+    const titleEl = document.getElementById('page-title');
+    if (titleEl) {
+      titleEl.textContent = workflowType === 'ai-sweep' ? '🤖 AI Sweep Eval Results' : '🗡️ Weapon Sweep Results';
+    }
     renderRunSelector(state);
     renderMessages(state);
     renderStatus(state);

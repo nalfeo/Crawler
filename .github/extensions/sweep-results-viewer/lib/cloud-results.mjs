@@ -3,6 +3,17 @@ import { normalizeFloors } from './result-data.mjs';
 const AGGREGATE_ARTIFACT_PATTERN = /^weapon-sweep-(?!shard-)([a-z0-9][a-z0-9-]*)$/;
 const SWEEP_JOB_PATTERN = /^(?:weapon-sweep|aggregate) \(([a-z0-9][a-z0-9-]*)/;
 
+/** Artifact name for the AI Sweep Eval final leaderboard. */
+export const LEADERBOARD_ARTIFACT_NAME = 'leaderboard';
+
+/** Maps AI Sweep Eval job name prefixes to their phase keys. */
+const AI_SWEEP_PHASE_PATTERNS = /** @type {const} */ ([
+  ['preflight', /^preflight\b/i],
+  ['search', /^search\b/i],
+  ['validate', /^validate\b/i],
+  ['aggregate', /^aggregate\b/i],
+]);
+
 function asString(value) {
   return typeof value === 'string' ? value : '';
 }
@@ -198,4 +209,105 @@ export function cloudResultWarning({ run, expectedWeapons, availableWeapons, exp
     return `Run concluded ${run.conclusion}; showing every available aggregate result.`;
   }
   return null;
+}
+
+/**
+ * Classify each AI Sweep Eval job into preflight / search / validate / aggregate
+ * and return per-phase counters.
+ *
+ * @param {readonly object[]} jobs - Raw job objects from the GitHub API.
+ * @returns {{ preflight: PhaseCount, search: PhaseCount, validate: PhaseCount, aggregate: PhaseCount }}
+ */
+export function parseAiSweepJobPhases(jobs) {
+  /** @type {Record<string, { total: number, done: number, failed: number, running: number, pending: number }>} */
+  const phases = {
+    preflight: { total: 0, done: 0, failed: 0, running: 0, pending: 0 },
+    search: { total: 0, done: 0, failed: 0, running: 0, pending: 0 },
+    validate: { total: 0, done: 0, failed: 0, running: 0, pending: 0 },
+    aggregate: { total: 0, done: 0, failed: 0, running: 0, pending: 0 },
+  };
+
+  for (const job of jobs ?? []) {
+    const name = asString(job?.name);
+    let phaseKey = null;
+    for (const [key, pattern] of AI_SWEEP_PHASE_PATTERNS) {
+      if (pattern.test(name)) {
+        phaseKey = key;
+        break;
+      }
+    }
+    if (!phaseKey) continue;
+
+    const phase = phases[phaseKey];
+    phase.total += 1;
+    const status = asString(job?.status);
+    const conclusion = asString(job?.conclusion);
+    if (status === 'completed') {
+      if (conclusion === 'success' || conclusion === 'skipped') {
+        phase.done += 1;
+      } else {
+        phase.failed += 1;
+      }
+    } else if (status === 'in_progress') {
+      phase.running += 1;
+    } else {
+      phase.pending += 1;
+    }
+  }
+
+  return phases;
+}
+
+/**
+ * Returns true when the artifact represents the AI Sweep Eval final leaderboard.
+ *
+ * @param {object} artifact
+ */
+export function isLeaderboardArtifact(artifact) {
+  return (
+    artifact != null &&
+    artifact.expired !== true &&
+    asString(artifact.name) === LEADERBOARD_ARTIFACT_NAME
+  );
+}
+
+/**
+ * Produce a user-facing warning/status string for an AI Sweep Eval run.
+ *
+ * @param {{ run: object, jobPhases: object | null, hasLeaderboard: boolean, expiredArtifactCount?: number }} options
+ * @returns {string | null}
+ */
+export function aiSweepWarning({ run, jobPhases, hasLeaderboard, expiredArtifactCount = 0 }) {
+  if (isTerminalRun(run)) {
+    if (!hasLeaderboard) {
+      if (expiredArtifactCount > 0) {
+        return 'Leaderboard artifact has expired and is no longer available.';
+      }
+      if (run.conclusion && run.conclusion !== 'success') {
+        return `Run concluded ${run.conclusion}; no leaderboard artifact is available.`;
+      }
+      return 'Run completed without a leaderboard artifact.';
+    }
+    if (run.conclusion && run.conclusion !== 'success') {
+      return `Run concluded ${run.conclusion}; leaderboard may be partial.`;
+    }
+    return null;
+  }
+
+  // Active run — describe phase progress.
+  if (jobPhases) {
+    if (jobPhases.aggregate.running > 0) {
+      return 'Aggregating results into leaderboard…';
+    }
+    if (jobPhases.validate.running > 0 || jobPhases.validate.done > 0) {
+      const done = jobPhases.validate.done + jobPhases.validate.failed;
+      return `Validation in progress: ${done}/${jobPhases.validate.total} combos complete. Refreshing automatically.`;
+    }
+    if (jobPhases.search.running > 0 || jobPhases.search.done > 0) {
+      const done = jobPhases.search.done + jobPhases.search.failed;
+      return `Search in progress: ${done}/${jobPhases.search.total} combos complete. Refreshing automatically.`;
+    }
+    return 'AI Sweep Eval starting up. Refreshing automatically.';
+  }
+  return 'No leaderboard results available yet. This active run will refresh automatically.';
 }

@@ -11,7 +11,7 @@ on:
     types: [created, edited]
   workflow_run:
     workflows: ['CI']
-    types: [completed, requested]
+    types: [completed]
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
@@ -23,16 +23,34 @@ permissions:
 
 jobs:
   route:
-    if: ${{ github.event_name != 'pull_request_target' || github.event.pull_request.head.repo.full_name == github.repository }}
+    if: >-
+      ${{
+        (github.event_name != 'pull_request_target' ||
+         github.event.pull_request.head.repo.full_name == github.repository) &&
+        (github.event_name != 'issue_comment' ||
+         (!startsWith(github.event.comment.body, '<!-- crawler-ci-state:v1 -->') &&
+          !startsWith(github.event.comment.body, '<!-- crawler-ci-task:v1') &&
+          !startsWith(github.event.comment.body, '<!-- crawler-merge-train:v1 -->')))
+      }}
     concurrency:
       group: >-
-        ${{ vars.MERGE_TRAIN_ENABLED == 'true'
+        ${{ vars.MERGE_TRAIN_ENABLED == 'true' &&
+            (github.event_name == 'schedule' ||
+             github.event_name == 'workflow_dispatch' ||
+             (github.event_name == 'pull_request_target' && github.event.action == 'closed') ||
+             (github.event_name == 'workflow_run' &&
+              !github.event.workflow_run.pull_requests[0].number &&
+              github.event.workflow_run.name == 'CI' &&
+              github.event.workflow_run.head_branch == github.event.repository.default_branch))
           && 'crawler-ci-recovery-router-train'
           || (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
           && 'crawler-ci-recovery-router-sweep'
           || format('crawler-ci-recovery-router-pr-{0}',
                github.event.pull_request.number
                || github.event.issue.number
+               || (github.event.workflow_run.pull_requests[0].number
+                   && !github.event.workflow_run.pull_requests[1].number
+                   && github.event.workflow_run.pull_requests[0].number)
                || github.event.workflow_run.id
                || github.run_id) }}
       cancel-in-progress: >-
