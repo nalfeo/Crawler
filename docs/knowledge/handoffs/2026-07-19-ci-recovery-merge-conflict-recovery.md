@@ -27,6 +27,9 @@ CI-recovery behavior:
 - compared duplicate PR #1623 and retained #1627 as the canonical superset
 - removed the unrelated generated sprite-catalog delta introduced by the merge
   recovery, restoring `src/shared/data/sprite-catalog.json` exactly to `main`
+- preserved a known recovery reply when a reviewer adds a later follow-up by
+  scanning backward to the newest non-marker recovery comment, while stopping
+  at any newer addressed marker
 
 ## Files touched
 
@@ -40,6 +43,7 @@ CI-recovery behavior:
 ```bash
 cd /home/runner/work/Crawler/Crawler
 node --test .github/scripts/ci-recovery/reconcile.test.mjs --test-name-pattern='stale-marker thread includes recovery hint|prior-reply thread includes hint|prior-reply hint ignores non-recovery collaborator|transient compare failure|outdated-marker'
+node --test .github/scripts/ci-recovery/reconcile.test.mjs
 npm run verify:fast
 npm run verify:pr-prereqs
 ```

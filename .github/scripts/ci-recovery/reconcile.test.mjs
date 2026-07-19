@@ -7133,8 +7133,7 @@ test('prior-reply hint is preserved when quoted task body contains a stale-marke
   const priorTaskFingerprint = 'ab12cd34ef5678901234567890abcdef01234567890abcdef1234567890abcde';
   const staleMarkerSha = 'cafe1234beef5678dead0000aabbccddeeff0011';
   const originalConcern = 'Reviewer requires external issue comment before merge.';
-  const priorBlockedReply =
-    'Blocked: the required external issue comment has not been posted yet.';
+  const priorBlockedReply = 'Blocked: the required external issue comment has not been posted yet.';
   const thread = {
     id: threadId,
     isResolved: false,
@@ -7276,5 +7275,154 @@ test('prior-reply hint is preserved when quoted task body contains a stale-marke
     taskCommentCall.body.body,
     /Stale marker/i,
     'task body must NOT include a stale-marker hint when the marker was only in the quoted portion',
+  );
+});
+
+test('prior-reply hint is preserved when reviewer posts a follow-up after Copilot non-marker reply (three-comment thread)', async (t) => {
+  // Regression: the original code only inspected comments[comments.length-1].
+  // When a reviewer posts a follow-up after Copilot's non-marker reply the
+  // last comment belongs to the reviewer, so Copilot's reply is no longer
+  // last.  The old code fell through to topLevelPriorReply, discarding the
+  // thread-level context and recreating the lost-context loop.
+  // Fix: search backward for the newest known recovery non-marker reply.
+  const threadId = 'PRRT_reviewer_followup_after_copilot_thread';
+  const originalConcern = 'This method needs a unit test before merge.';
+  const copilotThreadReply =
+    'Blocked: the unit test cannot be added without access to the test fixture, which is outside this branch.';
+  const reviewerFollowup =
+    'I still need this addressed — please add the test or get approval to skip it.';
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: 'src/engine/damage.ts',
+    line: 42,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_reviewer_original',
+          body: originalConcern,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r20`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          id: 'PRIC_copilot_reply',
+          body: copilotThreadReply,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r21`,
+          authorAssociation: 'CONTRIBUTOR',
+          author: { login: 'copilot' },
+        },
+        {
+          id: 'PRIC_reviewer_followup',
+          body: reviewerFollowup,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r22`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([thread]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1006 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread must NOT be auto-resolved.
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+
+  // A task comment must be posted for the still-unresolved thread.
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the three-comment thread');
+
+  // The task body MUST include the Copilot thread reply as the prior-reply hint,
+  // NOT just the original reviewer concern.  This is the key regression assertion:
+  // the backward search must recover Copilot's reply even though a reviewer
+  // follow-up pushed it off the last position.
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(
+      String.raw`\[Prior recovery reply \(no marker posted — do not re-post an identical reply\): ${escapeRegex(copilotThreadReply)}`,
+    ),
+    "task body must include Copilot's thread reply as the prior-reply hint (backward search regression)",
+  );
+
+  // The reviewer follow-up text must NOT appear as the hint — it is not from a
+  // known recovery identity and must not be surfaced as prior-attempt context.
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    new RegExp(String.raw`\[Prior recovery reply[^\]]*\]: ${escapeRegex(reviewerFollowup)}`),
+    'task body must not surface the reviewer follow-up as the prior-reply hint',
+  );
+
+  // The stale-marker hint must NOT appear.
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /Stale marker/i,
+    'task body must NOT include a stale-marker hint for a three-comment prior-reply thread',
+  );
+
+  // The original concern must still appear in the summary.
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(originalConcern.slice(0, 40)),
+    'task body must still include the original reviewer concern',
   );
 });

@@ -1167,8 +1167,8 @@ for (const comment of comments) {
 // requirement mentioned in the reviewer's original comment.
 //
 // Only set for threads that are NOT already handled by staleAddressedMarkerByThread
-// (those have their own targeted hint) and where the last comment is from a
-// known recovery identity but carries no ✅ Addressed marker.
+// (those have their own targeted hint) and contain a known recovery reply after
+// the most recent ✅ Addressed marker.
 const priorUnresolvedReplyByThread = new Map();
 for (const thread of unresolvedThreads) {
   if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
@@ -1181,11 +1181,21 @@ for (const thread of unresolvedThreads) {
     // Skip if the last comment already has a marker (handled by stale path or
     // auto-resolution above).
     if (extractAddressedMarkerSha(last?.body)) continue;
-    const authorLogin = String(last?.author?.login ?? '').toLowerCase();
-    if (KNOWN_RECOVERY_REPLY_LOGINS.has(authorLogin)) {
-      priorUnresolvedReplyByThread.set(thread.id, String(last?.body ?? '').slice(0, 300));
-      continue;
+    let markerFound = false;
+    // Reviewer follow-ups can move a recovery reply away from the final position.
+    for (let i = comments.length - 1; i >= 1; i--) {
+      const c = comments[i];
+      if (extractAddressedMarkerSha(c?.body)) {
+        markerFound = true;
+        break;
+      }
+      const login = String(c?.author?.login ?? '').toLowerCase();
+      if (KNOWN_RECOVERY_REPLY_LOGINS.has(login)) {
+        priorUnresolvedReplyByThread.set(thread.id, String(c?.body ?? '').slice(0, 300));
+        break;
+      }
     }
+    if (markerFound || priorUnresolvedReplyByThread.has(thread.id)) continue;
   }
   if (topLevelPriorReply) {
     priorUnresolvedReplyByThread.set(thread.id, topLevelPriorReply);
