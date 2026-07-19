@@ -1014,6 +1014,40 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "boarding-axe-var-0": {
+      "briefId": "boarding-axe",
+      "spriteName": "boarding-axe-var-0",
+      "assetPath": "generated/boarding-axe-var-0.png",
+      "approvedAt": "2026-07-18T02:27:03.734Z",
+      "sourceRun": "generated/runs/boarding-axe/2026-07-18T00-00-00-handcrafted",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 56,
+        "source": "brief"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 56,
+          "source": "brief"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 56,
+          "source": "brief"
+        }
+      },
+      "sensorScore": "7/7",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "cd869536ec9d161bb699df9e63fa42a062ad632d370f9c3ba93d3c245a7944f6",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "brief",
+      "facingDirection": "right"
+    },
     "bone-chakram-placeholder": {
       "briefId": "bone-chakram",
       "spriteName": "bone-chakram",
@@ -2254,6 +2288,26 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "equipment/weapon/crescent-glaive": {
+      "briefId": "equipment/weapon/crescent-glaive",
+      "spriteName": "equipment/weapon/crescent-glaive",
+      "assetPath": "generated/equipment/weapon/crescent-glaive-placeholder.png",
+      "approvedAt": "2026-07-17T00:00:00.000Z",
+      "sourceRun": "floor2-equipment-placeholder/v1",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon",
+      "equipment": {
+        "stableId": "weapon.crescent-glaive",
+        "runtimeKey": "equipment/weapon/crescent-glaive",
+        "category": "weapon",
+        "family": "polearm",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-polearm"
+      }
+    },
     "faerie-boss-var-0": {
       "briefId": "faerie-boss",
       "spriteName": "faerie-boss-var-0",
@@ -2339,6 +2393,19 @@
       "judgeScore": "2",
       "type": "weapon",
       "contentHash": "07299e230d7ccfd469dbea9de3053da5f49405f9af97188a8bd77d14fa4c1fb3"
+    },
+    "flame-tongs-var-0": {
+      "briefId": "flame-tongs",
+      "spriteName": "flame-tongs-var-0",
+      "assetPath": "generated/flame-tongs-var-0.png",
+      "approvedAt": "2026-07-18T02:31:00.000Z",
+      "sourceRun": "manual-issue-1470",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "8fe853d18f6b7507ff67eb471b44486d9c8cb84d5409243adb203acd4a4b5c7a"
     },
     "floor-key-bronze-placeholder": {
       "briefId": "floor-key-bronze",
@@ -3703,6 +3770,37 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "merchant-sandals-var-0": {
+      "briefId": "merchant-sandals",
+      "spriteName": "merchant-sandals-var-0",
+      "assetPath": "generated/merchant-sandals-var-0.png",
+      "approvedAt": "2026-07-18T05:25:00.000Z",
+      "sourceRun": "manual/merchant-sandals",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 56,
+        "source": "manual"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 56,
+          "source": "manual"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "manual"
+        }
+      },
+      "sensorScore": "manual-authored",
+      "judgeScore": null,
+      "type": "item",
+      "contentHash": "dd5885a474498ff120e0d95b42cf3dd1f9a8b6aab87fd5d2077184c824d24d85",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
     },
     "merchants-stained-charm-var-0": {
       "briefId": "merchants-stained-charm",
@@ -5744,6 +5842,17 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "runed-cuirass-placeholder": {
+      "briefId": "runed-cuirass",
+      "spriteName": "runed-cuirass",
+      "assetPath": "generated/runed-cuirass-placeholder.png",
+      "approvedAt": "2026-07-18T04:08:56.051Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "rusted-scrap-var-0": {
       "briefId": "rusted-scrap",
       "spriteName": "rusted-scrap-var-0",
@@ -6699,6 +6808,17 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-refactored-train\\generated\\runs\\sunpetal-flower-v1\\2026-07-08T07-17-38-10ba1350\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "manual",
       "facingDirection": "right"
+    },
+    "surveyor-map-placeholder": {
+      "briefId": "surveyor-map",
+      "spriteName": "surveyor-map",
+      "assetPath": "generated/surveyor-map-placeholder.png",
+      "approvedAt": "2026-07-18T03:32:13.535Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "sweaty-merchant-v1-var-1": {
       "briefId": "sweaty-merchant-v1",
@@ -8019,6 +8139,30 @@
         "productionWaveId": "floor2-equipment-weapon-polearm"
       }
     },
+    "batfolk-hood-placeholder": {
+      "briefId": "batfolk-hood",
+      "spriteName": "batfolk-hood",
+      "assetPath": "generated/batfolk-hood-placeholder.png",
+      "approvedAt": "2026-07-18T02:49:24.814Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
+    "compass-charm-placeholder": {
+      "briefId": "compass-charm",
+      "spriteName": "compass-charm",
+      "assetPath": "generated/compass-charm-placeholder.png",
+      "approvedAt": "2026-07-18T04:15:33.306Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
     "equipment/accessory/lucky-feather": {
       "briefId": "lucky-feather",
       "spriteName": "equipment/accessory/lucky-feather",
@@ -8031,6 +8175,40 @@
       "judgeScore": null,
       "type": "item",
       "contentHash": "51baee84d222c27d4696892674c742ea1d447af94be95f4d70c84463672c4c12"
+    },
+    "bone-saw-var-1": {
+      "briefId": "bone-saw",
+      "spriteName": "bone-saw-var-1",
+      "assetPath": "generated/bone-saw-var-1.png",
+      "approvedAt": "2026-07-18T02:58:53.059Z",
+      "sourceRun": "generated/runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 33,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 29,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "0ced674d567b500e572fcf4ccc6904fad39cd12b759e03d5c1df3456f85d7a64",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }

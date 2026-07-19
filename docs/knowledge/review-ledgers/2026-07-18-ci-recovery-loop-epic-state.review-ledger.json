@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-loop-epic-state",
+  "task_title": "fix(epics): update A0 evidence commit from inaccessible 8cc19153 to squash-merge 89ff7827",
+  "estimated_apples": 2,
+  "stages": {}
+}

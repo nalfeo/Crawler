@@ -70,14 +70,33 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   return { eligible: true, reason: 'trusted issue opener' };
 }
 
-export async function removeCopilotAssignment({ graphql, token, owner, repo, issue }) {
-  if (!issue?.node_id) return false;
+export async function getCopilotIssueAssignmentContext({
+  graphql,
+  token,
+  owner,
+  repo,
+  issueNumber,
+}) {
   const actors = await graphql(
     token,
     `
-      query ($owner: String!, $repo: String!, $assignableId: ID!) {
-        node(id: $assignableId) {
-          ... on Issue {
+      query ($owner: String!, $repo: String!, $issueNumber: Int!) {
+        repository(owner: $owner, name: $repo) {
+          suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
+            nodes {
+              login
+              __typename
+              ... on Bot {
+                id
+              }
+              ... on User {
+                id
+              }
+            }
+          }
+          issue(number: $issueNumber) {
+            id
+            state
             assignees(first: 50) {
               nodes {
                 id
@@ -86,36 +105,62 @@ export async function removeCopilotAssignment({ graphql, token, owner, repo, iss
             }
           }
         }
-        repository(owner: $owner, name: $repo) {
-          suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
-            nodes {
-              id
-              login
-            }
-          }
-        }
       }
     `,
-    { owner, repo, assignableId: issue.node_id },
+    { owner, repo, issueNumber },
   );
-  const assignees = actors.node?.assignees?.nodes || [];
-  const copilotIds = new Set(
-    (actors.repository?.suggestedActors?.nodes || [])
-      .filter((actor) => isCopilotLogin(actor.login))
-      .map((actor) => actor.id),
-  );
-  const actorIds = assignees
-    .filter((assignee) => !copilotIds.has(assignee.id) && !isCopilotLogin(assignee.login))
-    .map((a) => a.id);
-  if (actorIds.length === assignees.length) return false;
-  await graphql(
+
+  const copilot = (actors.repository?.suggestedActors?.nodes || []).find((actor) => {
+    return isCopilotLogin(actor.login);
+  });
+
+  if (!copilot?.id) {
+    throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
+  }
+
+  const issueData = actors.repository?.issue;
+  if (!issueData?.id) {
+    throw new Error(`Issue #${issueNumber} could not be loaded for assignment`);
+  }
+
+  return {
+    copilot,
+    issueId: issueData.id,
+    issueState: issueData.state,
+    assignees: issueData.assignees?.nodes || [],
+  };
+}
+
+export function buildIssueActorIds({ assignees, copilotActorId, includeCopilot }) {
+  const allAssignees = Array.isArray(assignees) ? assignees : [];
+  const nonCopilotActorIds = allAssignees
+    .filter((assignee) => !isCopilotLogin(assignee?.login))
+    .map((assignee) => assignee.id)
+    .filter(Boolean);
+  const copilotActorIds = allAssignees
+    .filter((assignee) => isCopilotLogin(assignee?.login))
+    .map((assignee) => assignee.id)
+    .filter(Boolean);
+  const actorIds = [...nonCopilotActorIds];
+  if (includeCopilot) {
+    if (copilotActorIds.length > 0) {
+      actorIds.push(...copilotActorIds);
+    } else if (copilotActorId) {
+      actorIds.push(copilotActorId);
+    }
+  }
+  return [...new Set(actorIds)];
+}
+
+export async function replaceIssueAssignees({ graphql, token, assignableId, actorIds }) {
+  const assignment = await graphql(
     token,
     `
       mutation ($assignableId: ID!, $actorIds: [ID!]!) {
         replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
           assignable {
             ... on Issue {
-              assignees(first: 50) {
+              assignees(first: 20) {
                 nodes {
                   login
                 }
@@ -125,8 +170,95 @@ export async function removeCopilotAssignment({ graphql, token, owner, repo, iss
         }
       }
     `,
-    { assignableId: issue.node_id, actorIds },
+    { assignableId, actorIds },
   );
+  return (
+    assignment.replaceActorsForAssignable?.assignable?.assignees?.nodes?.map((assignee) =>
+      String(assignee.login || '').toLowerCase(),
+    ) || []
+  );
+}
+
+async function mutateIssueAssignees({
+  graphql,
+  token,
+  mutationField,
+  assignableId,
+  actorIds,
+}) {
+  const assignment = await graphql(
+    token,
+    `
+      mutation ($assignableId: ID!, $assigneeIds: [ID!]!) {
+        ${mutationField}(input: { assignableId: $assignableId, assigneeIds: $assigneeIds }) {
+          assignable {
+            ... on Issue {
+              assignees(first: 20) {
+                nodes {
+                  login
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+    {
+      assignableId,
+      assigneeIds: actorIds,
+    },
+  );
+  return (
+    assignment?.[mutationField]?.assignable?.assignees?.nodes?.map((assignee) =>
+      String(assignee.login || '').toLowerCase(),
+    ) || []
+  );
+}
+
+export async function addIssueAssignees({ graphql, token, assignableId, actorIds }) {
+  return mutateIssueAssignees({
+    graphql,
+    token,
+    mutationField: 'addAssigneesToAssignable',
+    assignableId,
+    actorIds,
+  });
+}
+
+export async function removeIssueAssignees({ graphql, token, assignableId, actorIds }) {
+  return mutateIssueAssignees({
+    graphql,
+    token,
+    mutationField: 'removeAssigneesFromAssignable',
+    assignableId,
+    actorIds,
+  });
+}
+
+/**
+ * Remove Copilot from the issue's assignees, leaving all other assignees intact.
+ * Returns true if Copilot was found and removed, false if Copilot was not assigned.
+ */
+export async function removeCopilotAssignment({ graphql, token, owner, repo, issue }) {
+  if (!issue?.node_id || !issue?.number) return false;
+  const context = await getCopilotIssueAssignmentContext({
+    graphql,
+    token,
+    owner,
+    repo,
+    issueNumber: issue.number,
+  });
+  const copilotIds = context.assignees
+    .filter((a) => isCopilotLogin(a.login))
+    .map((a) => a.id)
+    .filter(Boolean);
+  if (copilotIds.length === 0) return false;
+  await removeIssueAssignees({
+    graphql,
+    token,
+    assignableId: issue.node_id,
+    actorIds: copilotIds,
+  });
   return true;
 }
 
@@ -147,49 +279,18 @@ async function deleteCommentIfCreated(request, token, owner, repo, commentId) {
 }
 
 export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
-  // Discover Copilot actor and fetch current issue assignees in one query so we can
-  // preserve existing assignees in the replaceActorsForAssignable mutation.
-  const actors = await graphql(
+  const assignmentContext = await getCopilotIssueAssignmentContext({
+    graphql,
     token,
-    `
-      query ($owner: String!, $repo: String!, $issueNumber: Int!) {
-        repository(owner: $owner, name: $repo) {
-          suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
-            nodes {
-              login
-              __typename
-              ... on Bot {
-                id
-              }
-              ... on User {
-                id
-              }
-            }
-          }
-          issue(number: $issueNumber) {
-            assignees(first: 50) {
-              nodes {
-                id
-                login
-              }
-            }
-          }
-        }
-      }
-    `,
-    { owner, repo, issueNumber: issue.number },
-  );
-
-  const copilot = (actors.repository?.suggestedActors?.nodes || []).find((actor) => {
-    return isCopilotLogin(actor.login);
+    owner,
+    repo,
+    issueNumber: issue.number,
   });
-
-  if (!copilot?.id) {
-    throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
-  }
-
-  const existingActorIds = (actors.repository?.issue?.assignees?.nodes || []).map((a) => a.id);
-  const actorIds = [...new Set([...existingActorIds, copilot.id])];
+  const actorIds = buildIssueActorIds({
+    assignees: assignmentContext.assignees,
+    copilotActorId: assignmentContext.copilot.id,
+    includeCopilot: true,
+  });
 
   // Post the kickoff comment BEFORE assigning Copilot so the instructions are present
   // when the agent session starts. Clean up the new comment if assignment fails.
@@ -218,41 +319,25 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
 
   let assignment;
   try {
-    assignment = await graphql(
+    assignment = await replaceIssueAssignees({
+      graphql,
       token,
-      `
-        mutation ($assignableId: ID!, $actorIds: [ID!]!) {
-          replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
-            assignable {
-              ... on Issue {
-                assignees(first: 20) {
-                  nodes {
-                    login
-                  }
-                }
-              }
-            }
-          }
-        }
-      `,
-      { assignableId: issue.node_id, actorIds },
-    );
+      assignableId: issue.node_id,
+      actorIds,
+    });
   } catch (err) {
     await deleteCommentIfCreated(request, token, owner, repo, newCommentId);
     throw err;
   }
 
-  const assignedLogins =
-    assignment.replaceActorsForAssignable?.assignable?.assignees?.nodes?.map((assignee) =>
-      String(assignee.login || '').toLowerCase(),
-    ) || [];
+  const assignedLogins = assignment;
   if (!assignedLogins.some(isCopilotLogin)) {
     await deleteCommentIfCreated(request, token, owner, repo, newCommentId);
     throw new Error(`Copilot assignment did not persist on issue #${issue.number}`);
   }
 
   return {
-    assignee: copilot.login,
+    assignee: assignmentContext.copilot.login,
     comment: existingKickoff ? 'existing' : 'posted',
   };
 }

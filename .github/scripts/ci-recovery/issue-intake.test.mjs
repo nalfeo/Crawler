@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  addIssueAssignees,
+  buildIssueActorIds,
   ISSUE_INTAKE_BODY,
   issueIntakeEligibility,
   removeCopilotAssignment,
+  removeIssueAssignees,
   runIssueIntake,
 } from './issue-intake-lib.mjs';
 
@@ -112,6 +115,8 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
             nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
           },
           issue: {
+            id: 'ISSUE_1067',
+            state: 'OPEN',
             assignees: { nodes: [{ id: 'USER_NALFEO', login: 'nalfeo' }] },
           },
         },
@@ -182,7 +187,7 @@ test('deletes the kickoff comment when assignment does not persist', async () =>
           suggestedActors: {
             nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
           },
-          issue: { assignees: { nodes: [] } },
+          issue: { id: 'ISSUE_1067', state: 'OPEN', assignees: { nodes: [] } },
         },
       };
     }
@@ -219,25 +224,152 @@ test('deletes the kickoff comment when assignment does not persist', async () =>
   assert.ok(requestCalls[1].path.includes('/12345'));
 });
 
+test('buildIssueActorIds preserves existing Copilot assignee ids when includeCopilot=true', () => {
+  const actorIds = buildIssueActorIds({
+    assignees: [
+      { id: 'USER_NALFEO', login: 'nalfeo' },
+      { id: 'BOT_LEGACY_COPILOT', login: 'Copilot' },
+    ],
+    copilotActorId: 'BOT_COPILOT_SWE_AGENT',
+    includeCopilot: true,
+  });
+  assert.deepEqual(actorIds, ['USER_NALFEO', 'BOT_LEGACY_COPILOT']);
+});
+
+test('buildIssueActorIds adds discovered Copilot actor when none is currently assigned', () => {
+  const actorIds = buildIssueActorIds({
+    assignees: [{ id: 'USER_NALFEO', login: 'nalfeo' }],
+    copilotActorId: 'BOT_COPILOT_SWE_AGENT',
+    includeCopilot: true,
+  });
+  assert.deepEqual(actorIds, ['USER_NALFEO', 'BOT_COPILOT_SWE_AGENT']);
+});
+
+test('addIssueAssignees sends correct mutation field, variables, and parses returned logins', async () => {
+  const captured = [];
+  const fakeGraphql = async (_token, query, variables) => {
+    captured.push({ query, variables });
+    return {
+      addAssigneesToAssignable: {
+        assignable: {
+          assignees: {
+            nodes: [{ login: 'nalfeo' }, { login: 'copilot-swe-agent' }],
+          },
+        },
+      },
+    };
+  };
+
+  const result = await addIssueAssignees({
+    graphql: fakeGraphql,
+    token: 'token',
+    assignableId: 'ISSUE_NODE_ID',
+    actorIds: ['USER_NALFEO', 'BOT_COPILOT'],
+  });
+
+  assert.equal(captured.length, 1);
+  assert.ok(
+    /^\s*mutation\b/.test(captured[0].query.trim()),
+    'operation must be declared as a mutation, not a query',
+  );
+  assert.ok(
+    captured[0].query.includes('addAssigneesToAssignable'),
+    'mutation must use addAssigneesToAssignable field',
+  );
+  assert.ok(
+    captured[0].query.includes('$assignableId') && captured[0].query.includes('$assigneeIds'),
+    'mutation must accept $assignableId and $assigneeIds variables',
+  );
+  assert.deepEqual(captured[0].variables, {
+    assignableId: 'ISSUE_NODE_ID',
+    assigneeIds: ['USER_NALFEO', 'BOT_COPILOT'],
+  });
+  assert.deepEqual(result, ['nalfeo', 'copilot-swe-agent']);
+});
+
+test('removeIssueAssignees sends correct mutation field, variables, and parses returned logins', async () => {
+  const captured = [];
+  const fakeGraphql = async (_token, query, variables) => {
+    captured.push({ query, variables });
+    return {
+      removeAssigneesFromAssignable: {
+        assignable: {
+          assignees: {
+            nodes: [{ login: 'nalfeo' }],
+          },
+        },
+      },
+    };
+  };
+
+  const result = await removeIssueAssignees({
+    graphql: fakeGraphql,
+    token: 'token',
+    assignableId: 'ISSUE_NODE_ID',
+    actorIds: ['BOT_COPILOT'],
+  });
+
+  assert.equal(captured.length, 1);
+  assert.ok(
+    /^\s*mutation\b/.test(captured[0].query.trim()),
+    'operation must be declared as a mutation, not a query',
+  );
+  assert.ok(
+    captured[0].query.includes('removeAssigneesFromAssignable'),
+    'mutation must use removeAssigneesFromAssignable field',
+  );
+  assert.ok(
+    captured[0].query.includes('$assignableId') && captured[0].query.includes('$assigneeIds'),
+    'mutation must accept $assignableId and $assigneeIds variables',
+  );
+  assert.deepEqual(captured[0].variables, {
+    assignableId: 'ISSUE_NODE_ID',
+    assigneeIds: ['BOT_COPILOT'],
+  });
+  assert.deepEqual(result, ['nalfeo']);
+});
+
+test('addIssueAssignees returns empty array when response is missing the assignees field', async () => {
+  const fakeGraphql = async () => ({ addAssigneesToAssignable: { assignable: {} } });
+  const result = await addIssueAssignees({
+    graphql: fakeGraphql,
+    token: 'token',
+    assignableId: 'ISSUE_NODE_ID',
+    actorIds: ['USER_NALFEO'],
+  });
+  assert.deepEqual(result, []);
+});
+
+test('removeIssueAssignees returns empty array when response is missing the assignees field', async () => {
+  const fakeGraphql = async () => ({ removeAssigneesFromAssignable: { assignable: {} } });
+  const result = await removeIssueAssignees({
+    graphql: fakeGraphql,
+    token: 'token',
+    assignableId: 'ISSUE_NODE_ID',
+    actorIds: ['BOT_COPILOT'],
+  });
+  assert.deepEqual(result, []);
+});
+
 test('removeCopilotAssignment removes Copilot and returns true', async () => {
   const mutationCalls = [];
   const graphql = async (_token, query, variables) => {
     if (query.includes('suggestedActors')) {
       return {
-        node: {
-          assignees: {
-            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent' }],
-          },
-        },
         repository: {
           suggestedActors: {
-            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent' }],
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_1',
+            state: 'OPEN',
+            assignees: { nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent' }] },
           },
         },
       };
     }
     mutationCalls.push(variables);
-    return {};
+    return { removeAssigneesFromAssignable: { assignable: { assignees: { nodes: [] } } } };
   };
 
   const removed = await removeCopilotAssignment({
@@ -245,13 +377,13 @@ test('removeCopilotAssignment removes Copilot and returns true', async () => {
     token: 'token',
     owner: 'nalfeo',
     repo: 'Crawler',
-    issue: { node_id: 'ISSUE_1' },
+    issue: { node_id: 'ISSUE_1', number: 1 },
   });
 
   assert.equal(removed, true);
   assert.equal(mutationCalls.length, 1);
-  // Copilot is removed; actorIds is empty (no other assignees)
-  assert.deepEqual(mutationCalls[0].actorIds, []);
+  // only Copilot's ID is passed to the removal mutation
+  assert.deepEqual(mutationCalls[0].assigneeIds, ['BOT_COPILOT']);
 });
 
 test('removeCopilotAssignment preserves unrelated assignees', async () => {
@@ -259,23 +391,29 @@ test('removeCopilotAssignment preserves unrelated assignees', async () => {
   const graphql = async (_token, query, variables) => {
     if (query.includes('suggestedActors')) {
       return {
-        node: {
-          assignees: {
-            nodes: [
-              { id: 'USER_NALFEO', login: 'nalfeo' },
-              { id: 'BOT_COPILOT', login: 'copilot-swe-agent' },
-            ],
-          },
-        },
         repository: {
           suggestedActors: {
-            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent' }],
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_2',
+            state: 'OPEN',
+            assignees: {
+              nodes: [
+                { id: 'USER_NALFEO', login: 'nalfeo' },
+                { id: 'BOT_COPILOT', login: 'copilot-swe-agent' },
+              ],
+            },
           },
         },
       };
     }
     mutationCalls.push(variables);
-    return {};
+    return {
+      removeAssigneesFromAssignable: {
+        assignable: { assignees: { nodes: [{ login: 'nalfeo' }] } },
+      },
+    };
   };
 
   const removed = await removeCopilotAssignment({
@@ -283,13 +421,13 @@ test('removeCopilotAssignment preserves unrelated assignees', async () => {
     token: 'token',
     owner: 'nalfeo',
     repo: 'Crawler',
-    issue: { node_id: 'ISSUE_2' },
+    issue: { node_id: 'ISSUE_2', number: 2 },
   });
 
   assert.equal(removed, true);
   assert.equal(mutationCalls.length, 1);
-  // nalfeo is preserved; only Copilot is stripped
-  assert.deepEqual(mutationCalls[0].actorIds, ['USER_NALFEO']);
+  // nalfeo is NOT in the removal list; only Copilot is removed
+  assert.deepEqual(mutationCalls[0].assigneeIds, ['BOT_COPILOT']);
 });
 
 test('removeCopilotAssignment returns false and issues no mutation when Copilot is absent', async () => {
@@ -297,14 +435,14 @@ test('removeCopilotAssignment returns false and issues no mutation when Copilot 
   const graphql = async (_token, query, variables) => {
     if (query.includes('suggestedActors')) {
       return {
-        node: {
-          assignees: {
-            nodes: [{ id: 'USER_NALFEO', login: 'nalfeo' }],
-          },
-        },
         repository: {
           suggestedActors: {
-            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent' }],
+            nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
+          },
+          issue: {
+            id: 'ISSUE_3',
+            state: 'OPEN',
+            assignees: { nodes: [{ id: 'USER_NALFEO', login: 'nalfeo' }] },
           },
         },
       };
@@ -318,10 +456,10 @@ test('removeCopilotAssignment returns false and issues no mutation when Copilot 
     token: 'token',
     owner: 'nalfeo',
     repo: 'Crawler',
-    issue: { node_id: 'ISSUE_3' },
+    issue: { node_id: 'ISSUE_3', number: 3 },
   });
 
   assert.equal(removed, false);
-  // No mutation must be issued when nothing to remove
+  // No removal mutation must be issued when Copilot is not assigned
   assert.equal(mutationCalls.length, 0);
 });

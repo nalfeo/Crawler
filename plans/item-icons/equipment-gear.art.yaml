@@ -48,6 +48,15 @@ assets:
       kind: sprite-registry
       id: iron-breastplate
 
+  - id: runed-cuirass
+    type: item
+    label: 'Runed Cuirass'
+    brief: 'Runed Cuirass — a single centered chest-armor icon with a clear, readable silhouette on a transparent background. Dark-metal breastplate with glowing arcane runes etched into the plate. Floor 2 rare gear with a bold electric-blue rune glow.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: runed-cuirass
+
   - id: travelers-cloak
     type: item
     label: "Traveler's Cloak"
@@ -146,3 +155,21 @@ assets:
     integration:
       kind: sprite-registry
       id: signet-of-focus
+
+  - id: batfolk-hood
+    type: item
+    label: 'Batfolk Hood'
+    brief: 'Batfolk Hood — a single centered headgear icon on a transparent background. Dark membrane-like hood with twin bat-ear protrusions, Floor 2 batfolk craftsmanship. Charcoal or midnight-purple coloring with tarnished metal accent rivets. Silhouette reads clearly as a bat-eared helmet hood at small scale.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: batfolk-hood
+
+  - id: surveyor-map
+    type: item
+    label: 'Surveyor Map'
+    brief: 'Surveyor Map — a single centered small object icon with a clear, readable silhouette on a transparent background. A battered folded map square with a leather strap, brown ink grid pattern on yellowed parchment, cracked wax compass-rose seal. Floor 2 accessory equipment icon for runtime key equipment/accessory/surveyor-map.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: surveyor-map
