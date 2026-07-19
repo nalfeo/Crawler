@@ -1205,6 +1205,73 @@ test('interrupted exhausted release completes when staleOwningState carries atte
   );
 });
 
+test('reconcile skips redispatch when stale-automation-exhausted state matches current progress key', async (t) => {
+  const staleOffsetMs = 31 * 60 * 1000;
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  const stateComment = {
+    id: 901,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation-exhausted',
+        blockers,
+        attempt: 2,
+        progressKey,
+        progressAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+        updatedAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+      }),
+    ),
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: basePr(),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(stdout, /skip pr=#42 reason=stale-automation-exhausted/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'must not redispatch a new recovery task for an exhausted unchanged blocker set',
+  );
+});
+
 for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] of [
   ['repository label only', true, false],
   ['PR attachment only', false, true],
@@ -3848,6 +3915,55 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
     'task comment should explicitly reject top-level PR comments for review-thread blockers',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'post the `✅ Addressed in <post-push-head-sha>: <one-line note>` reply',
+    ),
+    'top-level-comment warning should require the post-push HEAD marker',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'replace `<post-push-head-sha>` in `✅ Addressed in <post-push-head-sha>: <one-line note>`',
+    ),
+    'reply_to_comment instruction should require replacing the post-push HEAD placeholder',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('push your consolidated repair commit first'),
+    'task comment should require pushing before posting addressed markers',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('then run `git rev-parse HEAD`'),
+    'task comment should require deriving the marker SHA from post-push HEAD',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('✅ Addressed in <sha>'),
+    false,
+    'task comment must not contain the generic <sha> placeholder in marker instructions',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'validated `✅ Addressed in <post-push-head-sha>: <one-line note>` result',
+    ),
+    'task comment should require a post-push SHA for ordinary Addressed markers',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(`Branch head at dispatch: \`${HEAD_SHA}\``),
+    'task comment should retain the concrete dispatch SHA as context',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes(`✅ Addressed in ${HEAD_SHA}: <one-line note>`),
+    false,
+    'task comment should not prefill dispatch-time HEAD in marker instruction',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('validated `✅ Addressed` result'),
+    false,
+    'task comment should not advertise a bare Addressed marker',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
+    'task comment should reserve the SHA-less marker for deterministic non-applicability',
+  );
 });
 
 test('task body includes human-approval note when pendingHumanApproval is true', async (t) => {
@@ -4806,18 +4922,17 @@ test('queue admission finds a concurrently attached merge-train label on the sec
 });
 
 // ---------------------------------------------------------------------------
-// Thread 3 regression: automationStallAction 'progressed' resets attempt
-// counter and uses 'blocker-progressed' release trigger.
+// Regression: head-only drift with unchanged blockers must carry the stale
+// retry budget instead of resetting it as "progressed".
 // ---------------------------------------------------------------------------
 
-test('progressed stale action resets attempt counter to zero and uses blocker-progressed release trigger', async (t) => {
+test('stale automation increments attempt without reset when only headSha changes', async (t) => {
   // Scenario: the PR was dispatched against an older head SHA ('old-head-sha')
   // with attempt=1. The head has since advanced to HEAD_SHA (e.g. a rebase) but
-  // the blockers fingerprint is unchanged (same CI failure). automationStallAction
-  // must return 'progressed', which triggers the Thread 3 fix:
-  //   - dispatchAttemptBase reset to 0 (so the new head gets a full retry budget)
-  //   - release trigger set to 'blocker-progressed' (not 'stale-automation-retry')
-  //   - final attempt stored as 0+1=1 (not 2, which would exhaust the budget)
+  // the blockers fingerprint is unchanged (same CI failure). This must stay on
+  // the stale-retry path:
+  //   - release trigger is 'stale-automation-retry' (not 'blocker-progressed')
+  //   - final attempt is carried and incremented to 2 (not reset to 1)
   const PROG_FINGERPRINT = blockerFingerprint([
     {
       kind: 'ci-failure',
@@ -4931,36 +5046,35 @@ test('progressed stale action resets attempt counter to zero and uses blocker-pr
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /assigned copilot pr=#42/);
 
-  // Must use 'blocker-progressed' release trigger, never 'stale-automation-retry'.
+  // Must stay on stale-retry path, never classify as blocker-progressed.
   const releasePatch = capturedPatches.find((patch) => {
     const parsed = parseStateComment(patch.body);
-    return parsed?.trigger === 'blocker-progressed';
+    return parsed?.trigger === 'stale-automation-retry';
   });
   assert.ok(
     releasePatch,
-    'the release state must carry trigger=blocker-progressed for a progressed head',
+    'the release state must carry trigger=stale-automation-retry for unchanged blockers',
   );
   assert.ok(
     !mutatingCalls.some((call) => {
       if (call.method !== 'PATCH') return false;
       try {
-        return parseStateComment(call.body?.body)?.trigger === 'stale-automation-retry';
+        return parseStateComment(call.body?.body)?.trigger === 'blocker-progressed';
       } catch {
         return false;
       }
     }),
-    'must not use stale-automation-retry for a progressed head',
+    'must not use blocker-progressed when only headSha changed',
   );
 
-  // Final dispatched state must carry attempt=1 (reset-to-0 then incremented),
-  // not attempt=2 (which would carry forward the stale budget and exhaust it).
+  // Final dispatched state must carry attempt=2 (carried + incremented), not 1.
   const finalPatch = capturedPatches.at(-1);
   assert.ok(finalPatch, 'a final state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
   assert.equal(
     finalState?.attempt,
-    1,
-    'progressed dispatch must reset attempt budget: stored attempt must be 1 (0+1), not 2',
+    2,
+    'unchanged-blocker dispatch must carry attempt budget: stored attempt must be 2 (1+1), not reset',
   );
   assert.equal(finalState?.trigger, 'workflow_run:completed');
   assert.equal(finalState?.owner, 'automation');
@@ -6573,18 +6687,18 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 });
 
 // ---------------------------------------------------------------------------
-// Stale-marker detection: thread has trusted ✅ Addressed marker but the SHA
-// was never pushed (compare 404), so the thread remains unresolved.
+// Stale-marker + outdated-thread interaction: thread has a trusted ✅ Addressed
+// marker whose SHA was never pushed (compare 404), and the thread is also
+// isOutdated. The stale marker must remain a blocker instead of being masked by
+// an automatic outdated-thread marker.
 // ---------------------------------------------------------------------------
 
-test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
-  // Simulate the root cause from the PR #1266 loop incident:
-  // The recovery agent replied to a review thread with ✅ Addressed in <sha>
-  // but that commit was created locally and never pushed.  The compare API
-  // returns 404, so the thread stays unresolved and the same fingerprint
-  // repeats indefinitely.  The reconciler should detect the stale marker and
-  // include a targeted hint in the blocker summary so the next recovery agent
-  // knows to re-post the marker with the current-head SHA.
+test('outdated stale-marker thread remains blocked with a recovery hint', async (t) => {
+  // PR #1266 scenario: the recovery agent replied with ✅ Addressed in <sha>
+  // but the commit was never pushed to GitHub (compare API returns 404).
+  // Because the marker names a commit that was never pushed, the reconciler
+  // must not replace it with an automatic outdated-thread marker and silently
+  // resolve the original concern.
   const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
   const threadId = 'PRRT_stale_marker_thread';
   const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
@@ -6627,7 +6741,7 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
           {
             id: threadId,
             isResolved: false,
-            isOutdated: false,
+            isOutdated: true,
             path: 'scripts/sprites/cli.ts',
             line: 285,
             comments: {
@@ -6674,10 +6788,13 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  // Thread must NOT be auto-resolved (stale SHA is not reachable).
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`posted outdated-marker thread=${threadId}`),
+    'must not replace a definitively stale marker with an automatic outdated marker',
+  );
 
-  // A task comment must be posted because there is still a blocker.
   const taskCommentCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&
@@ -6685,10 +6802,7 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
       typeof call.body?.body === 'string' &&
       call.body.body.includes('crawler-ci-task'),
   );
-  assert.ok(taskCommentCall, 'expected a task comment to be posted for the stale-marker blocker');
-
-  // The task body must include the stale-marker annotation so the agent knows
-  // to re-post the marker rather than re-investigate.
+  assert.ok(taskCommentCall, 'expected a task comment for the stale-marker blocker');
   assert.match(
     taskCommentCall.body.body,
     new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
