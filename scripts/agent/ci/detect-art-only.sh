@@ -148,7 +148,8 @@ else
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
     emit_all false false false false false
-    emit_visual_all false false false false
+    # No diff available: fail toward broader validation — run all visual suites.
+    emit_visual_all true true true true
     exit 0
   fi
 
@@ -223,6 +224,8 @@ while IFS= read -r file; do
     src/engine/*) ;;
     src/labs/*) ;;
     src/devtools/*) ;;
+    src/devtools-main.ts) ;;
+    devtools.html) ;;
     tests/e2e/*) ;;
     docs/*) ;;
     public/*) ;;
@@ -365,15 +368,25 @@ while IFS= read -r file; do
     # ── Devtools visual: devtools browser UI + its E2E test ──────────────────────
     src/devtools/*)
       visual_touched=true; devtool_visual_touched=true ;;
+    src/devtools-main.ts)
+      visual_touched=true; devtool_visual_touched=true ;;
+    devtools.html)
+      visual_touched=true; devtool_visual_touched=true ;;
     tests/e2e/sprite-workflow-sensors.test.ts)
       visual_touched=true; devtool_visual_touched=true ;;
     # ── Game visual: non-devtool E2E tests ───────────────────────────────────────
     tests/e2e/*)
       visual_touched=true; game_visual_touched=true ;;
     # ── Game visual: all other src/*, public/* (and root config files) ────────────
+    # Note: root config files (tsconfig.json, package.json, etc.) that are not
+    # explicitly allowlisted above fall through to game_visual here. This is
+    # intentional: they are not provably non-visual, so we fail toward broader
+    # validation (same fail-safe philosophy as the unknown catch-all below).
     src/* | public/*)
       visual_touched=true; game_visual_touched=true ;;
     # ── Unknown: fail toward broader validation ───────────────────────────────────
+    # Any path not explicitly classified above triggers the full game visual suite.
+    # This ensures new file types are never silently exempted from visual validation.
     *)
       visual_touched=true; game_visual_touched=true ;;
   esac

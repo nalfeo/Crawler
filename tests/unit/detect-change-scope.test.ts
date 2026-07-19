@@ -338,6 +338,18 @@ const cases: Case[] = [
     files: ['public/assets/generated/manifest.json', 'src/devtools/sprite-workflow-queue.ts'],
     expected: F(false, false, true, false, false, true, false, true, true),
   },
+  // DevTools entrypoints: devtools.html and src/devtools-main.ts must route
+  // to devtool_visual only, NOT game_visual.
+  {
+    name: 'devtools.html change → devtool_visual only',
+    files: ['devtools.html'],
+    expected: F(false, false, true, false, false, true, false, false, true),
+  },
+  {
+    name: 'src/devtools-main.ts change → devtool_visual only',
+    files: ['src/devtools-main.ts'],
+    expected: F(false, false, true, false, false, true, false, false, true),
+  },
 ];
 
 describe('detect-art-only.sh change-scope classifier', () => {
@@ -345,10 +357,16 @@ describe('detect-art-only.sh change-scope classifier', () => {
     expect(hasBash).toBe(true);
   });
 
-  it.skipIf(!hasBash)('fail-safe: a blank/whitespace change set runs the full suite', () => {
-    // A lone newline enters the override branch but strips to empty → all-false.
-    expect(run('\n')).toEqual(F(false, false, false, false, false, false, false, false, false));
-  });
+  it.skipIf(!hasBash)(
+    'fail-safe: a blank/whitespace change set correctly skips all suites (no files changed)',
+    () => {
+      // A lone newline enters the override branch but strips to empty → all-false.
+      // Empty changeset = nothing changed = no visual regression to validate.
+      // This is CORRECT behaviour; the no-base-ref path is the one that must
+      // run everything (it uses emit_visual_all true true true true).
+      expect(run('\n')).toEqual(F(false, false, false, false, false, false, false, false, false));
+    },
+  );
 
   it.skipIf(!hasBash)(
     'fail-safe: an explicitly empty override is honored as an empty change set',
