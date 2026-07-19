@@ -1,0 +1,26 @@
+type: weapon
+name: crystal-cannon
+floor: 2
+description: |
+  A crystal-powered arcane cannon — a short, stocky magical firearm with a
+  faceted crystal energy chamber fused into the body. Held vertically with the
+  barrel pointing straight up and the grip at the bottom. The barrel is wide
+  and hexagonal in cross-section, dark metal (gunmetal or deep charcoal) with
+  raised ridge lines running its length. The crystal chamber sits mid-body as
+  a large geometric gem — deep blue or violet with inner luminescence — locked
+  into a clawed iron housing; it visibly powers the weapon. A small focusing
+  lens or arcane sigil ring is inset at the muzzle tip. The grip is wrapped in
+  dark leather with brass fastening bands. Subtle crystalline facets catch the
+  light on the chamber but there is no beam, no particle trail, and no active
+  glow effect — the weapon is at rest. Silhouette must read unmistakably as a
+  cannon / heavy ranged weapon, not a wand or staff: the barrel is thick and
+  dominant, the crystal chamber is a boxy accent, not an orb on a stick.
+# Vertical orientation (default): grip at bottom, barrel pointing up.
+# Anchor at (32, 56) — grip base, inherited from data/sprite-types/weapon.json.
+# All other type defaults (64x64, kenney-roguelike palette, 4x4 sheet,
+# VLM judge enabled) are inherited from data/sprite-types/weapon.json.
+variations:
+  - elongated octagonal barrel with a spiral engraved groove near the muzzle
+  - twin crystal shards flanking the main chamber with copper claw mounts
+  - squat blunderbuss-style barrel flare at the muzzle with a single large crystal
+minVariations: 8
