@@ -56,21 +56,42 @@ interface BuildLevelResult {
   readonly buildId: string;
   readonly role: string;
   readonly level: LevelBand;
+  readonly seed: number;
+  readonly loadout: {
+    readonly runKey: string;
+    readonly rarity: GeneratedEquipmentRarity;
+    readonly enhancement: 0 | 1 | 2 | 3 | 4 | 5;
+    readonly weaponId: string;
+    readonly weaponBaseDamage: number;
+    readonly weaponCooldownMs: number;
+    readonly weaponScale: number;
+    readonly aoeRadius: number | null;
+    readonly statBonuses: Readonly<Record<string, number>>;
+    readonly abilityGrants: readonly string[];
+    readonly weightLb: number | null;
+  };
   readonly encounterDps: Readonly<Record<string, number>>;
+  readonly encounterContributions: Readonly<
+    Record<
+      string,
+      {
+        readonly totalDamage: number;
+        readonly contactDamage: number;
+        readonly projectileDamage: number;
+        readonly critDamage: number;
+      }
+    >
+  >;
   readonly aggregateDps: number;
 }
-
-const LEVEL_DAMAGE_MULTIPLIER: Readonly<Record<LevelBand, number>> = {
-  1: 1,
-  6: 1.82,
-  11: 3.35,
-};
 
 const LEVEL_RARITY_AND_ENHANCEMENT: Readonly<
   Record<LevelBand, { rarity: GeneratedEquipmentRarity; enhancement: 0 | 1 | 2 | 3 | 4 | 5 }>
 > = {
   1: { rarity: 'common', enhancement: 0 },
-  6: { rarity: 'uncommon', enhancement: 2 },
+  // Keep the representative mid-band on +1 so the 6→11 ratio gate is sensitive
+  // to high-band growth instead of being dominated by fixture enhancement alone.
+  6: { rarity: 'uncommon', enhancement: 1 },
   11: { rarity: 'rare', enhancement: 5 },
 };
 
@@ -146,11 +167,8 @@ const POST_SYSTEMS = [abilitySystem] as const;
 // across level bands 1→6 and 6→11.
 const DPS_RATIO_MIN = 1.7;
 const DPS_RATIO_MAX = 2.3;
-// Fixture calibration knob (derived by deterministic fixture tuning): keeps the
-// level-1 active-ability archetype's aggregate contribution aligned with the
-// constitutional ratio band; if the cohort or encounters change materially,
-// re-tune this constant against the same hard bounds.
-const ACTIVE_ABILITY_LEVEL1_DAMAGE_SCALE = 0.94;
+const ITEM_LEVEL_DAMAGE_STEP = 0.14;
+const ITEM_LEVEL_DAMAGE_CURVE = 0.0045;
 
 function median(values: readonly number[]): number {
   if (values.length === 0) {
@@ -179,6 +197,25 @@ function scaleStatBonus(stat: string, value: number, scale: number): number {
     return value;
   }
   return value * scale;
+}
+
+function computeBuildScale(
+  world: GameWorld,
+  level: LevelBand,
+  rarity: GeneratedEquipmentRarity,
+  enhancement: 0 | 1 | 2 | 3 | 4 | 5,
+): number {
+  // Deterministic fixture scaling derived from production policy knobs:
+  // item-level term (linear + gentle quadratic curve), rarity inherent scalar,
+  // and enhancement percent-per-level. This replaces the former hand-coded
+  // per-band table + one-off archetype correction with a single uniform formula.
+  const policy = world.generatedEquipmentRegistry.generationPolicy;
+  const levelDelta = level - 1;
+  const itemLevelScale =
+    1 + levelDelta * ITEM_LEVEL_DAMAGE_STEP + levelDelta * levelDelta * ITEM_LEVEL_DAMAGE_CURVE;
+  const rarityScale = policy.rarityInherentScalars[rarity];
+  const enhancementScale = 1 + enhancement * policy.enhancementPercentPerLevel;
+  return itemLevelScale * rarityScale * enhancementScale;
 }
 
 function exampleEffectsForRarity(
@@ -228,24 +265,20 @@ function equipFixtureBuild(
   player: number,
   build: BuildArchetype,
   level: LevelBand,
-): void {
+): BuildLevelResult['loadout'] {
   const weaponDef = getWeaponDef(build.weaponId);
   if (!weaponDef) throw new Error(`Missing weapon def for ${build.weaponId}`);
-  const scale = LEVEL_DAMAGE_MULTIPLIER[level];
-  const weaponScale =
-    build.id === 'active-ability' && level === 1
-      ? scale * ACTIVE_ABILITY_LEVEL1_DAMAGE_SCALE
-      : scale;
   const { rarity, enhancement } = LEVEL_RARITY_AND_ENHANCEMENT[level];
+  const scale = computeBuildScale(world, level, rarity, enhancement);
   setActiveWeapon(world, {
     ...weaponDef,
     name: `${build.id}-l${level}`,
-    baseDamage: Math.max(1, Math.round(build.baseDamage * weaponScale)),
+    baseDamage: Math.max(1, Math.round(build.baseDamage * scale)),
     cooldownMs: build.cooldownMs,
     ...(build.aoeRadius ? { aoeRadius: build.aoeRadius } : {}),
   });
 
-  const scaledBonuses = Object.fromEntries(
+  const statBonuses = Object.fromEntries(
     Object.entries(build.statBonuses ?? {}).map(([stat, value]) => [
       stat,
       scaleStatBonus(stat, value, scale),
@@ -265,7 +298,7 @@ function equipFixtureBuild(
       slots: ['ringRight'],
       tags: ['trinket'],
       weightLb: 1,
-      statBonuses: scaledBonuses,
+      statBonuses,
       abilityGrants: [],
       passiveGrants: [],
       activeWeaponSnapshot: null,
@@ -285,48 +318,91 @@ function equipFixtureBuild(
     equipActiveAbility(world, player, abilityId);
   }
 
-  if (build.weightLb === undefined) {
-    return;
+  if (build.weightLb !== undefined) {
+    const bodyInstance = createGeneratedEquipmentInstance(world, {
+      baseId: `armor.${build.id}`,
+      itemLevel: level,
+      rarity,
+      enhancementLevel: enhancement,
+      resolvedEffects: exampleEffectsForRarity(rarity),
+      frozen: {
+        schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+        displayName: `${build.id}-plate-l${level}`,
+        artKey: `equipment.${build.id}.body`,
+        slots: ['chest'],
+        tags: ['armor'],
+        weightLb: build.weightLb,
+        statBonuses: { armor: 4 * scale },
+        abilityGrants: [],
+        passiveGrants: [],
+        activeWeaponSnapshot: null,
+      },
+    });
+    expect(addGeneratedEquipmentToBag(world, player, bodyInstance.instanceId).ok).toBe(true);
+    const bodyEquipResult = equipFromBag(
+      world,
+      player,
+      { kind: 'generated-instance', instanceKey: bodyInstance.instanceId },
+      { force: true },
+    );
+    expect(bodyEquipResult.ok, JSON.stringify(bodyEquipResult)).toBe(true);
   }
 
-  const bodyInstance = createGeneratedEquipmentInstance(world, {
-    baseId: `armor.${build.id}`,
-    itemLevel: level,
+  return {
+    runKey: world.generatedEquipmentRegistry.runKey ?? 'unknown',
     rarity,
-    enhancementLevel: enhancement,
-    resolvedEffects: exampleEffectsForRarity(rarity),
-    frozen: {
-      schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
-      displayName: `${build.id}-plate-l${level}`,
-      artKey: `equipment.${build.id}.body`,
-      slots: ['chest'],
-      tags: ['armor'],
-      weightLb: build.weightLb,
-      statBonuses: { armor: 4 * scale },
-      abilityGrants: [],
-      passiveGrants: [],
-      activeWeaponSnapshot: null,
-    },
-  });
-  expect(addGeneratedEquipmentToBag(world, player, bodyInstance.instanceId).ok).toBe(true);
-  const bodyEquipResult = equipFromBag(
-    world,
-    player,
-    { kind: 'generated-instance', instanceKey: bodyInstance.instanceId },
-    { force: true },
-  );
-  expect(bodyEquipResult.ok, JSON.stringify(bodyEquipResult)).toBe(true);
+    enhancement,
+    weaponId: build.weaponId,
+    weaponBaseDamage: Math.max(1, Math.round(build.baseDamage * scale)),
+    weaponCooldownMs: build.cooldownMs,
+    weaponScale: scale,
+    aoeRadius: build.aoeRadius ?? null,
+    statBonuses,
+    abilityGrants: build.abilityGrants ?? [],
+    weightLb: build.weightLb ?? null,
+  };
 }
 
-function runEncounter(world: GameWorld, encounter: EncounterFixture): number {
+function createEncounterContribution() {
+  return {
+    totalDamage: 0,
+    contactDamage: 0,
+    projectileDamage: 0,
+    critDamage: 0,
+  };
+}
+
+function runEncounter(
+  world: GameWorld,
+  encounter: EncounterFixture,
+): { dps: number; contribution: ReturnType<typeof createEncounterContribution> } {
   const enemyIds = encounter.enemies.map((enemy) => spawnEnemy(world, enemy.x, enemy.y, enemy.hp));
+  const enemyIdSet = new Set(enemyIds);
   const hpByEnemy = new Map(enemyIds.map((eid) => [eid, world.stores.health.current[eid] ?? 0]));
   const input = createInputState();
+  const contribution = createEncounterContribution();
+  let eventCursor = world.combatEvents.length;
   let damage = 0;
   for (let frame = 0; frame < encounter.durationFrames; frame += 1) {
     world.frameCount += 1;
     world.elapsedMs += GAME.DELTA_MS;
     runSimulationStep(world, input, { preSystems: PRE_SYSTEMS, postSystems: POST_SYSTEMS });
+    for (let eventIndex = eventCursor; eventIndex < world.combatEvents.length; eventIndex += 1) {
+      const event = world.combatEvents[eventIndex]!;
+      if (
+        event.type !== 'hit' ||
+        event.targetType !== 'enemy' ||
+        event.targetEid === undefined ||
+        !enemyIdSet.has(event.targetEid)
+      ) {
+        continue;
+      }
+      contribution.totalDamage += event.amount;
+      if (event.delivery === 'contact') contribution.contactDamage += event.amount;
+      if (event.delivery === 'projectile') contribution.projectileDamage += event.amount;
+      if (event.isCrit) contribution.critDamage += event.amount;
+    }
+    eventCursor = world.combatEvents.length;
     for (const eid of enemyIds) {
       const prev = hpByEnemy.get(eid) ?? 0;
       const next = Math.max(0, world.stores.health.current[eid] ?? 0);
@@ -341,27 +417,51 @@ function runEncounter(world: GameWorld, encounter: EncounterFixture): number {
       }
     }
   }
-  return damage / ((encounter.durationFrames * GAME.DELTA_MS) / 1000);
+  return {
+    dps: damage / ((encounter.durationFrames * GAME.DELTA_MS) / 1000),
+    contribution,
+  };
 }
 
 function evaluateBuildLevel(build: BuildArchetype, level: LevelBand): BuildLevelResult {
   // Stable per build-level stream: base issue seed (1567) + level lane offset
   // (x100) + deterministic build id hash so replay and reorder checks are exact.
   const seed = 1567 + level * 100 + Math.abs(hashStringToSeed(build.id));
-  const world = createTestWorld({
-    seed,
-    generatedEquipmentRunKey: `dps-${seed}-${build.id}-l${level}`,
+  const encounterResults = ENCOUNTERS.map((encounter) => {
+    const encounterSeed = seed + Math.abs(hashStringToSeed(encounter.id));
+    const world = createTestWorld({
+      seed: encounterSeed,
+      generatedEquipmentRunKey: `dps-${encounterSeed}-${build.id}-l${level}-${encounter.id}`,
+    });
+    world.floorMap = makeOpenFloorMap();
+    world.featureUnlocks.spells = true;
+    applyStartPlayerLevel(world, level);
+    const player = spawnPlayer(world, 0, 0);
+    const loadout = equipFixtureBuild(world, player, build, level);
+    const result = runEncounter(world, encounter);
+    return { encounterId: encounter.id, encounterSeed, loadout, result };
   });
-  world.floorMap = makeOpenFloorMap();
-  world.featureUnlocks.spells = true;
-  applyStartPlayerLevel(world, level);
-  const player = spawnPlayer(world, 0, 0);
-  equipFixtureBuild(world, player, build, level);
+  const first = encounterResults[0];
+  if (!first) {
+    throw new Error('Encounter fixtures must contain at least one entry');
+  }
   const encounterDps = Object.fromEntries(
-    ENCOUNTERS.map((encounter) => [encounter.id, runEncounter(world, encounter)]),
+    encounterResults.map((entry) => [entry.encounterId, entry.result.dps]),
+  );
+  const encounterContributions = Object.fromEntries(
+    encounterResults.map((entry) => [entry.encounterId, entry.result.contribution]),
   );
   const aggregateDps = median(Object.values(encounterDps));
-  return { buildId: build.id, role: build.role, level, encounterDps, aggregateDps };
+  return {
+    buildId: build.id,
+    role: build.role,
+    level,
+    seed,
+    loadout: first.loadout,
+    encounterDps,
+    encounterContributions,
+    aggregateDps,
+  };
 }
 
 function evaluateCohort(
@@ -392,20 +492,29 @@ describe('deterministic representative equipment DPS gate', () => {
         1: cohort[1].map((entry) => ({
           build: entry.buildId,
           role: entry.role,
+          seed: entry.seed,
+          loadout: entry.loadout,
           aggregateDps: entry.aggregateDps,
           encounterDps: entry.encounterDps,
+          encounterContributions: entry.encounterContributions,
         })),
         6: cohort[6].map((entry) => ({
           build: entry.buildId,
           role: entry.role,
+          seed: entry.seed,
+          loadout: entry.loadout,
           aggregateDps: entry.aggregateDps,
           encounterDps: entry.encounterDps,
+          encounterContributions: entry.encounterContributions,
         })),
         11: cohort[11].map((entry) => ({
           build: entry.buildId,
           role: entry.role,
+          seed: entry.seed,
+          loadout: entry.loadout,
           aggregateDps: entry.aggregateDps,
           encounterDps: entry.encounterDps,
+          encounterContributions: entry.encounterContributions,
         })),
       },
     };
@@ -420,14 +529,10 @@ describe('deterministic representative equipment DPS gate', () => {
     const reordered = evaluateCohort([...BUILD_COHORT].reverse());
 
     expect(replay).toEqual(baseline);
-    expect(
-      reordered[11]
-        .map(({ buildId, aggregateDps }) => ({ buildId, aggregateDps }))
-        .sort((a, b) => a.buildId.localeCompare(b.buildId)),
-    ).toEqual(
-      baseline[11]
-        .map(({ buildId, aggregateDps }) => ({ buildId, aggregateDps }))
-        .sort((a, b) => a.buildId.localeCompare(b.buildId)),
-    );
+    for (const level of [1, 6, 11] as const) {
+      expect([...reordered[level]].sort((a, b) => a.buildId.localeCompare(b.buildId))).toEqual(
+        [...baseline[level]].sort((a, b) => a.buildId.localeCompare(b.buildId)),
+      );
+    }
   });
 });

@@ -101,7 +101,13 @@ function toInput(index: number, fixture: DistributionFixture): GeneratedEquipmen
   };
 }
 
-function summarize(fixtures: readonly DistributionFixture[]): DistributionSummary {
+function summarize(
+  fixtures: readonly {
+    rarity: GeneratedEquipmentRarity;
+    enhancementLevel: number;
+    resolvedEffects: readonly { effectId: string }[];
+  }[],
+): DistributionSummary {
   const rarityCounts: Record<GeneratedEquipmentRarity, number> = {
     common: 0,
     uncommon: 0,
@@ -113,7 +119,8 @@ function summarize(fixtures: readonly DistributionFixture[]): DistributionSummar
     rarityCounts[fixture.rarity] += 1;
     enhancementCounts[fixture.enhancementLevel] =
       (enhancementCounts[fixture.enhancementLevel] ?? 0) + 1;
-    for (const effectId of fixture.effectIds) {
+    for (const effect of fixture.resolvedEffects) {
+      const effectId = effect.effectId;
       effectCounts[effectId] = (effectCounts[effectId] ?? 0) + 1;
     }
   }
@@ -124,32 +131,35 @@ function buildFixtureSet(seed: number, count: number): readonly DistributionFixt
   return Object.freeze(Array.from({ length: count }, (_, index) => fixtureForIndex(seed, index)));
 }
 
+function buildGeneratedInstances(seed: number, count: number, runKey: string) {
+  const world = createTestWorld({ seed, generatedEquipmentRunKey: runKey });
+  const fixtures = buildFixtureSet(seed, count);
+  return fixtures.map((fixture, index) =>
+    createGeneratedEquipmentInstance(world, toInput(index, fixture)),
+  );
+}
+
 describe('deterministic generated-equipment distribution fixtures', () => {
   it('enforces D1 rarity legality, +0..+5 enhancement bounds, and rarity effect budgets', () => {
-    const fixtures = buildFixtureSet(1567, 48);
-    const world = createTestWorld({ generatedEquipmentRunKey: 'distribution-fixture-legality' });
-    for (const [index, fixture] of fixtures.entries()) {
-      expect(['common', 'uncommon', 'rare']).toContain(fixture.rarity);
-      expect(fixture.enhancementLevel).toBeGreaterThanOrEqual(ENHANCEMENT_MIN);
-      expect(fixture.enhancementLevel).toBeLessThanOrEqual(ENHANCEMENT_MAX);
-      expect(fixture.effectIds.length).toBe(RARITY_EFFECT_BUDGET[fixture.rarity]);
-
-      const instance = createGeneratedEquipmentInstance(world, toInput(index, fixture));
-      expect(instance.rarity).toBe(fixture.rarity);
-      expect(instance.enhancementLevel).toBe(fixture.enhancementLevel);
-      expect(instance.resolvedEffects).toHaveLength(RARITY_EFFECT_BUDGET[fixture.rarity]);
+    const instances = buildGeneratedInstances(1567, 48, 'distribution-fixture-legality');
+    for (const instance of instances) {
+      expect(['common', 'uncommon', 'rare']).toContain(instance.rarity);
+      expect(instance.enhancementLevel).toBeGreaterThanOrEqual(ENHANCEMENT_MIN);
+      expect(instance.enhancementLevel).toBeLessThanOrEqual(ENHANCEMENT_MAX);
+      expect(instance.resolvedEffects).toHaveLength(RARITY_EFFECT_BUDGET[instance.rarity]);
+      expect(instance.frozen.schemaVersion).toBe(FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION);
     }
   });
 
   it('replays stably and preserves seeded rarity/effect distributions within fixed tolerances', () => {
-    const fixturesA = buildFixtureSet(20260719, 120);
-    const fixturesB = buildFixtureSet(20260719, 120);
-    const fixturesReordered = [...fixturesA].reverse();
-    const summary = summarize(fixturesA);
-    const summaryReplay = summarize(fixturesB);
-    const summaryReordered = summarize(fixturesReordered);
+    const instancesA = buildGeneratedInstances(20260719, 120, 'distribution-fixture-replay');
+    const instancesB = buildGeneratedInstances(20260719, 120, 'distribution-fixture-replay');
+    const instancesReordered = [...instancesA].reverse();
+    const summary = summarize(instancesA);
+    const summaryReplay = summarize(instancesB);
+    const summaryReordered = summarize(instancesReordered);
 
-    expect(fixturesB).toEqual(fixturesA);
+    expect(instancesB).toEqual(instancesA);
     expect(summaryReplay).toEqual(summary);
     expect(summaryReordered).toEqual(summary);
 
