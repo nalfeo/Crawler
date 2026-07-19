@@ -18,12 +18,7 @@ Graphics Designer / Asset Forge
 
 ## Systems touched
 
-- `briefs/items/tinker-grips.yaml` — new item brief (handwear, Floor 2)
-- `public/assets/generated/equipment/hands/tinker-grips.png` — approved 64×64 handwear equipment icon
-- `public/assets/generated/tinker-grips-var-0.png` — standard approve output (kept for pipeline artifact)
-- `public/assets/generated/manifest.json` — upserted entry keyed by stable runtime key `equipment/hands/tinker-grips`
-- `src/shared/data/sprite-catalog.json` — catalog entry for runtime resolution
-- `tests/integration/generated-manifest-engine.test.ts` — integration assertion for runtime key resolution
+sprite-pipeline, sprite-workflow
 
 ## Apples
 
@@ -69,14 +64,17 @@ All 7/7 item sensors passed on the approved candidate:
 
 ## Before / after observation
 
+Scope: **asset registration only** — consumer wiring (ItemDef, equipment-panel
+integration) is deferred per the #1303 separate-wiring pattern.
+
 - **Before:** `equipment/hands/tinker-grips` did not exist in the manifest, catalog,
-  or on-disk asset tree. The runtime key was unresolvable — the equipment panel
-  would fall back to placeholder or text rendering.
+  or on-disk asset tree. The runtime key was unresolvable.
 - **After:** `public/assets/generated/equipment/hands/tinker-grips.png` is on disk;
   `public/assets/generated/manifest.json` carries the entry keyed by
   `equipment/hands/tinker-grips`; `sprite-catalog.json` has the catalog entry;
   the integration test loads the real manifest and asserts the key resolves and
-  preloads the correct URL.
+  preloads the correct URL (registry/preload registration only — equipment-panel
+  consumer path not wired in this PR).
 
 ## Validation
 
