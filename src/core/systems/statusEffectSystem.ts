@@ -56,11 +56,17 @@ export function statusEffectSystem(world: GameWorld): void {
     }
 
     // 2. Expire timed effects; persistent effects (Infinity) never tick down.
+    //
+    // Epsilon guard: repeated float subtraction (e.g. 240 × 16.667ms) can leave
+    // a sub-nanosecond positive residual instead of landing exactly on 0, so a
+    // bare `<= 0` check misses the intended expiry frame. The 1e-9 ms threshold
+    // absorbs that artifact — it is orders of magnitude below a single step
+    // (~16.7ms) and therefore never triggers an early expiry in practice.
     for (let i = effects.length - 1; i >= 0; i--) {
       const effect = effects[i]!;
       if (effect.remainingMs === Infinity) continue;
       effect.remainingMs -= dtMs;
-      if (effect.remainingMs <= 0) effects.splice(i, 1);
+      if (effect.remainingMs <= 1e-9) effects.splice(i, 1);
     }
 
     // 3. Drop the map entry when the entity has no effects left.
