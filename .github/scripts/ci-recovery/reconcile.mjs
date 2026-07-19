@@ -1514,11 +1514,17 @@ if (normalized.length === 0) {
 }
 
 const currentProgressKey = automationProgressKey(pr.head.sha, fingerprint);
-const stateProgressKey =
-  state?.progressKey ||
-  (state?.headSha && state?.fingerprint
-    ? automationProgressKey(state.headSha, state.fingerprint)
-    : null);
+function getOrDeriveProgressKey(recoveryState) {
+  if (!recoveryState) return null;
+  if (recoveryState.progressKey) return recoveryState.progressKey;
+  // Legacy state comments pre-date `progressKey`; derive an equivalent key from
+  // head/fingerprint when needed so exhausted-state suppression still works.
+  if (recoveryState.headSha && recoveryState.fingerprint) {
+    return automationProgressKey(recoveryState.headSha, recoveryState.fingerprint);
+  }
+  return null;
+}
+const stateProgressKey = getOrDeriveProgressKey(state);
 if (
   !labelExists &&
   state?.owner === 'none' &&

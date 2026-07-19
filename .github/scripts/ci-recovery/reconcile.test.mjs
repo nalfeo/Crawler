@@ -1206,6 +1206,7 @@ test('interrupted exhausted release completes when staleOwningState carries atte
 });
 
 test('reconcile skips redispatch when stale-automation-exhausted state matches current progress key', async (t) => {
+  const staleOffsetMs = 31 * 60 * 1000;
   const failedCheck = {
     id: 1,
     name: 'ci',
@@ -1231,21 +1232,20 @@ test('reconcile skips redispatch when stale-automation-exhausted state matches c
         blockers,
         attempt: 2,
         progressKey,
-        progressAt: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
-        updatedAt: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+        progressAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+        updatedAt: new Date(Date.now() - staleOffsetMs).toISOString(),
       }),
     ),
   };
-  let repositoryLabelExists = false;
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
       body: basePr(),
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
-      repositoryLabelExists
-        ? { body: { name: LABEL } }
-        : { status: 404, body: { message: 'Not Found' } },
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
     [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
       body: { check_runs: [failedCheck] },
     }),
