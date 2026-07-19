@@ -1,0 +1,25 @@
+type: weapon
+name: war-pick
+description: |
+  A war pick held vertically, grip at the bottom and pick head at the top.
+  The head is a compact combined pick-spike and hammer/poll — the pick spike
+  projects distinctly outward and upward from one side of the head for a
+  clear, immediately-readable silhouette. The opposing poll (hammer face) is
+  short and blunt. Medium-length straight haft with a simple leather-wrapped
+  grip; small ferrule or pommel cap at the base. Iron/steel grey for the
+  head with a single thin highlight along the pick spike's upper edge; dark
+  brown for the haft wrap; muted steel for the ferrule. Worn and
+  battle-scarred — slight chips on the pick tip, scuffed haft wrap. No glow, no
+  enchantment, no background. Silhouette must read as "pick-family weapon"
+  at a glance — the asymmetric spike is the recognition cue.
+# Vertical orientation (grip bottom, spike top) and all other weapon defaults
+# (64x64, kenney-roguelike palette, 4x4 sheet, anchor at (32,56)) are
+# inherited from data/sprite-types/weapon.json.
+#
+# Runtime identity: equipment/weapon/war-pick
+# The brief name matches the item ID so the art auto-resolves via the
+# identity model (briefId === manifest key === engine texture key).
+variations:
+  - prominent curved pick spike hooking sharply outward
+  - twin-spiked head with both a forward pick and a rear spike
+minVariations: 8

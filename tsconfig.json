@@ -22,6 +22,6 @@
     "sourceMap": true,
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
+  "include": ["vite.config.ts", "src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "tools/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
