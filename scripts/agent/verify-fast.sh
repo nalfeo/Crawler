@@ -56,7 +56,7 @@ if [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
   fi
 fi
 
-npx tsc --noEmit --project tsconfig.src.json &
+npx tsc --noEmit --project tsconfig.json &
 TSC_PID=$!
 "${LINT_CMD[@]}" &
 ESLINT_PID=$!

@@ -19,6 +19,8 @@ import {
   renderStateComment,
   shouldResolveThread,
   STATE_MARKER,
+  TRUSTED_ASSOCIATIONS,
+  TRUSTED_BOT_LOGINS,
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
@@ -73,6 +75,7 @@ const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
+const ADDRESSED_MARKER_REPLY = '`✅ Addressed in <sha>: <one-line note>`';
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -946,6 +949,12 @@ for (const thread of unresolvedThreads) {
   }
 }
 const reachableMarkerShas = new Set();
+// Only SHAs confirmed unreachable by a definitive API response (404 commit-not-found,
+// or a successful compare whose status is not ancestor-of-head). SHAs whose lineage
+// could not be determined due to transient failures (rate limits, 5xx, network errors,
+// 422 ambiguous SHA) are omitted from both sets so that the stale-marker hint is not
+// emitted spuriously.
+const definitivelyUnreachableMarkerShas = new Set();
 for (const markerSha of markerShasNeedingLineageCheck) {
   try {
     const compare = (
@@ -953,24 +962,112 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     ).data;
     if (compare?.status === 'identical' || compare?.status === 'ahead') {
       reachableMarkerShas.add(markerSha);
+    } else {
+      // Successful response but the marker commit is not an ancestor of HEAD
+      // (e.g. 'behind' or 'diverged') — definitively not reachable.
+      definitivelyUnreachableMarkerShas.add(markerSha);
     }
   } catch (error) {
+    const httpStatus = typeof error.status === 'number' ? error.status : null;
+    const isDefinitivelyMissing = httpStatus === 404;
     console.warn(
       JSON.stringify({
         event: 'ci-recovery.marker-sha-compare-failed',
-        message: 'Treating marker as non-reachable after compare failure.',
+        message: isDefinitivelyMissing
+          ? 'Marker commit not found (404); treating as definitively unreachable.'
+          : 'Lineage check failed with transient/indeterminate error; skipping stale-marker hint for this SHA.',
         markerSha,
         prHeadSha: pr.head.sha,
+        httpStatus,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? (error.stack ?? null) : null,
       }),
     );
-    // Treat any error (404 not found, 422 unresolvable/ambiguous SHA,
-    // network errors, etc.) as a non-reachable marker so recovery can proceed.
+    if (isDefinitivelyMissing) {
+      // 404: commit does not exist on GitHub — definitively a stale/never-pushed SHA.
+      definitivelyUnreachableMarkerShas.add(markerSha);
+    }
+    // For transient/indeterminate failures (rate limits, 5xx, network errors,
+    // 422 ambiguous SHA, etc.) the SHA is absent from both sets so no stale-marker
+    // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+// Detect threads whose last trusted comment carries a ✅ Addressed marker that
+// points to a SHA definitively not reachable from the current head (e.g. a local
+// commit created by a recovery agent before it was pushed, later abandoned or
+// squashed into a different commit). Only emit the stale-marker hint when the
+// compare API confirmed the commit does not exist (404) or is not an ancestor
+// (non-identical/non-ahead compare). Threads where lineage could not be checked
+// due to transient errors (rate limits, 5xx, network failures, 422 ambiguous SHA)
+// keep the generic review-thread blocker without the misleading stale-SHA hint.
+// This map is built BEFORE the isOutdated auto-post loop so that threads with a
+// stale marker are routed to the stale-marker recovery path rather than auto-resolved.
+const staleAddressedMarkerByThread = new Map();
+for (const thread of unresolvedThreads) {
+  // Skip threads the reconciler will auto-resolve in the loop above.
+  if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) continue;
+  const last = comments[comments.length - 1];
+  const markerSha = extractAddressedMarkerSha(last?.body);
+  if (!markerSha) continue;
+  // Only flag as stale when we have a definitive non-reachable result.
+  // If the lineage check was skipped or failed transiently the SHA will be
+  // absent from both sets; treat it as indeterminate and skip the hint.
+  if (headSha.startsWith(markerSha) || reachableMarkerShas.has(markerSha)) continue;
+  if (!definitivelyUnreachableMarkerShas.has(markerSha)) continue;
+  const authorLogin = String(last?.author?.login ?? '').toLowerCase();
+  const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
+  if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
+    staleAddressedMarkerByThread.set(thread.id, markerSha);
+  }
+}
+// Post reconciler-authored marker replies for outdated threads that have no trusted marker.
+// thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
+// no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
+// on the current code.  The CRAWLER_CI_PAT is the repository owner, so the posted reply
+// satisfies isTrustedComment (authorAssociation OWNER), letting shouldResolveThread succeed
+// on this same pass without a separate agent round-trip.
+//
+// This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
+// DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
+// Threads with a stale trusted marker are excluded: those need the stale-marker recovery
+// path (re-post with current head SHA), not auto-resolution.
+for (const thread of unresolvedThreads.filter(
+  (candidate) =>
+    candidate.isOutdated &&
+    !shouldResolveThread(candidate, headSha, reachableMarkerShas) &&
+    !staleAddressedMarkerByThread.has(candidate.id),
+)) {
+  const root = thread.comments?.nodes?.[0];
+  const replyCommentId = reviewThreadReplyCommentId(root?.url);
+  if (!replyCommentId) {
+    process.stdout.write(`skip outdated-marker thread=${thread.id} reason=no-reply-target\n`);
+    continue;
+  }
+  const markerBody = `✅ Addressed in ${headSha}: thread outdated — reviewed lines no longer present at this location`;
+  if (live) {
+    await assertExpectedMetadataUnchanged('post-outdated-marker');
+    await request(
+      pat,
+      `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
+      { method: 'POST', body: { body: markerBody } },
+    );
+  }
+  // Inject the posted marker so shouldResolveThread succeeds in the resolution pass below.
+  // authorAssociation is OWNER because CRAWLER_CI_PAT is the repository owner's token.
+  if (!thread.comments) thread.comments = { nodes: [] };
+  thread.comments.nodes.push({
+    id: `reconciler-outdated-marker:${thread.id}`,
+    body: markerBody,
+    url: '',
+    author: { login: '' },
+    authorAssociation: 'OWNER',
+  });
+  process.stdout.write(`${live ? 'posted' : 'would-post'} outdated-marker thread=${thread.id}\n`);
+}
 for (const thread of unresolvedThreads.filter((candidate) =>
-  shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
+  shouldResolveThread(candidate, headSha, reachableMarkerShas),
 )) {
   if (live) {
     await assertExpectedMetadataUnchanged('resolve-thread');
@@ -1263,13 +1360,22 @@ for (const run of actionRequiredRuns) {
 
 for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
   const root = thread.comments?.nodes?.[0];
+  const staleSha = staleAddressedMarkerByThread.get(thread.id);
+  const reviewerSummary = `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 450)}`;
+  // When the thread already has a trusted ✅ Addressed marker but the referenced
+  // commit is not reachable from the current head, prepend a targeted hint so
+  // the recovery agent knows it only needs to re-post the marker with the
+  // correct current-head SHA — not re-investigate the underlying concern.
+  const summary = staleSha
+    ? `[Stale marker: ✅ Addressed in ${staleSha} exists but that commit is not reachable from current head — verify fix is present in the current head and reply to this thread with ✅ Addressed in <head-sha>: <note> to close the marker.] ${reviewerSummary}`
+    : reviewerSummary;
   blockers.push({
     kind: 'review-thread',
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
     path: thread.path || undefined,
     line: thread.line || undefined,
-    summary: `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 500)}`,
+    summary,
     url: root?.url,
   });
 }
@@ -1593,7 +1699,9 @@ const taskBody = [
   '',
   '**Review-thread protocol:** For every listed review thread, invoke a separate review agent using a model different from your primary model to validate whether the comment is still applicable to the current head. Fix valid findings. Resolve only deterministic non-applicability (outdated/removed line or file, duplicate already addressed) or a validated `✅ Addressed` result. For substantive disagreement, reply with the validator evidence and leave the thread unresolved for escalation.',
   '',
-  'When a thread is addressed by a real fix, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>` (where `<sha>` is the commit that contains the fix) and resolve it. When the finding is not applicable to the current code (outdated line, already-correct content, removed file, etc.), reply with `✅ Addressed (deterministic non-applicability): <one-line explanation>` — do NOT include a SHA in this form. Run the repository-required verification and push one consolidated repair commit.',
+  `A top-level PR comment is never sufficient for a review-thread blocker; post the ${ADDRESSED_MARKER_REPLY} reply in the exact thread comment listed above.`,
+  '',
+  `When a thread is addressed by a real fix, use \`reply_to_comment\` with the **Reply target comment ID** listed above for that thread (not the ID of this task comment) and set the body to ${ADDRESSED_MARKER_REPLY} (where \`<sha>\` is the commit that contains the fix). When the finding is not applicable to the current code (outdated line, already-correct content, removed file, etc.), use \`reply_to_comment\` and set the body to \`✅ Addressed (deterministic non-applicability): <one-line explanation>\` — do NOT include a SHA in this form. The CI recovery reconciler will resolve the review thread automatically on its next pass. Do **not** reply to this task comment to record addressed status — a marker reply on the review-thread comment is the only form recognised by the reconciler. Run the repository-required verification and push one consolidated repair commit.`,
 ].join('\n');
 
 if (live) {
