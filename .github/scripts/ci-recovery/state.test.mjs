@@ -9,6 +9,7 @@ import {
   blockerFingerprint,
   collapseCheckRunsByName,
   extractAddressedMarkerSha,
+  hasNotApplicableMarker,
   hasSubstantiveCopilotReview,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
@@ -109,6 +110,33 @@ test('normalizes blocker order before fingerprinting', () => {
   assert.deepEqual(normalizeBlockers(left), normalizeBlockers(right));
   // Blocker order is normalised before hashing — same items regardless of insertion order.
   assert.equal(blockerFingerprint(left), blockerFingerprint(right));
+});
+
+test('line-number drift does not change the blocker fingerprint', () => {
+  // Regression: diff-position line numbers drift whenever surrounding code is
+  // modified (e.g. INDEX.md regenerated).  Including `line` in normalizeBlockers
+  // previously caused a new fingerprint on every line-shift, which
+  // automationStallAction interpreted as 'progressed' and reset the attempt
+  // counter — granting a fresh retry budget for the same underlying blocker and
+  // creating an infinite recovery loop (CI recovery loop incident pattern).
+  const base = {
+    kind: 'review-thread',
+    id: 'review-thread:PRRT_test:abcdef1234',
+    summary: 'reviewer: handoff landing in _unclassified_',
+    path: 'docs/knowledge/handoffs/INDEX.md',
+    line: 488,
+  };
+  const shifted = { ...base, line: 497 };
+  const noLine = { ...base, line: undefined };
+  const normalizedBase = normalizeBlockers([base])[0];
+  const normalizedShifted = normalizeBlockers([shifted])[0];
+
+  assert.equal(blockerFingerprint([base]), blockerFingerprint([shifted]));
+  assert.equal(blockerFingerprint([base]), blockerFingerprint([noLine]));
+  assert.equal(normalizedBase.line, 488);
+  assert.equal(normalizedShifted.line, 497);
+  // line should remain available for display metadata even though hashing ignores it
+  assert.notEqual(normalizedBase.line, normalizedShifted.line);
 });
 
 test('review-thread blocker identity changes when comments change', () => {
@@ -447,7 +475,37 @@ test('automation staleness waits, retries once, then releases without treating w
       fingerprint,
       now: new Date('2026-07-17T13:00:00.000Z'),
     }),
-    'progressed',
+    'retry',
+  );
+});
+
+test('automation staleness keeps retry budget when only headSha changes', () => {
+  const fingerprint = blockerFingerprint([
+    { kind: 'review-thread', id: 'review-thread:PRRT_test:abcd', summary: 'Review finding' },
+  ]);
+  const state = makeState({
+    prNumber: 42,
+    headSha: 'old-head',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [
+      { kind: 'review-thread', id: 'review-thread:PRRT_test:abcd', summary: 'Review finding' },
+    ],
+    attempt: 2,
+    progressKey: automationProgressKey('old-head', fingerprint),
+    progressAt: '2026-07-17T12:00:00.000Z',
+    updatedAt: '2026-07-17T12:20:00.000Z',
+  });
+
+  assert.equal(
+    automationStallAction({
+      state,
+      headSha: 'new-head',
+      fingerprint,
+      now: new Date('2026-07-17T13:00:00.000Z'),
+    }),
+    'release',
   );
 });
 
@@ -704,6 +762,89 @@ test('shouldResolveThread accepts latest trusted commit URL marker on head linea
     true,
   );
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
+});
+
+test('shouldResolveThread accepts trusted "✅ Not applicable" marker without a SHA', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Some concern here.',
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'reviewer' },
+        },
+        {
+          body: '✅ Not applicable — the path calculation is correct, two `..` segments reach the repo root.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread rejects "✅ Not applicable" from untrusted author', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Not applicable — the concern is invalid.',
+          authorAssociation: 'NONE',
+          author: { login: 'random-user' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('shouldResolveThread rejects "✅ Not applicable" when reviewer follows up', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Not applicable — the finding is wrong.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+        {
+          body: 'I disagree, the issue is still present.',
+          authorAssociation: 'MEMBER',
+          author: { login: 'reviewer' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('hasNotApplicableMarker recognises canonical and variant forms', () => {
+  assert.equal(hasNotApplicableMarker('✅ Not applicable — reason'), true);
+  assert.equal(hasNotApplicableMarker('✅ Not applicable: the path is correct'), true);
+  assert.equal(hasNotApplicableMarker('✅ not applicable'), false); // bare marker — no delimiter or reason
+  assert.equal(hasNotApplicableMarker('✅ NOT APPLICABLE — multi-word reason'), true);
+  assert.equal(hasNotApplicableMarker('✅ Not applicable:'), false); // delimiter but empty reason
+  assert.equal(hasNotApplicableMarker('✅ Not applicable:   '), false); // delimiter but whitespace-only reason
+  assert.equal(hasNotApplicableMarker('✅ Not applicablex'), false); // no word boundary
+  assert.equal(hasNotApplicableMarker('✅ Addressed in abc1234: note'), false);
+  assert.equal(hasNotApplicableMarker('Not applicable without checkmark'), false);
+  // quoted/disagreement form — marker not at start of comment
+  assert.equal(
+    hasNotApplicableMarker(
+      "I disagree with the agent's ✅ Not applicable claim; the issue remains",
+    ),
+    false,
+  );
+  assert.equal(
+    hasNotApplicableMarker(
+      'The finding is valid. The agent incorrectly replied ✅ Not applicable: reason here',
+    ),
+    false,
+  );
+  assert.equal(hasNotApplicableMarker(''), false);
+  assert.equal(hasNotApplicableMarker(null), false);
+  assert.equal(hasNotApplicableMarker(undefined), false);
 });
 
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
