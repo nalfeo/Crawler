@@ -11,6 +11,17 @@
     "path": "by-sha/76bb6d2e95c6d3f57d5bd8c75790c3dd0b6c409e.json"
   },
   {
+    "commit": "f3f2d23433e1e4650c283ad442ff4ae7f6c1b777",
+    "commitDate": "2026-07-18T23:48:11Z",
+    "commitSubject": "feat(sprites): scaffold batfolk-hood Floor 2 head equipment icon (closes #1370) (#1491)",
+    "capturedAt": "2026-07-19T01:07:03.816Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29666168356",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/f3f2d23433e1e4650c283ad442ff4ae7f6c1b777.json"
+  },
+  {
     "commit": "e61214a88a0aec4a51224f85b89f761570845eca",
     "commitDate": "2026-07-18T23:16:38Z",
     "commitSubject": "Add Floor 2 `throwing-knives` weapon brief for stable equipment icon key (#1540)",
