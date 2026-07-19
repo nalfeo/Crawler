@@ -192,6 +192,10 @@ jobs:
       # This ensures every check above runs and is individually attributed before
       # the job fails, matching the parallel-attribution behavior of the former
       # two-job layout (check-types-and-lint + check-format-and-labs).
+      # INVARIANT: All check steps above must run unconditionally (no `if:` guard)
+      # so their outcome is always 'success' or 'failure' — never 'skipped'. A
+      # skipped step outcome would be treated as failure here, which is correct:
+      # any step that is unexpectedly skipped should block the gate.
       - name: Check static validation results
         if: always()
         run: |

@@ -130,6 +130,23 @@ describe('ci workflow overhead reduction', () => {
     expect(resultStep, 'Check static validation results step should exist').toBeTruthy();
     expect(resultStep?.if).toBe('always()');
     expect(resultStep?.['continue-on-error']).toBeFalsy();
+
+    // The aggregation script must reference every check step's outcome by id
+    // so no check can be silently omitted from the gate.
+    const aggregationScript = String(resultStep?.run ?? '');
+    const expectedStepIds = [
+      'types-lint',
+      'format-check',
+      'lab-gate',
+      'wiring-guard',
+      'guard-tests',
+    ];
+    for (const id of expectedStepIds) {
+      expect(
+        aggregationScript,
+        `Aggregation script must reference step id '${id}'`,
+      ).toContain(`steps.${id}.outcome`);
+    }
   });
 });
 
