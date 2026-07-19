@@ -203,6 +203,20 @@ describe('loadBrief', () => {
     );
   });
 
+  it('derives the canonical blood-lance runtime key from the committed brief identity', () => {
+    const repoRoot = process.cwd();
+    const briefPath = path.join(repoRoot, 'briefs', 'weapons', 'blood-lance.yaml');
+
+    const loaded = loadBrief(briefPath, { projectRoot: repoRoot });
+
+    expect(loaded.brief.type).toBe('weapon');
+    expect(loaded.brief.name).toBe('blood-lance');
+    expect(`weapon.${loaded.brief.name}`).toBe('weapon.blood-lance');
+    expect(`equipment/${loaded.brief.type}/${loaded.brief.name}`).toBe(
+      'equipment/weapon/blood-lance',
+    );
+  });
+
   it('treats a minimal-brief references array as a full replacement, not a concat', () => {
     const briefPath = path.join(root, 'briefs', 'r.yaml');
     writeFileSync(

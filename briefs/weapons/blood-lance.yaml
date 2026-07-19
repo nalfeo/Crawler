@@ -1,0 +1,10 @@
+type: weapon
+name: blood-lance
+floor: 2
+description: |
+  Blood Lance Floor 2 equipment icon for stable runtime key
+  equipment/weapon/blood-lance. Create one centered, silhouette-readable
+  polearm weapon on a transparent background. A long vertical spear-like shaft
+  with a narrow crimson-tinted lance head at the top and wrapped grip at the
+  bottom. Keep the silhouette unambiguous at icon scale as a polearm, not a
+  sword or staff. No character, no hand, no extra props, no background effects.
