@@ -1,0 +1,40 @@
+type: item
+name: quartermaster-cap
+floor: 2
+description: |
+  A Quartermaster Cap — military-logistics headgear that signals institutional
+  authority in a dungeon corporate-hierarchy gone wrong. Displayed as an
+  item-icon: the cap resting flat or at a slight top-down angle, fully centered
+  in the frame, transparent background.
+
+  The cap is a peaked military cap / service cap shape: a stiff circular crown,
+  a flat visor/brim projecting forward, and a band around the base. The crown
+  is creased or ridged top-down — a distinguishing silhouette cue at 64×64.
+  The band has a small brass or corroded-gold insignia: a stylized compass rose,
+  gear cog, or crossed supply-line arrows — the quartermaster's mark.
+
+  Material reads as thick canvas or dense felt dyed in muted military tones:
+  deep olive drab, faded khaki, or gunmetal grey as the primary. The brim is
+  slightly darker, stiffened. Surface wear: moth-eaten fabric nap, a waterline
+  ring on the crown, one or two missing stitches at the band seam. The insignia
+  is tarnished brass or verdigris copper — no magical glow, no clean shine.
+
+  Floor 2 retro-futurist corporate-decay aesthetic: this looks like standard-
+  issue dungeon-logistics headgear from a bureaucratic organisation that
+  collapsed a long time ago. Think worn military surplus crossed with corporate
+  middle-management insignia — pragmatic, institutional, and slightly absurd.
+
+  Silhouette must read unmistakably as a peaked service cap at 64×64: the
+  projecting brim on one side and the flat-top crown are the key recognition
+  cues. Single subject, no background scene props.
+sensors:
+  edge:
+    allowMainTouch: false
+variations:
+  - deep olive-drab canvas crown, tarnished gear-cog badge, water-stained brim with frayed front edge
+  - faded khaki felt with moth-eaten patches, corroded compass-rose insignia, asymmetric stitching on band
+  - gunmetal-grey stiff cap, verdigris crossed-arrows badge, scuff marks on crown crease and visor
+minVariations: 5
+judge:
+  enabled: true
+  maxVariants: 16
