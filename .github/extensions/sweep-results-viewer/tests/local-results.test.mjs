@@ -107,8 +107,12 @@ function validRecord(weapon, seed) {
     gameTimeSec: 10,
     finalLevel: 2,
     totalKills: 3,
+    totalXp: 50,
+    totalGold: 10,
     score: 100,
     minHealthPct: 0.5,
+    closeCallCount: 0,
+    questsCompleted: 1,
   };
 }
 
@@ -123,6 +127,10 @@ function validSummary(weapon) {
     meanLevel: 2,
     meanKills: 3,
     meanMinHealthPct: 0.5,
+    meanXp: 50,
+    meanCloseCallCount: 0,
+    meanQuestsCompleted: 1,
+    records: [],
   };
 }
 
@@ -200,4 +208,82 @@ test('missing canonical directory is an empty catalog, not an error', async () =
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
+});
+
+test('rejects records with invalid outcome and missing required numeric fields', async () => {
+  await withWorkspace(async ({ workspace, directory }) => {
+    const invalidOutcome = {
+      ...result('2026-07-16T10:00:00Z'),
+      summaries: [validSummary('sword')],
+      allRecords: [{ ...validRecord('sword', 1), outcome: 'exploded' }],
+    };
+    await writeFile(join(directory, 'bad-outcome.json'), JSON.stringify(invalidOutcome));
+
+    const missingTotalXp = {
+      ...result('2026-07-16T10:00:00Z'),
+      summaries: [validSummary('sword')],
+      allRecords: [{ ...validRecord('sword', 1), totalXp: undefined }],
+    };
+    await writeFile(join(directory, 'missing-totalxp.json'), JSON.stringify(missingTotalXp));
+
+    const missingCloseCall = {
+      ...result('2026-07-16T10:00:00Z'),
+      summaries: [validSummary('sword')],
+      allRecords: [{ ...validRecord('sword', 1), closeCallCount: undefined }],
+    };
+    await writeFile(
+      join(directory, 'missing-closecall.json'),
+      JSON.stringify(missingCloseCall),
+    );
+
+    const discovered = await listLocalSweepResults(workspace);
+    assert.deepEqual(discovered.runs, []);
+    assert.equal(discovered.errors.length, 3);
+    const names = discovered.errors.map(({ name }) => name).sort();
+    assert.deepEqual(names, ['bad-outcome.json', 'missing-closecall.json', 'missing-totalxp.json']);
+    assert.match(
+      discovered.errors.find(({ name }) => name === 'bad-outcome.json').message,
+      /allRecords\[0\]\.outcome must be one of/,
+    );
+    assert.match(
+      discovered.errors.find(({ name }) => name === 'missing-totalxp.json').message,
+      /allRecords\[0\]\.totalXp must be a finite number/,
+    );
+    assert.match(
+      discovered.errors.find(({ name }) => name === 'missing-closecall.json').message,
+      /allRecords\[0\]\.closeCallCount must be a finite number/,
+    );
+  });
+});
+
+test('rejects summaries missing required fields: records array, meanXp, meanCloseCallCount, meanQuestsCompleted', async () => {
+  await withWorkspace(async ({ workspace, directory }) => {
+    const missingRecords = {
+      ...result('2026-07-16T10:00:00Z'),
+      summaries: [{ ...validSummary('sword'), records: undefined }],
+      allRecords: [],
+    };
+    await writeFile(join(directory, 'missing-records.json'), JSON.stringify(missingRecords));
+
+    const missingMeanXp = {
+      ...result('2026-07-16T10:00:00Z'),
+      summaries: [{ ...validSummary('sword'), meanXp: undefined }],
+      allRecords: [],
+    };
+    await writeFile(join(directory, 'missing-meanxp.json'), JSON.stringify(missingMeanXp));
+
+    const discovered = await listLocalSweepResults(workspace);
+    assert.deepEqual(discovered.runs, []);
+    assert.equal(discovered.errors.length, 2);
+    const names = discovered.errors.map(({ name }) => name).sort();
+    assert.deepEqual(names, ['missing-meanxp.json', 'missing-records.json']);
+    assert.match(
+      discovered.errors.find(({ name }) => name === 'missing-records.json').message,
+      /summaries\[0\]\.records must be an array/,
+    );
+    assert.match(
+      discovered.errors.find(({ name }) => name === 'missing-meanxp.json').message,
+      /summaries\[0\]\.meanXp must be a finite number/,
+    );
+  });
 });

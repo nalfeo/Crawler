@@ -1,3 +1,5 @@
+const VALID_RUN_OUTCOMES = new Set(['victory', 'death', 'timeout', 'stalled', 'error']);
+
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -78,10 +80,16 @@ export function normalizeSweepResult(value) {
       'meanLevel',
       'meanKills',
       'meanMinHealthPct',
+      'meanXp',
+      'meanCloseCallCount',
+      'meanQuestsCompleted',
     ]) {
       if (!isFiniteNumber(s[field])) {
         throw new Error(`summaries[${i}].${field} must be a finite number`);
       }
+    }
+    if (!Array.isArray(s.records)) {
+      throw new Error(`summaries[${i}].records must be an array`);
     }
   }
 
@@ -96,8 +104,14 @@ export function normalizeSweepResult(value) {
     if (!isPositiveInteger(r.seed) || !seedSet.has(r.seed)) {
       throw new Error(`allRecords[${i}].seed must be a known seed`);
     }
-    if (typeof r.outcome !== 'string' || r.outcome.length === 0) {
-      throw new Error(`allRecords[${i}].outcome must be a non-empty string`);
+    if (
+      typeof r.outcome !== 'string' ||
+      r.outcome.length === 0 ||
+      !VALID_RUN_OUTCOMES.has(r.outcome)
+    ) {
+      throw new Error(
+        `allRecords[${i}].outcome must be one of: ${[...VALID_RUN_OUTCOMES].join(', ')}`,
+      );
     }
     if (!isNonNegativeInteger(r.finalLevel)) {
       throw new Error(`allRecords[${i}].finalLevel must be a non-negative integer`);
@@ -105,7 +119,15 @@ export function normalizeSweepResult(value) {
     if (!isNonNegativeInteger(r.totalKills)) {
       throw new Error(`allRecords[${i}].totalKills must be a non-negative integer`);
     }
-    for (const field of ['gameTimeSec', 'score', 'minHealthPct']) {
+    for (const field of [
+      'gameTimeSec',
+      'score',
+      'minHealthPct',
+      'totalXp',
+      'totalGold',
+      'closeCallCount',
+      'questsCompleted',
+    ]) {
       if (!isFiniteNumber(r[field])) {
         throw new Error(`allRecords[${i}].${field} must be a finite number`);
       }
