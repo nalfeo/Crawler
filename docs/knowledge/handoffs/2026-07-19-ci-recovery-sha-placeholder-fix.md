@@ -68,17 +68,13 @@ Both usages of `ADDRESSED_MARKER_REPLY` in the task body are replaced with
 
 Agents only need to fill in `<one-line note>` — the correct SHA is pre-filled.
 
-## Pre-existing failing test fixed
+## Merge-conflict regression fixed
 
-`stale-marker thread includes recovery hint in blocker summary` had `isOutdated: true`
-on the test thread. The `isOutdated` auto-resolution feature (added 2026-07-18) fires
-for any outdated thread without a valid current-head marker, so it posted an
-outdated-marker and resolved the thread — violating the test's `doesNotMatch` assertion.
-
-The stale-SHA scenario (commit created locally, never pushed) should have
-`isOutdated: false` because the code is still at the reviewed location; GitHub only
-sets `isOutdated` when the reviewed lines have moved. Fixing `isOutdated: false`
-restores the correct semantics.
+Current `main` gained explicit `✅ Not applicable: <reason>` semantics and a guard
+that prevents definitively stale markers from being masked by automatic
+outdated-thread resolution. The conflict resolution preserves both changes and
+updates the stale-marker regression to prove an outdated thread with a
+never-pushed marker remains blocked with a targeted recovery hint.
 
 ## Files Changed
 
@@ -87,7 +83,8 @@ restores the correct semantics.
 - `.github/scripts/ci-recovery/reconcile.test.mjs`:
   - Added two regression assertions to the existing task-comment test: task body must
     include `HEAD_SHA` and must NOT include the literal `<sha>` placeholder
-  - Fixed pre-existing `isOutdated: true` in stale-marker test → `isOutdated: false`
+  - Preserved current-main non-applicability coverage and corrected the stale-marker /
+    outdated-thread regression expectations
 
 ## Regression Tests Added
 
