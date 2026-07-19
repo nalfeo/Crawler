@@ -718,7 +718,11 @@ if (!isMainThread && workerData != null) {
         error: error instanceof Error ? (error.stack ?? error.message) : String(error),
       } satisfies WorkerTaskFailure);
     });
-} else if (isMainThread && process.argv[1] != null && fileURLToPath(import.meta.url) === process.argv[1]) {
+} else if (
+  isMainThread &&
+  process.argv[1] != null &&
+  fileURLToPath(import.meta.url) === process.argv[1]
+) {
   main(process.argv).catch((err) => {
     console.error('Fatal:', err instanceof Error ? err.stack : err);
     process.exit(1);
