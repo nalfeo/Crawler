@@ -1,5 +1,16 @@
 [
   {
+    "commit": "76bb6d2e95c6d3f57d5bd8c75790c3dd0b6c409e",
+    "commitDate": "2026-07-18T23:48:42Z",
+    "commitSubject": "feat(sprites): bone-chakram Floor 2 thrown-weapon — brief, item def, placeholder, wiring (#1544)",
+    "capturedAt": "2026-07-19T00:55:22.319Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29666375528",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/76bb6d2e95c6d3f57d5bd8c75790c3dd0b6c409e.json"
+  },
+  {
     "commit": "e61214a88a0aec4a51224f85b89f761570845eca",
     "commitDate": "2026-07-18T23:16:38Z",
     "commitSubject": "Add Floor 2 `throwing-knives` weapon brief for stable equipment icon key (#1540)",
