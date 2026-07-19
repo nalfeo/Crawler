@@ -143,6 +143,13 @@ export function disableMobAbilityEncounter(world: GameWorld): void {
     clearMobAbility(world, casterEid);
   }
   runtime.cues.length = 0;
+  // Clear the presentation burst queue on global encounter teardown. A
+  // disable/scene-teardown that occurs after resolution but before
+  // PhaserBridge.sync would otherwise render the old encounter's burst in the
+  // new scene context, violating the encounter-disable cleanup contract.
+  // Note: caster-local clearMobAbility intentionally does NOT clear
+  // pendingBursts so that per-caster death still renders the resolution VFX.
+  runtime.pendingBursts.length = 0;
 }
 
 /** A caster is valid iff it still exists, is alive, and is still its own boss. */

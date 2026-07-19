@@ -9,7 +9,7 @@
  * 21,000ms — while the default normal-game configuration records zero casts.
  */
 import { describe, expect, it } from 'vitest';
-import { removeEntity } from 'bitecs';
+import { addComponent, removeEntity } from 'bitecs';
 import { createTestWorld } from '../../helpers/world-factory.js';
 import { GAME } from '../../../src/shared/constants.js';
 import { createInputState } from '../../../src/shared/input.js';
@@ -31,6 +31,8 @@ import {
   mobAbilitySourceId,
   applyStatusEffect,
   VERDIGRIS_GLAMOUR_ABILITY_ID,
+  DeathTimer,
+  set,
   type MobAbilityRuntimeDefinition,
 } from '../../../src/core/index.js';
 import { runCoreSimulationStep } from '../../../src/core/simulation-core-step.js';
@@ -716,5 +718,57 @@ describe('weaponSystem — zero attackSpeed multiplier', () => {
 
     // No combat events should have been emitted; the weapon never fired.
     expect(world.combatEvents.length).toBe(eventsBefore);
+  });
+});
+
+describe('disableMobAbilityEncounter — pendingBursts teardown', () => {
+  it('clears pendingBursts on global encounter teardown', () => {
+    // Regression: disableMobAbilityEncounter previously left pendingBursts
+    // intact; if teardown raced the render sync the old burst would appear in
+    // the new scene context.
+    const h = buildHarness();
+    arm(h);
+    step(h.world, FIRST_RESOLUTION_FRAME);
+    // After resolution, pendingBursts should have one entry.
+    expect(h.world.mobAbilities.pendingBursts.length).toBeGreaterThan(0);
+    // Disabling the encounter must drain the burst queue.
+    disableMobAbilityEncounter(h.world);
+    expect(h.world.mobAbilities.pendingBursts).toHaveLength(0);
+    expect(h.world.mobAbilities.encounterActive).toBe(false);
+    expect(h.world.mobAbilities.byEntity.size).toBe(0);
+    expect(h.world.mobAbilities.cues).toHaveLength(0);
+  });
+});
+
+describe('healthSystem — dead-caster mob-ability cleanup', () => {
+  it('clears in-flight cue for a boss with DeathTimer (corpse linger) in the same tick as death', () => {
+    // Regression: a boss killed later in the same step as mobAbilitySystem ran
+    // reached the DeathTimer early-return in healthSystem without clearing its
+    // ability cue, leaving a stale telegraph visible until the next step.
+    // Now healthSystem calls clearMobAbility before the DeathTimer continue so
+    // cues are always clean even for lingering corpses.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 40, 40);
+    world.stores.health.current[player] = 100_000;
+    world.stores.health.max[player] = 100_000;
+    const queen = spawnBehaviorEnemy(world, 40, 10, 200, AI_TYPE.CHASE, 0.17, 60, 0);
+    setEnemyAppearanceKey(world, queen, QUEEN_KEY);
+    setMobAbilitiesEnabled(world, true);
+    registerMobAbility(world, queen, createVerdigrisGlamourDefinition());
+    activateMobAbilityEncounter(world);
+
+    // Advance to the telegraph phase so there is an active cue.
+    step(world, FIRST_TELEGRAPH_FRAME + 5);
+    expect(world.mobAbilities.cues).toHaveLength(1);
+    expect(world.mobAbilities.byEntity.has(queen)).toBe(true);
+
+    // Simulate the boss dying but lingering (DeathTimer attached, HP=0).
+    world.stores.health.current[queen] = 0;
+    addComponent(world.ecs, queen, set(DeathTimer, { remainingMs: 1500 }));
+
+    // Run healthSystem — the dead caster's ability state must be cleared.
+    healthSystem(world);
+    expect(world.mobAbilities.byEntity.has(queen)).toBe(false);
+    expect(world.mobAbilities.cues).toHaveLength(0);
   });
 });
