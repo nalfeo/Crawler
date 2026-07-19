@@ -8209,6 +8209,48 @@
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "equipment/weapon/war-pick": {
+      "briefId": "equipment/weapon/war-pick",
+      "spriteName": "equipment/weapon/war-pick",
+      "assetPath": "generated/equipment/weapon/war-pick.png",
+      "approvedAt": "2026-07-19T12:00:00.000Z",
+      "sourceRun": "generated/runs/war-pick/2026-07-19T12-00-00-manual",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 59,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 59,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "0c6c331e01fd4578d495e0b045ea8b0a85996d5c4ef9a20fcfa48cdb62978271",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right",
+      "equipment": {
+        "stableId": "weapon.war-pick",
+        "runtimeKey": "equipment/weapon/war-pick",
+        "category": "weapon",
+        "family": "axe",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-axe"
+      }
     }
   }
 }
