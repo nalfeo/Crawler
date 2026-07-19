@@ -39,18 +39,14 @@ describe('source-owned ability grants', () => {
       { kind: 'active', abilityId: 'fireball', sourceId: equipment },
     ]);
 
-    revokeAbilitySources(world, player, [
-      { kind: 'active', abilityId: 'fireball', sourceId: equipment },
-    ]);
+    revokeAbilitySources(world, player, [equipment]);
     let state = getOrCreateAbilityState(world, player);
     expect(state.grantOwnership.activeSourcesByAbilityId.get('fireball')).toEqual(
       new Set([learned]),
     );
     expect(state.equippedActiveAbilityIds).toEqual(['fireball']);
 
-    revokeAbilitySources(world, player, [
-      { kind: 'active', abilityId: 'fireball', sourceId: learned },
-    ]);
+    revokeAbilitySources(world, player, [learned]);
     state = getOrCreateAbilityState(world, player);
     expect(state.grantOwnership.activeSourcesByAbilityId.has('fireball')).toBe(false);
     expect(state.equippedActiveAbilityIds).toEqual([]);
@@ -74,7 +70,7 @@ describe('source-owned ability grants', () => {
       ),
     ).toHaveLength(2);
 
-    revokeAbilitySources(world, player, [requests[1]]);
+    revokeAbilitySources(world, player, [requests[1].sourceId]);
     expect(getOrCreateAbilityState(world, player).passiveAbilityIds).toEqual(['veteran-instinct']);
     expect(
       world.statModifiers.filter((modifier) =>
@@ -82,7 +78,7 @@ describe('source-owned ability grants', () => {
       ),
     ).toHaveLength(2);
 
-    revokeAbilitySources(world, player, [requests[0]]);
+    revokeAbilitySources(world, player, [requests[0].sourceId]);
     expect(getOrCreateAbilityState(world, player).passiveAbilityIds).toEqual([]);
     expect(
       world.statModifiers.filter((modifier) =>
@@ -196,6 +192,8 @@ describe('source-owned ability grants', () => {
       cooldownByAbilityId: new Map(),
       cooldownFramesByAbilityId: new Map(),
       appliedPassiveAbilityIds: new Set(),
+      activeAbilityGrantSources: new Map(),
+      passiveAbilityGrantSources: new Map(),
     };
 
     const first = normalizeAbilityState(legacy);
@@ -220,6 +218,8 @@ describe('source-owned ability grants', () => {
       cooldownByAbilityId: new Map(),
       cooldownFramesByAbilityId: new Map(),
       appliedPassiveAbilityIds: new Set(),
+      activeAbilityGrantSources: new Map(),
+      passiveAbilityGrantSources: new Map(),
     };
 
     const normalized = normalizeAbilityState(legacy);
@@ -258,6 +258,8 @@ describe('source-owned ability grants', () => {
         cooldownByAbilityId: new Map(),
         cooldownFramesByAbilityId: new Map(),
         appliedPassiveAbilityIds: new Set(),
+        activeAbilityGrantSources: new Map(),
+        passiveAbilityGrantSources: new Map(),
         grantOwnership: {
           schemaVersion: 'ability-grant-ownership/v1',
           activeSourcesByAbilityId: new Map([

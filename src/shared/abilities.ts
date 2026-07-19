@@ -1,6 +1,9 @@
 import type { UsageMetric } from './skills.js';
 import type { EquipmentInstanceId } from './equipment-types.js';
-import type { GeneratedEquipmentInstanceId } from './generated-equipment-types.js';
+import type {
+  EquipmentGrantSourceId as GeneratedEquipmentGrantSourceId,
+  GeneratedEquipmentInstanceId,
+} from './generated-equipment-types.js';
 
 export const ACTIVE_ABILITY_SLOT_LIMIT = 10;
 export const ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION = 'ability-grant-ownership/v1' as const;
@@ -93,7 +96,23 @@ export type AbilityGrantSource =
       readonly instanceId: EquipmentInstanceId | GeneratedEquipmentInstanceId;
     };
 
-export interface AbilityState {
+export type AbilityGrantKind = 'active' | 'passive';
+export type LearnedAbilityGrantSourceId = `learned:${string}`;
+export type SkillAbilityGrantSourceId = `skill:${string}:${number}`;
+export type EquipmentGrantSourceId = GeneratedEquipmentGrantSourceId;
+export type LegacyAbilityGrantSourceId = `legacy:${AbilityGrantKind}:${string}`;
+export type AbilityGrantSourceId =
+  | LearnedAbilityGrantSourceId
+  | SkillAbilityGrantSourceId
+  | EquipmentGrantSourceId
+  | LegacyAbilityGrantSourceId;
+export interface AbilityGrantOwnership {
+  readonly schemaVersion: typeof ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION;
+  activeSourcesByAbilityId: Map<string, Set<AbilityGrantSourceId>>;
+  passiveSourcesByAbilityId: Map<string, Set<AbilityGrantSourceId>>;
+}
+
+export interface AbilityStateFields {
   learnedSpellIds: string[];
   equippedActiveAbilityIds: string[];
   passiveAbilityIds: string[];

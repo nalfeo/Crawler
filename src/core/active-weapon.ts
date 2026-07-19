@@ -20,10 +20,12 @@
 import {
   ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
   type ActiveWeaponSnapshotV1,
+  type GeneratedEquipmentInstanceId,
 } from '../shared/generated-equipment-types.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import {
   GeneratedEquipmentRegistryError,
+  requireGeneratedEquipmentInstance,
   requireGeneratedEquipmentActiveWeaponSnapshot,
   validateActiveWeaponSnapshotV1,
 } from './generated-equipment-registry.js';
@@ -87,14 +89,14 @@ function getOrCreateState(world: GameWorld): ActiveWeaponState {
 function setActiveWeaponState(
   world: GameWorld,
   def: WeaponDef,
-  snapshot: ActiveWeaponSnapshotV1 | undefined,
-  switchKey: string,
+  _snapshot: ActiveWeaponSnapshotV1 | undefined,
+  _switchKey: string,
 ): boolean {
   const state = getOrCreateState(world);
   const nextDef = isActiveWeaponSnapshot(def) ? resolveAuthoritativeSnapshot(world, def) : def;
   if (activeWeaponIdentity(state.def) === activeWeaponIdentity(nextDef)) {
     state.def = nextDef;
-    return;
+    return false;
   }
   state.def = nextDef;
   state.generation += 1;
@@ -108,7 +110,7 @@ export function setActiveWeaponDef(world: GameWorld, def: WeaponDef): boolean {
 
 function weaponDefFromSnapshot(snapshot: ActiveWeaponSnapshotV1): WeaponDef {
   return Object.freeze({
-    id: snapshot.baseWeaponId,
+    id: snapshot.sourceWeaponDefId,
     name: snapshot.name,
     weaponType: snapshot.weaponType,
     baseDamage: snapshot.baseDamage,
@@ -154,10 +156,10 @@ export function setActiveWeaponFromGeneratedInstance(
       '$.instance.frozen.activeWeaponSnapshot',
     );
   }
-  const snapshot = validateActiveWeaponSnapshotV1(
-    instance.frozen.activeWeaponSnapshot,
-    instance.instanceId,
-  );
+  const snapshot = validateActiveWeaponSnapshotV1(instance.frozen.activeWeaponSnapshot, {
+    expectedInstanceId: instance.instanceId,
+    expectedSourceWeaponDefId: instance.frozen.activeWeaponSnapshot.sourceWeaponDefId,
+  });
   return setActiveWeaponState(
     world,
     weaponDefFromSnapshot(snapshot),

@@ -9,10 +9,13 @@ import { statSystem } from '../core/systems/statSystem.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
-import type { AbilityGrantSource, AbilityState } from '../shared/abilities.js';
+import type { AbilityGrantSource, AbilityState, AbilityStateLike } from '../shared/abilities.js';
 import type { AchievementBooleanFact, AchievementNumberFact } from '../shared/achievements.js';
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
-import { migrateAbilityStateToSourceTracking } from './systems/abilitySystem.js';
+import {
+  migrateAbilityStateToSourceTracking,
+  synchronizeAbilityPassives,
+} from './systems/abilitySystem.js';
 
 interface SkillStateSnapshot {
   readonly level: number;
@@ -129,10 +132,10 @@ function snapshotAbilityState(
 
   // Drop equipment-only abilities from the canonical ID lists.
   const equippedActiveAbilityIds = state.equippedActiveAbilityIds.filter(
-    (id) => filteredActiveSources.has(id) || !state.activeAbilityGrantSources.has(id),
+    (id: string) => filteredActiveSources.has(id) || !state.activeAbilityGrantSources.has(id),
   );
   const passiveAbilityIds = state.passiveAbilityIds.filter(
-    (id) => filteredPassiveSources.has(id) || !state.passiveAbilityGrantSources.has(id),
+    (id: string) => filteredPassiveSources.has(id) || !state.passiveAbilityGrantSources.has(id),
   );
 
   return {

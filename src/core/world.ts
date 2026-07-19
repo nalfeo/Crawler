@@ -12,7 +12,7 @@ import type { StatusEffect } from '../shared/status-effect-types.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
 import type { AnnouncementEvent } from '../shared/announcement-events.js';
-import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
+import type { AbilityStateLike, AbilityTriggerEvent } from '../shared/abilities.js';
 import {
   createEmptyAchievementFactState,
   type AchievementFactState,

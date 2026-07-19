@@ -36,15 +36,7 @@ describe('source-owned ability grant properties', () => {
           );
 
           const removeCount = raw % (count + 1);
-          revokeAbilitySources(
-            world,
-            player,
-            sources.slice(0, removeCount).map((sourceId) => ({
-              kind: 'passive' as const,
-              abilityId: 'veteran-instinct',
-              sourceId,
-            })),
-          );
+          revokeAbilitySources(world, player, sources.slice(0, removeCount));
 
           const state = getOrCreateAbilityState(world, player);
           expect(state.passiveAbilityIds.includes('veteran-instinct')).toBe(removeCount < count);

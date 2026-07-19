@@ -71,14 +71,19 @@ describe('generated equipment properties', () => {
             world.generatedEquipmentRegistry.generationPolicy.rarityEffectUnits[rarity];
           const effectIds = instance.resolvedEffects.map((effect) => effect.effectId);
 
-          expect(instance.resolvedEffects.reduce((sum, effect) => sum + effect.unitCost, 0)).toBe(
-            requiredUnits,
-          );
+          expect(
+            instance.resolvedEffects.reduce(
+              (sum, effect) => sum + ('unitCost' in effect ? effect.unitCost : effect.units),
+              0,
+            ),
+          ).toBe(requiredUnits);
           expect(new Set(effectIds).size).toBe(effectIds.length);
           expect(effectIds.includes('vital') && effectIds.includes('fortunate')).toBe(false);
-          expect(instance.resolvedEffects.map((effect) => effect.effectOrdinal)).toEqual(
-            instance.resolvedEffects.map((_, index) => index),
-          );
+          expect(
+            instance.resolvedEffects.flatMap((effect) =>
+              'effectOrdinal' in effect ? [effect.effectOrdinal] : [],
+            ),
+          ).toEqual(instance.resolvedEffects.map((_, index) => index));
           expect(instance.frozen.abilityGrants).toEqual(
             instance.resolvedEffects.flatMap((effect) =>
               'kind' in effect && effect.kind === 'abilityGrant' ? [effect.grantId] : [],

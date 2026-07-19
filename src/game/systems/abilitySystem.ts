@@ -3,9 +3,16 @@ import {
   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
   ACTIVE_ABILITY_SLOT_LIMIT,
   type AbilityGrantSource,
-  type AbilityState,
+  type AbilityGrantKind,
+  type AbilityGrantOwnership,
+  type AbilityGrantSourceId,
+  type AbilityStateFields,
+  type AbilityStateLike,
   type AbilityTriggerCondition,
   type AbilityTriggerEvent,
+  isAbilityGrantSourceId,
+  learnedAbilityGrantSourceId,
+  legacyAbilityGrantSourceId,
   type SourceOwnedAbilityState as AbilityState,
 } from '../../shared/abilities.js';
 import { EffectiveStats, Enemy, Health, Player, Position } from '../../core/components.js';
@@ -64,6 +71,7 @@ export function createAbilityState(): AbilityState {
     appliedPassiveAbilityIds: new Set(),
     activeAbilityGrantSources: new Map(),
     passiveAbilityGrantSources: new Map(),
+    grantOwnership: emptyGrantOwnership(),
   };
 }
 
@@ -73,18 +81,10 @@ function cloneSourceMap(
   return new Map([...source].map(([abilityId, sources]) => [abilityId, new Set(sources)]));
 }
 
-function validateAbilityKind(abilityId: string, kind: AbilityGrantKind): void {
-  const def = getAbilityDefinition(abilityId);
-  if (def === undefined) {
-    throw new AbilityGrantError('unknown-ability', `Unknown ability id: ${abilityId}`);
-  }
-  const actualKind: AbilityGrantKind = def.kind === 'passive' ? 'passive' : 'active';
-  if (actualKind !== kind) {
-    throw new AbilityGrantError(
-      'kind-mismatch',
-      `Ability ${abilityId} is ${actualKind}, not ${kind}`,
-    );
-  }
+function cloneLegacyGrantSources(
+  source: AbilityStateFields['activeAbilityGrantSources'],
+): AbilityStateFields['activeAbilityGrantSources'] {
+  return new Map([...source].map(([abilityId, sources]) => [abilityId, [...sources]]));
 }
 
 function validatePersistedAbilityKind(abilityId: string, kind: AbilityGrantKind): void {
@@ -146,6 +146,36 @@ function sourceOwnerMap(ownership: AbilityGrantOwnership): Map<AbilityGrantSourc
   return owners;
 }
 
+function validateGrantRequests(
+  ownership: AbilityGrantOwnership,
+  requests: readonly AbilityGrantRequest[],
+): void {
+  const owners = sourceOwnerMap(ownership);
+  for (const request of requests) {
+    const def = getAbilityDefinition(request.abilityId);
+    if (def === undefined) {
+      throw new AbilityGrantError('unknown-ability', `Unknown ability id: ${request.abilityId}`);
+    }
+    const actualKind: AbilityGrantKind = def.kind === 'passive' ? 'passive' : 'active';
+    if (actualKind !== request.kind) {
+      throw new AbilityGrantError(
+        'kind-mismatch',
+        `Ability ${request.abilityId} is ${actualKind}, not ${request.kind}`,
+      );
+    }
+    validateSourceForKind(request.sourceId, request.kind);
+    const owner = `${request.kind}:${request.abilityId}`;
+    const existing = owners.get(request.sourceId);
+    if (existing !== undefined && existing !== owner) {
+      throw new AbilityGrantError(
+        'source-conflict',
+        `Ability grant source ${request.sourceId} is owned by both ${existing} and ${owner}`,
+      );
+    }
+    owners.set(request.sourceId, owner);
+  }
+}
+
 function syncDerivedAbilityLists(state: AbilityState): void {
   const activeIds = new Set(
     [...state.grantOwnership.activeSourcesByAbilityId.keys()].filter(
@@ -184,6 +214,12 @@ export function normalizeAbilityState(state: AbilityStateLike): AbilityState {
     cooldownByAbilityId: new Map(state.cooldownByAbilityId),
     cooldownFramesByAbilityId: new Map(state.cooldownFramesByAbilityId),
     appliedPassiveAbilityIds: new Set(state.appliedPassiveAbilityIds),
+    activeAbilityGrantSources: cloneLegacyGrantSources(
+      state.activeAbilityGrantSources ?? new Map(),
+    ),
+    passiveAbilityGrantSources: cloneLegacyGrantSources(
+      state.passiveAbilityGrantSources ?? new Map(),
+    ),
     grantOwnership: emptyGrantOwnership(),
   };
 
@@ -256,6 +292,8 @@ function installAbilityState(
   existing.cooldownByAbilityId = state.cooldownByAbilityId;
   existing.cooldownFramesByAbilityId = state.cooldownFramesByAbilityId;
   existing.appliedPassiveAbilityIds = state.appliedPassiveAbilityIds;
+  existing.activeAbilityGrantSources = state.activeAbilityGrantSources;
+  existing.passiveAbilityGrantSources = state.passiveAbilityGrantSources;
   existing.grantOwnership = state.grantOwnership;
   world.abilityStatesByEntity.set(holderEid, existing);
   return existing as AbilityState;
@@ -282,7 +320,7 @@ export function getOrCreateAbilityState(world: GameWorld, holderEid: number): Ab
  *
  * Idempotent: calling it twice on the same state is safe.
  */
-export function migrateAbilityStateToSourceTracking(state: AbilityState): void {
+export function migrateAbilityStateToSourceTracking(state: AbilityStateLike): void {
   for (const abilityId of state.equippedActiveAbilityIds) {
     if (!state.activeAbilityGrantSources.has(abilityId)) {
       state.activeAbilityGrantSources.set(abilityId, [{ kind: 'learned' }]);
@@ -323,7 +361,7 @@ function _addPassiveGrantSource(
   }
 }
 
-export function equipActiveAbility(
+function grantTrackedActiveAbility(
   world: GameWorld,
   holderEid: number,
   abilityId: string,
@@ -333,6 +371,19 @@ export function equipActiveAbility(
   if (def === undefined) {
     throw new Error(`Unknown ability id: ${abilityId}`);
   }
+  if (def.kind === 'passive') {
+    throw new Error(`Ability ${abilityId} is passive`);
+  }
+  const state = getOrCreateAbilityState(world, holderEid);
+  if (state.equippedActiveAbilityIds.includes(abilityId)) {
+    _addActiveGrantSource(state, abilityId, source);
+    return;
+  }
+  if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
+    throw new Error(`Active ability slot cap reached (${ACTIVE_ABILITY_SLOT_LIMIT})`);
+  }
+  state.equippedActiveAbilityIds.push(abilityId);
+  _addActiveGrantSource(state, abilityId, source);
 }
 
 export function grantAbilitySources(
@@ -369,23 +420,12 @@ export function grantAbilitySources(
         draft.equippedActiveAbilityIds.push(request.abilityId);
       }
     }
+    if (request.kind === 'passive' && !draft.passiveAbilityIds.includes(request.abilityId)) {
+      draft.passiveAbilityIds.push(request.abilityId);
+    }
   }
 
-  const state = getOrCreateAbilityState(world, holderEid);
-
-  // Slot-cap is enforced per-ability-id: a second grant from a different source
-  // does NOT add a second copy to the active list — the ability is already
-  // equipped. Still record the new source so revocation is symmetric.
-  if (state.equippedActiveAbilityIds.includes(abilityId)) {
-    _addActiveGrantSource(state, abilityId, source);
-    return;
-  }
-
-  if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
-    throw new Error(`Active ability slot cap reached (${ACTIVE_ABILITY_SLOT_LIMIT})`);
-  }
-  state.equippedActiveAbilityIds.push(abilityId);
-  _addActiveGrantSource(state, abilityId, source);
+  installAbilityState(world, holderEid, draft, existing);
 }
 
 /**
@@ -393,33 +433,38 @@ export function grantAbilitySources(
  * equips a catalog ability receives an explicit legacy source; new callers
  * should grant a typed source first, then configure it.
  */
-export function equipActiveAbility(world: GameWorld, holderEid: number, abilityId: string): void {
-  const existing = world.abilityStatesByEntity.get(holderEid);
-  if (
-    existing !== undefined &&
-    !existing.equippedActiveAbilityIds.includes(abilityId) &&
-    existing.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT
-  ) {
-    throw new Error(`Active ability slot cap reached (${ACTIVE_ABILITY_SLOT_LIMIT})`);
-  }
-  const normalized = existing === undefined ? undefined : normalizeAbilityState(existing);
-  if (normalized?.grantOwnership.activeSourcesByAbilityId.has(abilityId)) {
-    world.abilityStatesByEntity.set(holderEid, normalized);
-    configureOwnedActiveAbility(world, holderEid, abilityId);
+export function equipActiveAbility(
+  world: GameWorld,
+  holderEid: number,
+  abilityId: string,
+  source?: AbilityGrantSource,
+): void {
+  if (source !== undefined) {
+    grantTrackedActiveAbility(world, holderEid, abilityId, source);
     return;
   }
-  grantAbilitySources(
-    world,
-    holderEid,
-    [
-      {
-        kind: 'active',
-        abilityId,
-        sourceId: legacyAbilityGrantSourceId('active', abilityId),
-      },
-    ],
-    { configureActives: 'require-slots' },
-  );
+  grantTrackedActiveAbility(world, holderEid, abilityId, { kind: 'learned' });
+}
+
+export function configureOwnedActiveAbility(
+  world: GameWorld,
+  holderEid: number,
+  abilityId: string,
+): void {
+  const state = getOrCreateAbilityState(world, holderEid);
+  if (!state.grantOwnership.activeSourcesByAbilityId.has(abilityId)) {
+    throw new AbilityGrantError(
+      'invalid-source',
+      `Active ability ${abilityId} must be granted before it can be configured`,
+    );
+  }
+  if (state.equippedActiveAbilityIds.includes(abilityId)) {
+    return;
+  }
+  if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
+    throw new Error(`Active ability slot cap reached (${ACTIVE_ABILITY_SLOT_LIMIT})`);
+  }
+  state.equippedActiveAbilityIds.push(abilityId);
 }
 
 export function unequipActiveAbility(world: GameWorld, holderEid: number, abilityId: string): void {
@@ -443,7 +488,7 @@ export function memorizeSpell(world: GameWorld, holderEid: number, abilityId: st
   if (!state.learnedSpellIds.includes(abilityId)) {
     state.learnedSpellIds.push(abilityId);
   }
-  equipActiveAbility(world, holderEid, abilityId, { kind: 'learned' });
+  grantTrackedActiveAbility(world, holderEid, abilityId, { kind: 'learned' });
 }
 
 export function grantPassiveAbility(
@@ -471,6 +516,52 @@ export function grantPassiveAbility(
   _addPassiveGrantSource(state, abilityId, source);
 }
 
+export function revokeAbilitySources(
+  world: GameWorld,
+  holderEid: number,
+  sourceIds: readonly AbilityGrantSourceId[],
+): void {
+  if (sourceIds.length === 0) return;
+  const existing = world.abilityStatesByEntity.get(holderEid);
+  if (existing === undefined) return;
+  const state = cloneNormalizedAbilityState(existing);
+  const removals = new Set(sourceIds);
+
+  for (const [abilityId, sources] of [...state.grantOwnership.activeSourcesByAbilityId]) {
+    const remaining = new Set([...sources].filter((sourceId) => !removals.has(sourceId)));
+    if (remaining.size > 0) {
+      state.grantOwnership.activeSourcesByAbilityId.set(abilityId, remaining);
+      continue;
+    }
+    state.grantOwnership.activeSourcesByAbilityId.delete(abilityId);
+    state.equippedActiveAbilityIds = state.equippedActiveAbilityIds.filter(
+      (id) => id !== abilityId,
+    );
+    state.learnedSpellIds = state.learnedSpellIds.filter((id) => id !== abilityId);
+  }
+
+  for (const [abilityId, sources] of [...state.grantOwnership.passiveSourcesByAbilityId]) {
+    const remaining = new Set([...sources].filter((sourceId) => !removals.has(sourceId)));
+    if (remaining.size > 0) {
+      state.grantOwnership.passiveSourcesByAbilityId.set(abilityId, remaining);
+      continue;
+    }
+    state.grantOwnership.passiveSourcesByAbilityId.delete(abilityId);
+    state.passiveAbilityIds = state.passiveAbilityIds.filter((id) => id !== abilityId);
+    if (state.appliedPassiveAbilityIds.has(abilityId)) {
+      const def = getAbilityDefinition(abilityId);
+      if (def !== undefined && def.kind === 'passive') {
+        def.effects.forEach((_effect, i) => {
+          removeStatModifiers(world, 'ability', `${abilityId}:passive:${holderEid}:${i}`);
+        });
+      }
+      state.appliedPassiveAbilityIds.delete(abilityId);
+    }
+  }
+
+  world.abilityStatesByEntity.set(holderEid, state);
+}
+
 /**
  * Grant an active/spell ability from an equipment instance. Records an
  * `equipment` source so the grant can be cleanly revoked when the item is
@@ -486,7 +577,7 @@ export function grantEquipmentActiveAbility(
   abilityId: string,
   instanceId: EquipmentInstanceId | GeneratedEquipmentInstanceId,
 ): void {
-  equipActiveAbility(world, holderEid, abilityId, { kind: 'equipment', instanceId });
+  grantTrackedActiveAbility(world, holderEid, abilityId, { kind: 'equipment', instanceId });
 }
 
 /**

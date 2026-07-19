@@ -66,7 +66,14 @@ describe('generated equipment runtime integration', () => {
       });
       const player = spawnPlayer(world, 0, 0);
       const generated = generateEquipmentInstance(world, GENERATED_ACCESSORY_REQUEST);
-      const effect = generated.resolvedEffects[0]!;
+      const effect = generated.resolvedEffects.find(
+        (candidate) =>
+          'kind' in candidate &&
+          (candidate.kind === 'abilityGrant' || candidate.kind === 'passiveGrant'),
+      )!;
+      if (!('effectOrdinal' in effect)) {
+        throw new Error('Expected generated accessory grant effect');
+      }
       const sourceId = equipmentAbilityGrantSourceId(generated.instanceId, effect.effectOrdinal);
 
       grantEquipmentAbilitySources(world, player, generated.instanceId);

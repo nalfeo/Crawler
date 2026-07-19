@@ -2,6 +2,7 @@ import { requireGeneratedEquipmentInstance } from '../core/generated-equipment-r
 import type { GameWorld } from '../core/world.js';
 import {
   equipmentAbilityGrantSourceId,
+  type AbilityGrantSourceId,
   type GeneratedEquipmentInstanceId,
 } from '../shared/index.js';
 import {
@@ -16,7 +17,9 @@ function grantRequestsForInstance(
 ): readonly AbilityGrantRequest[] {
   const instance = requireGeneratedEquipmentInstance(world, instanceId);
   return instance.resolvedEffects.flatMap((effect): AbilityGrantRequest[] => {
-    if (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant') return [];
+    if (!('kind' in effect) || (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant')) {
+      return [];
+    }
     return [
       {
         kind: effect.kind === 'passiveGrant' ? 'passive' : 'active',
@@ -31,26 +34,26 @@ function revocationRequestsForInstance(
   world: GameWorld,
   holderEid: number,
   instanceId: GeneratedEquipmentInstanceId,
-): readonly AbilityGrantRequest[] {
+): readonly AbilityGrantSourceId[] {
   const ownership = world.abilityStatesByEntity.get(holderEid)?.grantOwnership;
   if (ownership === undefined) return [];
   const sourcePrefix = `equipment:${instanceId}:`;
-  const requests: AbilityGrantRequest[] = [];
-  for (const [abilityId, sources] of ownership.activeSourcesByAbilityId) {
+  const sourceIds: AbilityGrantSourceId[] = [];
+  for (const [, sources] of ownership.activeSourcesByAbilityId) {
     for (const sourceId of sources) {
       if (sourceId.startsWith(sourcePrefix)) {
-        requests.push({ kind: 'active', abilityId, sourceId });
+        sourceIds.push(sourceId);
       }
     }
   }
-  for (const [abilityId, sources] of ownership.passiveSourcesByAbilityId) {
+  for (const [, sources] of ownership.passiveSourcesByAbilityId) {
     for (const sourceId of sources) {
       if (sourceId.startsWith(sourcePrefix)) {
-        requests.push({ kind: 'passive', abilityId, sourceId });
+        sourceIds.push(sourceId);
       }
     }
   }
-  return requests;
+  return sourceIds;
 }
 
 export function grantEquipmentAbilitySources(
