@@ -130,13 +130,14 @@ const cases: Case[] = [
     name: 'package script wiring (safe split)',
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'true' },
-    expected: F(false, false, true, false, false, true, true, false, false),
+    //                          art   docs  gsafe sponly sptch  vis   game  asset devt
+    expected: F(false, false, true, false, false, true, true, true, true),
   },
   {
     name: 'package core script wiring (unsafe split)',
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
-    expected: F(false, false, false, false, false, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true),
   },
   // CI/tooling-only: non-visual.
   {
@@ -350,6 +351,35 @@ const cases: Case[] = [
     files: ['src/devtools-main.ts'],
     expected: F(false, false, true, false, false, true, false, false, true),
   },
+  // Shared E2E infrastructure (global-setup, e2e-constants, helpers/**) is consumed
+  // by all three projects → must enable ALL three visual surfaces.
+  // Note: tests/e2e/* is gameplay_safe (no src/ change), so gameplay_safe=true here.
+  {
+    name: 'e2e global-setup change → all three visual surfaces',
+    files: ['tests/e2e/global-setup.ts'],
+    expected: F(false, false, true, false, false, true, true, true, true),
+  },
+  {
+    name: 'e2e-constants change → all three visual surfaces',
+    files: ['tests/e2e/e2e-constants.ts'],
+    expected: F(false, false, true, false, false, true, true, true, true),
+  },
+  {
+    name: 'e2e helpers/ui-probe change → all three visual surfaces',
+    files: ['tests/e2e/helpers/ui-probe.ts'],
+    expected: F(false, false, true, false, false, true, true, true, true),
+  },
+  // Unknown path: must enable ALL three visual surfaces (fail toward broader validation).
+  {
+    name: 'unknown path (vitest.config.ts) → all three visual surfaces',
+    files: ['vitest.config.ts'],
+    expected: F(false, false, false, false, false, true, true, true, true),
+  },
+  {
+    name: 'unknown path (root script) → all three visual surfaces',
+    files: ['some-unknown-file.ts'],
+    expected: F(false, false, false, false, false, true, true, true, true),
+  },
 ];
 
 describe('detect-art-only.sh change-scope classifier', () => {
@@ -358,21 +388,20 @@ describe('detect-art-only.sh change-scope classifier', () => {
   });
 
   it.skipIf(!hasBash)(
-    'fail-safe: a blank/whitespace change set correctly skips all suites (no files changed)',
+    'fail-safe: an empty/whitespace change set enables all visual suites (unknown diff → run everything)',
     () => {
-      // A lone newline enters the override branch but strips to empty → all-false.
-      // Empty changeset = nothing changed = no visual regression to validate.
-      // This is CORRECT behaviour; the no-base-ref path is the one that must
-      // run everything (it uses emit_visual_all true true true true).
-      expect(run('\n')).toEqual(F(false, false, false, false, false, false, false, false, false));
+      // A lone newline enters the override branch but strips to empty.
+      // Empty/unknown changeset → we cannot safely skip visual suites, so all
+      // three surface flags must be true (same fail-safe as the no-base-ref path).
+      expect(run('\n')).toEqual(F(false, false, false, false, false, true, true, true, true));
     },
   );
 
   it.skipIf(!hasBash)(
-    'fail-safe: an explicitly empty override is honored as an empty change set',
+    'fail-safe: an explicitly empty override enables all visual suites',
     () => {
       // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
-      expect(run('')).toEqual(F(false, false, false, false, false, false, false, false, false));
+      expect(run('')).toEqual(F(false, false, false, false, false, true, true, true, true));
     },
   );
 

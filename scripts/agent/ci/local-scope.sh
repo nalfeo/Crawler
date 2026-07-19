@@ -35,7 +35,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 emit_all_false() {
   # Mirror detect-art-only.sh's fail-safe output contract exactly so consumers can
   # parse one shape regardless of which path produced it.
-  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nvisual_touched=false\ngame_visual_touched=false\nasset_visual_touched=false\ndevtool_visual_touched=false\n'
+  # Legacy flags (safe/only): false → broader gates run.
+  # Visual surface flags: true → all three visual suites run (fail toward more when
+  # scope cannot be determined, consistent with the no-base-ref path in detect-art-only.sh).
+  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nvisual_touched=true\ngame_visual_touched=true\nasset_visual_touched=true\ndevtool_visual_touched=true\n'
 }
 
 # Not a git work tree (or git unavailable) → cannot compute a trustworthy set.

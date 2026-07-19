@@ -166,9 +166,13 @@ echo "Changed files:" >&2
 echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
+# For legacy flags (art_only/docs_only/gameplay_safe/sprites_*): false triggers the
+# broader gates (gameplay_safe=false → headless runs; art_only=false → full unit suite).
+# For visual surface flags: we CANNOT safely skip — an empty/unknown diff means we
+# don't know what changed, so all three visual suites must run (fail toward more).
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
   emit_all false false false false false
-  emit_visual_all false false false false
+  emit_visual_all true true true true
   exit 0
 fi
 
@@ -375,6 +379,10 @@ while IFS= read -r file; do
     tests/e2e/sprite-workflow-sensors.test.ts)
       visual_touched=true; devtool_visual_touched=true ;;
     # ── Game visual: non-devtool E2E tests ───────────────────────────────────────
+    # Shared E2E setup/constants/helpers are consumed by ALL three projects, so a
+    # change there must trigger every surface (fail toward broader validation).
+    tests/e2e/global-setup.ts | tests/e2e/e2e-constants.ts | tests/e2e/helpers/*)
+      visual_touched=true; game_visual_touched=true; asset_visual_touched=true; devtool_visual_touched=true ;;
     tests/e2e/*)
       visual_touched=true; game_visual_touched=true ;;
     # ── Game visual: all other src/*, public/* (and root config files) ────────────
@@ -385,10 +393,11 @@ while IFS= read -r file; do
     src/* | public/*)
       visual_touched=true; game_visual_touched=true ;;
     # ── Unknown: fail toward broader validation ───────────────────────────────────
-    # Any path not explicitly classified above triggers the full game visual suite.
-    # This ensures new file types are never silently exempted from visual validation.
+    # Any path not explicitly classified above enables ALL three visual suites.
+    # An unknown file type may affect any visual surface, so we fail toward running
+    # everything rather than silently skipping a potentially-affected surface.
     *)
-      visual_touched=true; game_visual_touched=true ;;
+      visual_touched=true; game_visual_touched=true; asset_visual_touched=true; devtool_visual_touched=true ;;
   esac
 done <<<"$changed"
 
