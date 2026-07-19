@@ -570,6 +570,26 @@ test('buildRetroactivePlanComment embeds required plan content and PR reference'
   assert.match(body, /\*\*Key decisions and alternatives\*\*/);
   assert.match(body, /\*\*Checklist\*\*/);
   assert.match(body, /- \[x\] Add trusted plan detection helpers\./);
+});
+
+test('buildRetroactivePlanComment stays below the GitHub comment limit for oversized PR bodies', () => {
+  const prUrl = 'https://github.com/nalfeo/Crawler/pull/1604';
+  const oversizedBody = [
+    '## Fix',
+    'x'.repeat(65_000),
+    '',
+    '## Changes',
+    ...Array.from({ length: 100 }, (_, index) => `- ${index}: ${'y'.repeat(1_000)}`),
+  ].join('\n');
+
+  const body = buildRetroactivePlanComment(1604, 'Permission gap recovery', prUrl, oversizedBody);
+
+  assert.ok(body.length < 65_536, `expected body below GitHub limit, got ${body.length}`);
+  assert.ok(body.includes(`**PR:** ${prUrl}`), 'truncation must preserve the source PR link');
+  assert.match(body, /\*\*High-level design and approach\*\*/);
+  assert.match(body, /\*\*Key decisions and alternatives\*\*/);
+  assert.match(body, /\*\*Checklist\*\*/);
+  assert.match(body, /Review remaining implementation details/);
   // Must not include untrusted HTML comment injection.
   const injected = buildRetroactivePlanComment(
     1,

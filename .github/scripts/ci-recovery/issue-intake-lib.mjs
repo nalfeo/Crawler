@@ -10,6 +10,9 @@ export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
  */
 export const ISSUE_RECOVERY_PLAN_MARKER = '<!-- crawler-ci-recovery-plan:v1 -->';
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
+const RECOVERY_PLAN_APPROACH_MAX_LENGTH = 20_000;
+const RECOVERY_PLAN_CHECKLIST_MAX_ITEMS = 20;
+const RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH = 500;
 const COPILOT_OPENER_LOGINS = new Set([
   'copilot',
   'copilot[bot]',
@@ -69,6 +72,12 @@ function extractBulletLines(body) {
     .map((line) => line.trim())
     .filter((line) => /^- /.test(line))
     .map((line) => line.replace(/^- /, '').trim());
+}
+
+function truncatePlanContent(value, maxLength) {
+  const text = String(value || '');
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 2).trimEnd()}…`;
 }
 
 function planHeading(line) {
@@ -410,12 +419,24 @@ export function hasCopilotPlanComment(issueComments) {
  * content that the intake workflow requires on the issue itself.
  */
 export function buildRetroactivePlanComment(prNumber, prTitle, prHtmlUrl, prBody = '') {
-  const safeTitle = stripHtmlComments(prTitle);
-  const approachLead =
+  const safeTitle = truncatePlanContent(stripHtmlComments(prTitle), 500);
+  const rawApproachLead =
     extractMarkdownSection(prBody, 'Fix') ||
     extractLeadParagraph(prBody) ||
     'Use the trusted CI recovery reconciler to satisfy the missing issue-side plan requirement before repair-thread follow-up runs.';
-  const checklist = buildRetroactiveChecklist(prBody);
+  const approachLead = truncatePlanContent(rawApproachLead, RECOVERY_PLAN_APPROACH_MAX_LENGTH);
+  const rawChecklist = buildRetroactiveChecklist(prBody);
+  const checklist = rawChecklist
+    .slice(0, RECOVERY_PLAN_CHECKLIST_MAX_ITEMS)
+    .map((item) => truncatePlanContent(item, RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH));
+  if (
+    rawChecklist.length > checklist.length ||
+    rawChecklist.some((item, index) => item !== checklist[index])
+  ) {
+    checklist.push(
+      `- [ ] Review remaining implementation details in ${prHtmlUrl || `PR #${prNumber}`}.`,
+    );
+  }
   return [
     ISSUE_RECOVERY_PLAN_MARKER,
     '',
