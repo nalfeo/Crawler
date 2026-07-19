@@ -408,7 +408,26 @@ assert_pid_file() {
 
 bash -m "$script_path" > "$log_file" 2>&1 &
 verify_pid=$!
+
+kill_recorded_descendants() {
+  local pid_file="$1"
+  [ -s "$pid_file" ] || return 0
+  local child_pid
+  child_pid="$(tr -d '[:space:]' < "$pid_file")"
+  [[ "$child_pid" =~ ^[0-9]+$ ]] || return 0
+  # Attempt both process-group and pid termination so descendants die even if
+  # verify-fast itself was SIGKILLed before its EXIT trap ran.
+  kill -TERM -- "-$child_pid" 2>/dev/null || true
+  kill -TERM "$child_pid" 2>/dev/null || true
+  sleep 0.05
+  kill -KILL -- "-$child_pid" 2>/dev/null || true
+  kill -KILL "$child_pid" 2>/dev/null || true
+}
+
 cleanup() {
+  kill_recorded_descendants "$tsc_pid_file"
+  kill_recorded_descendants "$eslint_pid_file"
+  kill -TERM -- "-$verify_pid" 2>/dev/null || true
   kill -KILL "$verify_pid" 2>/dev/null || true
   wait "$verify_pid" 2>/dev/null || true
 }
