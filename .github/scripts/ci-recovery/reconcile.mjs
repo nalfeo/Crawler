@@ -1353,10 +1353,6 @@ for (const run of actionRequiredRuns) {
   }
 }
 
-// Keep every unresolved thread as a blocker so ci-recovery stays aligned with
-// merge-train admission. Outdated threads still need deterministic validation /
-// resolution; only their GraphQL `line` field is unstable, so omit it from the
-// blocker fingerprint when the thread is already outdated.
 for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
   const root = thread.comments?.nodes?.[0];
   const staleSha = staleAddressedMarkerByThread.get(thread.id);
@@ -1373,9 +1369,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
     path: thread.path || undefined,
-    line: thread.isOutdated
-      ? undefined // Omit unstable line for outdated threads — GitHub returns non-deterministic values on stale threads.
-      : thread.line,
+    line: thread.isOutdated ? undefined : thread.line || undefined,
     summary,
     url: root?.url,
   });

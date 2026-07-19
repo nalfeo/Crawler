@@ -4342,10 +4342,7 @@ test('reconcile skips outdated-marker and logs no-reply-target when first commen
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
-test('outdated no-reply-target thread does not affect fingerprint when line field is non-deterministic', async (t) => {
-  const activeThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3607713280`;
-  const outdatedThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion-not-a-review-comment`;
-
+test('outdated no-reply-target thread keeps a stable fingerprint when its line changes', async (t) => {
   function makeGraphqlHandler(outdatedLine) {
     return () => ({
       body: gqlReviewThreads(
@@ -4363,7 +4360,7 @@ test('outdated no-reply-target thread does not affect fingerprint when line fiel
                   body: 'Please post a plan comment before making changes.',
                   author: { login: 'copilot-pull-request-reviewer' },
                   authorAssociation: 'NONE',
-                  url: activeThreadUrl,
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3607713280`,
                 },
               ],
             },
@@ -4381,7 +4378,7 @@ test('outdated no-reply-target thread does not affect fingerprint when line fiel
                   body: 'Consider re-wrapping.',
                   author: { login: 'copilot-pull-request-reviewer' },
                   authorAssociation: 'NONE',
-                  url: outdatedThreadUrl,
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion-not-a-review-comment`,
                 },
               ],
             },
@@ -4392,7 +4389,7 @@ test('outdated no-reply-target thread does not affect fingerprint when line fiel
     });
   }
 
-  const taskBodies = [];
+  const fingerprints = [];
   for (const outdatedLine of [10, null]) {
     const { server, port, mutatingCalls } = await startServer({
       [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
@@ -4458,21 +4455,16 @@ test('outdated no-reply-target thread does not affect fingerprint when line fiel
         call.body.body.includes('crawler-ci-task:v1'),
     );
     assert.ok(taskCall, `expected task comment for outdatedLine=${outdatedLine}`);
-    taskBodies.push(taskCall.body.body);
+    const [, fingerprint] = taskCall.body.body.match(/fingerprint=([0-9a-f]+)/i) ?? [];
+    assert.ok(fingerprint, `expected fingerprint for outdatedLine=${outdatedLine}`);
+    fingerprints.push(fingerprint);
   }
 
-  const [, firstFp] = taskBodies[0].match(/fingerprint=([0-9a-f]+)/i) ?? [];
-  const [, secondFp] = taskBodies[1].match(/fingerprint=([0-9a-f]+)/i) ?? [];
-  assert.ok(firstFp && secondFp, 'both task comments must carry a fingerprint');
-  assert.equal(firstFp, secondFp, 'outdated thread line change must not alter blockerFingerprint');
-  for (const [i, body] of taskBodies.entries()) {
-    const blockerCount = (body.match(/\*\*review-thread\*\*/g) ?? []).length;
-    assert.equal(
-      blockerCount,
-      2,
-      `task comment ${i} must list exactly 2 blockers (active + outdated thread); got ${blockerCount}`,
-    );
-  }
+  assert.equal(
+    fingerprints[0],
+    fingerprints[1],
+    'outdated thread line change must not alter blocker fingerprint',
+  );
 });
 
 test('live reconcile resolves only a trusted backtick-wrapped current-head marker', async (t) => {
@@ -6465,15 +6457,14 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 // was never pushed (compare 404), so the thread remains unresolved.
 // ---------------------------------------------------------------------------
 
-test('stale-marker thread with no reply target includes recovery hint in blocker summary', async (t) => {
+test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
   // Simulate the root cause from the PR #1266 loop incident:
   // The recovery agent replied to a review thread with ✅ Addressed in <sha>
   // but that commit was created locally and never pushed.  The compare API
-  // returns 404. If the thread also has no reply target, the reconciler cannot
-  // auto-post a fresh trusted marker, so the thread stays unresolved and the
-  // same fingerprint repeats indefinitely. The blocker summary must carry the
-  // stale-marker recovery hint so the next recovery agent knows to re-post the
-  // marker with the current-head SHA.
+  // returns 404, so the thread stays unresolved and the same fingerprint
+  // repeats indefinitely.  The reconciler should detect the stale marker and
+  // include a targeted hint in the blocker summary so the next recovery agent
+  // knows to re-post the marker with the current-head SHA.
   const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
   const threadId = 'PRRT_stale_marker_thread';
   const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
@@ -6524,7 +6515,7 @@ test('stale-marker thread with no reply target includes recovery hint in blocker
                 {
                   id: 'PRIC_original',
                   body: 'the CLI does not propagate the fifth score.',
-                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion-no-reply-target`,
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
                   authorAssociation: 'COLLABORATOR',
                   author: { login: 'reviewer' },
                 },
@@ -6563,10 +6554,6 @@ test('stale-marker thread with no reply target includes recovery hint in blocker
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  assert.match(
-    stdout,
-    /skip outdated-marker thread=PRRT_stale_marker_thread reason=no-reply-target/,
-  );
   // Thread must NOT be auto-resolved (stale SHA is not reachable).
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
 

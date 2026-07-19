@@ -1,8 +1,0 @@
-{
-  "schema_version": "review-ledger/v1",
-  "date": "2026-07-18",
-  "session_slug": "ci-recovery-outdated-thread",
-  "task_title": "fix(ci-recovery): exclude isOutdated threads from blocker list",
-  "estimated_apples": 1,
-  "stages": {}
-}
