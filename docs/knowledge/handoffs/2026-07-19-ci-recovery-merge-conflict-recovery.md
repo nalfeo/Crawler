@@ -39,6 +39,10 @@ CI-recovery behavior:
   blocker ID used for progress tracking
 - limited marker boundaries to trusted collaborators and bots so untrusted
   marker-shaped comments cannot suppress prior recovery hints
+- rejected fingerprint-to-blocker mappings from untrusted issue comments so a
+  forged task marker cannot overwrite the real recovery correlation
+- treated trusted `Not applicable` replies as recovery boundaries alongside
+  addressed markers when a reviewer later reopens the conversation
 
 ## Files touched
 
