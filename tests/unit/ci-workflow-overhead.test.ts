@@ -68,11 +68,12 @@ describe('ci workflow overhead reduction', () => {
       staticValidation?.steps?.find((step) => step.name === 'Guard + review-ledger tests'),
     ).toBeTruthy();
 
-    // static-validation must NOT install Playwright — it runs no browser tests
+    // static-validation MUST install Playwright: test:guards includes
+    // .github/extensions/sprite-editor/tests which launch Chromium via Playwright.
     const setupNodeStep = staticValidation?.steps?.find(
       (step) => step.uses === './.github/actions/setup-node',
     );
-    expect(setupNodeStep?.with?.['install-playwright']).toBeUndefined();
+    expect(setupNodeStep?.with?.['install-playwright']).toBe('true');
 
     // ci-advisory: lightweight checks only — no coverage (that lives in ci-coverage)
     const advisory = workflow.jobs['ci-advisory'];
@@ -142,10 +143,9 @@ describe('ci workflow overhead reduction', () => {
       'guard-tests',
     ];
     for (const id of expectedStepIds) {
-      expect(
-        aggregationScript,
-        `Aggregation script must reference step id '${id}'`,
-      ).toContain(`steps.${id}.outcome`);
+      expect(aggregationScript, `Aggregation script must reference step id '${id}'`).toContain(
+        `steps.${id}.outcome`,
+      );
     }
   });
 });
