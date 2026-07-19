@@ -85,8 +85,8 @@ describe('ci.yml headless and coverage gating policy', () => {
   it('test-headless skips on PR when sim_touched is not true', () => {
     const condition = getJobIf(loadCiWorkflow(), 'test-headless');
     // The condition must gate on sim_touched for pull_request events.
-    // Required pattern: "github.event_name != 'pull_request' || ... sim_touched == 'true'"
-    // (so that on non-PR events the job always runs as a backstop)
+    // Logical structure: "(github.event_name != 'pull_request' || needs.changes.outputs.sim_touched == 'true')"
+    // so that on non-PR events the job always runs as a backstop.
     expect(condition).toContain("sim_touched == 'true'");
     expect(condition).toContain("github.event_name != 'pull_request'");
   });
@@ -142,7 +142,8 @@ describe('ci.yml headless and coverage gating policy', () => {
   it('merge gate rejects headless skip without sim_touched=false', () => {
     const script = getMergeGateScript(loadCiWorkflow());
     // Must have a conditional that allows skip only when sim_touched == false.
-    expect(script).toContain('sim_touched" = "false"');
+    // The merge gate should use an explicit variable pattern, not an inline subshell.
+    expect(script).toContain('"$sim_touched" = "false"');
   });
 
   it('merge gate still checks changes job result (classifier failure must not pass)', () => {

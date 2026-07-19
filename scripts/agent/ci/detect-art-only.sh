@@ -367,4 +367,4 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched" "$sim_touched" "$coverage_touched"
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched"

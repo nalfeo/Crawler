@@ -469,7 +469,8 @@ jobs:
             echo "✅ Headless Floor 1 completion: success"
           elif [ "$headless_result" = "skipped" ] && \
                { [ "$docs_only" = "true" ] || [ "$sim_touched" = "false" ]; }; then
-            echo "✅ Headless Floor 1 completion: skipped ($([ "$docs_only" = "true" ] && echo "docs-only" || echo "sim not touched"))"
+            skip_reason="$([ "$docs_only" = "true" ] && echo "docs-only" || echo "sim not touched")"
+            echo "✅ Headless Floor 1 completion: skipped ($skip_reason)"
           else
             echo "❌ Headless Floor 1 completion: $headless_result (sim_touched=${sim_touched:-MISSING})"
             exit 1

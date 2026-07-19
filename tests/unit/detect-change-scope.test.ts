@@ -131,7 +131,9 @@ const cases: Case[] = [
   {
     name: 'scope classifier unit test',
     files: ['tests/unit/detect-change-scope.test.ts'],
-    // tests/unit/* → sim_touched=false; but tests/unit/ non-sprites → coverage_touched=true
+    // tests/unit/* → sim_touched=false (unit tests don't affect sim runtime);
+    // tests/unit/ non-sprites → coverage_touched=true (this file is in tests/unit/
+    // and is not under tests/unit/sprites/, so it can affect unit coverage numbers)
     expected: F(false, false, true, false, false, false, true),
   },
   // Docs / text.
