@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -79,7 +79,10 @@ function makeFixture(files: Record<string, string>): string {
   // doesn't fall through to the `tsc` npm-registry stub.
   const nodeBinDir = path.join(dir, 'node_modules', '.bin');
   mkdirSync(nodeBinDir, { recursive: true });
-  symlinkSync(path.join(REPO_ROOT, 'node_modules', '.bin', 'tsc'), path.join(nodeBinDir, 'tsc'));
+  const localTscBin = path.join(nodeBinDir, 'tsc');
+  const localTscEntry = path.join(REPO_ROOT, 'node_modules', 'typescript', 'bin', 'tsc');
+  writeFileSync(localTscBin, `#!/usr/bin/env node\nrequire(${JSON.stringify(localTscEntry)});\n`);
+  chmodSync(localTscBin, 0o755);
 
   return dir;
 }
