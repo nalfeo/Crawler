@@ -1,5 +1,16 @@
 [
   {
+    "commit": "cbc33b2620698062c4cf6226c7974284f79aeaa9",
+    "commitDate": "2026-07-18T22:47:50Z",
+    "commitSubject": "feat(sprites): add surveyor-map Floor 2 accessory icon — brief, item wiring, placeholder (#1514)",
+    "capturedAt": "2026-07-19T00:15:39.395Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29664777237",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/cbc33b2620698062c4cf6226c7974284f79aeaa9.json"
+  },
+  {
     "commit": "459cbb8334ce4eb6ff11d818f0dca697f8f5e7f1",
     "commitDate": "2026-07-18T21:56:16Z",
     "commitSubject": "Author the hunting-bola weapon sprite brief (#1538)",
