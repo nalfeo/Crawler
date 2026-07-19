@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# detect-art-only.sh — detect change scope and emit art_only + docs_only +
-# gameplay_safe flags.
+# detect-art-only.sh — detect change scope and emit classification flags.
+#
+# ── Legacy flags (unchanged — all existing consumers remain compatible) ────────
 #
 # art_only=true  — every changed file is under the approved-art surface:
 #   - public/assets/generated/**        (sprites + manifest.json)
@@ -22,6 +23,34 @@
 # so these surfaces cannot alter the sim outcome. ci.yml uses this to skip the
 # 306s headless job on PULL_REQUESTS ONLY; main-push always runs it, preserving
 # an observe-after-merge backstop in case the allowlist is ever wrong.
+#
+# ── Orthogonal impact flags (new — fail-closed, independent of each other) ────
+#
+# visual_touched=true  — at least one changed file is in the visual/rendering
+#   surface (src/engine, src/labs, public/**, sprite-catalog.json). Unknown or
+#   unclassified paths also set this to true (fail-closed).
+#
+# sim_touched=true     — at least one changed file is in the deterministic ECS
+#   simulation layer (src/core, src/game, src/shared excluding art catalog,
+#   tests/headless). Unknown or unclassified paths also set this to true.
+#
+# coverage_touched=true — at least one changed file could affect test-coverage
+#   metrics (src/**, tests/** excluding sprite-pipeline and e2e). Unknown paths
+#   also set this to true.
+#
+# sprite_pipeline_touched=true — equivalent to sprites_touched; at least one
+#   sprite-pipeline file changed. Derived from sprites_touched for consistency.
+#
+# dependencies_touched=true — package.json dependency sections or package-lock.json
+#   changed. Fail-closed when content analysis is unavailable.
+#
+# Neutral companion files: handoffs (docs/knowledge/handoffs/**), review ledgers
+# (docs/knowledge/review-ledgers/**), and generated metadata (docs/**) fall under
+# the docs surface and do NOT broaden visual_touched, sim_touched, or
+# coverage_touched — their documentation/format validation is preserved via
+# docs_only and the review-ledger guard.
+#
+# ── Common semantics ──────────────────────────────────────────────────────────
 #
 # Output: writes all flags to $GITHUB_OUTPUT (when set) and stdout.
 # Test hook: SCOPE_FILES_OVERRIDE (newline-separated paths) classifies that list
@@ -46,6 +75,11 @@ emit_all() {
   emit_output gameplay_safe "$3"
   emit_output sprites_only "$4"
   emit_output sprites_touched "$5"
+  emit_output visual_touched "$6"
+  emit_output sim_touched "$7"
+  emit_output coverage_touched "$8"
+  emit_output sprite_pipeline_touched "$9"
+  emit_output dependencies_touched "${10}"
 }
 
 # package.json gameplay-safe split:
@@ -105,6 +139,49 @@ process.exit(1);
 ' >/dev/null 2>&1
 }
 
+# package.json dep-change detection:
+# Returns 0 (true) if any dependency section in package.json changed vs base.
+# Returns 1 (false) if no dep section changed (e.g. scripts-only).
+# Returns 2 (unknown) if cannot determine (no node, no base_ref, parse error).
+# Test hook: PACKAGE_JSON_DEPS_TOUCHED_OVERRIDE=true/false/unknown
+package_json_deps_changed() {
+  if [ "${PACKAGE_JSON_DEPS_TOUCHED_OVERRIDE:-}" = "true" ]; then
+    return 0
+  fi
+  if [ "${PACKAGE_JSON_DEPS_TOUCHED_OVERRIDE:-}" = "false" ]; then
+    return 1
+  fi
+  if [ "${PACKAGE_JSON_DEPS_TOUCHED_OVERRIDE:-}" = "unknown" ]; then
+    return 2
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    return 2
+  fi
+  if [ -z "${base_ref:-}" ]; then
+    return 2
+  fi
+  if ! git cat-file -e "${base_ref}:package.json" 2>/dev/null; then
+    return 2
+  fi
+  local base_pkg head_pkg
+  base_pkg="$(git show "${base_ref}:package.json" 2>/dev/null || true)"
+  head_pkg="$(cat package.json 2>/dev/null || true)"
+  if [ -z "$base_pkg" ] || [ -z "$head_pkg" ]; then
+    return 2
+  fi
+  BASE_PKG="$base_pkg" HEAD_PKG="$head_pkg" node -e '
+const base = JSON.parse(process.env.BASE_PKG ?? "{}");
+const head = JSON.parse(process.env.HEAD_PKG ?? "{}");
+const depKeys = ["dependencies","devDependencies","peerDependencies","optionalDependencies"];
+for (const key of depKeys) {
+  if (JSON.stringify(base[key] ?? {}) !== JSON.stringify(head[key] ?? {})) {
+    process.exit(0);
+  }
+}
+process.exit(1);
+' >/dev/null 2>&1
+}
+
 # Resolve the set of changed files. Normally derived from git; the
 # SCOPE_FILES_OVERRIDE test hook (newline-separated paths) lets the deterministic
 # unit test drive the classifier without constructing a git scenario. Presence is
@@ -133,7 +210,7 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false false false
+    emit_all false false false false false false false false false false
     exit 0
   fi
 
@@ -151,7 +228,7 @@ echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false false false
+  emit_all false false false false false false false false false false
   exit 0
 fi
 
@@ -286,4 +363,167 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched"
+# ── Orthogonal impact flags ───────────────────────────────────────────────────
+
+# visual_touched: at least one changed file is in the visual/rendering surface
+# (src/engine, src/labs, public/**, sprite-catalog). Unknown paths fail closed.
+visual_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    # Positive: rendering/visual/art surfaces
+    src/engine/*) visual_touched=true; break ;;
+    src/labs/*) visual_touched=true; break ;;
+    public/*) visual_touched=true; break ;;
+    # sprite-catalog before the broad src/shared/* neutral to ensure first-match
+    src/shared/data/sprite-catalog.json) visual_touched=true; break ;;
+    # Neutral: simulation, tests, docs, CI/tooling
+    src/core/*) ;;
+    src/game/*) ;;
+    src/shared/*) ;;
+    tests/*) ;;
+    docs/*) ;;
+    .specify/specs/*) ;;
+    AGENTS.md) ;;
+    *.md) ;;
+    *.txt) ;;
+    .github/*) ;;
+    scripts/*) ;;
+    package.json)
+      if package_json_gameplay_safe; then
+        :
+      else
+        visual_touched=true; break
+      fi
+      ;;
+    # Unknown path → fail closed
+    *) visual_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+# sim_touched: at least one changed file is in the deterministic ECS simulation
+# layer. src/core, src/game, src/shared (non-art catalog), and headless tests
+# feed the simulation. Unknown paths fail closed.
+sim_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    # Positive: simulation layer
+    src/core/*) sim_touched=true; break ;;
+    src/game/*) sim_touched=true; break ;;
+    tests/headless/*) sim_touched=true; break ;;
+    # src/shared: sprite-catalog is art-only; all other shared code feeds the sim.
+    # Specific path must precede the broad src/shared/* case.
+    src/shared/data/sprite-catalog.json) ;;
+    src/shared/*) sim_touched=true; break ;;
+    # Neutral: rendering-only, sprite pipeline, docs, tests that don't affect sim
+    src/engine/*) ;;
+    src/labs/*) ;;
+    public/*) ;;
+    # Sprite-specific test paths before the broad tests/* neutral
+    tests/unit/sprites/*) ;;
+    tests/integration/sprites/*) ;;
+    tests/integration/batch-cli.test.ts) ;;
+    tests/integration/generate-one.test.ts) ;;
+    tests/integration/judge-budget-cache.test.ts) ;;
+    tests/integration/judge-pipeline.test.ts) ;;
+    tests/integration/run-full.test.ts) ;;
+    tests/integration/sidecar-lifecycle.test.ts) ;;
+    tests/integration/synth-to-generate.test.ts) ;;
+    tests/integration/weapons-pipeline.test.ts) ;;
+    tests/*) ;;
+    docs/*) ;;
+    .specify/specs/*) ;;
+    AGENTS.md) ;;
+    *.md) ;;
+    *.txt) ;;
+    .github/*) ;;
+    scripts/*) ;;
+    package.json)
+      if package_json_gameplay_safe; then
+        :
+      else
+        sim_touched=true; break
+      fi
+      ;;
+    # Unknown path → fail closed
+    *) sim_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+# coverage_touched: at least one changed file could affect unit/integration test
+# coverage metrics. All src/** (coverage source) and non-sprite, non-e2e tests
+# count. Unknown paths fail closed.
+coverage_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    # Positive: all source code (coverage config instruments src/**/*.ts)
+    src/*) coverage_touched=true; break ;;
+    # Positive: headless tests affect the headless coverage project
+    tests/headless/*) coverage_touched=true; break ;;
+    # Sprite pipeline tests are in their own project → neutral for game coverage
+    # These must precede the broad tests/* positive case.
+    tests/unit/sprites/*) ;;
+    tests/integration/sprites/*) ;;
+    tests/integration/batch-cli.test.ts) ;;
+    tests/integration/generate-one.test.ts) ;;
+    tests/integration/judge-budget-cache.test.ts) ;;
+    tests/integration/judge-pipeline.test.ts) ;;
+    tests/integration/run-full.test.ts) ;;
+    tests/integration/sidecar-lifecycle.test.ts) ;;
+    tests/integration/synth-to-generate.test.ts) ;;
+    tests/integration/weapons-pipeline.test.ts) ;;
+    # E2E tests run under Playwright, not the unit/integration coverage instrument
+    tests/e2e/*) ;;
+    # All other tests (unit, integration, ecs, game, etc.) → positive
+    tests/*) coverage_touched=true; break ;;
+    # Neutral: docs, public assets, CI/tooling
+    docs/*) ;;
+    .specify/specs/*) ;;
+    AGENTS.md) ;;
+    *.md) ;;
+    *.txt) ;;
+    .github/*) ;;
+    scripts/*) ;;
+    public/*) ;;
+    package.json)
+      if package_json_gameplay_safe; then
+        :
+      else
+        coverage_touched=true; break
+      fi
+      ;;
+    # Unknown path → fail closed
+    *) coverage_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+# sprite_pipeline_touched: derived directly from sprites_touched to avoid
+# duplicating the allowlist. Same positive set; emitted as a separate output so
+# future consumers can migrate to the orthogonal flag without a rename.
+sprite_pipeline_touched="$sprites_touched"
+
+# dependencies_touched: package.json dependency sections or package-lock.json
+# changed. Fail-closed when content analysis is unavailable (no node, no base,
+# or the dep-vs-scripts distinction cannot be made).
+dependencies_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    package-lock.json) dependencies_touched=true; break ;;
+    package.json)
+      # Tri-state: 0=deps changed, 1=no dep change, 2=unknown
+      pkg_deps_rc=0
+      package_json_deps_changed || pkg_deps_rc=$?
+      if [ "$pkg_deps_rc" -eq 0 ] || [ "$pkg_deps_rc" -eq 2 ]; then
+        # deps definitely changed OR cannot determine → fail closed
+        dependencies_touched=true; break
+      fi
+      # pkg_deps_rc=1: no dep change (scripts-only or other non-dep change)
+      ;;
+  esac
+done <<<"$changed"
+
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" \
+  "$visual_touched" "$sim_touched" "$coverage_touched" "$sprite_pipeline_touched" "$dependencies_touched"

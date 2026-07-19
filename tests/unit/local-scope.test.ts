@@ -36,12 +36,36 @@ interface Scope {
   art_only: boolean;
   docs_only: boolean;
   gameplay_safe: boolean;
+  sprites_only: boolean;
+  sprites_touched: boolean;
+  visual_touched: boolean;
+  sim_touched: boolean;
+  coverage_touched: boolean;
+  sprite_pipeline_touched: boolean;
+  dependencies_touched: boolean;
 }
 
-const F = (art_only: boolean, docs_only: boolean, gameplay_safe: boolean): Scope => ({
+const F = (
+  art_only: boolean,
+  docs_only: boolean,
+  gameplay_safe: boolean,
+  overrides: Partial<Scope> = {},
+): Scope => ({
   art_only,
   docs_only,
   gameplay_safe,
+  // The working-tree tests focus on the three safety-critical flags. The orthogonal
+  // flags are covered by detect-change-scope.test.ts (via SCOPE_FILES_OVERRIDE).
+  // We parse them here so the output shape stays consistent but don't vary them
+  // in these scenarios.
+  sprites_only: false,
+  sprites_touched: false,
+  visual_touched: false,
+  sim_touched: false,
+  coverage_touched: false,
+  sprite_pipeline_touched: false,
+  dependencies_touched: false,
+  ...overrides,
 });
 
 const tempDirs: string[] = [];
@@ -128,6 +152,13 @@ function makeRepo(): Repo {
       art_only: read('art_only'),
       docs_only: read('docs_only'),
       gameplay_safe: read('gameplay_safe'),
+      sprites_only: read('sprites_only'),
+      sprites_touched: read('sprites_touched'),
+      visual_touched: read('visual_touched'),
+      sim_touched: read('sim_touched'),
+      coverage_touched: read('coverage_touched'),
+      sprite_pipeline_touched: read('sprite_pipeline_touched'),
+      dependencies_touched: read('dependencies_touched'),
     };
   };
   // Deterministic identity + no signing so commits work on any runner.
@@ -196,7 +227,10 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     repo.write('src/core/systems/movementSystem.ts', 'export const x = 1;\n');
     repo.git('add', '.');
     repo.git('commit', '-q', '-m', 'core');
-    expect(repo.scope()).toEqual(F(false, false, false));
+    // src/core → gameplay_safe=false, sim_touched=true, coverage_touched=true
+    expect(repo.scope()).toEqual(
+      F(false, false, false, { sim_touched: true, coverage_touched: true }),
+    );
   });
 
   it.skipIf(!hasBash)('untracked src/core file is unioned in ⇒ not safe', () => {
@@ -204,7 +238,10 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     mainWithFeature(repo);
     // No commit on feature; the change exists only as an untracked working file.
     repo.write('src/core/world.ts', 'export const w = 1;\n');
-    expect(repo.scope()).toEqual(F(false, false, false));
+    // src/core → gameplay_safe=false, sim_touched=true, coverage_touched=true
+    expect(repo.scope()).toEqual(
+      F(false, false, false, { sim_touched: true, coverage_touched: true }),
+    );
   });
 
   it.skipIf(!hasBash)('unstaged docs-only edit ⇒ gameplay_safe', () => {
@@ -232,7 +269,10 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       repo.git('commit', '-q', '-m', 'delete core + docs');
       // With --diff-filter=ACMR the deletion would vanish and only docs would remain
       // → a spurious gameplay_safe=true. The helper uses no filter, so it stays false.
-      expect(repo.scope()).toEqual(F(false, false, false));
+      // src/core deletion → gameplay_safe=false, sim_touched=true, coverage_touched=true
+      expect(repo.scope()).toEqual(
+        F(false, false, false, { sim_touched: true, coverage_touched: true }),
+      );
     },
   );
 });

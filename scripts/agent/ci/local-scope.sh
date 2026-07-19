@@ -5,10 +5,17 @@
 # Wraps detect-art-only.sh (the CI classifier plus its unit-tested allowlists) but
 # computes the changed-file set the way a developer's working tree actually looks:
 # the union of committed branch changes (merge-base..HEAD) AND uncommitted work
-# (staged + unstaged + untracked). It emits the same three flags on stdout:
+# (staged + unstaged + untracked). It emits the same flags on stdout:
 #   art_only=<bool>
 #   docs_only=<bool>
 #   gameplay_safe=<bool>
+#   sprites_only=<bool>
+#   sprites_touched=<bool>
+#   visual_touched=<bool>
+#   sim_touched=<bool>
+#   coverage_touched=<bool>
+#   sprite_pipeline_touched=<bool>
+#   dependencies_touched=<bool>
 #
 # Consumed by `npm run scope` (item 1: a pre-run gate for heavy discretionary work
 # like the headless sim / weapon sweeps / visual review) and by verify-fast.sh
@@ -35,7 +42,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 emit_all_false() {
   # Mirror detect-art-only.sh's fail-safe output contract exactly so consumers can
   # parse one shape regardless of which path produced it.
-  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\n'
+  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nvisual_touched=false\nsim_touched=false\ncoverage_touched=false\nsprite_pipeline_touched=false\ndependencies_touched=false\n'
 }
 
 # Not a git work tree (or git unavailable) → cannot compute a trustworthy set.
