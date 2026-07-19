@@ -83,6 +83,10 @@ export { skillSystem } from './systems/skillSystem.js';
 export {
   abilitySystem,
   createAbilityState,
+  normalizeAbilityState,
+  grantAbilitySources,
+  revokeAbilitySources,
+  configureOwnedActiveAbility,
   equipActiveAbility,
   unequipActiveAbility,
   memorizeSpell,
@@ -93,9 +97,29 @@ export {
   migrateAbilityStateToSourceTracking,
   queueAbilityTrigger,
   getOrCreateAbilityState,
+  synchronizeAbilityPassives,
   forceActivateAbility,
   weaponPrerequisiteMet,
+  AbilityGrantError,
 } from './systems/abilitySystem.js';
+export type {
+  AbilityGrantErrorCode,
+  AbilityGrantRequest,
+  GrantAbilitySourcesOptions,
+} from './systems/abilitySystem.js';
+export {
+  grantEquipmentAbilitySources,
+  revokeEquipmentAbilitySources,
+} from './equipment-ability-grants.js';
+export {
+  GeneratedEquipmentGeneratorError,
+  generateEquipmentInstance,
+  getGeneratedEquipmentBaseV1,
+} from './generated-equipment-generator.js';
+export type {
+  GeneratedEquipmentGeneratorErrorCode,
+  GenerateEquipmentInstanceRequest,
+} from './generated-equipment-generator.js';
 export {
   achievementSystem,
   evaluateAchievementUnlocksForPhase,

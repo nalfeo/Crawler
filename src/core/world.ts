@@ -192,7 +192,7 @@ export interface GameWorld {
    */
   attackWeaponSkillsByEntity: Map<number, { classSkillId: string; typeSkillId: string }>;
   /** Per-entity ability state keyed by holder eid. */
-  abilityStatesByEntity: Map<number, AbilityState>;
+  abilityStatesByEntity: Map<number, AbilityStateLike>;
   /** Trigger events emitted this frame — cleared at end of abilitySystem. */
   abilityTriggerEvents: AbilityTriggerEvent[];
   /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */

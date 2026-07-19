@@ -5,6 +5,15 @@ import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem
 import { addStatModifier } from '../../src/game/systems/statsSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
 import {
+  abilitySystem,
+  grantAbilitySources,
+  normalizeAbilityState,
+} from '../../src/game/systems/abilitySystem.js';
+import {
+  learnedAbilityGrantSourceId,
+  skillAbilityGrantSourceId,
+} from '../../src/shared/abilities.js';
+import {
   getEquipmentDefForStarterWeapon,
   MERCHANTS_CHARM_DEF,
 } from '../../src/shared/equipmentDefs.js';

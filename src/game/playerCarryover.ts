@@ -97,7 +97,7 @@ function restoreSkillState(snapshot: SkillStateSnapshot): SkillState {
 }
 
 function snapshotAbilityState(
-  state: AbilityState | undefined,
+  state: AbilityStateLike | undefined,
   frameCount: number,
 ): AbilityStateSnapshot | undefined {
   if (!state) return undefined;
@@ -208,6 +208,10 @@ function modifierBelongsToPlayer(modifier: StatModifierSnapshot, playerEid: numb
   return Number(modifier.sourceId.split(':')[holderIndex]) === playerEid;
 }
 
+function isPassiveAbilityModifier(modifier: StatModifierSnapshot): boolean {
+  return modifier.sourceType === 'ability' && modifier.sourceId.split(':')[1] === 'passive';
+}
+
 function remapModifierHolder(
   modifier: StatModifierSnapshot,
   sourcePlayerEid: number,
@@ -296,6 +300,7 @@ export function capturePlayerCarryover(
       .filter(
         (modifier) =>
           (modifier.sourceType === 'skill' || modifier.sourceType === 'ability') &&
+          !isPassiveAbilityModifier(modifier) &&
           (modifier.expiresFrame === undefined || modifier.expiresFrame > world.frameCount) &&
           modifierBelongsToPlayer(modifier, playerEid),
       )
@@ -400,6 +405,7 @@ export function restorePlayerCarryover(
       playerEid,
       restoreAbilityState(snapshot.abilityState, world.frameCount),
     );
+    synchronizeAbilityPassives(world, playerEid);
   } else {
     world.abilityStatesByEntity.delete(playerEid);
   }
