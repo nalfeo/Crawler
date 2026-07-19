@@ -430,7 +430,8 @@ function detectSupersededRuns(runs: WorkflowRun[]): Set<number> {
       // Check if any newer run started before the older one completed
       for (let j = i + 1; j < sorted.length; j++) {
         const newer = sorted[j]!;
-        if (new Date(newer.created_at) < new Date(completedAtProxy) && newer.id !== older.id) {
+        // j > i ensures newer and older are distinct runs; no id check needed
+        if (new Date(newer.created_at) < new Date(completedAtProxy)) {
           superseded.add(older.id);
           break;
         }
@@ -459,8 +460,9 @@ function computeAvoidableMinutes(
 
   if (impact === 'art_only' || impact === 'docs_only') {
     // All heavy gates were avoidable; only scope-detection and lightweight checks needed.
-    // Patterns match job names in .github/workflows/ci.yml (detect, typecheck, lint, format,
-    // unit-tests, commit-lint). Any new lightweight CI jobs should be added here.
+    // Lightweight = jobs that take < ~2 min and do not require executing the full codebase
+    // (change detection, type-checking individual files, linting, formatting, unit tests).
+    // Patterns match job names in .github/workflows/ci.yml. Add new lightweight jobs here.
     const lightJobPatterns = ['detect', 'scope', 'typecheck', 'lint', 'format', 'unit', 'commit'];
     const heavy = jobs.filter(
       (j) => !lightJobPatterns.some((p) => j.name.toLowerCase().includes(p)),
@@ -562,9 +564,12 @@ async function fetchJobTimings(
   if (!data?.jobs) return [];
 
   return data.jobs.map((job) => {
-    const startMs = job.started_at ? new Date(job.started_at).getTime() : 0;
-    const endMs = job.completed_at ? new Date(job.completed_at).getTime() : 0;
-    const durationMinutes = startMs && endMs ? Math.max(0, (endMs - startMs) / 60000) : 0;
+    // Use explicit null checks rather than truthiness: a timestamp of 0ms (midnight UTC)
+    // is valid and should not be treated as absent.
+    const startMs = job.started_at != null ? new Date(job.started_at).getTime() : null;
+    const endMs = job.completed_at != null ? new Date(job.completed_at).getTime() : null;
+    const durationMinutes =
+      startMs != null && endMs != null ? Math.max(0, (endMs - startMs) / 60000) : 0;
     return {
       name: job.name,
       started_at: job.started_at,
