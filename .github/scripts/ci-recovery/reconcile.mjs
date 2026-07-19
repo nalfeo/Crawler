@@ -1001,10 +1001,26 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 //
 // This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
-for (const thread of unresolvedThreads.filter(
-  (candidate) =>
-    candidate.isOutdated && !shouldResolveThread(candidate, headSha, reachableMarkerShas),
-)) {
+for (const thread of unresolvedThreads.filter((candidate) => {
+  if (!candidate.isOutdated) return false;
+  if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
+  // Do not post an outdated-marker for threads whose last trusted comment is a
+  // stale ✅ Addressed marker pointing to a definitively-unreachable SHA.
+  // Those threads get a stale-marker hint in the task body instead; injecting a
+  // new outdated-marker here would cause the resolution loop to auto-resolve them,
+  // losing the stale-marker signal.
+  const staleComments = candidate.comments?.nodes ?? [];
+  const staleLastComment = staleComments[staleComments.length - 1];
+  const staleMSha = extractAddressedMarkerSha(staleLastComment?.body);
+  if (staleMSha && definitivelyUnreachableMarkerShas.has(staleMSha)) {
+    const staleLogin = String(staleLastComment?.author?.login ?? '').toLowerCase();
+    const staleAssoc = String(staleLastComment?.authorAssociation ?? '').toUpperCase();
+    if (TRUSTED_ASSOCIATIONS.has(staleAssoc) || TRUSTED_BOT_LOGINS.has(staleLogin)) {
+      return false;
+    }
+  }
+  return true;
+})) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
   if (!replyCommentId) {
