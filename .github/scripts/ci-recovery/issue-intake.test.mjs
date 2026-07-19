@@ -81,12 +81,19 @@ test('issue intake rejects missing issues and pull-request payloads', () => {
 
 test('review plan issue selection fails closed on unmatched explicit issue references', () => {
   const closingIssues = [{ number: 1307 }];
+  const trustedRoot = (body) => ({
+    body,
+    author: { login: 'copilot-pull-request-reviewer' },
+    authorAssociation: 'NONE',
+  });
 
   assert.deepEqual(
     reviewThreadPlanIssueNumbers(
       {
         comments: {
-          nodes: [{ body: 'Issue #1307 required an implementation plan comment before the PR.' }],
+          nodes: [
+            trustedRoot('Issue #1307 required an implementation plan comment before the PR.'),
+          ],
         },
       },
       closingIssues,
@@ -97,7 +104,7 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
     reviewThreadPlanIssueNumbers(
       {
         comments: {
-          nodes: [{ body: 'Issue #999 required an implementation plan comment before the PR.' }],
+          nodes: [trustedRoot('Issue #999 required an implementation plan comment before the PR.')],
         },
       },
       closingIssues,
@@ -108,7 +115,9 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
     reviewThreadPlanIssueNumbers(
       {
         comments: {
-          nodes: [{ body: 'Issue #13070 required an implementation plan comment before the PR.' }],
+          nodes: [
+            trustedRoot('Issue #13070 required an implementation plan comment before the PR.'),
+          ],
         },
       },
       closingIssues,
@@ -119,12 +128,41 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
     reviewThreadPlanIssueNumbers(
       {
         comments: {
-          nodes: [{ body: 'The source issue required an implementation plan before the PR.' }],
+          nodes: [trustedRoot('The source issue required an implementation plan before the PR.')],
         },
       },
       closingIssues,
     ),
     [1307],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('#999 required an implementation plan before the PR.')],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            {
+              body: 'The source issue required an implementation plan before the PR.',
+              author: { login: 'random-user' },
+              authorAssociation: 'NONE',
+            },
+            trustedRoot('Issue #1307 required an implementation plan comment before the PR.'),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [],
   );
 });
 
@@ -470,6 +508,20 @@ test('hasCopilotPlanComment recognises existing Copilot plan and recovery plan m
   assert.equal(
     hasCopilotPlanComment([
       { body: 'Still investigating the failing review thread.', user: { login: 'copilot' } },
+    ]),
+    false,
+  );
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: [
+          'The reviewer requested high-level design, key decisions, and checklist details.',
+          '- Still investigating.',
+          'Progress update one.',
+          'Progress update two.',
+        ].join('\n'),
+        user: { login: 'copilot-swe-agent' },
+      },
     ]),
     false,
   );

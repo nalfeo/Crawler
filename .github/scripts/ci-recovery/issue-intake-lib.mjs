@@ -18,6 +18,10 @@ const COPILOT_OPENER_LOGINS = new Set([
   'copilot-swe-agent[bot]',
   'app/copilot-swe-agent',
 ]);
+const PLAN_REQUIREMENT_REVIEWER_LOGINS = new Set([
+  'copilot-pull-request-reviewer',
+  'copilot-pull-request-reviewer[bot]',
+]);
 
 // Exported so callers (e.g. nightly-balance-issue.mjs) can recognize a completed
 // Copilot assignment as durable proof of finished intake without duplicating this
@@ -67,28 +71,40 @@ function extractBulletLines(body) {
     .map((line) => line.replace(/^- /, '').trim());
 }
 
-function hasStructuredPlanContent(body) {
-  const text = stripHtmlComments(body);
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  if (
-    !lower.includes('high-level design') ||
-    !lower.includes('key decisions') ||
-    !lower.includes('checklist')
-  ) {
-    return false;
+function planHeading(line) {
+  const normalized = String(line || '')
+    .trim()
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^\*\*(.+)\*\*$/, '$1')
+    .trim()
+    .toLowerCase();
+  if (['high-level design', 'high-level design and approach'].includes(normalized)) {
+    return 'design';
   }
-  const contentLines = text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter(
-      (line) =>
-        !/^(?:#+\s*|\*\*)?(?:high-level design(?: and approach)?|key decisions(?: and alternatives)?|checklist)\b/i.test(
-          line,
-        ),
-    );
-  return /(^|\n)\s*-\s*(?:\[[ x]\]\s*)?\S+/im.test(text) && contentLines.length >= 3;
+  if (['key decisions', 'key decisions and alternatives'].includes(normalized)) {
+    return 'decisions';
+  }
+  if (normalized === 'checklist') return 'checklist';
+  return null;
+}
+
+function hasStructuredPlanContent(body) {
+  const sections = { design: [], decisions: [], checklist: [] };
+  let currentSection = null;
+  for (const line of stripHtmlComments(body).split('\n')) {
+    const heading = planHeading(line);
+    if (heading) {
+      currentSection = heading;
+      continue;
+    }
+    const content = line.trim();
+    if (currentSection && content) sections[currentSection].push(content);
+  }
+  return (
+    sections.design.length > 0 &&
+    sections.decisions.length > 0 &&
+    sections.checklist.some((line) => /^-\s*(?:\[[ x]\]\s*)?\S+/i.test(line))
+  );
 }
 
 function buildRetroactiveChecklist(prBody) {
@@ -147,9 +163,17 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
 }
 
 export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
-  const text = String(
-    (thread?.comments?.nodes ?? []).map((comment) => String(comment?.body || '')).join('\n'),
-  ).toLowerCase();
+  const rootComment = thread?.comments?.nodes?.[0];
+  const rootLogin = String(rootComment?.author?.login || '').toLowerCase();
+  const rootAssociation = String(rootComment?.authorAssociation || '').toUpperCase();
+  if (
+    !PLAN_REQUIREMENT_REVIEWER_LOGINS.has(rootLogin) &&
+    !TRUSTED_ASSOCIATIONS.has(rootAssociation)
+  ) {
+    return [];
+  }
+
+  const text = String(rootComment?.body || '').toLowerCase();
   const mentionsPlanRequirement =
     text.includes('plan comment') ||
     text.includes('implementation plan') ||
@@ -158,10 +182,10 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
 
   const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
   const explicitMatches = issueNumbers.filter((issueNumber) =>
-    new RegExp(`\\bissue\\s+#?${issueNumber}\\b`, 'i').test(text),
+    new RegExp(`(?:\\bissue\\s+#?|#)${issueNumber}\\b`, 'i').test(text),
   );
   if (explicitMatches.length > 0) return explicitMatches;
-  if (/\bissue\s+#?\d+\b/i.test(text)) return [];
+  if (/(?:\bissue\s+#?|#)\d+\b/i.test(text)) return [];
 
   if (
     issueNumbers.length === 1 &&
