@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b1ddebd2f69cfe4499256cbac7ae109972606ace",
+    "commitDate": "2026-07-18T23:16:32Z",
+    "commitSubject": "feat(sprites): add siege-bow weapon sprite brief (#1539)",
+    "capturedAt": "2026-07-19T00:48:00.766Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29665623982",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/b1ddebd2f69cfe4499256cbac7ae109972606ace.json"
+  },
+  {
     "commit": "7f3982a7fb4e7c880d310c509be050da9093eb77",
     "commitDate": "2026-07-18T23:16:25Z",
     "commitSubject": "Add runtime-keyed crescent-glaive generated icon entry (#1535)",
