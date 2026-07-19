@@ -64,6 +64,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
@@ -717,7 +718,7 @@ if (!isMainThread && workerData != null) {
         error: error instanceof Error ? (error.stack ?? error.message) : String(error),
       } satisfies WorkerTaskFailure);
     });
-} else if (isMainThread) {
+} else if (isMainThread && process.argv[1] != null && fileURLToPath(import.meta.url) === process.argv[1]) {
   main(process.argv).catch((err) => {
     console.error('Fatal:', err instanceof Error ? err.stack : err);
     process.exit(1);

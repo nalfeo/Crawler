@@ -3964,20 +3964,21 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     false,
     'task comment should not advertise a bare Addressed marker',
   );
-  assert.equal(
-    taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
-    false,
-    'task comment should not advertise a SHA-less not-applicable marker',
-  );
   assert.ok(
+    taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
+    'task comment should advertise the canonical not-applicable marker',
+  );
+  assert.equal(
     taskCommentCall.body.body.includes(
       '`✅ Addressed in <post-push-head-sha>: Not applicable — <one-line reason>`',
     ),
-    'task comment should require post-push SHA markers for deterministic non-applicability',
+    false,
+    'task comment should not require SHA-bearing markers for deterministic non-applicability',
   );
-  assert.ok(
+  assert.equal(
     taskCommentCall.body.body.includes('Do NOT use `✅ Not applicable:` as a standalone marker'),
-    'task comment should explicitly reject standalone not-applicable markers',
+    false,
+    'task comment should not prohibit the canonical standalone not-applicable marker',
   );
 });
 
