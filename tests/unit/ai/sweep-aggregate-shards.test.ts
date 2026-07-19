@@ -426,7 +426,11 @@ describe('selectQualifiedWinner', () => {
     const rows = [
       row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
       loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'bow', seed: 1 }),
-      loss({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
+      // Candidate matches the incumbent on both cells (win where incumbent wins,
+      // loss where incumbent loses) => flipsVsIncumbent = 0. Only the win-rate
+      // floor (50% < 90%) should disqualify it, isolating that clause from the
+      // flip check.
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
       loss({ combo: 'a+legacy', configId: 'a', weapon: 'bow', seed: 1 }),
     ];
     const lb = buildLeaderboard(rows, {
