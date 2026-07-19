@@ -203,102 +203,98 @@ describe('Queen Mab arena observation', () => {
     await closeQuietly(browser);
   });
 
-  it(
-    'observes the full two-cast Verdigris Glamour lifecycle in the live combat arena (frames 540, 630, 870, 1170, 1260)',
-    async () => {
-      await loadArenaLab(page);
-      await configureQueenArena(page);
+  it('observes the full two-cast Verdigris Glamour lifecycle in the live combat arena (frames 540, 630, 870, 1170, 1260)', async () => {
+    await loadArenaLab(page);
+    await configureQueenArena(page);
 
-      // ── Phase 1: first telegraph starts at frame 540 ──────────────────────
-      const before = await stepToFrame(page, TELEGRAPH_FRAME - 1);
-      const beforeShot = await page.locator('#lab-canvas canvas').screenshot();
+    // ── Phase 1: first telegraph starts at frame 540 ──────────────────────
+    const before = await stepToFrame(page, TELEGRAPH_FRAME - 1);
+    const beforeShot = await page.locator('#lab-canvas canvas').screenshot();
 
-      const telegraph1 = await stepToFrame(page, TELEGRAPH_FRAME);
-      const telegraph1Shot = await page.locator('#lab-canvas canvas').screenshot();
+    const telegraph1 = await stepToFrame(page, TELEGRAPH_FRAME);
+    const telegraph1Shot = await page.locator('#lab-canvas canvas').screenshot();
 
-      expect(before.frame).toBe(TELEGRAPH_FRAME - 1);
-      expect(before.elapsedMs).toBeCloseTo(9000 - DELTA_MS, 6);
-      expect(before.cueCount).toBe(0);
-      expect(before.announcementText).toBeNull();
-      expect(before.tarnishedActive).toBe(false);
+    expect(before.frame).toBe(TELEGRAPH_FRAME - 1);
+    expect(before.elapsedMs).toBeCloseTo(9000 - DELTA_MS, 6);
+    expect(before.cueCount).toBe(0);
+    expect(before.announcementText).toBeNull();
+    expect(before.tarnishedActive).toBe(false);
 
-      expect(telegraph1.frame).toBe(TELEGRAPH_FRAME);
-      expect(telegraph1.elapsedMs).toBeCloseTo(9000, 6);
-      expect(telegraph1.cueCount).toBe(1);
-      expect(telegraph1.announcementText).toBe(QUEEN_ANNOUNCEMENT);
-      expect(telegraph1.graphicsCount).toBeGreaterThan(before.graphicsCount);
-      expect(telegraph1.tarnishedActive).toBe(false); // Telegraph visible; no hit yet
+    expect(telegraph1.frame).toBe(TELEGRAPH_FRAME);
+    expect(telegraph1.elapsedMs).toBeCloseTo(9000, 6);
+    expect(telegraph1.cueCount).toBe(1);
+    expect(telegraph1.announcementText).toBe(QUEEN_ANNOUNCEMENT);
+    expect(telegraph1.graphicsCount).toBeGreaterThan(before.graphicsCount);
+    expect(telegraph1.tarnishedActive).toBe(false); // Telegraph visible; no hit yet
 
-      const telegraphDiff = countChangedPixels(beforeShot, telegraph1Shot, {
-        x: GAME_W * 0.3,
-        y: GAME_H * 0.3,
-        w: GAME_W * 0.4,
-        h: GAME_H * 0.4,
-      });
-      const bannerDiff = countChangedPixels(beforeShot, telegraph1Shot, {
-        x: GAME_W * 0.25,
-        y: 0,
-        w: GAME_W * 0.5,
-        h: GAME_H * 0.16,
-      });
-      expect(telegraphDiff).toBeGreaterThan(0.002);
-      expect(bannerDiff).toBeGreaterThan(0.01);
+    const telegraphDiff = countChangedPixels(beforeShot, telegraph1Shot, {
+      x: GAME_W * 0.3,
+      y: GAME_H * 0.3,
+      w: GAME_W * 0.4,
+      h: GAME_H * 0.4,
+    });
+    const bannerDiff = countChangedPixels(beforeShot, telegraph1Shot, {
+      x: GAME_W * 0.25,
+      y: 0,
+      w: GAME_W * 0.5,
+      h: GAME_H * 0.16,
+    });
+    expect(telegraphDiff).toBeGreaterThan(0.002);
+    expect(bannerDiff).toBeGreaterThan(0.01);
 
-      // ── Phase 2: first resolution at frame 630 — Tarnished applied ────────
-      const resolution1 = await stepToFrame(page, RESOLUTION_FRAME);
-      const resolution1Shot = await page.locator('#lab-canvas canvas').screenshot();
+    // ── Phase 2: first resolution at frame 630 — Tarnished applied ────────
+    const resolution1 = await stepToFrame(page, RESOLUTION_FRAME);
+    const resolution1Shot = await page.locator('#lab-canvas canvas').screenshot();
 
-      expect(resolution1.frame).toBe(RESOLUTION_FRAME);
-      expect(resolution1.elapsedMs).toBeCloseTo(10_500, 6);
-      expect(resolution1.cueCount).toBe(0); // Cue resolved; no active telegraph
-      expect(resolution1.tarnishedActive).toBe(true); // Player in 12ft AOE; Tarnished applied
+    expect(resolution1.frame).toBe(RESOLUTION_FRAME);
+    expect(resolution1.elapsedMs).toBeCloseTo(10_500, 6);
+    expect(resolution1.cueCount).toBe(0); // Cue resolved; no active telegraph
+    expect(resolution1.tarnishedActive).toBe(true); // Player in 12ft AOE; Tarnished applied
 
-      // Resolution burst should produce a visible render change in the centre.
-      const resolutionDiff = countChangedPixels(telegraph1Shot, resolution1Shot, {
-        x: GAME_W * 0.3,
-        y: GAME_H * 0.3,
-        w: GAME_W * 0.4,
-        h: GAME_H * 0.4,
-      });
-      expect(resolutionDiff).toBeGreaterThan(0.002);
+    // Resolution burst should produce a visible render change in the centre.
+    const resolutionDiff = countChangedPixels(telegraph1Shot, resolution1Shot, {
+      x: GAME_W * 0.3,
+      y: GAME_H * 0.3,
+      w: GAME_W * 0.4,
+      h: GAME_H * 0.4,
+    });
+    expect(resolutionDiff).toBeGreaterThan(0.002);
 
-      // ── Phase 3: Tarnished expires at frame 870 — indicator cleaned up ────
-      const tarnishedExpiry = await stepToFrame(page, TARNISHED_EXPIRY_FRAME);
+    // ── Phase 3: Tarnished expires at frame 870 — indicator cleaned up ────
+    const tarnishedExpiry = await stepToFrame(page, TARNISHED_EXPIRY_FRAME);
 
-      expect(tarnishedExpiry.frame).toBe(TARNISHED_EXPIRY_FRAME);
-      expect(tarnishedExpiry.elapsedMs).toBeCloseTo(14_500, 6);
-      expect(tarnishedExpiry.tarnishedActive).toBe(false); // 4000ms elapsed; debuff expired
-      // Tarnish indicator Graphics should have been cleaned up from the scene.
-      expect(tarnishedExpiry.graphicsCount).toBeLessThan(resolution1.graphicsCount);
+    expect(tarnishedExpiry.frame).toBe(TARNISHED_EXPIRY_FRAME);
+    expect(tarnishedExpiry.elapsedMs).toBeCloseTo(14_500, 6);
+    expect(tarnishedExpiry.tarnishedActive).toBe(false); // 4000ms elapsed; debuff expired
+    // Tarnish indicator Graphics should have been cleaned up from the scene.
+    expect(tarnishedExpiry.graphicsCount).toBeLessThan(resolution1.graphicsCount);
 
-      // ── Phase 4: second telegraph at frame 1170 ───────────────────────────
-      const telegraph2 = await stepToFrame(page, SECOND_TELEGRAPH_FRAME);
-      const telegraph2Shot = await page.locator('#lab-canvas canvas').screenshot();
+    // ── Phase 4: second telegraph at frame 1170 ───────────────────────────
+    const telegraph2 = await stepToFrame(page, SECOND_TELEGRAPH_FRAME);
+    const telegraph2Shot = await page.locator('#lab-canvas canvas').screenshot();
 
-      expect(telegraph2.frame).toBe(SECOND_TELEGRAPH_FRAME);
-      expect(telegraph2.elapsedMs).toBeCloseTo(19_500, 6);
-      expect(telegraph2.cueCount).toBe(1);
-      expect(telegraph2.announcementText).toBe(QUEEN_ANNOUNCEMENT);
-      expect(telegraph2.tarnishedActive).toBe(false); // Tarnished expired well before this
+    expect(telegraph2.frame).toBe(SECOND_TELEGRAPH_FRAME);
+    expect(telegraph2.elapsedMs).toBeCloseTo(19_500, 6);
+    expect(telegraph2.cueCount).toBe(1);
+    expect(telegraph2.announcementText).toBe(QUEEN_ANNOUNCEMENT);
+    expect(telegraph2.tarnishedActive).toBe(false); // Tarnished expired well before this
 
-      // ── Phase 5: second resolution at frame 1260 — Tarnished re-applied ──
-      const resolution2 = await stepToFrame(page, SECOND_RESOLUTION_FRAME);
-      const resolution2Shot = await page.locator('#lab-canvas canvas').screenshot();
+    // ── Phase 5: second resolution at frame 1260 — Tarnished re-applied ──
+    const resolution2 = await stepToFrame(page, SECOND_RESOLUTION_FRAME);
+    const resolution2Shot = await page.locator('#lab-canvas canvas').screenshot();
 
-      expect(resolution2.frame).toBe(SECOND_RESOLUTION_FRAME);
-      expect(resolution2.elapsedMs).toBeCloseTo(21_000, 6);
-      expect(resolution2.cueCount).toBe(0); // Second cue resolved
-      expect(resolution2.tarnishedActive).toBe(true); // Player re-Tarnished by second cast
+    expect(resolution2.frame).toBe(SECOND_RESOLUTION_FRAME);
+    expect(resolution2.elapsedMs).toBeCloseTo(21_000, 6);
+    expect(resolution2.cueCount).toBe(0); // Second cue resolved
+    expect(resolution2.tarnishedActive).toBe(true); // Player re-Tarnished by second cast
 
-      // Second resolution burst should also produce a visible render change.
-      const resolution2Diff = countChangedPixels(telegraph2Shot, resolution2Shot, {
-        x: GAME_W * 0.3,
-        y: GAME_H * 0.3,
-        w: GAME_W * 0.4,
-        h: GAME_H * 0.4,
-      });
-      expect(resolution2Diff).toBeGreaterThan(0.002);
-    },
-    120_000,
-  );
+    // Second resolution burst should also produce a visible render change.
+    const resolution2Diff = countChangedPixels(telegraph2Shot, resolution2Shot, {
+      x: GAME_W * 0.3,
+      y: GAME_H * 0.3,
+      w: GAME_W * 0.4,
+      h: GAME_H * 0.4,
+    });
+    expect(resolution2Diff).toBeGreaterThan(0.002);
+  }, 120_000);
 });
