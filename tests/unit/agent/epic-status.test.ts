@@ -210,7 +210,6 @@ function stackedFixture(): {
         repository: 'nalfeo/Crawler',
         branch: 'nalfeo-floor-2-epic-control',
         pull_request: {
-          number: 1271,
           url: 'https://github.com/nalfeo/Crawler/pull/1271',
         },
         head_sha: dependencyHead,
@@ -227,7 +226,6 @@ function stackedFixture(): {
       branch: 'nalfeo-floor-2-equipment-contracts',
       base_branch: 'nalfeo-floor-2-epic-control',
       pull_request: {
-        number: 1276,
         url: 'https://github.com/nalfeo/Crawler/pull/1276',
       },
       observed_pr_state: 'OPEN',
@@ -291,7 +289,7 @@ function makeStackedAuditRunner(
 ): GithubRunner {
   const dependency = stacked.dependency_pull_requests[0]!;
   const defaultDependencyPull = {
-    number: dependency.pull_request.number,
+    number: Number(dependency.pull_request.url.split('/').at(-1)),
     state: 'open',
     merged: false,
     merge_commit_sha: null,
@@ -301,7 +299,7 @@ function makeStackedAuditRunner(
     base: { ref: dependency.base_branch },
   };
   const defaultDependentPull = {
-    number: stacked.dependent.pull_request?.number ?? 1276,
+    number: Number(stacked.dependent.pull_request?.url.split('/').at(-1) ?? 1276),
     state: 'open',
     merged: false,
     merge_commit_sha: null,
@@ -403,7 +401,6 @@ describe('Floor 2 equipment epic status', () => {
       repository: 'nalfeo/Crawler',
       branch: 'nalfeo-floor-2-stacked-work-protocol',
       pull_request: {
-        number: 1290,
         url: 'https://github.com/nalfeo/Crawler/pull/1290',
       },
       head_sha: auxiliaryHead,
@@ -556,10 +553,22 @@ describe('Floor 2 equipment epic status', () => {
       stacked.owner.lease_expires_at = '2026-07-17T21:59:59.000Z';
     });
     expectStackedDiagnostic('stacked.owner-heartbeat-stale', ({ stacked }) => {
+      // claimed_at must be far enough in the past so heartbeat_at can be both
+      // after it and still more than 48 h before NOW.
+      stacked.owner.claimed_at = new Date(NOW.getTime() - 60 * 3_600_000).toISOString();
       stacked.owner.heartbeat_at = new Date(NOW.getTime() - 49 * 3_600_000).toISOString();
     });
     expectStackedDiagnostic('stacked.owner-heartbeat-future', ({ stacked }) => {
       stacked.owner.heartbeat_at = new Date(NOW.getTime() + 3_600_000).toISOString();
+    });
+    // Thread 1 regression: claimed_at and heartbeat chronology enforcement
+    expectStackedDiagnostic('stacked.owner-claimed-future', ({ stacked }) => {
+      stacked.owner.claimed_at = new Date(NOW.getTime() + 3_600_000).toISOString();
+    });
+    expectStackedDiagnostic('stacked.owner-heartbeat-before-claim', ({ stacked }) => {
+      stacked.owner.heartbeat_at = new Date(
+        Date.parse(stacked.owner.claimed_at) - 1000,
+      ).toISOString();
     });
     expectStackedDiagnostic('stacked.dependent-pr-missing', ({ stacked }) => {
       stacked.dependent.pull_request = null;
@@ -570,12 +579,55 @@ describe('Floor 2 equipment epic status', () => {
     expectStackedDiagnostic('stacked.dependent-pr-closed', ({ stacked }) => {
       stacked.dependent.observed_pr_state = 'CLOSED';
     });
+    // Thread 4 regression: MERGED must also be rejected offline
+    expectStackedDiagnostic('stacked.dependent-pr-closed', ({ stacked }) => {
+      stacked.dependent.observed_pr_state = 'MERGED';
+    });
     expectStackedDiagnostic('stacked.dependent-branch-drift', ({ stacked }) => {
       stacked.dependent.observed_head_branch = 'wrong-dependent-branch';
     });
     expectStackedDiagnostic('stacked.dependent-base-drift', ({ stacked }) => {
       stacked.dependent.observed_base_branch = 'wrong-dependent-base';
     });
+    // Thread 8 regression: non-null observations without a backing PR
+    expectStackedDiagnostic('stacked.dependent-observations-without-pr', ({ stacked }) => {
+      stacked.state = 'stacked_in_progress';
+      stacked.dependent.pull_request = null;
+      // observed_pr_state remains 'OPEN' — an unverifiable claim with no PR
+    });
+  });
+
+  it('rejects wrong dependent base when stack base is observed merged', () => {
+    // Thread 5 regression: after mergedStackBase, base must be the stack-base branch or main.
+    const mergeCommit = 'f'.repeat(40);
+    expectStackedDiagnostic('stacked.wrong-base-after-merge', ({ stacked }) => {
+      const dep = stacked.dependency_pull_requests[0]!;
+      dep.observed_pr_state = 'MERGED';
+      dep.observed_merge_commit = mergeCommit;
+      stacked.rebase_to_main = {
+        pending: true,
+        pre_rebase_dependent_head_sha: stacked.dependent.observed_head_sha,
+        prerequisite_merge_commit: mergeCommit,
+      };
+      // Use a base that is neither the stack-base branch nor main
+      stacked.dependent.base_branch = 'release/foo';
+      stacked.dependent.observed_base_branch = 'release/foo';
+    });
+    // Sanity: main is allowed after merge (no error from wrong-base-after-merge)
+    const cleanFixture = stackedFixture();
+    const dep = cleanFixture.stacked.dependency_pull_requests[0]!;
+    dep.observed_pr_state = 'MERGED';
+    dep.observed_merge_commit = mergeCommit;
+    cleanFixture.stacked.rebase_to_main = {
+      pending: true,
+      pre_rebase_dependent_head_sha: cleanFixture.stacked.dependent.observed_head_sha,
+      prerequisite_merge_commit: mergeCommit,
+    };
+    cleanFixture.stacked.dependent.base_branch = 'main';
+    cleanFixture.stacked.dependent.observed_base_branch = 'nalfeo-floor-2-epic-control'; // not yet main on GitHub
+    expect(validate(cleanFixture.state).errors.map((e) => e.code)).not.toContain(
+      'stacked.wrong-base-after-merge',
+    );
   });
 
   it('treats the dependent head as a nullable observation cache, not an exact invariant', () => {
@@ -662,8 +714,8 @@ describe('Floor 2 equipment epic status', () => {
     const { state, stacked } = stackedFixture();
     const dependencyHead = 'd'.repeat(40);
     const liveStacked = structuredClone(stacked);
-    liveStacked.owner.claimed_at = '2026-07-17T22:25:00.000Z';
-    liveStacked.owner.heartbeat_at = '2026-07-17T23:00:00.000Z';
+    liveStacked.owner.claimed_at = '2026-07-17T21:00:00.000Z';
+    liveStacked.owner.heartbeat_at = '2026-07-17T21:30:00.000Z';
     liveStacked.owner.lease_expires_at = '2026-07-19T23:00:00.000Z';
     const runner: GithubRunner = {
       get(path) {
@@ -839,7 +891,7 @@ describe('Floor 2 equipment epic status', () => {
       state,
       makeStackedAuditRunner(stacked, {
         dependencyPull: {
-          number: dependency.pull_request.number,
+          number: Number(dependency.pull_request.url.split('/').at(-1)),
           state: 'closed',
           merged: false,
           merge_commit_sha: null,
@@ -870,7 +922,7 @@ describe('Floor 2 equipment epic status', () => {
       prerequisite.state,
       makeStackedAuditRunner(prerequisite.stacked, {
         dependencyPull: {
-          number: dependency.pull_request.number,
+          number: Number(dependency.pull_request.url.split('/').at(-1)),
           state: 'closed',
           merged: true,
           merge_commit_sha: mergeCommit,
@@ -910,6 +962,55 @@ describe('Floor 2 equipment epic status', () => {
     expect(dependentAudit.errors.map((error) => error.code)).not.toContain(
       'github.stacked-dependent-not-open',
     );
+  });
+
+  it('always raises dependent-not-open for a MERGED dependent even when the cache already shows MERGED', () => {
+    // Thread 4 regression: MERGED is an active lifecycle problem requiring Producer
+    // clearance and must not be suppressed by idempotency, unlike CLOSED.
+    const fixture = stackedFixture();
+    fixture.stacked.dependent.observed_pr_state = 'MERGED';
+    const mergeCommit = '9'.repeat(40);
+    const audit = auditGithub(
+      fixture.state,
+      makeStackedAuditRunner(fixture.stacked, {
+        dependentPull: {
+          number: 1276,
+          state: 'closed',
+          merged: true,
+          merge_commit_sha: mergeCommit,
+          merged_at: '2026-07-17T21:50:00.000Z',
+          html_url: 'https://github.com/nalfeo/Crawler/pull/1276',
+          head: {
+            sha: fixture.stacked.dependent.observed_head_sha,
+            ref: fixture.stacked.dependent.branch,
+          },
+          base: { ref: fixture.stacked.dependent.base_branch },
+        },
+      }),
+      NOW,
+    );
+    expect(audit.errors.map((error) => error.code)).toContain('github.stacked-dependent-not-open');
+  });
+
+  it('proposes to null stale dependent observations when no dependent PR exists', () => {
+    // Thread 8 regression: GitHub audit must propose nulling stale observation cache
+    // when stacked_in_progress has no dependent PR.
+    const fixture = stackedFixture();
+    fixture.stacked.state = 'stacked_in_progress';
+    fixture.stacked.dependent.pull_request = null;
+    // Leave stale observations from a prior stacked_pr_open phase
+    // (observed_pr_state = 'OPEN', observed_head_sha etc. all non-null)
+
+    const audit = auditGithub(fixture.state, makeStackedAuditRunner(fixture.stacked, {}), NOW);
+
+    const patchPaths = audit.proposal.repo_patch.map((p) => p.path);
+    expect(patchPaths.some((p) => p.includes('/dependent/observed_pr_state'))).toBe(true);
+    expect(patchPaths.some((p) => p.includes('/dependent/observed_head_sha'))).toBe(true);
+    expect(patchPaths.some((p) => p.includes('/dependent/observed_head_branch'))).toBe(true);
+    expect(patchPaths.some((p) => p.includes('/dependent/observed_base_branch'))).toBe(true);
+    expect(
+      audit.proposal.repo_patch.find((p) => p.path.includes('/dependent/observed_pr_state')),
+    ).toMatchObject({ value: null });
   });
 
   it('audits dependent PR drift and closure without mutating lifecycle', () => {
@@ -1095,11 +1196,14 @@ describe('Floor 2 equipment epic status', () => {
     expect(audit.errors.map((error) => error.code)).not.toContain('github.stacked-owner-missing');
   });
 
-  it('lets the newest stacked heartbeat expire instead of reviving an older lease', () => {
+  it('rejects a future-dated stacked heartbeat and retains the valid older owner', () => {
+    // Thread 2 regression: a claim with heartbeat_at > now must be filtered with
+    // github.stacked-future-heartbeat before it can influence claim selection.
+    // The chronologically valid older comment must survive and keep the owner active.
     const fixture = stackedFixture();
-    const expired = structuredClone(fixture.stacked);
-    expired.owner.heartbeat_at = '2026-07-17T22:30:00.000Z';
-    expired.owner.lease_expires_at = '2026-07-17T21:59:59.000Z';
+    const futureHeartbeat = structuredClone(fixture.stacked);
+    futureHeartbeat.owner.heartbeat_at = '2026-07-17T22:30:00.000Z'; // 30 min future from NOW
+    futureHeartbeat.owner.lease_expires_at = '2026-07-17T21:59:59.000Z'; // expired lease
     const audit = auditGithub(
       fixture.state,
       makeStackedAuditRunner(fixture.stacked, {
@@ -1107,22 +1211,22 @@ describe('Floor 2 equipment epic status', () => {
           {
             body: stackedClaimBody(fixture.stacked),
             author_association: 'OWNER',
-            html_url: 'https://github.com/nalfeo/Crawler/issues/1279#issuecomment-old',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279#issuecomment-valid',
           },
           {
-            body: stackedClaimBody(expired),
+            body: stackedClaimBody(futureHeartbeat),
             author_association: 'OWNER',
-            html_url: 'https://github.com/nalfeo/Crawler/issues/1279#issuecomment-expired',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1279#issuecomment-future',
           },
         ],
       }),
       NOW,
     );
 
-    expect(audit.errors.map((error) => error.code)).toContain('github.stacked-owner-missing');
-    expect(audit.proposal.repo_patch.map((patch) => patch.path)).not.toEqual(
-      expect.arrayContaining([expect.stringContaining('/stacked_work/owner/')]),
-    );
+    // The future-dated heartbeat is diagnosed and excluded
+    expect(audit.errors.map((error) => error.code)).toContain('github.stacked-future-heartbeat');
+    // The valid older claim still makes the owner active — no missing-owner error
+    expect(audit.errors.map((error) => error.code)).not.toContain('github.stacked-owner-missing');
   });
 
   it('lets a trusted BLOCKED event revoke live stacked ownership before metadata clears', () => {
@@ -1298,6 +1402,20 @@ describe('Floor 2 equipment epic status', () => {
     expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.scope');
   });
 
+  it('rejects whitespace-only stacked owner identity fields', () => {
+    // Thread 6 regression: stacked owner claimant/session/branch must use
+    // nonEmptyTrimmedString to reject semantically empty values.
+    expectStackedDiagnostic('state.schema', ({ stacked }) => {
+      stacked.owner.claimant = '   ';
+    });
+    expectStackedDiagnostic('state.schema', ({ stacked }) => {
+      stacked.owner.session = '   ';
+    });
+    expectStackedDiagnostic('state.schema', ({ stacked }) => {
+      stacked.owner.branch = '   ';
+    });
+  });
+
   it('rejects mismatched issue and PR number/url pairs', () => {
     const state = cloneState();
     state.github.parent_issue = {
@@ -1318,23 +1436,27 @@ describe('Floor 2 equipment epic status', () => {
     expect(messages.some((message) => message.includes('PR URL does not match number'))).toBe(true);
   });
 
-  it('rejects mismatched stacked PR number/url pairs on dependency and dependent', () => {
-    // dependency_pull_requests[0].pull_request uses prIdentitySchema
-    expectStackedDiagnostic('state.schema', ({ stacked }) => {
-      stacked.dependency_pull_requests[0]!.pull_request = {
-        number: 1271,
-        url: 'https://github.com/nalfeo/Crawler/pull/9999',
-      };
+  it('uses canonical URLs as the sole stacked PR identity in runtime and JSON Schema', () => {
+    const fixture = stackedFixture();
+    expect(validate(fixture.state).errors).toEqual([]);
+    expect(fixture.stacked.dependency_pull_requests[0]!.pull_request).toEqual({
+      url: 'https://github.com/nalfeo/Crawler/pull/1271',
     });
-    // dependent.pull_request also uses prIdentitySchema
-    expectStackedDiagnostic('state.schema', ({ stacked }) => {
-      if (stacked.dependent.pull_request) {
-        stacked.dependent.pull_request = {
-          number: 1276,
-          url: 'https://github.com/nalfeo/Crawler/pull/9999',
+
+    const drifted = structuredClone(SCHEMA) as {
+      $defs: {
+        prIdentity: {
+          required: string[];
+          properties: Record<string, unknown>;
         };
-      }
-    });
+      };
+    };
+    drifted.$defs.prIdentity.required.push('number');
+    drifted.$defs.prIdentity.properties.number = { type: 'integer', minimum: 1 };
+
+    expect(validate(cloneState(), PLAN, drifted).errors.map((error) => error.code)).toContain(
+      'schema.contract-parity',
+    );
   });
 
   it('rejects unverifiable required evidence paths for validated nodes', () => {

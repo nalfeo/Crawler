@@ -338,8 +338,8 @@ A blocked node may carry `stacked_work` only when all of the following hold:
    `STACKED-WORK` owner comment whose node/session/branch matches state;
 3. every incomplete direct prerequisite is represented once by an open PR
    snapshot, and exactly one PR is marked as the branch's stack base;
-4. each dependency snapshot matches the prerequisite node's cached PR number,
-   URL, and full head SHA, while GitHub audit independently checks current
+4. each dependency snapshot matches the prerequisite node's canonical PR URL
+   and full head SHA, while GitHub audit derives the number from that URL and checks current
    PR/head/base facts;
 5. the dependent branch and open PR, when present, have stable identity and are
    based on the recorded stack-base branch;

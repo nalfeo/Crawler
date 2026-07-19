@@ -110,19 +110,14 @@ const statePrRefSchema = prRefSchema
   });
 const prIdentitySchema = z
   .object({
-    number: z.number().int().positive(),
     url: z.string().regex(GITHUB_PR_URL),
   })
-  .strict()
-  .superRefine((data, ctx) => {
-    if (!data.url.endsWith(`/${data.number}`)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `PR URL does not match number ${data.number}`,
-        path: ['url'],
-      });
-    }
-  });
+  .strict();
+type PrIdentity = z.infer<typeof prIdentitySchema>;
+
+function prNumberFromIdentity(identity: PrIdentity): number {
+  return Number(identity.url.slice(identity.url.lastIndexOf('/') + 1));
+}
 const observedPrStateSchema = z.enum(['OPEN', 'CLOSED', 'MERGED']).nullable();
 const evidenceSchema = z
   .object({
@@ -162,9 +157,9 @@ const stackedWorkSchema = z
       .object({
         node_id: z.string().regex(NODE_ID_PATTERN),
         issue: stateIssueRefSchema,
-        claimant: z.string().min(1),
-        session: z.string().min(1),
-        branch: z.string().min(1),
+        claimant: nonEmptyTrimmedString,
+        session: nonEmptyTrimmedString,
+        branch: nonEmptyTrimmedString,
         claimed_at: z.string().datetime({ offset: true }),
         lease_expires_at: z.string().datetime({ offset: true }),
         heartbeat_at: z.string().datetime({ offset: true }),
@@ -1037,16 +1032,14 @@ function validateCommittedSchema(
     prIdentity && isRecord(prIdentity.properties) && isRecord(prIdentity.properties.url)
       ? prIdentity.properties.url
       : null;
-  const prIdentityNumber =
-    prIdentity && isRecord(prIdentity.properties) && isRecord(prIdentity.properties.number)
-      ? prIdentity.properties.number
-      : null;
+  const prIdentityProperties =
+    prIdentity && isRecord(prIdentity.properties) ? prIdentity.properties : null;
   if (
     issueUrl?.pattern !== '^https://github\\.com/nalfeo/Crawler/issues/[1-9][0-9]*$' ||
     prUrl?.pattern !== '^https://github\\.com/nalfeo/Crawler/pull/[1-9][0-9]*$' ||
     prIdentityUrl?.pattern !== '^https://github\\.com/nalfeo/Crawler/pull/[1-9][0-9]*$' ||
-    prIdentityNumber?.type !== 'integer' ||
-    prIdentityNumber.minimum !== 1
+    !prIdentityProperties ||
+    Object.prototype.hasOwnProperty.call(prIdentityProperties, 'number')
   ) {
     result.errors.push({
       code: 'schema.contract-parity',
@@ -1056,7 +1049,7 @@ function validateCommittedSchema(
   const expectedStackedDefinitions: ReadonlyArray<
     readonly [Record<string, unknown> | null, ReadonlyArray<string>, string]
   > = [
-    [prIdentity, ['number', 'url'], 'prIdentity'],
+    [prIdentity, ['url'], 'prIdentity'],
     [
       stackedOwner,
       [
@@ -1674,6 +1667,14 @@ function validateStackedWork(
       message: `${node.node_id} stacked owner branch or lease metadata is inconsistent`,
     });
   }
+  const ownerClaimedMs = Date.parse(stacked.owner.claimed_at);
+  if (ownerClaimedMs > now.getTime()) {
+    result.errors.push({
+      code: 'stacked.owner-claimed-future',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner claimed_at is in the future`,
+    });
+  }
   if (Date.parse(stacked.owner.lease_expires_at) <= now.getTime()) {
     result.errors.push({
       code: 'stacked.owner-expired',
@@ -1683,7 +1684,13 @@ function validateStackedWork(
   }
   const maxOwnershipHeartbeatMs = state.claim_policy.maximum_without_heartbeat_hours * 3_600_000;
   const ownerHeartbeatMs = Date.parse(stacked.owner.heartbeat_at);
-  if (ownerHeartbeatMs > now.getTime()) {
+  if (ownerHeartbeatMs < ownerClaimedMs) {
+    result.errors.push({
+      code: 'stacked.owner-heartbeat-before-claim',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner heartbeat_at predates claimed_at`,
+    });
+  } else if (ownerHeartbeatMs > now.getTime()) {
     result.errors.push({
       code: 'stacked.owner-heartbeat-future',
       node_id: node.node_id,
@@ -1711,12 +1718,36 @@ function validateStackedWork(
       message: `${node.node_id} has a dependent PR but state is stacked_in_progress`,
     });
   }
-  if (stacked.dependent.observed_pr_state === 'CLOSED') {
+  if (
+    stacked.dependent.observed_pr_state === 'CLOSED' ||
+    stacked.dependent.observed_pr_state === 'MERGED'
+  ) {
     result.errors.push({
       code: 'stacked.dependent-pr-closed',
       node_id: node.node_id,
-      message: `${node.node_id} dependent PR is observed closed without merge`,
+      message:
+        stacked.dependent.observed_pr_state === 'MERGED'
+          ? `${node.node_id} dependent PR is observed merged; Producer must clear stacked metadata via normal handoff`
+          : `${node.node_id} dependent PR is observed closed without merge`,
     });
+  }
+  // When no dependent PR exists, all observation fields must remain null.
+  // Offline validation trusts cached values, so a non-null observation without
+  // a backing PR is an unverifiable claim that can bypass the rebase proof.
+  if (!stacked.dependent.pull_request) {
+    const nonNullDependentObservations = [
+      stacked.dependent.observed_pr_state,
+      stacked.dependent.observed_head_sha,
+      stacked.dependent.observed_head_branch,
+      stacked.dependent.observed_base_branch,
+    ].filter((v) => v !== null);
+    if (nonNullDependentObservations.length > 0) {
+      result.errors.push({
+        code: 'stacked.dependent-observations-without-pr',
+        node_id: node.node_id,
+        message: `${node.node_id} has non-null dependent observations but no dependent PR to verify them against`,
+      });
+    }
   }
   if (
     stacked.dependent.observed_head_branch &&
@@ -1791,7 +1822,7 @@ function validateStackedWork(
         continue;
       }
       if (
-        dependency.github.pr.number !== dependencySnapshot.pull_request.number ||
+        dependency.github.pr.number !== prNumberFromIdentity(dependencySnapshot.pull_request) ||
         dependency.github.pr.url !== dependencySnapshot.pull_request.url ||
         dependency.github.pr.head_sha !== dependencySnapshot.head_sha
       ) {
@@ -1872,6 +1903,17 @@ function validateStackedWork(
         code: 'stacked.wrong-base-branch',
         node_id: node.node_id,
         message: `${node.node_id} dependent branch is not based on ${stackBase.branch}`,
+      });
+    }
+    if (
+      mergedStackBase &&
+      stacked.dependent.base_branch !== stackBase.branch &&
+      stacked.dependent.base_branch !== state.stacked_work_policy.main_branch
+    ) {
+      result.errors.push({
+        code: 'stacked.wrong-base-after-merge',
+        node_id: node.node_id,
+        message: `${node.node_id} dependent base after stack-base merge must be ${stackBase.branch} or ${state.stacked_work_policy.main_branch}`,
       });
     }
   }
@@ -2914,7 +2956,8 @@ export function auditGithub(
     const nodeIndex = state.nodes.indexOf(node);
     for (const [dependencyIndex, dependency] of stacked.dependency_pull_requests.entries()) {
       try {
-        const pull = readStackedPull(dependency.pull_request.number);
+        const dependencyPrNumber = prNumberFromIdentity(dependency.pull_request);
+        const pull = readStackedPull(dependencyPrNumber);
         const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
         const observedMergeCommit = pull.merged ? pull.merge_commit_sha : null;
         const observations: ReadonlyArray<{
@@ -2986,17 +3029,39 @@ export function auditGithub(
         errors.push({
           code: 'github.stacked-dependency-audit',
           node_id: node.node_id,
-          message: `Could not audit stacked prerequisite PR #${dependency.pull_request.number}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          message: `Could not audit stacked prerequisite PR #${prNumberFromIdentity(
+            dependency.pull_request,
+          )}: ${error instanceof Error ? error.message : String(error)}`,
         });
       }
     }
 
     const dependentPr = stacked.dependent.pull_request;
-    if (!dependentPr) continue;
+    if (!dependentPr) {
+      // When there is no dependent PR (stacked_in_progress), all dependent
+      // observation fields must be null. Propose to clear any stale cached values
+      // so offline validation cannot trust unverified observations.
+      const dependentNullFields = [
+        'observed_pr_state',
+        'observed_head_sha',
+        'observed_head_branch',
+        'observed_base_branch',
+      ] as const;
+      for (const field of dependentNullFields) {
+        if (stacked.dependent[field] !== null) {
+          repoPatch.push({
+            op: 'replace',
+            path: `/nodes/${nodeIndex}/stacked_work/dependent/${field}`,
+            value: null,
+            reason: `No dependent PR exists; clearing stale ${field} observation for ${node.node_id}`,
+          });
+        }
+      }
+      continue;
+    }
     try {
-      const pull = readStackedPull(dependentPr.number);
+      const dependentPrNumber = prNumberFromIdentity(dependentPr);
+      const pull = readStackedPull(dependentPrNumber);
       const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
       const observations: ReadonlyArray<{
         readonly field: string;
@@ -3043,7 +3108,20 @@ export function auditGithub(
           message: `Dependent PR #${pull.number} no longer matches the recorded branch/base identity`,
         });
       }
-      if (observedState !== 'OPEN' && stacked.dependent.observed_pr_state !== observedState) {
+      // Always surface a MERGED dependent PR as an error, even when the cache
+      // already records MERGED, because MERGED is an active lifecycle problem
+      // requiring Producer clearance — unlike CLOSED which is idempotent once
+      // recorded.
+      if (observedState === 'MERGED') {
+        errors.push({
+          code: 'github.stacked-dependent-not-open',
+          node_id: node.node_id,
+          message: `Dependent PR #${pull.number} is MERGED; Producer must clear stacked metadata via normal handoff`,
+        });
+      } else if (
+        observedState !== 'OPEN' &&
+        stacked.dependent.observed_pr_state !== observedState
+      ) {
         errors.push({
           code: 'github.stacked-dependent-not-open',
           node_id: node.node_id,
@@ -3054,7 +3132,7 @@ export function auditGithub(
       errors.push({
         code: 'github.stacked-dependent-audit',
         node_id: node.node_id,
-        message: `Could not audit stacked dependent PR #${dependentPr.number}: ${
+        message: `Could not audit stacked dependent PR #${prNumberFromIdentity(dependentPr)}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       });
@@ -3191,6 +3269,16 @@ export function auditGithub(
 
   const stackedClaimsByNode = new Map<string, Map<string, ParsedStackedClaim>>();
   for (const claim of stackedClaims) {
+    // Reject future heartbeats: they are chronologically invalid and would
+    // supersede all valid claims until that future time.
+    if (Date.parse(claim.heartbeatAt) > now.getTime()) {
+      errors.push({
+        code: 'github.stacked-future-heartbeat',
+        node_id: claim.nodeId,
+        message: `STACKED-WORK claim for ${claim.nodeId} has a future heartbeat_at (${claim.heartbeatAt}); skipping as invalid`,
+      });
+      continue;
+    }
     const byOwner = stackedClaimsByNode.get(claim.nodeId) ?? new Map();
     const ownerKey = `${claim.claimant}\u0000${claim.session}`;
     const prior = byOwner.get(ownerKey);

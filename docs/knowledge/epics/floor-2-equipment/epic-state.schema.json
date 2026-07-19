@@ -472,12 +472,8 @@
     "prIdentity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["number", "url"],
+      "required": ["url"],
       "properties": {
-        "number": {
-          "type": "integer",
-          "minimum": 1
-        },
         "url": {
           "type": "string",
           "pattern": "^https://github\\.com/nalfeo/Crawler/pull/[1-9][0-9]*$"
@@ -639,15 +635,18 @@
         },
         "claimant": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?!\\s*$).+"
         },
         "session": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?!\\s*$).+"
         },
         "branch": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?!\\s*$).+"
         },
         "claimed_at": {
           "type": "string",

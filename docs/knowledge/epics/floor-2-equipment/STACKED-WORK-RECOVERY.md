@@ -36,8 +36,8 @@ The GitHub audit is read-only. Review every proposed `repo_patch` and
 
 ## Refreshing an active stack
 
-1. Fetch every recorded prerequisite branch and verify its open PR number,
-   branch, base, and full head SHA.
+1. Fetch every recorded prerequisite branch and verify its canonical open PR
+   URL, branch, base, and full head SHA.
 2. Rebase or merge the latest immediate stack-base branch into the dependent
    branch.
 3. Push the dependent branch.
@@ -99,26 +99,27 @@ rebase and retarget are proven.
 
 ## Diagnostic map
 
-| Condition                                                    | Diagnostic                                                                                                                                                        |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node is not lifecycle-blocked                                | `stacked.lifecycle-not-blocked`                                                                                                                                   |
-| Execution lane is not allowed                                | `stacked.lane-not-allowed`                                                                                                                                        |
-| Owner issue is missing or wrong                              | `stacked.missing-issue-owner`                                                                                                                                     |
-| Cached owner identity conflicts                              | `stacked.owner-mismatch`                                                                                                                                          |
-| Lease or heartbeat is stale or future-dated                  | `stacked.owner-expired`, `stacked.owner-heartbeat-stale`, `stacked.owner-heartbeat-future`                                                                        |
-| Prerequisite coverage or exact stack base is wrong           | `stacked.dependency-coverage`, `stacked.stack-base-count`                                                                                                         |
-| Auxiliary stack base lacks its required tracking issue       | `stacked.auxiliary-base-authority`                                                                                                                                |
-| Prerequisite PR identity is missing or not open              | `stacked.dependency-pr-missing`, `stacked.dependency-not-open`, `stacked.dependency-pr-closed`                                                                    |
-| Cached prerequisite PR facts drift                           | `stacked.dependency-snapshot-stale`, `stacked.dependency-head-stale`, `stacked.dependency-branch-drift`, `stacked.dependency-base-drift`                          |
-| Merged prerequisite lacks complete merge observations        | `stacked.dependency-merge-facts`                                                                                                                                  |
-| Resync facts are stale or future-dated                       | `stacked.resync-head-stale`, `stacked.resync-stale`, `stacked.resync-future`                                                                                      |
-| Dependent branch is not based on the exact stack-base branch | `stacked.wrong-base-branch`                                                                                                                                       |
-| Dependent PR is missing, premature, closed, or drifted       | `stacked.dependent-pr-missing`, `stacked.dependent-pr-premature`, `stacked.dependent-pr-closed`, `stacked.dependent-branch-drift`, `stacked.dependent-base-drift` |
-| Prerequisite merged but rebase transition is incomplete      | `stacked.rebase-to-main-required`, `stacked.rebase-base-not-observed`, `stacked.rebase-not-pushed`                                                                |
-| Rebase transition is asserted too early                      | `stacked.unexpected-rebase-to-main`                                                                                                                               |
-| Material contract drift or a block is recorded               | `stacked.material-block`                                                                                                                                          |
-| Ownership or branch overlaps another node                    | `stacked.duplicate-owner`, `stacked.duplicate-branch`                                                                                                             |
+| Condition                                                   | Diagnostic                                                                                                                                                                                                     |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node is not lifecycle-blocked                               | `stacked.lifecycle-not-blocked`                                                                                                                                                                                |
+| Execution lane is not allowed                               | `stacked.lane-not-allowed`                                                                                                                                                                                     |
+| Owner issue is missing or wrong                             | `stacked.missing-issue-owner`                                                                                                                                                                                  |
+| Cached owner identity conflicts                             | `stacked.owner-mismatch`                                                                                                                                                                                       |
+| Claim, lease, or heartbeat chronology is invalid            | `stacked.owner-claimed-future`, `stacked.owner-expired`, `stacked.owner-heartbeat-before-claim`, `stacked.owner-heartbeat-stale`, `stacked.owner-heartbeat-future`                                             |
+| Prerequisite coverage or exact stack base is wrong          | `stacked.dependency-coverage`, `stacked.stack-base-count`                                                                                                                                                      |
+| Auxiliary stack base lacks its required tracking issue      | `stacked.auxiliary-base-authority`                                                                                                                                                                             |
+| Prerequisite PR identity is missing or not open             | `stacked.dependency-pr-missing`, `stacked.dependency-not-open`, `stacked.dependency-pr-closed`                                                                                                                 |
+| Cached prerequisite PR facts drift                          | `stacked.dependency-snapshot-stale`, `stacked.dependency-head-stale`, `stacked.dependency-branch-drift`, `stacked.dependency-base-drift`                                                                       |
+| Merged prerequisite lacks complete merge observations       | `stacked.dependency-merge-facts`                                                                                                                                                                               |
+| Resync facts are stale or future-dated                      | `stacked.resync-head-stale`, `stacked.resync-stale`, `stacked.resync-future`                                                                                                                                   |
+| Dependent branch is not based on an allowed transition base | `stacked.wrong-base-branch`, `stacked.wrong-base-after-merge`                                                                                                                                                  |
+| Dependent PR is missing, premature, closed, or drifted      | `stacked.dependent-pr-missing`, `stacked.dependent-pr-premature`, `stacked.dependent-pr-closed`, `stacked.dependent-branch-drift`, `stacked.dependent-base-drift`, `stacked.dependent-observations-without-pr` |
+| Prerequisite merged but rebase transition is incomplete     | `stacked.rebase-to-main-required`, `stacked.rebase-base-not-observed`, `stacked.rebase-not-pushed`                                                                                                             |
+| Rebase transition is asserted too early                     | `stacked.unexpected-rebase-to-main`                                                                                                                                                                            |
+| Material contract drift or a block is recorded              | `stacked.material-block`                                                                                                                                                                                       |
+| Ownership or branch overlaps another node                   | `stacked.duplicate-owner`, `stacked.duplicate-branch`                                                                                                                                                          |
 
-GitHub-specific drift uses the `github.stacked-*` diagnostics and emits reviewed
-cache proposals or operator actions. It never changes lifecycle status or marks
-the rebase complete.
+GitHub-specific drift uses the `github.stacked-*` diagnostics, including
+`github.stacked-future-heartbeat`, and emits reviewed cache proposals or
+operator actions. It never changes lifecycle status or marks the rebase
+complete.

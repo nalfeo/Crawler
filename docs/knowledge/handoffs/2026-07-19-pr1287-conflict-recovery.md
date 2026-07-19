@@ -39,6 +39,9 @@ implementations independently reached `main`. Full calibration:
   drift, suppressed ownership adjudication after failed issue audits, folded
   claims before expiry filtering, reconciled exact-owner timestamps, and extended
   committed-schema parity to every stacked PR identity contract.
+- Made canonical GitHub PR URLs the sole persisted stacked PR identity and
+  derived PR numbers at audit time, eliminating a cross-field invariant that
+  standard JSON Schema cannot represent.
 - Reconciled post-review live drift after A0 PR #1271 merged: advanced A0 to
   `merged`, recorded its authoritative head/merge facts, cleared inactive
   ownership, and recorded closed issue observations for A0 and A1. The test
@@ -66,11 +69,11 @@ implementations independently reached `main`. Full calibration:
 - Multi-model review: four valid round-one concerns resolved; terminal review by
   Claude Opus 4.8, Gemini 3.1 Pro, and GPT-5.3 Codex security review adjudicated
   clean by GPT-5.4.
-- Different-model validation covered all 19 GitHub review threads: 16 were
-  already addressed by the recovered tree; the remaining three fixed stale test
-  counts, stacked PR number/URL consistency, and future-dated heartbeat/resync
-  acceptance.
-- Focused epic-status suite: 75 tests pass.
+- Different-model validation covered all 27 GitHub review threads across two
+  rounds. The final eight tightened owner chronology, live-claim selection,
+  merged dependent handling, post-merge base constraints, stacked identity
+  fields, canonical PR identity, and no-PR observation proof.
+- Focused epic-status suite: 79 tests pass.
 - Source typecheck passes.
 - Offline and credentialed read-only GitHub audits are valid with zero errors,
   warnings, proposals, or operator actions and report `writes_performed=false`.
