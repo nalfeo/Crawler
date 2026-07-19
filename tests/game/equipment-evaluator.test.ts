@@ -205,6 +205,32 @@ function makePassiveGrantItem(
   } satisfies GeneratedEquipmentCreateInputV1);
 }
 
+function makePlainAccessoryItem(
+  world: ReturnType<typeof makeWorld>,
+  name: string,
+  statBonuses: Partial<Record<'armor', number>> = {},
+): GeneratedEquipmentInstanceV1 {
+  return createGeneratedEquipmentInstance(world, {
+    baseId: 'plain-accessory-fixture',
+    itemLevel: 3,
+    rarity: 'common',
+    enhancementLevel: 0,
+    resolvedEffects: [],
+    frozen: {
+      schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+      displayName: name,
+      artKey: 'plain-accessory-art',
+      slots: ['neck'],
+      tags: ['accessory'],
+      weightLb: 0.5,
+      statBonuses,
+      abilityGrants: [],
+      passiveGrants: [],
+      activeWeaponSnapshot: null,
+    },
+  } satisfies GeneratedEquipmentCreateInputV1);
+}
+
 // ---------------------------------------------------------------------------
 // Shared evaluation context builder
 // ---------------------------------------------------------------------------
@@ -485,6 +511,76 @@ describe('equipment-evaluator: ability access', () => {
 
     expect(passiveScore.totalERV).toBeGreaterThan(plainScore.totalERV);
     expect(passiveScore.defenseDelta).toBeGreaterThan(plainScore.defenseDelta);
+  });
+
+  it('drops weapon-gated passive bonuses when a hypothetical weapon swap breaks the prerequisite', () => {
+    const world = makeWorld('test-weapon-gated-passive-swap');
+    const sword = makeWeaponInstance(world, 'Sword', 'sword', { baseDamage: 40 });
+    const pistol = makeWeaponInstance(world, 'Pistol', 'pistol', { baseDamage: 40 });
+    const swordSnap = sword.frozen.activeWeaponSnapshot as ActiveWeaponSnapshotV1;
+    const pistolSnap = pistol.frozen.activeWeaponSnapshot as ActiveWeaponSnapshotV1;
+    const ctx = makeCtx();
+    const loadout: CurrentLoadoutState = {
+      equippedItems: [{ instance: sword, occupiedSlots: ['mainHand'] }],
+      activeWeaponSnapshot: swordSnap,
+      configuredActiveAbilityIds: [],
+      activePassiveAbilityIds: ['blade-mastery'],
+    };
+
+    const breakdown = scoreEquipmentCandidate(ctx, loadout, pistol);
+    const expectedHypothetical = scoreLoadout(
+      ctx,
+      [{ instance: pistol, occupiedSlots: ['mainHand'] }],
+      pistolSnap,
+      [],
+      [],
+    );
+    const boostedCurrent = scoreLoadout(
+      ctx,
+      [{ instance: sword, occupiedSlots: ['mainHand'] }],
+      swordSnap,
+      [],
+      ['blade-mastery'],
+    );
+    const unboostedCurrent = scoreLoadout(
+      ctx,
+      [{ instance: sword, occupiedSlots: ['mainHand'] }],
+      swordSnap,
+      [],
+      [],
+    );
+
+    expect(breakdown.hypothetical.dps).toBe(expectedHypothetical.dps);
+    expect(boostedCurrent.dps).toBeGreaterThan(unboostedCurrent.dps);
+  });
+
+  it('preserves a passive when it still has a non-equipment source after equipment displacement', () => {
+    const world = makeWorld('test-dual-source-passive');
+    const passiveRing = makePassiveGrantItem(world, 'Veteran Ring', 'veteran-instinct');
+    const plainRing = makePlainAccessoryItem(world, 'Plain Ring');
+    const ctx = makeCtx(
+      { aoeRatio: 0, remainingFractionDiscount: 1 },
+      { defenseWeight: 10, expectedEnemyHitDmg: 10 },
+    );
+    const loadout: CurrentLoadoutState = {
+      equippedItems: [{ instance: passiveRing, occupiedSlots: ['neck'] }],
+      activeWeaponSnapshot: null,
+      configuredActiveAbilityIds: [],
+      nonEquipmentConfiguredActiveAbilityIds: [],
+      activePassiveAbilityIds: ['veteran-instinct'],
+      nonEquipmentActivePassiveAbilityIds: ['veteran-instinct'],
+    };
+
+    const breakdown = scoreEquipmentCandidate(ctx, loadout, plainRing);
+    const expectedHypothetical = scoreLoadout(
+      ctx,
+      [{ instance: plainRing, occupiedSlots: ['neck'] }],
+      null,
+      [],
+      ['veteran-instinct'],
+    );
+
+    expect(breakdown.hypothetical.defense).toBe(expectedHypothetical.defense);
   });
 });
 

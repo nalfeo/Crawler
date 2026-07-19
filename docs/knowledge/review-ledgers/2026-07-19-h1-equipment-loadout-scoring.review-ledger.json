@@ -16,13 +16,45 @@
       "notes": "Alt A: State-delta scorer (full-state delta, no displacement cost) — ADOPTED as the main architecture change (fixes double-counting). Alt B: Abstract combat model (beat-level simulation per encounter shape) — rejected as over-engineered for H1; full-state delta retains most benefit. Alt C: Persona/utility re-use (weapon-personas.ts) — rejected; does not handle generated instances or ERV breakdown. Blocking changes adopted: (1) full-state delta replaces item-centric additive+displacement — fixes double-counting; (2) added nonEquipmentModifiers to context — caller pre-extracts from world; (3) ability scoring now models grant source counts and net gained/lost; (4) DPS uses accuracy*critMult; full effective state from computeEffectiveStatsFromLoadout; (5) cooldownMs/1000 for per-second DPS. Non-blocking: defense uses armor-reduction semantics; purchaseCostPenalty removed from H1 API; encounter-fit from snapshot aoeRadius not tags; remainingFractionDiscount only on ability-access component; encumbrance uses hypothetical STR thresholds; use resolvedEffects not frozen.abilityGrants."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     },
     "multi_model_review": {
-      "clean": false,
-      "adjudicator_model": "",
-      "rounds": []
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4", "gemini-3.1-pro-preview"],
+          "concerns_count": 3,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     }
   }
 }

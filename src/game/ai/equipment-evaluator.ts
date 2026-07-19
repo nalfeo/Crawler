@@ -160,8 +160,18 @@ export interface CurrentLoadoutState {
    * active abilities that are assigned to a slot).
    */
   readonly configuredActiveAbilityIds: readonly string[];
+  /**
+   * Subset of configured active abilities that remain available from a
+   * non-equipment source even if an equipment grant for the same ability is displaced.
+   */
+  readonly nonEquipmentConfiguredActiveAbilityIds?: readonly string[];
   /** All currently active passive-ability IDs. */
   readonly activePassiveAbilityIds: readonly string[];
+  /**
+   * Subset of active passives that remain active from a non-equipment source
+   * even if an equipment grant for the same passive is displaced.
+   */
+  readonly nonEquipmentActivePassiveAbilityIds?: readonly string[];
 }
 
 /**
@@ -419,6 +429,20 @@ function passiveStatModifiers(passiveAbilityIds: ReadonlySet<string>): LegacySta
   return modifiers;
 }
 
+function passiveWeaponPrerequisiteMet(
+  passiveId: string,
+  activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null,
+): boolean {
+  const def = getAbilityDefinition(passiveId);
+  if (def?.kind !== 'passive') return false;
+  if (def.weaponPrerequisite === undefined) return true;
+  if (activeWeaponSnapshot === null) return false;
+  return (
+    activeWeaponSnapshot.weaponClassSkillId === def.weaponPrerequisite ||
+    activeWeaponSnapshot.weaponTypeSkillId === def.weaponPrerequisite
+  );
+}
+
 /**
  * Core scoring function.  Computes the three-component score for one complete
  * loadout snapshot and returns the per-component breakdown.
@@ -428,10 +452,12 @@ function scoreLoadoutSnapshot(
   snapshot: InternalLoadoutSnapshot,
 ): LoadoutScoreBreakdown {
   const statSources = toStatBonusSources(snapshot.items);
-  const activeModifiers = [
-    ...ctx.nonEquipmentModifiers,
-    ...passiveStatModifiers(snapshot.activePassiveAbilityIds),
-  ];
+  const activePassives = new Set(
+    [...snapshot.activePassiveAbilityIds].filter((passiveId) =>
+      passiveWeaponPrerequisiteMet(passiveId, snapshot.activeWeaponSnapshot),
+    ),
+  );
+  const activeModifiers = [...ctx.nonEquipmentModifiers, ...passiveStatModifiers(activePassives)];
   const eff = computeEffectiveStatsFromLoadout(
     ctx.baseStats,
     ctx.coreStatPoints,
@@ -542,6 +568,7 @@ function isLegalSlotTransition(
  */
 function deriveHypotheticalActiveAbilities(
   currentConfigured: readonly string[],
+  nonEquipmentConfigured: ReadonlySet<string>,
   currentGrantCounts: Map<string, number>,
   displacedGrantCounts: { active: Map<string, number> },
   candidateGrantCounts: { active: Map<string, number> },
@@ -553,7 +580,10 @@ function deriveHypotheticalActiveAbilities(
   // to zero. Non-equipment configured abilities are preserved.
   const surviving = new Set(
     currentConfigured.filter(
-      (id) => !currentGrantCounts.has(id) || (remainingCounts.get(id) ?? 0) > 0,
+      (id) =>
+        nonEquipmentConfigured.has(id) ||
+        !currentGrantCounts.has(id) ||
+        (remainingCounts.get(id) ?? 0) > 0,
     ),
   );
 
@@ -570,6 +600,7 @@ function deriveHypotheticalActiveAbilities(
 
 function deriveHypotheticalPassiveAbilities(
   currentPassives: readonly string[],
+  nonEquipmentPassives: ReadonlySet<string>,
   currentGrantCounts: Map<string, number>,
   displacedGrantCounts: Map<string, number>,
   candidateGrantCounts: Map<string, number>,
@@ -577,7 +608,10 @@ function deriveHypotheticalPassiveAbilities(
   const remainingCounts = subtractGrantCounts(currentGrantCounts, displacedGrantCounts);
   const surviving = new Set(
     currentPassives.filter(
-      (id) => !currentGrantCounts.has(id) || (remainingCounts.get(id) ?? 0) > 0,
+      (id) =>
+        nonEquipmentPassives.has(id) ||
+        !currentGrantCounts.has(id) ||
+        (remainingCounts.get(id) ?? 0) > 0,
     ),
   );
   for (const [abilityId] of candidateGrantCounts) {
@@ -662,12 +696,14 @@ function buildHypotheticalSnapshot(
 
   const configuredActiveAbilityIds = deriveHypotheticalActiveAbilities(
     loadout.configuredActiveAbilityIds,
+    new Set(loadout.nonEquipmentConfiguredActiveAbilityIds ?? []),
     currentGrantCounts.active,
     displacedGrantCounts,
     candidateGrantCounts,
   );
   const activePassiveAbilityIds = deriveHypotheticalPassiveAbilities(
     loadout.activePassiveAbilityIds,
+    new Set(loadout.nonEquipmentActivePassiveAbilityIds ?? []),
     currentGrantCounts.passive,
     displacedGrantCounts.passive,
     candidateGrantCounts.passive,
