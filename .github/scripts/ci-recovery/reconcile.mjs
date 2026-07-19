@@ -992,22 +992,16 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
-// Post reconciler-authored marker replies for outdated threads that have no trusted marker.
-// thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
-// no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
-// on the current code.  The CRAWLER_CI_PAT is the repository owner, so the posted reply
-// satisfies isTrustedComment (authorAssociation OWNER), letting shouldResolveThread succeed
-// on this same pass without a separate agent round-trip.
-//
-// This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
-// DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
-for (const thread of unresolvedThreads.filter((candidate) => {
+// Returns true when the reconciler should auto-post an outdated-thread marker for `candidate`.
+// A candidate qualifies only when:
+//   1. GitHub reports the thread as outdated (reviewed lines no longer at the same location), AND
+//   2. shouldResolveThread has not already found a reachable trusted marker, AND
+//   3. The last comment is NOT already a trusted ✅ Addressed marker (even if its SHA is
+//      stale/unreachable) — those fall through to the stale-marker detection path below,
+//      which surfaces a recovery hint rather than silently auto-resolving the thread.
+function shouldAutoPostOutdatedMarker(candidate, currentHeadSha, reachableShas) {
   if (!candidate.isOutdated) return false;
-  if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
-  // Skip threads whose last comment is already a trusted ✅ Addressed marker
-  // (even if the SHA is stale/unreachable). Those are handled by the
-  // stale-marker detection path below — overwriting them would resolve the
-  // thread silently instead of surfacing the recovery hint.
+  if (shouldResolveThread(candidate, currentHeadSha, reachableShas)) return false;
   const comments = candidate.comments?.nodes ?? [];
   const last = comments[comments.length - 1];
   if (
@@ -1019,7 +1013,19 @@ for (const thread of unresolvedThreads.filter((candidate) => {
     return false;
   }
   return true;
-})) {
+}
+// Post reconciler-authored marker replies for outdated threads that have no trusted marker.
+// thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
+// no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
+// on the current code.  The CRAWLER_CI_PAT is the repository owner, so the posted reply
+// satisfies isTrustedComment (authorAssociation OWNER), letting shouldResolveThread succeed
+// on this same pass without a separate agent round-trip.
+//
+// This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
+// DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
+for (const thread of unresolvedThreads.filter((candidate) =>
+  shouldAutoPostOutdatedMarker(candidate, headSha, reachableMarkerShas),
+)) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
   if (!replyCommentId) {

@@ -3,7 +3,7 @@
 **Date:** 2026-07-19  
 **Session:** fix-ci-incident  
 **Branch:** copilot/fix-ci-incident  
-**PR:** (to be created)
+**PR:** https://github.com/nalfeo/Crawler/pull/1663
 
 ## Systems touched
 
