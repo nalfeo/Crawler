@@ -437,6 +437,19 @@
     "row": 0
   },
   {
+    "id": "generated:boarding-axe-var-0",
+    "kind": "sprite",
+    "label": "boarding-axe-var-0",
+    "description": "Hand-authored pixel art sprite for brief: boarding-axe.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "boarding-axe-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/boarding-axe-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:bone-shard-var-1",
     "kind": "sprite",
     "label": "bone-shard-var-1",
@@ -479,7 +492,7 @@
     "id": "generated:cactusfolk-boss-var-1",
     "kind": "sprite",
     "label": "cactusfolk-boss-var-1",
-    "description": "Generated sprite from brief: cactusfolk-boss.",
+    "description": "Abuela Saguaro, cactusfolk cartel matriarch. Current sprite is 64x64 v1 from the pre-redesign brief; a grandmother-themed variant with spectacles, floral rebozo, devotional charms, and salvage-armor dressing is pending regeneration.",
     "tags": ["enemy", "generated", "pipeline-approved"],
     "spriteId": "cactusfolk-boss-var-1",
     "sheetKey": "generated-manifest",
@@ -788,6 +801,19 @@
     "row": 0
   },
   {
+    "id": "generated:equipment/weapon/bone-saw",
+    "kind": "sprite",
+    "label": "equipment/weapon/bone-saw",
+    "description": "Generated sprite for stable runtime key: equipment/weapon/bone-saw.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "equipment/weapon/bone-saw",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/equipment/weapon/bone-saw.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:faerie-blink-var-0",
     "kind": "sprite",
     "label": "faerie-blink-var-0",
@@ -801,6 +827,19 @@
     "row": 0
   },
   {
+    "id": "generated:faerie-boss-var-0",
+    "kind": "sprite",
+    "label": "faerie-boss-var-0",
+    "description": "Generated sprite from brief: faerie-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "faerie-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/faerie-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:flame-dagger-var-3",
     "kind": "sprite",
     "label": "flame-dagger-var-3",
@@ -809,6 +848,19 @@
     "spriteId": "flame-dagger-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/flame-dagger-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:flame-tongs-var-0",
+    "kind": "sprite",
+    "label": "flame-tongs-var-0",
+    "description": "Generated sprite from brief: flame-tongs.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "flame-tongs-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/flame-tongs-var-0.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -843,7 +895,7 @@
     "id": "generated:geese-boss-var-0",
     "kind": "sprite",
     "label": "geese-boss-var-0",
-    "description": "Don Honkrado the Godgoose — mafia godfather goose, Floor 2 boss. Square compact body, tucked neck, pinstripe salvage-strap waistcoat, brass gear cufflinks, wide-brim fedora, cigar in beak. Current sprite is 64x64 v1; a 128x128 large-variant regeneration from the authored brief is pending.",
+    "description": "Don Honkrado the Godgoose \u2014 mafia godfather goose, Floor 2 boss. Square compact body, tucked neck, pinstripe salvage-strap waistcoat, brass gear cufflinks, wide-brim fedora, cigar in beak. Current sprite is 64x64 v1; a 128x128 large-variant regeneration from the authored brief is pending.",
     "tags": ["enemy", "generated", "pipeline-approved"],
     "spriteId": "geese-boss-var-0",
     "sheetKey": "generated-manifest",
@@ -1173,6 +1225,19 @@
     "spriteId": "mama-slime-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/mama-slime-v1-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:merchant-sandals-var-0",
+    "kind": "sprite",
+    "label": "merchant-sandals-var-0",
+    "description": "Manually authored sprite for brief: merchant-sandals.",
+    "tags": ["item", "generated", "manual-authored"],
+    "spriteId": "merchant-sandals-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/merchant-sandals-var-0.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -1932,6 +1997,19 @@
     "row": 0
   },
   {
+    "id": "generated:scavenger-harness-var-0",
+    "kind": "sprite",
+    "label": "scavenger-harness-var-0",
+    "description": "Generated sprite from brief: scavenger-harness.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "scavenger-harness-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/scavenger-harness-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:sewer-grate-floor-tile-v1-var-1",
     "kind": "sprite",
     "label": "sewer-grate-floor-tile-v1-var-1",
@@ -1979,6 +2057,19 @@
     "spriteId": "sewer-grate-floor-tile-v1-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/sewer-grate-floor-tile-v1-var-6.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:shadow-boots-var-0",
+    "kind": "sprite",
+    "label": "shadow-boots-var-0",
+    "description": "Generated sprite from brief: shadow-boots.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "shadow-boots-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/shadow-boots-var-0.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -2465,6 +2556,32 @@
     "row": 0
   },
   {
+    "id": "generated:equipment/weapon/tower-spear",
+    "kind": "sprite",
+    "label": "equipment/weapon/tower-spear",
+    "description": "Generated sprite for stable runtime key: equipment/weapon/tower-spear.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "equipment/weapon/tower-spear",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/equipment/weapon/tower-spear.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:twin-katar-var-0",
+    "kind": "sprite",
+    "label": "twin-katar-var-0",
+    "description": "Hand-authored silhouette icon for runtime key equipment/weapon/twin-katar.",
+    "tags": ["weapon", "generated", "hand-authored"],
+    "spriteId": "twin-katar-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/twin-katar-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-bookcase-var-0",
     "kind": "sprite",
     "label": "welcome-room-bookcase-var-0",
@@ -2831,7 +2948,7 @@
     "frame": 121,
     "col": 1,
     "row": 10,
-    "note": "Tiny Dungeon ghost (frame 121) \u2014 temp CC0 art.",
+    "note": "Tiny Dungeon goblin (frame 121) \u2014 temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }
@@ -2999,6 +3116,32 @@
     "spriteId": "faerie-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/faerie-boss-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:equipment/accessory/lucky-feather",
+    "kind": "sprite",
+    "label": "equipment/accessory/lucky-feather",
+    "description": "Generated sprite from brief: lucky-feather.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "equipment/accessory/lucky-feather",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/equipment-accessory-lucky-feather.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:bone-saw-var-1",
+    "kind": "sprite",
+    "label": "bone-saw-var-1",
+    "description": "Generated sprite from brief: bone-saw.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "bone-saw-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/bone-saw-var-1.png",
     "frame": 0,
     "col": 0,
     "row": 0

@@ -184,6 +184,94 @@ manifest rewrite. Changes inside the contract require the plan-change protocol.
     "real_apis_only": true,
     "existing_route_planner_only": true,
     "settlement_maintenance_required": true
+  },
+  "graph": {
+    "dependencies": {
+      "slice:A0": [],
+      "slice:A1": ["slice:A0"],
+      "slice:B1": ["slice:A1"],
+      "slice:B2": ["slice:B1"],
+      "slice:B3": ["slice:B2"],
+      "slice:C1": ["slice:A1"],
+      "slice:C2": ["slice:C1", "slice:B3"],
+      "slice:D1": ["slice:A1"],
+      "packet:D2-A": ["slice:D1", "slice:B1"],
+      "packet:D2-B": ["slice:D1", "slice:C1"],
+      "slice:D2": ["packet:D2-A", "packet:D2-B"],
+      "packet:D3-A": ["slice:D2", "slice:B2"],
+      "packet:D3-B": ["slice:D2", "slice:C1"],
+      "slice:D3": ["packet:D3-A", "packet:D3-B"],
+      "slice:E1": ["slice:A1"],
+      "slice:E2": ["slice:E1", "slice:C1"],
+      "packet:E3-A": ["slice:E2", "slice:B2"],
+      "packet:E3-B": ["slice:E2", "slice:D2"],
+      "packet:E3-C": ["slice:E2", "slice:C1"],
+      "slice:E3": ["packet:E3-A", "packet:E3-B", "packet:E3-C"],
+      "slice:F1": ["slice:B1", "slice:C1"],
+      "slice:F2": ["slice:F1", "slice:B2"],
+      "slice:F3": ["slice:F2", "slice:E2"],
+      "slice:F4": ["slice:F3", "slice:C2"],
+      "slice:G1": ["slice:A1"],
+      "packet:G2-A": ["slice:G1", "slice:C1"],
+      "packet:G2-B+": ["slice:G1", "slice:B2"],
+      "slice:G2": ["packet:G2-A", "packet:G2-B+"],
+      "packet:G3": ["slice:G2", "slice:D3"],
+      "slice:G3": ["packet:G3"],
+      "slice:H1": ["slice:C1", "slice:F1"],
+      "slice:H2": ["slice:H1", "slice:G2"],
+      "slice:H3": ["slice:H2", "slice:G3"],
+      "slice:I1": [
+        "slice:B3",
+        "slice:C2",
+        "slice:D3",
+        "slice:E3",
+        "slice:F4",
+        "slice:G3",
+        "slice:H3"
+      ],
+      "slice:I2": ["slice:I1"],
+      "slice:I3": ["slice:I2"],
+      "slice:J": ["slice:I3"]
+    },
+    "parent_slices": {
+      "slice:A0": null,
+      "slice:A1": null,
+      "slice:B1": null,
+      "slice:B2": null,
+      "slice:B3": null,
+      "slice:C1": null,
+      "slice:C2": null,
+      "slice:D1": null,
+      "packet:D2-A": "slice:D2",
+      "packet:D2-B": "slice:D2",
+      "slice:D2": null,
+      "packet:D3-A": "slice:D3",
+      "packet:D3-B": "slice:D3",
+      "slice:D3": null,
+      "slice:E1": null,
+      "slice:E2": null,
+      "packet:E3-A": "slice:E3",
+      "packet:E3-B": "slice:E3",
+      "packet:E3-C": "slice:E3",
+      "slice:E3": null,
+      "slice:F1": null,
+      "slice:F2": null,
+      "slice:F3": null,
+      "slice:F4": null,
+      "slice:G1": null,
+      "packet:G2-A": "slice:G2",
+      "packet:G2-B+": "slice:G2",
+      "slice:G2": null,
+      "packet:G3": "slice:G3",
+      "slice:G3": null,
+      "slice:H1": null,
+      "slice:H2": null,
+      "slice:H3": null,
+      "slice:I1": null,
+      "slice:I2": null,
+      "slice:I3": null,
+      "slice:J": null
+    }
   }
 }
 ```
@@ -237,8 +325,10 @@ A required node computes ready only when:
 2. a dependency is `superseded`, names a replacement, and that replacement is
    `validated`;
 3. the node has a materialized issue, except for A0's parent-issue bootstrap;
-4. the node itself is not terminal or already beyond ready; and
-5. no plan-change invalidation applies.
+4. the node itself is not terminal or already beyond ready;
+5. no plan-change invalidation applies; and
+6. the node has no `stacked_work` metadata, even if all dependencies would
+   otherwise be `validated`.
 
 A blocked node may carry `stacked_work` only when all of the following hold:
 
@@ -281,6 +371,10 @@ reviewed patches/operator actions; it never writes lifecycle or completion state
 readiness after a plan change or dependency invalidation, the Producer posts
 `BLOCKED`, revokes its lease, moves it to `blocked`, and invalidates downstream
 evidence. Child agents do not continue under a stale claim.
+
+Speculative stacked-work (`stacked_work` on a `blocked` node) is orthogonal to
+the lifecycle. The node status remains `blocked`; `stacked_work` never enters
+the ready queue. See "Speculative stacked-work protocol" for details.
 
 Status requirements:
 
@@ -581,25 +675,38 @@ A fresh Producer must be able to resume with zero conversation context:
 3. Query the parent/child issues, PRs, workflow runs, and referenced branches.
 4. Inspect every referenced handoff and review ledger; verify content hashes and
    commits rather than trusting branch names.
-5. Run
+5. For any node with `stacked_work`, verify every recorded prerequisite PR/head,
+   the one exact stack base, the dependent PR/branch/base identity, resync
+   freshness, and any `rebase_to_main.pending` transition.
+6. Run
    `npm run epic:status -- floor-2-equipment --github --reconcile`.
-6. Review the emitted `repo_patch` and `operator_actions`; the command writes
+7. Review the emitted `repo_patch` and `operator_actions`; the command writes
    nothing.
-7. Resolve stronger-fact conflicts in authority order. Do not copy cached state
+8. Resolve stronger-fact conflicts in authority order. Do not copy cached state
    over GitHub or committed evidence.
-8. Post structured BLOCKED/UNBLOCKED/HANDOFF comments as needed.
-9. For every `stacked_work` entry, verify the dedicated issue's one live
-   `STACKED-WORK` owner, exact prerequisite heads/bases, stable dependent
-   PR/branch/base identity, the nullable dependent-head observation cache, last
-   resync, and any pending rebase-to-main action.
-10. As sole global-state writer, apply one reviewed state update.
-11. Dispatch only nodes in the validator-computed ready queue with materialized
+9. Post structured BLOCKED/UNBLOCKED/STACKED-WORK/HANDOFF comments as needed.
+10. For every `stacked_work` entry, verify the dedicated issue's one live
+    `STACKED-WORK` owner, exact prerequisite heads/bases, stable dependent
+    PR/branch/base identity, the nullable dependent-head observation cache, last
+    resync, and any pending rebase-to-main action.
+11. As sole global-state writer, apply one reviewed state update.
+12. Dispatch only nodes in the validator-computed ready queue with materialized
     child issues.
 
 If the parent issue is unavailable, merged git and deterministic evidence still
 permit recovery. Recreate the issue dashboard from the materialization plan,
 then reconcile issue numbers into state. A session transcript or local
 worktree is never authoritative.
+
+For stacked-work reconciliation after a prerequisite merges:
+
+1. Record `rebase_to_main.pending: true`, the prerequisite merge commit, and the
+   GitHub-observed pre-rebase dependent head.
+2. Rebase the dependent branch onto `main`, retarget its PR, and revalidate the
+   speculative work.
+3. Require GitHub to observe a changed dependent head and `base: main`.
+4. Clear `stacked_work` only after those observations, then let normal readiness
+   compute the next lifecycle transition.
 
 ## Durable plan-change protocol
 
