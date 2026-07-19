@@ -574,6 +574,14 @@ function parseRepository(fullName) {
 function createApi({ token, owner, repo }) {
   return {
     listOpenPulls: () => paginate(token, `/repos/${owner}/${repo}/pulls?state=open&per_page=100`),
+    fetchSingleOpenPr: async (pullNumber) => {
+      try {
+        return (await request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}`)).data;
+      } catch (err) {
+        if (err?.status === 404) return null;
+        throw err;
+      }
+    },
     getPull: async (pullNumber) =>
       (await request(token, `/repos/${owner}/${repo}/pulls/${pullNumber}`)).data,
     markReadyForReview: async (pullRequestId) =>
@@ -676,12 +684,23 @@ export async function runPrReadyReviewerGuard({
     throw new Error('REVIEWER_LOGIN is required');
   }
 
-  const openPrs = await api.listOpenPulls();
-  if (openPrs.length === 0) {
-    log.info('No open PRs found.');
-    return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+  let openPrs;
+  const prNumber = Number(triggeringPullNumber);
+  if (eventName === 'pull_request_target' && Number.isFinite(prNumber) && prNumber > 0) {
+    const pr = await api.fetchSingleOpenPr(prNumber);
+    if (!pr || normalize(String(pr?.state || '')) !== 'open') {
+      log.info(`PR #${prNumber} is not open, skipping.`);
+      return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+    }
+    openPrs = [pr];
+    log.info(`Event-scoped run: processing PR #${prNumber} only.`);
+  } else {
+    openPrs = await api.listOpenPulls();
+    if (openPrs.length === 0) {
+      log.info('No open PRs found.');
+      return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+    }
   }
-
   let draftsPublished = 0;
   let emptyDraftRepairs = 0;
   let reviewerRemovals = 0;

@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
-      group: pr-ready-reviewer-guard
-      cancel-in-progress: false
+      group: "pr-ready-reviewer-guard-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || 'sweep' }}"
+      cancel-in-progress: "${{ github.event_name == 'pull_request_target' }}"
     steps:
       - name: Checkout trusted guard script
         uses: actions/checkout@v4
