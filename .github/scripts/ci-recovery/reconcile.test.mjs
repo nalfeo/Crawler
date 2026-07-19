@@ -3833,6 +3833,16 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     'task comment should include the review-thread reply target comment ID',
   );
   assert.ok(
+    taskCommentCall.body.body.includes('not the ID of this task comment'),
+    'task comment should instruct the agent NOT to reply to the task comment itself',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'a marker reply on the review-thread comment is the only form recognised by the reconciler',
+    ),
+    'task comment should state that only a review-thread reply is recognised by the reconciler',
+  );
+  assert.ok(
     taskCommentCall.body.body.includes(
       'A top-level PR comment is never sufficient for a review-thread blocker',
     ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
@@ -3951,6 +3961,384 @@ test('reconcile resolves only ancestor lineage markers from compare status', asy
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, new RegExp(`would-resolve thread=${threadToResolve}`));
   assert.doesNotMatch(stdout, new RegExp(`would-resolve thread=${threadToKeep}`));
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('dry-run reconcile would-post outdated-marker and would-resolve isOutdated thread with no trusted marker', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({
+      body: gqlReviewThreads([
+        {
+          id: 'thread-outdated-nomarker',
+          isResolved: false,
+          isOutdated: true,
+          path: 'plans/item-icons/weapons.art.yaml',
+          line: 92,
+          comments: {
+            nodes: [
+              {
+                id: 'comment-outdated',
+                body: 'Consider switching to a block scalar.',
+                author: { login: 'copilot-pull-request-reviewer' },
+                authorAssociation: 'NONE',
+                url: threadUrl,
+              },
+            ],
+          },
+        },
+      ]),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // Reconciler should signal it would post the outdated marker and would resolve the thread.
+  assert.match(stdout, /would-post outdated-marker thread=thread-outdated-nomarker/);
+  assert.match(stdout, /would-resolve thread=thread-outdated-nomarker/);
+  // No mutations in dry-run mode.
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('live reconcile posts outdated-marker reply and resolves isOutdated thread with no trusted marker', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      body: { id: 99999, body: '✅ Addressed in abc123' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-18T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-live',
+            isResolved: false,
+            isOutdated: true,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 92,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-live',
+                  body: 'Consider switching to a block scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Verify the reply was posted to the review comment.
+  const replyCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`,
+  );
+  assert.ok(replyCall, 'expected a reply to be posted on the outdated review thread');
+  assert.ok(
+    String(replyCall.body?.body || '').includes('✅ Addressed in'),
+    'reply should contain the addressed marker',
+  );
+  assert.ok(
+    String(replyCall.body?.body || '')
+      .toLowerCase()
+      .includes('outdated'),
+    'reply should mention the outdated reason',
+  );
+
+  // Verify the thread was resolved via GraphQL.
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === 'thread-outdated-live',
+  );
+  assert.ok(resolveCall, 'expected the outdated thread to be resolved via GraphQL mutation');
+
+  assert.match(stdout, /posted outdated-marker thread=thread-outdated-live/);
+  assert.match(stdout, /resolved thread=thread-outdated-live/);
+});
+
+test('reconcile skips outdated-marker for isOutdated thread that already has a trusted marker', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-18T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-with-marker',
+            isResolved: false,
+            isOutdated: true,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 92,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-original',
+                  body: 'Consider switching to a block scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+                {
+                  id: 'comment-trusted-marker',
+                  body: `✅ Addressed in ${HEAD_SHA}: already fixed in head`,
+                  author: { login: 'nalfeo' },
+                  authorAssociation: 'OWNER',
+                  url: '',
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // Should NOT post an extra marker — the thread already has a trusted marker.
+  assert.doesNotMatch(
+    stdout,
+    /would-post outdated-marker thread=thread-outdated-with-marker/,
+    'must not post a duplicate outdated-marker when a trusted marker already exists',
+  );
+  // Should still resolve the thread (via the existing trusted marker).
+  assert.match(stdout, /would-resolve thread=thread-outdated-with-marker/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('reconcile does not post outdated-marker for non-outdated thread with no trusted marker', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      // suggestedActors query needed when reconciler dispatches Copilot for the blocker.
+      if (String(parsed?.query ?? '').includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (
+        String(parsed?.query ?? '')
+          .trimStart()
+          .startsWith('mutation')
+      ) {
+        return { body: { data: {} } };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-not-outdated',
+            isResolved: false,
+            isOutdated: false,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 223,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-not-outdated',
+                  body: 'The brief field is a very long single-line scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // Non-outdated thread: must NOT have an auto-posted marker.
+  assert.doesNotMatch(
+    stdout,
+    /would-post outdated-marker/,
+    'must not auto-mark non-outdated threads',
+  );
+  // Thread has no trusted marker so it must NOT be resolved.
+  assert.doesNotMatch(stdout, /would-resolve thread=thread-not-outdated/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('reconcile skips outdated-marker and logs no-reply-target when first comment URL does not match discussion pattern', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      if (
+        String(parsed?.query ?? '')
+          .trimStart()
+          .startsWith('mutation')
+      ) {
+        return { body: { data: {} } };
+      }
+      // Thread is outdated but first comment URL is empty — no #discussion_r<id> pattern.
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-no-url',
+            isResolved: false,
+            isOutdated: true,
+            path: 'src/core/systems/some.ts',
+            line: 10,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-no-url',
+                  body: 'This looks odd.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: '', // does not match REVIEW_DISCUSSION_COMMENT_PATTERN
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // Must log the skip reason without attempting to post a reply.
+  assert.match(
+    stdout,
+    /skip outdated-marker thread=thread-outdated-no-url reason=no-reply-target/,
+    'should log skip with reason=no-reply-target when URL does not match discussion pattern',
+  );
+  // Must NOT log would-post or would-resolve for this thread.
+  assert.doesNotMatch(stdout, /would-post outdated-marker thread=thread-outdated-no-url/);
+  assert.doesNotMatch(stdout, /would-resolve thread=thread-outdated-no-url/);
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 

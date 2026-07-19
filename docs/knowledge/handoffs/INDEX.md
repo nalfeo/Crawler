@@ -89,6 +89,7 @@ _…and 37 older, see `archive/`._
 ## sprite-pipeline
 
 - [2026-07-18-alchemist-sprayer-brief](2026-07-18-alchemist-sprayer-brief.md) — Authored `briefs/weapons/alchemist-sprayer.yaml` for issue nalfeo/Crawler#1332 (Floor 2 beam
+- [2026-07-18-asset-checkin-bone-saw](2026-07-18-asset-checkin-bone-saw.md) — Consolidated 1 approved `asset-checkin` issue (#1561) into a game PR (#1569).
 - [2026-07-18-baseball-bat-brief](2026-07-18-baseball-bat-brief.md) — Handled issue #1329 for the `baseball-bat` asset request by taking the smallest
 - [2026-07-18-baseball-bat-equipment-icon-brief](2026-07-18-baseball-bat-equipment-icon-brief.md) — Handled issue #1329 (canonical; #1435 was a duplicate closed by the maintainer) for the
 - [2026-07-18-boarding-axe-pr-recovery](2026-07-18-boarding-axe-pr-recovery.md) — Handoff: boarding-axe PR recovery
@@ -314,8 +315,10 @@ _…and 5 older, see `archive/`._
 - [2026-07-16-stats-overhaul-pr-recovery](2026-07-16-stats-overhaul-pr-recovery.md) — Handoff: PR #1203 blocker recovery
 - [2026-07-15-floor2-ai-hunt-progression](2026-07-15-floor2-ai-hunt-progression.md) — Handoff - Floor 2 AI Hunt Progression
 - [2026-07-13-floor1-merchant-review-recovery](2026-07-13-floor1-merchant-review-recovery.md) — Floor 1 merchant review recovery
+- [2026-07-13-floor1-missing-starter-classes](2026-07-13-floor1-missing-starter-classes.md) — Add flagged Floor 1 starter options for missing weapon classes
+- [2026-07-13-pr1054-merge-conflicts](2026-07-13-pr1054-merge-conflicts.md) — Handoff: PR #1054 merge conflict resolution
 
-_…and 41 older, see `archive/`._
+_…and 39 older, see `archive/`._
 
 ## enemies
 
@@ -369,7 +372,7 @@ _…and 77 older, see `archive/`._
 - [2026-07-01-pages-generated-sprite-basepath](2026-07-01-pages-generated-sprite-basepath.md) — Made generated sprite manifest and PNG URLs resolve against the Vite/GitHub Pages base path in `src/engine/generatedAssets/preload.ts`.
 - [2026-06-30-codex-repair-azure-bounce-gate](2026-06-30-codex-repair-azure-bounce-gate.md) — Three bundled features on this branch, plus review-harness hardening:
 - [2026-06-30-sidecar-shared-selector-deployment](2026-06-30-sidecar-shared-selector-deployment.md) — Handoff - sidecar shared selector deployment
-- [2026-06-29-azure-foundry-content-gen](2026-06-29-azure-foundry-content-gen.md) — Authored \*\*ADR 0033 — Migrate Content Generation from Direct Azure OpenAI to
+- [2026-06-29-azure-foundry-content-gen](2026-06-29-azure-foundry-content-gen.md) — Authored **ADR 0033 — Migrate Content Generation from Direct Azure OpenAI to
 - [2026-06-29-azure-openai-provider](2026-06-29-azure-openai-provider.md) — Added a third provider, **`azure`** (Azure OpenAI), to the codex-repair autonomous
 - [2026-06-29-azure-sheet-triage-controls](2026-06-29-azure-sheet-triage-controls.md) — Handoff: Azure sheet triage controls
 - [2026-06-29-azure-sidecar-policy-and-sprite-checkin](2026-06-29-azure-sidecar-policy-and-sprite-checkin.md) — Built and launched devtools/sidecar, then corrected sidecar launch behavior to Azure-first.
@@ -457,7 +460,7 @@ _…and 31 older, see `archive/`._
 - [2026-07-17-floor-2-epic-control-pr-recovery](2026-07-17-floor-2-epic-control-pr-recovery.md) — Recovered PR #1286's epic-control blockers without widening scope beyond the
 - [2026-07-11-stop-pre-pr-full-verify](2026-07-11-stop-pre-pr-full-verify.md) — Removed the unconditional instruction to run full `npm run verify` before committing or creating a PR. The top-level agent instructions, re…
 - [2026-07-09-sprite-editor-canvas-ux](2026-07-09-sprite-editor-canvas-ux.md) — 2026-07-09 - Sprite editor canvas UX upgrades
-- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built \*\*on top of the existing pipeline i…
+- [2026-07-08-productize-asset-forge-sprite-judge](2026-07-08-productize-asset-forge-sprite-judge.md) — Productized the by-hand asset workflow I ran all session into two reusable, selectable artifacts, built **on top of the existing pipeline i…
 - [2026-07-05-session-plans-chat](2026-07-05-session-plans-chat.md) — Updated the top-level session instructions in `AGENTS.md` and `.github/copilot-instructions.md` so new sessions must explicitly say whether…
 
 ## docs-tooling
