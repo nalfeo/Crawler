@@ -866,7 +866,14 @@ export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
       player !== undefined
         ? getEffectiveCooldownMs(world, player, weaponDef.cooldownMs)
         : weaponDef.cooldownMs;
-    state.lastFireMs = world.elapsedMs - (Number.isFinite(effectiveCooldown) ? effectiveCooldown + 1 : 0);
+    state.lastFireMs =
+      world.elapsedMs -
+      (Number.isFinite(effectiveCooldown)
+        ? effectiveCooldown + 1
+        : // Non-finite (Infinity or NaN) means "cannot attack" (e.g. zero/negative
+          // attack speed). Setting lastFireMs = elapsedMs means elapsed = 0 ≪
+          // Infinity cooldown → ready = false, preserving the disabled state.
+          0);
   }
   if (!isSwitch) {
     logger.debug('Updated active weapon tuning in place', { weaponId: weaponDef.id });
