@@ -77,7 +77,10 @@ const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
 const ADDRESSED_MARKER_REPLY = '`✅ Addressed in <sha>: <one-line note>`';
 const POST_PUSH_HEAD_SHA_PLACEHOLDER = '<post-push-head-sha>';
-const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace('<sha>', POST_PUSH_HEAD_SHA_PLACEHOLDER);
+const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace(
+  '<sha>',
+  POST_PUSH_HEAD_SHA_PLACEHOLDER,
+);
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -1286,7 +1289,7 @@ const rawCheckRuns =
 // Collapse to the latest attempt per logical name so a successful rerun
 // replaces a previously failed run before any blocker classification.
 const checkRuns = collapseCheckRunsByName(rawCheckRuns);
-const humanApprovalDerivedChecks = new Set(['human approval', 'merge gate', 'ci']);
+const humanApprovalDerivedChecks = new Set(['lightweight checks', 'merge gate', 'ci']);
 for (const check of checkRuns) {
   const checkName = String(check.name || '').toLowerCase();
   if (

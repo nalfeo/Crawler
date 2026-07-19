@@ -138,23 +138,31 @@ jobs:
     name: Lightweight Checks
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true'
+    # No docs_only skip here: the human-approval step must run unconditionally
+    # so a docs-only PR that carries (or closes an issue with) the
+    # human-approval-required label is not silently bypassed. The non-approval
+    # steps below carry their own `if: env.DOCS_ONLY != 'true'` guards so the
+    # build/lint/test work is still skipped on pure documentation changes.
     env:
       GAMEPLAY_SAFE: ${{ needs.changes.outputs.gameplay_safe }}
+      DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
 
       # Playwright is required by the guard tests: sprite-editor and set-piece-editor
       # extension tests import chromium directly (see .github/extensions/*/tests/).
+      # On docs-only PRs we skip the guard tests, so Playwright is not installed
+      # to avoid the ~30 s download overhead on documentation-only changes.
       - uses: ./.github/actions/setup-node
         with:
-          install-playwright: 'true'
+          install-playwright: ${{ needs.changes.outputs.docs_only != 'true' && 'true' || 'false' }}
 
       # Persist ESLint's incremental cache across runs. The unique run_id suffix
       # forces a fresh (immutable) cache entry each run; restore-keys warm-start
       # from the most recent prior cache. ESLint re-lints any file whose content
       # changed, so a stale restore is always safe.
       - name: Restore ESLint cache
+        if: env.DOCS_ONLY != 'true'
         uses: actions/cache@v4
         with:
           path: .cache/eslint
@@ -170,9 +178,11 @@ jobs:
       # step; because each `run:` is a fresh shell, that `wait` reaped nothing
       # and the format:check exit code was silently discarded.
       - name: Format check
+        if: env.DOCS_ONLY != 'true'
         run: npm run format:check
 
       - name: Lab gate check
+        if: env.DOCS_ONLY != 'true'
         run: bash scripts/agent/lab-gate-check.sh
 
       # Deterministic architecture guard (ADR 0039): every *System exported from
@@ -181,11 +191,13 @@ jobs:
       # the documented allowlist. Blocks the class of bug where spawnerSystem
       # shipped inert because only its lab force-called it.
       - name: Orphaned-system wiring guard
+        if: env.DOCS_ONLY != 'true'
         run: npm run check:wired-systems
 
       # copilot-guards + review-ledger validator tests (node:test). These run
       # nowhere else in CI; this is their merge-gate home.
       - name: Guard + review-ledger tests
+        if: env.DOCS_ONLY != 'true'
         run: npm run test:guards
 
       # Run typecheck:src and lint in parallel, but FAIL the step if either fails.
@@ -193,6 +205,7 @@ jobs:
       # (tests/ + scripts/, ~860 files) runs in the advisory steps below so a
       # breakage in test helpers or scripts surfaces without blocking the merge.
       - name: Typecheck & Lint
+        if: env.DOCS_ONLY != 'true'
         run: |
           npm run typecheck:src & tc=$!
           npm run lint:cache & lint=$!
@@ -201,12 +214,13 @@ jobs:
           wait "$lint" || rc=1
           exit "$rc"
 
-      # Human approval gate: exits cleanly for non-PR events (push, schedule)
-      # where PR_NUMBER is undefined. Requires owner comment "APPROVED FOR
-      # CHECK-IN" if the PR has the human-approval-required label, closes an
-      # issue with that label, or originates from a nightly balance branch.
-      # The human-approval-rerun.yml automation watches for this job
-      # (Lightweight Checks) to detect approval-state divergence after CI runs.
+      # Human approval gate: runs on ALL PRs (including docs-only) so that a
+      # documentation PR carrying the human-approval-required label (or closing
+      # an issue with that label) is not silently bypassed.
+      # Exits cleanly for non-PR events (push, schedule) where PR_NUMBER is
+      # undefined. The human-approval-rerun.yml automation watches this step's
+      # conclusion within the Lightweight Checks job to detect approval-state
+      # divergence after CI runs.
       - name: Human approval
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -442,8 +456,10 @@ jobs:
           # would skip every heavy gate and be silently counted as PASS.
           check "Change scope detection"        "${{ needs.changes.result }}"
           # Lightweight Checks consolidates Types & Lint, Format & Labs,
-          # advisory dead-code/typecheck, and human-approval. Docs-only changes
-          # skip this job; the merge-gate treats the skip as PASS.
+          # advisory dead-code/typecheck, and human-approval. On docs-only
+          # changes the non-approval steps are skipped at the step level; the
+          # job still runs (and succeeds) so the human-approval gate is
+          # unconditionally enforced for labeled docs-only PRs.
           check "Lightweight Checks"            "${{ needs.check-lightweight.result }}"
           # Unit tests: skipped for sprites_only (allow_skipped=true).
           check "Unit tests"                    "${{ needs.test-unit.result }}"        "true"
