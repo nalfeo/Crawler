@@ -99,3 +99,29 @@ describe('generated equipment properties', () => {
     );
   });
 });
+
+describe('effect catalog coverage invariants', () => {
+  it('has at least one legal effect shape for every target-kind/rarity-budget combination', () => {
+    // weapon=2 armor=2 accessory=2 (rare), uncommon=1; common is always valid (budget=0)
+    // We enumerate each base type and each non-zero rarity to prove no shape gap
+    const worlds = [
+      ['plasma-pistol', 'uncommon', 1],
+      ['plasma-pistol', 'rare', 2],
+      ['iron-breastplate', 'uncommon', 1],
+      ['iron-breastplate', 'rare', 2],
+      ['band-of-fortune', 'uncommon', 1],
+      ['band-of-fortune', 'rare', 2],
+    ] as const;
+
+    for (const [baseId, rarity, _budget] of worlds) {
+      const world = createTestWorld({
+        seed: 99,
+        generatedEquipmentRunKey: `catalog-${baseId}-${rarity}`,
+      });
+      // Should not throw — if it does, the catalog has a gap
+      expect(() =>
+        generateEquipmentInstance(world, { baseId, itemLevel: 1, rarity, enhancementLevel: 0 }),
+      ).not.toThrow();
+    }
+  });
+});

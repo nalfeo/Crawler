@@ -646,6 +646,7 @@ function validateFrozenFields(
   value: unknown,
   path: string,
   expectedInstanceId?: GeneratedEquipmentInstanceId,
+  allowDeferredSnapshot = false,
 ): FrozenEquipmentFieldsV1 {
   const record = requireRecord(value, path);
   requireKeys(
@@ -682,7 +683,7 @@ function validateFrozenFields(
     passiveGrants: requireStringArray(record.passiveGrants, `${path}.passiveGrants`, true),
     activeWeaponSnapshot: (() => {
       if (record.activeWeaponSnapshot === null) return null;
-      if (isActiveWeaponSnapshotCreateInput(record.activeWeaponSnapshot)) {
+      if (allowDeferredSnapshot && isActiveWeaponSnapshotCreateInput(record.activeWeaponSnapshot)) {
         return buildSnapshotFromCreateInput(
           record.activeWeaponSnapshot,
           expectedInstanceId,
@@ -1087,7 +1088,7 @@ function validateCreateInput(
       policy,
       `${path}.resolvedEffects`,
     ),
-    frozen: validateFrozenFields(record.frozen, `${path}.frozen`, expectedInstanceId),
+    frozen: validateFrozenFields(record.frozen, `${path}.frozen`, expectedInstanceId, true),
   });
 }
 

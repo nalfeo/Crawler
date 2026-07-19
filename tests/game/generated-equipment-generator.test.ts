@@ -251,3 +251,22 @@ describe('deterministic generated equipment', () => {
     expect(Object.isFrozen(weaponDef)).toBe(weaponFrozenBefore);
   });
 });
+
+describe('createActiveWeaponSnapshotInput registry boundary', () => {
+  it('resolves a deferred snapshot through createGeneratedEquipmentInstance into a full frozen snapshot', () => {
+    const world = createTestWorld({
+      seed: 42,
+      generatedEquipmentRunKey: 'deferred-snapshot-create',
+    });
+    const instance = generateEquipmentInstance(world, GENERATED_WEAPON_REQUEST);
+    // The registry must expand the deferred stub into a full ActiveWeaponSnapshotV1 before persisting
+    expect(instance.frozen.activeWeaponSnapshot).not.toBeNull();
+    const snapshot = instance.frozen.activeWeaponSnapshot!;
+    expect(snapshot).toHaveProperty('schemaVersion', 'active-weapon-snapshot/v1');
+    expect(snapshot).toHaveProperty('sourceWeaponDefId', 'pistol');
+    expect(snapshot).toHaveProperty('generatedEquipmentInstanceId', instance.instanceId);
+    // Must not carry the stub shape (weaponDefId on a plain object) — it's a full WeaponDef extension
+    expect(snapshot).not.toHaveProperty('weaponDefId');
+    expect(Object.isFrozen(snapshot)).toBe(true);
+  });
+});
