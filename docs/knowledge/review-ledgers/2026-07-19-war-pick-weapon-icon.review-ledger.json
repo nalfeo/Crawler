@@ -1,0 +1,23 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "war-pick-weapon-icon",
+  "task_title": "Add war-pick Floor 2 equipment icon",
+  "estimated_apples": 1,
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "completed": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-haiku-4.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "summary": "Art addition with integration test following bone-saw/tower-spear pattern. One concern identified and resolved: handoff and PR description overclaimed resolveItemSprite wiring; corrected to accurately state the test covers registry loading and preload only. The manifest briefId (equipment/weapon/war-pick path form) does not match the resolveItemSprite item-id path — noted as a known future concern consistent with all other Floor 2 equipment art entries."
+        }
+      ]
+    }
+  }
+}

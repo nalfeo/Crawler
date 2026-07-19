@@ -3,15 +3,24 @@
 **Date:** 2026-07-19
 **Branch:** `copilot/asset-request-war-pick-again`
 **Issue:** nalfeo/Crawler#1313
-**Apple estimate:** 1🍎 — pure art, no engine code changes
+**Apple estimate:** 1🍎 — art + integration test addition
 
 ## Summary
 
 Produced and shipped a hand-authored 64×64 pixel-art war-pick weapon icon for the Floor 2
-equipment system. The sprite is registered under the stable runtime key
-`equipment/weapon/war-pick` and resolves automatically via `resolveItemSprite` (ADR 0051).
+equipment system. The sprite is registered under the runtime key `equipment/weapon/war-pick`
+and is preloaded via `preloadGeneratedSprites`. The integration test covers registry loading
+and preload only (direct `registry.lookup()` path), matching the pattern used for `bone-saw`
+and `tower-spear`. When a gameplay item definition for `war-pick` lands, the manifest
+`briefId` will need to be the bare concept `war-pick` (not the current path-form
+`equipment/weapon/war-pick`) for `resolveItemSprite` to wire it to EquipmentUI — see
+`docs/knowledge/adr/2026-07-08-item-sprite-name-normalization.md` for the resolver contract.
 
 ## Systems touched
+
+sprite-pipeline
+
+## Files changed
 
 - `public/assets/generated/equipment/weapon/war-pick.png` — new PNG (427 bytes)
 - `public/assets/generated/manifest.json` — new entry at `entries["equipment/weapon/war-pick"]`
@@ -82,10 +91,17 @@ Created a 64×64 RGBA PNG entirely in Python/Pillow. Design:
 
 ## Wiring status
 
-No additional wiring code needed. `resolveItemSprite` reads the manifest by runtime key
-(`equipment/weapon/war-pick`). The entry is now in the manifest with the correct key, so
-item icon resolution works automatically. `floor2-equipment-art.ts` already maps
-`weapon.war-pick` → `equipment/weapon/war-pick`.
+No additional wiring code needed for preload. The entry is registered in the manifest under
+`equipment/weapon/war-pick` and is preloaded by `preloadGeneratedSprites`. `floor2-equipment-art.ts`
+already maps `weapon.war-pick` → `equipment/weapon/war-pick`.
+
+Note: `resolveItemSprite` resolves by item id matched against `briefId`. The current `briefId`
+(`equipment/weapon/war-pick`) uses path form, not the bare concept `war-pick`, so `resolveItemSprite`
+will NOT match this entry when called with a gameplay item id. This is consistent with all other
+Floor 2 equipment art entries (`bone-saw`, `tower-spear`, etc.) and is a known future concern:
+when gameplay item definitions land for these weapons, the manifest `briefId` values will need
+migration to bare concept form per
+`docs/knowledge/adr/2026-07-08-item-sprite-name-normalization.md`.
 
 ## Before / after
 
