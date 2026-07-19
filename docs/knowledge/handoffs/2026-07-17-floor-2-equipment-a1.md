@@ -14,7 +14,7 @@ Producer / Systems Engineer
 
 ## Apples
 
-2🍎 exact (documentation-only, no code changes)
+3🍎 exact (multi-file cross-system contract with new ADR — fits "new module" tier)
 
 ## What Was Done
 
@@ -87,10 +87,7 @@ and does not advance A1's canonical lifecycle or make downstream nodes ready.
 - The A1 slice was not present in the original A0 epic-state.json — it was a post-A0 control
   plane addition. Future epics should explicitly define all control-lane slices in A0 to avoid
   ambiguity about where each slice's artifacts live.
-  **Multiple concurrent A1 sessions:** Multiple Copilot sessions simultaneously worked on A1 (PRs #1276, #1278, #1280, #1283). This handoff belongs to PR #1283 (`copilot/implement-contract-lock`). The durable stacked-work protocol recorded in PR #1280 correctly identifies this collision
-  but doesn't resolve it — the Producer should arbitrate which branch becomes canonical after
-  A0 merges, using this selection criterion: prefer the branch with the most complete, reviewed
-  contract specification and the clearest constitutional amendment.
+  **Multiple concurrent A1 sessions:** Multiple Copilot sessions simultaneously worked on A1 (PRs #1276, #1278, #1280, #1283). Issue #1281 was closed as a duplicate; issue #1279 is the authoritative A1 tracker; PR #1276 is the recorded A1 implementation. This PR (#1283) carries additional contract-spec completeness work (fuller registry V1 contracts, complete weapon snapshot, flag dependency table, migration boundary). The Producer should confirm which branch's contracts become canonical after A0 merges.
 
 ### Mistakes Made
 

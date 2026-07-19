@@ -599,6 +599,44 @@ Visual sandbox showing:
 - The registry schema is versioned. Unknown future versions fail closed; supported migration
   is deterministic and idempotent.
 
+#### V1 Record Shape
+
+```typescript
+interface GeneratedEquipmentInstanceV1 {
+  readonly schemaVersion: 1;
+  /** Stable UUID assigned at creation; never reused. */
+  readonly instanceId: string;
+  /** ID of the static EquipmentItemDef template this instance derives from. */
+  readonly baseDefId: string;
+  /** Floor zone band determining item level. */
+  readonly itemLevel: number;
+  /** Resolved rarity after generation. */
+  readonly rarity: 'common' | 'uncommon' | 'rare';
+  /** Post-rarity inherent damage (or armor) after inherent scaling. */
+  readonly resolvedBaseStat: number;
+  /** Enhancement tier 0..5 applied after rarity. */
+  readonly enhancementTier: number;
+  /** Affix descriptors allocated from the rarity effect-unit budget. */
+  readonly affixes: readonly AffixDescriptorV1[];
+  /** Frozen weapon snapshot (only present for weapon-bearing instances). */
+  readonly weaponSnapshot?: ActiveWeaponSnapshotV1;
+  /** SHA-256 fingerprint over canonical immutable content fields (excludes container/price/claim). */
+  readonly fingerprint: string;
+  /** Monotone content revision; increments on each atomic enhancement revision. */
+  readonly contentRevision: number;
+}
+```
+
+#### Registry Operations
+
+| Operation    | Signature (logical)                                                            | Failure contract                                          |
+| ------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| `create`     | `(def, itemLevel, rng) → GeneratedEquipmentInstanceV1`                         | Throws on unknown `baseDefId` or invalid `itemLevel`.     |
+| `get`        | `(instanceId) → GeneratedEquipmentInstanceV1 \| undefined`                     | Returns `undefined` for an unknown ID (no throw).         |
+| `transfer`   | `(instanceId, fromContainer, toContainer) → void`                              | Throws if `instanceId` absent in `fromContainer`.         |
+| `replace`    | `(instanceId, updatedRecord) → void`                                           | Throws if `instanceId` unknown or `schemaVersion` differs.|
+| `validateOwnership` | `(instanceId, container) → boolean`                                     | Pure; never mutates registry state.                       |
+
 ### Resolution Order (immutable after freeze)
 
 Generated instances are resolved exactly once in this sequence:
@@ -616,7 +654,9 @@ The only permitted post-freeze content operation is an atomic enhancement revisi
 
 ### Fingerprinting
 
-- Fingerprints are versioned SHA-256 digests of canonical immutable instance fields.
+- Fingerprints are versioned SHA-256 digests of canonical immutable instance fields,
+  including the complete weapon snapshot (if present) and the snapshot's `schemaVersion`
+  and `contentRevision`.
 - Excluded from fingerprint: ownership container, merchant price, claim state.
 - Fingerprint mismatch signals a bug (stale clone or field omission) — not an expected
   upgrade path.
@@ -632,8 +672,12 @@ static `WeaponDef` template.
 
 - Every ability or passive granted by equipment records a source key:
   `equipment:<instanceId>:<effectOrdinal>`.
-- A grant remains active while at least one source with that key exists.
-- Unequipping removes only the originating source keys.
+- An ability or passive remains **active** while its ability/passive ID has at least one live
+  source key in the active-ability/passive ledger. Two different equipped items can each grant
+  the same ability — each via a distinct source key — and unequipping one removes only that
+  item's source key; the ability stays active while the other item's key survives.
+- Unequipping removes only the source keys whose `instanceId` segment matches the unequipped
+  instance. Source keys belonging to other instances or non-equipment sources are unaffected.
 - The existing ten-slot active-ability limit remains authoritative.
 
 ### Achievement Reward Contracts
@@ -650,7 +694,7 @@ static `WeaponDef` template.
   fails completely — no partial transfer.
 - Quartermaster rules: Floor 2 merchant stock rotates within the unlocked catalog;
   Tier 1 items appear at the 25/50 zone shops; Tier 2 items at the 50/75 zone shops.
-- Boss chest rarity distribution: 85% Uncommon-or-higher, 15% Common fallback.
+- Boss chest rarity distribution: 85% Uncommon, 15% Rare — no Common drops from boss chests.
 - The normalized catalog floor is 70 base entries before enhancement or affixes.
 
 ### Floor Carryover
@@ -684,6 +728,20 @@ All default to `false` (off). Each flag must not expose equipment on Floor 1.
 | `floor2EquipmentAIMaintenance` | AI scoring and settlement-maintenance goal     |
 
 Dependency closure: each flag may be enabled only after all flags it depends on are enabled.
+If an attempt is made to enable a flag while a dependency is off, the runtime must error and
+refuse the mutation (never auto-enable prerequisites silently). Invalid configurations are
+rejected rather than auto-corrected.
+
+| Flag ID                        | Depends on                                                            |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `floor2EquipmentRegistry`      | (none — root flag)                                                    |
+| `floor2EquipmentCatalog`       | `floor2EquipmentRegistry`                                             |
+| `floor2EquipmentRewards`       | `floor2EquipmentCatalog`                                              |
+| `floor2EquipmentEconomy`       | `floor2EquipmentCatalog`                                              |
+| `floor2EquipmentUX`            | `floor2EquipmentRegistry`                                             |
+| `floor2EquipmentWorldInteg`    | `floor2EquipmentRegistry`, `floor2EquipmentCatalog`                   |
+| `floor2EquipmentAIMaintenance` | `floor2EquipmentRegistry`, `floor2EquipmentEconomy`                   |
+
 Disabling a flag with persisted items preserves existing instances (no forced unequip or data loss).
 
 ### Migration
@@ -694,3 +752,16 @@ Disabling a flag with persisted items preserves existing instances (no forced un
   coerced. The runtime logs a structured error and keeps the record as-is until a supported
   migration is available.
 - Migration never rerolls frozen content (no new RNG draws on existing fields).
+
+#### v0 → v1 Boundary
+
+The pre-V1 floor model uses numeric `EquipmentInstanceId` records (`EquipmentInstance` in
+`src/shared/equipment-types.ts`) whose `instanceId` is a world-local integer. These are
+**Floor 1 legacy records** and are not eligible for V1 migration:
+
+- A record is eligible for V1 only if it was created by the Floor 2 generated-equipment
+  registry (i.e. `schema_version === 1`).
+- Legacy numeric-ID Floor 1 instances remain on the pre-V1 path and are never promoted.
+- A record presenting as a generated instance (non-integer UUID shape) but carrying an
+  unrecognised or future `schema_version` fails closed — logged as a structured error,
+  no mutation applied, surfaced to the caller as a typed `MigrationFailure` result.

@@ -87,8 +87,8 @@ band, initially Level 1 → 6 and Level 6 → 11.
 | Five-level DPS growth principle                                                   | `.specify/memory/constitution.md` (Principle 9)           |
 | Generated identity, resolution, ownership, rewards, economy, AI, flags, migration | `.specify/specs/equipment-system.md` (Floor 2 Contract §) |
 | Static weapon template and frozen active snapshot                                 | `.specify/specs/weapon-system.md` (Frozen Snapshot §)     |
-| Epic counts, stable manifest, DAG, release flags, and rollout                     | `docs/knowledge/epics/floor-2-equipment/PLAN.md`          |
-| Cached observed lifecycle facts                                                   | `docs/knowledge/epics/floor-2-equipment/epic-state.json`  |
+| Epic counts, stable manifest, DAG, release flags, and rollout                     | Producer-owned: to be published under `docs/knowledge/epics/` once the epic A0 validates and the canonical A1 branch is designated. |
+| Cached observed lifecycle facts                                                   | Same as above; the epic-state file is co-located with the PLAN manifest once it is designated canonical. |
 
 ## Consequences
 

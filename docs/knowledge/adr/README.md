@@ -99,11 +99,13 @@ hundreds of inbound references.
 - [Line-of-sight gate for weapon auto-targeting](0018-weapon-line-of-sight-targeting.md)
 - [Fireball spell targeting (any enemy, cluster-preferring)](0018-fireball-targeting.md)
 - [Projectile target-leading & quest-progress stall watchdog](0020-projectile-leading-and-quest-progress-watchdog.md)
+- [Versioned frozen Floor 2 equipment instances](0065-versioned-frozen-floor2-equipment-instances.md) — one generated-equipment registry, frozen per-instance `ActiveWeaponSnapshotV1`, and 10 cross-system decisions (DEC-001..DEC-010).
 
 ### Stats, mana & progression
 
 - [Wisdom → Mana pool (`manaSystem`) + boss-reward spell hardening](0019-wisdom-mana-pool.md) — superseded; mana removed entirely by the primary-stat overhaul below.
 - [Primary-stat system overhaul — EffectiveStats unification, typed damage scaling, encumbrance, and full mana removal](2026-07-16-primary-stat-system-overhaul.md) — supersedes `0018`, `0019`, and `2026-07-10-shared-stat-allocation-and-runtime-derivations.md`.
+- [Versioned frozen Floor 2 equipment instances](0065-versioned-frozen-floor2-equipment-instances.md) — rarity budget, enhancement bounds, and the 1.7×–2.3× five-level DPS growth gate (Principle 9).
 
 ### Enemy AI, spawning & behavior
 

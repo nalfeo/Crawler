@@ -185,24 +185,66 @@ interface ActiveWeaponSnapshotV1 {
   readonly instanceId: string;
   /** The base WeaponDef template this instance derives from. */
   readonly baseWeaponDefId: string;
-  /** Resolved damage after inherent scaling, rarity, and enhancement. */
+
+  // ── Core weapon behaviour ─────────────────────────────────────────────
+  readonly weaponType: WeaponTypeValue;
   readonly resolvedBaseDamage: number;
-  /** Resolved attack speed modifier (additive to base). */
-  readonly resolvedAttackSpeedBonus: number;
-  /** Resolved crit chance (0.0–1.0). */
-  readonly resolvedCritChance: number;
-  /** Resolved crit multiplier (e.g. 1.5 = 150%). */
-  readonly resolvedCritMultiplier: number;
-  /** Resolved projectile count (≥1). */
+  readonly cooldownMs: number;
+  readonly range: number;
+
+  // ── Projectile / ranged ──────────────────────────────────────────────
+  readonly projectileSpeed: number;
   readonly resolvedProjectileCount: number;
-  /** Resolved range modifier (additive). */
+
+  // ── Area-of-effect / melee ───────────────────────────────────────────
+  readonly aoeRadius: number;
+  readonly durationMs: number;
+  readonly swingArcDeg: number;
+  readonly meleeStyle: MeleeStyleValue;
+  readonly headRadius: number;
+  readonly shaftDamageMult: number;
+
+  // ── Beam ─────────────────────────────────────────────────────────────
+  readonly beamTickMs: number;
+  readonly beamLength: number;
+
+  // ── Trap ─────────────────────────────────────────────────────────────
+  readonly trapArmMs: number;
+  readonly trapTriggerRadius: number;
+  readonly trapExplosionRadius: number;
+
+  // ── Thrown / boomerang ───────────────────────────────────────────────
+  readonly returnSpeed: number;
+  readonly maxRange: number;
+
+  // ── Hit modifiers ────────────────────────────────────────────────────
+  readonly knockback: number;
+  readonly pierce: number;
+  readonly bounceCount: number;
+  readonly goreFactor: number;
+  readonly baseAccuracy: number;
+
+  // ── Resolved combat stats ────────────────────────────────────────────
+  readonly resolvedAttackSpeedBonus: number;
+  readonly resolvedCritChance: number;
+  readonly resolvedCritMultiplier: number;
   readonly resolvedRangeBonus: number;
-  /** Ability IDs granted by this weapon (sourced via equipment ownership). */
+
+  // ── Skills ───────────────────────────────────────────────────────────
+  readonly weaponClassSkillId: WeaponClassSkillId;
+  readonly weaponTypeSkillId: WeaponTypeSkillId;
+
+  // ── Ability / passive grants ─────────────────────────────────────────
   readonly grantedAbilityIds: readonly string[];
-  /** Passive IDs granted by this weapon (sourced via equipment ownership). */
   readonly grantedPassiveIds: readonly string[];
-  /** Snapshot creation timestamp (wall clock, for debugging only — not used in game logic). */
-  readonly frozenAt: string;
+
+  // ── Provenance ───────────────────────────────────────────────────────
+  /**
+   * Monotone content revision counter. Increments each time an atomic
+   * enhancement revision writes a new snapshot. Used for fingerprint
+   * provenance — never wall-clock time.
+   */
+  readonly contentRevision: number;
 }
 ```
 
@@ -212,14 +254,22 @@ interface ActiveWeaponSnapshotV1 {
   by looking up the equipped instance ID in the generated equipment registry.
 - The firing pipeline must not read fields directly from the base `WeaponDef` for a generated
   weapon — it uses only the frozen snapshot fields.
-- If no snapshot is found for the equipped instance ID, the runtime falls back to the base
-  `WeaponDef` template (covers Floor 1 static weapons that have no generated instance).
+- **Floor 1 static weapons** (numeric-ID legacy instances, no generated registry entry) are
+  routed through the existing `WeaponDef` template path **before** the generated-instance
+  lookup; they never reach the snapshot path.
+- **A generated instance ID with no corresponding snapshot in the registry must fail closed:**
+  log a structured error and cancel the firing action. Silent fallback to the static
+  `WeaponDef` template is not permitted for generated instances, as this would silently
+  execute stale or incorrect behavior for an item the player has already earned.
 
 ### Snapshot Immutability
 
 - A snapshot is frozen at instance resolution and must not be mutated thereafter.
 - The only legal post-freeze operation that touches a snapshot is an atomic enhancement revision:
   the old snapshot is discarded and a new `ActiveWeaponSnapshotV1` is written for the same
-  instance ID with the updated resolved values and a new `frozenAt` timestamp.
-- Snapshot fields are excluded from the instance fingerprint computation — the fingerprint
-  covers canonical content fields, not derived runtime behavior.
+  instance ID with the updated resolved values and an incremented `contentRevision`.
+- **The complete snapshot (all fields, including `schemaVersion` and `contentRevision`) is
+  included in the parent instance's fingerprint computation.** Excluding the snapshot would
+  allow two behaviorally different items — or a corrupt snapshot — to retain the same
+  fingerprint, directly contradicting ADR 0065's risk mitigation for omitted runtime fields.
+  The only fingerprint exclusions are: ownership container, merchant price, and claim state.
