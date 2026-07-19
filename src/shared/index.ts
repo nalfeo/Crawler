@@ -78,6 +78,9 @@ export type {
   GeneratedEquipmentInstanceV1,
   GeneratedEquipmentCreateInputV1,
   GeneratedEquipmentRegistrySnapshotV1,
+  ActiveWeaponCombatOverridesV1,
+  ActiveWeaponSnapshotCreateInputV1,
+  FrozenEquipmentFieldsCreateInputV1,
 } from './generated-equipment-types.js';
 export { CanonicalJsonError, canonicalJson, sha256Hex, deepFreeze } from './canonical-json.js';
 export {
