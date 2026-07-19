@@ -53,6 +53,16 @@ const WORKFLOW_IDS = {
 
 type WorkflowKey = keyof typeof WORKFLOW_IDS;
 
+/** Maximum delay between retry attempts, in milliseconds. */
+const MAX_BACKOFF_MS = 8000;
+
+/**
+ * Throttle interval between paginated run-list requests.
+ * GitHub enforces 5000 req/hr per authenticated user; 200ms ≈ 5 req/sec =
+ * 18,000 req/hr, well within limit. The backoff in ghGet handles actual 429s.
+ */
+const LIST_PAGE_THROTTLE_MS = 200;
+
 /** Change-impact classification matching detect-art-only.sh categories. */
 type ChangeImpact =
   | 'art_only' // Only generated sprites / sprite-catalog
@@ -209,8 +219,8 @@ async function ghGet(path: string, token: string, retries = 3): Promise<unknown>
     } catch (err) {
       const msg = String(err);
       if ((msg.includes('429') || msg.includes('503')) && attempt < retries) {
-        // Cap backoff at 8s (500ms × 2^4) to avoid excessive waits in analysis runs
-        const delayMs = Math.min(500 * Math.pow(2, attempt), 8000);
+        // Cap backoff at MAX_BACKOFF_MS to avoid excessive waits in analysis runs
+        const delayMs = Math.min(500 * Math.pow(2, attempt), MAX_BACKOFF_MS);
         await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }
@@ -247,6 +257,11 @@ async function ghGetAll(
 
     // Stop early if we received fewer than 100 items (last page)
     if (items.length < 100) break;
+  }
+  if (results.length >= pageLimit * 100) {
+    process.stderr.write(
+      `⚠️  ghGetAll hit page limit (${pageLimit} pages) for ${basePath}; results may be incomplete.\n`,
+    );
   }
   return results;
 }
@@ -443,7 +458,9 @@ function computeAvoidableMinutes(
   }
 
   if (impact === 'art_only' || impact === 'docs_only') {
-    // All heavy gates were avoidable; only scope-detection and lightweight checks needed
+    // All heavy gates were avoidable; only scope-detection and lightweight checks needed.
+    // Patterns match job names in .github/workflows/ci.yml (detect, typecheck, lint, format,
+    // unit-tests, commit-lint). Any new lightweight CI jobs should be added here.
     const lightJobPatterns = ['detect', 'scope', 'typecheck', 'lint', 'format', 'unit', 'commit'];
     const heavy = jobs.filter(
       (j) => !lightJobPatterns.some((p) => j.name.toLowerCase().includes(p)),
@@ -486,7 +503,9 @@ async function fetchRunsInWindow(
 ): Promise<WorkflowRun[]> {
   const runs: WorkflowRun[] = [];
   let page = 1;
-  const pageLimit = 2000; // Safety cap
+  // A 7-day window at 200 PR-triggered runs/day would need ~14 pages (100/page).
+  // 200 pages is a conservative cap that prevents runaway pagination.
+  const pageLimit = 200;
 
   process.stderr.write(`Fetching ${workflowKey} workflow runs...`);
 
@@ -515,8 +534,7 @@ async function fetchRunsInWindow(
     if (passedWindow || !foundAny) break;
     page++;
 
-    // Throttle at ~5 req/sec to stay well within GitHub rate limits (5000 req/hr)
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, LIST_PAGE_THROTTLE_MS));
     if (page % 10 === 0) process.stderr.write('.');
   }
 
@@ -575,6 +593,9 @@ async function fetchPrFiles(
  * middle element; on an even array it returns the lower-middle element (not an
  * interpolated average). This is consistent with the baseline measurement
  * methodology and avoids fractional runner-minute values in the report.
+ *
+ * Returns 0 for an empty array ("no data"); callers should check sampleSize > 0
+ * before interpreting the value.
  */
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
