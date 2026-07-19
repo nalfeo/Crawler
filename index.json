@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e61214a88a0aec4a51224f85b89f761570845eca",
+    "commitDate": "2026-07-18T23:16:38Z",
+    "commitSubject": "Add Floor 2 `throwing-knives` weapon brief for stable equipment icon key (#1540)",
+    "capturedAt": "2026-07-19T00:48:14.982Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29665699437",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/e61214a88a0aec4a51224f85b89f761570845eca.json"
+  },
+  {
     "commit": "b1ddebd2f69cfe4499256cbac7ae109972606ace",
     "commitDate": "2026-07-18T23:16:32Z",
     "commitSubject": "feat(sprites): add siege-bow weapon sprite brief (#1539)",
