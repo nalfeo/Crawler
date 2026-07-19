@@ -87,6 +87,75 @@ function cloneLegacyGrantSources(
   return new Map([...source].map(([abilityId, sources]) => [abilityId, [...sources]]));
 }
 
+function fallbackLegacySourceIds(
+  kind: AbilityGrantKind,
+  abilityId: string,
+  sources: readonly AbilityGrantSource[],
+): Set<AbilityGrantSourceId> {
+  const fallbackIds = new Set<AbilityGrantSourceId>();
+  if (sources.length === 0) {
+    return fallbackIds;
+  }
+  if (kind === 'active' && sources.some((source) => source.kind === 'learned')) {
+    fallbackIds.add(learnedAbilityGrantSourceId(abilityId));
+  }
+  if (kind === 'passive' || sources.some((source) => source.kind !== 'learned')) {
+    fallbackIds.add(legacyAbilityGrantSourceId(kind, abilityId));
+  }
+  return fallbackIds;
+}
+
+function syncOwnershipEntryFromLegacySources(
+  state: AbilityState,
+  kind: AbilityGrantKind,
+  abilityId: string,
+): void {
+  const ownershipMap =
+    kind === 'active'
+      ? state.grantOwnership.activeSourcesByAbilityId
+      : state.grantOwnership.passiveSourcesByAbilityId;
+  const legacySources =
+    kind === 'active'
+      ? (state.activeAbilityGrantSources.get(abilityId) ?? [])
+      : (state.passiveAbilityGrantSources.get(abilityId) ?? []);
+
+  const learnedSourceId = kind === 'active' ? learnedAbilityGrantSourceId(abilityId) : undefined;
+  const legacySourceId = legacyAbilityGrantSourceId(kind, abilityId);
+  const ownedSources = ownershipMap.get(abilityId);
+  if (ownedSources !== undefined) {
+    if (learnedSourceId !== undefined) {
+      ownedSources.delete(learnedSourceId);
+    }
+    ownedSources.delete(legacySourceId);
+    if (ownedSources.size === 0) {
+      ownershipMap.delete(abilityId);
+    }
+  }
+
+  const fallbackIds = fallbackLegacySourceIds(kind, abilityId, legacySources);
+  if (fallbackIds.size === 0) {
+    return;
+  }
+
+  const target = ownershipMap.get(abilityId) ?? new Set<AbilityGrantSourceId>();
+  for (const fallbackId of fallbackIds) {
+    target.add(fallbackId);
+  }
+  ownershipMap.set(abilityId, target);
+}
+
+function syncOwnershipFromLegacySources(state: AbilityState): void {
+  const activeIds = new Set([...state.activeAbilityGrantSources.keys()]);
+  for (const abilityId of activeIds) {
+    syncOwnershipEntryFromLegacySources(state, 'active', abilityId);
+  }
+
+  const passiveIds = new Set([...state.passiveAbilityGrantSources.keys()]);
+  for (const abilityId of passiveIds) {
+    syncOwnershipEntryFromLegacySources(state, 'passive', abilityId);
+  }
+}
+
 function validatePersistedAbilityKind(abilityId: string, kind: AbilityGrantKind): void {
   const def = getAbilityDefinition(abilityId);
   if (def === undefined) return;
@@ -267,6 +336,7 @@ export function normalizeAbilityState(state: AbilityStateLike): AbilityState {
     }
   }
 
+  syncOwnershipFromLegacySources(normalized);
   sourceOwnerMap(normalized.grantOwnership);
   syncDerivedAbilityLists(normalized);
   return normalized;
@@ -302,7 +372,11 @@ function installAbilityState(
 export function getOrCreateAbilityState(world: GameWorld, holderEid: number): AbilityState {
   const existing = world.abilityStatesByEntity.get(holderEid);
   if (existing !== undefined) {
-    if (existing.grantOwnership !== undefined) return existing as AbilityState;
+    if (existing.grantOwnership !== undefined) {
+      const state = existing as AbilityState;
+      syncOwnershipFromLegacySources(state);
+      return state;
+    }
     const normalized = normalizeAbilityState(existing);
     return installAbilityState(world, holderEid, normalized, existing);
   }
@@ -361,6 +435,36 @@ function _addPassiveGrantSource(
   }
 }
 
+function pruneLegacyGrantSourcesForRevocations(
+  kind: AbilityGrantKind,
+  abilityId: string,
+  sources: readonly AbilityGrantSource[] | undefined,
+  removals: ReadonlySet<AbilityGrantSourceId>,
+): AbilityGrantSource[] | undefined {
+  if (sources === undefined) {
+    return undefined;
+  }
+  const learnedRevoked = removals.has(learnedAbilityGrantSourceId(abilityId));
+  const legacyRevoked = removals.has(legacyAbilityGrantSourceId(kind, abilityId));
+  const revokedSkillIds = new Set(
+    [...removals]
+      .filter((sourceId) => sourceId.startsWith('skill:'))
+      .map((sourceId) => sourceId.split(':')[1])
+      .filter((skillId): skillId is string => skillId !== undefined),
+  );
+
+  const remaining = sources.filter((source) => {
+    if (source.kind === 'learned') {
+      return !learnedRevoked && !legacyRevoked;
+    }
+    if (source.kind === 'skill') {
+      return !legacyRevoked && !revokedSkillIds.has(source.skillId);
+    }
+    return !legacyRevoked;
+  });
+  return remaining.length > 0 ? remaining : undefined;
+}
+
 function grantTrackedActiveAbility(
   world: GameWorld,
   holderEid: number,
@@ -377,6 +481,7 @@ function grantTrackedActiveAbility(
   const state = getOrCreateAbilityState(world, holderEid);
   if (state.equippedActiveAbilityIds.includes(abilityId)) {
     _addActiveGrantSource(state, abilityId, source);
+    syncOwnershipEntryFromLegacySources(state, 'active', abilityId);
     return;
   }
   if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
@@ -384,6 +489,7 @@ function grantTrackedActiveAbility(
   }
   state.equippedActiveAbilityIds.push(abilityId);
   _addActiveGrantSource(state, abilityId, source);
+  syncOwnershipEntryFromLegacySources(state, 'active', abilityId);
 }
 
 export function grantAbilitySources(
@@ -473,6 +579,7 @@ export function unequipActiveAbility(world: GameWorld, holderEid: number, abilit
   if (idx >= 0) {
     state.equippedActiveAbilityIds.splice(idx, 1);
     state.activeAbilityGrantSources.delete(abilityId);
+    syncOwnershipEntryFromLegacySources(state, 'active', abilityId);
   }
 }
 
@@ -514,6 +621,7 @@ export function grantPassiveAbility(
     state.passiveAbilityIds.push(abilityId);
   }
   _addPassiveGrantSource(state, abilityId, source);
+  syncOwnershipEntryFromLegacySources(state, 'passive', abilityId);
 }
 
 export function revokeAbilitySources(
@@ -529,6 +637,17 @@ export function revokeAbilitySources(
 
   for (const [abilityId, sources] of [...state.grantOwnership.activeSourcesByAbilityId]) {
     const remaining = new Set([...sources].filter((sourceId) => !removals.has(sourceId)));
+    const remainingLegacySources = pruneLegacyGrantSourcesForRevocations(
+      'active',
+      abilityId,
+      state.activeAbilityGrantSources.get(abilityId),
+      removals,
+    );
+    if (remainingLegacySources === undefined) {
+      state.activeAbilityGrantSources.delete(abilityId);
+    } else {
+      state.activeAbilityGrantSources.set(abilityId, remainingLegacySources);
+    }
     if (remaining.size > 0) {
       state.grantOwnership.activeSourcesByAbilityId.set(abilityId, remaining);
       continue;
@@ -542,6 +661,17 @@ export function revokeAbilitySources(
 
   for (const [abilityId, sources] of [...state.grantOwnership.passiveSourcesByAbilityId]) {
     const remaining = new Set([...sources].filter((sourceId) => !removals.has(sourceId)));
+    const remainingLegacySources = pruneLegacyGrantSourcesForRevocations(
+      'passive',
+      abilityId,
+      state.passiveAbilityGrantSources.get(abilityId),
+      removals,
+    );
+    if (remainingLegacySources === undefined) {
+      state.passiveAbilityGrantSources.delete(abilityId);
+    } else {
+      state.passiveAbilityGrantSources.set(abilityId, remainingLegacySources);
+    }
     if (remaining.size > 0) {
       state.grantOwnership.passiveSourcesByAbilityId.set(abilityId, remaining);
       continue;
@@ -612,8 +742,9 @@ export function revokeEquipmentAbilityGrants(
   holderEid: number,
   instanceId: EquipmentInstanceId | GeneratedEquipmentInstanceId,
 ): void {
-  const state = world.abilityStatesByEntity.get(holderEid);
-  if (state === undefined) return;
+  const existing = world.abilityStatesByEntity.get(holderEid);
+  if (existing === undefined) return;
+  const state = getOrCreateAbilityState(world, holderEid);
 
   // --- Active abilities ---
   for (const abilityId of [...state.equippedActiveAbilityIds]) {
@@ -632,6 +763,7 @@ export function revokeEquipmentAbilityGrants(
       if (idx >= 0) state.equippedActiveAbilityIds.splice(idx, 1);
       state.activeAbilityGrantSources.delete(abilityId);
     }
+    syncOwnershipEntryFromLegacySources(state, 'active', abilityId);
   }
 
   // --- Passive abilities ---
@@ -660,6 +792,7 @@ export function revokeEquipmentAbilityGrants(
         }
       }
     }
+    syncOwnershipEntryFromLegacySources(state, 'passive', abilityId);
   }
 }
 

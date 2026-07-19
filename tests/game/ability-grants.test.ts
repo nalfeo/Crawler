@@ -52,6 +52,19 @@ describe('source-owned ability grants', () => {
     expect(state.equippedActiveAbilityIds).toEqual([]);
   });
 
+  it('does not resurrect a revoked legacy learned source on the next state access', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+
+    equipActiveAbility(world, player, 'fireball');
+    revokeAbilitySources(world, player, [learnedAbilityGrantSourceId('fireball')]);
+
+    const state = getOrCreateAbilityState(world, player);
+    expect(state.grantOwnership.activeSourcesByAbilityId.has('fireball')).toBe(false);
+    expect(state.equippedActiveAbilityIds).toEqual([]);
+    expect(state.activeAbilityGrantSources.has('fireball')).toBe(false);
+  });
+
   it('removes applied passive modifiers immediately only after the final source', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);

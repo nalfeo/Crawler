@@ -13,6 +13,7 @@
 import { addComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { SkillHolder } from '../../src/core/components.js';
+import { setActiveWeaponDef } from '../../src/core/active-weapon.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { statSystem } from '../../src/core/systems/statSystem.js';
@@ -38,6 +39,7 @@ import {
 } from '../../src/game/systems/abilitySystem.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../../src/game/abilities/types.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
+import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function setupPlayer() {
@@ -104,6 +106,18 @@ describe('source recording', () => {
     memorizeSpell(world, player, 'fireball');
     const state = world.abilityStatesByEntity.get(player)!;
     expect(state.activeAbilityGrantSources.get('fireball')).toEqual([{ kind: 'learned' }]);
+  });
+
+  it('legacy grant paths also keep grantOwnership synchronized', () => {
+    const { world, player } = setupPlayer();
+    memorizeSpell(world, player, 'fireball');
+    grantPassiveAbility(world, player, 'veteran-instinct');
+
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.grantOwnership?.activeSourcesByAbilityId.get('fireball')).toEqual(
+      new Set([learnedAbilityGrantSourceId('fireball')]),
+    );
+    expect(state.grantOwnership?.passiveSourcesByAbilityId.has('veteran-instinct')).toBe(true);
   });
 
   it('grantEquipmentActiveAbility records equipment source with static id', () => {
@@ -311,11 +325,29 @@ describe('slot cap', () => {
   it('slot cap applies even for equipment grants', () => {
     const { world, player } = setupPlayer();
     const state = getOrCreateAbilityState(world, player);
-    // Fill up to cap with fake ids (bypass ability registry check)
-    state.equippedActiveAbilityIds = Array.from({ length: ACTIVE_ABILITY_SLOT_LIMIT }, (_, i) =>
-      i < ACTIVE_ABILITY_SLOT_LIMIT - 1 ? `ability-${i}` : 'battle-focus',
+    const filledIds = [
+      'battle-focus',
+      'fireball',
+      'heal',
+      'magic-missile',
+      'frost-nova',
+      'bless',
+      'stoneskin',
+      'curse',
+      'vampiric-touch',
+      'haste',
+    ].slice(0, ACTIVE_ABILITY_SLOT_LIMIT);
+    state.equippedActiveAbilityIds = [...filledIds];
+    for (const abilityId of filledIds) {
+      state.activeAbilityGrantSources.set(abilityId, [{ kind: 'learned' }]);
+      state.grantOwnership.activeSourcesByAbilityId.set(
+        abilityId,
+        new Set([learnedAbilityGrantSourceId(abilityId)]),
+      );
+    }
+    expect(() => grantEquipmentActiveAbility(world, player, 'pulse-shield', 1)).toThrow(
+      /slot cap/i,
     );
-    expect(() => grantEquipmentActiveAbility(world, player, 'fireball', 1)).toThrow(/slot cap/i);
   });
 
   it('slot cap not exceeded by duplicate equipment grant for same ability', () => {
@@ -504,5 +536,51 @@ describe('playerCarryover snapshot round-trip', () => {
     // Migration should have back-filled learned sources.
     expect(state.activeAbilityGrantSources.get('fireball')).toEqual([{ kind: 'learned' }]);
     expect(state.passiveAbilityGrantSources.get('veteran-instinct')).toEqual([{ kind: 'learned' }]);
+  });
+});
+
+describe('legacy/source-owned interoperability regressions', () => {
+  it('does not re-trigger weapon passive VFX every tick for legacy passive grants', () => {
+    const { world, player } = setupPlayer();
+    setActiveWeaponDef(world, WEAPON_DEFS.get('pistol')!);
+
+    grantPassiveAbility(world, player, 'hair-trigger');
+    abilitySystem(world);
+    abilitySystem(world);
+    abilitySystem(world);
+
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.appliedPassiveAbilityIds.has('hair-trigger')).toBe(true);
+    expect(state.grantOwnership?.passiveSourcesByAbilityId.has('hair-trigger')).toBe(true);
+    expect(world.vfxEvents.filter((event) => event.kind === 'weaponAbilityActivate')).toHaveLength(
+      1,
+    );
+  });
+
+  it('preserves legacy learned spells when a later source-owned grant normalizes state', () => {
+    const { world, player } = setupPlayer();
+    memorizeSpell(world, player, 'fireball');
+
+    grantAbilitySources(
+      world,
+      player,
+      [
+        {
+          kind: 'active',
+          abilityId: 'battle-focus',
+          sourceId: learnedAbilityGrantSourceId('battle-focus'),
+        },
+      ],
+      { configureActives: 'fill-open-slots' },
+    );
+
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.learnedSpellIds).toContain('fireball');
+    expect(state.equippedActiveAbilityIds).toEqual(
+      expect.arrayContaining(['fireball', 'battle-focus']),
+    );
+    expect(state.grantOwnership?.activeSourcesByAbilityId.get('fireball')).toEqual(
+      new Set([learnedAbilityGrantSourceId('fireball')]),
+    );
   });
 });

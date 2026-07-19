@@ -416,6 +416,24 @@ describe('equipment-evaluator: ability access', () => {
     expect(grants.active).toContain('power-blast');
     expect(grants.passive).toHaveLength(0);
   });
+
+  it('preserves non-equipment configured actives when scoring unrelated candidates', () => {
+    const world = makeWorld('test-non-equipment-active-retained');
+    const plainRing = makeArmorInstance(world, 'Plain Ring', 1, 0.1);
+    const ctx = makeCtx({ aoeRatio: 0, remainingFractionDiscount: 1 }, { abilitySlotWeight: 5 });
+    const loadout: CurrentLoadoutState = {
+      equippedItems: [],
+      activeWeaponSnapshot: null,
+      configuredActiveAbilityIds: ['fireball'],
+      activePassiveAbilityIds: [],
+    };
+
+    const breakdown = scoreEquipmentCandidate(ctx, loadout, plainRing);
+
+    expect(breakdown.current.abilityAccess).toBe(5);
+    expect(breakdown.hypothetical.abilityAccess).toBe(5);
+    expect(breakdown.abilityAccessDelta).toBe(0);
+  });
 });
 
 describe('equipment-evaluator: displacement cost', () => {
@@ -471,6 +489,41 @@ describe('equipment-evaluator: rankEquipmentCandidates', () => {
     expect(ranked1.map((r) => r.candidate.instanceId)).toEqual(
       ranked2.map((r) => r.candidate.instanceId),
     );
+  });
+
+  it('sortKey orders negative ERVs correctly with ascending lexicographic sort', () => {
+    const world = makeWorld('test-negative-sort-key');
+    const currentWeapon = makeWeaponInstance(world, 'Current', 'pistol', { baseDamage: 80 });
+    const lessBad = makeWeaponInstance(world, 'Less Bad', 'pistol', { baseDamage: 30 });
+    const worse = makeWeaponInstance(world, 'Worse', 'pistol', { baseDamage: 10 });
+
+    const currentSnap = currentWeapon.frozen.activeWeaponSnapshot as ActiveWeaponSnapshotV1;
+    const loadout = equippedLoadout(
+      [{ instance: currentWeapon, occupiedSlots: ['mainHand'] }],
+      currentSnap,
+    );
+    const ctx = makeCtx();
+
+    const breakdowns = [lessBad, worse].map((candidate) => ({
+      candidate,
+      breakdown: scoreEquipmentCandidate(ctx, loadout, candidate),
+    }));
+    const [lessBadBreakdown, worseBreakdown] = breakdowns;
+
+    expect(lessBadBreakdown!.breakdown.totalERV).toBeGreaterThan(
+      worseBreakdown!.breakdown.totalERV,
+    );
+
+    const bySortKey = [...breakdowns]
+      .sort((a, b) => a.breakdown.sortKey.localeCompare(b.breakdown.sortKey))
+      .map((entry) => entry.candidate.instanceId);
+    const byRank = rankEquipmentCandidates(
+      ctx,
+      loadout,
+      breakdowns.map((entry) => entry.candidate),
+    ).map((entry) => entry.candidate.instanceId);
+
+    expect(bySortKey).toEqual(byRank);
   });
 
   it('flags all transitions as legal for non-conflicting items', () => {

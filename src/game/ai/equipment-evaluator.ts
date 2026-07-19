@@ -452,14 +452,20 @@ function scoreLoadoutSnapshot(
 /**
  * Build a sort key that produces a deterministic ranking across reordered inputs.
  *
- * Format: `<ERV left-padded to 20 chars with sign>:<instanceId>`
- * Lexicographic sort (descending) correctly orders candidates: higher ERV first,
- * instanceId as tie-breaker.
+ * Format: `<sortable-totalERV>:<instanceId>`.
+ * Lexicographic ascending sort correctly orders candidates: higher ERV first,
+ * then `instanceId` ascending as the stable tie-breaker.
  */
 function buildSortKey(totalERV: number, instanceId: string): string {
-  // Use 10 decimal places and left-pad to ensure correct lexicographic ordering
-  const padded = totalERV.toFixed(10).padStart(30, totalERV >= 0 ? '0' : '-');
-  return `${padded}:${instanceId}`;
+  const buf = new ArrayBuffer(8);
+  const view = new DataView(buf);
+  view.setFloat64(0, totalERV, false);
+  const bits = view.getBigUint64(0, false);
+  const signMask = 0x8000000000000000n;
+  const allBits = 0xffffffffffffffffn;
+  const ascendingKey = (bits & signMask) !== 0n ? ~bits & allBits : bits | signMask;
+  const descendingKey = (~ascendingKey & allBits).toString(16).padStart(16, '0');
+  return `${descendingKey}:${instanceId}`;
 }
 
 /**
@@ -520,8 +526,13 @@ function deriveHypotheticalActiveAbilities(
   // Remaining grants after displacement
   const remainingCounts = subtractGrantCounts(currentGrantCounts, displacedGrantCounts.active);
 
-  // Remove configured abilities that have no remaining grants
-  const surviving = new Set(currentConfigured.filter((id) => (remainingCounts.get(id) ?? 0) > 0));
+  // Remove only configured abilities whose equipment-granted source count drops
+  // to zero. Non-equipment configured abilities are preserved.
+  const surviving = new Set(
+    currentConfigured.filter(
+      (id) => !currentGrantCounts.has(id) || (remainingCounts.get(id) ?? 0) > 0,
+    ),
+  );
 
   // Add new abilities from candidate (that weren't already configured)
   for (const [abilityId] of candidateGrantCounts.active) {

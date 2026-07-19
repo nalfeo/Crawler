@@ -136,10 +136,26 @@ function snapshotAbilityState(
   // abilities survive the transition without stale instanceId references.
   const nonEquipmentSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
     sources.filter((s) => s.kind !== 'equipment');
+  const hasNonEquipmentLegacySource = (kind: 'active' | 'passive', abilityId: string): boolean => {
+    const sources =
+      kind === 'active'
+        ? (state.activeAbilityGrantSources.get(abilityId) ?? [])
+        : (state.passiveAbilityGrantSources.get(abilityId) ?? []);
+    return sources.some((source) => source.kind !== 'equipment');
+  };
   const nonEquipmentSourceIds = (
+    kind: 'active' | 'passive',
+    abilityId: string,
     sources: ReadonlySet<AbilityGrantSourceId> | undefined,
   ): AbilityGrantSourceId[] =>
-    [...(sources ?? [])].filter((sourceId) => abilityGrantSourceCategory(sourceId) !== 'equipment');
+    [...(sources ?? [])].filter((sourceId) => {
+      const category = abilityGrantSourceCategory(sourceId);
+      if (category === 'equipment') return false;
+      if (category === 'legacy') {
+        return hasNonEquipmentLegacySource(kind, abilityId);
+      }
+      return true;
+    });
   const legacySourceFromOwnership = (
     sourceId: AbilityGrantSourceId,
   ): AbilityGrantSource | undefined => {
@@ -167,7 +183,7 @@ function snapshotAbilityState(
   const filteredOwnedActives = new Map<string, AbilityGrantSourceId[]>();
   const ownedActiveEntries = state.grantOwnership?.activeSourcesByAbilityId ?? new Map();
   for (const [abilityId, sources] of ownedActiveEntries) {
-    const kept = nonEquipmentSourceIds(sources);
+    const kept = nonEquipmentSourceIds('active', abilityId, sources);
     if (kept.length > 0) {
       filteredOwnedActives.set(abilityId, kept);
       if (!filteredActiveSources.has(abilityId)) {
@@ -183,7 +199,7 @@ function snapshotAbilityState(
   const filteredOwnedPassives = new Map<string, AbilityGrantSourceId[]>();
   const ownedPassiveEntries = state.grantOwnership?.passiveSourcesByAbilityId ?? new Map();
   for (const [abilityId, sources] of ownedPassiveEntries) {
-    const kept = nonEquipmentSourceIds(sources);
+    const kept = nonEquipmentSourceIds('passive', abilityId, sources);
     if (kept.length > 0) {
       filteredOwnedPassives.set(abilityId, kept);
       if (!filteredPassiveSources.has(abilityId)) {
@@ -222,9 +238,7 @@ function snapshotAbilityState(
         [abilityId, Math.max(0, frameCount - lastTriggerFrame)] as const,
     ),
     cooldownFramesByAbilityId: [...state.cooldownFramesByAbilityId],
-    appliedPassiveAbilityIds: [...state.appliedPassiveAbilityIds].filter((id) =>
-      passiveAbilityIds.includes(id),
-    ),
+    appliedPassiveAbilityIds: [],
     activeAbilityGrantSources: [...filteredActiveSources].map(
       ([abilityId, sources]) => [abilityId, [...sources]] as const,
     ),
