@@ -21,9 +21,9 @@ Estimated 1🍎, actual 1🍎.
 Investigated CI recovery loop incident for PR #1273 (Queen Mab Verdigris Glamour,
 issue #1668). Recovery made no progress on review thread `PRRT_kwDOSvo2Ms6R_QOR`
 after 2 dispatch attempts. Root cause: the task body instructed agents to post
-`` `✅ Addressed in <sha>: <one-line note>` `` but never substituted the concrete
-current head SHA for the `<sha>` placeholder. Agents that did not look up the head
-SHA posted `✅ Addressed:` (no SHA) or similarly invalid markers. Since
+`` `✅ Addressed in <sha>: <one-line note>` `` without explaining which SHA to use
+or how to obtain it. Agents posted `✅ Addressed:` (no SHA) or similarly invalid
+markers. Since
 `extractAddressedMarkerSha()` requires the pattern `✅ Addressed in <valid-sha>:`,
 the markers never satisfied `shouldResolveThread()`, the thread remained unresolved,
 the blocker fingerprint was unchanged across cycles, and after 2 stall retries the
@@ -55,18 +55,20 @@ authoritative).` — no SHA. `shouldResolveThread()` returned false on every cyc
 
 ## Fix
 
-In `reconcile.mjs`, immediately before the `taskBody` array, compute a concrete
-marker reply that replaces `<sha>` with the actual `headSha`:
+In `reconcile.mjs`, immediately before the `taskBody` array, replace the ambiguous
+placeholder with a named post-push placeholder:
 
 ```javascript
-const concreteMarkerReply = ADDRESSED_MARKER_REPLY.replace('<sha>', headSha);
+const postPushMarkerReply = ADDRESSED_MARKER_REPLY.replace('<sha>', '<post-push-sha>');
 ```
 
-Every addressed-marker instruction in the task body uses `concreteMarkerReply`.
+Every addressed-marker instruction in the task body uses `postPushMarkerReply`.
 The task body now says e.g.:
-`` `✅ Addressed in 2a12315feb55be26270f2024009ec9410e17238b: <one-line note>` ``
+`` `✅ Addressed in <post-push-sha>: <one-line note>` ``
 
-Agents only need to fill in `<one-line note>` — the correct SHA is pre-filled.
+The task includes the concrete dispatch SHA as context, but explicitly forbids using it
+in a post-repair marker. Agents must push the consolidated repair, run
+`git rev-parse HEAD`, and replace `<post-push-sha>` with that full SHA.
 
 ## Stale-marker fixture reconciliation
 
@@ -82,21 +84,21 @@ asserts the existing stale-marker safety behavior instead.
 
 ## Files Changed
 
-- `.github/scripts/ci-recovery/reconcile.mjs`: compute `concreteMarkerReply` from
-  `ADDRESSED_MARKER_REPLY.replace('<sha>', headSha)` and use it throughout the task body;
-  preserve the stale-marker guard and deterministic non-applicability guidance
+- `.github/scripts/ci-recovery/reconcile.mjs`: compute `postPushMarkerReply` with a named
+  `<post-push-sha>` placeholder, retain the concrete dispatch SHA as context, and require
+  the repair commit SHA after push; preserve the stale-marker guard and deterministic
+  non-applicability guidance
 - `.github/scripts/ci-recovery/reconcile.test.mjs`:
-  - Added targeted assertions that actionable instructions contain `HEAD_SHA` and the
-    task body does not retain the literal marker placeholder
+  - Added targeted assertions that actionable instructions require `<post-push-sha>`,
+    retain the concrete dispatch SHA only as context, and never bake it into a marker
   - Preserved current-main non-applicability coverage and corrected the stale-marker /
     outdated-thread regression expectations
 
 ## Regression Tests Added
 
-1. `top-level-comment warning should contain the concrete current head SHA` — asserts
-   the exact-thread instruction embeds `HEAD_SHA`
-2. `reply_to_comment instruction should contain the concrete current head SHA` — asserts
-   the actionable reply body embeds `HEAD_SHA`
+1. The exact-thread instruction requires `<post-push-sha>`.
+2. The task retains the concrete dispatch SHA as context but not as a marker value.
+3. The actionable reply instruction requires `git rev-parse HEAD` after the repair push.
 
 ## Verification
 
@@ -106,9 +108,11 @@ asserts the existing stale-marker safety behavior instead.
 ## Observe Before Done
 
 - Before: task body included `` `✅ Addressed in <sha>: <one-line note>` `` with literal placeholder; agents posted `✅ Addressed:` (no SHA); `shouldResolveThread()` returned false; fingerprint unchanged; loop exhausted.
-- After: task body includes `` `✅ Addressed in abc1234def5678901234567890abcdef12345678: <one-line note>` `` (with the concrete head SHA); `extractAddressedMarkerSha()` extracts a valid SHA; `shouldResolveThread()` returns true on the next reconcile cycle.
+- After: task body names `` `✅ Addressed in <post-push-sha>: <one-line note>` `` and
+  instructs the agent to replace it with the concrete repair commit SHA immediately after
+  pushing; `extractAddressedMarkerSha()` then extracts the commit containing the fix.
 
 ## Risks / Follow-up
 
-- The underlying concern on PR #1273 (PR description inaccurately stating "3 rounds, final round clean") is still unresolved. The thread will need a new recovery dispatch with the corrected task body. The next reconcile cycle will generate a task with the concrete head SHA, so the dispatched agent can post a valid `✅ Addressed in <sha>: <note>` after updating the PR description.
+- The underlying concern on PR #1273 (PR description inaccurately stating "3 rounds, final round clean") is still unresolved. The thread will need a new recovery dispatch with the corrected task body. The dispatched agent must post a valid marker naming its pushed repair commit after updating the PR description.
 - The PR description of PR #1273 needs to be updated to reflect the actual 2-round multi-model review with human escalation.

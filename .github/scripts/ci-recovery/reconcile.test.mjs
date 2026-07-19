@@ -3917,15 +3917,15 @@ test('live reconcile task comment includes explicit review-thread reply comment 
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      `post the \`✅ Addressed in ${HEAD_SHA}: <one-line note>\` reply`,
+      'post the `✅ Addressed in <post-push-sha>: <one-line note>` reply',
     ),
-    'top-level-comment warning should contain the concrete current head SHA',
+    'top-level-comment warning should require the post-push SHA',
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      `set the body to \`✅ Addressed in ${HEAD_SHA}: <one-line note>\``,
+      'replace `<post-push-sha>` in `✅ Addressed in <post-push-sha>: <one-line note>`',
     ),
-    'reply_to_comment instruction should contain the concrete current head SHA',
+    'reply_to_comment instruction should require replacing the post-push SHA placeholder',
   );
   assert.ok(
     !taskCommentCall.body.body.includes('✅ Addressed in <sha>'),
@@ -3933,9 +3933,21 @@ test('live reconcile task comment includes explicit review-thread reply comment 
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      `validated \`✅ Addressed in ${HEAD_SHA}: <one-line note>\` result`,
+      'validated `✅ Addressed in <post-push-sha>: <one-line note>` result',
     ),
-    'task comment should require a SHA for ordinary Addressed markers',
+    'task comment should require the post-push SHA for ordinary Addressed markers',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(`Branch head at dispatch: \`${HEAD_SHA}\``),
+    'task comment should retain the concrete dispatch SHA as context',
+  );
+  assert.ok(
+    !taskCommentCall.body.body.includes(`✅ Addressed in ${HEAD_SHA}`),
+    'task comment must not bake the dispatch-time SHA into an addressed marker',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('run `git rev-parse HEAD` immediately after pushing'),
+    'task comment should explain how to obtain the repair commit SHA',
   );
   assert.equal(
     taskCommentCall.body.body.includes('validated `✅ Addressed` result'),
