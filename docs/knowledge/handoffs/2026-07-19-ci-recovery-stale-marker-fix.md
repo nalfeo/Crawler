@@ -3,7 +3,7 @@
 **Date:** 2026-07-19  
 **Session slug:** ci-recovery-stale-marker-fix  
 **Branch:** copilot/fix-ci-recovery-loop-again  
-**PR:** Closes #1664 (CI recovery loop incident for PR #1638)  
+**PR:** #1665 (stale trusted-marker guard on outdated threads)  
 **Apple estimate:** 2🍎
 
 ## Systems touched
@@ -39,9 +39,10 @@ posted outdated-marker thread=PRRT_stale_marker_thread
 resolved thread=PRRT_stale_marker_thread
 ```
 
-This was also the root cause of the CI recovery loop incident for PR #1638: the reconciler
-was not correctly routing stale-marker threads, and recovery agents received task comments
-without the stale-marker hint needed to identify the real problem.
+Note: PR #1664 (CI recovery loop incident for PR #1638) listed three blockers that were
+all `isOutdated: false`. Because `shouldAutoPostOutdatedMarker` only runs for outdated
+threads, the fix in this PR does not address that incident. PR #1664 requires a separate
+investigation.
 
 ## Fix
 
