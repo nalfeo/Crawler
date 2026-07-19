@@ -97,9 +97,9 @@ function planHeading(line) {
   return null;
 }
 
-function isStandaloneMarkdownHeading(line) {
+function isStandaloneHeading(line) {
   const trimmed = String(line || '').trim();
-  return /^#{1,6}\s+\S/.test(trimmed) || /^\*\*\S.*\*\*$/.test(trimmed);
+  return /^#{1,6}\s+\S/.test(trimmed) || /^\*\*[^*]+\*\*$/.test(trimmed);
 }
 
 function hasStructuredPlanContent(body) {
@@ -111,7 +111,7 @@ function hasStructuredPlanContent(body) {
       currentSection = heading;
       continue;
     }
-    if (isStandaloneMarkdownHeading(line)) {
+    if (isStandaloneHeading(line)) {
       currentSection = null;
       continue;
     }
