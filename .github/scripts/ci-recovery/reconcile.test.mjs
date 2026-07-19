@@ -3741,7 +3741,7 @@ function gqlReviewThreads(threads, reviews = [substantiveCopilotReview()]) {
   };
 }
 
-test('live reconcile task comment annotates outdated threads and includes review-thread reply comment IDs', async (t) => {
+test('live reconcile auto-resolves outdated threads and keeps reply targets on remaining review-thread blockers', async (t) => {
   const outdatedReviewCommentId = '3606008324';
   const freshReviewCommentId = '3606008325';
   const outdatedThreadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${outdatedReviewCommentId}`;
@@ -3834,7 +3834,7 @@ test('live reconcile task comment annotates outdated threads and includes review
 
   t.after(() => server.close());
 
-  const { code, stderr } = await runScript(port, {
+  const { code, stdout, stderr } = await runScript(port, {
     RECOVERY_OPERATION: 'reconcile',
     CI_RECOVERY_MODE: 'live',
   });
@@ -3849,20 +3849,21 @@ test('live reconcile task comment annotates outdated threads and includes review
   );
   assert.ok(taskCommentCall, 'expected live reconcile to post a recovery task comment');
   assert.ok(
-    taskCommentCall.body.body.includes(`Reply target comment ID: \`${outdatedReviewCommentId}\``),
-    'task comment should include the outdated review-thread reply target comment ID',
-  );
-  assert.ok(
     taskCommentCall.body.body.includes(`Reply target comment ID: \`${freshReviewCommentId}\``),
     'task comment should include the fresh review-thread reply target comment ID',
+  );
+  assert.match(stdout, /posted outdated-marker thread=thread-review-target-outdated/);
+  assert.match(stdout, /resolved thread=thread-review-target-outdated/);
+  assert.ok(
+    !taskCommentCall.body.body.includes(`Reply target comment ID: \`${outdatedReviewCommentId}\``),
+    'task comment should omit the outdated review-thread reply target once the reconciler resolved it',
   );
   const outdatedThreadLine = taskCommentCall.body.body
     .split('\n')
     .find((line) => line.includes('thread-review-target-outdated'));
-  assert.ok(outdatedThreadLine, 'task comment should include the outdated review-thread blocker');
   assert.ok(
-    outdatedThreadLine.includes('**(outdated — deterministic non-applicability candidate)**'),
-    'outdated review-thread blocker should include the outdated annotation',
+    !outdatedThreadLine,
+    'task comment should omit the outdated review-thread blocker once the reconciler resolved it',
   );
   const freshThreadLine = taskCommentCall.body.body
     .split('\n')
@@ -6372,7 +6373,7 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 // was never pushed (compare 404), so the thread remains unresolved.
 // ---------------------------------------------------------------------------
 
-test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
+test('non-outdated stale-marker thread includes recovery hint in blocker summary', async (t) => {
   // Simulate the root cause from the PR #1266 loop incident:
   // The recovery agent replied to a review thread with ✅ Addressed in <sha>
   // but that commit was created locally and never pushed.  The compare API
@@ -6422,7 +6423,7 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
           {
             id: threadId,
             isResolved: false,
-            isOutdated: true,
+            isOutdated: false,
             path: 'scripts/sprites/cli.ts',
             line: 285,
             comments: {
