@@ -97,6 +97,11 @@ function planHeading(line) {
   return null;
 }
 
+function isStandaloneMarkdownHeading(line) {
+  const trimmed = String(line || '').trim();
+  return /^#{1,6}\s+\S/.test(trimmed) || /^\*\*\S.*\*\*$/.test(trimmed);
+}
+
 function hasStructuredPlanContent(body) {
   const sections = { design: [], decisions: [], checklist: [] };
   let currentSection = null;
@@ -104,6 +109,10 @@ function hasStructuredPlanContent(body) {
     const heading = planHeading(line);
     if (heading) {
       currentSection = heading;
+      continue;
+    }
+    if (isStandaloneMarkdownHeading(line)) {
+      currentSection = null;
       continue;
     }
     const content = line.trim();

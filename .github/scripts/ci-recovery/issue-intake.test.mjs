@@ -592,6 +592,23 @@ test('hasCopilotPlanComment recognises existing Copilot plan and recovery plan m
     ]),
     false,
   );
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: [
+          '**High-level design and approach**',
+          '## Status',
+          'Still investigating.',
+          '**Key decisions and alternatives**',
+          '- Keep the current manifest format.',
+          '**Checklist**',
+          '- [x] Add the brief.',
+        ].join('\n'),
+        user: { login: 'copilot-swe-agent' },
+      },
+    ]),
+    false,
+  );
   // Trusted recovery plan marker counts.
   assert.equal(
     hasCopilotPlanComment([
