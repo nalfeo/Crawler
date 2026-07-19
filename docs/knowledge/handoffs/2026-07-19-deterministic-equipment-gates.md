@@ -29,7 +29,7 @@ inventory, weapons, ci-policy
 
 ## Unresolved issues
 
-- Could not post the requested pre-code plan comment on GitHub issue #1567 from this environment because `gh` cannot authenticate against a configured GitHub host in this session.
+- Could not post the requested pre-code plan comment on GitHub issue #1567 from this environment because `gh` cannot authenticate against a configured GitHub host in this session; this was an explicit issue requirement from the maintainer comment.
 
 ## Recommended next steps
 

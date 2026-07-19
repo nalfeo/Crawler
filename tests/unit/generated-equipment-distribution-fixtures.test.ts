@@ -24,6 +24,8 @@ interface DistributionSummary {
   readonly effectCounts: Readonly<Record<string, number>>;
 }
 
+const FIXTURE_INDEX_SEED_STEP = 17;
+
 function chooseRarity(rng: SeededRandom): GeneratedEquipmentRarity {
   const roll = rng.next();
   if (roll < 0.62) return 'common';
@@ -46,8 +48,14 @@ function effectPoolForRarity(rarity: GeneratedEquipmentRarity): readonly string[
   return ['crit-boost', 'swift-stride', 'sturdy-hide', 'vampiric-edge', 'arcane-surge'];
 }
 
+function deriveFixtureSeed(baseSeed: number, index: number): number {
+  // Prime step (17) keeps adjacent fixture streams decorrelated while
+  // preserving deterministic replay for a fixed (seed, index) pair.
+  return baseSeed + index * FIXTURE_INDEX_SEED_STEP;
+}
+
 function fixtureForIndex(seed: number, index: number): DistributionFixture {
-  const rng = new SeededRandom(seed + index * 17);
+  const rng = new SeededRandom(deriveFixtureSeed(seed, index));
   const rarity = chooseRarity(rng);
   const enhancementLevel = chooseEnhancement(rng, rarity);
   const units = RARITY_EFFECT_BUDGET[rarity];
@@ -157,7 +165,7 @@ describe('deterministic generated-equipment distribution fixtures', () => {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3);
     expect(topEffects.length).toBe(3);
-    expect(topEffects[0]![1]).toBeGreaterThan(15);
-    expect(topEffects[2]![1]).toBeGreaterThan(6);
+    expect(topEffects[0]?.[1] ?? 0).toBeGreaterThan(15);
+    expect(topEffects[2]?.[1] ?? 0).toBeGreaterThan(6);
   });
 });
