@@ -38,10 +38,7 @@ if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]
 fi
 
 is_supported_ts_path() {
-  case "$1" in
-    vite.config.ts | src/*.ts | tests/*.ts | scripts/*.ts | tools/*.ts) return 0 ;;
-    *) return 1 ;;
-  esac
+  [[ "$1" == "vite.config.ts" || "$1" =~ ^(src|tests|scripts|tools)/.*\.ts$ ]]
 }
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we

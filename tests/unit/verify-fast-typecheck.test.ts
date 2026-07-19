@@ -106,7 +106,7 @@ if (result.kind === 'ready') {
 `;
 
 describe('verify-fast full-project typecheck', () => {
-  it.skipIf(!hasBash).each(['src', 'tests', 'scripts', 'tools', 'vite-config-root'] as const)(
+  it.skipIf(!hasBash).each(['src', 'tests', 'scripts', 'tools', 'vite.config.ts'] as const)(
     'fails for a %s-only narrowed property error',
     (directory) => {
       const files: Record<string, string> = {
@@ -120,7 +120,7 @@ describe('verify-fast full-project typecheck', () => {
         switch (directory) {
           case 'tests':
             return 'tests/narrowing.test.ts';
-          case 'vite-config-root':
+          case 'vite.config.ts':
             return 'vite.config.ts';
           default:
             return `${directory}/narrowing.ts`;
