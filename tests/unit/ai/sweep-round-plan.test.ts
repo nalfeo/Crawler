@@ -47,7 +47,9 @@ import {
 } from '../../../scripts/agent/perf/round-plan.js';
 import {
   baseConfigForCombo,
+  comboId,
   configId,
+  LEGACY_COMBO_ID,
   type Combo,
   type SweepConfig,
   type TunableKnob,
@@ -69,6 +71,7 @@ const NAVMESH_LEGACY: Combo = {
   pathing: AIPathingMode.NAVMESH_FUSED,
   decision: AIDecisionMode.LEGACY,
 };
+const NAVMESH_LEGACY_COMBO_ID = comboId(NAVMESH_LEGACY); // 'navmeshFused+legacy'
 const KNOBS: TunableKnob[] = ['aggression'];
 
 const META: ShardMeta = {
@@ -92,9 +95,10 @@ function row(
   seed: number,
   score: number,
   win = true,
+  combo = 'legacy+legacy',
 ): RunRow {
   return {
-    combo: 'legacy+legacy',
+    combo,
     configId: configIdValue,
     weapon,
     seed,
@@ -164,16 +168,21 @@ describe('initCheckpoint', () => {
     // uses legacy+legacy as the incumbent. Providing legacyBaseline fixes this.
     const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
     const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard([row(navmeshBaseId, 'sword', 1, 100)], {
-      [navmeshBaseId]: navmeshBase,
-    });
-    const legacyBaselineShard = baselineShard(80); // LEGACY config
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const legacyBaselineShard = baselineShard(80); // LEGACY config rows (combo: 'legacy+legacy')
 
     const checkpoint = initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, legacyBaselineShard);
     // bestConfigId is the combo's own base (navmesh), not the LEGACY incumbent.
     expect(checkpoint.bestConfigId).toBe(navmeshBaseId);
     // incumbentConfigId is the LEGACY config — matches the graduation gate.
     expect(checkpoint.incumbentConfigId).toBe(BASE_ID);
+    // incumbentCombo is LEGACY_COMBO_ID so buildLeaderboard finds the incumbent rows.
+    expect(checkpoint.incumbentCombo).toBe(LEGACY_COMBO_ID);
+    // combo is the navmesh combo string, not the legacy one.
+    expect(checkpoint.combo).toBe(NAVMESH_LEGACY_COMBO_ID);
     // Both configs and both sets of rows are merged in.
     expect(Object.keys(checkpoint.configs)).toContain(navmeshBaseId);
     expect(Object.keys(checkpoint.configs)).toContain(BASE_ID);
@@ -182,9 +191,10 @@ describe('initCheckpoint', () => {
   it('throws when legacyBaseline contains more than one config (ambiguous)', () => {
     const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
     const navmeshBaseId = configId(navmeshBase);
-    const navmeshBaselineShard = shard([row(navmeshBaseId, 'sword', 1, 100)], {
-      [navmeshBaseId]: navmeshBase,
-    });
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
     const other: SweepConfig = { ...BASE, aggression: 1.5 };
     const badLegacy = shard([row(BASE_ID, 'sword', 1, 100)], {
       [BASE_ID]: BASE,
@@ -470,6 +480,39 @@ describe('applyRoundResult', () => {
     expect(updated.configs).toHaveProperty(worseId);
   });
 
+  it('does NOT promote an improving candidate when the round is partial (a missing shard might have been better, and promoting changes the search trajectory)', () => {
+    // This is the key invariant: even when a qualifying candidate arrives and
+    // would normally be promoted, if plannedCount reveals some shards are missing,
+    // we must NOT promote. Otherwise the next round's planCandidates derives
+    // neighbours of the NEW best instead of the OLD best, permanently skipping
+    // the missing candidate. The arrived data is still merged in (deduped next
+    // round) and the search retries from the same position.
+    const baseline = shard(
+      [row(BASE_ID, 'sword', 1, 100, true), row(BASE_ID, 'bow', 2, 100, true)],
+      { [BASE_ID]: BASE },
+    );
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 200
+
+    const better: SweepConfig = { ...BASE, aggression: 1.5 };
+    const betterId = configId(better);
+    // This candidate qualifies (zero flips, 100% win rate) and outscores the baseline.
+    const betterShard = shard(
+      [row(betterId, 'sword', 1, 500, true), row(betterId, 'bow', 2, 500, true)],
+      { [betterId]: better },
+    );
+
+    // 2 were planned, only 1 arrived — incomplete round.
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, [betterShard], { plannedCount: 2 });
+    // Despite `better` qualifying and outscoring the baseline, must NOT be promoted.
+    expect(updated.bestConfigId).toBe(BASE_ID); // unchanged
+    expect(updated.bestScore).toBe(200); // unchanged
+    expect(updated.steps.aggression).toBe(0.5); // NOT halved — round was incomplete
+    expect(updated.converged).toBe(false);
+    // Data is still merged in for deduplication next round.
+    expect(updated.configs).toHaveProperty(betterId);
+    expect(updated.rows).toHaveLength(4); // 2 baseline + 2 candidate
+  });
+
   it('still halves normally when `plannedCount` matches the candidates actually received and none improve (no false safety net)', () => {
     const checkpoint = baseCheckpoint(500);
     const worse: SweepConfig = { ...BASE, aggression: 1.5 };
@@ -597,6 +640,59 @@ describe('applyRoundResult', () => {
     expect(() => applyRoundResult(checkpoint, 1, KNOBS, [badShard])).toThrow(
       /budgetMs .* != checkpoint/,
     );
+  });
+
+  it('correctly gates flips for a non-legacy combo when the checkpoint was seeded with a legacyBaseline (regression: incumbentCombo must be LEGACY_COMBO_ID, not the combo itself)', () => {
+    // Regression test for the bug the reviewer identified: if incumbentCombo is
+    // passed as checkpoint.combo ('navmeshFused+legacy') instead of LEGACY_COMBO_ID
+    // ('legacy+legacy'), buildLeaderboard looks for incumbentRows under the navmesh
+    // group key and finds nothing — flipsVsIncumbent becomes null for every candidate,
+    // and selectQualifiedWinner disqualifies all of them, preventing any promotion
+    // even from genuinely zero-flip candidates.
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+
+    // The navmesh combo's own baseline shard (rows tagged with the navmesh combo).
+    const navmeshBaselineShard = shard(
+      [
+        row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID),
+        row(navmeshBaseId, 'bow', 2, 100, true, NAVMESH_LEGACY_COMBO_ID),
+      ],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    // The LEGACY incumbent shard (rows tagged with 'legacy+legacy').
+    const legacyBaselineShard = shard(
+      [row(BASE_ID, 'sword', 1, 80, true), row(BASE_ID, 'bow', 2, 80, true)],
+      { [BASE_ID]: BASE },
+    );
+
+    const checkpoint = initCheckpoint(
+      NAVMESH_LEGACY,
+      KNOBS,
+      navmeshBaselineShard,
+      legacyBaselineShard,
+    );
+    expect(checkpoint.incumbentCombo).toBe(LEGACY_COMBO_ID);
+    expect(checkpoint.incumbentConfigId).toBe(BASE_ID);
+
+    // A navmesh candidate that wins the same (weapon, seed) cells the LEGACY incumbent won
+    // — zero flips against LEGACY, so must be promoted when it outscores the current best.
+    const goodCandidate: SweepConfig = { ...navmeshBase, aggression: 1.5 };
+    const goodCandidateId = configId(goodCandidate);
+    const candidateShard = shard(
+      [
+        row(goodCandidateId, 'sword', 1, 500, true, NAVMESH_LEGACY_COMBO_ID),
+        row(goodCandidateId, 'bow', 2, 500, true, NAVMESH_LEGACY_COMBO_ID),
+      ],
+      { [goodCandidateId]: goodCandidate },
+    );
+
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, [candidateShard]);
+    // With the bug, flipsVsIncumbent would be null → candidate disqualified → not promoted.
+    // With the fix, flipsVsIncumbent is 0 → candidate promoted (outscores navmeshBase).
+    expect(updated.bestConfigId).toBe(goodCandidateId);
+    expect(updated.incumbentCombo).toBe(LEGACY_COMBO_ID); // preserved across rounds
+    expect(updated.incumbentConfigId).toBe(BASE_ID); // still the LEGACY config
   });
 });
 

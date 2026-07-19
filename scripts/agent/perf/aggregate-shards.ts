@@ -626,15 +626,16 @@ export function selectQualifiedWinner(
   const qualifying = candidates
     .filter((r) => r.flipsVsIncumbent === 0 && r.winRate >= minWinRate)
     .sort((a, b) => {
-      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+      if (a.totalScore !== b.totalScore) return a.totalScore > b.totalScore ? -1 : 1;
       const aTime = a.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
       const bTime = b.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
-      if (aTime !== bTime) return aTime - bTime;
-      if (b.meanMinHealthPercent !== a.meanMinHealthPercent) {
-        return b.meanMinHealthPercent - a.meanMinHealthPercent;
+      if (aTime !== bTime) return aTime < bTime ? -1 : 1;
+      if (a.meanMinHealthPercent !== b.meanMinHealthPercent) {
+        return a.meanMinHealthPercent > b.meanMinHealthPercent ? -1 : 1;
       }
-      if (b.meanXp !== a.meanXp) return b.meanXp - a.meanXp;
-      return b.meanGold - a.meanGold;
+      if (a.meanXp !== b.meanXp) return a.meanXp > b.meanXp ? -1 : 1;
+      if (a.meanGold !== b.meanGold) return a.meanGold > b.meanGold ? -1 : 1;
+      return 0;
     });
 
   if (qualifying.length === 0) {

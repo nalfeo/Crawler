@@ -69,6 +69,22 @@ function makeRowKey(r: RunRow): string {
 }
 
 /**
+ * Stable (key-order-independent) JSON serialization for config body comparison.
+ * Plain `JSON.stringify` can produce different output for two logically-equal
+ * objects that were constructed by different code paths with different key
+ * insertion orders, causing spurious "conflicting config definition" errors.
+ */
+function stableStringify(obj: unknown): string {
+  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+    return JSON.stringify(obj);
+  }
+  const sorted = Object.keys(obj as Record<string, unknown>)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableStringify((obj as Record<string, unknown>)[k])}`);
+  return `{${sorted.join(',')}}`;
+}
+
+/**
  * Returns true when two rows for the same key share identical run facts.
  * "Run facts" are all fields that describe the outcome of the simulation run:
  * outcome, officialWin, gameTimeMs, safeRoomMs, score, xp, gold,
@@ -134,6 +150,14 @@ export interface RoundCheckpoint {
    * composite score alone — see `applyRoundResult`.
    */
   incumbentConfigId: string;
+  /**
+   * The combo string whose rows contain the incumbent — `LEGACY_COMBO_ID`
+   * (`'legacy+legacy'`) when a `legacyBaseline` was provided in
+   * {@link initCheckpoint}, otherwise equal to `combo`. Must be passed to
+   * {@link buildLeaderboard} as `incumbentCombo` so flip-gating correctly
+   * identifies the incumbent's run rows even for non-`legacy+legacy` combos.
+   */
+  incumbentCombo: string;
   /** Current per-knob step size (halves on a round with no improvement). */
   steps: Partial<Record<TunableKnob, number>>;
   /** True once every knob's step has fallen below its minStep — no more candidates. */
@@ -177,6 +201,13 @@ export function initCheckpoint(
   // IS the LEGACY incumbent, so no separate baseline is needed.
   const comboIsLegacy = comboStr === LEGACY_COMBO_ID;
   let incumbentConfigId = baseId;
+  // incumbentCombo tracks which combo string owns the incumbent rows in `rows`.
+  // For a non-LEGACY combo with a legacyBaseline, the incumbent rows carry
+  // `combo: LEGACY_COMBO_ID`, NOT `combo: comboStr` — so buildLeaderboard must
+  // be given the correct `incumbentCombo` or it will find no incumbent rows,
+  // flipsVsIncumbent becomes null, and selectQualifiedWinner disqualifies every
+  // candidate (preventing any promotion).
+  let incumbentCombo = comboStr;
   const allConfigs: Record<string, SweepConfig> = { ...baseline.configs };
   const allRows: RunRow[] = [...baseline.rows];
 
@@ -189,6 +220,7 @@ export function initCheckpoint(
       );
     }
     incumbentConfigId = legacyId;
+    incumbentCombo = LEGACY_COMBO_ID;
     Object.assign(allConfigs, legacyBaseline.configs);
     allRows.push(...legacyBaseline.rows);
   }
@@ -200,6 +232,7 @@ export function initCheckpoint(
     bestConfigId: baseId,
     bestScore: totalScoreOf(baseline.rows, baseId),
     incumbentConfigId,
+    incumbentCombo,
     steps,
     converged: false,
     configs: allConfigs,
@@ -360,7 +393,7 @@ export function applyRoundResult(
     assertShardCompatible(checkpoint, shard);
     for (const [id, config] of Object.entries(shard.configs)) {
       const existing = configs[id];
-      if (existing && JSON.stringify(existing) !== JSON.stringify(config)) {
+      if (existing && stableStringify(existing) !== stableStringify(config)) {
         throw new Error(
           `applyRoundResult(${checkpoint.combo}): conflicting config definition for id ${id} — determinism violation across shards.`,
         );
@@ -386,7 +419,7 @@ export function applyRoundResult(
   }
 
   const leaderboard = buildLeaderboard(rows, {
-    incumbentCombo: checkpoint.combo,
+    incumbentCombo: checkpoint.incumbentCombo,
     incumbentConfigId: checkpoint.incumbentConfigId,
     configs,
     budgetMs: checkpoint.meta.budgetMs,
@@ -396,31 +429,40 @@ export function applyRoundResult(
   );
   const { winner: qualifiedWinner } = selectQualifiedWinner(newCandidateRows);
 
+  // Determine round incompleteness BEFORE promotion: if some planned candidates
+  // never produced a shard (infra failure), do not promote even when an arrived
+  // shard qualifies — the missing shard might have been even better, and
+  // promoting now changes `bestConfigId`, causing `planCandidates` to derive a
+  // different neighbour set next round and permanently skip the missing candidate.
+  // Instead, leave `bestConfigId`/`bestScore`/`steps`/`converged` untouched so
+  // the same neighbour set is retried next round (the arrived data is still
+  // merged in, so duplicate rows will be deduped on the next attempt).
+  let infraIncomplete: boolean;
+  if (options.plannedCount === 'unknown') {
+    // The planner job never produced a candidates manifest at all — cannot tell
+    // whether 0 or N candidates were planned, so always treat as infra failure.
+    infraIncomplete = true;
+  } else if (options.plannedCount !== undefined) {
+    const missing = Math.max(0, options.plannedCount - candidateShards.length);
+    infraIncomplete = options.plannedCount > 0 && missing > 0;
+  } else {
+    infraIncomplete = false;
+  }
+
   let bestId = checkpoint.bestConfigId;
   let bestScore = checkpoint.bestScore;
-  const bestRow: LeaderboardRow | undefined = leaderboard.find((r) => r.configId === bestId);
-  if (qualifiedWinner && isBetterQualifiedCandidate(qualifiedWinner, bestRow)) {
-    bestId = qualifiedWinner.configId;
-    bestScore = qualifiedWinner.totalScore;
+  if (!infraIncomplete) {
+    const bestRow: LeaderboardRow | undefined = leaderboard.find((r) => r.configId === bestId);
+    if (qualifiedWinner && isBetterQualifiedCandidate(qualifiedWinner, bestRow)) {
+      bestId = qualifiedWinner.configId;
+      bestScore = qualifiedWinner.totalScore;
+    }
   }
   const improved = bestId !== checkpoint.bestConfigId;
 
   const steps = { ...checkpoint.steps };
   let converged: boolean = checkpoint.converged;
   if (!improved) {
-    let infraIncomplete: boolean;
-    if (options.plannedCount === 'unknown') {
-      // The planner job never produced a candidates manifest for this combo
-      // at all (e.g. roundN-candidates crashed/never uploaded) — we cannot
-      // tell "0 planned" from "N planned, all lost", so always treat as an
-      // infra failure rather than risk falsely recording convergence.
-      infraIncomplete = true;
-    } else if (options.plannedCount !== undefined) {
-      const missing = Math.max(0, options.plannedCount - candidateShards.length);
-      infraIncomplete = options.plannedCount > 0 && missing > 0;
-    } else {
-      infraIncomplete = false;
-    }
     if (!infraIncomplete) {
       converged = !halveSteps(steps, knobs);
     }

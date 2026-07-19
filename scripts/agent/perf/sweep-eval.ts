@@ -571,6 +571,11 @@ async function main(argv: readonly string[]): Promise<void> {
     console.log(
       `🔎 SEARCH-BASELINE ${comboId(combo)} · ${id.slice(0, 48)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers}`,
     );
+    // meta.stage is intentionally set to 'search' for both search-baseline and
+    // search-eval shards: the `validate` stage and `initCheckpoint`/`applyRoundResult`
+    // consume them identically, and the stage field does not distinguish baseline vs
+    // candidate in either code path. The invoked CLI stage ('search-baseline' /
+    // 'search-eval') is logged to stdout above for human debugging instead.
     const artifact = await evalStandalone(
       comboId(combo),
       id,
@@ -594,6 +599,8 @@ async function main(argv: readonly string[]): Promise<void> {
     console.log(
       `🔎 SEARCH-EVAL ${comboId(combo)} · ${id.slice(0, 48)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers}`,
     );
+    // meta.stage is intentionally 'search' for both search-baseline and search-eval
+    // shards — see note in the search-baseline branch above.
     const artifact = await evalStandalone(
       comboId(combo),
       id,
