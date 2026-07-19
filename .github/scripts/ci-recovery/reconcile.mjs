@@ -939,6 +939,15 @@ const copilotAssigned = review.assignees.some((actor) =>
 // Only lease/state ownership (labelExists + state) should suppress.
 const unresolvedThreads = review.threads.filter((candidate) => !candidate.isResolved);
 const headSha = String(pr.head.sha || '').toLowerCase();
+function hasTrustedAddressedMarker(thread) {
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) return false;
+  const last = comments[comments.length - 1];
+  if (!extractAddressedMarkerSha(last?.body)) return false;
+  const authorLogin = String(last?.author?.login ?? '').toLowerCase();
+  const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
+  return TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin);
+}
 const markerShasNeedingLineageCheck = new Set();
 for (const thread of unresolvedThreads) {
   const comments = thread.comments?.nodes ?? [];
@@ -1003,7 +1012,9 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
 for (const thread of unresolvedThreads.filter(
   (candidate) =>
-    candidate.isOutdated && !shouldResolveThread(candidate, headSha, reachableMarkerShas),
+    candidate.isOutdated &&
+    !hasTrustedAddressedMarker(candidate) &&
+    !shouldResolveThread(candidate, headSha, reachableMarkerShas),
 )) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);

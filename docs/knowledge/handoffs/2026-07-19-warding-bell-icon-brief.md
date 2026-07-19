@@ -1,4 +1,4 @@
-# Handoff: Warding Bell Floor 2 Accessory Icon Brief — 2026-07-19
+# Handoff: Warding Bell Floor 2 Accessory Icon Brief Attempt — 2026-07-19
 
 **Date:** 2026-07-19  
 **Branch:** `copilot/create-warding-bell-icon-again`  
@@ -12,16 +12,26 @@
 
 ## What was done
 
-Authored the sprite brief for the Floor 2 warding-bell accessory icon.
+Authored the design for the Floor 2 warding-bell accessory icon, but did **not**
+leave a production brief committed under `briefs/items/`.
 
-- **Created** `briefs/items/warding-bell.yaml` — item brief for the warding-bell Floor 2 accessory
+- **Prepared brief content** for the warding-bell Floor 2 accessory
   - Stable ID: `accessory.warding-bell`
   - Runtime key: `equipment/accessory/warding-bell`
   - Production wave: `floor2-equipment-ui-accessory`
-  - Inherits all defaults from `data/sprite-types/item.json` (64×64, kenney-roguelike palette, 4×4 sheet, VLM judge enabled)
-  - `sensors.edge.allowMainTouch: true` — consistent with all Floor 2 accessory items (blood-vial, gearwork-locket, lucky-feather, surveyor-map)
+  - Intended brief shape: `type: item`, `name: warding-bell`, `floor: 2`
+  - Should inherit the normal `item` defaults from `data/sprite-types/item.json`
+    (64×64, kenney-roguelike palette, 4×4 sheet, VLM judge enabled)
   - 3 authored variation seeds; `minVariations: 3`
-  - Detailed description covering: bell silhouette, wearing loop/ring at crown, visible clapper, engraved rune band, warm brass/bronze/copper palette, patina treatment, no magical glow effects
+  - Detailed description covering: bell silhouette, wearing loop/ring at crown,
+    visible clapper, engraved rune band, warm brass/bronze/copper palette,
+    patina treatment, no magical glow effects
+
+- **Did not promote the brief to `briefs/items/`**
+  - `briefs/README.md` and `docs/agent-os/sprite-style.md` require keeping a new
+    brief in the draft lane until a generated candidate passes sensors.
+  - Because Azure-backed generation was blocked in this environment, no
+    sensor-passing warding-bell run exists yet.
 
 ### Visual design brief summary
 
@@ -37,8 +47,7 @@ The warding bell reads as a physical talisman:
 
 ## Systems touched
 
-- `briefs/items/warding-bell.yaml` — new file (art-only lane, review-ledger-exempt)
-- `docs/knowledge/handoffs/2026-07-19-warding-bell-icon-brief.md` — this file
+- sprite-workflow
 
 ---
 
@@ -46,7 +55,10 @@ The warding bell reads as a physical talisman:
 
 `npm run setup:azure:env` detected a cloud/CI execution environment and exited without creating `.env.local`. The `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` environment variables are not injected into the coding-agent execution context.
 
-Per AGENTS.md §"Azure-required sidecar policy": the launcher **must not** silently fall back to local/noop backends; this session stopped at the brief-authoring step.
+Per AGENTS.md §"Azure-required sidecar policy": the launcher **must not**
+silently fall back to local/noop backends; this session stopped before the
+required draft → generate → sensor-pass → production promotion flow could
+complete.
 
 Per the war-fan handoff (2026-07-18): sprite generation must go through the dedicated `asset-request.yml` workflow that has the Azure credentials available.
 
@@ -58,7 +70,12 @@ The `gh` CLI also reported no GitHub host configured (`none of the git remotes c
 
 The plan comment content is included below for manual posting if desired:
 
-> **Plan:** Author `type: item` YAML brief inheriting from `data/sprite-types/item.json`; generate on Azure sidecar; judge with sprite-judge skill; approve, check-in, batch art-only PR. Visual design: brass/bronze ritual bell, wearing loop at crown, visible clapper, engraved band, warm metallic palette, no glow. Sensors: `edge.allowMainTouch: true`. 3+ variations. Closes #1384.
+> **Plan:** Author a Floor 2 `type: item` draft brief inheriting from
+> `data/sprite-types/item.json`; generate on Azure sidecar; judge with
+> sprite-judge skill; approve, check-in, batch art-only PR. Visual design:
+> brass/bronze ritual bell, wearing loop at crown, visible clapper, engraved
+> band, warm metallic palette, no glow. Keep the icon centered with normal item
+> edge guards. 3+ variations. Closes #1384.
 
 ---
 
@@ -86,16 +103,21 @@ npm run sprites:asset-pr
 # => gh pr merge --auto --squash
 
 # 5. Wire (after art PR merges)
-#    Item icons auto-resolve: briefId (warding-bell) maps to runtime key
-#    equipment/accessory/warding-bell via itemId === briefId identity model
-#    Confirm renders in: npm run dev  OR  headless probe
+#    Add the missing item/equipment contract first:
+#      - ITEM_CATALOG entry for warding-bell
+#      - equipment/accessory definition that points at the item id
+#    Only then can resolveItemSprite find the checked-in art by item id.
+#    Confirm renders in: npm run dev OR headless probe
 ```
 
 ---
 
 ## Observe before done (deferred)
 
-Visual confirmation (before/after in running game or lab) is deferred until generation completes. Before closing issue #1384, the approver must confirm the warding-bell icon renders correctly at game scale on the HUD/inventory screen with the accessory slot visible.
+Visual confirmation (before/after in running game or lab) is deferred until
+generation completes **and** the item/equipment contract exists. Before closing
+issue #1384, the approver must confirm the warding-bell icon renders correctly
+at game scale on the HUD/inventory screen with the accessory slot visible.
 
 ---
 
