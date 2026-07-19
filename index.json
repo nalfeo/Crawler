@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7f3982a7fb4e7c880d310c509be050da9093eb77",
+    "commitDate": "2026-07-18T23:16:25Z",
+    "commitSubject": "Add runtime-keyed crescent-glaive generated icon entry (#1535)",
+    "capturedAt": "2026-07-19T00:29:08.512Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29665544101",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/7f3982a7fb4e7c880d310c509be050da9093eb77.json"
+  },
+  {
     "commit": "2f3dcfc4e696f1da817a61f6aa7f4856dc251e9b",
     "commitDate": "2026-07-18T22:48:34Z",
     "commitSubject": "Add Floor 2 `spike-shield` weapon brief for asset-request pipeline (#1533)",
