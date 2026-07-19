@@ -11,6 +11,17 @@
     "path": "by-sha/7f3982a7fb4e7c880d310c509be050da9093eb77.json"
   },
   {
+    "commit": "2223894775ab7e943d3dbb2840c13a8e5c33781d",
+    "commitDate": "2026-07-18T23:16:04Z",
+    "commitSubject": "feat(epic): Floor 2 equipment A0 bootstrap — control plane, state schema, CLI, and tests (#1265)",
+    "capturedAt": "2026-07-19T00:39:09.959Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29665464144",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/2223894775ab7e943d3dbb2840c13a8e5c33781d.json"
+  },
+  {
     "commit": "2f3dcfc4e696f1da817a61f6aa7f4856dc251e9b",
     "commitDate": "2026-07-18T22:48:34Z",
     "commitSubject": "Add Floor 2 `spike-shield` weapon brief for asset-request pipeline (#1533)",
