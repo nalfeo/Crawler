@@ -64,11 +64,18 @@ function totalScoreOf(rows: readonly RunRow[], id: string): number {
 }
 
 /** Dedup/conflict key for a run row: `configId\0weapon\0seed`. */
-function rowKey(r: RunRow): string {
+function makeRowKey(r: RunRow): string {
   return `${r.configId}\u0000${r.weapon}\u0000${r.seed}`;
 }
 
-/** Returns true when two rows for the same key share identical run facts. */
+/**
+ * Returns true when two rows for the same key share identical run facts.
+ * "Run facts" are all fields that describe the outcome of the simulation run:
+ * outcome, officialWin, gameTimeMs, safeRoomMs, score, xp, gold,
+ * minHealthPercent, finalLevel.  Identity fields (configId, weapon, seed) are
+ * already asserted equal by the caller via the same makeRowKey.  Add any new
+ * RunRow result fields here when they are introduced.
+ */
 function rowFactsMatch(a: RunRow, b: RunRow): boolean {
   return (
     a.outcome === b.outcome &&
@@ -345,7 +352,7 @@ export function applyRoundResult(
   const configs = { ...checkpoint.configs };
   const rows = [...checkpoint.rows];
   const seenRows = new Map<string, RunRow>(
-    rows.map((r) => [rowKey(r), r]),
+    rows.map((r) => [makeRowKey(r), r]),
   );
   const newCandidateIds = new Set<string>();
 
@@ -362,7 +369,7 @@ export function applyRoundResult(
       newCandidateIds.add(id);
     }
     for (const r of shard.rows) {
-      const key = rowKey(r);
+      const key = makeRowKey(r);
       const existing = seenRows.get(key);
       if (existing !== undefined) {
         if (!rowFactsMatch(existing, r)) {
