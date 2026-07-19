@@ -1,8 +1,9 @@
 # Handoff: issue #1368 velvet-coat brief
 
 > **Process-exception note:** This PR intentionally ships only the minimal
-> brief + blocker handoff. A retroactive issue-plan comment was attempted but
-> blocked by GitHub HTTP 403, so the detailed plan is recorded below under
+> brief + blocker handoff. The required issue-plan comment was not posted
+> before code changes, and a retroactive issue-plan comment attempt was blocked
+> by GitHub HTTP 403, so the detailed plan is recorded below under
 > **Process note**.
 
 **Date:** 2026-07-18
@@ -20,9 +21,10 @@ resolution.
 ## Process note
 
 Issue #1368's intake requested a detailed plan comment before code changes. The
-minimal brief + blocker handoff landed before that issue comment existed. During
-this PR recovery session I attempted to post the retroactive issue plan with
-`gh issue comment 1368 --repo nalfeo/Crawler --body-file /tmp/velvet-coat-issue-1368-plan.md`,
+intake comment existed before the first branch commit, but that requirement was
+missed and the minimal brief + blocker handoff landed anyway. During this PR
+recovery session I attempted to post the retroactive issue plan with `gh issue
+comment 1368 --repo nalfeo/Crawler --body-file /tmp/velvet-coat-issue-1368-plan.md`,
 but GitHub write auth in this environment returned `HTTP 403: 403 Forbidden`.
 
 Retroactive implementation plan for the minimal branch scope:

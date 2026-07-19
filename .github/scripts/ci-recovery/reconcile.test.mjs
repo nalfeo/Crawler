@@ -6329,9 +6329,7 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 
 // ---------------------------------------------------------------------------
 // Stale-marker detection: thread has trusted ✅ Addressed marker but the SHA
-// was never pushed (compare 404), so the thread remains unresolved. The
-// scenario must stay non-outdated; outdated threads are auto-resolved earlier
-// in reconcile via a reconciler-authored marker reply.
+// was never pushed (compare 404), so the thread remains unresolved.
 // ---------------------------------------------------------------------------
 
 test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
@@ -6384,7 +6382,7 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
           {
             id: threadId,
             isResolved: false,
-            isOutdated: false,
+            isOutdated: true,
             path: 'scripts/sprites/cli.ts',
             line: 285,
             comments: {
