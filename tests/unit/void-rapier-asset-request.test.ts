@@ -95,6 +95,26 @@ describe('void-rapier asset request', () => {
     expect(brightRimCount).toBeGreaterThanOrEqual(40);
     expect(saturatedAccentCount).toBeGreaterThanOrEqual(20);
 
+    // Directional orientation: point-up means the blade tip (top band) is narrower
+    // than the grip region (bottom band). A vertically flipped replacement fails this.
+    const bandHeight = Math.floor(png.height * 0.2);
+    let topBandOpaqueSum = 0;
+    let bottomBandOpaqueSum = 0;
+    for (let row = 0; row < bandHeight; row++) {
+      for (let x = 0; x < png.width; x++) {
+        if ((png.data[(row * png.width + x) * 4 + 3] ?? 0) > 0) topBandOpaqueSum += 1;
+      }
+    }
+    for (let row = png.height - bandHeight; row < png.height; row++) {
+      for (let x = 0; x < png.width; x++) {
+        if ((png.data[(row * png.width + x) * 4 + 3] ?? 0) > 0) bottomBandOpaqueSum += 1;
+      }
+    }
+    const topBandAvgWidth = topBandOpaqueSum / bandHeight;
+    const bottomBandAvgWidth = bottomBandOpaqueSum / bandHeight;
+    // Bottom grip must be at least 1.5× wider than top tip to confirm point-up orientation.
+    expect(bottomBandAvgWidth).toBeGreaterThan(topBandAvgWidth * 1.5);
+
     const visited = new Uint8Array(png.width * png.height);
     const queue = new Uint32Array(Math.max(opaqueCount, 1));
     let componentCount = 0;
