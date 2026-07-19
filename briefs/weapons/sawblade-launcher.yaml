@@ -1,0 +1,33 @@
+type: weapon
+name: sawblade-launcher
+floor: 2
+description: |
+  A hand-held mechanical launcher designed to fire spinning sawblades, held
+  vertically — grip and trigger assembly at the bottom, thick squat launch
+  barrel pointing straight up. The barrel is a wide iron cylinder with a
+  circular muzzle opening just wide enough to accept a sawblade; a large
+  serrated disc sawblade is visibly slotted or partially loaded at the muzzle,
+  teeth fanning outward around the rim. A boxy side-mounted disc magazine
+  attaches at the mid-frame, housing stacked blades; bolt-and-rivet fasteners
+  hold it in place. The grip is a short squared handle with a chunky trigger
+  guard. Worn cast-iron frame: dark gunmetal, rust patches on the barrel seams,
+  scratched paint exposing darker steel, and a few exposed hex-head bolts along
+  the housing. Interior shading in 3–4 stops: deep shadow inside the muzzle
+  cavity, mid grey for the main frame body, and a single bright-edge highlight
+  along one side. The sawblade itself is dark steel with visible serrated teeth
+  and a small central hub. Silhouette must read unambiguously as a disc-launcher
+  with a circular blade, not a pistol or a can. No glow, no sparks, no blood,
+  no background.
+# Vertical orientation (grip at bottom, barrel/muzzle pointing up) and all
+# other defaults (64x64, kenney-roguelike palette, anchor at 32,56, 4x4 sheet,
+# VLM judge enabled) are inherited from data/sprite-types/weapon.json.
+variations:
+  - side-stack magazine replaced by a spring-loaded coil tube feeding blades up the barrel
+  - disc drum magazine with a large exposed circular housing showing multiple blade silhouettes
+  - split twin-barrel design with two narrower launch tubes side by side sharing one grip
+  - chain-fed blade mechanism with a short looped length of blade-links visible at the side
+  - reinforced barrel with a protective iron cage around the muzzle sawblade
+  - heavy squared receiver with a crank-handle ejector and no external magazine
+  - elongated barrel with a spinning-gear ratchet ring visible near the muzzle
+  - compact bullpup layout with the magazine seated behind the grip and a shorter front barrel
+minVariations: 6
