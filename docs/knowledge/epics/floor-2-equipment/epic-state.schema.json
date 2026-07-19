@@ -463,16 +463,25 @@
       ],
       "properties": {
         "claimant": {
-          "type": ["string", "null"]
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "pattern": "^(?!\\s*$).+" }
+          ]
         },
         "session": {
-          "type": ["string", "null"]
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "pattern": "^(?!\\s*$).+" }
+          ]
         },
         "source": {
           "enum": ["none", "parent-issue-bootstrap", "child-issue-comment"]
         },
         "scope": {
-          "type": ["string", "null"]
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "pattern": "^(?!\\s*$).+" }
+          ]
         },
         "claimed_at": {
           "$ref": "#/$defs/nullableDateTime"

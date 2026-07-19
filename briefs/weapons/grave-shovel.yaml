@@ -22,4 +22,6 @@ description: |
 variations:
   - cracked wooden haft with iron reinforcing bands
   - wider, more rounded spade head with a visible edge nick
+# `minVariations` is the total post-expansion target; the runner may top these
+# two authored seeds up to six final variation prompts when a text provider exists.
 minVariations: 6
