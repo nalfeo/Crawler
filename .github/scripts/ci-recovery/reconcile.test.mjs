@@ -6387,7 +6387,7 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
           {
             id: threadId,
             isResolved: false,
-            isOutdated: true,
+            isOutdated: false,
             path: 'scripts/sprites/cli.ts',
             line: 285,
             comments: {
@@ -6604,7 +6604,7 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
   const thread = {
     id: threadId,
     isResolved: false,
-    isOutdated: true,
+    isOutdated: false,
     path: 'docs/knowledge/handoffs/2026-07-17-floor2-equipment-a0.md',
     line: null,
     comments: {
