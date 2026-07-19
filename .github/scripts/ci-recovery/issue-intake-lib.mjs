@@ -157,9 +157,8 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
   if (!mentionsPlanRequirement) return [];
 
   const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
-  const explicitMatches = issueNumbers.filter(
-    (issueNumber) =>
-      text.includes(`issue #${issueNumber}`) || text.includes(`issue ${issueNumber}`),
+  const explicitMatches = issueNumbers.filter((issueNumber) =>
+    new RegExp(`\\bissue\\s+#?${issueNumber}\\b`, 'i').test(text),
   );
   if (explicitMatches.length > 0) return explicitMatches;
   if (/\bissue\s+#?\d+\b/i.test(text)) return [];
