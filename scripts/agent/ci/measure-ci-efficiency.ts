@@ -1,51 +1,14 @@
 #!/usr/bin/env tsx
 /**
  * measure-ci-efficiency.ts — Post-rollout PR CI resource efficiency measurement.
- *
- * Queries GitHub Actions API for CI and Security Review workflow runs in a
- * time window, classifies each run's change impact, detects superseded runs,
- * and produces a structured efficiency report for comparison against the
- * pre-rollout baseline.
- *
- * Baseline (72h ending 2026-07-19 19:12 UTC):
- *   - 18,630 measured CI/Security runner-minutes
- *   - 99.54% classified
- *   - 53.9% conservatively avoidable
- *   - 3,808 superseded runner-minutes
- *   - 2,636 non-visual E2E minutes
- *   - 4,236 non-simulation headless minutes
- *   - 1,106 non-coverage coverage minutes
- *
- * Usage:
- *   GH_TOKEN=<token> npx tsx scripts/agent/ci/measure-ci-efficiency.ts \
- *     --start 2026-07-20T00:00:00Z \
- *     --end 2026-07-27T00:00:00Z \
- *     [--owner nalfeo] [--repo Crawler] \
- *     [--out report.json]
- *
- * Environment:
- *   GH_TOKEN  — GitHub personal access token with repo + actions:read scope
- *
- * API coverage limitations:
- *   - The GitHub /actions/runs/timing endpoint returns BILLABLE milliseconds
- *     rounded to the nearest minute; actual queue/startup overhead is excluded.
- *   - The GitHub API does not expose which job triggered a concurrency-group
- *     cancellation; superseded detection is approximated by checking whether
- *     a newer run for the same PR started before this run completed.
- *   - PR file listings are paginated at 100 files per page; PRs with >3000
- *     changed files are classified as "unknown/full" by GitHub's API.
- *   - Workflow runs older than 90 days may not be available via the REST API.
  */
 
 import https from 'node:https';
 import { writeFileSync } from 'node:fs';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
+import type { IncomingHttpHeaders } from 'node:http';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Workflow IDs for workflows we measure in this repo. */
 const WORKFLOW_IDS = {
   ci: 288745068,
   security: 291101062,
@@ -53,24 +16,18 @@ const WORKFLOW_IDS = {
 
 type WorkflowKey = keyof typeof WORKFLOW_IDS;
 
-/** Maximum delay between retry attempts, in milliseconds. */
 const MAX_BACKOFF_MS = 8000;
-
-/**
- * Throttle interval between paginated run-list requests.
- * GitHub enforces 5000 req/hr per authenticated user; 200ms ≈ 5 req/sec =
- * 18,000 req/hr, well within limit. The backoff in ghGet handles actual 429s.
- */
 const LIST_PAGE_THROTTLE_MS = 200;
 
-/** Change-impact classification matching detect-art-only.sh categories. */
 type ChangeImpact =
-  | 'art_only' // Only generated sprites / sprite-catalog
-  | 'docs_only' // Only docs/AGENTS.md/*.md/*.txt
-  | 'gameplay_safe' // Only engine/labs/e2e/docs/CI (headless safe)
-  | 'sprites_only' // Only sprite pipeline scripts/tests
-  | 'full' // Simulation-touching or mixed change
-  | 'unknown'; // Could not classify (API error or >3000 files)
+  | 'art_only'
+  | 'docs_only'
+  | 'gameplay_safe'
+  | 'sprites_only'
+  | 'full'
+  | 'unknown';
+
+type ImpactMetricValue = number | null;
 
 interface WorkflowRun {
   id: number;
@@ -86,12 +43,18 @@ interface WorkflowRun {
   updated_at: string;
   run_started_at?: string;
   run_attempt: number;
-  pull_requests: Array<{ number: number; head: { sha: string } }>;
+  pull_requests: Array<{
+    number: number;
+    head?: { sha?: string };
+    base?: { sha?: string };
+  }>;
   display_title: string;
 }
 
 interface JobTiming {
   name: string;
+  status: string;
+  conclusion: string | null;
   started_at: string | null;
   completed_at: string | null;
   durationMinutes: number;
@@ -108,20 +71,28 @@ interface RunAnalysis {
   conclusion: string | null;
   impact: ChangeImpact;
   superseded: boolean;
+  supersededAt: string | null;
+  supersededMinutes: number;
   totalMinutes: number;
   jobs: JobTiming[];
   avoidableMinutes: number;
   avoidableReason: string;
-  /** Minutes attributable to specific gate categories. */
   headlessMinutes: number;
   e2eMinutes: number;
   coverageMinutes: number;
   securityMinutes: number;
+  spritesTouched: boolean;
+}
+
+interface PerGroupStats {
+  median: number;
+  p95: number;
+  sampleSize: number;
 }
 
 interface Report {
   generatedAt: string;
-  analysisWindow: { start: string; end: string };
+  analysisWindow: { start: string; end: string; days: number };
   apiLimitations: string[];
   totalRuns: number;
   classifiedRuns: number;
@@ -130,32 +101,33 @@ interface Report {
   avoidableMinutes: number;
   avoidablePercent: number;
   supersededMinutes: number;
-  /**
-   * Percentage reduction in superseded runner-minutes vs. the baseline.
-   * Null when baseline.supersededMinutes is 0 (no prior superseded waste to compare against),
-   * which would indicate the baseline was already optimal in this dimension.
-   */
   supersededReductionVsBaseline: number | null;
-  nonVisualE2eMinutes: number;
+  nonVisualE2eMinutes: ImpactMetricValue;
+  nonVisualE2eStatus: 'uncertain' | 'measured';
   nonSimHeadlessMinutes: number;
   nonCoverageMinutes: number;
+  incomplete: boolean;
+  incompleteReasons: string[];
   impactBreakdown: Record<
     ChangeImpact,
-    { runs: number; minutes: number; avoidableMinutes: number }
+    {
+      runs: number;
+      minutes: number;
+      avoidableMinutes: number;
+      perHeadStats: PerGroupStats;
+    }
   >;
-  perPrStats: {
-    median: number;
-    p95: number;
-    sampleSize: number;
-  };
-  wallClockLatency: {
-    median: number;
-    p95: number;
-    sampleSize: number;
+  perPrStats: PerGroupStats;
+  wallClockLatency: PerGroupStats;
+  baselineWallClockLatency: {
+    median: number | null;
+    p95: number | null;
   };
   classifierGaps: string[];
+  classifierUncertain: string[];
   baseline: {
     window: string;
+    days: number;
     totalMinutes: number;
     avoidablePercent: number;
     supersededMinutes: number;
@@ -163,21 +135,42 @@ interface Report {
     nonSimHeadlessMinutes: number;
     nonCoverageMinutes: number;
   };
+  normalizedBaseline: {
+    totalMinutesForWindow: number;
+    supersededMinutesPerDay: number;
+    supersededMinutesForWindow: number;
+  };
   runs?: RunAnalysis[];
 }
 
-// ---------------------------------------------------------------------------
-// GitHub API client (using built-in https)
-// ---------------------------------------------------------------------------
+export class GitHubApiError extends Error {
+  readonly statusCode: number;
+  readonly headers: IncomingHttpHeaders;
+  readonly body: string;
+  readonly path: string;
 
-function githubGet(path: string, token: string): Promise<unknown> {
-  return new Promise((resolve, reject) => {
+  constructor(path: string, statusCode: number, headers: IncomingHttpHeaders, body: string) {
+    super(`GitHub API ${statusCode} for ${path}: ${body.slice(0, 200)}`);
+    this.name = 'GitHubApiError';
+    this.statusCode = statusCode;
+    this.headers = headers;
+    this.body = body;
+    this.path = path;
+  }
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function githubGet(path: string, token: string): Promise<unknown> {
+  return await new Promise((resolve, reject) => {
     const options = {
       hostname: 'api.github.com',
       path,
       method: 'GET',
       headers: {
-        Authorization: 'Bearer ' + token,
+        Authorization: ['Bearer', token].join(' '),
         'User-Agent': 'Crawler-CI-Efficiency-Analyzer/1.0',
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
@@ -194,7 +187,7 @@ function githubGet(path: string, token: string): Promise<unknown> {
           return;
         }
         if ((res.statusCode ?? 0) >= 400) {
-          reject(new Error(`GitHub API ${res.statusCode} for ${path}: ${body.slice(0, 200)}`));
+          reject(new GitHubApiError(path, res.statusCode ?? 0, res.headers, body));
           return;
         }
         try {
@@ -210,88 +203,62 @@ function githubGet(path: string, token: string): Promise<unknown> {
   });
 }
 
-/** Rate-limited GitHub API call with simple exponential backoff on 429/503. */
-async function ghGet(path: string, token: string, retries = 3): Promise<unknown> {
+function parseRateLimitResetMs(headers: IncomingHttpHeaders): number | null {
+  const reset = headers['x-ratelimit-reset'];
+  if (typeof reset !== 'string') return null;
+  const epochSeconds = Number.parseInt(reset, 10);
+  if (!Number.isFinite(epochSeconds)) return null;
+  return Math.max(0, epochSeconds * 1000 - Date.now());
+}
+
+function isPrimaryRateLimit(err: GitHubApiError): boolean {
+  const remaining = err.headers['x-ratelimit-remaining'];
+  const noRemaining = typeof remaining === 'string' && remaining === '0';
+  return err.statusCode === 403 && (noRemaining || err.body.toLowerCase().includes('rate limit'));
+}
+
+export async function ghGet(
+  path: string,
+  token: string,
+  retries = 3,
+  getImpl: (path: string, token: string) => Promise<unknown> = githubGet,
+): Promise<unknown> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const result = await githubGet(path, token);
-      return result;
+      return await getImpl(path, token);
     } catch (err) {
-      const msg = String(err);
-      if ((msg.includes('429') || msg.includes('503')) && attempt < retries) {
-        // Cap backoff at MAX_BACKOFF_MS to avoid excessive waits in analysis runs
-        const delayMs = Math.min(500 * Math.pow(2, attempt), MAX_BACKOFF_MS);
-        await new Promise((r) => setTimeout(r, delayMs));
-        continue;
-      }
-      throw err;
+      const apiErr = err instanceof GitHubApiError ? err : null;
+      const retryable =
+        apiErr !== null &&
+        (apiErr.statusCode === 429 || apiErr.statusCode === 503 || isPrimaryRateLimit(apiErr));
+      if (!retryable || attempt >= retries || apiErr === null) throw err;
+
+      const resetWaitMs = parseRateLimitResetMs(apiErr.headers);
+      const fallbackMs = Math.min(500 * Math.pow(2, attempt), MAX_BACKOFF_MS);
+      const waitMs = isPrimaryRateLimit(apiErr)
+        ? Math.max(resetWaitMs ?? fallbackMs, 250)
+        : resetWaitMs === null
+          ? fallbackMs
+          : Math.min(Math.max(resetWaitMs, 250), MAX_BACKOFF_MS);
+      await delay(waitMs);
     }
   }
+  throw new Error(`Exhausted retries for ${path}`);
 }
-
-/** Fetch all pages from a paginated GitHub API endpoint. */
-async function ghGetAll(
-  basePath: string,
-  token: string,
-  // 100 pages × 100 items = 10,000 items; sufficient for any 7-day PR file listing
-  pageLimit = 100,
-): Promise<unknown[]> {
-  const results: unknown[] = [];
-  for (let page = 1; page <= pageLimit; page++) {
-    const sep = basePath.includes('?') ? '&' : '?';
-    const data = (await ghGet(`${basePath}${sep}per_page=100&page=${page}`, token)) as {
-      items?: unknown[];
-      workflow_runs?: unknown[];
-      jobs?: unknown[];
-      files?: unknown[];
-      total_count?: number;
-    } | null;
-
-    if (!data) break;
-
-    // GitHub wraps results differently per endpoint
-    const items =
-      data.workflow_runs ?? data.jobs ?? data.files ?? (Array.isArray(data) ? data : null);
-    if (!items || items.length === 0) break;
-    results.push(...items);
-
-    // Stop early if we received fewer than 100 items (last page)
-    if (items.length < 100) break;
-  }
-  if (results.length >= pageLimit * 100) {
-    process.stderr.write(
-      `⚠️  ghGetAll hit page limit (${pageLimit} pages) for ${basePath}; results may be incomplete.\n`,
-    );
-  }
-  return results;
-}
-
-// ---------------------------------------------------------------------------
-// Acceptance thresholds (per issue #1702 acceptance criteria)
-// ---------------------------------------------------------------------------
 
 const ACCEPTANCE = {
-  /** Avoidable share must be below this percentage. */
   avoidableMaxPercent: 15,
-  /** Superseded runner waste must be reduced by at least this fraction vs. baseline. */
   supersededReductionMinPercent: 90,
-  /** At least this fraction of runner time must be classifiable. */
   classificationMinRate: 0.95,
-  /** Minimum number of representative post-rollout days required. */
   minWindowDays: 7,
 } as const;
 
-// ---------------------------------------------------------------------------
-// Change-impact classification (mirrors detect-art-only.sh)
-// NOTE: This duplicates path patterns from detect-art-only.sh by design so the
-// analysis tool runs without a git checkout. When detect-art-only.sh gains new
-// impact flags (e.g., from issue #1688), update BOTH files.
-// TODO(#1688): Once #1688 merges, extend classifyFiles() to emit the new flags
-//   visual_touched / sim_touched / coverage_touched / sprite_pipeline_touched /
-//   dependencies_touched for more precise avoidable-minute attribution.
-// ---------------------------------------------------------------------------
+interface ClassifyOptions {
+  packageJsonGameplaySafe?: boolean;
+}
 
-function classifyFiles(files: string[]): ChangeImpact {
+export function classifyFiles(files: string[], options: ClassifyOptions = {}): ChangeImpact {
+  const packageJsonGameplaySafe = options.packageJsonGameplaySafe ?? false;
   if (files.length === 0) return 'unknown';
 
   const isArtOnly = files.every(
@@ -299,14 +266,16 @@ function classifyFiles(files: string[]): ChangeImpact {
   );
   if (isArtOnly) return 'art_only';
 
-  const isDocsOnly = files.every(
-    (f) =>
+  const isDocsOnly = files.every((f) => {
+    if (f.startsWith('src/')) return false;
+    return (
       f.startsWith('docs/') ||
       f.startsWith('.specify/specs/') ||
       f === 'AGENTS.md' ||
       f.endsWith('.md') ||
-      f.endsWith('.txt'),
-  );
+      f.endsWith('.txt')
+    );
+  });
   if (isDocsOnly) return 'docs_only';
 
   const isSpritesOnly = files.every(
@@ -327,8 +296,7 @@ function classifyFiles(files: string[]): ChangeImpact {
   );
   if (isSpritesOnly) return 'sprites_only';
 
-  // gameplay_safe: headless simulation runner cannot be affected
-  const GAMEPLAY_SAFE_PREFIXES = [
+  const gameplaySafePrefixes = [
     'src/engine/',
     'src/labs/',
     'tests/e2e/',
@@ -339,7 +307,8 @@ function classifyFiles(files: string[]): ChangeImpact {
     'tests/unit/sprites/',
     'tests/integration/sprites/',
   ];
-  const GAMEPLAY_SAFE_EXACT = new Set([
+
+  const gameplaySafeExact = new Set([
     'src/shared/data/sprite-catalog.json',
     'scripts/agent/ci/detect-art-only.sh',
     'tests/unit/detect-change-scope.test.ts',
@@ -353,21 +322,22 @@ function classifyFiles(files: string[]): ChangeImpact {
     'tests/integration/weapons-pipeline.test.ts',
   ]);
 
-  const isGameplaySafe = files.every(
-    (f) =>
-      GAMEPLAY_SAFE_PREFIXES.some((p) => f.startsWith(p)) ||
-      GAMEPLAY_SAFE_EXACT.has(f) ||
+  const isGameplaySafe = files.every((f) => {
+    if (f.startsWith('src/')) {
+      return gameplaySafePrefixes.some((p) => f.startsWith(p)) || gameplaySafeExact.has(f);
+    }
+    if (f === 'package.json') return packageJsonGameplaySafe;
+    return (
+      gameplaySafePrefixes.some((p) => f.startsWith(p)) ||
+      gameplaySafeExact.has(f) ||
       f.endsWith('.md') ||
-      f.endsWith('.txt'),
-  );
-  if (isGameplaySafe) return 'gameplay_safe';
+      f.endsWith('.txt')
+    );
+  });
 
+  if (isGameplaySafe) return 'gameplay_safe';
   return 'full';
 }
-
-// ---------------------------------------------------------------------------
-// Job categorization (maps GitHub job names to cost categories)
-// ---------------------------------------------------------------------------
 
 const JOB_CATEGORY_PATTERNS = {
   headless: ['headless', 'floor-1', 'sim'],
@@ -388,17 +358,88 @@ function categorizeJob(jobName: string): JobCategory {
   return 'other';
 }
 
-// ---------------------------------------------------------------------------
-// Superseded detection
-// ---------------------------------------------------------------------------
+function isSpritesTouched(files: string[]): boolean {
+  return files.some(
+    (f) =>
+      f.startsWith('scripts/sprites/') ||
+      f.startsWith('tests/unit/sprites/') ||
+      f.startsWith('tests/integration/sprites/') ||
+      [
+        'tests/integration/batch-cli.test.ts',
+        'tests/integration/generate-one.test.ts',
+        'tests/integration/judge-budget-cache.test.ts',
+        'tests/integration/judge-pipeline.test.ts',
+        'tests/integration/run-full.test.ts',
+        'tests/integration/sidecar-lifecycle.test.ts',
+        'tests/integration/synth-to-generate.test.ts',
+        'tests/integration/weapons-pipeline.test.ts',
+      ].includes(f),
+  );
+}
 
-/**
- * Mark older runs for the same PR as superseded when a newer run for the same
- * PR started before the older run completed. This mirrors the behavior that
- * concurrency groups (issue #1689) would enforce.
- */
-function detectSupersededRuns(runs: WorkflowRun[]): Set<number> {
-  // Group runs by (workflow_id, pr_number)
+type KnownCiJob =
+  | 'changes'
+  | 'types_lint'
+  | 'format_labs'
+  | 'coverage'
+  | 'unit'
+  | 'integration'
+  | 'sprites'
+  | 'headless'
+  | 'e2e'
+  | 'advisory'
+  | 'human_approval'
+  | 'merge_gate'
+  | 'ci'
+  | 'other';
+
+function classifyCiJobName(name: string): KnownCiJob {
+  const lower = name.toLowerCase();
+  if (lower.includes('detect change scope')) return 'changes';
+  if (lower.includes('types') && lower.includes('lint')) return 'types_lint';
+  if (lower.includes('format') && lower.includes('labs')) return 'format_labs';
+  if (lower.includes('unit tests (coverage)')) return 'coverage' as KnownCiJob;
+  if (lower.includes('unit tests')) return 'unit';
+  if (lower.includes('integration tests')) return 'integration';
+  if (lower.includes('sprite pipeline tests')) return 'sprites';
+  if (lower.includes('headless floor 1')) return 'headless';
+  if (lower.includes('e2e visual regression')) return 'e2e';
+  if (lower.includes('advisory checks')) return 'advisory';
+  if (lower.includes('human approval')) return 'human_approval';
+  if (lower.includes('merge gate')) return 'merge_gate';
+  if (lower === 'ci') return 'ci';
+  return 'other';
+}
+
+const AVOIDABLE_JOBS_BY_IMPACT: Record<ChangeImpact, ReadonlySet<KnownCiJob>> = {
+  art_only: new Set(['integration', 'sprites', 'headless', 'e2e']),
+  docs_only: new Set(['unit', 'integration', 'sprites', 'headless', 'e2e', 'advisory', 'coverage']),
+  gameplay_safe: new Set(['headless']),
+  sprites_only: new Set(['unit', 'integration', 'headless', 'e2e', 'coverage']),
+  full: new Set(),
+  unknown: new Set(),
+};
+
+function clippedSupersededMinutes(jobs: JobTiming[], supersededAt: string): number {
+  const cutoffMs = new Date(supersededAt).getTime();
+  if (!Number.isFinite(cutoffMs)) return 0;
+
+  let total = 0;
+  for (const job of jobs) {
+    const startMs = job.started_at ? new Date(job.started_at).getTime() : Number.NaN;
+    const endMs = job.completed_at ? new Date(job.completed_at).getTime() : Number.NaN;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) continue;
+
+    const clippedStart = Math.max(startMs, cutoffMs);
+    const clippedEnd = endMs;
+    if (clippedEnd > clippedStart) {
+      total += (clippedEnd - clippedStart) / 60000;
+    }
+  }
+  return total;
+}
+
+export function detectSupersededRuns(runs: WorkflowRun[]): Map<number, string> {
   const groups = new Map<string, WorkflowRun[]>();
   for (const run of runs) {
     const prNum = run.pull_requests[0]?.number;
@@ -409,92 +450,70 @@ function detectSupersededRuns(runs: WorkflowRun[]): Set<number> {
     groups.set(key, group);
   }
 
-  const superseded = new Set<number>();
+  const supersededAtByRun = new Map<number, string>();
   for (const group of groups.values()) {
     if (group.length <= 1) continue;
-    // Sort by creation time ascending
+
     const sorted = [...group].sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
+
     for (let i = 0; i < sorted.length - 1; i++) {
       const older = sorted[i]!;
-      // Prefer `updated_at` as the closest proxy for job completion available in
-      // the workflow-run list endpoint. The GitHub REST API does not expose a
-      // dedicated `completed_at` field on workflow runs; `updated_at` is set when
-      // all jobs finish and the run transitions to a terminal status. This means
-      // superseded detection slightly under-counts: a run that is still queued
-      // when the next run starts will not be marked superseded until updated_at
-      // advances past created_at of the newer run. The limitation is documented in
-      // the report's apiLimitations section.
-      const completedAtProxy = older.updated_at;
-      // Check if any newer run started before the older one completed
+      const olderCompletedAt = new Date(older.updated_at).getTime();
+      if (!Number.isFinite(olderCompletedAt)) continue;
+
+      let firstSupersedingAt: string | null = null;
       for (let j = i + 1; j < sorted.length; j++) {
         const newer = sorted[j]!;
-        // j > i ensures newer and older are distinct runs; no id check needed
-        if (new Date(newer.created_at) < new Date(completedAtProxy)) {
-          superseded.add(older.id);
+        const newerCreatedAt = new Date(newer.created_at).getTime();
+        if (newerCreatedAt < olderCompletedAt) {
+          firstSupersedingAt = newer.created_at;
           break;
         }
       }
+
+      if (firstSupersedingAt) supersededAtByRun.set(older.id, firstSupersedingAt);
     }
   }
-  return superseded;
-}
 
-// ---------------------------------------------------------------------------
-// Avoidable minutes computation
-// ---------------------------------------------------------------------------
+  return supersededAtByRun;
+}
 
 function computeAvoidableMinutes(
   impact: ChangeImpact,
-  superseded: boolean,
   jobs: JobTiming[],
-  _workflowKey: WorkflowKey,
-): { avoidableMinutes: number; avoidableReason: string } {
-  if (superseded) {
+  workflowKey: WorkflowKey,
+  supersededAt: string | null,
+  spritesTouched: boolean,
+): { avoidableMinutes: number; avoidableReason: string; supersededMinutes: number } {
+  if (supersededAt) {
+    const supersededMinutes = clippedSupersededMinutes(jobs, supersededAt);
     return {
-      avoidableMinutes: jobs.reduce((s, j) => s + j.durationMinutes, 0),
+      avoidableMinutes: supersededMinutes,
       avoidableReason: 'superseded',
+      supersededMinutes,
     };
   }
 
-  if (impact === 'art_only' || impact === 'docs_only') {
-    // All heavy gates were avoidable; only scope-detection and lightweight checks needed.
-    // Lightweight = jobs that take < ~2 min and do not require executing the full codebase
-    // (change detection, type-checking individual files, linting, formatting, unit tests).
-    // Patterns match job names in .github/workflows/ci.yml. Add new lightweight jobs here.
-    const lightJobPatterns = ['detect', 'scope', 'typecheck', 'lint', 'format', 'unit', 'commit'];
-    const heavy = jobs.filter(
-      (j) => !lightJobPatterns.some((p) => j.name.toLowerCase().includes(p)),
-    );
-    const avoidable = heavy.reduce((s, j) => s + j.durationMinutes, 0);
-    return { avoidableMinutes: avoidable, avoidableReason: impact };
+  if (workflowKey !== 'ci') {
+    return { avoidableMinutes: 0, avoidableReason: 'unmodeled_security', supersededMinutes: 0 };
   }
 
-  if (impact === 'gameplay_safe') {
-    // Only the headless gate was avoidable
-    const headlessJobs = jobs.filter((j) => categorizeJob(j.name) === 'headless');
-    const avoidable = headlessJobs.reduce((s, j) => s + j.durationMinutes, 0);
-    return { avoidableMinutes: avoidable, avoidableReason: 'gameplay_safe_headless' };
+  const avoidableJobs = AVOIDABLE_JOBS_BY_IMPACT[impact];
+  if (avoidableJobs.size === 0) {
+    return { avoidableMinutes: 0, avoidableReason: 'none', supersededMinutes: 0 };
   }
 
-  if (impact === 'sprites_only') {
-    // Non-sprite game test jobs were avoidable
-    const nonSpritePatterns = ['headless', 'e2e', 'coverage'];
-    const avoidable = jobs
-      .filter((j) => nonSpritePatterns.some((p) => j.name.toLowerCase().includes(p)))
-      .reduce((s, j) => s + j.durationMinutes, 0);
-    return { avoidableMinutes: avoidable, avoidableReason: 'sprites_only' };
-  }
+  const avoidableMinutes = jobs
+    .filter((job) => avoidableJobs.has(classifyCiJobName(job.name)))
+    .reduce((sum, job) => sum + job.durationMinutes, 0);
 
-  return { avoidableMinutes: 0, avoidableReason: 'none' };
+  const reason = spritesTouched ? `${impact}_sprites_touched` : impact;
+  return { avoidableMinutes, avoidableReason: reason, supersededMinutes: 0 };
 }
 
-// ---------------------------------------------------------------------------
-// Main analysis
-// ---------------------------------------------------------------------------
-
-async function fetchRunsInWindow(
+export async function fetchRunsInWindow(
   workflowId: number,
   workflowKey: WorkflowKey,
   owner: string,
@@ -502,26 +521,23 @@ async function fetchRunsInWindow(
   token: string,
   startDate: Date,
   endDate: Date,
+  getImpl: (path: string, token: string) => Promise<unknown> = ghGet,
 ): Promise<WorkflowRun[]> {
   const runs: WorkflowRun[] = [];
   let page = 1;
-  // A 7-day window at 200 PR-triggered runs/day would need ~14 pages (100/page).
-  // 200 pages is a conservative cap that prevents runaway pagination.
   const pageLimit = 200;
 
   process.stderr.write(`Fetching ${workflowKey} workflow runs...`);
 
   while (page <= pageLimit) {
-    const data = (await ghGet(
+    const data = (await getImpl(
       `/repos/${owner}/${repo}/actions/workflows/${workflowId}/runs?event=pull_request&per_page=100&page=${page}`,
       token,
-    )) as { workflow_runs: WorkflowRun[]; total_count: number } | null;
+    )) as { workflow_runs: WorkflowRun[] } | null;
 
     if (!data?.workflow_runs?.length) break;
 
-    let foundAny = false;
     let passedWindow = false;
-
     for (const run of data.workflow_runs) {
       const runDate = new Date(run.created_at);
       if (runDate > endDate) continue;
@@ -530,13 +546,12 @@ async function fetchRunsInWindow(
         break;
       }
       runs.push(run);
-      foundAny = true;
     }
 
-    if (passedWindow || !foundAny) break;
-    page++;
+    if (passedWindow) break;
 
-    await new Promise((r) => setTimeout(r, LIST_PAGE_THROTTLE_MS));
+    page++;
+    await delay(LIST_PAGE_THROTTLE_MS);
     if (page % 10 === 0) process.stderr.write('.');
   }
 
@@ -556,22 +571,27 @@ async function fetchJobTimings(
   )) as {
     jobs: Array<{
       name: string;
+      status: string;
+      conclusion: string | null;
       started_at: string | null;
       completed_at: string | null;
     }>;
   } | null;
 
-  if (!data?.jobs) return [];
+  if (!data?.jobs) {
+    throw new Error(`Missing jobs payload for run ${runId}`);
+  }
 
   return data.jobs.map((job) => {
-    // Use explicit null checks rather than truthiness: a timestamp of 0ms (midnight UTC)
-    // is valid and should not be treated as absent.
     const startMs = job.started_at != null ? new Date(job.started_at).getTime() : null;
     const endMs = job.completed_at != null ? new Date(job.completed_at).getTime() : null;
     const durationMinutes =
       startMs != null && endMs != null ? Math.max(0, (endMs - startMs) / 60000) : 0;
+
     return {
       name: job.name,
+      status: job.status,
+      conclusion: job.conclusion,
       started_at: job.started_at,
       completed_at: job.completed_at,
       durationMinutes,
@@ -579,36 +599,259 @@ async function fetchJobTimings(
   });
 }
 
-async function fetchPrFiles(
+async function fetchChangedFilesAtHead(
   owner: string,
   repo: string,
-  prNumber: number,
+  baseSha: string,
+  headSha: string,
   token: string,
-): Promise<string[]> {
-  const files = (await ghGetAll(
-    `/repos/${owner}/${repo}/pulls/${prNumber}/files`,
-    token,
-    30, // Max 3000 files (30 pages × 100)
-  )) as Array<{ filename: string }>;
-  return files.map((f) => f.filename);
+): Promise<{ files: string[]; capped: boolean; packageJsonGameplaySafe: boolean }> {
+  const data = (await ghGet(`/repos/${owner}/${repo}/compare/${baseSha}...${headSha}`, token)) as {
+    files?: Array<{ filename: string }>;
+  } | null;
+
+  const files = data?.files?.map((f) => f.filename) ?? [];
+  let packageJsonGameplaySafe = false;
+  if (files.includes('package.json')) {
+    packageJsonGameplaySafe = await evaluatePackageJsonGameplaySafe(
+      owner,
+      repo,
+      baseSha,
+      headSha,
+      token,
+    );
+  }
+
+  // Compare endpoint truncates file lists at 300 entries.
+  return { files, capped: files.length >= 300, packageJsonGameplaySafe };
 }
 
-/**
- * Nearest-rank percentile. For p=50 (median) on an odd array this returns the
- * middle element; on an even array it returns the lower-middle element (not an
- * interpolated average). This is consistent with the baseline measurement
- * methodology and avoids fractional runner-minute values in the report.
- *
- * Returns 0 for an empty array ("no data"); callers should check sampleSize > 0
- * before interpreting the value.
- */
-function percentile(values: number[], p: number): number {
+async function fetchRepoJsonAtSha(
+  owner: string,
+  repo: string,
+  path: string,
+  sha: string,
+  token: string,
+): Promise<Record<string, unknown> | null> {
+  const encodedPath = encodeURIComponent(path);
+  const data = (await ghGet(
+    `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${sha}`,
+    token,
+  )) as {
+    type?: string;
+    encoding?: string;
+    content?: string;
+  } | null;
+  if (
+    !data ||
+    data.type !== 'file' ||
+    data.encoding !== 'base64' ||
+    typeof data.content !== 'string'
+  ) {
+    return null;
+  }
+  const decoded = Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
+  try {
+    return JSON.parse(decoded) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function packageJsonGameplaySafeFromObjects(
+  basePkg: Record<string, unknown>,
+  headPkg: Record<string, unknown>,
+): boolean {
+  const depKeys = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
+  for (const key of depKeys) {
+    if (JSON.stringify(toRecord(basePkg[key])) !== JSON.stringify(toRecord(headPkg[key])))
+      return false;
+  }
+
+  const top = new Set([...Object.keys(basePkg), ...Object.keys(headPkg)]);
+  const changedTop = [...top].filter(
+    (key) => JSON.stringify(basePkg[key]) !== JSON.stringify(headPkg[key]),
+  );
+  if (changedTop.length === 0) return false;
+  if (changedTop.some((key) => key !== 'scripts')) return false;
+
+  const baseScripts = toRecord(basePkg['scripts']);
+  const headScripts = toRecord(headPkg['scripts']);
+  const scriptKeys = new Set([...Object.keys(baseScripts), ...Object.keys(headScripts)]);
+  const changedScripts = [...scriptKeys].filter(
+    (key) => JSON.stringify(baseScripts[key]) !== JSON.stringify(headScripts[key]),
+  );
+  if (changedScripts.length === 0) return false;
+
+  const safeScriptKey = /^(sprites:|lab$|devtools$|setup:azure(?::|$))/;
+  return changedScripts.every((key) => safeScriptKey.test(key));
+}
+
+async function evaluatePackageJsonGameplaySafe(
+  owner: string,
+  repo: string,
+  baseSha: string,
+  headSha: string,
+  token: string,
+): Promise<boolean> {
+  const [basePkg, headPkg] = await Promise.all([
+    fetchRepoJsonAtSha(owner, repo, 'package.json', baseSha, token),
+    fetchRepoJsonAtSha(owner, repo, 'package.json', headSha, token),
+  ]);
+  if (!basePkg || !headPkg) return false;
+  return packageJsonGameplaySafeFromObjects(basePkg, headPkg);
+}
+
+export function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  // nearest-rank: rank = ceil(p/100 * n), 1-based → 0-based index = rank - 1
   const rank = Math.ceil((p / 100) * sorted.length);
   const idx = Math.min(Math.max(0, rank - 1), sorted.length - 1);
   return sorted[idx] ?? 0;
+}
+
+type ExpectedJobBehavior = 'required_success' | 'allowed_skipped';
+
+function expectedCiJobsForImpact(
+  impact: ChangeImpact,
+  spritesTouched: boolean,
+): Map<KnownCiJob, ExpectedJobBehavior> {
+  const expected = new Map<KnownCiJob, ExpectedJobBehavior>([
+    ['changes', 'required_success'],
+    ['human_approval', 'required_success'],
+    ['merge_gate', 'required_success'],
+    ['ci', 'required_success'],
+  ]);
+
+  const set = (job: KnownCiJob, value: ExpectedJobBehavior) => expected.set(job, value);
+
+  switch (impact) {
+    case 'docs_only': {
+      set('types_lint', 'allowed_skipped');
+      set('format_labs', 'allowed_skipped');
+      set('unit', 'allowed_skipped');
+      set('integration', 'allowed_skipped');
+      set('sprites', 'allowed_skipped');
+      set('headless', 'allowed_skipped');
+      set('e2e', 'allowed_skipped');
+      break;
+    }
+    case 'art_only': {
+      set('types_lint', 'required_success');
+      set('format_labs', 'required_success');
+      set('unit', 'required_success');
+      set('integration', 'allowed_skipped');
+      set('sprites', 'allowed_skipped');
+      set('headless', 'allowed_skipped');
+      set('e2e', 'allowed_skipped');
+      break;
+    }
+    case 'sprites_only': {
+      set('types_lint', 'required_success');
+      set('format_labs', 'required_success');
+      set('unit', 'allowed_skipped');
+      set('integration', 'allowed_skipped');
+      set('sprites', 'required_success'); // sprites_only implies sprites_touched
+      set('headless', 'allowed_skipped');
+      set('e2e', 'allowed_skipped');
+      break;
+    }
+    case 'gameplay_safe': {
+      set('types_lint', 'required_success');
+      set('format_labs', 'required_success');
+      set('unit', 'required_success');
+      set('integration', 'required_success');
+      if (spritesTouched) set('sprites', 'required_success');
+      set('headless', 'allowed_skipped');
+      set('e2e', 'required_success');
+      break;
+    }
+    case 'full': {
+      set('types_lint', 'required_success');
+      set('format_labs', 'required_success');
+      set('unit', 'required_success');
+      set('integration', 'required_success');
+      if (spritesTouched) set('sprites', 'required_success');
+      set('headless', 'required_success');
+      set('e2e', 'required_success');
+      break;
+    }
+    case 'unknown':
+    default:
+      break;
+  }
+
+  return expected;
+}
+
+function detectClassifierGapFindings(analyses: RunAnalysis[]): {
+  gaps: string[];
+  uncertain: string[];
+} {
+  const gaps: string[] = [];
+  const uncertain: string[] = [];
+
+  for (const analysis of analyses) {
+    if (analysis.workflowKey !== 'ci') continue;
+
+    if (analysis.impact === 'unknown') {
+      uncertain.push(`PR #${analysis.prNumber ?? 'unknown'} run ${analysis.runId}: impact unknown`);
+      continue;
+    }
+
+    const expected = expectedCiJobsForImpact(analysis.impact, analysis.spritesTouched);
+    const observed = new Map<KnownCiJob, JobTiming>();
+    for (const job of analysis.jobs) {
+      const key = classifyCiJobName(job.name);
+      if (key === 'other') continue;
+      if (!observed.has(key)) observed.set(key, job);
+    }
+
+    for (const [jobKey, behavior] of expected.entries()) {
+      const job = observed.get(jobKey);
+      const display = `${jobKey.replace(/_/g, ' ')}`;
+      if (!job) {
+        uncertain.push(
+          `PR #${analysis.prNumber ?? 'unknown'} run ${analysis.runId}: missing evidence for "${display}"`,
+        );
+        continue;
+      }
+
+      if (job.status !== 'completed' || job.conclusion === null) {
+        uncertain.push(
+          `PR #${analysis.prNumber ?? 'unknown'} run ${analysis.runId}: non-terminal "${job.name}" (${job.status}/${job.conclusion ?? 'null'})`,
+        );
+        continue;
+      }
+
+      if (behavior === 'required_success' && job.conclusion !== 'success') {
+        gaps.push(
+          `PR #${analysis.prNumber ?? 'unknown'} run ${analysis.runId}: required job "${job.name}" conclusion=${job.conclusion}`,
+        );
+      }
+
+      if (behavior === 'allowed_skipped' && !['success', 'skipped'].includes(job.conclusion)) {
+        gaps.push(
+          `PR #${analysis.prNumber ?? 'unknown'} run ${analysis.runId}: scoped job "${job.name}" invalid conclusion=${job.conclusion}`,
+        );
+      }
+    }
+  }
+
+  return { gaps, uncertain };
+}
+
+function computePerGroupStats(values: number[]): PerGroupStats {
+  return {
+    median: percentile(values, 50),
+    p95: percentile(values, 95),
+    sampleSize: values.length,
+  };
 }
 
 async function analyze(args: {
@@ -619,10 +862,10 @@ async function analyze(args: {
   end: Date;
   outFile?: string;
   includeRunDetails?: boolean;
+  baselineWallClockLatency?: { median: number | null; p95: number | null };
 }): Promise<Report> {
   const { owner, repo, token, start, end } = args;
 
-  // Fetch all runs in window for both workflows
   const [ciRuns, securityRuns] = await Promise.all([
     fetchRunsInWindow(WORKFLOW_IDS.ci, 'ci', owner, repo, token, start, end),
     fetchRunsInWindow(WORKFLOW_IDS.security, 'security', owner, repo, token, start, end),
@@ -635,59 +878,87 @@ async function analyze(args: {
 
   process.stderr.write(`Total runs to analyze: ${allRuns.length}\n`);
 
-  // Detect superseded runs
-  const supersededIds = detectSupersededRuns([...ciRuns, ...securityRuns]);
+  const supersededAtByRun = detectSupersededRuns([...ciRuns, ...securityRuns]);
 
-  // Analyze each run
   const analyses: RunAnalysis[] = [];
-  const prFileCache = new Map<number, string[]>();
-  let analyzed = 0;
+  const fileCache = new Map<
+    string,
+    {
+      impact: ChangeImpact;
+      capped: boolean;
+      packageJsonGameplaySafe: boolean;
+      spritesTouched: boolean;
+    }
+  >();
+  const incompleteReasons: string[] = [];
 
   for (const { run, wf } of allRuns) {
     const prNum = run.pull_requests[0]?.number ?? null;
 
-    // Get PR files for classification
+    if (run.status !== 'completed' || run.conclusion === null) {
+      incompleteReasons.push(
+        `run ${run.id} (${wf}) is non-terminal (${run.status}/${run.conclusion ?? 'null'})`,
+      );
+      continue;
+    }
+
     let impact: ChangeImpact = 'unknown';
+    let spritesTouched = false;
+
     if (prNum) {
-      let files = prFileCache.get(prNum);
-      if (!files) {
-        try {
-          files = await fetchPrFiles(owner, repo, prNum, token);
-          prFileCache.set(prNum, files);
-        } catch {
-          files = [];
+      const pr = run.pull_requests[0];
+      const baseSha = pr?.base?.sha;
+      const headSha = pr?.head?.sha ?? run.head_sha;
+
+      if (baseSha && headSha) {
+        const cacheKey = `${baseSha}...${headSha}`;
+        const cached = fileCache.get(cacheKey);
+        if (cached) {
+          impact = cached.impact;
+          spritesTouched = cached.spritesTouched;
+        } else {
+          const changed = await fetchChangedFilesAtHead(owner, repo, baseSha, headSha, token);
+          spritesTouched = isSpritesTouched(changed.files);
+          impact = changed.capped
+            ? 'unknown'
+            : classifyFiles(changed.files, {
+                packageJsonGameplaySafe: changed.packageJsonGameplaySafe,
+              });
+          fileCache.set(cacheKey, {
+            impact,
+            capped: changed.capped,
+            packageJsonGameplaySafe: changed.packageJsonGameplaySafe,
+            spritesTouched,
+          });
         }
       }
-      impact = files.length > 0 ? classifyFiles(files) : 'unknown';
     }
 
-    // Get job timings
-    let jobs: JobTiming[] = [];
-    try {
-      jobs = await fetchJobTimings(owner, repo, run.id, token);
-    } catch {
-      // Use empty jobs on error
-    }
+    const jobs = await fetchJobTimings(owner, repo, run.id, token);
 
     const totalMinutes = jobs.reduce((s, j) => s + j.durationMinutes, 0);
-    const superseded = supersededIds.has(run.id);
+    const supersededAt = supersededAtByRun.get(run.id) ?? null;
 
-    const { avoidableMinutes, avoidableReason } = computeAvoidableMinutes(
+    const { avoidableMinutes, avoidableReason, supersededMinutes } = computeAvoidableMinutes(
       impact,
-      superseded,
       jobs,
       wf,
+      supersededAt,
+      spritesTouched,
     );
 
     const headlessMinutes = jobs
       .filter((j) => categorizeJob(j.name) === 'headless')
       .reduce((s, j) => s + j.durationMinutes, 0);
+
     const e2eMinutes = jobs
       .filter((j) => categorizeJob(j.name) === 'e2e')
       .reduce((s, j) => s + j.durationMinutes, 0);
+
     const coverageMinutes = jobs
       .filter((j) => categorizeJob(j.name) === 'coverage')
       .reduce((s, j) => s + j.durationMinutes, 0);
+
     const securityMinutes = jobs
       .filter((j) => categorizeJob(j.name) === 'security')
       .reduce((s, j) => s + j.durationMinutes, 0);
@@ -702,7 +973,9 @@ async function analyze(args: {
       completedAt: run.updated_at ?? null,
       conclusion: run.conclusion,
       impact,
-      superseded,
+      superseded: supersededAt !== null,
+      supersededAt,
+      supersededMinutes,
       totalMinutes,
       jobs,
       avoidableMinutes,
@@ -711,80 +984,110 @@ async function analyze(args: {
       e2eMinutes,
       coverageMinutes,
       securityMinutes,
+      spritesTouched,
     });
-
-    analyzed++;
-    if (analyzed % 50 === 0) {
-      process.stderr.write(`Analyzed ${analyzed}/${allRuns.length} runs...\n`);
-    }
   }
 
-  // Aggregate statistics
-  const totalMinutes = analyses.reduce((s, a) => s + a.totalMinutes, 0);
-  const avoidableMinutes = analyses.reduce((s, a) => s + a.avoidableMinutes, 0);
-  const supersededMinutes = analyses
-    .filter((a) => a.superseded)
-    .reduce((s, a) => s + a.totalMinutes, 0);
-
-  // Non-visual E2E: E2E minutes where impact is not visual-touching
-  const nonVisualE2eMinutes = analyses
-    .filter(
-      (a) => a.impact === 'docs_only' || a.impact === 'art_only' || a.impact === 'gameplay_safe',
+  if (
+    analyses.some(
+      (a) =>
+        a.workflowKey === 'security' &&
+        a.totalMinutes > 0 &&
+        a.avoidableReason === 'unmodeled_security',
     )
-    .reduce((s, a) => s + a.e2eMinutes, 0);
+  ) {
+    incompleteReasons.push(
+      'Security workflow avoidable-minute attribution is conservative (non-superseded security runs are not fully modeled).',
+    );
+  }
 
-  // Non-sim headless: headless minutes where impact is gameplay_safe
+  const totalMinutes = analyses.reduce((s, a) => s + a.totalMinutes, 0);
+  const classifiedRuns = analyses.filter((a) => a.impact !== 'unknown').length;
+  const classifiedMinutes = analyses
+    .filter((a) => a.impact !== 'unknown')
+    .reduce((s, a) => s + a.totalMinutes, 0);
+  const classificationRate = totalMinutes > 0 ? classifiedMinutes / totalMinutes : 0;
+
+  const avoidableMinutes = analyses.reduce((s, a) => s + a.avoidableMinutes, 0);
+  const supersededMinutes = analyses.reduce((s, a) => s + a.supersededMinutes, 0);
+
+  const nonVisualE2eMinutes: ImpactMetricValue = null;
+  const nonVisualE2eStatus: Report['nonVisualE2eStatus'] = 'uncertain';
+
   const nonSimHeadlessMinutes = analyses
     .filter((a) => a.impact === 'gameplay_safe')
     .reduce((s, a) => s + a.headlessMinutes, 0);
 
-  // Non-coverage coverage: coverage minutes where impact is docs/art/gameplay_safe
   const nonCoverageMinutes = analyses
     .filter(
-      (a) => a.impact === 'docs_only' || a.impact === 'art_only' || a.impact === 'gameplay_safe',
+      (a) =>
+        a.impact === 'docs_only' ||
+        a.impact === 'art_only' ||
+        a.impact === 'gameplay_safe' ||
+        a.impact === 'sprites_only',
     )
     .reduce((s, a) => s + a.coverageMinutes, 0);
 
-  // Classification rate
-  const classifiedCount = analyses.filter((a) => a.impact !== 'unknown').length;
-  const classificationRate = analyses.length > 0 ? classifiedCount / analyses.length : 0;
-
-  // Impact breakdown
-  const impactBreakdown: Report['impactBreakdown'] = {
-    art_only: { runs: 0, minutes: 0, avoidableMinutes: 0 },
-    docs_only: { runs: 0, minutes: 0, avoidableMinutes: 0 },
-    gameplay_safe: { runs: 0, minutes: 0, avoidableMinutes: 0 },
-    sprites_only: { runs: 0, minutes: 0, avoidableMinutes: 0 },
-    full: { runs: 0, minutes: 0, avoidableMinutes: 0 },
-    unknown: { runs: 0, minutes: 0, avoidableMinutes: 0 },
+  const impactBreakdownBase: Report['impactBreakdown'] = {
+    art_only: { runs: 0, minutes: 0, avoidableMinutes: 0, perHeadStats: computePerGroupStats([]) },
+    docs_only: { runs: 0, minutes: 0, avoidableMinutes: 0, perHeadStats: computePerGroupStats([]) },
+    gameplay_safe: {
+      runs: 0,
+      minutes: 0,
+      avoidableMinutes: 0,
+      perHeadStats: computePerGroupStats([]),
+    },
+    sprites_only: {
+      runs: 0,
+      minutes: 0,
+      avoidableMinutes: 0,
+      perHeadStats: computePerGroupStats([]),
+    },
+    full: { runs: 0, minutes: 0, avoidableMinutes: 0, perHeadStats: computePerGroupStats([]) },
+    unknown: { runs: 0, minutes: 0, avoidableMinutes: 0, perHeadStats: computePerGroupStats([]) },
   };
+
+  const minutesPerHeadByImpact = new Map<ChangeImpact, Map<string, number>>();
   for (const a of analyses) {
-    const bucket = impactBreakdown[a.impact];
+    const bucket = impactBreakdownBase[a.impact];
     bucket.runs++;
     bucket.minutes += a.totalMinutes;
     bucket.avoidableMinutes += a.avoidableMinutes;
-  }
 
-  // Per-PR statistics (minutes per PR head = sum of all run minutes for that PR)
-  const prMinutes = new Map<number, number>();
-  for (const a of analyses) {
-    if (a.prNumber) {
-      prMinutes.set(a.prNumber, (prMinutes.get(a.prNumber) ?? 0) + a.totalMinutes);
+    if (a.prNumber !== null) {
+      const key = `${a.prNumber}:${a.sha}`;
+      const perImpact = minutesPerHeadByImpact.get(a.impact) ?? new Map<string, number>();
+      perImpact.set(key, (perImpact.get(key) ?? 0) + a.totalMinutes);
+      minutesPerHeadByImpact.set(a.impact, perImpact);
     }
   }
-  const prMinuteValues = [...prMinutes.values()];
 
-  // Wall-clock latency (minutes from run.created_at to run.completedAt)
+  for (const impact of Object.keys(impactBreakdownBase) as ChangeImpact[]) {
+    const values = [...(minutesPerHeadByImpact.get(impact)?.values() ?? [])];
+    impactBreakdownBase[impact].perHeadStats = computePerGroupStats(values);
+  }
+
+  const perHeadMinutes = new Map<string, number>();
+  for (const a of analyses) {
+    if (a.prNumber !== null) {
+      const key = `${a.prNumber}:${a.sha}`;
+      perHeadMinutes.set(key, (perHeadMinutes.get(key) ?? 0) + a.totalMinutes);
+    }
+  }
+
+  const prMinuteValues = [...perHeadMinutes.values()];
+
   const latencies = analyses
     .filter((a): a is RunAnalysis & { completedAt: string } => a.completedAt !== null)
     .map((a) => {
       const completed = new Date(a.completedAt).getTime();
       return (completed - new Date(a.createdAt).getTime()) / 60000;
-    });
+    })
+    .filter((n) => Number.isFinite(n) && n >= 0);
 
-  // Baseline for comparison
   const baseline = {
     window: '72h ending 2026-07-19 19:12 UTC',
+    days: 3,
     totalMinutes: 18630,
     avoidablePercent: 53.9,
     supersededMinutes: 3808,
@@ -793,33 +1096,36 @@ async function analyze(args: {
     nonCoverageMinutes: 1106,
   };
 
+  const windowDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+  const baselineSupersededPerDay = baseline.supersededMinutes / baseline.days;
+  const currentSupersededPerDay = windowDays > 0 ? supersededMinutes / windowDays : 0;
+
   const supersededReductionVsBaseline =
-    baseline.supersededMinutes > 0
-      ? (1 - supersededMinutes / baseline.supersededMinutes) * 100
+    baselineSupersededPerDay > 0
+      ? (1 - currentSupersededPerDay / baselineSupersededPerDay) * 100
       : null;
 
-  // Classifier gap detection: look for required-check skips on 'full' impact runs
-  const classifierGaps: string[] = [];
-  for (const a of analyses) {
-    if (a.impact === 'unknown' && a.workflowKey === 'ci') {
-      classifierGaps.push(
-        `PR #${a.prNumber ?? 'unknown'} run ${a.runId}: unclassified (no files or API error)`,
-      );
-    }
-  }
+  const normalizedBaseline = {
+    totalMinutesForWindow: (baseline.totalMinutes / baseline.days) * windowDays,
+    supersededMinutesPerDay: baselineSupersededPerDay,
+    supersededMinutesForWindow: baselineSupersededPerDay * windowDays,
+  };
 
-  const report: Report = {
+  const { gaps, uncertain } = detectClassifierGapFindings(analyses);
+
+  return {
     generatedAt: new Date().toISOString(),
-    analysisWindow: { start: start.toISOString(), end: end.toISOString() },
+    analysisWindow: { start: start.toISOString(), end: end.toISOString(), days: windowDays },
     apiLimitations: [
       'GitHub /actions/runs/{id}/timing returns BILLABLE ms rounded to 1min; queue overhead excluded.',
       'Superseded detection approximated from run timestamps; concurrency-cancel events not directly exposed.',
-      'PR file listings capped at 3000 files by GitHub API; larger PRs classified as unknown.',
+      'Run-level file classification is reconstructed from compare(base...head); compare file lists are capped at 300 and capped comparisons are marked unknown.',
       'Workflow runs older than 90 days may be unavailable.',
       'This measurement counts wall-clock job duration, not billable minutes, for consistency with baseline.',
+      'Non-visual E2E metric is disabled until #1688 visual_touched is available.',
     ],
     totalRuns: analyses.length,
-    classifiedRuns: classifiedCount,
+    classifiedRuns,
     classificationRate,
     totalMinutes,
     avoidableMinutes,
@@ -827,73 +1133,89 @@ async function analyze(args: {
     supersededMinutes,
     supersededReductionVsBaseline,
     nonVisualE2eMinutes,
+    nonVisualE2eStatus,
     nonSimHeadlessMinutes,
     nonCoverageMinutes,
-    impactBreakdown,
-    perPrStats: {
-      median: percentile(prMinuteValues, 50),
-      p95: percentile(prMinuteValues, 95),
-      sampleSize: prMinuteValues.length,
-    },
-    wallClockLatency: {
-      median: percentile(latencies, 50),
-      p95: percentile(latencies, 95),
-      sampleSize: latencies.length,
-    },
-    classifierGaps,
+    incomplete: incompleteReasons.length > 0,
+    incompleteReasons,
+    impactBreakdown: impactBreakdownBase,
+    perPrStats: computePerGroupStats(prMinuteValues),
+    wallClockLatency: computePerGroupStats(latencies),
+    baselineWallClockLatency: args.baselineWallClockLatency ?? { median: null, p95: null },
+    classifierGaps: gaps,
+    classifierUncertain: uncertain,
     baseline,
+    normalizedBaseline,
     ...(args.includeRunDetails ? { runs: analyses } : {}),
   };
-
-  return report;
 }
-
-// ---------------------------------------------------------------------------
-// Report rendering
-// ---------------------------------------------------------------------------
 
 function renderReport(report: Report): string {
   const b = report.baseline;
-  const deltaAvoidable = report.avoidablePercent - b.avoidablePercent;
-  const deltaSuperseded = report.supersededReductionVsBaseline;
-
   const fmt = (n: number, d = 1) => n.toFixed(d);
   const pct = (n: number) => `${fmt(n)}%`;
   const fmtMin = (n: number) => `${Math.round(n).toLocaleString()} min`;
 
-  const avoidableStatus =
-    report.avoidablePercent < ACCEPTANCE.avoidableMaxPercent
+  const deltaAvoidable = report.avoidablePercent - b.avoidablePercent;
+  const normalizedTotalDeltaPct =
+    report.normalizedBaseline.totalMinutesForWindow > 0
+      ? ((report.totalMinutes - report.normalizedBaseline.totalMinutesForWindow) /
+          report.normalizedBaseline.totalMinutesForWindow) *
+        100
+      : 0;
+
+  const avoidableStatus = report.incomplete
+    ? `⚠️ UNCERTAIN (incomplete data: ${report.incompleteReasons.length} issue(s))`
+    : report.avoidablePercent < ACCEPTANCE.avoidableMaxPercent
       ? `✅ PASS (<${ACCEPTANCE.avoidableMaxPercent}%)`
       : `❌ FAIL (${pct(report.avoidablePercent)}, target <${ACCEPTANCE.avoidableMaxPercent}%)`;
 
-  const supersededStatus =
-    deltaSuperseded !== null && deltaSuperseded >= ACCEPTANCE.supersededReductionMinPercent
-      ? `✅ PASS (≥${ACCEPTANCE.supersededReductionMinPercent}% reduction)`
-      : `❌ FAIL (${deltaSuperseded !== null ? `${fmt(deltaSuperseded)}%` : 'N/A'} reduction, target ≥${ACCEPTANCE.supersededReductionMinPercent}%)`;
+  const supersededStatus = report.incomplete
+    ? `⚠️ UNCERTAIN (incomplete data)`
+    : report.supersededReductionVsBaseline !== null &&
+        report.supersededReductionVsBaseline >= ACCEPTANCE.supersededReductionMinPercent
+      ? `✅ PASS (≥${ACCEPTANCE.supersededReductionMinPercent}% reduction/day)`
+      : `❌ FAIL (${report.supersededReductionVsBaseline !== null ? `${fmt(report.supersededReductionVsBaseline)}%` : 'N/A'} reduction/day, target ≥${ACCEPTANCE.supersededReductionMinPercent}%)`;
 
-  const classifiedStatus =
-    report.classificationRate >= ACCEPTANCE.classificationMinRate
-      ? `✅ PASS (≥${Math.round(ACCEPTANCE.classificationMinRate * 100)}%)`
+  const classifiedStatus = report.incomplete
+    ? `⚠️ UNCERTAIN (incomplete data)`
+    : report.classificationRate >= ACCEPTANCE.classificationMinRate
+      ? `✅ PASS (≥${Math.round(ACCEPTANCE.classificationMinRate * 100)}% of runner-minutes)`
       : `❌ FAIL (${pct(report.classificationRate * 100)}, target ≥${Math.round(ACCEPTANCE.classificationMinRate * 100)}%)`;
 
   const gapsStatus =
-    report.classifierGaps.length === 0
+    report.classifierGaps.length === 0 && report.classifierUncertain.length === 0
       ? '✅ PASS (no gaps detected)'
-      : `⚠️ ${report.classifierGaps.length} potential gaps`;
+      : report.classifierGaps.length > 0
+        ? `❌ FAIL (${report.classifierGaps.length} validated gap(s), ${report.classifierUncertain.length} uncertain)`
+        : `⚠️ UNCERTAIN (${report.classifierUncertain.length} uncertain finding(s))`;
+
+  const nonVisualValue =
+    report.nonVisualE2eStatus === 'measured' && report.nonVisualE2eMinutes !== null
+      ? fmtMin(report.nonVisualE2eMinutes)
+      : 'N/A (uncertain until #1688 visual_touched)';
+
+  const baselineLatencyMedian =
+    report.baselineWallClockLatency.median === null
+      ? 'N/A'
+      : fmt(report.baselineWallClockLatency.median);
+  const baselineLatencyP95 =
+    report.baselineWallClockLatency.p95 === null ? 'N/A' : fmt(report.baselineWallClockLatency.p95);
 
   return `# Post-Rollout CI Efficiency Report
 
 Generated: ${report.generatedAt}
-Window: ${report.analysisWindow.start} → ${report.analysisWindow.end}
+Window: ${report.analysisWindow.start} → ${report.analysisWindow.end} (${fmt(report.analysisWindow.days, 2)} days)
 
 ## Summary
 
 | Metric | Baseline | Post-Rollout | Change | Target |
 |--------|----------|--------------|--------|--------|
-| Total runner-minutes | ${fmtMin(b.totalMinutes)} | ${fmtMin(report.totalMinutes)} | ${fmt(((report.totalMinutes - b.totalMinutes) / b.totalMinutes) * 100)}% | — |
+| Total runner-minutes (window-normalized baseline) | ${fmtMin(report.normalizedBaseline.totalMinutesForWindow)} | ${fmtMin(report.totalMinutes)} | ${fmt(normalizedTotalDeltaPct)}% | — |
+| Total runner-minutes/day | ${fmt(b.totalMinutes / b.days)} | ${fmt(report.analysisWindow.days > 0 ? report.totalMinutes / report.analysisWindow.days : 0)} | — | — |
 | Avoidable % | ${pct(b.avoidablePercent)} | ${pct(report.avoidablePercent)} | ${fmt(deltaAvoidable)}pp | <15% |
-| Superseded minutes | ${fmtMin(b.supersededMinutes)} | ${fmtMin(report.supersededMinutes)} | ${deltaSuperseded !== null ? `-${fmt(deltaSuperseded)}%` : 'N/A'} | -90% |
-| Non-visual E2E min | ${fmtMin(b.nonVisualE2eMinutes)} | ${fmtMin(report.nonVisualE2eMinutes)} | — | — |
+| Superseded minutes/day | ${fmt(report.normalizedBaseline.supersededMinutesPerDay)} | ${fmt(report.analysisWindow.days > 0 ? report.supersededMinutes / report.analysisWindow.days : 0)} | ${report.supersededReductionVsBaseline !== null ? `-${fmt(report.supersededReductionVsBaseline)}%` : 'N/A'} | -90% |
+| Non-visual E2E min | ${fmtMin(b.nonVisualE2eMinutes)} | ${nonVisualValue} | — | — |
 | Non-sim headless min | ${fmtMin(b.nonSimHeadlessMinutes)} | ${fmtMin(report.nonSimHeadlessMinutes)} | — | — |
 | Non-coverage min | ${fmtMin(b.nonCoverageMinutes)} | ${fmtMin(report.nonCoverageMinutes)} | — | — |
 
@@ -901,24 +1223,39 @@ Window: ${report.analysisWindow.start} → ${report.analysisWindow.end}
 
 - **Avoidable share <15%**: ${avoidableStatus}
 - **Superseded ≥90% reduction**: ${supersededStatus}
-- **Classification ≥95%**: ${classifiedStatus}
-- **No classifier-caused gaps**: ${gapsStatus}
+- **Classification ≥95% of runner-minutes**: ${classifiedStatus}
+- **No classifier-caused gaps / false skips**: ${gapsStatus}
 
-## Per-PR Statistics
-
-| Metric | Value |
-|--------|-------|
-| Median minutes/PR | ${fmt(report.perPrStats.median)} |
-| p95 minutes/PR | ${fmt(report.perPrStats.p95)} |
-| Sample PRs | ${report.perPrStats.sampleSize} |
-
-## Wall-Clock Latency
+## Per-PR-Head Statistics
 
 | Metric | Value |
 |--------|-------|
-| Median latency (min) | ${fmt(report.wallClockLatency.median)} |
-| p95 latency (min) | ${fmt(report.wallClockLatency.p95)} |
-| Sample runs | ${report.wallClockLatency.sampleSize} |
+| Median minutes/PR head | ${fmt(report.perPrStats.median)} |
+| p95 minutes/PR head | ${fmt(report.perPrStats.p95)} |
+| Sample PR heads | ${report.perPrStats.sampleSize} |
+
+## Per-Impact Per-PR-Head Statistics
+
+| Impact | Median min/head | p95 min/head | Sample heads |
+|--------|------------------|--------------|--------------|
+${(
+  Object.entries(report.impactBreakdown) as Array<
+    [ChangeImpact, Report['impactBreakdown'][ChangeImpact]]
+  >
+)
+  .map(
+    ([impact, stats]) =>
+      `| ${impact} | ${fmt(stats.perHeadStats.median)} | ${fmt(stats.perHeadStats.p95)} | ${stats.perHeadStats.sampleSize} |`,
+  )
+  .join('\n')}
+
+## Wall-Clock Latency Comparison
+
+| Metric | Baseline | Post-Rollout |
+|--------|----------|--------------|
+| Median latency (min) | ${baselineLatencyMedian} | ${fmt(report.wallClockLatency.median)} |
+| p95 latency (min) | ${baselineLatencyP95} | ${fmt(report.wallClockLatency.p95)} |
+| Sample runs | N/A | ${report.wallClockLatency.sampleSize} |
 
 ## Impact Classification Breakdown
 
@@ -935,15 +1272,24 @@ ${Object.entries(report.impactBreakdown)
 
 ${report.apiLimitations.map((l) => `- ${l}`).join('\n')}
 
-## Classifier Gaps
+## Classifier Required-Check Findings
 
-${report.classifierGaps.length === 0 ? 'None detected.' : report.classifierGaps.map((g) => `- ${g}`).join('\n')}
-`;
+${
+  report.classifierGaps.length === 0 && report.classifierUncertain.length === 0
+    ? 'None detected.'
+    : [
+        ...report.classifierGaps.map((gap) => `- GAP: ${gap}`),
+        ...report.classifierUncertain.map((item) => `- UNCERTAIN: ${item}`),
+      ].join('\n')
 }
 
-// ---------------------------------------------------------------------------
-// CLI entrypoint
-// ---------------------------------------------------------------------------
+${
+  report.incompleteReasons.length > 0
+    ? `## Incomplete Data\n\n${report.incompleteReasons.map((reason) => `- ${reason}`).join('\n')}`
+    : ''
+}
+`;
+}
 
 function parseArgs(argv: string[]): {
   owner: string;
@@ -953,6 +1299,7 @@ function parseArgs(argv: string[]): {
   end: Date;
   outFile?: string;
   includeRunDetails: boolean;
+  baselineWallClockLatency: { median: number | null; p95: number | null };
 } {
   const args = argv.slice(2);
   const get = (flag: string): string | undefined => {
@@ -968,6 +1315,8 @@ function parseArgs(argv: string[]): {
 
   const startStr = get('--start');
   const endStr = get('--end');
+  const baselineLatencyMedianStr = get('--baseline-latency-median');
+  const baselineLatencyP95Str = get('--baseline-latency-p95');
 
   if (!startStr || !endStr) {
     console.error('Usage: GH_TOKEN=<token> npx tsx scripts/agent/ci/measure-ci-efficiency.ts \\');
@@ -977,14 +1326,45 @@ function parseArgs(argv: string[]): {
     process.exit(1);
   }
 
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    console.error('❌ --start and --end must be valid ISO-8601 timestamps.');
+    process.exit(1);
+  }
+  if (end <= start) {
+    console.error('❌ --end must be greater than --start.');
+    process.exit(1);
+  }
+
+  const parseOptionalNumber = (value: string | undefined, flag: string): number | null => {
+    if (value === undefined) return null;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      console.error(`❌ ${flag} must be a non-negative number when provided.`);
+      process.exit(1);
+    }
+    return parsed;
+  };
+
+  const baselineLatencyMedian = parseOptionalNumber(
+    baselineLatencyMedianStr,
+    '--baseline-latency-median',
+  );
+  const baselineLatencyP95 = parseOptionalNumber(baselineLatencyP95Str, '--baseline-latency-p95');
+
   return {
     owner: get('--owner') ?? 'nalfeo',
     repo: get('--repo') ?? 'Crawler',
     token,
-    start: new Date(startStr),
-    end: new Date(endStr),
+    start,
+    end,
     outFile: get('--out'),
     includeRunDetails: args.includes('--details'),
+    baselineWallClockLatency: {
+      median: baselineLatencyMedian,
+      p95: baselineLatencyP95,
+    },
   };
 }
 
@@ -994,13 +1374,13 @@ async function main(): Promise<void> {
   const windowDays = (args.end.getTime() - args.start.getTime()) / (1000 * 60 * 60 * 24);
   if (windowDays < ACCEPTANCE.minWindowDays) {
     console.error(
-      `❌ Window is ${windowDays.toFixed(1)} days, but the acceptance criterion requires at least` +
-        ` ${ACCEPTANCE.minWindowDays} representative post-rollout days.`,
+      `❌ Window is ${windowDays.toFixed(1)} days, but the acceptance criterion requires at least ${ACCEPTANCE.minWindowDays} representative post-rollout days.`,
     );
-    console.error(
-      '   Run after all dependency issues (#1688, #1689, #1696, #1697, #1698) have merged',
-    );
-    console.error('   and the observation window has elapsed.');
+    process.exit(1);
+  }
+
+  if (args.end.getTime() > Date.now()) {
+    console.error('❌ --end must be in the past (<= now) so the observation window is complete.');
     process.exit(1);
   }
 
@@ -1008,7 +1388,6 @@ async function main(): Promise<void> {
   process.stderr.write(`Window: ${args.start.toISOString()} → ${args.end.toISOString()}\n\n`);
 
   const report = await analyze(args);
-
   const markdown = renderReport(report);
   console.log(markdown);
 
@@ -1018,7 +1397,24 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+const isMainModule =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMainModule) {
+  main().catch((err) => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
+}
+
+export const __test = {
+  ACCEPTANCE,
+  classifyCiJobName,
+  clippedSupersededMinutes,
+  computeAvoidableMinutes,
+  detectClassifierGapFindings,
+  detectSupersededRuns,
+  expectedCiJobsForImpact,
+  packageJsonGameplaySafeFromObjects,
+  parseRateLimitResetMs,
+};
