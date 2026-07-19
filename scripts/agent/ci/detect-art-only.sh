@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# detect-art-only.sh — detect change scope and emit art_only + docs_only +
-# gameplay_safe flags.
+# detect-art-only.sh — detect change scope and emit orthogonal impact flags.
+#
+# Legacy flags (backward-compatible, consumed by existing CI jobs):
 #
 # art_only=true  — every changed file is under the approved-art surface:
 #   - public/assets/generated/**        (sprites + manifest.json)
@@ -23,6 +24,33 @@
 # 306s headless job on PULL_REQUESTS ONLY; main-push always runs it, preserving
 # an observe-after-merge backstop in case the allowlist is ever wrong.
 #
+# New orthogonal impact flags (used by Wave-2 CI gating):
+#
+# visual_touched=true — at least one changed file could affect the rendered
+#   output. False only when every changed file is in the "not visual" safe list:
+#   .github/**, docs/**, .specify/**, scripts/**, src/labs/**, tests/unit/**,
+#   tests/headless/**, tests/integration/**, public/** (excl. public/assets/
+#   generated/**), *.md, *.txt, package-lock.json. Unknown paths → true
+#   (fail closed). Used to gate the E2E visual regression job.
+#
+# sim_touched=true — the change can affect the deterministic simulation.
+#   Derived as the exact complement of gameplay_safe (same allowlist, positive
+#   signal). Used to gate the headless Floor-1 job.
+#
+# coverage_touched=true — the change could affect unit test coverage.
+#   False only when every changed file is in the "not coverage" safe list:
+#   .github/**, docs/**, .specify/**, scripts/**, src/labs/**, tests/e2e/**,
+#   tests/headless/**, tests/integration/**, tests/unit/sprites/**, public/**,
+#   *.md, *.txt, package-lock.json, src/shared/data/sprite-catalog.json.
+#   Unknown paths → true (fail closed). Used to gate the coverage advisory job.
+#
+# sprite_pipeline_touched=true — alias for sprites_touched; exposed under a
+#   more descriptive name for Wave-2 consumers.
+#
+# dependencies_touched=true — package.json or package-lock.json is in the
+#   changed set. Fail closed for package.json (may have dep changes). Used to
+#   gate npm audit and dependency-allowlist checks in security-review.yml.
+#
 # Output: writes all flags to $GITHUB_OUTPUT (when set) and stdout.
 # Test hook: SCOPE_FILES_OVERRIDE (newline-separated paths) classifies that list
 # directly instead of deriving it from git — used by the deterministic unit test.
@@ -40,12 +68,20 @@ emit_output() {
 }
 
 # Emit all scope flags at once (fail-safe path uses this for early exits).
+# Args: art_only docs_only gameplay_safe sprites_only sprites_touched
+#       visual_touched sim_touched coverage_touched sprite_pipeline_touched
+#       dependencies_touched
 emit_all() {
   emit_output art_only "$1"
   emit_output docs_only "$2"
   emit_output gameplay_safe "$3"
   emit_output sprites_only "$4"
   emit_output sprites_touched "$5"
+  emit_output visual_touched "$6"
+  emit_output sim_touched "$7"
+  emit_output coverage_touched "$8"
+  emit_output sprite_pipeline_touched "$9"
+  emit_output dependencies_touched "${10}"
 }
 
 # package.json gameplay-safe split:
@@ -133,7 +169,7 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false false false
+    emit_all false false false false false false false false false false
     exit 0
   fi
 
@@ -151,7 +187,7 @@ echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false false false
+  emit_all false false false false false false false false false false
   exit 0
 fi
 
@@ -286,4 +322,88 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched"
+# ---------------------------------------------------------------------------
+# New orthogonal impact flags (Wave-2 CI gating — issue #1688)
+# ---------------------------------------------------------------------------
+
+# visual_touched: true when the change could affect the rendered output.
+# Safe list (known NOT visual): CI/workflow config, docs, all scripts, labs,
+# unit/headless/integration tests, most of public/ (non-art), and plain text.
+# Generated art (public/assets/generated/**) IS visual; it's excluded from the
+# public/* safe entry so it falls through to the catch-all below.
+# Unknown or unclassified paths → true (fail closed).
+visual_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    .github/*) ;;
+    docs/*) ;;
+    .specify/*) ;;
+    scripts/*) ;;
+    src/labs/*) ;;
+    tests/unit/*) ;;
+    tests/headless/*) ;;
+    tests/integration/*) ;;
+    public/assets/generated/*) visual_touched=true; break ;;
+    public/*) ;;
+    *.md) ;;
+    *.txt) ;;
+    package-lock.json) ;;
+    *) visual_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+# sim_touched: true when the change could affect the deterministic simulation.
+# Derived as the exact semantic complement of gameplay_safe: the two flags always
+# move in lock-step, so derivation is DRY and guarantees consistency.
+if [ "$gameplay_safe" = "true" ]; then
+  sim_touched=false
+else
+  sim_touched=true
+fi
+
+# coverage_touched: true when the change could affect unit test coverage metrics.
+# Safe list (known NOT coverage): CI/workflow config, docs, all scripts, labs,
+# e2e/headless/integration tests, tests/unit/sprites (sprites vitest project,
+# excluded from the unit project), public/, sprite catalog JSON, plain text.
+# Unknown or unclassified paths → true (fail closed).
+coverage_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    .github/*) ;;
+    docs/*) ;;
+    .specify/*) ;;
+    scripts/*) ;;
+    src/labs/*) ;;
+    tests/e2e/*) ;;
+    tests/headless/*) ;;
+    tests/integration/*) ;;
+    tests/unit/sprites/*) ;;
+    public/*) ;;
+    *.md) ;;
+    *.txt) ;;
+    package-lock.json) ;;
+    src/shared/data/sprite-catalog.json) ;;
+    *) coverage_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+# sprite_pipeline_touched: alias for sprites_touched with a clearer name for
+# Wave-2 consumers. Always identical to sprites_touched.
+sprite_pipeline_touched="$sprites_touched"
+
+# dependencies_touched: true when dependency manifests are in the changed set.
+# Fail closed for package.json (could have dep changes; no content inspection
+# needed for security gating). Used to gate npm audit and dep-allowlist checks.
+dependencies_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    package-lock.json) dependencies_touched=true; break ;;
+    package.json) dependencies_touched=true; break ;;
+  esac
+done <<<"$changed"
+
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" \
+  "$visual_touched" "$sim_touched" "$coverage_touched" "$sprite_pipeline_touched" "$dependencies_touched"
