@@ -1173,8 +1173,27 @@ for (const comment of comments) {
     .split(/\r?\n/)
     .filter((line) => !line.trimStart().startsWith('>'))
     .join('\n');
-  if (hasResolutionMarker(unquotedBody)) continue;
   const taskFingerprint = extractTaskFingerprint(comment?.body);
+  if (hasResolutionMarker(unquotedBody)) {
+    // A later top-level reply carrying a trusted resolution marker for the
+    // same task fingerprint supersedes any earlier non-marker hint (e.g. a
+    // "Blocked outside this branch" reply) recorded for that fingerprint's
+    // blocker IDs above in comment order. Without clearing these entries the
+    // stale "Blocked" context would keep surfacing in the next task body even
+    // though a subsequent reply already resolved it — mirroring the
+    // trusted-marker boundary the in-thread backward scan already applies.
+    const resolvedBlockerIds = taskFingerprint
+      ? taskReviewThreadBlockersByFingerprint.get(taskFingerprint)
+      : null;
+    if (resolvedBlockerIds?.length) {
+      for (const blockerId of resolvedBlockerIds) {
+        priorTopLevelReplyByBlockerId.delete(blockerId);
+        const stableThreadId = extractStableReviewThreadId(blockerId);
+        if (stableThreadId) priorTopLevelReplyByStableThreadId.delete(stableThreadId);
+      }
+    }
+    continue;
+  }
   if (!taskFingerprint) continue;
   const blockerIds = taskReviewThreadBlockersByFingerprint.get(taskFingerprint);
   if (!blockerIds?.length) continue;

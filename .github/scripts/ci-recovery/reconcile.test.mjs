@@ -7056,6 +7056,176 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
   );
 });
 
+test('a later top-level marker reply for the same fingerprint clears an earlier non-marker hint', async (t) => {
+  // Regression: a non-marker top-level reply (e.g. "Blocked outside this
+  // branch") stores a stale hint keyed by blocker ID / stable thread ID. If a
+  // *later* top-level reply for the SAME task fingerprint carries a trusted
+  // ✅ Addressed marker, that marker must supersede the earlier non-marker
+  // hint — mirroring the trusted-marker boundary the in-thread backward scan
+  // already applies. Without this, the obsolete "Blocked" context keeps
+  // surfacing in every subsequent task body even though a later reply already
+  // resolved it.
+  const threadId = 'PRRT_marker_supersedes_blocked_thread';
+  const priorTaskFingerprint = '9f1e2d3c4b5a6978869504132435465768798a9bacbdcedfe0f1e2d3c4b5a69';
+  const originalConcern = 'This still needs the external issue closed before merge.';
+  const priorBlockedReply =
+    'Blocked outside this branch: issue #8888 is still open and cannot be closed from here.';
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: '.github/scripts/ci-recovery/reconcile.mjs',
+    line: 1073,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_reviewer_marker_supersede',
+          body: originalConcern,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r5`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const blockerId = reviewThreadBlockerId(thread);
+  const priorTaskComment = [
+    `<!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '@copilot Please recover this PR from the exact blockers below.',
+    '',
+    `1. **review-thread** \`${blockerId}\` at \`.github/scripts/ci-recovery/reconcile.mjs:1073\``,
+    `   copilot-pull-request-reviewer: ${originalConcern}`,
+  ].join('\n');
+  // First (older) top-level reply: no marker, records the "Blocked" hint.
+  const priorTopLevelBlockedReply = [
+    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '> @copilot Please recover this PR from the exact blockers below.',
+    '> ...',
+    '',
+    priorBlockedReply,
+  ].join('\n');
+  // Second (newer) top-level reply for the SAME fingerprint: carries a
+  // trusted ✅ Addressed marker, which must clear the earlier hint.
+  const laterTopLevelMarkerReply = [
+    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '> @copilot Please recover this PR from the exact blockers below.',
+    '> ...',
+    '',
+    '✅ Addressed in deadbee1234567890123456789012345678900: issue #8888 was closed upstream.',
+  ].join('\n');
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [
+        {
+          id: 10070,
+          body: priorTaskComment,
+          user: { login: 'nalfeo' },
+          author_association: 'OWNER',
+        },
+        {
+          id: 10071,
+          body: priorTopLevelBlockedReply,
+          user: { login: 'Copilot' },
+        },
+        {
+          id: 10072,
+          body: laterTopLevelMarkerReply,
+          user: { login: 'Copilot' },
+        },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([thread]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1005 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // The review thread itself never received a marker reply, so it must
+  // NOT be auto-resolved and a task comment must still be posted for it.
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the unresolved thread');
+
+  // The stale "Blocked" hint must NOT appear: the later marker reply for the
+  // same fingerprint must have cleared it from both the blocker-ID and
+  // stable-thread-ID lookup maps. (The task body always includes a generic
+  // "[Prior recovery reply (no marker posted" protocol paragraph explaining
+  // the convention, so assert against the actual bracketed blocker-summary
+  // form — `[Prior recovery reply (...): <text>]` — rather than the bare
+  // phrase, which would also match the unrelated boilerplate.)
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    new RegExp(String.raw`\[Prior recovery reply[^\]]*\]: ${escapeRegex(priorBlockedReply)}`),
+    'task body must NOT surface the obsolete Blocked hint once a later reply for the same fingerprint carries a resolution marker',
+  );
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /\[Prior recovery reply \(no marker posted — do not re-post an identical reply\): [^\]]*\] copilot-pull-request-reviewer: This still needs the external issue closed before merge\./,
+    'task body must NOT attach any prior-recovery-reply bracket hint to this blocker once it was cleared by the marker reply',
+  );
+
+  // The original reviewer concern must still appear in the summary.
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(escapeRegex(originalConcern.slice(0, 40))),
+    'task body must still include the original reviewer concern',
+  );
+});
+
 test('prior-reply hint ignores non-recovery collaborator follow-up comments', async (t) => {
   const threadId = 'PRRT_collaborator_followup_thread';
   const priorTaskFingerprint = '38aca57540f447b85a082cf668dbbc3b09a0ee223c542434dbaddaaa7a553e3e';

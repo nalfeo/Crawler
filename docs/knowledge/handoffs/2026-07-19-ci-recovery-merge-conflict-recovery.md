@@ -45,6 +45,8 @@ CI-recovery behavior:
   addressed markers when a reviewer later reopens the conversation
 - normalized prior-reply hints to one bracket-safe line before embedding them
   in recovery task summaries
+- cleared older top-level non-marker hints when a later trusted reply for the
+  same task fingerprint carries a resolution marker
 - regenerated the handoff index from source and escaped dynamic regex fixtures
   consistently in the new regression tests
 
