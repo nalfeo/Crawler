@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { bashEnv, toBashScriptPath } from '../helpers/bash-script-path.js';
@@ -10,7 +11,6 @@ const SCRIPT = toBashScriptPath(path.join(REPO_ROOT, 'scripts/agent/verify-fast.
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
 const hasGit = spawnSync('git', ['--version']).status === 0;
 const fixtureDirs: string[] = [];
-let fixtureIndex = 0;
 
 async function rmDirWithRetry(dir: string, attempts = 15, delayMs = 300): Promise<void> {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -36,12 +36,7 @@ afterEach(async () => {
 });
 
 function makeFixture(files: Record<string, string>): string {
-  const dir = path.join(
-    REPO_ROOT,
-    '.cache',
-    `verify-fast-typecheck-${process.pid}-${fixtureIndex}`,
-  );
-  fixtureIndex += 1;
+  const dir = mkdtempSync(path.join(tmpdir(), 'verify-fast-typecheck-'));
   fixtureDirs.push(dir);
 
   const write = (relativePath: string, contents: string): void => {
@@ -54,7 +49,7 @@ function makeFixture(files: Record<string, string>): string {
     'tsconfig.json',
     `${JSON.stringify(
       {
-        extends: '../../tsconfig.json',
+        extends: path.join(REPO_ROOT, 'tsconfig.json'),
         compilerOptions: {
           declaration: false,
           declarationMap: false,
@@ -129,7 +124,10 @@ describe('verify-fast full-project typecheck', () => {
       files[errorPath] = narrowingError;
       const fixture = makeFixture(files);
 
-      const result = runStaticVerifier(fixture, { cwd: fixture });
+      const result = runStaticVerifier(fixture, {
+        cwd: REPO_ROOT,
+        project: path.join(fixture, 'tsconfig.json'),
+      });
 
       expect(result.status).not.toBe(0);
       // Assert on the stable TS error code; the message text varies across TS versions.
@@ -145,9 +143,14 @@ describe('verify-fast full-project typecheck', () => {
         'src/clean.ts': 'export const sourceValue = 1;\n',
         'tests/clean.test.ts': 'export const testValue = 1;\n',
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
       });
 
-      const result = runStaticVerifier(fixture, { cwd: fixture });
+      const result = runStaticVerifier(fixture, {
+        cwd: REPO_ROOT,
+        project: path.join(fixture, 'tsconfig.json'),
+      });
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Fast verifier static checks passed');
@@ -156,27 +159,28 @@ describe('verify-fast full-project typecheck', () => {
   );
 });
 
-function initGitFixture(dir: string): void {
-  const runGit = (...args: string[]) => {
-    const result = spawnSync('git', args, {
-      cwd: dir,
-      encoding: 'utf8',
-    });
-    if (result.status !== 0) {
-      throw new Error(
-        `git ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
-      );
-    }
-  };
+function runGit(dir: string, ...args: string[]): string {
+  const result = spawnSync('git', args, {
+    cwd: dir,
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `git ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+  }
+  return result.stdout.trim();
+}
 
-  runGit('init');
-  runGit('config', 'user.name', 'Copilot');
-  runGit('config', 'user.email', 'copilot@example.com');
+function initGitFixture(dir: string): void {
+  runGit(dir, 'init');
+  runGit(dir, 'config', 'user.name', 'Copilot');
+  runGit(dir, 'config', 'user.email', 'copilot@example.com');
   // Disable signing so the commit works on any runner regardless of global
   // commit.gpgsign settings (mirrors local-scope.test.ts:137).
-  runGit('config', 'commit.gpgsign', 'false');
-  runGit('add', '.');
-  runGit('commit', '-m', 'fixture');
+  runGit(dir, 'config', 'commit.gpgsign', 'false');
+  runGit(dir, 'add', '.');
+  runGit(dir, 'commit', '-m', 'fixture');
 }
 
 describe('verify-fast changed TS path coverage', () => {
@@ -244,19 +248,12 @@ describe('verify-fast changed TS path coverage', () => {
       });
       // First commit: initial clean state (this becomes the base SHA).
       initGitFixture(fixture);
-      const baseResult = spawnSync('git', ['rev-parse', 'HEAD'], {
-        cwd: fixture,
-        encoding: 'utf8',
-      });
-      const baseSha = baseResult.stdout.trim();
+      const baseSha = runGit(fixture, 'rev-parse', 'HEAD');
 
       // Second commit: add an unsupported TS file — clean, no uncommitted changes.
       writeFileSync(path.join(fixture, 'vitest.config.ts'), 'export const x = 1;\n');
-      spawnSync('git', ['add', 'vitest.config.ts'], { cwd: fixture });
-      spawnSync('git', ['commit', '-m', 'add unsupported file'], {
-        cwd: fixture,
-        env: { ...process.env, GIT_COMMITTER_NAME: 'Copilot', GIT_COMMITTER_EMAIL: 'c@e.com' },
-      });
+      runGit(fixture, 'add', 'vitest.config.ts');
+      runGit(fixture, 'commit', '-m', 'add unsupported file');
 
       // Run with GITHUB_BASE_SHA pointing to the first commit so the diff
       // includes the unsupported file even without a resolvable origin/main.
@@ -277,6 +274,31 @@ describe('verify-fast changed TS path coverage', () => {
         'verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.ts');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash || !hasGit)(
+    'fails closed when a clean-committed unsupported TS file exists but no merge base is available',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(path.join(fixture, 'vitest.config.ts'), 'export const x = 1;\n');
+      runGit(fixture, 'add', 'vitest.config.ts');
+      runGit(fixture, 'commit', '-m', 'add unsupported file');
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        'verify:fast could not determine a git merge base for changed-file scanning.',
+      );
     },
     30_000,
   );

@@ -50,7 +50,7 @@ is_supported_ts_path() {
 # typical change set is a handful of files (~3-5s), making this the biggest win
 # on the most frequently run command.
 LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ tools/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
-if command -v git >/dev/null 2>&1; then
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
   # In CI, use GITHUB_BASE_SHA as a fallback when no local branch is resolvable
   # (e.g. shallow/detached checkout without origin/main fetched).
@@ -76,6 +76,13 @@ if command -v git >/dev/null 2>&1; then
       git ls-files --others --exclude-standard
     } 2>/dev/null | grep -E '\.(tsx?|mts|cts)$' | sort -u
   )
+  # Fail safe only when we have no merge base AND no working-tree TS changes. In
+  # that clean-checkout state, committed unsupported TS paths would be invisible.
+  if [ -z "$base" ] && [ "${#changed_repo_ts[@]}" -eq 0 ]; then
+    echo "❌ verify:fast could not determine a git merge base for changed-file scanning." >&2
+    echo "   Fetch origin/main or main locally, or set GITHUB_BASE_SHA in CI, before relying on verify:fast." >&2
+    exit 1
+  fi
   for f in "${changed_repo_ts[@]}"; do
     if is_supported_ts_path "$f"; then
       changed_ts+=("$f")
