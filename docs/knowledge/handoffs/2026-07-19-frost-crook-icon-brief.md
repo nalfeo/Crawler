@@ -51,17 +51,19 @@ but was **cancelled** before executing due to Azure queue concurrency saturation
 70 G2-B issues were labeled simultaneously by `g2b-seed-issues.yml` and ran afoul of the
 `${{ github.workflow }}-worker` concurrency group's one-in-flight-plus-one-queued limit.
 
-**To unblock generation**, dispatch the `asset-request.yml` workflow manually:
+**To unblock generation**, issue #1319 must carry the `asset-request` label — manual
+dispatch only processes open issues that have that label, and the `labeled` event itself
+triggers the workflow.  Apply the label first:
+
+```bash
+# Preferred: re-label to fire the labeled event (workflow auto-starts)
+gh issue edit 1319 --repo nalfeo/Crawler --add-label asset-request
+```
+
+If the label is already present but the run still needs to start manually:
 
 ```bash
 gh workflow run asset-request.yml --repo nalfeo/Crawler
-```
-
-Or re-label issue #1319 to trigger the `labeled` event:
-
-```bash
-gh issue edit 1319 --repo nalfeo/Crawler --add-label asset-request --remove-label asset-request
-gh issue edit 1319 --repo nalfeo/Crawler --add-label asset-request
 ```
 
 The worker synthesizes its own brief from the issue body (does **not** use
@@ -71,13 +73,34 @@ The worker synthesizes its own brief from the issue body (does **not** use
 
 ## After generation completes
 
-Once the worker finishes (posting a success comment on issue #1319 with the run URL):
+Once the worker finishes (posting a success comment on issue #1319 with the run URL),
+choose **one** of the two delivery routes below — do not combine steps from both.
+
+### Route A — Azure CI harvest (recommended)
+
+The `g2b-harvest-approve.yml` workflow downloads Azure results, approves the best
+variant, commits the art, and opens a stacked PR automatically.  No local steps needed.
 
 ```bash
-# 1. Download + approve the run (if needed from Azure Blob):
+gh workflow run g2b-harvest-approve.yml --repo nalfeo/Crawler \
+  -f issue_number=1319
+```
+
+Then close issue #1319 separately after the art PR merges (the workflow PR does not
+add `Closes #1319` automatically):
+
+```bash
+gh issue close 1319 --repo nalfeo/Crawler
+```
+
+### Route B — Local generation + manual delivery
+
+Use this route only if Azure artifacts are not available or you want to re-generate
+from the local brief.
+
+```bash
+# 1. Generate locally from the brief
 npm run sprites:run -- --brief briefs/weapons/frost-crook.yaml
-# OR if the CI run artifacts are in Azure Blob already:
-# use g2b-harvest-approve.yml (workflow_dispatch)
 
 # 2. Approve winner
 npm run sprites:approve -- generated/runs/frost-crook/<run-id> --variant <N>
@@ -85,7 +108,10 @@ npm run sprites:approve -- generated/runs/frost-crook/<run-id> --variant <N>
 # 3. Check in
 npm run sprites:checkin
 
-# 4. Batch into art-only PR (closes #1319)
+# 4. Batch into art-only PR
+#    NOTE: sprites:asset-pr closes only intermediate asset-checkin issues,
+#    NOT the original asset-request issue #1319.  Add Closes #1319 to the
+#    PR body manually, or close the issue separately after the art PR merges.
 npm run sprites:asset-pr
 
 # 5. Wire — item icons auto-resolve; no separate code PR needed

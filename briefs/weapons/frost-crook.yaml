@@ -24,7 +24,8 @@ description: |
 #
 # Floor 2 equipment; stable id: weapon.frost-crook
 # Runtime key: equipment/weapon/frost-crook
-# briefId === manifest key === engine texture key — art auto-resolves.
+# briefId: frost-crook; approval creates variant keys (manifest/texture: frost-crook-var-N);
+# resolveItemSprite matches by briefId — auto-resolves without explicit wiring.
 floor: 2
 variations:
   - crook tip is a large hexagonal ice crystal instead of a shard
