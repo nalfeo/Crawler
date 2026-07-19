@@ -1205,6 +1205,73 @@ test('interrupted exhausted release completes when staleOwningState carries atte
   );
 });
 
+test('reconcile skips redispatch when stale-automation-exhausted state matches current progress key', async (t) => {
+  const staleOffsetMs = 31 * 60 * 1000;
+  const failedCheck = {
+    id: 1,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/1`,
+  };
+  const blockers = [
+    { kind: 'ci-failure', id: 'ci', summary: 'ci concluded failure.', url: failedCheck.html_url },
+  ];
+  const fingerprint = blockerFingerprint(blockers);
+  const progressKey = automationProgressKey(HEAD_SHA, fingerprint);
+  const stateComment = {
+    id: 901,
+    body: renderStateComment(
+      makeState({
+        prNumber: PR_NUM,
+        headSha: HEAD_SHA,
+        fingerprint,
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation-exhausted',
+        blockers,
+        attempt: 2,
+        progressKey,
+        progressAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+        updatedAt: new Date(Date.now() - staleOffsetMs).toISOString(),
+      }),
+    ),
+  };
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: basePr(),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [stateComment] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+  });
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(stdout, /skip pr=#42 reason=stale-automation-exhausted/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'must not redispatch a new recovery task for an exhausted unchanged blocker set',
+  );
+});
+
 for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] of [
   ['repository label only', true, false],
   ['PR attachment only', false, true],
@@ -3848,6 +3915,264 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
     'task comment should explicitly reject top-level PR comments for review-thread blockers',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes('validated `✅ Addressed in <sha>: <one-line note>` result'),
+    'task comment should require a SHA for ordinary Addressed markers',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('validated `✅ Addressed` result'),
+    false,
+    'task comment should not advertise a bare Addressed marker',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
+    'task comment should reserve the SHA-less marker for deterministic non-applicability',
+  );
+});
+
+test('task body includes human-approval note when pendingHumanApproval is true', async (t) => {
+  // When a PR has human-approval-required AND unresolved review threads, the
+  // recovery agent MUST still fix the threads (the gate blocks merge only).
+  // Verify the task body includes the clarifying note so the agent is not
+  // confused into skipping repairs.  This test exercises the label-detected
+  // pendingHumanApproval path; see the branch-prefix-only test below for the
+  // stale-prefix regression.
+  const reviewCommentId = '3608157949';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        head: {
+          ...basePr().head,
+          ref: 'copilot/balance-telemetry-improvement-sweep',
+        },
+        labels: [{ name: 'human-approval-required' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'PRRT_human_approval_thread',
+            isResolved: false,
+            isOutdated: false,
+            path: 'docs/knowledge/balance-ledgers/sweep.md',
+            line: 21,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-human-approval-thread',
+                  body: 'Please fix this markdown table.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(
+    taskCommentCall,
+    'expected live reconcile to post a recovery task comment even when human-approval-required is set',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('human-approval-required'),
+    'task body must include the human-approval clarification note',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('merge step only'),
+    'task body must clarify that the human-approval gate applies to merge only',
+  );
+});
+
+test('balance-sweep branch prefix alone (no label) triggers human-approval gate', async (t) => {
+  // Stale-prefix regression: the old NIGHTLY_BALANCE_BRANCH_PREFIX was
+  // 'copilot/balance-telemetry-driven-improvement-sweep'; branches produced by
+  // current agents use 'copilot/balance-telemetry-improvement-sweep' (no
+  // "driven" infix).  Verify the broader prefix catches the new branch name
+  // even when the PR carries no human-approval-required label (the label path
+  // would short-circuit and mask a broken prefix check).
+  const reviewCommentId = '3608157950';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        head: {
+          ...basePr().head,
+          ref: 'copilot/balance-telemetry-improvement-sweep',
+        },
+        // No human-approval-required label — approval gate must be triggered by
+        // branch prefix alone.
+        labels: [],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'PRRT_balance_prefix_thread',
+            isResolved: false,
+            isOutdated: false,
+            path: 'docs/knowledge/balance-ledgers/sweep.md',
+            line: 5,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-balance-prefix-thread',
+                  body: 'Please update the balance table.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /blocked pr=#42 reason=human-approval-required/,
+    'branch prefix alone must trigger the human-approval gate',
+  );
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(
+    taskCommentCall,
+    'reconciler must post a recovery task even when approval gate is triggered via branch prefix',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('merge step only'),
+    'task body must include the human-approval clarification note',
+  );
 });
 
 test('reconcile proceeds when copilot is assigned but no lease/state exists', async (t) => {
@@ -4561,18 +4886,17 @@ test('queue admission finds a concurrently attached merge-train label on the sec
 });
 
 // ---------------------------------------------------------------------------
-// Thread 3 regression: automationStallAction 'progressed' resets attempt
-// counter and uses 'blocker-progressed' release trigger.
+// Regression: head-only drift with unchanged blockers must carry the stale
+// retry budget instead of resetting it as "progressed".
 // ---------------------------------------------------------------------------
 
-test('progressed stale action resets attempt counter to zero and uses blocker-progressed release trigger', async (t) => {
+test('stale automation increments attempt without reset when only headSha changes', async (t) => {
   // Scenario: the PR was dispatched against an older head SHA ('old-head-sha')
   // with attempt=1. The head has since advanced to HEAD_SHA (e.g. a rebase) but
-  // the blockers fingerprint is unchanged (same CI failure). automationStallAction
-  // must return 'progressed', which triggers the Thread 3 fix:
-  //   - dispatchAttemptBase reset to 0 (so the new head gets a full retry budget)
-  //   - release trigger set to 'blocker-progressed' (not 'stale-automation-retry')
-  //   - final attempt stored as 0+1=1 (not 2, which would exhaust the budget)
+  // the blockers fingerprint is unchanged (same CI failure). This must stay on
+  // the stale-retry path:
+  //   - release trigger is 'stale-automation-retry' (not 'blocker-progressed')
+  //   - final attempt is carried and incremented to 2 (not reset to 1)
   const PROG_FINGERPRINT = blockerFingerprint([
     {
       kind: 'ci-failure',
@@ -4686,36 +5010,35 @@ test('progressed stale action resets attempt counter to zero and uses blocker-pr
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /assigned copilot pr=#42/);
 
-  // Must use 'blocker-progressed' release trigger, never 'stale-automation-retry'.
+  // Must stay on stale-retry path, never classify as blocker-progressed.
   const releasePatch = capturedPatches.find((patch) => {
     const parsed = parseStateComment(patch.body);
-    return parsed?.trigger === 'blocker-progressed';
+    return parsed?.trigger === 'stale-automation-retry';
   });
   assert.ok(
     releasePatch,
-    'the release state must carry trigger=blocker-progressed for a progressed head',
+    'the release state must carry trigger=stale-automation-retry for unchanged blockers',
   );
   assert.ok(
     !mutatingCalls.some((call) => {
       if (call.method !== 'PATCH') return false;
       try {
-        return parseStateComment(call.body?.body)?.trigger === 'stale-automation-retry';
+        return parseStateComment(call.body?.body)?.trigger === 'blocker-progressed';
       } catch {
         return false;
       }
     }),
-    'must not use stale-automation-retry for a progressed head',
+    'must not use blocker-progressed when only headSha changed',
   );
 
-  // Final dispatched state must carry attempt=1 (reset-to-0 then incremented),
-  // not attempt=2 (which would carry forward the stale budget and exhaust it).
+  // Final dispatched state must carry attempt=2 (carried + incremented), not 1.
   const finalPatch = capturedPatches.at(-1);
   assert.ok(finalPatch, 'a final state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
   assert.equal(
     finalState?.attempt,
-    1,
-    'progressed dispatch must reset attempt budget: stored attempt must be 1 (0+1), not 2',
+    2,
+    'unchanged-blocker dispatch must carry attempt budget: stored attempt must be 2 (1+1), not reset',
   );
   assert.equal(finalState?.trigger, 'workflow_run:completed');
   assert.equal(finalState?.owner, 'automation');
@@ -6328,18 +6651,20 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 });
 
 // ---------------------------------------------------------------------------
-// Stale-marker detection: thread has trusted ✅ Addressed marker but the SHA
-// was never pushed (compare 404), so the thread remains unresolved.
+// Stale-marker + outdated-thread interaction: thread has a trusted ✅ Addressed
+// marker whose SHA was never pushed (compare 404), but the thread is also
+// isOutdated. The reconciler posts its own trusted "thread outdated" marker on
+// this pass, which auto-resolves the thread immediately — no separate blocker
+// summary comment is needed.
 // ---------------------------------------------------------------------------
 
-test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
-  // Simulate the root cause from the PR #1266 loop incident:
-  // The recovery agent replied to a review thread with ✅ Addressed in <sha>
-  // but that commit was created locally and never pushed.  The compare API
-  // returns 404, so the thread stays unresolved and the same fingerprint
-  // repeats indefinitely.  The reconciler should detect the stale marker and
-  // include a targeted hint in the blocker summary so the next recovery agent
-  // knows to re-post the marker with the current-head SHA.
+test('outdated stale-marker thread auto-resolves without posting a blocker summary', async (t) => {
+  // PR #1266 scenario: the recovery agent replied with ✅ Addressed in <sha>
+  // but the commit was never pushed to GitHub (compare API returns 404).
+  // Because the thread is also isOutdated, the reconciler posts its own trusted
+  // "thread outdated" marker on this pass. That marker causes the thread to
+  // self-heal immediately, so no blocker task comment is emitted — the stale-
+  // marker hint path is bypassed by the isOutdated fast path.
   const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
   const threadId = 'PRRT_stale_marker_thread';
   const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
@@ -6429,10 +6754,12 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  // Thread must NOT be auto-resolved (stale SHA is not reachable).
-  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  // Outdated threads are auto-resolved after the reconciler posts its trusted
+  // "thread outdated" marker, even when an older stale marker SHA is unreachable.
+  assert.match(stdout, new RegExp(`resolved thread=${threadId}`));
 
-  // A task comment must be posted because there is still a blocker.
+  // Once the thread is outdated and the reconciler posts its trusted marker,
+  // the thread self-heals on the same pass and no blocker comment is needed.
   const taskCommentCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&
@@ -6440,19 +6767,10 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
       typeof call.body?.body === 'string' &&
       call.body.body.includes('crawler-ci-task'),
   );
-  assert.ok(taskCommentCall, 'expected a task comment to be posted for the stale-marker blocker');
-
-  // The task body must include the stale-marker annotation so the agent knows
-  // to re-post the marker rather than re-investigate.
-  assert.match(
-    taskCommentCall.body.body,
-    new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
-    'task body must identify the stale marker SHA',
-  );
-  assert.match(
-    taskCommentCall.body.body,
-    /verify fix is present.*reply to this thread/i,
-    'task body must instruct the agent to verify and re-post the marker',
+  assert.equal(
+    taskCommentCall,
+    undefined,
+    'expected no blocker task comment once the outdated thread self-heals',
   );
 });
 

@@ -17,9 +17,17 @@ const gatedIssue = {
 test('detects the durable PR label, source-issue label, and nightly Copilot branch', () => {
   assert.equal(requiresHumanApproval({ labels: [{ name: HUMAN_APPROVAL_LABEL }] }), true);
   assert.equal(requiresHumanApproval({}, [gatedIssue]), true);
+  // Legacy branch name ('driven' variant) — must still match
   assert.equal(
     requiresHumanApproval({
       head: { ref: 'copilot/balance-telemetry-driven-improvement-sweep' },
+    }),
+    true,
+  );
+  // Current branch name (no 'driven') — was the root cause of the stale-prefix defect
+  assert.equal(
+    requiresHumanApproval({
+      head: { ref: 'copilot/balance-telemetry-improvement-sweep' },
     }),
     true,
   );
