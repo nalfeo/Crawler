@@ -177,3 +177,37 @@ headless evidence harness.
    (non-blocking).
 4. Keep production activation off until `floor2-boss-production-enable` is
    resolved.
+
+## PR Recovery Notes (2026-07-19)
+
+Post-merge recovery session resolved the following blockers:
+
+- **TS2717 typecheck failure**: `queen-mab-arena-observation.test.ts` redeclared
+  `Window.__arenaScene` with a richer type that conflicted with the narrower
+  declaration in `combat-arena-terrain.test.ts`. Fixed by removing the `declare
+  global` augmentation and using a local `QmArenaScene` interface with inline
+  casts in all `page.evaluate()` / `page.waitForFunction()` callbacks. TypeScript
+  erases the inline casts at compile time so the emitted JavaScript is simply
+  `window.__arenaScene`.
+
+- **E2E probe extended through full lifecycle**: The arena observation test now
+  covers all five key frames — 540 (first telegraph), 630 (resolution + Tarnished
+  confirmed via `statusEffectsByEntity`), 870 (Tarnished expiry + VFX cleanup),
+  1170 (second telegraph), 1260 (second resolution + re-Tarnish). `ArenaProbe`
+  gained a `tarnishedActive: boolean` field. `arenaLabEvidence` in
+  `boss-abilities.floor2.status.json` updated accordingly.
+
+- **PR description multi-model review section**: The committed ledger records a
+  non-clean 2-round multi-model review with 1 unresolved concern escalated to a
+  human (not "3 rounds, final round clean" as the original PR description stated).
+  The correct statement: "Multi-model review (gpt-5.3-codex + gemini-3.1-pro-preview,
+  adjudicated by claude-opus-4.8, 2 rounds): fixed dead-target lock, cross-caster
+  stacking, recycled-id friendly fire; round 2 left 1 unresolved concern →
+  escalated to human per the 2-round cap."
+
+- **Merge conflict**: Resolved `docs/knowledge/handoffs/INDEX.md` after merging
+  `origin/main`.
+
+Previous recovery sessions also resolved: `foundationState: "verified"` for all
+18 entries (3786bdae), `arenaLabState` requires both evidence + presetId (3786bdae),
+`setActiveWeapon` immediate-fire guarantee under Tarnished (89714ae0).
