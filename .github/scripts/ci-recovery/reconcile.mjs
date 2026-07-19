@@ -47,6 +47,7 @@ import {
   buildRetroactivePlanComment,
   hasCopilotPlanComment,
   hasIntakeRequirementComment,
+  reviewThreadPlanIssueNumbers,
 } from './issue-intake-lib.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -99,32 +100,6 @@ function calculateRebaseFailureBackoffMs(attempt) {
 function reviewThreadReplyCommentId(url) {
   const match = String(url ?? '').match(REVIEW_DISCUSSION_COMMENT_PATTERN);
   return match?.[1] ?? null;
-}
-
-function reviewThreadPlanIssueNumbers(thread, closingIssues) {
-  const text = String(
-    (thread?.comments?.nodes ?? []).map((comment) => String(comment?.body || '')).join('\n'),
-  ).toLowerCase();
-  const mentionsPlanRequirement =
-    text.includes('plan comment') ||
-    text.includes('implementation plan') ||
-    text.includes('issue comment itself');
-  if (!mentionsPlanRequirement) return [];
-  const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
-  const explicitMatches = issueNumbers.filter(
-    (issueNumber) =>
-      text.includes(`issue #${issueNumber}`) || text.includes(`issue ${issueNumber}`),
-  );
-  if (explicitMatches.length > 0) return explicitMatches;
-  if (
-    issueNumbers.length === 1 &&
-    (text.includes('source issue') ||
-      text.includes('before the pr') ||
-      text.includes('issue itself'))
-  ) {
-    return issueNumbers;
-  }
-  return [];
 }
 
 if (!owner || !repo || !Number.isInteger(prNumber) || !readToken) {

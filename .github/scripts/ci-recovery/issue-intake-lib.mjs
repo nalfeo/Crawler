@@ -146,6 +146,35 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   return { eligible: true, reason: 'trusted issue opener' };
 }
 
+export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
+  const text = String(
+    (thread?.comments?.nodes ?? []).map((comment) => String(comment?.body || '')).join('\n'),
+  ).toLowerCase();
+  const mentionsPlanRequirement =
+    text.includes('plan comment') ||
+    text.includes('implementation plan') ||
+    text.includes('issue comment itself');
+  if (!mentionsPlanRequirement) return [];
+
+  const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
+  const explicitMatches = issueNumbers.filter(
+    (issueNumber) =>
+      text.includes(`issue #${issueNumber}`) || text.includes(`issue ${issueNumber}`),
+  );
+  if (explicitMatches.length > 0) return explicitMatches;
+  if (/\bissue\s+#?\d+\b/i.test(text)) return [];
+
+  if (
+    issueNumbers.length === 1 &&
+    (text.includes('source issue') ||
+      text.includes('before the pr') ||
+      text.includes('issue itself'))
+  ) {
+    return issueNumbers;
+  }
+  return [];
+}
+
 export async function getCopilotIssueAssignmentContext({
   graphql,
   token,

@@ -12,6 +12,7 @@ import {
   ISSUE_RECOVERY_PLAN_MARKER,
   issueIntakeEligibility,
   removeIssueAssignees,
+  reviewThreadPlanIssueNumbers,
   runIssueIntake,
 } from './issue-intake-lib.mjs';
 
@@ -75,6 +76,44 @@ test('issue intake rejects missing issues and pull-request payloads', () => {
       pull_request: { url: 'https://example.test/pr/123' },
     }).eligible,
     false,
+  );
+});
+
+test('review plan issue selection fails closed on unmatched explicit issue references', () => {
+  const closingIssues = [{ number: 1307 }];
+
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [{ body: 'Issue #1307 required an implementation plan comment before the PR.' }],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [{ body: 'Issue #999 required an implementation plan comment before the PR.' }],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [{ body: 'The source issue required an implementation plan before the PR.' }],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
   );
 });
 

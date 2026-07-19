@@ -14,7 +14,7 @@ ci-policy
 
 ## Apples
 
-Estimated 🍎🍎🍎, actual 🍎🍎🍎. The work stayed within CI-recovery merge handling, deterministic tests, and repo verification.
+Initially estimated 🍎🍎🍎, rescored to 🍎🍎, actual 🍎🍎. The resulting merge-conflict diff was limited to reconciling two existing CI-recovery files and their existing deterministic tests; it added no module, subsystem, or architectural decision.
 
 ## What changed
 
@@ -39,4 +39,4 @@ Estimated 🍎🍎🍎, actual 🍎🍎🍎. The work stayed within CI-recovery 
 ## Risks
 
 - The merge commit also brings in the latest `origin/main` content across many unrelated files; only the CI-recovery conflict points and the repo fast gates were revalidated in this session.
-- The PR already carries a valid review ledger from the earlier branch work; this recovery session did not generate a new ledger because the task was limited to merge recovery on an existing PR.
+- The original feature retains its independent 2-apple ledger. This merge-recovery session has a separate 2-apple ledger recording its downward rescore from the initial 3-apple estimate.
