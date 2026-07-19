@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "ci-recovery-stale-outdated-collision",
+  "task_title": "fix(ci-recovery): skip outdated-marker auto-post for threads with existing stale trusted marker",
+  "estimated_apples": 1,
+  "stages": {}
+}
