@@ -1,5 +1,16 @@
 [
   {
+    "commit": "2eca04dbdea3fac558e394e91cbf731f3d868c6e",
+    "commitDate": "2026-07-18T23:48:50Z",
+    "commitSubject": "feat(items): add ember-wand Floor 2 magic-focus weapon (#1545)",
+    "capturedAt": "2026-07-19T01:17:27.651Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29666420237",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/2eca04dbdea3fac558e394e91cbf731f3d868c6e.json"
+  },
+  {
     "commit": "76bb6d2e95c6d3f57d5bd8c75790c3dd0b6c409e",
     "commitDate": "2026-07-18T23:48:42Z",
     "commitSubject": "feat(sprites): bone-chakram Floor 2 thrown-weapon — brief, item def, placeholder, wiring (#1544)",
