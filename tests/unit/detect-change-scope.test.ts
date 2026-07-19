@@ -397,13 +397,10 @@ describe('detect-art-only.sh change-scope classifier', () => {
     },
   );
 
-  it.skipIf(!hasBash)(
-    'fail-safe: an explicitly empty override enables all visual suites',
-    () => {
-      // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
-      expect(run('')).toEqual(F(false, false, false, false, false, true, true, true, true));
-    },
-  );
+  it.skipIf(!hasBash)('fail-safe: an explicitly empty override enables all visual suites', () => {
+    // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
+    expect(run('')).toEqual(F(false, false, false, false, false, true, true, true, true));
+  });
 
   for (const c of cases) {
     it.skipIf(!hasBash)(`classifies ${c.name}`, () => {

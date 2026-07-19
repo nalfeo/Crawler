@@ -88,27 +88,21 @@ describe('ci.yml — surface-targeted E2E visual routing wiring (#1698)', () => 
     }
   });
 
-  it.each(E2E_JOBS)(
-    '$jobId if-condition references $flag',
-    ({ jobId, flag }) => {
-      const { doc } = loadCi();
-      const condition = String(getJob(doc, jobId).if ?? '');
-      expect(condition, `${jobId} must gate on ${flag}`).toContain(flag);
-    },
-  );
+  it.each(E2E_JOBS)('$jobId if-condition references $flag', ({ jobId, flag }) => {
+    const { doc } = loadCi();
+    const condition = String(getJob(doc, jobId).if ?? '');
+    expect(condition, `${jobId} must gate on ${flag}`).toContain(flag);
+  });
 
-  it.each(E2E_JOBS)(
-    '$jobId run step invokes --project $project',
-    ({ jobId, project }) => {
-      const { doc } = loadCi();
-      const steps = getJob(doc, jobId).steps ?? [];
-      const runStep = steps.find((s) => s.run?.includes('vitest') && s.run?.includes('--project'));
-      expect(runStep, `${jobId} must have a vitest --project step`).toBeDefined();
-      expect(runStep!.run, `${jobId} must invoke --project ${project}`).toContain(
-        `--project ${project}`,
-      );
-    },
-  );
+  it.each(E2E_JOBS)('$jobId run step invokes --project $project', ({ jobId, project }) => {
+    const { doc } = loadCi();
+    const steps = getJob(doc, jobId).steps ?? [];
+    const runStep = steps.find((s) => s.run?.includes('vitest') && s.run?.includes('--project'));
+    expect(runStep, `${jobId} must have a vitest --project step`).toBeDefined();
+    expect(runStep!.run, `${jobId} must invoke --project ${project}`).toContain(
+      `--project ${project}`,
+    );
+  });
 
   it('merge-gate check calls each e2e job with allow_skipped semantics ("true")', () => {
     const { raw } = loadCi();
