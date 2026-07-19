@@ -110,15 +110,26 @@ export function normalizeBlockers(blockers) {
       ...(blocker.url ? { url: compact(blocker.url) } : {}),
       ...(blocker.threadId ? { threadId: compact(blocker.threadId) } : {}),
       ...(blocker.path ? { path: compact(blocker.path) } : {}),
-      ...(Number.isFinite(blocker.line) ? { line: blocker.line } : {}),
+      ...(blocker.line !== undefined && blocker.line !== null
+        ? {
+            line:
+              typeof blocker.line === 'number' && Number.isFinite(blocker.line)
+                ? blocker.line
+                : compact(blocker.line),
+          }
+        : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
 
 export function blockerFingerprint(blockers) {
   const normalized = normalizeBlockers(blockers);
+  // NOTE: `line` is display-only metadata. Diff-position lines drift whenever
+  // surrounding code changes (e.g. INDEX regeneration), so it must not
+  // participate in blocker identity hashing.
+  const fingerprintBlockers = normalized.map(({ line: _line, ...rest }) => rest);
   return createHash('sha256')
-    .update(JSON.stringify({ blockers: normalized }))
+    .update(JSON.stringify({ blockers: fingerprintBlockers }))
     .digest('hex');
 }
 
@@ -324,7 +335,7 @@ export function isDuplicateDispatch(state, fingerprint) {
 
 export function automationStallAction({
   state,
-  headSha,
+  headSha: _headSha,
   fingerprint,
   now = new Date(),
   staleMinutes = AUTOMATION_STALE_MINUTES,
@@ -337,10 +348,8 @@ export function automationStallAction({
     return 'new';
   }
 
-  const currentProgressKey = automationProgressKey(headSha, fingerprint);
-  const storedProgressKey =
-    state.progressKey || automationProgressKey(state.headSha, state.fingerprint);
-  if (storedProgressKey !== currentProgressKey) {
+  const currentFingerprint = compact(fingerprint);
+  if (compact(state.fingerprint) !== currentFingerprint) {
     return 'progressed';
   }
 
@@ -386,6 +395,7 @@ export const TRUSTED_BOT_LOGINS = new Set([
 ]);
 
 const addressedInPrefixPattern = /✅\s*addressed\s+in\s+<?([^\s>]+)>?/i;
+const notApplicablePattern = /^\s*✅\s*not\s+applicable\s*(?::|—|–)\s*\S/i;
 const hexShaPattern = /^[0-9a-f]{7,40}$/i;
 
 function parseMarkerShaToken(rawToken) {
@@ -404,6 +414,17 @@ function parseMarkerShaToken(rawToken) {
   if (hexShaPattern.test(token)) {
     return token.toLowerCase();
   }
+  // Handle slash-separated SHA pairs like "9adef25/28f3d0f" (agents sometimes
+  // write two SHAs when a fix spans multiple commits). Require exactly two
+  // hex-SHA components; return the second (later) SHA so its ancestry proves
+  // the complete pair is present.
+  const slashParts = token.split('/');
+  if (slashParts.length === 2) {
+    const [firstPart, secondPart] = slashParts;
+    if (hexShaPattern.test(firstPart) && hexShaPattern.test(secondPart)) {
+      return secondPart.toLowerCase();
+    }
+  }
   try {
     const parsed = new URL(token);
     const commitMatch = parsed.pathname.match(/\/commit\/([0-9a-f]{7,40})\b/i);
@@ -421,6 +442,13 @@ export function extractAddressedMarkerSha(body) {
   const match = String(body ?? '').match(addressedInPrefixPattern);
   if (!match) return null;
   return parseMarkerShaToken(match[1]);
+}
+
+/** Returns true if body contains a "✅ Not applicable" marker, which signals
+ *  that the reviewer's finding has been deterministically assessed as
+ *  inapplicable to the current code (no fix needed, no SHA to reference). */
+export function hasNotApplicableMarker(body) {
+  return notApplicablePattern.test(String(body ?? ''));
 }
 
 /** Returns true if body contains "✅ Addressed in <sha-or-commit-url>" and the
@@ -446,7 +474,9 @@ function isTrustedComment(comment) {
 
 /**
  * Returns true only when the last comment in the thread is a trusted marker
- * that explicitly names the current head SHA (full or ≥7-char prefix).
+ * that either explicitly names the current head SHA (full or ≥7-char prefix),
+ * or carries a "✅ Not applicable" marker signalling the finding is
+ * deterministically inapplicable (no code change needed, no SHA to reference).
  * A reopened thread with later reviewer feedback keeps returning false even if
  * an earlier comment had a valid marker.
  */
@@ -454,7 +484,10 @@ export function shouldResolveThread(thread, headSha, reachableCommitShas = null)
   const comments = thread.comments?.nodes ?? [];
   if (comments.length === 0) return false;
   const last = comments[comments.length - 1];
-  return isTrustedComment(last) && markerNamesHead(last.body, headSha, reachableCommitShas);
+  if (!isTrustedComment(last)) return false;
+  return (
+    markerNamesHead(last.body, headSha, reachableCommitShas) || hasNotApplicableMarker(last.body)
+  );
 }
 
 /**

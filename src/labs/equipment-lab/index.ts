@@ -7,6 +7,7 @@ import {
   getEffectiveStats,
   getEquipmentState,
   initializeBaseStats,
+  resolveEquipmentInstance,
 } from '../../core/systems/equipmentSystem.js';
 import { isInSafeContext } from '../../core/safe-space.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
@@ -276,15 +277,15 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       const bag = this.getBag();
       const state = getEquipmentState(this.world, this.playerEid);
       const equippedInstanceIds =
-        state == null
-          ? []
-          : Object.values(state.equipped).filter((inst): inst is number => inst !== null);
+        state == null ? [] : Object.values(state.equipped).filter((inst) => inst !== null);
       const equippedCount = new Set(equippedInstanceIds).size;
       const effective = getEffectiveStats(this.world, this.playerEid);
       const charisma = effective.charisma;
       const slotFilter = this.inventoryUI?.getEquipmentSlotFilter() ?? 'none';
 
-      const gearLb = computeEquippedWeightLb(state);
+      const gearLb = computeEquippedWeightLb(state, (instanceId) =>
+        state ? resolveEquipmentInstance(this.world, state, instanceId) : undefined,
+      );
       const str = Math.max(1, Math.floor(effective.strength ?? 1));
       const capLb = getCarryThresholdLb(str);
       const band = getEncumbranceBand(gearLb, str);

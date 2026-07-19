@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "epic-status-pr1271-recovery-round2",
+  "task_title": "PR #1271 recovery round 2 blockers",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "convergent",
+      "notes": "Separate-model plan review flagged two execution risks: unresolved-thread protocol gap and head-check CI timing gap. Addressed by implementing missing code/test/doc fixes, running CI run/job inspection, and preparing full per-thread reply coverage with commit-backed markers."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Detected a high-confidence regression: node-less BLOCKED fallback on stacked_work issues could misattribute to bootstrap node; fixed by passing expectedNode when auditing stacked_work.issue and adding regression coverage."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Post-fix re-review found no remaining high-confidence issues in the current diff."
+        }
+      ]
+    }
+  }
+}

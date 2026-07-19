@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-balance-sweep-prefix",
+  "task_title": "Fix stale NIGHTLY_BALANCE_BRANCH_PREFIX in CI recovery automation",
+  "estimated_apples": 2,
+  "stages": {}
+}

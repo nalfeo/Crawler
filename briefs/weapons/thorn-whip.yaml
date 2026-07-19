@@ -1,0 +1,23 @@
+type: weapon
+name: thorn-whip
+description: |
+  A thorn whip held vertically — grip at the bottom, the arcing vine tip
+  reaching up. The weapon is a living vine coiled into a whip: thick,
+  rope-like stem studded with sharp hooked thorns every few pixels, with
+  a gnarled wooden grip wrapped in fraying cord at the base. The vine
+  curves organically, with a slight S-bend, suggesting coiled energy.
+  Color palette: deep forest green vine body with dark-green and black
+  shadow stop, rich earthy brown grip wrapping, acid-green highlights on
+  the thorn tips, near-black outlines throughout. A faint sickly
+  bioluminescent glow along the thorns is allowed as a subtle detail — a
+  couple of bright-accent pixels only, not a bloom effect. No roots, no
+  flower, no magic circle, no second vine. The silhouette must read as
+  "whip made of thorns" at a glance.
+# Floor 2 beam/whip-class weapon. Vertical orientation (grip bottom-center,
+# tip at top), anchor at grip as per weapon default. All other defaults
+# (64×64, 4×4 sheet, palette, judge enabled) inherited from
+# data/sprite-types/weapon.json.
+variations:
+  - vine with more pronounced spiral twist and larger curved thorns
+  - thicker stem with small budding side-shoots at thorn nodes
+minVariations: 8

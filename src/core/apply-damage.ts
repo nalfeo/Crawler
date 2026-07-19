@@ -49,6 +49,8 @@ export interface DamageOptions {
    * Preferred over deriving the key from `sourceEid` at impact time.
    */
   readonly sourceArchetypeKey?: string;
+  /** Render-only classification of the successful hit's delivery path. */
+  readonly delivery?: CombatEvent['delivery'];
 }
 
 /** Convenience: the fail-closed default options (never scales, never crits, environment-sourced). */
@@ -249,6 +251,7 @@ export function applyDamage(
     if (isCrit) event.isCrit = true;
     if (options.sourceEid !== undefined) {
       event.sourceEid = options.sourceEid;
+      event.sourceRenderGeneration = world.entityRenderGeneration[options.sourceEid];
       // Prefer a pre-snapshotted key (from options.sourceArchetypeKey, captured
       // at spawn time) over a live EID lookup. The live lookup is kept as the
       // fallback for melee/instant-damage sources where the attacker is guaranteed
@@ -263,6 +266,8 @@ export function applyDamage(
     } else if (options.sourceArchetypeKey !== undefined && isPlayerTarget) {
       event.sourceArchetypeKey = options.sourceArchetypeKey;
     }
+    event.targetRenderGeneration = world.entityRenderGeneration[target];
+    if (options.delivery !== undefined) event.delivery = options.delivery;
     world.combatEvents.push(event);
     if (options.sourceEid !== undefined && current - dealt <= 0) {
       world.lethalDamageSourceByTarget.set(target, options.sourceEid);
