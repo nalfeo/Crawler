@@ -55,20 +55,22 @@ authoritative).` — no SHA. `shouldResolveThread()` returned false on every cyc
 
 ## Fix
 
-In `reconcile.mjs`, immediately before the `taskBody` array, replace the ambiguous
-placeholder with a named post-push placeholder:
+In `reconcile.mjs`, two module-level constants are introduced:
 
 ```javascript
-const postPushMarkerReply = ADDRESSED_MARKER_REPLY.replace('<sha>', '<post-push-sha>');
+const POST_PUSH_HEAD_SHA_PLACEHOLDER = '<post-push-head-sha>';
+const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace('<sha>', POST_PUSH_HEAD_SHA_PLACEHOLDER);
 ```
 
-Every addressed-marker instruction in the task body uses `postPushMarkerReply`.
+`POST_PUSH_ADDRESSED_MARKER_REPLY` is derived from `ADDRESSED_MARKER_REPLY` (single
+source of truth) by substituting `<sha>` with `<post-push-head-sha>`. Every
+addressed-marker instruction in the task body uses `POST_PUSH_ADDRESSED_MARKER_REPLY`.
 The task body now says e.g.:
-`` `✅ Addressed in <post-push-sha>: <one-line note>` ``
+`` `✅ Addressed in <post-push-head-sha>: <one-line note>` ``
 
 The task includes the concrete dispatch SHA as context, but explicitly forbids using it
 in a post-repair marker. Agents must push the consolidated repair, run
-`git rev-parse HEAD`, and replace `<post-push-sha>` with that full SHA.
+`git rev-parse HEAD`, and replace `<post-push-head-sha>` with that full SHA.
 
 ## Stale-marker fixture reconciliation
 
@@ -84,19 +86,20 @@ asserts the existing stale-marker safety behavior instead.
 
 ## Files Changed
 
-- `.github/scripts/ci-recovery/reconcile.mjs`: compute `postPushMarkerReply` with a named
-  `<post-push-sha>` placeholder, retain the concrete dispatch SHA as context, and require
+- `.github/scripts/ci-recovery/reconcile.mjs`: introduce `POST_PUSH_HEAD_SHA_PLACEHOLDER = '<post-push-head-sha>'`
+  and derive `POST_PUSH_ADDRESSED_MARKER_REPLY` from `ADDRESSED_MARKER_REPLY` via `.replace('<sha>', POST_PUSH_HEAD_SHA_PLACEHOLDER)`
+  (single source of truth); retain the concrete dispatch SHA as context; require
   the repair commit SHA after push; preserve the stale-marker guard and deterministic
   non-applicability guidance
 - `.github/scripts/ci-recovery/reconcile.test.mjs`:
-  - Added targeted assertions that actionable instructions require `<post-push-sha>`,
+  - Added targeted assertions that actionable instructions require `<post-push-head-sha>`,
     retain the concrete dispatch SHA only as context, and never bake it into a marker
   - Preserved current-main non-applicability coverage and corrected the stale-marker /
     outdated-thread regression expectations
 
 ## Regression Tests Added
 
-1. The exact-thread instruction requires `<post-push-sha>`.
+1. The exact-thread instruction requires `<post-push-head-sha>`.
 2. The task retains the concrete dispatch SHA as context but not as a marker value.
 3. The actionable reply instruction requires `git rev-parse HEAD` after the repair push.
 
@@ -108,7 +111,7 @@ asserts the existing stale-marker safety behavior instead.
 ## Observe Before Done
 
 - Before: task body included `` `✅ Addressed in <sha>: <one-line note>` `` with literal placeholder; agents posted `✅ Addressed:` (no SHA); `shouldResolveThread()` returned false; fingerprint unchanged; loop exhausted.
-- After: task body names `` `✅ Addressed in <post-push-sha>: <one-line note>` `` and
+- After: task body names `` `✅ Addressed in <post-push-head-sha>: <one-line note>` `` and
   instructs the agent to replace it with the concrete repair commit SHA immediately after
   pushing; `extractAddressedMarkerSha()` then extracts the commit containing the fix.
 
