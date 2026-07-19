@@ -38,4 +38,5 @@ Estimated 1🍎, actual 1🍎.
 - Posting the requested pre-code plan comment on issue #1317 was attempted, but
   GitHub API access from this environment returned HTTP 403 for both GraphQL and
   REST comment attempts. The plan should be posted manually on the issue if
-  required before PR creation.
+  required before PR creation. Maintainer (@nalfeo) has acknowledged this
+  limitation by requesting PR recovery rather than requiring a restart.
