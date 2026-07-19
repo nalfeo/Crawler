@@ -3921,8 +3921,44 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     'task comment should explicitly reject top-level PR comments for review-thread blockers',
   );
   assert.ok(
-    taskCommentCall.body.body.includes('validated `✅ Addressed in <sha>: <one-line note>` result'),
-    'task comment should require a SHA for ordinary Addressed markers',
+    taskCommentCall.body.body.includes(
+      'post the `✅ Addressed in <post-push-head-sha>: <one-line note>` reply',
+    ),
+    'top-level-comment warning should require the post-push HEAD marker',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'replace `<post-push-head-sha>` in `✅ Addressed in <post-push-head-sha>: <one-line note>`',
+    ),
+    'reply_to_comment instruction should require replacing the post-push HEAD placeholder',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('push your consolidated repair commit first'),
+    'task comment should require pushing before posting addressed markers',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('then run `git rev-parse HEAD`'),
+    'task comment should require deriving the marker SHA from post-push HEAD',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('✅ Addressed in <sha>'),
+    false,
+    'task comment must not contain the generic <sha> placeholder in marker instructions',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'validated `✅ Addressed in <post-push-head-sha>: <one-line note>` result',
+    ),
+    'task comment should require a post-push SHA for ordinary Addressed markers',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(`Branch head at dispatch: \`${HEAD_SHA}\``),
+    'task comment should retain the concrete dispatch SHA as context',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes(`✅ Addressed in ${HEAD_SHA}: <one-line note>`),
+    false,
+    'task comment should not prefill dispatch-time HEAD in marker instruction',
   );
   assert.equal(
     taskCommentCall.body.body.includes('validated `✅ Addressed` result'),
@@ -6656,13 +6692,18 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 });
 
 // ---------------------------------------------------------------------------
-// Stale-marker detection: thread has trusted ✅ Addressed marker but the SHA
-// was never pushed (compare 404), so the thread remains unresolved.
+// Stale-marker + outdated-thread interaction: thread has a trusted ✅ Addressed
+// marker whose SHA was never pushed (compare 404), and the thread is also
+// isOutdated. The stale marker must remain a blocker instead of being masked by
+// an automatic outdated-thread marker.
 // ---------------------------------------------------------------------------
 
-test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
-  // A marker for a commit that was never pushed must leave the thread blocked
-  // and tell the next recovery agent to verify the fix and re-post the marker.
+test('outdated stale-marker thread remains blocked with a recovery hint', async (t) => {
+  // PR #1266 scenario: the recovery agent replied with ✅ Addressed in <sha>
+  // but the commit was never pushed to GitHub (compare API returns 404).
+  // Because the marker names a commit that was never pushed, the reconciler
+  // must not replace it with an automatic outdated-thread marker and silently
+  // resolve the original concern.
   const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
   const threadId = 'PRRT_stale_marker_thread';
   const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
@@ -6705,7 +6746,7 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
           {
             id: threadId,
             isResolved: false,
-            isOutdated: false,
+            isOutdated: true,
             path: 'scripts/sprites/cli.ts',
             line: 285,
             comments: {
@@ -6753,6 +6794,11 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`posted outdated-marker thread=${threadId}`),
+    'must not replace a definitively stale marker with an automatic outdated marker',
+  );
 
   const taskCommentCall = mutatingCalls.find(
     (call) =>
@@ -6761,7 +6807,7 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
       typeof call.body?.body === 'string' &&
       call.body.body.includes('crawler-ci-task'),
   );
-  assert.ok(taskCommentCall, 'expected a task comment to be posted for the stale-marker blocker');
+  assert.ok(taskCommentCall, 'expected a task comment for the stale-marker blocker');
   assert.match(
     taskCommentCall.body.body,
     new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
