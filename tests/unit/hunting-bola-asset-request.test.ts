@@ -73,5 +73,13 @@ describe('hunting-bola asset request', () => {
     const centerY = (minY + maxY) / 2;
     expect(centerY).toBeGreaterThanOrEqual(60);
     expect(centerY).toBeLessThanOrEqual(68);
+
+    // Transparent margin: the silhouette must not touch any edge, ensuring
+    // the background is genuinely transparent around the centered icon.
+    const minMargin = 4;
+    expect(minX).toBeGreaterThanOrEqual(minMargin);
+    expect(maxX).toBeLessThanOrEqual(png.width - 1 - minMargin);
+    expect(minY).toBeGreaterThanOrEqual(minMargin);
+    expect(maxY).toBeLessThanOrEqual(png.height - 1 - minMargin);
   });
 });
