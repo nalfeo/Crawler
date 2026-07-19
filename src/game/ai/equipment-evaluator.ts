@@ -40,6 +40,7 @@ import {
   computeEffectiveStatsFromLoadout,
   type StatBonusSource,
 } from '../../core/effective-stats.js';
+import { getAbilityDefinition } from '../abilities/registry.js';
 import type {
   ActiveWeaponSnapshotV1,
   GeneratedEquipmentInstanceV1,
@@ -397,7 +398,25 @@ interface InternalLoadoutSnapshot {
   readonly equipmentActiveGrants: Map<string, number>;
   /** Combined configured active abilities (current + new grants, respecting slot cap). */
   readonly configuredActiveAbilityIds: ReadonlySet<string>;
+  /** All passives active in this snapshot (equipment + non-equipment). */
+  readonly activePassiveAbilityIds: ReadonlySet<string>;
   readonly totalGearWeightLb: number;
+}
+
+function passiveStatModifiers(passiveAbilityIds: ReadonlySet<string>): LegacyStatModifierLike[] {
+  const modifiers: LegacyStatModifierLike[] = [];
+  for (const passiveId of passiveAbilityIds) {
+    const def = getAbilityDefinition(passiveId);
+    if (def?.kind !== 'passive') continue;
+    for (const effect of def.effects) {
+      if (effect.type === 'stat_add') {
+        modifiers.push({ stat: effect.stat, op: 'add', value: effect.value });
+      } else if (effect.type === 'stat_multiply') {
+        modifiers.push({ stat: effect.stat, op: 'multiply', value: effect.value });
+      }
+    }
+  }
+  return modifiers;
 }
 
 /**
@@ -409,11 +428,15 @@ function scoreLoadoutSnapshot(
   snapshot: InternalLoadoutSnapshot,
 ): LoadoutScoreBreakdown {
   const statSources = toStatBonusSources(snapshot.items);
+  const activeModifiers = [
+    ...ctx.nonEquipmentModifiers,
+    ...passiveStatModifiers(snapshot.activePassiveAbilityIds),
+  ];
   const eff = computeEffectiveStatsFromLoadout(
     ctx.baseStats,
     ctx.coreStatPoints,
     statSources,
-    ctx.nonEquipmentModifiers,
+    activeModifiers,
   );
 
   // Encumbrance multiplier (applied to DPS)
@@ -545,6 +568,24 @@ function deriveHypotheticalActiveAbilities(
   return surviving;
 }
 
+function deriveHypotheticalPassiveAbilities(
+  currentPassives: readonly string[],
+  currentGrantCounts: Map<string, number>,
+  displacedGrantCounts: Map<string, number>,
+  candidateGrantCounts: Map<string, number>,
+): ReadonlySet<string> {
+  const remainingCounts = subtractGrantCounts(currentGrantCounts, displacedGrantCounts);
+  const surviving = new Set(
+    currentPassives.filter(
+      (id) => !currentGrantCounts.has(id) || (remainingCounts.get(id) ?? 0) > 0,
+    ),
+  );
+  for (const [abilityId] of candidateGrantCounts) {
+    surviving.add(abilityId);
+  }
+  return surviving;
+}
+
 /**
  * Build the internal snapshot for the CURRENT loadout.
  */
@@ -559,6 +600,7 @@ function buildCurrentSnapshot(loadout: CurrentLoadoutState): InternalLoadoutSnap
     activeWeaponSnapshot: loadout.activeWeaponSnapshot,
     equipmentActiveGrants: grantCounts.active,
     configuredActiveAbilityIds: new Set(loadout.configuredActiveAbilityIds),
+    activePassiveAbilityIds: new Set(loadout.activePassiveAbilityIds),
     totalGearWeightLb,
   };
 }
@@ -571,7 +613,7 @@ function buildHypotheticalSnapshot(
   loadout: CurrentLoadoutState,
   candidate: GeneratedEquipmentInstanceV1,
   displaced: readonly EquippedLoadoutItem[],
-  currentGrantCounts: Map<string, number>,
+  currentGrantCounts: ReturnType<typeof collectAbilityGrantCounts>,
 ): InternalLoadoutSnapshot {
   // Items after displacement + candidate added
   const remainingItems = loadout.equippedItems.filter(
@@ -614,15 +656,21 @@ function buildHypotheticalSnapshot(
   const candidateGrantCounts = collectAbilityGrantCounts([candidateItem]);
 
   const hypotheticalActiveGrants = addGrantCounts(
-    subtractGrantCounts(currentGrantCounts, displacedGrantCounts.active),
+    subtractGrantCounts(currentGrantCounts.active, displacedGrantCounts.active),
     candidateGrantCounts.active,
   );
 
   const configuredActiveAbilityIds = deriveHypotheticalActiveAbilities(
     loadout.configuredActiveAbilityIds,
-    currentGrantCounts,
+    currentGrantCounts.active,
     displacedGrantCounts,
     candidateGrantCounts,
+  );
+  const activePassiveAbilityIds = deriveHypotheticalPassiveAbilities(
+    loadout.activePassiveAbilityIds,
+    currentGrantCounts.passive,
+    displacedGrantCounts.passive,
+    candidateGrantCounts.passive,
   );
 
   return {
@@ -630,6 +678,7 @@ function buildHypotheticalSnapshot(
     activeWeaponSnapshot: hypotheticalWeapon,
     equipmentActiveGrants: hypotheticalActiveGrants,
     configuredActiveAbilityIds,
+    activePassiveAbilityIds,
     totalGearWeightLb,
   };
 }
@@ -655,6 +704,7 @@ export function scoreEquipmentCandidate(
   candidate: GeneratedEquipmentInstanceV1,
 ): EquipmentERVBreakdown {
   const currentSnapshot = buildCurrentSnapshot(loadout);
+  const currentGrantCounts = collectAbilityGrantCounts(loadout.equippedItems);
   const currentBreakdown = scoreLoadoutSnapshot(ctx, currentSnapshot);
 
   const displaced = findDisplacedItems(loadout.equippedItems, candidate.frozen.slots);
@@ -664,7 +714,7 @@ export function scoreEquipmentCandidate(
     loadout,
     candidate,
     displaced,
-    currentSnapshot.equipmentActiveGrants,
+    currentGrantCounts,
   );
   const hypotheticalBreakdown = scoreLoadoutSnapshot(ctx, hypotheticalSnapshot);
 
@@ -749,6 +799,7 @@ export function scoreLoadout(
   items: readonly EquippedLoadoutItem[],
   activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null,
   configuredActiveAbilityIds: readonly string[],
+  activePassiveAbilityIds: readonly string[] = [],
 ): LoadoutScoreBreakdown {
   const grantCounts = collectAbilityGrantCounts(items);
   const totalGearWeightLb = items.reduce((sum, { instance }) => sum + instance.frozen.weightLb, 0);
@@ -757,6 +808,7 @@ export function scoreLoadout(
     activeWeaponSnapshot,
     equipmentActiveGrants: grantCounts.active,
     configuredActiveAbilityIds: new Set(configuredActiveAbilityIds),
+    activePassiveAbilityIds: new Set(activePassiveAbilityIds),
     totalGearWeightLb,
   };
   return scoreLoadoutSnapshot(ctx, snapshot);

@@ -228,16 +228,21 @@ function snapshotAbilityState(
       (!state.passiveAbilityGrantSources.has(id) &&
         !(state.grantOwnership?.passiveSourcesByAbilityId.has(id) ?? false)),
   );
+  const retainedActiveAbilityIds = new Set(equippedActiveAbilityIds);
 
   return {
     learnedSpellIds: [...state.learnedSpellIds],
     equippedActiveAbilityIds,
     passiveAbilityIds,
-    cooldownElapsedFramesByAbilityId: [...state.cooldownByAbilityId].map(
-      ([abilityId, lastTriggerFrame]) =>
-        [abilityId, Math.max(0, frameCount - lastTriggerFrame)] as const,
+    cooldownElapsedFramesByAbilityId: [...state.cooldownByAbilityId]
+      .filter(([abilityId]) => retainedActiveAbilityIds.has(abilityId))
+      .map(
+        ([abilityId, lastTriggerFrame]) =>
+          [abilityId, Math.max(0, frameCount - lastTriggerFrame)] as const,
+      ),
+    cooldownFramesByAbilityId: [...state.cooldownFramesByAbilityId].filter(([abilityId]) =>
+      retainedActiveAbilityIds.has(abilityId),
     ),
-    cooldownFramesByAbilityId: [...state.cooldownFramesByAbilityId],
     appliedPassiveAbilityIds: [],
     activeAbilityGrantSources: [...filteredActiveSources].map(
       ([abilityId, sources]) => [abilityId, [...sources]] as const,

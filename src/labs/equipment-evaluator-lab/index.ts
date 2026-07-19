@@ -72,14 +72,14 @@ function buildFixtureInstances() {
   const pistolInstance = createGeneratedEquipmentInstance(world, {
     baseId: 'pistol-base',
     itemLevel: 3,
-    rarity: 'rare',
+    rarity: 'common',
     enhancementLevel: 2,
     resolvedEffects: [],
     frozen: {
       schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
       displayName: 'Plasma Pistol +2',
       artKey: 'plasma-pistol',
-      slots: ['hand'],
+      slots: ['mainHand'],
       tags: ['weapon', 'ranged'],
       weightLb: 3,
       statBonuses: {},
@@ -93,14 +93,14 @@ function buildFixtureInstances() {
   const flameInstance = createGeneratedEquipmentInstance(world, {
     baseId: 'flamethrower-base',
     itemLevel: 3,
-    rarity: 'rare',
+    rarity: 'common',
     enhancementLevel: 1,
     resolvedEffects: [],
     frozen: {
       schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
       displayName: 'Flamethrower +1',
       artKey: 'flamethrower',
-      slots: ['hand'],
+      slots: ['mainHand'],
       tags: ['weapon', 'magic'],
       weightLb: 8,
       statBonuses: {},
@@ -145,7 +145,7 @@ function buildFixtureInstances() {
   // Current loadout: pistol equipped in hand slot
   const currentEquipped: EquippedLoadoutItem = {
     instance: pistolInstance,
-    occupiedSlots: ['hand'],
+    occupiedSlots: ['mainHand'],
   };
 
   const currentLoadout: CurrentLoadoutState = {

@@ -5,6 +5,7 @@ import { equip, getEquipmentState } from '../../src/core/systems/equipmentSystem
 import { abilitySystem, grantPassiveAbility } from '../../src/game/systems/abilitySystem.js';
 import { addStatModifier } from '../../src/game/systems/statsSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
+import { ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION } from '../../src/shared/abilities.js';
 import {
   getEquipmentDefForStarterWeapon,
   MERCHANTS_CHARM_DEF,
@@ -203,5 +204,42 @@ describe('player floor carryover', () => {
     expect(
       destination.abilityStatesByEntity.get(destinationPlayer)?.appliedPassiveAbilityIds,
     ).toEqual(new Set(['veteran-instinct']));
+  });
+
+  it('drops cooldown state for equipment-only active abilities removed from carryover', () => {
+    const source = createTestWorld({ seed: 42 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    source.abilityStatesByEntity.set(sourcePlayer, {
+      learnedSpellIds: [],
+      equippedActiveAbilityIds: ['fireball'],
+      passiveAbilityIds: [],
+      cooldownByAbilityId: new Map([['fireball', 990]]),
+      cooldownFramesByAbilityId: new Map([['fireball', 120]]),
+      appliedPassiveAbilityIds: new Set(),
+      activeAbilityGrantSources: new Map([
+        [
+          'fireball',
+          [
+            {
+              kind: 'equipment',
+              instanceId: 'gei:v1:test:0' as GeneratedEquipmentInstanceKey,
+              effectOrdinal: 0,
+            },
+          ],
+        ],
+      ]),
+      passiveAbilityGrantSources: new Map(),
+      grantOwnership: {
+        schemaVersion: ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
+        activeSourcesByAbilityId: new Map([['fireball', new Set(['equipment:gei:v1:test:0:0'])]]),
+        passiveSourcesByAbilityId: new Map(),
+      },
+    });
+    source.frameCount = 1000;
+
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    expect(snapshot.abilityState?.equippedActiveAbilityIds).toEqual([]);
+    expect(snapshot.abilityState?.cooldownElapsedFramesByAbilityId).toEqual([]);
+    expect(snapshot.abilityState?.cooldownFramesByAbilityId).toEqual([]);
   });
 });

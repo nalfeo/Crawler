@@ -170,6 +170,41 @@ function makeAbilityGrantItem(
   } satisfies GeneratedEquipmentCreateInputV1);
 }
 
+function makePassiveGrantItem(
+  world: ReturnType<typeof makeWorld>,
+  name: string,
+  passiveId: string,
+): GeneratedEquipmentInstanceV1 {
+  return createGeneratedEquipmentInstance(world, {
+    baseId: 'passive-accessory-fixture',
+    itemLevel: 3,
+    rarity: 'uncommon',
+    enhancementLevel: 0,
+    resolvedEffects: [
+      {
+        schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+        effectId: 'passive-grant',
+        effectOrdinal: 0,
+        unitCost: 1,
+        kind: 'passiveGrant',
+        grantId: passiveId,
+      },
+    ],
+    frozen: {
+      schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+      displayName: name,
+      artKey: 'passive-accessory-art',
+      slots: ['neck'],
+      tags: ['accessory'],
+      weightLb: 0.5,
+      statBonuses: {},
+      abilityGrants: [],
+      passiveGrants: [passiveId],
+      activeWeaponSnapshot: null,
+    },
+  } satisfies GeneratedEquipmentCreateInputV1);
+}
+
 // ---------------------------------------------------------------------------
 // Shared evaluation context builder
 // ---------------------------------------------------------------------------
@@ -433,6 +468,23 @@ describe('equipment-evaluator: ability access', () => {
     expect(breakdown.current.abilityAccess).toBe(5);
     expect(breakdown.hypothetical.abilityAccess).toBe(5);
     expect(breakdown.abilityAccessDelta).toBe(0);
+  });
+
+  it('scores passive-grant accessories above inert accessories when the passive changes stats', () => {
+    const world = makeWorld('test-passive-grant-score');
+    const plainRing = makeArmorInstance(world, 'Plain Ring', 1, 0.5);
+    const passiveRing = makePassiveGrantItem(world, 'Veteran Ring', 'veteran-instinct');
+    const ctx = makeCtx(
+      { aoeRatio: 0, remainingFractionDiscount: 1 },
+      { defenseWeight: 10, expectedEnemyHitDmg: 10 },
+    );
+    const loadout = emptyLoadout();
+
+    const plainScore = scoreEquipmentCandidate(ctx, loadout, plainRing);
+    const passiveScore = scoreEquipmentCandidate(ctx, loadout, passiveRing);
+
+    expect(passiveScore.totalERV).toBeGreaterThan(plainScore.totalERV);
+    expect(passiveScore.defenseDelta).toBeGreaterThan(plainScore.defenseDelta);
   });
 });
 
