@@ -177,6 +177,20 @@ function main(): void {
 
   // Re-run offline validation so the operator can see the updated status.
   const postResult = loadAndValidateEpic(options.epicId, repoRoot);
+
+  // Non-git-verification errors in the post-run state are a real problem.
+  const postRunHardErrors = postResult.errors.filter(
+    (e) => e.code !== 'evidence.git-verification-failed',
+  );
+  if (postRunHardErrors.length > 0) {
+    process.stderr.write(
+      `epic:materialize: post-run validation has ${postRunHardErrors.length} error(s):\n` +
+        `${postRunHardErrors.map((e) => `  [${e.code}] ${e.message}`).join('\n')}\n` +
+        `The epic-state.json write may be invalid. Review before committing.\n`,
+    );
+    process.exitCode = 1;
+  }
+
   const missingMaterialization = postResult.blockers.filter(
     (b) => b.code === 'materialization.missing-child-issue',
   );
@@ -187,6 +201,7 @@ function main(): void {
     created_count: materializationResult.created_count,
     existing_count: materializationResult.existing_count,
     outcomes: materializationResult.outcomes,
+    post_run_hard_errors: postRunHardErrors.length,
     post_run_missing_materialization: missingMaterialization.length,
     writes_performed: true,
   };
@@ -202,15 +217,16 @@ function main(): void {
       'Outcomes:',
       ...materializationResult.outcomes.map(renderOutcome),
       '',
+      `Post-run validation errors (non-git): ${postRunHardErrors.length}`,
       `Post-run missing materialization blockers: ${missingMaterialization.length}`,
-      missingMaterialization.length > 0
-        ? `  Run 'npm run epic:status -- ${options.epicId} --github --reconcile' after committing the state update.`
-        : `  ✓ No missing materialization blockers.`,
+      missingMaterialization.length === 0 && postRunHardErrors.length === 0
+        ? `  ✓ State update complete. Commit epic-state.json, then run:\n  npm run epic:status -- ${options.epicId} --github --reconcile`
+        : `  ⚠ Review errors above before committing.`,
     ];
     process.stdout.write(`${lines.join('\n')}\n`);
   }
 
-  process.exitCode = 0;
+  // Exit code set to 1 above if there were post-run hard errors.
 }
 
 try {

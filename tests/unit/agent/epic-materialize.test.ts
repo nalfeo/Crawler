@@ -49,7 +49,12 @@ function stateWithAllIssues(): EpicState {
 
 /** A write runner that records calls and returns synthetic issue objects. */
 function makeMockWriteRunner(
-  existingIssues: Array<{ number: number; title: string; html_url: string }> = [],
+  existingIssues: Array<{
+    number: number;
+    title: string;
+    html_url: string;
+    body?: string | null;
+  }> = [],
 ): GithubWriteRunner & { createdIssues: Array<{ title: string; number: number }> } {
   let nextNumber = 5000;
   const createdIssues: Array<{ title: string; number: number }> = [];
@@ -60,7 +65,7 @@ function makeMockWriteRunner(
       return existingIssues;
     },
     post(_path: string, payload: unknown): unknown {
-      const p = payload as { title: string };
+      const p = payload as { title: string; body?: string };
       const number = nextNumber++;
       createdIssues.push({ title: p.title, number });
       return {
@@ -69,6 +74,20 @@ function makeMockWriteRunner(
         title: p.title,
       };
     },
+  };
+}
+
+/** Build a synthetic existing-issue object with the standard `Node:` marker in the body. */
+function makeExistingIssue(
+  nodeId: string,
+  title: string,
+  number: number,
+): { number: number; title: string; html_url: string; body: string } {
+  return {
+    number,
+    title,
+    html_url: `https://github.com/nalfeo/Crawler/issues/${number}`,
+    body: `Parent: #1264\nNode: \`${nodeId}\`\nLane: \`test\`\nPersona: Test\n\n## Objective\nTest`,
   };
 }
 
@@ -132,12 +151,8 @@ describe('materializeChildIssues — confirm', () => {
   it('reports existing issues as existing and does not create duplicates', () => {
     const state = stateWithNoIssues();
     const plan = buildMaterializationPlan(state);
-    // Pre-populate all planned issues as if they already exist on GitHub.
-    const existingIssues = plan.map((p, i) => ({
-      number: 8000 + i,
-      title: p.title,
-      html_url: `https://github.com/nalfeo/Crawler/issues/${8000 + i}`,
-    }));
+    // Pre-populate all planned issues as if they already exist on GitHub (with stable Node: markers).
+    const existingIssues = plan.map((p, i) => makeExistingIssue(p.node_id, p.title, 8000 + i));
     const runner = makeMockWriteRunner(existingIssues);
     const result = materializeChildIssues(state, runner, { dryRun: false });
 
@@ -148,16 +163,30 @@ describe('materializeChildIssues — confirm', () => {
     expect(runner.createdIssues).toHaveLength(0);
   });
 
+  it('matches existing issues by node_id body marker even when title has changed', () => {
+    const state = stateWithNoIssues();
+    const plan = buildMaterializationPlan(state);
+    // Simulate a title edit: title does not match but node_id marker is present.
+    const existingIssues = plan.map((p, i) =>
+      makeExistingIssue(p.node_id, `EDITED: ${p.title}`, 8100 + i),
+    );
+    const runner = makeMockWriteRunner(existingIssues);
+    const result = materializeChildIssues(state, runner, { dryRun: false });
+
+    // All should be found via the body marker despite the title mismatch.
+    expect(result.created_count).toBe(0);
+    expect(result.existing_count).toBe(plan.length);
+    expect(runner.createdIssues).toHaveLength(0);
+  });
+
   it('creates only missing issues when some already exist', () => {
     const state = stateWithNoIssues();
     const plan = buildMaterializationPlan(state);
     // Pre-populate only the first half as existing.
     const half = Math.floor(plan.length / 2);
-    const existingIssues = plan.slice(0, half).map((p, i) => ({
-      number: 8000 + i,
-      title: p.title,
-      html_url: `https://github.com/nalfeo/Crawler/issues/${8000 + i}`,
-    }));
+    const existingIssues = plan
+      .slice(0, half)
+      .map((p, i) => makeExistingIssue(p.node_id, p.title, 8000 + i));
     const runner = makeMockWriteRunner(existingIssues);
     const result = materializeChildIssues(state, runner, { dryRun: false });
 

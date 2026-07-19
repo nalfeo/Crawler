@@ -2778,28 +2778,56 @@ const githubIssueApiSchema = z
     number: z.number().int().positive(),
     html_url: z.string().url(),
     title: z.string(),
+    body: z.string().nullable().optional(),
+    /** Present on pull requests; absent on plain issues. */
+    pull_request: z.unknown().optional(),
   })
   .passthrough();
 
+/** The `Node: \`<node_id>\`` marker embedded in every materialized issue body. */
+const NODE_MARKER_PATTERN = /^Node:\s*`([^`]+)`/m;
+
 /**
- * List all open issues in the repo that carry every label in `labels`.
- * Uses `gh api` with pagination (up to 100 per page, single request sufficient
- * for the expected number of epic-child issues).
+ * Extract the node_id from an issue body via the stable `Node: \`slice:...\`` marker.
+ * Returns null if the marker is absent or does not match the NODE_ID_PATTERN.
+ */
+function extractNodeIdFromBody(body: string | null | undefined): string | null {
+  if (!body) return null;
+  const match = NODE_MARKER_PATTERN.exec(body);
+  if (!match?.[1]) return null;
+  return NODE_ID_PATTERN.test(match[1]) ? match[1] : null;
+}
+
+/**
+ * List all issues in the repo (open or closed) that carry every label in
+ * `labels`. Uses `gh api` with up to 100 results per page — sufficient for the
+ * floor-2-equipment epic (35 nodes). Warns to stderr when the response is
+ * exactly 100 items, which may indicate truncation. Uses `state=all` so that
+ * a previously-created-then-closed issue is still detected and prevents
+ * a duplicate being created on a subsequent run.
  */
 function listIssuesByLabels(
   runner: GithubRunner,
   repo: string,
   labels: ReadonlyArray<string>,
-): Array<{ number: number; title: string; html_url: string }> {
+): Array<{ number: number; title: string; html_url: string; body: string | null }> {
   const labelParam = encodeURIComponent(labels.join(','));
-  const path = `/repos/${repo}/issues?state=open&labels=${labelParam}&per_page=100`;
+  const path = `/repos/${repo}/issues?state=all&labels=${labelParam}&per_page=100`;
   const raw = runner.get(path);
   const parsed = z.array(githubIssueApiSchema).safeParse(raw);
   if (!parsed.success) return [];
-  return parsed.data.map((issue) => ({
+  // Filter out pull requests — the Issues API can return PRs for the same labels.
+  const issues = parsed.data.filter((item) => item.pull_request === undefined);
+  if (issues.length === 100) {
+    process.stderr.write(
+      `epic:materialize: warning: listIssuesByLabels returned exactly 100 items; results may be truncated.\n`,
+    );
+  }
+  return issues.map((issue) => ({
     number: issue.number,
     title: issue.title,
     html_url: issue.html_url,
+    body: issue.body ?? null,
   }));
 }
 
@@ -2810,11 +2838,12 @@ function listIssuesByLabels(
  * and no state file is mutated. Returns an outcome with status `'dry-run'` for
  * each planned packet.
  *
- * In write mode (`options.dryRun === false`) each packet is checked against
- * the list of existing issues (by exact title match). If an existing issue is
- * found it is recorded as `'existing'`; otherwise a new issue is created and
- * recorded as `'created'`. The caller is responsible for persisting the
- * resulting issue map to `epic-state.json` via `patchEpicStateIssues`.
+ * In write mode (`options.dryRun === false`) each packet is matched against
+ * existing issues first by the stable `Node: \`<node_id>\`` body marker, then
+ * by exact title as a fallback. If a match is found the issue is recorded as
+ * `'existing'` (no write); otherwise a new issue is created and recorded as
+ * `'created'`. The caller is responsible for persisting the resulting issue map
+ * to `epic-state.json` via `patchEpicStateIssues`.
  */
 export function materializeChildIssues(
   state: EpicState,
@@ -2841,14 +2870,29 @@ export function materializeChildIssues(
 
   // Fetch existing issues once to enable idempotency checks.
   const existingIssues = listIssuesByLabels(runner, repo, state.issue_materialization.labels);
-  const existingByTitle = new Map(existingIssues.map((issue) => [issue.title, issue]));
+  // Primary key: stable node_id extracted from the `Node: \`...\`` body marker.
+  const existingByNodeId = new Map<
+    string,
+    { number: number; title: string; html_url: string; body: string | null }
+  >();
+  // Fallback key: exact title match (covers issues created before the marker convention).
+  const existingByTitle = new Map<
+    string,
+    { number: number; title: string; html_url: string; body: string | null }
+  >();
+  for (const issue of existingIssues) {
+    const nodeId = extractNodeIdFromBody(issue.body);
+    if (nodeId) existingByNodeId.set(nodeId, issue);
+    existingByTitle.set(issue.title, issue);
+  }
 
   const outcomes: MaterializationOutcome[] = [];
   let createdCount = 0;
   let existingCount = 0;
 
   for (const packet of plan) {
-    const existing = existingByTitle.get(packet.title);
+    // Match by stable node_id marker first, then fall back to title.
+    const existing = existingByNodeId.get(packet.node_id) ?? existingByTitle.get(packet.title);
     if (existing) {
       outcomes.push({
         node_id: packet.node_id,
