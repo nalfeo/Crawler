@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "generated-instance-registry",
+  "task_title": "Floor 2 generated equipment instance registry",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted pure-TS synchronous SHA-256 with Node parity tests; explicit registry-owned run key configured through CreateWorldOptions and persisted with allocator state; narrowed drift fingerprint to generation-policy schema/rule/normalization/draw-order versions excluding economy/merchant/AI tuning; plain ordinal-sorted unknown-validated snapshot DTOs. Base/effect artifacts remain contract shapes only. No different architecture warranted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -161,6 +161,21 @@ describe('dropSystem', () => {
     expect(deathEvents[0]!.sourceEid).toBe(playerEid);
   });
 
+  it('creates an authoritative blood pool from the dead enemy blood color', () => {
+    const world = createTestWorld();
+    const eid = spawnEnemy(world, 50, 60, 10, 120, 0x22aa44);
+    setComponent(world.ecs, eid, Health, { current: 0, max: 10 });
+
+    dropSystem(world, { spawnLoot: false });
+
+    expect(world.bloodPools).toHaveLength(1);
+    expect(world.bloodPools[0]).toMatchObject({
+      x: 50,
+      y: 60,
+      color: 0x22aa44,
+    });
+  });
+
   it('does not double-process the same entity', () => {
     const world = createTestWorld();
     spawnEnemy(world, 100, 200, 10);
