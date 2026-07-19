@@ -992,6 +992,24 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+// Threads that already carry a trusted ✅ Addressed marker pointing to a
+// definitively unreachable SHA should NOT receive an outdated-marker reply —
+// doing so would inject a new trusted marker that auto-resolves the thread and
+// masks the real issue (a pushed-but-not-deployed or abandoned commit).  These
+// threads are handled exclusively via the stale-marker hint in the task comment.
+const threadsWithStaleMarker = new Set(
+  unresolvedThreads
+    .filter((thread) => {
+      const comments = thread.comments?.nodes ?? [];
+      const last = comments[comments.length - 1];
+      if (!last) return false;
+      const markerSha = extractAddressedMarkerSha(last.body);
+      if (!markerSha || headSha.startsWith(markerSha)) return false;
+      return definitivelyUnreachableMarkerShas.has(markerSha);
+    })
+    .map((thread) => thread.id),
+);
+
 // Post reconciler-authored marker replies for outdated threads that have no trusted marker.
 // thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
 // no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
@@ -1003,7 +1021,9 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
 for (const thread of unresolvedThreads.filter(
   (candidate) =>
-    candidate.isOutdated && !shouldResolveThread(candidate, headSha, reachableMarkerShas),
+    candidate.isOutdated &&
+    !shouldResolveThread(candidate, headSha, reachableMarkerShas) &&
+    !threadsWithStaleMarker.has(candidate.id),
 )) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);

@@ -6699,6 +6699,15 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
     /verify fix is present.*reply to this thread/i,
     'task body must instruct the agent to verify and re-post the marker',
   );
+
+  // The reconciler must NOT inject an outdated-marker auto-reply for a stale-marker
+  // thread — doing so would create a fresh trusted marker and auto-resolve the thread,
+  // masking the real issue (a commit that was never pushed to GitHub).
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`posted outdated-marker thread=${threadId}`),
+    'must not post an auto-marker for a stale-marker thread (would mask the real issue)',
+  );
 });
 
 test('transient compare failure does not produce a stale-marker hint (generic blocker preserved)', async (t) => {
