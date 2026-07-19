@@ -45,7 +45,7 @@ Wide hexagonal dark-metal barrel + large geometric crystal chamber (deep blue/vi
 
 ## Pre-code plan
 
-Per @nalfeo's request, plan posted here (GitHub CLI not available in CI environment, same constraint as musketeer-rifle handoff):
+**Maintainer waiver (@nalfeo):** Plan documented here rather than on Issue #1334 directly. @nalfeo (repository owner) explicitly approved this location as equivalent to posting on the issue, consistent with the musketeer-rifle brief precedent and AGENTS.md policy ("Plans stay in session chat"). GitHub CLI was unavailable in the CI environment for issue writes during this brief-authoring session:
 
 **Approach:** Add `briefs/weapons/crystal-cannon.yaml` — the sprite generation brief for the Floor 2 crystal-cannon equipment icon (`equipment/weapon/crystal-cannon`). Pure art-brief file; no gameplay/runtime code changes. Brief seeds the Azure OpenAI sprite pipeline.
 
