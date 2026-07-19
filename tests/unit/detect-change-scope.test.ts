@@ -185,7 +185,7 @@ const cases: Case[] = [
   {
     name: 'labs-only',
     files: ['src/labs/combatLab.ts'],
-    expected: F(false, false, true, false, false, false, true, false, false, false),
+    expected: F(false, false, true, false, false, true, true, false, false, false),
   },
   {
     name: 'e2e tests',

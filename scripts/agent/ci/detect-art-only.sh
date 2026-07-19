@@ -28,9 +28,10 @@
 #
 # visual_touched=true — at least one changed file could affect the rendered
 #   output. False only when every changed file is in the "not visual" safe list:
-#   .github/**, docs/**, .specify/**, scripts/**, src/labs/**, tests/unit/**,
+#   .github/**, docs/**, .specify/**, scripts/**, tests/unit/**,
 #   tests/headless/**, tests/integration/**, *.md, *.txt.
-#   NOT safe: public/assets/** (terrain packs are runtime-loaded visuals),
+#   NOT safe: src/labs/** (E2E tests import labs paths directly for visual tests),
+#   public/assets/** (terrain packs are runtime-loaded visuals),
 #   package-lock.json (can alter Phaser/Vite/Playwright behavior).
 #   Unknown paths → true (fail closed). Used to gate the E2E visual regression job.
 #
@@ -341,11 +342,14 @@ done <<<"$changed"
 # ---------------------------------------------------------------------------
 
 # visual_touched: true when the change could affect the rendered output.
-# Safe list (known NOT visual): CI/workflow config, docs, all scripts, labs,
+# Safe list (known NOT visual): CI/workflow config, docs, all scripts,
 # unit/headless/integration tests, most of public/ (non-art), and plain text.
 # Generated art (public/assets/generated/**) IS visual; it's excluded from the
 # public/* safe entry so it falls through to the catch-all below.
 # Unknown or unclassified paths → true (fail closed).
+# NOT safe: src/labs/** — E2E tests import from labs paths (hud-lab, ui-probe-lab,
+# main-scene-probe-lab, abilities-lab, hud-family-relationships-lab), so changes
+# to labs can affect visual E2E output.
 # NOT safe: public/assets/** (terrain packs and other assets are runtime-loaded
 # visuals — see tests/e2e/terrain-generated-tiles.test.ts), package-lock.json
 # (lock-file changes can alter Phaser/Vite/Playwright behaviour at runtime).
@@ -357,7 +361,6 @@ while IFS= read -r file; do
     docs/*) ;;
     .specify/*) ;;
     scripts/*) ;;
-    src/labs/*) ;;
     tests/unit/*) ;;
     tests/headless/*) ;;
     tests/integration/*) ;;
