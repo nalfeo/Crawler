@@ -1514,6 +1514,21 @@ if (normalized.length === 0) {
 }
 
 const currentProgressKey = automationProgressKey(pr.head.sha, fingerprint);
+const stateProgressKey =
+  state?.progressKey ||
+  (state?.headSha && state?.fingerprint
+    ? automationProgressKey(state.headSha, state.fingerprint)
+    : null);
+if (
+  !labelExists &&
+  state?.owner === 'none' &&
+  state?.status === 'idle' &&
+  state?.trigger === 'stale-automation-exhausted' &&
+  stateProgressKey === currentProgressKey
+) {
+  process.stdout.write(`skip pr=#${prNumber} reason=stale-automation-exhausted\n`);
+  process.exit(0);
+}
 let dispatchAttemptBase = 0;
 let dispatchProgressAt = now.toISOString();
 
