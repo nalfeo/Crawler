@@ -1711,6 +1711,12 @@ const taskBody = [
   `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,
   '@copilot Please recover this PR from the exact blockers below.',
   '',
+  ...(pendingHumanApproval
+    ? [
+        '> **⚠ Human-approval gate is active.** The `human-approval-required` label means a human must approve before this PR can **merge**. That gate applies to the **merge step only**. You MUST still fix every blocker below, push a consolidated repair commit to the PR branch, and post `✅ Addressed in <sha>` replies in each thread. Do NOT skip repairs or thread replies because of the human-approval label.',
+        '',
+      ]
+    : []),
   '**Required order:** merge-conflict resolution, review feedback, CI failures, validation, then thread resolution.',
   '',
   ...normalized.flatMap((blocker, index) => {

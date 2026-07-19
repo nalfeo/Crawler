@@ -3851,6 +3851,251 @@ test('live reconcile task comment includes explicit review-thread reply comment 
   );
 });
 
+test('task body includes human-approval note when pendingHumanApproval is true', async (t) => {
+  // When a PR has human-approval-required AND unresolved review threads, the
+  // recovery agent MUST still fix the threads (the gate blocks merge only).
+  // Verify the task body includes the clarifying note so the agent is not
+  // confused into skipping repairs.  This test exercises the label-detected
+  // pendingHumanApproval path; see the branch-prefix-only test below for the
+  // stale-prefix regression.
+  const reviewCommentId = '3608157949';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        head: {
+          ...basePr().head,
+          ref: 'copilot/balance-telemetry-improvement-sweep',
+        },
+        labels: [{ name: 'human-approval-required' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'PRRT_human_approval_thread',
+            isResolved: false,
+            isOutdated: false,
+            path: 'docs/knowledge/balance-ledgers/sweep.md',
+            line: 21,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-human-approval-thread',
+                  body: 'Please fix this markdown table.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(
+    taskCommentCall,
+    'expected live reconcile to post a recovery task comment even when human-approval-required is set',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('human-approval-required'),
+    'task body must include the human-approval clarification note',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('merge step only'),
+    'task body must clarify that the human-approval gate applies to merge only',
+  );
+});
+
+test('balance-sweep branch prefix alone (no label) triggers human-approval gate', async (t) => {
+  // Stale-prefix regression: the old NIGHTLY_BALANCE_BRANCH_PREFIX was
+  // 'copilot/balance-telemetry-driven-improvement-sweep'; branches produced by
+  // current agents use 'copilot/balance-telemetry-improvement-sweep' (no
+  // "driven" infix).  Verify the broader prefix catches the new branch name
+  // even when the PR carries no human-approval-required label (the label path
+  // would short-circuit and mask a broken prefix check).
+  const reviewCommentId = '3608157950';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        head: {
+          ...basePr().head,
+          ref: 'copilot/balance-telemetry-improvement-sweep',
+        },
+        // No human-approval-required label — approval gate must be triggered by
+        // branch prefix alone.
+        labels: [],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: { suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] } },
+            },
+          },
+        };
+      }
+      if (query.includes('replaceActorsForAssignable')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'PRRT_balance_prefix_thread',
+            isResolved: false,
+            isOutdated: false,
+            path: 'docs/knowledge/balance-ledgers/sweep.md',
+            line: 5,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-balance-prefix-thread',
+                  body: 'Please update the balance table.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /blocked pr=#42 reason=human-approval-required/,
+    'branch prefix alone must trigger the human-approval gate',
+  );
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task:v1'),
+  );
+  assert.ok(
+    taskCommentCall,
+    'reconciler must post a recovery task even when approval gate is triggered via branch prefix',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('merge step only'),
+    'task body must include the human-approval clarification note',
+  );
+});
+
 test('reconcile proceeds when copilot is assigned but no lease/state exists', async (t) => {
   // PR has Copilot as assignee, no owner label, no state comment, and one
   // failed CI check — recovery MUST proceed to detect the blocker, not exit
@@ -6383,7 +6628,7 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
           {
             id: threadId,
             isResolved: false,
-            isOutdated: true,
+            isOutdated: false,
             path: 'scripts/sprites/cli.ts',
             line: 285,
             comments: {
