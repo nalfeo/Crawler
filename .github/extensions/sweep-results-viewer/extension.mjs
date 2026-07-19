@@ -399,6 +399,8 @@ async function switchToLocal(instanceId, path) {
   if (!state) throw new CanvasError('no_state', 'Canvas not open');
   cancelRefresh(state);
   state.source = 'local';
+  state.selectedRun = null;
+  state.jobPhases = null;
   const catalogMatch = state.localRuns.find((run) => run.path === path);
   return loadLocalSelection(
     instanceId,
@@ -414,6 +416,8 @@ async function switchToLocalCatalog(instanceId, requestedPath) {
   if (!state) throw new CanvasError('no_state', 'Canvas not open');
   cancelRefresh(state);
   state.source = 'local';
+  state.selectedRun = null;
+  state.jobPhases = null;
   state.refreshing = true;
   state.error = null;
   state.warning = null;
