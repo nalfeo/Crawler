@@ -117,11 +117,7 @@ if [ "$test_static_only" -eq 1 ] && [ -n "${VERIFY_FAST_TSC_STUB_SECONDS:-}" ]; 
   fi
 fi
 
-<<<<<<< HEAD
 "${tsc_cmd[@]}" &
-=======
-npx tsc --noEmit --project tsconfig.json &
->>>>>>> origin/main
 TSC_PID=$!
 "${LINT_CMD[@]}" &
 ESLINT_PID=$!
