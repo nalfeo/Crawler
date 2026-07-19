@@ -65,11 +65,38 @@ function makeWorkingTreeGitReader(repoRoot: string): GitReader {
 
 function cloneState(includeStackedWork = false): EpicState {
   const state = structuredClone(STATE);
+  const a0 = state.nodes.find((node) => node.node_id === 'slice:A0');
+  if (!a0?.github.pr) throw new Error('Canonical A0 fixture is incomplete');
+  // Keep lifecycle-transition tests on a stable pre-merge fixture while the
+  // committed manifest advances with authoritative GitHub facts.
+  a0.status = 'pr_open';
+  a0.status_changed_at = '2026-07-17T18:25:00.000Z';
+  a0.github.pr.head_sha = '90b6350ac82c835cf11802042d81f5547c6a96eb';
+  a0.ownership = {
+    claimant: 'Producer',
+    session: '7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd',
+    source: 'parent-issue-bootstrap',
+    scope: 'Durable control plane only; no equipment gameplay',
+    claimed_at: '2026-07-17T17:32:38.205Z',
+    lease_expires_at: '2026-07-25T18:26:00.000Z',
+    heartbeat_at: '2026-07-18T18:26:00.000Z',
+    base_commit: '41c5f2aa',
+  };
+  a0.merge = { commit: null, merged_at: null };
+  a0.reconciliation = {
+    last_audited_at: '2026-07-17T23:37:36.885Z',
+    observed_issue_state: 'open',
+    observed_pr_state: 'OPEN',
+    observed_head_sha: '90b6350ac82c835cf11802042d81f5547c6a96eb',
+    observed_merge_commit: null,
+    drift: [],
+  };
   const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
   if (a1) {
     a1.github.issue = null;
+    a1.reconciliation.last_audited_at = null;
+    a1.reconciliation.observed_issue_state = 'open';
   }
-  state.nodes[0]!.reconciliation.drift = [];
   state.reconciliation.drift = [];
   if (!includeStackedWork) {
     const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');

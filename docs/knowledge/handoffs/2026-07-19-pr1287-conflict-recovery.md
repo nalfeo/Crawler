@@ -39,6 +39,11 @@ implementations independently reached `main`. Full calibration:
   drift, suppressed ownership adjudication after failed issue audits, folded
   claims before expiry filtering, reconciled exact-owner timestamps, and extended
   committed-schema parity to every stacked PR identity contract.
+- Reconciled post-review live drift after A0 PR #1271 merged: advanced A0 to
+  `merged`, recorded its authoritative head/merge facts, cleared inactive
+  ownership, and recorded closed issue observations for A0 and A1. The test
+  helper now reconstructs its pre-merge lifecycle fixture explicitly instead of
+  depending on mutable committed state.
 - Added deterministic regression coverage for all integrated behaviors. No asset
   workflow, queue, label, brief, sprite, or Azure mutation is part of the
   effective diff from `origin/main`.
@@ -63,6 +68,8 @@ implementations independently reached `main`. Full calibration:
   clean by GPT-5.4.
 - Focused epic-status suite: 73 tests pass.
 - Source typecheck passes.
+- Offline and credentialed read-only GitHub audits are valid with zero errors,
+  warnings, proposals, or operator actions and report `writes_performed=false`.
 - Review ledger:
   `docs/knowledge/review-ledgers/2026-07-19-pr1287-conflict-recovery.review-ledger.json`.
 
