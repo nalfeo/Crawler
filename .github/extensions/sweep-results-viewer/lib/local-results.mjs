@@ -64,24 +64,35 @@ export async function listLocalSweepResults(workingDirectory) {
     };
   }
 
+  const jsonEntries = entries.filter(
+    (entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.json'),
+  );
+
+  const settled = await Promise.allSettled(
+    jsonEntries.map(async (entry) => {
+      const path = join(directory, entry.name);
+      const loaded = await readLocalSweepFile(path);
+      return { path, name: entry.name, loaded };
+    }),
+  );
+
   const runs = [];
   const errors = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.json')) {
-      continue;
-    }
-    const path = join(directory, entry.name);
-    try {
-      const loaded = await readLocalSweepFile(path);
+  for (let i = 0; i < settled.length; i++) {
+    const entry = jsonEntries[i];
+    const result = settled[i];
+    if (result.status === 'fulfilled') {
+      const { path, name, loaded } = result.value;
       runs.push({
         path,
-        name: entry.name,
+        name,
         runAt: loaded.data.runAt,
         modifiedAt: safeTimestamp(loaded.loadedAt),
         floors: loaded.data.floors ?? null,
       });
-    } catch (error) {
-      errors.push({ path, name: entry.name, message: errorMessage(error) });
+    } else {
+      const path = join(directory, entry.name);
+      errors.push({ path, name: entry.name, message: errorMessage(result.reason) });
     }
   }
 
