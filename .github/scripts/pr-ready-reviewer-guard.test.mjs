@@ -280,17 +280,17 @@ function createHarness({
   return { api, calls, logs, state, log };
 }
 
-test('workflow runs trusted default-branch script with per-PR event concurrency', () => {
+test('workflow runs trusted default-branch script with single global concurrency group', () => {
   assert.equal(workflow.permissions.contents, 'read');
   assert.equal(workflow.permissions['pull-requests'], undefined);
   assert.equal(workflow.jobs['enforce-pr-state']['timeout-minutes'], 15);
   assert.equal(
     workflow.jobs['enforce-pr-state'].concurrency.group,
-    "pr-ready-reviewer-guard-${{ github.event_name == 'pull_request_target' && github.event.pull_request.number || 'sweep' }}",
+    'pr-ready-reviewer-guard',
   );
   assert.equal(
     workflow.jobs['enforce-pr-state'].concurrency['cancel-in-progress'],
-    "${{ github.event_name == 'pull_request_target' }}",
+    false,
   );
   assert.equal(workflow.jobs['enforce-pr-state'].steps[0].uses, 'actions/checkout@v4');
   assert.equal(
@@ -1928,17 +1928,16 @@ test('pull_request_target event without a valid triggeringPullNumber falls back 
   );
 });
 
-test('different PRs each get their own concurrency key (workflow group contains PR number expression)', () => {
+test('all runs share a single global concurrency group to prevent sweep/event race conditions', () => {
   const group = String(workflow.jobs['enforce-pr-state'].concurrency.group || '');
-  assert.ok(
-    group.includes('pull_request.number'),
-    'concurrency group must include PR number for per-PR keying',
+  assert.equal(
+    group,
+    'pr-ready-reviewer-guard',
+    'concurrency group must be a single global key to ensure mutual exclusion between sweeps and per-PR runs',
   );
-  const cancelInProgress = String(
-    workflow.jobs['enforce-pr-state'].concurrency['cancel-in-progress'] || '',
-  );
-  assert.ok(
-    cancelInProgress.includes('pull_request_target'),
-    'cancel-in-progress must be true for pull_request_target events',
+  assert.equal(
+    workflow.jobs['enforce-pr-state'].concurrency['cancel-in-progress'],
+    false,
+    'cancel-in-progress must be false to prevent mid-repair cancellation',
   );
 });
