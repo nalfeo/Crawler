@@ -12,12 +12,6 @@ import {
 import { SeededRandom } from '../../src/shared/random.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
-interface DistributionFixture {
-  readonly rarity: GeneratedEquipmentRarity;
-  readonly enhancementLevel: 0 | 1 | 2 | 3 | 4 | 5;
-  readonly effectIds: readonly string[];
-}
-
 interface DistributionSummary {
   readonly rarityCounts: Readonly<Record<GeneratedEquipmentRarity, number>>;
   readonly enhancementCounts: Readonly<Record<number, number>>;
@@ -25,28 +19,8 @@ interface DistributionSummary {
 }
 
 const FIXTURE_INDEX_SEED_STEP = 17;
-
-function chooseRarity(rng: SeededRandom): GeneratedEquipmentRarity {
-  const roll = rng.next();
-  if (roll < 0.62) return 'common';
-  if (roll < 0.9) return 'uncommon';
-  return 'rare';
-}
-
-function chooseEnhancement(
-  rng: SeededRandom,
-  rarity: GeneratedEquipmentRarity,
-): 0 | 1 | 2 | 3 | 4 | 5 {
-  if (rarity === 'common') return 0;
-  if (rarity === 'uncommon') return (1 + rng.nextInt(0, 2)) as 1 | 2 | 3;
-  return (3 + rng.nextInt(0, 2)) as 3 | 4 | 5;
-}
-
-function effectPoolForRarity(rarity: GeneratedEquipmentRarity): readonly string[] {
-  if (rarity === 'common') return [];
-  if (rarity === 'uncommon') return ['crit-boost', 'swift-stride', 'sturdy-hide'];
-  return ['crit-boost', 'swift-stride', 'sturdy-hide', 'vampiric-edge', 'arcane-surge'];
-}
+const RARITIES: readonly GeneratedEquipmentRarity[] = ['common', 'uncommon', 'rare'];
+const EFFECT_POOL = ['crit-boost', 'swift-stride', 'sturdy-hide', 'vampiric-edge', 'arcane-surge'];
 
 function deriveFixtureSeed(baseSeed: number, index: number): number {
   // Prime step (17) keeps adjacent fixture streams decorrelated while
@@ -54,38 +28,38 @@ function deriveFixtureSeed(baseSeed: number, index: number): number {
   return baseSeed + index * FIXTURE_INDEX_SEED_STEP;
 }
 
-function fixtureForIndex(seed: number, index: number): DistributionFixture {
+function inputForIndex(
+  seed: number,
+  index: number,
+  rarityEffectUnits: Readonly<Record<GeneratedEquipmentRarity, 0 | 1 | 2>>,
+): GeneratedEquipmentCreateInputV1 {
   const rng = new SeededRandom(deriveFixtureSeed(seed, index));
-  const rarity = chooseRarity(rng);
-  const enhancementLevel = chooseEnhancement(rng, rarity);
-  const units = RARITY_EFFECT_BUDGET[rarity];
-  const pool = effectPoolForRarity(rarity);
-  const effectIds: string[] = [];
-  const available = [...pool];
+  const rarity = RARITIES[rng.nextInt(0, RARITIES.length - 1)]!;
+  const enhancementLevel = rng.nextInt(ENHANCEMENT_MIN, ENHANCEMENT_MAX) as 0 | 1 | 2 | 3 | 4 | 5;
+  const units = rarityEffectUnits[rarity];
+  const available = [...EFFECT_POOL];
+  const resolvedEffects: Array<GeneratedEquipmentCreateInputV1['resolvedEffects'][number]> = [];
   for (let i = 0; i < units; i += 1) {
     const pickIndex = rng.nextInt(0, available.length - 1);
-    effectIds.push(available[pickIndex]!);
+    const effectId = available[pickIndex]!;
     available.splice(pickIndex, 1);
+    resolvedEffects.push({
+      schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+      effectId,
+      effectOrdinal: i,
+      unitCost: 1,
+      kind: 'stat',
+      stat: 'armor',
+      operation: 'add',
+      value: 1 + i,
+    });
   }
-  return { rarity, enhancementLevel, effectIds };
-}
-
-function toInput(index: number, fixture: DistributionFixture): GeneratedEquipmentCreateInputV1 {
   return {
     baseId: `distribution.fixture.${index}`,
     itemLevel: 6,
-    rarity: fixture.rarity,
-    enhancementLevel: fixture.enhancementLevel,
-    resolvedEffects: fixture.effectIds.map((effectId, effectOrdinal) => ({
-      schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
-      effectId,
-      effectOrdinal,
-      unitCost: 1 as const,
-      kind: 'stat' as const,
-      stat: 'armor' as const,
-      operation: 'add' as const,
-      value: 1 + effectOrdinal,
-    })),
+    rarity,
+    enhancementLevel,
+    resolvedEffects,
     frozen: {
       schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
       displayName: `Distribution Fixture ${index}`,
@@ -127,15 +101,11 @@ function summarize(
   return { rarityCounts, enhancementCounts, effectCounts };
 }
 
-function buildFixtureSet(seed: number, count: number): readonly DistributionFixture[] {
-  return Object.freeze(Array.from({ length: count }, (_, index) => fixtureForIndex(seed, index)));
-}
-
 function buildGeneratedInstances(seed: number, count: number, runKey: string) {
   const world = createTestWorld({ seed, generatedEquipmentRunKey: runKey });
-  const fixtures = buildFixtureSet(seed, count);
-  return fixtures.map((fixture, index) =>
-    createGeneratedEquipmentInstance(world, toInput(index, fixture)),
+  const rarityEffectUnits = world.generatedEquipmentRegistry.generationPolicy.rarityEffectUnits;
+  return Array.from({ length: count }, (_, index) =>
+    createGeneratedEquipmentInstance(world, inputForIndex(seed, index, rarityEffectUnits)),
   );
 }
 
@@ -164,12 +134,12 @@ describe('deterministic generated-equipment distribution fixtures', () => {
     expect(summaryReordered).toEqual(summary);
 
     // Expected seeded distribution envelope for seed=20260719, n=120.
-    expect(summary.rarityCounts.common).toBeGreaterThanOrEqual(64);
-    expect(summary.rarityCounts.common).toBeLessThanOrEqual(84);
-    expect(summary.rarityCounts.uncommon).toBeGreaterThanOrEqual(26);
+    expect(summary.rarityCounts.common).toBeGreaterThanOrEqual(30);
+    expect(summary.rarityCounts.common).toBeLessThanOrEqual(50);
+    expect(summary.rarityCounts.uncommon).toBeGreaterThanOrEqual(30);
     expect(summary.rarityCounts.uncommon).toBeLessThanOrEqual(50);
-    expect(summary.rarityCounts.rare).toBeGreaterThanOrEqual(6);
-    expect(summary.rarityCounts.rare).toBeLessThanOrEqual(22);
+    expect(summary.rarityCounts.rare).toBeGreaterThanOrEqual(30);
+    expect(summary.rarityCounts.rare).toBeLessThanOrEqual(50);
 
     const topEffects = Object.entries(summary.effectCounts)
       .sort((a, b) => b[1] - a[1])

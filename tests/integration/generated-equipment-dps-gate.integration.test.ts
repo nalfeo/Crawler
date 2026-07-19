@@ -1,6 +1,12 @@
 import { setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { createGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
+import {
+  createActiveWeaponSnapshotV1,
+  createGeneratedEquipmentInstance,
+  generatedEquipmentInstanceKey,
+  listGeneratedEquipmentInstances,
+  requireGeneratedEquipmentActiveWeaponSnapshot,
+} from '../../src/core/generated-equipment-registry.js';
 import {
   Health,
   type GameWorld,
@@ -270,13 +276,40 @@ function equipFixtureBuild(
   if (!weaponDef) throw new Error(`Missing weapon def for ${build.weaponId}`);
   const { rarity, enhancement } = LEVEL_RARITY_AND_ENHANCEMENT[level];
   const scale = computeBuildScale(world, level, rarity, enhancement);
-  setActiveWeapon(world, {
-    ...weaponDef,
+  const runKey = world.generatedEquipmentRegistry.runKey ?? 'unknown';
+  const weaponOrdinal = listGeneratedEquipmentInstances(world).length;
+  const weaponInstanceId = generatedEquipmentInstanceKey(runKey, weaponOrdinal);
+  const weaponSnapshot = createActiveWeaponSnapshotV1({ instanceId: weaponInstanceId }, weaponDef, {
     name: `${build.id}-l${level}`,
     baseDamage: Math.max(1, Math.round(build.baseDamage * scale)),
     cooldownMs: build.cooldownMs,
     ...(build.aoeRadius ? { aoeRadius: build.aoeRadius } : {}),
   });
+  const weaponInstance = createGeneratedEquipmentInstance(world, {
+    baseId: `weapon.${build.id}`,
+    itemLevel: level,
+    rarity,
+    enhancementLevel: enhancement,
+    resolvedEffects: exampleEffectsForRarity(rarity),
+    frozen: {
+      schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+      displayName: `${build.id}-weapon-l${level}`,
+      artKey: `equipment.${build.id}.weapon`,
+      slots: ['mainHand'],
+      tags: ['weapon'],
+      weightLb: 2,
+      statBonuses: {},
+      abilityGrants: [],
+      passiveGrants: [],
+      activeWeaponSnapshot: weaponSnapshot,
+    },
+  });
+  expect(weaponInstance.instanceId).toBe(weaponInstanceId);
+  expect(weaponInstance.frozen.activeWeaponSnapshot).toEqual(weaponSnapshot);
+  setActiveWeapon(
+    world,
+    requireGeneratedEquipmentActiveWeaponSnapshot(world, weaponInstance.instanceId),
+  );
 
   const statBonuses = Object.fromEntries(
     Object.entries(build.statBonuses ?? {}).map(([stat, value]) => [
@@ -349,7 +382,7 @@ function equipFixtureBuild(
   }
 
   return {
-    runKey: world.generatedEquipmentRegistry.runKey ?? 'unknown',
+    runKey,
     rarity,
     enhancement,
     weaponId: build.weaponId,
