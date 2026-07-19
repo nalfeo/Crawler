@@ -22,7 +22,7 @@ import {
   WAITING_LABEL,
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
-import { admissionFingerprint } from '../merge-train/state.mjs';
+import { admissionFingerprint, QUEUE_LABEL } from '../merge-train/state.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
@@ -325,9 +325,10 @@ test('lease-heartbeat in dry-run updates the state comment', async (t) => {
       body: [stateComment],
     }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: { name: LABEL } }),
-    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
-      body: { id: stateComment.id, body: '' },
-    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
   });
 
   t.after(() => server.close());
@@ -362,7 +363,7 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
     }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
       repositoryLabelExists
-        ? { body: { name: LABEL } }
+        ? { body: { name: LABEL, node_id: 'LABEL_original' } }
         : { status: 404, body: { message: 'Not Found' } },
     [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
       body: {},
@@ -371,9 +372,10 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
       repositoryLabelExists = false;
       return { body: {} };
     },
-    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
-      body: { id: stateComment.id, body: '' },
-    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
   });
 
   t.after(() => server.close());
@@ -405,6 +407,66 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
     mutatingCalls.indexOf(labelDetach) < mutatingCalls.indexOf(labelDelete),
     'the PR label attachment must be detached before the repository label definition is deleted',
   );
+  assert.ok(
+    mutatingCalls.indexOf(commentUpdate) < mutatingCalls.indexOf(labelDelete),
+    'the terminal state must be persisted before the repository ownership fence is released',
+  );
+});
+
+test('lease-release does not overwrite an owner that acquires after fence deletion', async (t) => {
+  const stateComment = shepherdStateComment();
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL, node_id: 'LABEL_original' } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = true;
+      stateComment.body = renderStateComment(
+        makeState({
+          prNumber: PR_NUM,
+          headSha: HEAD_SHA,
+          fingerprint: blockerFingerprint([]),
+          owner: 'automation',
+          status: 'active',
+          trigger: 'concurrent-acquire',
+          blockers: [],
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+      return { body: {} };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.notEqual(code, 0);
+  assert.match(stderr, /owner label was recreated during release/);
+  assert.equal(parseStateComment(stateComment.body)?.owner, 'automation');
+  const commentUpdates = mutatingCalls.filter(
+    (call) =>
+      call.method === 'PATCH' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+  );
+  assert.equal(
+    commentUpdates.length,
+    1,
+    'release must not PATCH after deleting its ownership fence',
+  );
 });
 
 test('known stale-node 422 refetches ownership, retries detach once, and then converges', async (t) => {
@@ -421,8 +483,12 @@ test('known stale-node 422 refetches ownership, retries detach once, and then co
     }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
       repositoryLabelExists
-        ? { body: { name: LABEL } }
+        ? { body: { name: LABEL, node_id: 'LABEL_original' } }
         : { status: 404, body: { message: 'Not Found' } },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryLabelExists = true;
+      return { body: { name: LABEL } };
+    },
     [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
       detachAttempts += 1;
       if (detachAttempts === 1) {
@@ -441,9 +507,17 @@ test('known stale-node 422 refetches ownership, retries detach once, and then co
       repositoryLabelExists = false;
       return { body: {} };
     },
-    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
-      body: { id: stateComment.id, body: '' },
-    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: (_url, body) => {
+      stateComment.body = body.body;
+      return { body: { id: stateComment.id, body: body.body } };
+    },
+    [`POST /graphql`]: (_url, body) => {
+      if (String(body?.query || '').includes('deleteLabel')) {
+        repositoryLabelExists = false;
+        return { body: { data: { deleteLabel: { clientMutationId: null } } } };
+      }
+      return { body: gqlNoThreads() };
+    },
   });
   t.after(() => server.close());
 
@@ -464,6 +538,104 @@ test('known stale-node 422 refetches ownership, retries detach once, and then co
   assert.equal(issueDeletes.length, 2);
   assert.ok(repositoryDelete);
   assert.ok(mutatingCalls.indexOf(issueDeletes[1]) < mutatingCalls.indexOf(repositoryDelete));
+  assert.equal(parseStateComment(stateComment.body)?.status, 'idle');
+});
+
+test('known stale-node retry preserves a concurrently recreated atomic owner label', async (t) => {
+  const stateComment = shepherdStateComment();
+  let attached = true;
+  let detachAttempts = 0;
+  let repositoryLabelNodeId = 'LABEL_original';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: attached ? [{ name: LABEL }] : [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      body: { name: LABEL, node_id: repositoryLabelNodeId },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      detachAttempts += 1;
+      if (detachAttempts === 2) {
+        attached = false;
+        repositoryLabelNodeId = 'LABEL_recreated';
+      }
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.notEqual(code, 0);
+  assert.match(stderr, /owner label incarnation changed after stale-node retry/);
+  assert.equal(detachAttempts, 2);
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+  );
+});
+
+test('known stale-node first refetch preserves a concurrently recreated atomic owner label', async (t) => {
+  const stateComment = shepherdStateComment();
+  let attached = true;
+  let repositoryLabelNodeId = 'LABEL_original';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: attached ? [{ name: LABEL }] : [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      body: { name: LABEL, node_id: repositoryLabelNodeId },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => {
+      attached = false;
+      repositoryLabelNodeId = 'LABEL_recreated';
+      return {
+        status: 422,
+        body: {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Issue', field: 'labels', code: 'missing' }],
+        },
+      };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  assert.notEqual(code, 0);
+  assert.match(stderr, /owner label incarnation changed during stale-node release/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    false,
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'POST' && call.url === '/graphql' && call.body?.query,
+    ),
+    false,
+  );
 });
 
 test('known stale-node 422 fails closed when ownership is a newer incarnation', async (t) => {
@@ -937,7 +1109,10 @@ test('stale-automation-exhausted releases ownership even when incident filing fa
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
     // Loop incident label creation returns a non-422 error to simulate filing failure.
-    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ status: 500, body: { message: 'Internal Server Error' } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({
+      status: 500,
+      body: { message: 'Internal Server Error' },
+    }),
   });
   t.after(() => server.close());
 
@@ -1264,6 +1439,87 @@ test('admission wait after orphan cleanup does not release ownership twice', asy
     ).length,
     1,
   );
+});
+
+test('post-state/pre-fence crash recovery preserves terminal waiting state and admission marker', async (t) => {
+  // Scenario: a prior run wrote owner:none/status:waiting (terminal admission-wait state)
+  // but crashed before removing the repository fence label.  The orphaned-cleanup path
+  // must only delete the leftover fence, never overwrite the waiting state or remove
+  // the durable WAITING_LABEL that keeps the PR out of the dispatch queue.
+  const stateComment = waitingStateComment(995);
+  let repositoryLabelDeleted = false;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelDeleted
+        ? { status: 404, body: { message: 'Not Found' } }
+        : { body: { name: LABEL, node_id: 'LBL_orphan' } },
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelDeleted = true;
+      return { body: {} };
+    },
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Fence-only cleanup logged; full release was NOT called.
+  assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+  assert.match(stdout, /orphaned-fence-cleanup pr=#42 status=waiting/);
+
+  // Repository fence was deleted.
+  assert.ok(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+    'orphaned repository fence must be deleted',
+  );
+
+  // State comment must NOT have been PATCHed (waiting state preserved).
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+    'terminal waiting state must not be overwritten',
+  );
+
+  // WAITING_LABEL must NOT have been removed (admission marker preserved).
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url.includes(`/labels/${encodeURIComponent(WAITING_LABEL)}`),
+    ),
+    false,
+    'durable waiting marker must not be removed during fence-only cleanup',
+  );
+
+  // Process continues to the normal waiting admission path.
+  assert.match(stdout, /wait pr=#42 admission=ci/);
 });
 
 test('PR #1208 partial cleanup converges when both owner-label deletes return 404', async (t) => {
@@ -4033,6 +4289,384 @@ test('reconcile resolves only ancestor lineage markers from compare status', asy
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+test('dry-run reconcile would-post outdated-marker and would-resolve isOutdated thread with no trusted marker', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({
+      body: gqlReviewThreads([
+        {
+          id: 'thread-outdated-nomarker',
+          isResolved: false,
+          isOutdated: true,
+          path: 'plans/item-icons/weapons.art.yaml',
+          line: 92,
+          comments: {
+            nodes: [
+              {
+                id: 'comment-outdated',
+                body: 'Consider switching to a block scalar.',
+                author: { login: 'copilot-pull-request-reviewer' },
+                authorAssociation: 'NONE',
+                url: threadUrl,
+              },
+            ],
+          },
+        },
+      ]),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // Reconciler should signal it would post the outdated marker and would resolve the thread.
+  assert.match(stdout, /would-post outdated-marker thread=thread-outdated-nomarker/);
+  assert.match(stdout, /would-resolve thread=thread-outdated-nomarker/);
+  // No mutations in dry-run mode.
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('live reconcile posts outdated-marker reply and resolves isOutdated thread with no trusted marker', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`]: () => ({
+      body: { id: 99999, body: '✅ Addressed in abc123' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-18T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-live',
+            isResolved: false,
+            isOutdated: true,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 92,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated-live',
+                  body: 'Consider switching to a block scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Verify the reply was posted to the review comment.
+  const replyCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/${reviewCommentId}/replies`,
+  );
+  assert.ok(replyCall, 'expected a reply to be posted on the outdated review thread');
+  assert.ok(
+    String(replyCall.body?.body || '').includes('✅ Addressed in'),
+    'reply should contain the addressed marker',
+  );
+  assert.ok(
+    String(replyCall.body?.body || '')
+      .toLowerCase()
+      .includes('outdated'),
+    'reply should mention the outdated reason',
+  );
+
+  // Verify the thread was resolved via GraphQL.
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === 'thread-outdated-live',
+  );
+  assert.ok(resolveCall, 'expected the outdated thread to be resolved via GraphQL mutation');
+
+  assert.match(stdout, /posted outdated-marker thread=thread-outdated-live/);
+  assert.match(stdout, /resolved thread=thread-outdated-live/);
+});
+
+test('reconcile skips outdated-marker for isOutdated thread that already has a trusted marker', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      const query = String(parsed?.query ?? '');
+      if (query.includes('resolveReviewThread')) {
+        return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
+      }
+      if (query.includes('enablePullRequestAutoMerge')) {
+        return {
+          body: {
+            data: {
+              enablePullRequestAutoMerge: {
+                pullRequest: { autoMergeRequest: { enabledAt: '2026-07-18T00:00:00Z' } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-with-marker',
+            isResolved: false,
+            isOutdated: true,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 92,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-original',
+                  body: 'Consider switching to a block scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+                {
+                  id: 'comment-trusted-marker',
+                  body: `✅ Addressed in ${HEAD_SHA}: already fixed in head`,
+                  author: { login: 'nalfeo' },
+                  authorAssociation: 'OWNER',
+                  url: '',
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // Should NOT post an extra marker — the thread already has a trusted marker.
+  assert.doesNotMatch(
+    stdout,
+    /would-post outdated-marker thread=thread-outdated-with-marker/,
+    'must not post a duplicate outdated-marker when a trusted marker already exists',
+  );
+  // Should still resolve the thread (via the existing trusted marker).
+  assert.match(stdout, /would-resolve thread=thread-outdated-with-marker/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('reconcile does not post outdated-marker for non-outdated thread with no trusted marker', async (t) => {
+  const reviewCommentId = '9876543210';
+  const threadUrl = `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r${reviewCommentId}`;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      // suggestedActors query needed when reconciler dispatches Copilot for the blocker.
+      if (String(parsed?.query ?? '').includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (
+        String(parsed?.query ?? '')
+          .trimStart()
+          .startsWith('mutation')
+      ) {
+        return { body: { data: {} } };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-not-outdated',
+            isResolved: false,
+            isOutdated: false,
+            path: 'plans/item-icons/weapons.art.yaml',
+            line: 223,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-not-outdated',
+                  body: 'The brief field is a very long single-line scalar.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: threadUrl,
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // Non-outdated thread: must NOT have an auto-posted marker.
+  assert.doesNotMatch(
+    stdout,
+    /would-post outdated-marker/,
+    'must not auto-mark non-outdated threads',
+  );
+  // Thread has no trusted marker so it must NOT be resolved.
+  assert.doesNotMatch(stdout, /would-resolve thread=thread-not-outdated/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('reconcile skips outdated-marker and logs no-reply-target when first comment URL does not match discussion pattern', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, parsed) => {
+      if (
+        String(parsed?.query ?? '')
+          .trimStart()
+          .startsWith('mutation')
+      ) {
+        return { body: { data: {} } };
+      }
+      // Thread is outdated but first comment URL is empty — no #discussion_r<id> pattern.
+      return {
+        body: gqlReviewThreads([
+          {
+            id: 'thread-outdated-no-url',
+            isResolved: false,
+            isOutdated: true,
+            path: 'src/core/systems/some.ts',
+            line: 10,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-no-url',
+                  body: 'This looks odd.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: '', // does not match REVIEW_DISCUSSION_COMMENT_PATTERN
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  // Must log the skip reason without attempting to post a reply.
+  assert.match(
+    stdout,
+    /skip outdated-marker thread=thread-outdated-no-url reason=no-reply-target/,
+    'should log skip with reason=no-reply-target when URL does not match discussion pattern',
+  );
+  // Must NOT log would-post or would-resolve for this thread.
+  assert.doesNotMatch(stdout, /would-post outdated-marker thread=thread-outdated-no-url/);
+  assert.doesNotMatch(stdout, /would-resolve thread=thread-outdated-no-url/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
 test('live reconcile resolves only a trusted backtick-wrapped current-head marker', async (t) => {
   const trustedThreadId = 'thread-trusted-backtick';
   const untrustedThreadId = 'thread-untrusted-backtick';
@@ -4198,19 +4832,13 @@ test('reconcile does not escalate router action-required run when it is the only
 });
 
 // ---------------------------------------------------------------------------
-// Thread 1 regression: live label re-fetch suppresses duplicate merge-train
-// admission when a concurrent run already attached the merge-train label.
+// Queue admission must inspect every live label page before deciding whether
+// the merge-train transition is absent.
 // ---------------------------------------------------------------------------
 
-test('queue admission re-fetches labels live so a concurrently attached merge-train label suppresses duplicate admission', async (t) => {
-  // Scenario: a clean PR (no existing state, no owner label, no CI failures)
-  // reaches the merge-train admission section. The initial pr.labels snapshot
-  // does NOT contain the merge-train label, but the live GET /issues/{PR}/labels
-  // call returns it (simulating a race where another run already queued the PR).
-  // The fix must read live labels and log "queue unchanged" without attaching
-  // the label a second time.
+test('queue admission finds a concurrently attached merge-train label on the second page', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
-    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }), // no merge-train in labels
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
       status: 404,
@@ -4223,14 +4851,16 @@ test('queue admission re-fetches labels live so a concurrently attached merge-tr
       },
     }),
     [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
-    // State comment creation — clean PR needs an initial idle state record
-    // before merge-train admission runs its guard.
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: { id: 800 } }),
-    // Thread 1 fix: live label re-fetch finds merge-train already attached by a
-    // concurrent run, preventing duplicate admission.
-    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({
-      body: [{ name: 'merge-train' }],
-    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: (url) => {
+      const page = new URL(url, 'http://localhost').searchParams.get('page');
+      if (page === '2') {
+        return { body: [{ name: 'merge-train' }] };
+      }
+      return {
+        body: Array.from({ length: 100 }, (_, index) => ({ name: `other-${index}` })),
+      };
+    },
   });
   t.after(() => server.close());
 
