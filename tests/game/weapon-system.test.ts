@@ -14,7 +14,7 @@ import { asFamilyId } from '../../src/core/faction-relations.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { applyStatusEffect } from '../../src/core/status-effects.js';
 import { denUnlockGoalId } from '../../src/game/floor2Scenario.js';
-import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
+import { setActiveWeapon, getActiveWeaponReadiness, weaponSystem } from '../../src/game/weaponSystem.js';
 import { WEAPON } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -364,5 +364,37 @@ describe('weaponSystem', () => {
     world.elapsedMs += 120;
     weaponSystem(world);
     expect(query(world.ecs, [Projectile]).length).toBe(2);
+  });
+
+  it('setActiveWeapon immediate-fire guarantee holds under Tarnished attackSpeed debuff', () => {
+    // Regression guard: if the player is Tarnished (0.75× attackSpeed → ~667ms
+    // effective cooldown) when they swap weapons, the fresh weapon must still be
+    // ready to fire at the swap instant — i.e. getActiveWeaponReadiness().ready
+    // must return true immediately after setActiveWeapon.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 8, 8);
+    spawnEnemy(world, 25, 8, 10);
+    const pistol = getWeaponDef('pistol')!; // cooldownMs = 500
+
+    // Apply Tarnished BEFORE equipping the weapon.
+    applyStatusEffect(world, player, {
+      stat: 'attackSpeed',
+      op: 'multiply',
+      value: 0.75,
+      durationMs: 99_999,
+      sourceType: 'ability',
+      sourceId: 'test:tarnished',
+      stackRule: { mode: 'replace' },
+    });
+
+    // Equip at a non-zero timestamp so the lastFireMs arithmetic is non-trivial.
+    world.elapsedMs = 10_000;
+    setActiveWeapon(world, pistol);
+
+    // The weapon should be ready to fire immediately — not delayed by ~167ms.
+    const readiness = getActiveWeaponReadiness(world);
+    expect(readiness).not.toBeNull();
+    expect(readiness!.ready).toBe(true);
+    expect(readiness!.remainingMs).toBe(0);
   });
 });

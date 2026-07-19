@@ -852,7 +852,21 @@ export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
   state.lastActiveGeneration = getActiveWeaponGeneration(world);
   if (isSwitch) {
     // Real switch: charge the new weapon so it can fire immediately.
-    state.lastFireMs = world.elapsedMs - weaponDef.cooldownMs;
+    // Use the effective cooldown (folding in status-effect attack-speed
+    // multipliers such as Tarnished's 0.75x) so the fresh weapon is actually
+    // ready at the switch instant when the player is slowed. Mirrors the same
+    // logic in syncActiveWeaponGeneration.
+    //
+    // Adding 1ms to the back-offset guarantees the gate
+    // `elapsedMs - lastFireMs >= effectiveCooldown` is satisfied even when
+    // effectiveCooldown is non-integer (e.g. 500/0.75 ≈ 666.6̄ms), avoiding
+    // floating-point rounding where `x − (x − y) < y`.
+    const player = getPlayerEntity(world);
+    const effectiveCooldown =
+      player !== undefined
+        ? getEffectiveCooldownMs(world, player, weaponDef.cooldownMs)
+        : weaponDef.cooldownMs;
+    state.lastFireMs = world.elapsedMs - (Number.isFinite(effectiveCooldown) ? effectiveCooldown + 1 : 0);
   }
   if (!isSwitch) {
     logger.debug('Updated active weapon tuning in place', { weaponId: weaponDef.id });
