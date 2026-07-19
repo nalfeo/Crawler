@@ -11,6 +11,17 @@
     "path": "by-sha/f568da5d4e8e4481d1df33ca4221fe7a7f1f9b1d.json"
   },
   {
+    "commit": "461ac3f8aa4e56673aab2a70dba261827a1455d7",
+    "commitDate": "2026-07-19T14:46:52-07:00",
+    "commitSubject": "fix(ci-recovery): require post-push SHA in addressed markers (#1670)",
+    "capturedAt": "2026-07-19T23:10:37.147Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29705308554",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/461ac3f8aa4e56673aab2a70dba261827a1455d7.json"
+  },
+  {
     "commit": "e95a2b5790c458faa68ae5db244de88710024c04",
     "commitDate": "2026-07-19T10:37:10-07:00",
     "commitSubject": "fix(ci-recovery): handle slash-separated SHA pairs in marker parser (#1613)",
