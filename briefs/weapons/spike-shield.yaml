@@ -1,0 +1,29 @@
+type: weapon
+name: spike-shield
+floor: 2
+description: |
+  A centered front-facing spike-shield weapon icon held vertically — grip at the
+  bottom, spike-face filling the upper portion of the frame. Heavy dungeon-trap
+  defensive weapon that also serves as an offensive implement. The shield body
+  is a round or kite-shaped iron-bound slab with 5–7 protruding iron spikes
+  radiating from its face. The spikes are thick, blunt-tipped, and staggered in
+  length so the silhouette is unmistakably a spike-shield and not a sunburst,
+  mace-head, flail, or decorative emblem. A short grip handle or arm-strap is
+  visible at the bottom-center. Keep the silhouette clean and readable at
+  gameplay scale, with a clear outer contour and no background scene elements.
+  Materials: aged dark iron for the shield rim and spikes with rust-orange and
+  dark-steel-grey stops; a weathered wood, beaten metal, or dark leather shield
+  backing in a muted mid-tone; near-black outline on every edge. One or two
+  sparse highlight stops on the leading spike tips. No glow, no enchantment, no
+  blood, no text.
+# Vertical orientation, 4×4 sheet, palette, references, anchor — all
+# inherited from data/sprite-types/weapon.json. Override nothing unless
+# the shape genuinely requires it: a spike-shield faces forward in a
+# vertical stance (grip bottom, spike-face top) which matches the weapon default.
+variations:
+  - kite-shaped shield body with a central boss and four corner spikes
+  - round tower-shield silhouette with seven radial spikes and visible arm-strap
+# Seed only: the text provider expands these to 8 total variation prompts at run time.
+minVariations: 8
+judge:
+  enabled: true

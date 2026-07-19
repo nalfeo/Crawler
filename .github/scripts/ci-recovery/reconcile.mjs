@@ -75,6 +75,7 @@ const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
+const ADDRESSED_MARKER_REPLY = '`✅ Addressed in <sha>: <one-line note>`';
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -991,8 +992,48 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+// Post reconciler-authored marker replies for outdated threads that have no trusted marker.
+// thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
+// no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
+// on the current code.  The CRAWLER_CI_PAT is the repository owner, so the posted reply
+// satisfies isTrustedComment (authorAssociation OWNER), letting shouldResolveThread succeed
+// on this same pass without a separate agent round-trip.
+//
+// This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
+// DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
+for (const thread of unresolvedThreads.filter(
+  (candidate) =>
+    candidate.isOutdated && !shouldResolveThread(candidate, headSha, reachableMarkerShas),
+)) {
+  const root = thread.comments?.nodes?.[0];
+  const replyCommentId = reviewThreadReplyCommentId(root?.url);
+  if (!replyCommentId) {
+    process.stdout.write(`skip outdated-marker thread=${thread.id} reason=no-reply-target\n`);
+    continue;
+  }
+  const markerBody = `✅ Addressed in ${headSha}: thread outdated — reviewed lines no longer present at this location`;
+  if (live) {
+    await assertExpectedMetadataUnchanged('post-outdated-marker');
+    await request(
+      pat,
+      `/repos/${owner}/${repo}/pulls/${prNumber}/comments/${replyCommentId}/replies`,
+      { method: 'POST', body: { body: markerBody } },
+    );
+  }
+  // Inject the posted marker so shouldResolveThread succeeds in the resolution pass below.
+  // authorAssociation is OWNER because CRAWLER_CI_PAT is the repository owner's token.
+  if (!thread.comments) thread.comments = { nodes: [] };
+  thread.comments.nodes.push({
+    id: `reconciler-outdated-marker:${thread.id}`,
+    body: markerBody,
+    url: '',
+    author: { login: '' },
+    authorAssociation: 'OWNER',
+  });
+  process.stdout.write(`${live ? 'posted' : 'would-post'} outdated-marker thread=${thread.id}\n`);
+}
 for (const thread of unresolvedThreads.filter((candidate) =>
-  shouldResolveThread(candidate, pr.head.sha, reachableMarkerShas),
+  shouldResolveThread(candidate, headSha, reachableMarkerShas),
 )) {
   if (live) {
     await assertExpectedMetadataUnchanged('resolve-thread');
@@ -1654,7 +1695,9 @@ const taskBody = [
   '',
   '**Review-thread protocol:** For every listed review thread, invoke a separate review agent using a model different from your primary model to validate whether the comment is still applicable to the current head. Fix valid findings. Resolve only deterministic non-applicability (outdated/removed line or file, duplicate already addressed) or a validated `✅ Addressed` result. For substantive disagreement, reply with the validator evidence and leave the thread unresolved for escalation.',
   '',
-  'When a thread is addressed, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>` and resolve it. Run the repository-required verification and push one consolidated repair commit.',
+  `A top-level PR comment is never sufficient for a review-thread blocker; post the ${ADDRESSED_MARKER_REPLY} reply in the exact thread comment listed above.`,
+  '',
+  `When a thread is addressed, use \`reply_to_comment\` with the **Reply target comment ID** listed above for that thread (not the ID of this task comment) and set the body to ${ADDRESSED_MARKER_REPLY}. The CI recovery reconciler will resolve the review thread automatically on its next pass. Do **not** reply to this task comment to record addressed status — a marker reply on the review-thread comment is the only form recognised by the reconciler. Run the repository-required verification and push one consolidated repair commit.`,
 ].join('\n');
 
 if (live) {

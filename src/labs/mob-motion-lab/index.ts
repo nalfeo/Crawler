@@ -1,6 +1,7 @@
 import type GUI from 'lil-gui';
 import type { Controller } from 'lil-gui';
 import { DEFAULT_MANIFEST_URL, resolvePublicAssetUrl } from '../../engine/generatedAssets/index.js';
+import { ftToPx } from '../../shared/units.js';
 import { registerLab } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 import {
@@ -174,8 +175,8 @@ function anchoredSpritePivot(
   const transformedAnchorX = anchorVectorX * scaleX * cos - anchorVectorY * scaleY * sin;
   const transformedAnchorY = anchorVectorX * scaleX * sin + anchorVectorY * scaleY * cos;
   return {
-    x: holdX + transform.offsetX * displayScale - transformedAnchorX,
-    y: holdY + transform.offsetY * displayScale - transformedAnchorY,
+    x: holdX + ftToPx(transform.offsetX) * displayScale - transformedAnchorX,
+    y: holdY + ftToPx(transform.offsetY) * displayScale - transformedAnchorY,
   };
 }
 
