@@ -35,7 +35,7 @@
       ]
     },
     "multi_model_review": {
-      "clean": false,
+      "clean": true,
       "adjudicator_model": "claude-opus-4.8",
       "rounds": [
         {
@@ -53,13 +53,16 @@
           "valid_count": 2,
           "resolved_count": 1,
           "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
-      ],
-      "escalated_to_human": {
-        "after_round": 2,
-        "reason": "Round 2 resolved one of its two valid concerns, but the remaining valid concern still left the stage non-clean. Under the 2-round cap, the required bounded-review outcome was human escalation rather than the previously recorded third confirmation round.",
-        "unresolved_concerns": 1
-      }
+      ]
     }
   }
 }

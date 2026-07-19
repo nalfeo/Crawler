@@ -132,7 +132,10 @@ function syncActiveWeaponGeneration(world: GameWorld, state: WeaponState): void 
     state.lastFireMs = world.elapsedMs;
     return;
   }
-  state.lastFireMs = world.elapsedMs - cooldownMs;
+  // Mirror setActiveWeapon's floating-point guard: with non-integer effective
+  // cooldowns (for example under attack-speed debuffs), `x - (x - y)` can be
+  // fractionally below `y` and delay readiness by one tick.
+  state.lastFireMs = world.elapsedMs - (cooldownMs + 1);
 }
 
 function normalizeVector(x: number, y: number): { x: number; y: number } {

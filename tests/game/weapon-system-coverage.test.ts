@@ -706,6 +706,27 @@ describe('getActiveWeaponReadiness paths', () => {
     expect(result!.ready).toBe(true);
   });
 
+  it('re-syncs generation as immediately ready with fractional effective cooldowns', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    getActiveWeaponReadiness(world); // init state, gen=0
+    applyStatusEffect(world, player, {
+      stat: 'attackSpeed',
+      op: 'multiply',
+      value: 0.75,
+      durationMs: 4000,
+      sourceType: 'ability',
+      sourceId: 'mob-ability:queen-mab-verdigris-glamour:1',
+      stackRule: { mode: 'replace' },
+    });
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol); // gen → 1
+    const result = getActiveWeaponReadiness(world); // re-sync with effective cooldown
+    expect(result).not.toBeNull();
+    expect(result!.cooldownMs).toBeCloseTo(pistol.cooldownMs / 0.75, 6);
+    expect(result!.ready).toBe(true);
+  });
+
   it('lengthens cooldown under attackSpeed debuff and returns to baseline after expiry', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
