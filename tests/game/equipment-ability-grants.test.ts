@@ -60,7 +60,12 @@ describe('generated equipment ability grants', () => {
     const activeSources = state.activeAbilityGrantSources.get('fireball');
     expect(activeSources).toBeDefined();
     expect(
-      activeSources!.some((s) => s.kind === 'equipment' && s.instanceId === instance.instanceId),
+      activeSources!.some(
+        (s) =>
+          s.kind === 'generated-equipment' &&
+          s.instanceId === instance.instanceId &&
+          s.effectOrdinal === 0,
+      ),
     ).toBe(true);
   });
 

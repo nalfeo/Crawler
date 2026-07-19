@@ -70,13 +70,17 @@ describe('generated equipment runtime integration', () => {
         expect(granted.equippedActiveAbilityIds).toContain(abilityId);
         const sources = granted.activeAbilityGrantSources.get(abilityId);
         expect(
-          sources?.some((s) => s.kind === 'equipment' && s.instanceId === generated.instanceId),
+          sources?.some(
+            (s) => s.kind === 'generated-equipment' && s.instanceId === generated.instanceId,
+          ),
         ).toBe(true);
       } else {
         expect(granted.passiveAbilityIds).toContain(abilityId);
         const sources = granted.passiveAbilityGrantSources.get(abilityId);
         expect(
-          sources?.some((s) => s.kind === 'equipment' && s.instanceId === generated.instanceId),
+          sources?.some(
+            (s) => s.kind === 'generated-equipment' && s.instanceId === generated.instanceId,
+          ),
         ).toBe(true);
       }
 

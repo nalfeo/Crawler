@@ -992,6 +992,34 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+// Detect threads whose last trusted comment carries a ✅ Addressed marker that
+// points to a SHA definitively not reachable from the current head (e.g. a local
+// commit created by a recovery agent before it was pushed, later abandoned or
+// squashed into a different commit). Only emit the stale-marker hint when the
+// compare API confirmed the commit does not exist (404) or is not an ancestor
+// (non-identical/non-ahead compare). Threads where lineage could not be checked
+// due to transient errors (rate limits, 5xx, network failures, 422 ambiguous SHA)
+// keep the generic review-thread blocker without the misleading stale-SHA hint.
+// This detection runs BEFORE the outdated-marker injection so stale-marker threads
+// are not accidentally auto-resolved by a new injected marker.
+const staleAddressedMarkerByThread = new Map();
+for (const thread of unresolvedThreads) {
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) continue;
+  const last = comments[comments.length - 1];
+  const markerSha = extractAddressedMarkerSha(last?.body);
+  if (!markerSha) continue;
+  // Only flag as stale when we have a definitive non-reachable result.
+  // If the lineage check was skipped or failed transiently the SHA will be
+  // absent from both sets; treat it as indeterminate and skip the hint.
+  if (headSha.startsWith(markerSha) || reachableMarkerShas.has(markerSha)) continue;
+  if (!definitivelyUnreachableMarkerShas.has(markerSha)) continue;
+  const authorLogin = String(last?.author?.login ?? '').toLowerCase();
+  const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
+  if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
+    staleAddressedMarkerByThread.set(thread.id, markerSha);
+  }
+}
 // Post reconciler-authored marker replies for outdated threads that have no trusted marker.
 // thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
 // no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
@@ -1001,9 +1029,15 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 //
 // This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
+//
+// Stale-marker threads are excluded: their last trusted marker pointed to an unreachable SHA,
+// so injecting a new outdated marker here would silently swallow the stale-marker hint.
+// The recovery agent will re-post the marker with the correct current-head SHA instead.
 for (const thread of unresolvedThreads.filter(
   (candidate) =>
-    candidate.isOutdated && !shouldResolveThread(candidate, headSha, reachableMarkerShas),
+    candidate.isOutdated &&
+    !shouldResolveThread(candidate, headSha, reachableMarkerShas) &&
+    !staleAddressedMarkerByThread.has(candidate.id),
 )) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
@@ -1053,35 +1087,6 @@ for (const thread of unresolvedThreads.filter((candidate) =>
   }
   thread.isResolved = true;
   process.stdout.write(`${live ? 'resolved' : 'would-resolve'} thread=${thread.id}\n`);
-}
-
-// Detect threads whose last trusted comment carries a ✅ Addressed marker that
-// points to a SHA definitively not reachable from the current head (e.g. a local
-// commit created by a recovery agent before it was pushed, later abandoned or
-// squashed into a different commit). Only emit the stale-marker hint when the
-// compare API confirmed the commit does not exist (404) or is not an ancestor
-// (non-identical/non-ahead compare). Threads where lineage could not be checked
-// due to transient errors (rate limits, 5xx, network failures, 422 ambiguous SHA)
-// keep the generic review-thread blocker without the misleading stale-SHA hint.
-const staleAddressedMarkerByThread = new Map();
-for (const thread of unresolvedThreads) {
-  // Skip threads the reconciler will auto-resolve in the loop above.
-  if (shouldResolveThread(thread, pr.head.sha, reachableMarkerShas)) continue;
-  const comments = thread.comments?.nodes ?? [];
-  if (comments.length === 0) continue;
-  const last = comments[comments.length - 1];
-  const markerSha = extractAddressedMarkerSha(last?.body);
-  if (!markerSha) continue;
-  // Only flag as stale when we have a definitive non-reachable result.
-  // If the lineage check was skipped or failed transiently the SHA will be
-  // absent from both sets; treat it as indeterminate and skip the hint.
-  if (headSha.startsWith(markerSha) || reachableMarkerShas.has(markerSha)) continue;
-  if (!definitivelyUnreachableMarkerShas.has(markerSha)) continue;
-  const authorLogin = String(last?.author?.login ?? '').toLowerCase();
-  const authorAssociation = String(last?.authorAssociation ?? '').toUpperCase();
-  if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
-    staleAddressedMarkerByThread.set(thread.id, markerSha);
-  }
 }
 
 const blockers = [];

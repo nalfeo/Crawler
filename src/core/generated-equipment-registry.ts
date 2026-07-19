@@ -594,10 +594,12 @@ function isActiveWeaponSnapshotCreateInput(
 ): value is ActiveWeaponSnapshotCreateInputV1 {
   if (typeof value !== 'object' || value === null) return false;
   const obj = value as Record<string, unknown>;
-  return (
-    typeof obj.weaponDefId === 'string' &&
-    obj.schemaVersion !== ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION
-  );
+  // The deferred form is identified by the presence of `weaponDefId` and the
+  // strict ABSENCE of `schemaVersion`.  Any versioned object (including a
+  // future v2 snapshot) must flow to snapshot validation and be rejected there;
+  // only the exact two-field deferred stub { weaponDefId, overrides? } is
+  // treated as a create-input here.
+  return typeof obj.weaponDefId === 'string' && !('schemaVersion' in obj);
 }
 
 function buildSnapshotFromCreateInput(

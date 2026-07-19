@@ -89,6 +89,8 @@ export {
   grantPassiveAbility,
   grantEquipmentActiveAbility,
   grantEquipmentPassiveAbility,
+  grantGeneratedEquipmentActiveAbility,
+  grantGeneratedEquipmentPassiveAbility,
   revokeEquipmentAbilityGrants,
   migrateAbilityStateToSourceTracking,
   queueAbilityTrigger,
