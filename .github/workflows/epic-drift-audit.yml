@@ -6,6 +6,7 @@ on:
     paths:
       - 'docs/knowledge/epics/floor-2-equipment/**'
       - 'scripts/agent/epics/**'
+      - 'tests/unit/agent/epic-status.test.ts'
       - '.github/actions/setup-node/action.yml'
       - 'package.json'
       - 'package-lock.json'
@@ -16,6 +17,7 @@ on:
     paths:
       - 'docs/knowledge/epics/floor-2-equipment/**'
       - 'scripts/agent/epics/**'
+      - 'tests/unit/agent/epic-status.test.ts'
       - '.github/actions/setup-node/action.yml'
       - 'package.json'
       - 'package-lock.json'

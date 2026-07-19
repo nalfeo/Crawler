@@ -127,8 +127,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-node
-        with:
-          install-playwright: 'true'
 
       # Persist ESLint's incremental cache across runs. The unique run_id suffix
       # forces a fresh (immutable) cache entry each run; restore-keys warm-start
@@ -146,8 +144,10 @@ jobs:
       # Run typecheck:src and lint in parallel, but FAIL the step if either fails.
       # typecheck:src covers src/ only (~340 files, strict). The full typecheck
       # (tests/ + scripts/, ~860 files) runs in the advisory job below so a
-      # breakage in test helpers or scripts surfaces without blocking the merge.
+      # breakage in test helpers or scripts surfaces without stalling the merge.
       - name: Types & Lint
+        id: types-lint
+        continue-on-error: true
         run: |
           npm run typecheck:src & tc=$!
           npm run lint:cache & lint=$!
@@ -161,9 +161,13 @@ jobs:
       # step; because each `run:` is a fresh shell, that `wait` reaped nothing
       # and the format:check exit code was silently discarded.
       - name: Format check
+        id: format-check
+        continue-on-error: true
         run: npm run format:check
 
       - name: Lab gate check
+        id: lab-gate
+        continue-on-error: true
         run: bash scripts/agent/lab-gate-check.sh
 
       # Deterministic architecture guard (ADR 0039): every *System exported from
@@ -173,12 +177,31 @@ jobs:
       # shipped inert because only its lab force-called it. Gated into merge-gate
       # via static-validation.
       - name: Orphaned-system wiring guard
+        id: wiring-guard
+        continue-on-error: true
         run: npm run check:wired-systems
 
       # copilot-guards + review-ledger validator tests (node:test). These run
       # nowhere else in CI; this is their merge-gate home.
       - name: Guard + review-ledger tests
+        id: guard-tests
+        continue-on-error: true
         run: npm run test:guards
+
+      # Aggregate all static validation results and fail once if any step failed.
+      # This ensures every check above runs and is individually attributed before
+      # the job fails, matching the parallel-attribution behavior of the former
+      # two-job layout (check-types-and-lint + check-format-and-labs).
+      - name: Check static validation results
+        if: always()
+        run: |
+          rc=0
+          [ "${{ steps.types-lint.outcome }}"   = "success" ] || { echo "❌ Types & Lint failed"; rc=1; }
+          [ "${{ steps.format-check.outcome }}" = "success" ] || { echo "❌ Format check failed"; rc=1; }
+          [ "${{ steps.lab-gate.outcome }}"     = "success" ] || { echo "❌ Lab gate check failed"; rc=1; }
+          [ "${{ steps.wiring-guard.outcome }}" = "success" ] || { echo "❌ Orphaned-system wiring guard failed"; rc=1; }
+          [ "${{ steps.guard-tests.outcome }}"  = "success" ] || { echo "❌ Guard + review-ledger tests failed"; rc=1; }
+          exit "$rc"
 
   # Job 3: Unit tests (critical path, must pass)
   # Runs WITHOUT coverage instrumentation so the gate stays fast (~27 s).
@@ -273,34 +296,10 @@ jobs:
     continue-on-error: true
     needs: [changes]
     if: needs.changes.outputs.docs_only != 'true'
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-node
-
-      - name: Unit tests with coverage
-        if: needs.changes.outputs.sprites_only != 'true'
-        continue-on-error: true
-        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json-summary --coverage.reporter=text
-
-      - name: Upload coverage summary
-        if: always() && needs.changes.outputs.sprites_only != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-summary
-          path: coverage/coverage-summary.json
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Coverage report comment
-        if: github.event_name == 'pull_request' && needs.changes.outputs.sprites_only != 'true'
-        continue-on-error: true
-        uses: davelosert/vitest-coverage-report-action@v2
-        with:
-          json-summary-path: coverage/coverage-summary.json
 
       - name: Dead code detection
         if: ${{ !cancelled() }}
@@ -327,6 +326,44 @@ jobs:
            (github.event_name == 'push' && github.ref == 'refs/heads/main'))
         continue-on-error: true
         run: npm run build
+
+  # Coverage advisory job: kept independent so the ~140-second v8 coverage suite
+  # does not block or serialize dead-code, security, typecheck, and build checks.
+  # All are advisory (continue-on-error: true); independence keeps scheduling
+  # flexible — this job can be re-run or skipped without affecting the others.
+  ci-coverage:
+    name: Advisory coverage
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Unit tests with coverage
+        continue-on-error: true
+        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json-summary --coverage.reporter=text
+
+      - name: Upload coverage summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage/coverage-summary.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Coverage report comment
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
 
   human-approval:
     name: Human approval

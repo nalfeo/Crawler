@@ -276,7 +276,28 @@ test('workflow runs trusted default-branch script with global serialization', ()
   assert.equal(workflow.permissions.contents, 'read');
   assert.equal(workflow.permissions['pull-requests'], undefined);
   assert.equal(workflow.jobs['enforce-pr-state']['timeout-minutes'], 15);
-  assert.equal(workflow.jobs['enforce-pr-state'].concurrency.group, 'pr-ready-reviewer-guard');
+  // For pull_request_target events the concurrency group is scoped to the specific
+  // PR so events for different PRs don't block one another. For sweeps (schedule/
+  // workflow_dispatch) it falls back to the global group. Both modes use the same
+  // cancel-in-progress expression (true for event runs, false for sweeps).
+  const concurrencyGroup = workflow.jobs['enforce-pr-state'].concurrency.group;
+  assert.ok(
+    concurrencyGroup.includes('pr-ready-reviewer-guard'),
+    `concurrency group should contain 'pr-ready-reviewer-guard', got: ${concurrencyGroup}`,
+  );
+  assert.ok(
+    concurrencyGroup.includes('pull_request_target'),
+    `concurrency group should branch on pull_request_target for per-PR scoping, got: ${concurrencyGroup}`,
+  );
+  assert.ok(
+    concurrencyGroup.includes('github.event.pull_request.number'),
+    `concurrency group should embed the PR number for event runs, got: ${concurrencyGroup}`,
+  );
+  const cancelInProgress = workflow.jobs['enforce-pr-state'].concurrency['cancel-in-progress'];
+  assert.ok(
+    String(cancelInProgress).includes('pull_request_target'),
+    `cancel-in-progress should be true for event runs, false for sweeps, got: ${cancelInProgress}`,
+  );
   assert.equal(workflow.jobs['enforce-pr-state'].steps[0].uses, 'actions/checkout@v4');
   assert.equal(
     workflow.jobs['enforce-pr-state'].steps[0].with.ref,
