@@ -86,9 +86,11 @@ judge-budget: spent $0.0000 of <no cap>, 0 call(s) this run, 0 skipped
 judge-cache: 0 hit, 0 miss, 0 bypassed
 ```
 
-The CLI exited 0 but generated nothing — `AZURE_OPENAI_ENDPOINT` is unset so the
-image provider factory returns null and the run is skipped. This is expected behavior
-in CI; it is **not** an error in the brief.
+The CLI threw a fatal error — `AZURE_OPENAI_ENDPOINT` is unset so
+`createImageProvider()` calls `required(env, 'AZURE_OPENAI_ENDPOINT')` which throws
+`Missing required env var 'AZURE_OPENAI_ENDPOINT'` before any generation begins. The
+zero-output log above is from a prior partial capture; the actual run fails hard with
+that error. This is expected in CI and is **not** an error in the brief.
 
 ### 3. PR #1642 updated
 
@@ -113,8 +115,16 @@ This triggers the `asset-request.yml` workflow (GitHub Actions), which:
 
 The workflow URL: https://github.com/nalfeo/Crawler/actions/workflows/asset-request.yml
 
-Alternative: `gh workflow run asset-request.yml` as yourself (maintainer) also works
-because `workflow_dispatch` bypasses the `author_association` gate entirely.
+**Note:** `gh workflow run asset-request.yml` alone (manual `workflow_dispatch`) is NOT
+a substitute for applying the label. On `workflow_dispatch` the env var
+`SPRITES_INGESTER_TARGET_ISSUE` is empty, and the ingester sweeps only open issues
+carrying the `asset-request` label — so #1362 (currently unlabeled) will not be
+enqueued by a bare dispatch. Always restore the label first.
+
+**Note:** The workflow generates and judges variants only. `checkin.ts` and `asset-pr.ts`
+remain hard-blocked in CI (per Constitutional §3). The required approve → check-in →
+batch-PR steps must be run manually by an agent or maintainer outside CI after the
+workflow completes.
 
 ### After generation completes
 
@@ -134,9 +144,10 @@ The next agent session (or maintainer) should:
    if the judge was enabled).
 
 2. **Approve** — `npm run sprites:approve -- <runDir> --variant <N>`  
-   This writes the approved PNG to `public/assets/sprites/` and adds a catalog entry.
+   This writes the approved PNG to `public/assets/generated/` and adds a catalog entry.
 
-3. **Check in** — `npm run sprites:checkin` (must run outside CI; set `CI=` before calling)  
+3. **Check in** — `npm run sprites:checkin` (must run outside CI; ensure `CI` is not set:
+   `unset CI && npm run sprites:checkin`)  
    Creates an `asset-checkin` issue with the art branch.
 
 4. **Batch PR** — `npm run sprites:asset-pr` (or use the `asset-pr` skill)  
@@ -158,17 +169,20 @@ The next agent session (or maintainer) should:
 
 The `sprite-judge` skill applies these checks. The approved variant must:
 
-| Check              | Criteria                                                            |
-| ------------------ | ------------------------------------------------------------------- |
-| `combinedPassed`   | All deterministic sensors green                                     |
-| Orientation sensor | `diagonal` — ring plate at ~45°, grip at lower-left                 |
-| Diagonal tolerance | ≤8° from target angle                                               |
-| Anchor opaque      | Pixel at `(20,48)` must be fully opaque (alpha=255)                 |
-| Silhouette         | Four finger holes clearly visible as negative-space cutouts         |
-| Readability        | Subject reads as brass knuckles at 64×64, not a ring/coin/shield    |
-| Style match        | Worn metal texture, bold color separation, grungy dungeon character |
-| No text            | Zero digits, labels, or watermarks                                  |
-| Single subject     | Only brass knuckles — no background props, no secondary items       |
+| Check              | Criteria                                                                        |
+| ------------------ | ------------------------------------------------------------------------------- |
+| `combinedPassed`   | All deterministic sensors green                                                 |
+| Orientation sensor | `diagonal` — ring plate at ~45°, grip at lower-left                             |
+| Diagonal tolerance | ≤8° from target angle                                                           |
+| Anchor sensor      | `anchor-derivable` (weapons inherit `anchor.derive: true`) — grip pixel found   |
+|                    | in bottom band, within `centerToleranceX: 3` px of frame center                |
+| Interior holes     | `interiorHoles.maxPixels: 400` — the four finger holes are enclosed transparent |
+|                    | pixels; the brief must set this allowance or `combinedPassed` will always fail  |
+| Silhouette         | Four finger holes clearly visible as negative-space cutouts                     |
+| Readability        | Subject reads as brass knuckles at 64×64, not a ring/coin/shield                |
+| Style match        | Worn metal texture, bold color separation, grungy dungeon character             |
+| No text            | Zero digits, labels, or watermarks                                              |
+| Single subject     | Only brass knuckles — no background props, no secondary items                   |
 
 Never loosen a sensor or lower the judge bar to force a pass. If no variant passes,
 regenerate with a revised prompt/brief.

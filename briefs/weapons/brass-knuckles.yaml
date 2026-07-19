@@ -19,6 +19,11 @@ sensors:
   weapon:
     orientation: diagonal
     diagonalToleranceDeg: 8
+  interiorHoles:
+    # The four visible finger holes are enclosed transparent pixels.
+    # Without this override the interior-transparency-holes sensor rejects them
+    # (default maxPixels: 0). 400 px allows all four holes at 64x64 diagonal scale.
+    maxPixels: 400
 variations:
   - finger plate heavily dented and scratched, oxidized green-black in recesses
   - reinforced with riveted metal band across the knuckle bridge

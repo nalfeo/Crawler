@@ -79,17 +79,34 @@ gh issue edit 1362 --add-label asset-request --repo nalfeo/Crawler
 This triggers the `asset-request.yml` workflow, which will:
 
 1. Run `sprites:ingest-once` to enqueue the issue into the Azure queue
-2. Run `sprites:worker` to generate, judge, and approve the sprite
-3. Create an `asset-checkin` issue + `assets/brass-knuckles` branch
-4. The `asset-pr` skill batches it into a PR closing #1362
+2. Run `sprites:worker` to generate and score the sprite variants (4×4 sheet)
+3. Post a completion comment on #1362 with the run ID and summary blob URL
 
-### Option B — Manual workflow dispatch
+**Important:** The workflow stops there. `checkin.ts` and `asset-pr.ts` remain
+hard-blocked in CI (Constitutional §3). After the workflow completes, a human or
+agent session outside CI must run the manual steps:
+- `npm run sprites:approve -- <runDir> --variant <N>` — approve the best variant
+- `unset CI && npm run sprites:checkin` — create the asset-checkin issue + branch
+- `npm run sprites:asset-pr` (or `asset-pr` skill) — batch into a PR closing #1362
+
+**Also important:** The workflow synthesizes a brief from the issue text via
+`briefSelectorProvider` — it does NOT automatically use the existing
+`briefs/weapons/brass-knuckles.yaml`. The anchor, sensor settings, and
+`interiorHoles.maxPixels` documented here are from the hand-authored brief; verify
+that the workflow-generated brief matches (or prefer running `sprites:run` directly
+with `--brief briefs/weapons/brass-knuckles.yaml` in an Azure-connected environment).
+
+### Option B — Manual workflow dispatch (label must be applied first)
 
 ```
+gh issue edit 1362 --add-label asset-request --repo nalfeo/Crawler
 gh workflow run asset-request.yml --repo nalfeo/Crawler
 ```
 
-(Also triggers ingest → worker → checkin → PR pipeline)
+Manual `workflow_dispatch` alone is **not** sufficient — `SPRITES_INGESTER_TARGET_ISSUE`
+is empty on dispatch, and the ingester sweeps only open issues carrying the
+`asset-request` label. Without the label on #1362, the dispatch enqueues nothing for
+this issue. Always restore the label before or alongside dispatching.
 
 ## Brief Design (already on main)
 
@@ -110,10 +127,11 @@ gh workflow run asset-request.yml --repo nalfeo/Crawler
 
 ## Runtime Resolution
 
-Once sprite is approved and in the manifest, `resolveItemSprite('brass-knuckles',
-registry)` in `item-sprites.ts` will find it via `matchConcept(briefId,
-'brass-knuckles')` — no code changes required. Runtime key
-`equipment/weapon/brass-knuckles` maps directly to the brief ID by convention.
+Once sprite is approved and in the manifest, `resolveItemSprite(registry,
+'brass-knuckles', seed)` in `item-sprites.ts` will find it via
+`matchConcept(entry.briefId, 'brass-knuckles')` — no code changes required.
+The runtime item concept is the bare `brass-knuckles` slug (not
+`equipment/weapon/brass-knuckles`, which is art-tracking metadata only).
 
 ## Before / After
 
