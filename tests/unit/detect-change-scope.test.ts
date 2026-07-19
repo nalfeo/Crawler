@@ -162,16 +162,21 @@ const cases: Case[] = [
     files: ['README.md'],
     expected: F(false, true, true, false, false, false, false),
   },
-  // Gameplay-safe surfaces the headless runner never imports.
+  // gameplay_safe=true surfaces (engine/labs stay in the old gameplay_safe allowlist),
+  // but sim_touched and coverage_touched follow stricter rules:
+  //   - engine: headless tests import engine modules → sim_touched=true; unit tests
+  //     import engine modules and vitest covers most of src/engine → coverage_touched=true.
+  //   - labs: headless tests import lab scenario presets → sim_touched=true; vitest
+  //     explicitly excludes src/labs/** from coverage → coverage_touched=false.
   {
     name: 'engine-only (rendering)',
     files: ['src/engine/render/floorRenderer.ts'],
-    expected: F(false, false, true, false, false, false, false),
+    expected: F(false, false, true, false, false, true, true),
   },
   {
     name: 'labs-only',
     files: ['src/labs/combatLab.ts'],
-    expected: F(false, false, true, false, false, false, false),
+    expected: F(false, false, true, false, false, true, false),
   },
   {
     name: 'e2e tests',
@@ -181,7 +186,7 @@ const cases: Case[] = [
   {
     name: 'docs + engine mixed',
     files: ['docs/x.md', 'src/engine/foo.ts'],
-    expected: F(false, false, true, false, false, false, false),
+    expected: F(false, false, true, false, false, true, true),
   },
   // Anything that CAN change the sim must force the gate to run.
   {
@@ -233,7 +238,7 @@ const cases: Case[] = [
   {
     name: 'mixed workflow + engine (non-gameplay)',
     files: ['.github/workflows/ci.yml', 'src/engine/render/foo.ts'],
-    expected: F(false, false, true, false, false, false, false),
+    expected: F(false, false, true, false, false, true, true),
   },
   {
     name: 'workflow + game code (gameplay-unsafe)',
@@ -270,7 +275,7 @@ const cases: Case[] = [
   {
     name: 'sprites pipeline + engine code → sprites_only=false, gameplay_safe=true, sprites_touched=true',
     files: ['scripts/sprites/run-full.ts', 'src/engine/renderer.ts'],
-    expected: F(false, false, true, false, true, false, false),
+    expected: F(false, false, true, false, true, true, true),
   },
   // Root pipeline integration tests: in sprites surface, so sprites_only=true, sprites_touched=true.
   {

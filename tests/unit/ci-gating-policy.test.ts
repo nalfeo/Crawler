@@ -114,9 +114,11 @@ describe('ci.yml headless and coverage gating policy', () => {
 
   // --- test-unit-coverage gating ---
 
-  it('test-unit-coverage skips on PR when coverage_touched is not true', () => {
+  it('test-unit-coverage skips on PR only when coverage_touched is explicitly false (fail-closed)', () => {
     const condition = getJobIf(loadCiWorkflow(), 'test-unit-coverage');
-    expect(condition).toContain("coverage_touched == 'true'");
+    // Fail-closed: only an explicit 'false' skips coverage — a missing/blank value runs the job.
+    // Pattern: (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched != 'false')
+    expect(condition).toContain("coverage_touched != 'false'");
     expect(condition).toContain("github.event_name != 'pull_request'");
   });
 

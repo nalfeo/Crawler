@@ -297,8 +297,10 @@ while IFS= read -r file; do
   [ -z "$file" ] && continue
   case "$file" in
     # Known surfaces that provably cannot affect the ECS sim.
-    src/engine/*) ;;
-    src/labs/*) ;;
+    # NOTE: src/engine/* and src/labs/* are NOT listed here — headless tests
+    # directly import engine modules (e.g. src/engine/lighting/light-field) and
+    # lab scenario presets (e.g. src/labs/ai-runner-lab/scenario-presets), so
+    # changes to those paths can alter headless test outcomes.
     tests/e2e/*) ;;
     tests/unit/*) ;;
     tests/integration/*) ;;
@@ -319,7 +321,8 @@ while IFS= read -r file; do
     *.md) ;;
     *.txt) ;;
     # Everything else (src/core, src/game, src/shared, src/bootstrap,
-    # tests/headless, unknown paths) → simulation is potentially touched.
+    # src/engine, src/labs, tests/headless, unknown paths) → simulation is
+    # potentially touched.
     *)
       sim_touched=true
       break
@@ -336,7 +339,10 @@ while IFS= read -r file; do
   [ -z "$file" ] && continue
   case "$file" in
     # Known surfaces that provably cannot affect unit test coverage.
-    src/engine/*) ;;
+    # NOTE: src/engine/* is NOT listed here — vitest includes src/**/*.ts for
+    # coverage (only specific engine files are excluded), and many unit tests
+    # directly import engine modules, so engine changes can alter coverage numbers.
+    # src/labs/* IS safe here: vitest explicitly excludes src/labs/** from coverage.
     src/labs/*) ;;
     tests/e2e/*) ;;
     tests/headless/*) ;;
@@ -359,7 +365,8 @@ while IFS= read -r file; do
     *.txt) ;;
     tests/unit/sprites/*) ;;
     # Everything else (src/core, src/game, src/shared, src/bootstrap,
-    # tests/unit non-sprites, unknown paths) → unit coverage is potentially touched.
+    # src/engine, tests/unit non-sprites, unknown paths) → unit coverage is
+    # potentially touched.
     *)
       coverage_touched=true
       break

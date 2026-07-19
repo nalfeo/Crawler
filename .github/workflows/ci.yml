@@ -223,7 +223,8 @@ jobs:
   # Posts a PR comment but is NOT in the merge-gate — a coverage regression
   # surfaces as a visible comment without blocking the branch.
   # Scoped: skipped for sprites_only/docs_only, and on PRs where coverage_touched=false
-  # (engine/labs/e2e/docs/scripts-only diffs that cannot change unit coverage numbers).
+  # (labs/e2e/docs/scripts-only diffs that cannot change unit coverage numbers).
+  # Fail-closed: a missing/blank coverage_touched runs the job (only explicit 'false' skips).
   # main-push and schedule always run it as a backstop.
   test-unit-coverage:
     name: Unit Tests (coverage)
@@ -232,7 +233,7 @@ jobs:
     if: >-
       needs.changes.outputs.docs_only != 'true' &&
       needs.changes.outputs.sprites_only != 'true' &&
-      (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched == 'true')
+      (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched != 'false')
     continue-on-error: true
     permissions:
       contents: read
