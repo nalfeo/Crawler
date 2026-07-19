@@ -47,14 +47,6 @@ function isActiveWeaponSnapshot(def: WeaponDef): def is ActiveWeaponSnapshotV1 {
   );
 }
 
-function activeWeaponIdentity(def: WeaponDef | undefined): string | null {
-  if (def === undefined) return null;
-  if (!isActiveWeaponSnapshot(def)) {
-    return `static:${def.id}`;
-  }
-  return `snapshot:${def.generatedEquipmentInstanceId}:${def.fingerprint}`;
-}
-
 function resolveAuthoritativeSnapshot(
   world: GameWorld,
   snapshot: ActiveWeaponSnapshotV1,
@@ -89,55 +81,39 @@ function getOrCreateState(world: GameWorld): ActiveWeaponState {
 function setActiveWeaponState(
   world: GameWorld,
   def: WeaponDef,
-  _snapshot: ActiveWeaponSnapshotV1 | undefined,
-  _switchKey: string,
+  snapshot: ActiveWeaponSnapshotV1 | undefined,
+  switchKey: string,
 ): boolean {
   const state = getOrCreateState(world);
-  const nextDef = isActiveWeaponSnapshot(def) ? resolveAuthoritativeSnapshot(world, def) : def;
-  if (activeWeaponIdentity(state.def) === activeWeaponIdentity(nextDef)) {
+  const nextSnapshot =
+    snapshot ??
+    (isActiveWeaponSnapshot(def) ? resolveAuthoritativeSnapshot(world, def) : undefined);
+  const nextDef = nextSnapshot ?? def;
+  if (state.switchKey === switchKey) {
     state.def = nextDef;
+    state.snapshot = nextSnapshot;
+    state.switchKey = switchKey;
     return false;
   }
   state.def = nextDef;
+  state.snapshot = nextSnapshot;
+  state.switchKey = switchKey;
   state.generation += 1;
   return true;
 }
 
 /** Set a static active weapon. Returns whether this was a real switch. */
 export function setActiveWeaponDef(world: GameWorld, def: WeaponDef): boolean {
+  if (isActiveWeaponSnapshot(def)) {
+    const snapshot = resolveAuthoritativeSnapshot(world, def);
+    return setActiveWeaponState(
+      world,
+      snapshot,
+      snapshot,
+      `generated:${snapshot.generatedEquipmentInstanceId}:${snapshot.fingerprint}`,
+    );
+  }
   return setActiveWeaponState(world, def, undefined, `static:${def.id}`);
-}
-
-function weaponDefFromSnapshot(snapshot: ActiveWeaponSnapshotV1): WeaponDef {
-  return Object.freeze({
-    id: snapshot.sourceWeaponDefId,
-    name: snapshot.name,
-    weaponType: snapshot.weaponType,
-    baseDamage: snapshot.baseDamage,
-    cooldownMs: snapshot.cooldownMs,
-    range: snapshot.range,
-    projectileSpeed: snapshot.projectileSpeed,
-    aoeRadius: snapshot.aoeRadius,
-    durationMs: snapshot.durationMs,
-    beamTickMs: snapshot.beamTickMs,
-    beamLength: snapshot.beamLength,
-    trapArmMs: snapshot.trapArmMs,
-    trapTriggerRadius: snapshot.trapTriggerRadius,
-    trapExplosionRadius: snapshot.trapExplosionRadius,
-    returnSpeed: snapshot.returnSpeed,
-    maxRange: snapshot.maxRange,
-    swingArcDeg: snapshot.swingArcDeg,
-    meleeStyle: snapshot.meleeStyle,
-    headRadius: snapshot.headRadius,
-    shaftDamageMult: snapshot.shaftDamageMult,
-    knockback: snapshot.knockback,
-    pierce: snapshot.pierce,
-    bounceCount: snapshot.bounceCount,
-    goreFactor: snapshot.goreFactor,
-    baseAccuracy: snapshot.baseAccuracy,
-    weaponClassSkillId: snapshot.weaponClassSkillId,
-    weaponTypeSkillId: snapshot.weaponTypeSkillId,
-  });
 }
 
 /**
@@ -162,7 +138,7 @@ export function setActiveWeaponFromGeneratedInstance(
   });
   return setActiveWeaponState(
     world,
-    weaponDefFromSnapshot(snapshot),
+    snapshot,
     snapshot,
     `generated:${snapshot.generatedEquipmentInstanceId}:${snapshot.fingerprint}`,
   );
@@ -184,8 +160,7 @@ export function getActiveWeaponDef(world: GameWorld): WeaponDef | undefined {
 }
 
 export function getActiveWeaponSnapshot(world: GameWorld): ActiveWeaponSnapshotV1 | undefined {
-  const def = stateMap.get(world)?.def;
-  return def !== undefined && isActiveWeaponSnapshot(def) ? def : undefined;
+  return stateMap.get(world)?.snapshot;
 }
 
 /**

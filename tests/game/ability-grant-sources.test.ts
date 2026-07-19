@@ -18,10 +18,16 @@ import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { statSystem } from '../../src/core/systems/statSystem.js';
 import { makeWalledMap } from '../helpers/map-fixtures.js';
 import {
+  equipmentAbilityGrantSourceId,
+  learnedAbilityGrantSourceId,
+} from '../../src/shared/abilities.js';
+import { generatedEquipmentInstanceKey } from '../../src/core/generated-equipment-registry.js';
+import {
   abilitySystem,
   createAbilityState,
   equipActiveAbility,
   getOrCreateAbilityState,
+  grantAbilitySources,
   grantEquipmentActiveAbility,
   grantEquipmentPassiveAbility,
   grantPassiveAbility,
@@ -428,6 +434,46 @@ describe('playerCarryover snapshot round-trip', () => {
     expect(state.activeAbilityGrantSources.has('battle-focus')).toBe(false);
   });
 
+  it('preserves source-owned ownership maps while stripping equipment sources', () => {
+    const { world: source, player: sourcePlayer } = setupPlayer();
+    const sourceId = generatedEquipmentInstanceKey('carryover-owned-sources', 0);
+    grantAbilitySources(
+      source,
+      sourcePlayer,
+      [
+        {
+          kind: 'active',
+          abilityId: 'fireball',
+          sourceId: learnedAbilityGrantSourceId('fireball'),
+        },
+        {
+          kind: 'active',
+          abilityId: 'fireball',
+          sourceId: equipmentAbilityGrantSourceId(sourceId, 0),
+        },
+        {
+          kind: 'passive',
+          abilityId: 'veteran-instinct',
+          sourceId: equipmentAbilityGrantSourceId(sourceId, 1),
+        },
+      ],
+      { configureActives: 'fill-open-slots' },
+    );
+
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+
+    const { world: dest, player: destPlayer } = setupPlayer();
+    restorePlayerCarryover(dest, destPlayer, snapshot);
+
+    const state = dest.abilityStatesByEntity.get(destPlayer)!;
+    expect(state.equippedActiveAbilityIds).toContain('fireball');
+    expect(state.passiveAbilityIds).not.toContain('veteran-instinct');
+    expect(state.grantOwnership?.activeSourcesByAbilityId.get('fireball')).toEqual(
+      new Set([learnedAbilityGrantSourceId('fireball')]),
+    );
+    expect(state.grantOwnership?.passiveSourcesByAbilityId.has('veteran-instinct')).toBe(false);
+  });
+
   it('restores from old snapshot without grant-source fields using migration', () => {
     const { world: source, player: sourcePlayer } = setupPlayer();
     memorizeSpell(source, sourcePlayer, 'fireball');
@@ -442,6 +488,7 @@ describe('playerCarryover snapshot round-trip', () => {
             ...snapshot.abilityState,
             activeAbilityGrantSources: undefined,
             passiveAbilityGrantSources: undefined,
+            grantOwnership: undefined,
           }
         : undefined,
     };
