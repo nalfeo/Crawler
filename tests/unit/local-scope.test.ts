@@ -183,28 +183,31 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     expect(hasBash).toBe(true);
   });
 
-  it.skipIf(!hasBash)('CRIT-1: no merge base ⇒ legacy flags false, new positive flags true (fail-closed)', () => {
-    const repo = makeRepo();
-    repo.write('README.md', '# seed\n');
-    repo.git('add', '.');
-    repo.git('commit', '-q', '-m', 'seed');
-    // Rename the only branch away from main so neither origin/main nor main resolves.
-    repo.git('branch', '-M', 'feature');
-    // A docs-only edit would look "safe" if classified from the working tree alone —
-    // but with no base we must refuse and force the full suite.
-    repo.write('docs/notes.md', 'notes\n');
-    // Unknown scope: legacy flags stay false (no false "safe" skip granted);
-    // the five new positive flags are true (fail-closed — cannot prove nothing changed).
-    expect(repo.scope()).toEqual(
-      F(false, false, false, {
-        visual_touched: true,
-        sim_touched: true,
-        coverage_touched: true,
-        sprite_pipeline_touched: true,
-        dependencies_touched: true,
-      }),
-    );
-  });
+  it.skipIf(!hasBash)(
+    'CRIT-1: no merge base ⇒ legacy flags false, new positive flags true (fail-closed)',
+    () => {
+      const repo = makeRepo();
+      repo.write('README.md', '# seed\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'seed');
+      // Rename the only branch away from main so neither origin/main nor main resolves.
+      repo.git('branch', '-M', 'feature');
+      // A docs-only edit would look "safe" if classified from the working tree alone —
+      // but with no base we must refuse and force the full suite.
+      repo.write('docs/notes.md', 'notes\n');
+      // Unknown scope: legacy flags stay false (no false "safe" skip granted);
+      // the five new positive flags are true (fail-closed — cannot prove nothing changed).
+      expect(repo.scope()).toEqual(
+        F(false, false, false, {
+          visual_touched: true,
+          sim_touched: true,
+          coverage_touched: true,
+          sprite_pipeline_touched: true,
+          dependencies_touched: true,
+        }),
+      );
+    },
+  );
 
   it.skipIf(!hasBash)('clean tree with a resolved base fails safe to all-false', () => {
     const repo = makeRepo();
