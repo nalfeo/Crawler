@@ -3874,8 +3874,22 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
     outdatedResolveCall,
     'expected the outdated review thread to be resolved via GraphQL mutation',
   );
-  assert.match(stdout, /posted outdated-marker thread=thread-review-target-outdated/);
-  assert.match(stdout, /resolved thread=thread-review-target-outdated/);
+  const postedIndex = stdout.indexOf('posted outdated-marker thread=thread-review-target-outdated');
+  const resolvedIndex = stdout.indexOf('resolved thread=thread-review-target-outdated');
+  assert.notEqual(
+    postedIndex,
+    -1,
+    'stdout should record the outdated-marker post for the expected thread',
+  );
+  assert.notEqual(
+    resolvedIndex,
+    -1,
+    'stdout should record the review-thread resolution for the expected outdated thread',
+  );
+  assert.ok(
+    postedIndex < resolvedIndex,
+    'stdout should record the outdated-marker post before the thread resolution',
+  );
   assert.ok(
     !taskCommentCall.body.body.includes(`Reply target comment ID: \`${outdatedReviewCommentId}\``),
     'task comment should omit the outdated review-thread reply target once the reconciler resolved it',

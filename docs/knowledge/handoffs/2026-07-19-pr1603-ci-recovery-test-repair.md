@@ -35,4 +35,4 @@ Estimated 1 apple, actual 1 apple.
 
 ## Unresolved issues
 
-- Review thread `PRRT_kwDOSvo2Ms6R-rQq` remains substantively applicable. Issue #1595 still has only the intake comment requiring a plan comment before any code was written, so the missed timing requirement cannot be repaired retroactively on this branch and still needs explicit maintainer waiver/direction or a fresh compliant re-land.
+- Review thread `PRRT_kwDOSvo2Ms6R-rQq` remains substantively applicable, which is why it is still tracked in this test-repair handoff: even after the CI regression was fixed, PR #1603 cannot be fully recovered until the maintainer decides how to handle the unmet issue-#1595 pre-code plan-comment requirement.
