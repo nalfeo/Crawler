@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ci-approve-equipment-weapon.js
+ * ci-approve-equipment-weapon.cjs
  *
  * CI-side approval script for Floor 2 equipment weapon sprites generated via
  * the local sprites:run pipeline.  Picks the best passing variant from a
@@ -9,7 +9,7 @@
  * key format (matching the rest of the floor-2 equipment manifest entries).
  *
  * Usage (called by the generate-war-fan.yml workflow):
- *   node scripts/sprites/ci-approve-equipment-weapon.js \
+ *   node scripts/sprites/ci-approve-equipment-weapon.cjs \
  *     --brief-name war-fan \
  *     --stable-id weapon.war-fan \
  *     --family thrown \
@@ -40,7 +40,7 @@ const productionWave = getArg('production-wave');
 
 if (!briefName || !stableId) {
   console.error(
-    'Usage: ci-approve-equipment-weapon.js --brief-name <name> --stable-id <stableId> [--family <family>] [--production-wave <waveId>]',
+    'Usage: ci-approve-equipment-weapon.cjs --brief-name <name> --stable-id <stableId> [--family <family>] [--production-wave <waveId>]',
   );
   process.exit(1);
 }
@@ -62,7 +62,13 @@ const runsBase = path.join(repoRoot, 'generated', 'runs', briefName);
 // Locate the latest run directory
 let runId;
 try {
-  const dirs = fs.readdirSync(runsBase).sort();
+  const allEntries = fs.readdirSync(runsBase);
+  const dirs = allEntries
+    .filter(entry => fs.statSync(path.join(runsBase, entry)).isDirectory())
+    .sort();
+  if (dirs.length === 0) {
+    throw new Error('No run directories found under ' + runsBase);
+  }
   runId = dirs[dirs.length - 1];
 } catch (err) {
   console.error('No runs found under', runsBase, ':', err.message);
@@ -130,8 +136,8 @@ if (fs.existsSync(anchorSidecarPath)) {
   try {
     const a = JSON.parse(fs.readFileSync(anchorSidecarPath, 'utf8'));
     if (a.hold) {
-      anchor = a.hold;
-      anchors = { hold: a.hold, centerOfGravity: a.centerOfGravity || null };
+      anchor = { ...a.hold, source: 'sidecar' };
+      anchors = { hold: anchor, centerOfGravity: a.centerOfGravity || null };
     }
   } catch (e) {
     // use brief default

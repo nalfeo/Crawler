@@ -81,6 +81,7 @@ jobs:
         if: steps.check.outputs.already_done == 'false'
         id: approve
         run: |
+          set -o pipefail
           node scripts/sprites/ci-approve-equipment-weapon.cjs \
             --brief-name war-fan \
             --stable-id weapon.war-fan \
@@ -115,6 +116,7 @@ jobs:
           git push origin copilot/war-fan-icon-creation
 
       - name: Update PR and issue
+        if: steps.check.outputs.already_done == 'false'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
