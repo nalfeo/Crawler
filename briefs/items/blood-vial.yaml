@@ -1,0 +1,19 @@
+type: item
+name: blood-vial
+description: |
+  A small glass vial filled with deep crimson blood — a Floor 2 equipment
+  accessory icon. Centered, silhouette-readable on a transparent background.
+  The vial has a defined glass-body with a narrow neck and rounded base, sealed
+  with a cork or stopper at the top. The liquid fill is a rich, deep red —
+  almost burgundy — with a subtle lighter-red highlight near the glass wall to
+  suggest translucent glass. The glass body itself shows pale off-white or very
+  light blue-grey highlights on one side to indicate the curved glass surface.
+  There is a faint dark outline on the glass edges. The cork is a warm tan or
+  light brown, slightly textured. The vial reads clearly as blood — no magic
+  glow, no swirling tendrils, no bubbles. It should look clinical and unsettling
+  rather than magical. Silhouette-first: narrow neck, round body, small stopper
+  on top. No labels, no liquid splashing, no dripping.
+sensors:
+  edge:
+    allowMainTouch: true
+minVariations: 5

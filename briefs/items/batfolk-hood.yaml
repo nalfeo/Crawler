@@ -1,0 +1,25 @@
+type: item
+name: batfolk-hood
+floor: 2
+description: |
+  A batfolk-crafted hood worn by Floor 2 denizens. Dark membrane-like fabric
+  stretched taut over a rigid inner frame, with two short pointed ear-protrusions
+  rising from the crown — recognizably batfolk-shaped in silhouette. The face
+  opening is a clean oval cut-out. Material reads as cured hide or thin leather,
+  reinforced at the ear-tips with small tarnished metal rivets. Deep charcoal-grey
+  or midnight-purple as the main color, with dusky olive/black shadow inside the
+  ear cones. A thin bright-metal stitch-line traces the seam from each ear down to
+  the brow. The overall silhouette reads unmistakably as "bat-eared helmet hood"
+  even at 16px. Equipment-icon orientation: item resting flat, viewed slightly
+  from above, centered. Single subject on transparent background.
+sensors:
+  edge:
+    allowMainTouch: false
+variations:
+  - hood with deep charcoal membrane, subtle purple iridescence on the crown, tarnished copper rivets at ear-tips
+  - hood with midnight-blue hide, bone-white stitch seam, small iron stud accents along the brow band
+  - hood with smoke-grey membrane fabric, muted violet sheen, twisted wire trim around the ear-openings
+minVariations: 3
+judge:
+  enabled: true
+  maxVariants: 8

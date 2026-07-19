@@ -184,6 +184,94 @@ manifest rewrite. Changes inside the contract require the plan-change protocol.
     "real_apis_only": true,
     "existing_route_planner_only": true,
     "settlement_maintenance_required": true
+  },
+  "graph": {
+    "dependencies": {
+      "slice:A0": [],
+      "slice:A1": ["slice:A0"],
+      "slice:B1": ["slice:A1"],
+      "slice:B2": ["slice:B1"],
+      "slice:B3": ["slice:B2"],
+      "slice:C1": ["slice:A1"],
+      "slice:C2": ["slice:C1", "slice:B3"],
+      "slice:D1": ["slice:A1"],
+      "packet:D2-A": ["slice:D1", "slice:B1"],
+      "packet:D2-B": ["slice:D1", "slice:C1"],
+      "slice:D2": ["packet:D2-A", "packet:D2-B"],
+      "packet:D3-A": ["slice:D2", "slice:B2"],
+      "packet:D3-B": ["slice:D2", "slice:C1"],
+      "slice:D3": ["packet:D3-A", "packet:D3-B"],
+      "slice:E1": ["slice:A1"],
+      "slice:E2": ["slice:E1", "slice:C1"],
+      "packet:E3-A": ["slice:E2", "slice:B2"],
+      "packet:E3-B": ["slice:E2", "slice:D2"],
+      "packet:E3-C": ["slice:E2", "slice:C1"],
+      "slice:E3": ["packet:E3-A", "packet:E3-B", "packet:E3-C"],
+      "slice:F1": ["slice:B1", "slice:C1"],
+      "slice:F2": ["slice:F1", "slice:B2"],
+      "slice:F3": ["slice:F2", "slice:E2"],
+      "slice:F4": ["slice:F3", "slice:C2"],
+      "slice:G1": ["slice:A1"],
+      "packet:G2-A": ["slice:G1", "slice:C1"],
+      "packet:G2-B+": ["slice:G1", "slice:B2"],
+      "slice:G2": ["packet:G2-A", "packet:G2-B+"],
+      "packet:G3": ["slice:G2", "slice:D3"],
+      "slice:G3": ["packet:G3"],
+      "slice:H1": ["slice:C1", "slice:F1"],
+      "slice:H2": ["slice:H1", "slice:G2"],
+      "slice:H3": ["slice:H2", "slice:G3"],
+      "slice:I1": [
+        "slice:B3",
+        "slice:C2",
+        "slice:D3",
+        "slice:E3",
+        "slice:F4",
+        "slice:G3",
+        "slice:H3"
+      ],
+      "slice:I2": ["slice:I1"],
+      "slice:I3": ["slice:I2"],
+      "slice:J": ["slice:I3"]
+    },
+    "parent_slices": {
+      "slice:A0": null,
+      "slice:A1": null,
+      "slice:B1": null,
+      "slice:B2": null,
+      "slice:B3": null,
+      "slice:C1": null,
+      "slice:C2": null,
+      "slice:D1": null,
+      "packet:D2-A": "slice:D2",
+      "packet:D2-B": "slice:D2",
+      "slice:D2": null,
+      "packet:D3-A": "slice:D3",
+      "packet:D3-B": "slice:D3",
+      "slice:D3": null,
+      "slice:E1": null,
+      "slice:E2": null,
+      "packet:E3-A": "slice:E3",
+      "packet:E3-B": "slice:E3",
+      "packet:E3-C": "slice:E3",
+      "slice:E3": null,
+      "slice:F1": null,
+      "slice:F2": null,
+      "slice:F3": null,
+      "slice:F4": null,
+      "slice:G1": null,
+      "packet:G2-A": "slice:G2",
+      "packet:G2-B+": "slice:G2",
+      "slice:G2": null,
+      "packet:G3": "slice:G3",
+      "slice:G3": null,
+      "slice:H1": null,
+      "slice:H2": null,
+      "slice:H3": null,
+      "slice:I1": null,
+      "slice:I2": null,
+      "slice:I3": null,
+      "slice:J": null
+    }
   }
 }
 ```
@@ -330,26 +418,26 @@ All of the following must hold before recording `stacked_work`:
 
 ### stacked_work fields
 
-| Field | Description |
-| ----- | ----------- |
-| `mode` | `stacked_in_progress` or `stacked_pr_open` |
-| `issue` | Issue ref for the speculative work's child issue |
-| `session` | Session identifier for the speculative work owner |
-| `branch` | The stacked branch name |
-| `pr` | PR ref for the speculative PR (required when mode is `stacked_pr_open`) |
-| `stack_bases` | One entry per unvalidated direct dependency (see below) |
-| `drift_reason` | Optional material drift or block reason |
+| Field          | Description                                                             |
+| -------------- | ----------------------------------------------------------------------- |
+| `mode`         | `stacked_in_progress` or `stacked_pr_open`                              |
+| `issue`        | Issue ref for the speculative work's child issue                        |
+| `session`      | Session identifier for the speculative work owner                       |
+| `branch`       | The stacked branch name                                                 |
+| `pr`           | PR ref for the speculative PR (required when mode is `stacked_pr_open`) |
+| `stack_bases`  | One entry per unvalidated direct dependency (see below)                 |
+| `drift_reason` | Optional material drift or block reason                                 |
 
 ### stack_bases entry fields
 
-| Field | Description |
-| ----- | ----------- |
-| `dependency_node_id` | Node ID of the unvalidated direct dependency |
-| `dependency_pr_number` | PR number of the dependency |
-| `dependency_branch` | Branch name of the dependency PR |
-| `dependency_head_sha` | Dep's head SHA when speculative work was initiated |
-| `last_resynced_at` | Timestamp of the most recent resync with the dep |
-| `last_resynced_head` | Dep's head SHA at last resync |
+| Field                  | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `dependency_node_id`   | Node ID of the unvalidated direct dependency                |
+| `dependency_pr_number` | PR number of the dependency                                 |
+| `dependency_branch`    | Branch name of the dependency PR                            |
+| `dependency_head_sha`  | Dep's head SHA when speculative work was initiated          |
+| `last_resynced_at`     | Timestamp of the most recent resync with the dep            |
+| `last_resynced_head`   | Dep's head SHA at last resync                               |
 | `requires_main_rebase` | `true` once the dep PR merges; blocks lifecycle advancement |
 
 ### Stale-head detection
@@ -387,7 +475,7 @@ Once a dependency PR merges:
    and posts a `STACKED-WORK` update confirming completion.
 4. The Producer verifies the rebase, clears `stacked_work` (sets it to `null`),
    and advances the node through the normal lifecycle (`blocked → ready →
-   claimed → ...`).
+claimed → ...`).
 5. Normal lifecycle checks then apply; the node enters the ready queue only when
    all deps are `validated` and `stacked_work` is `null`.
 
