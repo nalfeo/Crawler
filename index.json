@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9d853d1369aed238f5154068ba3d803c711bd081",
+    "commitDate": "2026-07-19T00:09:08Z",
+    "commitSubject": "Add flame-tongs generated weapon icon and wire it into generated asset surfaces (#1551)",
+    "capturedAt": "2026-07-19T01:41:18.422Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29667191763",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/9d853d1369aed238f5154068ba3d803c711bd081.json"
+  },
+  {
     "commit": "2eca04dbdea3fac558e394e91cbf731f3d868c6e",
     "commitDate": "2026-07-18T23:48:50Z",
     "commitSubject": "feat(items): add ember-wand Floor 2 magic-focus weapon (#1545)",
