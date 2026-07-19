@@ -6830,7 +6830,7 @@ test('non-outdated stale-marker thread includes recovery hint in blocker summary
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
-  assert.match(stdout, /stale-marker-recovery-hint/);
+  assert.match(stdout, /assigned copilot pr=#42/);
 
   const taskCommentCall = mutatingCalls.find(
     (call) =>
@@ -6840,9 +6840,17 @@ test('non-outdated stale-marker thread includes recovery hint in blocker summary
       call.body.body.includes('crawler-ci-task'),
   );
   assert.notEqual(taskCommentCall, undefined);
-  assert.match(taskCommentCall.body.body, /stale-marker-recovery-hint/);
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(
+      `Stale marker: ✅ Addressed in ${staleMarkerSha} exists but that commit is not reachable from current head`,
+    ),
+  );
   assert.match(taskCommentCall.body.body, new RegExp(threadId));
-  assert.match(taskCommentCall.body.body, /re-post the marker with the current-head SHA/i);
+  assert.match(
+    taskCommentCall.body.body,
+    /reply to this thread with ✅ Addressed in <head-sha>: <note>/i,
+  );
   assert.doesNotMatch(
     taskCommentCall.body.body,
     /outdated — deterministic non-applicability candidate/i,
@@ -6850,13 +6858,12 @@ test('non-outdated stale-marker thread includes recovery hint in blocker summary
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
 });
 
-test('outdated stale-marker thread auto-resolves without posting a blocker summary', async (t) => {
+test('outdated stale-marker thread stays on the stale-marker hint path', async (t) => {
   // PR #1266 scenario: the recovery agent replied with ✅ Addressed in <sha>
   // but the commit was never pushed to GitHub (compare API returns 404).
-  // Because the thread is also isOutdated, the reconciler posts its own trusted
-  // "thread outdated" marker on this pass. That marker causes the thread to
-  // self-heal immediately, so no blocker task comment is emitted — the stale-
-  // marker hint path is bypassed by the isOutdated fast path.
+  // Even though the thread is also isOutdated, a definitively stale marker SHA
+  // keeps it on the stale-marker hint path instead of auto-resolving through
+  // the reconciler-authored outdated-marker fast path.
   const staleMarkerSha = 'feed0000aabbccddeeff00112233445566778899';
   const threadId = 'PRRT_stale_marker_thread';
   const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
@@ -6945,13 +6952,8 @@ test('outdated stale-marker thread auto-resolves without posting a blocker summa
   });
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /assigned copilot pr=#42/);
 
-  // Outdated threads are auto-resolved after the reconciler posts its trusted
-  // "thread outdated" marker, even when an older stale marker SHA is unreachable.
-  assert.match(stdout, new RegExp(`resolved thread=${threadId}`));
-
-  // Once the thread is outdated and the reconciler posts its trusted marker,
-  // the thread self-heals on the same pass and no blocker comment is needed.
   const taskCommentCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&
@@ -6959,10 +6961,34 @@ test('outdated stale-marker thread auto-resolves without posting a blocker summa
       typeof call.body?.body === 'string' &&
       call.body.body.includes('crawler-ci-task'),
   );
+  assert.notEqual(taskCommentCall, undefined);
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(
+      `Stale marker: ✅ Addressed in ${staleMarkerSha} exists but that commit is not reachable from current head`,
+    ),
+  );
+  assert.match(taskCommentCall.body.body, /outdated — deterministic non-applicability candidate/i);
+  assert.doesNotMatch(stdout, new RegExp(`posted outdated-marker thread=${threadId}`));
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
   assert.equal(
-    taskCommentCall,
-    undefined,
-    'expected no blocker task comment once the outdated thread self-heals',
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/1/replies`,
+    ),
+    false,
+    'expected no outdated-marker reply when the thread stays on the stale-marker hint path',
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'GRAPHQL_MUTATION' &&
+        String(call.body?.query || '').includes('resolveReviewThread') &&
+        call.body?.variables?.threadId === threadId,
+    ),
+    false,
+    'expected no resolveReviewThread mutation when the stale marker remains unresolved',
   );
 });
 
