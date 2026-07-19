@@ -6783,13 +6783,14 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 // summary comment is needed.
 // ---------------------------------------------------------------------------
 
-test('outdated stale-marker thread auto-resolves without posting a blocker summary', async (t) => {
+test('non-outdated thread with definitively stale marker emits recovery hint in blocker', async (t) => {
   // PR #1266 scenario: the recovery agent replied with ✅ Addressed in <sha>
   // but the commit was never pushed to GitHub (compare API returns 404).
-  // Because the thread is also isOutdated, the reconciler posts its own trusted
-  // "thread outdated" marker on this pass. That marker causes the thread to
-  // self-heal immediately, so no blocker task comment is emitted — the stale-
-  // marker hint path is bypassed by the isOutdated fast path.
+  // The thread is NOT isOutdated, so the outdated-marker fast path does not apply.
+  // The reconciler detects the stale marker via the compare API and emits a
+  // targeted stale-marker hint in the blocker task comment so the next recovery
+  // agent knows to re-post the marker with the current-head SHA rather than
+  // re-investigating the underlying concern.
   const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
   const threadId = 'PRRT_stale_marker_thread';
   const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
@@ -6879,12 +6880,10 @@ test('outdated stale-marker thread auto-resolves without posting a blocker summa
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  // Outdated threads are auto-resolved after the reconciler posts its trusted
-  // "thread outdated" marker, even when an older stale marker SHA is unreachable.
-  assert.match(stdout, new RegExp(`resolved thread=${threadId}`));
+  // Thread must NOT be auto-resolved — the stale marker SHA is not reachable.
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
 
-  // Once the thread is outdated and the reconciler posts its trusted marker,
-  // the thread self-heals on the same pass and no blocker comment is needed.
+  // A task comment must be posted because the stale marker is a real blocker.
   const taskCommentCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&
@@ -6892,10 +6891,14 @@ test('outdated stale-marker thread auto-resolves without posting a blocker summa
       typeof call.body?.body === 'string' &&
       call.body.body.includes('crawler-ci-task'),
   );
-  assert.equal(
-    taskCommentCall,
-    undefined,
-    'expected no blocker task comment once the outdated thread self-heals',
+  assert.ok(taskCommentCall, 'expected a task comment to be posted for the stale-marker blocker');
+
+  // The task body must include the stale-marker annotation so the agent knows to
+  // re-post the marker rather than re-investigate the underlying concern.
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
+    'task body must identify the stale marker SHA',
   );
 });
 
