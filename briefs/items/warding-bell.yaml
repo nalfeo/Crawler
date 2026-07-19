@@ -1,0 +1,51 @@
+type: item
+name: warding-bell
+description: |
+  A small brass warding bell Floor 2 equipment accessory icon, centered and
+  silhouette-readable on a transparent background. Stable runtime key:
+  equipment/accessory/warding-bell.
+
+  Bell body: classic bell silhouette — wide at the rim, narrowing to a domed
+  crown at the top. The rim is the widest point; the body curves inward toward
+  the shoulder and then out again at the widest belly before narrowing to the
+  crown. This silhouette must read unmistakably as "bell" at a glance.
+
+  Crown and loop: a small thick ring or loop protrudes from the crown — this
+  is the wearing loop, clearly visible as a closed O-shape or D-ring sitting
+  on top of the dome. The loop is made of the same brass/bronze as the bell.
+
+  Clapper: a small teardrop or rounded cylindrical clapper hangs from a short
+  pin inside the bell, its tip just visible at or below the open rim. This
+  detail confirms "bell" identity and adds interior depth.
+
+  Surface detail: one or two shallow engraved bands of geometric chevrons or
+  simple rune-lines run around the belly of the bell — worn but legible, not
+  crowded. A single engraved band at the equator suffices; do not fill the
+  entire surface with text or symbols.
+
+  Material and palette: warm metallic tones in the brass-bronze-copper range.
+  Use 3–5 distinct color stops — a bright brass highlight, a warm mid-tone
+  base, a shadowed flank in aged bronze, a deep oxidized shadow at the inner
+  rim and the inside of the bell mouth, and an optional cool near-black outline.
+  No magical glows, no energy aura, no swirling runes — this is a physical
+  talisman that has been carried in a dungeon. Give it a matte patina and
+  visible wear at the rim.
+
+  Background: fully transparent, or flat bright magenta (#ff00ff) if the model
+  requires a solid fill (the post-processor will flood-fill it away from corners).
+  Do not use black backgrounds. No scene props, no surface shadows.
+
+  Silhouette test: if the entire bell were painted solid black it must still
+  read unmistakably as a bell with a loop on top. Keep interior detail (clapper,
+  engravings) subordinate to the outer silhouette.
+
+sensors:
+  edge:
+    allowMainTouch: true
+
+variations:
+  - bright polished brass bell, prominent D-ring loop at crown, teardrop clapper visible at rim, single engraved chevron band at the belly equator, warm gold and ochre palette with deep shadow at the inner mouth
+  - aged dark-bronze bell with verdigris patina streaks along the flanks, small closed ring loop on top, cylindrical clapper, shallow rune-line engraving band near the shoulder, copper-brown mid-tone with near-black oxidized shadow
+  - reddish-copper bell with a hammered surface texture suggested by slight irregularity in the body contour, thick O-ring loop, prominent clapper tip at the bell mouth, no engraving — surface wear and dents convey age; warm copper highlight, rust-shadow tones
+
+minVariations: 3
