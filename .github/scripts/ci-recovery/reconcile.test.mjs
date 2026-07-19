@@ -3761,8 +3761,7 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
       const query = String(parsed?.query ?? '');
       if (query.includes('resolveReviewThread')) {
         return { body: { data: { resolveReviewThread: { thread: { isResolved: true } } } } };
-      }
-      if (query.includes('suggestedActors')) {
+      } else if (query.includes('suggestedActors')) {
         return {
           body: {
             data: {
@@ -3770,8 +3769,7 @@ test('live reconcile auto-resolves outdated threads and keeps reply targets on r
             },
           },
         };
-      }
-      if (query.includes('replaceActorsForAssignable')) {
+      } else if (query.includes('replaceActorsForAssignable')) {
         return {
           body: {
             data: {
