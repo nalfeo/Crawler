@@ -11,6 +11,17 @@
     "path": "by-sha/9ffa0c2bebe5de2ec507e249c0ba98e7b06dd322.json"
   },
   {
+    "commit": "e6354cb304a9344b7022d183dd705a903643c15c",
+    "commitDate": "2026-07-18T22:48:07Z",
+    "commitSubject": "feat(assets): add boarding-axe Floor 2 weapon sprite (#1522)",
+    "capturedAt": "2026-07-19T00:19:41.127Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29664818592",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/e6354cb304a9344b7022d183dd705a903643c15c.json"
+  },
+  {
     "commit": "cbc33b2620698062c4cf6226c7974284f79aeaa9",
     "commitDate": "2026-07-18T22:47:50Z",
     "commitSubject": "feat(sprites): add surveyor-map Floor 2 accessory icon — brief, item wiring, placeholder (#1514)",
