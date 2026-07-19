@@ -1,5 +1,16 @@
 [
   {
+    "commit": "e95a2b5790c458faa68ae5db244de88710024c04",
+    "commitDate": "2026-07-19T10:37:10-07:00",
+    "commitSubject": "fix(ci-recovery): handle slash-separated SHA pairs in marker parser (#1613)",
+    "capturedAt": "2026-07-19T18:56:20.371Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29697558257",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/e95a2b5790c458faa68ae5db244de88710024c04.json"
+  },
+  {
     "commit": "549674ed638ab4a592354dd5c68235bc03b8f0b0",
     "commitDate": "2026-07-19T00:54:11Z",
     "commitSubject": "fix(epics): update A0 evidence commit from squash-merged branch residue (8cc19153 → 89ff7827) (#1585)",
