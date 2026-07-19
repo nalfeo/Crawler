@@ -6674,22 +6674,33 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  // Outdated marker threads are auto-resolved by the reconciler.
-  assert.match(stdout, new RegExp(`posted outdated-marker thread=${threadId}`));
-  assert.match(stdout, new RegExp(`resolved thread=${threadId}`));
+  // The thread must NOT be auto-resolved because the marker SHA is definitively
+  // unreachable (404) and the thread is still unresolved on the current head.
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.doesNotMatch(stdout, new RegExp(`posted outdated-marker thread=${threadId}`));
 
-  // No stale-marker task comment should be posted when the thread is resolved.
+  // A task comment should include the stale-marker hint so the next recovery
+  // pass can re-post the marker with the current head SHA in the exact thread.
   const staleMarkerTaskCommentCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&
       call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
       typeof call.body?.body === 'string' &&
-      call.body.body.includes('Stale marker'),
+      call.body.body.includes('crawler-ci-task'),
   );
-  assert.equal(
+  assert.ok(
     staleMarkerTaskCommentCall,
-    undefined,
-    'resolved outdated-marker thread should not post a stale-marker task comment',
+    'expected a task comment to be posted for the stale-marker review-thread blocker',
+  );
+  assert.match(
+    staleMarkerTaskCommentCall.body.body,
+    new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
+    'task body should include the stale-marker recovery hint with the unreachable marker SHA',
+  );
+  assert.match(
+    staleMarkerTaskCommentCall.body.body,
+    /verify fix is present.*reply to this thread/i,
+    'task body should include re-marker instructions for the recovery agent',
   );
 });
 
