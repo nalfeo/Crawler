@@ -33,6 +33,7 @@ export interface WeaponSweepSummary {
 
 export interface WeaponSweepOutput {
   runAt: string;
+  floors?: number[];
   seeds: number[];
   weapons: string[];
   maxFrames: number;
@@ -64,6 +65,16 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isPositiveInteger(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) > 0;
+}
+
+export function normalizeWeaponSweepFloors(value: unknown): number[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value) || value.length === 0 || !value.every(isPositiveInteger)) {
+    throw new Error('Sweep floor metadata must be a non-empty array of positive integers');
+  }
+  return [...new Set(value)].sort((left, right) => left - right);
 }
 
 function isValidSweepRecord(value: unknown, expectedWeapon: string): value is WeaponSweepRecord {
@@ -151,6 +162,8 @@ export function mergeWeaponSweepShards(
   const maxFrames = firstShard.maxFrames;
   const weaponPersonas = firstShard.weaponPersonas;
   const bySeed = new Map<number, WeaponSweepRecord>();
+  const includedFloors = new Set<number>();
+  let hasLegacyFloorMetadata = false;
 
   for (const shard of shards) {
     if (!isValidShardShape(shard, weapon)) {
@@ -163,6 +176,12 @@ export function mergeWeaponSweepShards(
       throw new Error(
         `Shard persona-mode mismatch for "${weapon}": ${shard.weaponPersonas} vs ${weaponPersonas}`,
       );
+    }
+    const shardFloors = normalizeWeaponSweepFloors(shard.floors);
+    if (shardFloors === undefined) {
+      hasLegacyFloorMetadata = true;
+    } else {
+      for (const floor of shardFloors) includedFloors.add(floor);
     }
     if (
       shard.seeds.length !== shard.allRecords.length ||
@@ -204,6 +223,9 @@ export function mergeWeaponSweepShards(
   const summary = summarizeWeaponRecords(weapon, allRecords);
   return {
     runAt: new Date().toISOString(),
+    ...(hasLegacyFloorMetadata
+      ? {}
+      : { floors: [...includedFloors].sort((left, right) => left - right) }),
     seeds: [...expectedSeeds],
     weapons: [weapon],
     maxFrames,

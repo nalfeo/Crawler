@@ -125,7 +125,7 @@ Queen Mab Tarnish rendering at the correct tall aspect ratio (64×128 cell, 2-ro
 
 ## Retrospective
 
-### Went well
+### Lessons Learned
 
 - Brief authoring was clean and complete on first pass; schema validated.
 - All 1254 tests pass (`npm run verify:fast`) — brief doesn't touch any tested code paths.
@@ -133,17 +133,14 @@ Queen Mab Tarnish rendering at the correct tall aspect ratio (64×128 cell, 2-ro
   names that would orphan the sprites. Hand-authored brief avoids this.
 - Eyeball judgment of existing art was honest: rejected on 6 criteria, not rubber-stamped.
 
-### Went poorly / unexpected
+### Mistakes Made
 
-- Coding-agent CI environment doesn't have Azure OpenAI or Azure Storage credentials
-  (correctly scoped to the `sprites:worker` step only per security policy).
-- The issue pipeline already processed #1216 and generated art, but used a synthesized
-  brief with the wrong name (`faerie-boss-v1`). Those sprites are in Azure but can't be
-  used (wrong identity model) and can't be accessed (no blob storage creds here).
-- `sprites:checkin` Constitutional §3 CI refusal means the approve+checkin loop
-  requires a local developer environment.
+- The initial issue-driven run allowed a synthesized `faerie-boss-v1` identity
+  instead of anchoring the canonical `faerie-boss` brief ID before dispatch, so
+  the generated Azure artifacts could not enter the existing runtime identity
+  path.
 
-### What to watch
+### Opportunities for Future Improvement
 
 - The existing `faerie-boss-var-1` (64×64) should be superseded, not kept alongside
   the new tall variant. After approval and checkin, confirm the old entry is removed

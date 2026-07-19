@@ -1,10 +1,10 @@
 import { randomBytes } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { CanvasError, createCanvas, joinSession } from '@github/copilot-sdk/extension';
 import {
   aiSweepWarning,
   cloudResultWarning,
+  floorProvenanceWarning,
   isTerminalRun,
   mergeAggregateOutputs,
   selectDefaultRun,
@@ -12,23 +12,25 @@ import {
 } from './lib/cloud-results.mjs';
 import {
   listAllSweepRuns,
-  listWeaponSweepRuns,
   loadAiSweepRun,
   loadCloudRun,
   resolveProjectContext,
 } from './lib/github-client.mjs';
 import { tokensMatch } from './lib/http-security.mjs';
+import { listLocalSweepResults, readLocalSweepFile } from './lib/local-results.mjs';
 import {
   formatCloudFailure,
+  isCurrentCloudGeneration,
   isCurrentLocalSelection,
   stabilizeTerminalSnapshot,
 } from './lib/state-helpers.mjs';
+import { transitionToLocalSource } from './lib/local-source-transition.mjs';
+import { safeLocalRun, safeRun, stateSnapshot } from './lib/state-snapshot.mjs';
 import { renderHtml } from './renderer.mjs';
 
 const POLL_INTERVAL_MS = 30_000;
 const TERMINAL_SYNC_DELAY_MS = 1_000;
 const TERMINAL_SYNC_ATTEMPTS = 3;
-const DEFAULT_LOCAL_PATH = '/tmp/weapon-sweep.json';
 const servers = new Map();
 const states = new Map();
 const sseClients = new Map();
@@ -46,54 +48,11 @@ function compareRunsDesc(left, right) {
   return timeDifference || right.id - left.id;
 }
 
-function safeRun(run) {
-  if (!run) return null;
-  return {
-    id: run.id,
-    status: run.status,
-    conclusion: run.conclusion,
-    headBranch: run.headBranch,
-    headSha: run.headSha,
-    createdAt: run.createdAt,
-    updatedAt: run.updatedAt,
-    url: run.url,
-    event: run.event,
-    attempt: run.attempt,
-    workflowType: run.workflowType ?? null,
-  };
-}
-
-function stateSnapshot(state) {
-  return {
-    source: state.source,
-    path: state.path,
-    repository: state.context?.repository ?? null,
-    branch: state.context?.branch ?? null,
-    sessionId: state.sessionId,
-    runs: state.runs.map(safeRun),
-    selectedRun: safeRun(state.selectedRun),
-    selectionReason: state.selectionReason,
-    workflowType: state.selectedRun?.workflowType ?? null,
-    expectedWeapons: state.expectedWeapons,
-    availableWeapons: state.availableWeapons,
-    expiredArtifactCount: state.expiredArtifactCount,
-    jobPhases: state.jobPhases,
-    pollIntervalMs: POLL_INTERVAL_MS,
-    polling: Boolean(state.pollTimer),
-    refreshing: state.refreshing,
-    error: state.error,
-    warning: state.warning,
-    loadedAt: state.loadedAt,
-    lastRefreshedAt: state.lastRefreshedAt,
-    data: state.data,
-  };
-}
-
 function notifyClients(instanceId) {
   const state = states.get(instanceId);
   const clients = sseClients.get(instanceId);
   if (!state || !clients?.size) return;
-  const payload = `data: ${JSON.stringify(stateSnapshot(state))}\n\n`;
+  const payload = `data: ${JSON.stringify(stateSnapshot(state, POLL_INTERVAL_MS))}\n\n`;
   for (const response of clients) {
     try {
       response.write(payload);
@@ -287,12 +246,18 @@ async function refreshCloudState(instanceId, options = {}) {
       state.data = merged;
       state.loadedAt = Date.now();
       state.lastRefreshedAt = new Date().toISOString();
-      state.warning = cloudResultWarning({
-        run: updatedRun,
-        expectedWeapons: state.expectedWeapons,
-        availableWeapons: state.availableWeapons,
-        expiredCount: state.expiredArtifactCount,
-      });
+      state.warning =
+        [
+          cloudResultWarning({
+            run: updatedRun,
+            expectedWeapons: state.expectedWeapons,
+            availableWeapons: state.availableWeapons,
+            expiredCount: state.expiredArtifactCount,
+          }),
+          floorProvenanceWarning(cloud.aggregateOutputs),
+        ]
+          .filter(Boolean)
+          .join(' ') || null;
       state.error = null;
     }
     return state;
@@ -330,29 +295,26 @@ async function refreshCloudState(instanceId, options = {}) {
   return state.refreshPromise;
 }
 
-async function loadLocalData(path) {
-  const stats = await stat(path);
-  const data = JSON.parse(await readFile(path, 'utf8'));
-  return { data, loadedAt: stats.mtimeMs };
+function applyLocalCatalog(state, catalog) {
+  state.localDirectory = catalog.directory;
+  state.localRuns = catalog.runs;
+  state.localErrors = catalog.errors;
 }
 
-async function switchToLocal(instanceId, path) {
-  const state = states.get(instanceId);
-  if (!state) throw new CanvasError('no_state', 'Canvas not open');
-  cancelRefresh(state);
-  state.source = 'local';
+async function loadLocalSelection(instanceId, state, path, selectionReason, selectedLocalPath) {
   state.path = path;
-  state.selectedRun = null;
-  state.selectionReason = 'explicit-local-file';
+  state.selectedLocalPath = selectedLocalPath;
+  state.selectionReason = selectionReason;
   state.expectedWeapons = [];
   state.availableWeapons = [];
   state.expiredArtifactCount = 0;
+  state.error = null;
   state.warning = null;
   state.refreshing = true;
   const selection = { generation: state.generation, path };
   notifyClients(instanceId);
   try {
-    const loaded = await loadLocalData(path);
+    const loaded = await readLocalSweepFile(path);
     if (!isCurrentLocalSelection(state, selection)) {
       return state;
     }
@@ -374,6 +336,83 @@ async function switchToLocal(instanceId, path) {
     }
   }
   return state;
+}
+
+async function switchToLocal(instanceId, path) {
+  const state = states.get(instanceId);
+  if (!state) throw new CanvasError('no_state', 'Canvas not open');
+  cancelRefresh(state);
+  transitionToLocalSource(state);
+  const catalogMatch = state.localRuns.find((run) => run.path === path);
+  return loadLocalSelection(
+    instanceId,
+    state,
+    path,
+    'explicit-local-file',
+    catalogMatch?.path ?? null,
+  );
+}
+
+async function switchToLocalCatalog(instanceId, requestedPath) {
+  const state = states.get(instanceId);
+  if (!state) throw new CanvasError('no_state', 'Canvas not open');
+  cancelRefresh(state);
+  transitionToLocalSource(state);
+  state.refreshing = true;
+  state.error = null;
+  state.warning = null;
+  const generation = state.generation;
+  notifyClients(instanceId);
+
+  let catalog;
+  try {
+    catalog = await listLocalSweepResults(state.workingDirectory);
+  } catch (error) {
+    if (state.closed || state.generation !== generation || state.source !== 'local') {
+      return state;
+    }
+    state.data = null;
+    state.loadedAt = null;
+    state.refreshing = false;
+    state.error = `Local discovery failed: ${errorMessage(error)}`;
+    state.lastRefreshedAt = new Date().toISOString();
+    notifyClients(instanceId);
+    return state;
+  }
+  if (state.closed || state.generation !== generation || state.source !== 'local') {
+    return state;
+  }
+  applyLocalCatalog(state, catalog);
+  const selectedPath =
+    requestedPath ??
+    (state.selectedLocalPath && catalog.runs.some((run) => run.path === state.selectedLocalPath)
+      ? state.selectedLocalPath
+      : catalog.runs[0]?.path);
+
+  if (requestedPath && !catalog.runs.some((run) => run.path === requestedPath)) {
+    state.path = requestedPath;
+    state.selectedLocalPath = null;
+    state.data = null;
+    state.loadedAt = null;
+    state.refreshing = false;
+    state.error =
+      catalog.errors.find((entry) => entry.path === requestedPath)?.message ??
+      `Local sweep result is not available in ${catalog.directory}.`;
+    notifyClients(instanceId);
+    throw new CanvasError('local_run_not_found', state.error);
+  }
+  if (!selectedPath) {
+    state.path = null;
+    state.selectedLocalPath = null;
+    state.selectionReason = 'no-local-runs';
+    state.data = null;
+    state.loadedAt = null;
+    state.lastRefreshedAt = new Date().toISOString();
+    state.refreshing = false;
+    notifyClients(instanceId);
+    return state;
+  }
+  return loadLocalSelection(instanceId, state, selectedPath, 'catalog-local-file', selectedPath);
 }
 
 async function switchToCloudRun(instanceId, runId) {
@@ -401,7 +440,6 @@ async function switchToCloudRun(instanceId, runId) {
   }
   cancelRefresh(state);
   state.source = 'cloud';
-  state.path = null;
   state.selectedRun = selectedRun;
   state.selectionReason = 'explicit-run';
   state.expectedWeapons = [];
@@ -415,10 +453,29 @@ async function switchToCloudRun(instanceId, runId) {
   return state;
 }
 
+async function switchToCloud(instanceId) {
+  const state = states.get(instanceId);
+  if (!state) throw new CanvasError('no_state', 'Canvas not open');
+  const selectedRunId = state.selectedRun?.id;
+  cancelRefresh(state);
+  state.source = 'cloud';
+  state.data = null;
+  state.error = null;
+  state.warning = null;
+  await initializeCloud(instanceId, selectedRunId);
+  return state;
+}
+
 async function reloadState(instanceId) {
   const state = states.get(instanceId);
   if (!state) throw new CanvasError('no_state', 'Canvas not open');
   if (state.source === 'local') {
+    if (state.selectionReason === 'catalog-local-file') {
+      return switchToLocalCatalog(instanceId, state.path);
+    }
+    if (!state.path) {
+      return switchToLocalCatalog(instanceId);
+    }
     return switchToLocal(instanceId, state.path);
   }
   await refreshCloudState(instanceId, { refreshRuns: true });
@@ -427,13 +484,20 @@ async function reloadState(instanceId) {
 
 async function initializeCloud(instanceId, explicitRunId) {
   const state = states.get(instanceId);
+  const generation = state.generation;
   try {
     await runCancellableOperation(state, async (signal) => {
       const context = await resolveProjectContext(state.workingDirectory, signal);
       const runs = await listAllSweepRuns(context.repository, signal);
+      if (!isCurrentCloudGeneration(state, generation)) {
+        return;
+      }
       state.context = context;
       state.runs = runs;
     });
+    if (!isCurrentCloudGeneration(state, generation)) {
+      return;
+    }
     if (explicitRunId !== undefined) {
       const selected = state.runs.find((run) => run.id === Number(explicitRunId));
       if (!selected) {
@@ -450,6 +514,9 @@ async function initializeCloud(instanceId, explicitRunId) {
     }
     await refreshCloudState(instanceId, { refreshRuns: false });
   } catch (error) {
+    if (!isCurrentCloudGeneration(state, generation) || error?.name === 'AbortError') {
+      return;
+    }
     state.error = formatCloudFailure('Cloud initialization failed: ', errorMessage(error));
     state.lastRefreshedAt = new Date().toISOString();
     notifyClients(instanceId);
@@ -481,23 +548,48 @@ async function handleRequest(instanceId, token, request, response) {
     sseClients.get(instanceId).add(response);
     request.on('close', () => sseClients.get(instanceId)?.delete(response));
     const state = states.get(instanceId);
-    if (state) response.write(`data: ${JSON.stringify(stateSnapshot(state))}\n\n`);
+    if (state) response.write(`data: ${JSON.stringify(stateSnapshot(state, POLL_INTERVAL_MS))}\n\n`);
     return;
   }
   if (url.pathname === '/api/state' && request.method === 'GET') {
     const state = states.get(instanceId);
-    jsonResponse(response, state ? 200 : 404, state ? stateSnapshot(state) : { error: 'not_open' });
+    jsonResponse(
+      response,
+      state ? 200 : 404,
+      state ? stateSnapshot(state, POLL_INTERVAL_MS) : { error: 'not_open' },
+    );
     return;
   }
   if (url.pathname === '/api/reload' && request.method === 'POST') {
     const state = await reloadState(instanceId);
-    jsonResponse(response, 200, stateSnapshot(state));
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
     return;
   }
   if (url.pathname === '/api/select-run' && request.method === 'POST') {
     const body = await readJsonBody(request);
     const state = await switchToCloudRun(instanceId, body.runId);
-    jsonResponse(response, 200, stateSnapshot(state));
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
+    return;
+  }
+  if (url.pathname === '/api/select-source' && request.method === 'POST') {
+    const body = await readJsonBody(request);
+    const state =
+      body.source === 'local'
+        ? await switchToLocalCatalog(instanceId)
+        : body.source === 'cloud'
+          ? await switchToCloud(instanceId)
+          : null;
+    if (!state) {
+      jsonResponse(response, 400, { error: `Unsupported source: ${body.source}` });
+      return;
+    }
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
+    return;
+  }
+  if (url.pathname === '/api/select-local' && request.method === 'POST') {
+    const body = await readJsonBody(request);
+    const state = await switchToLocalCatalog(instanceId, body.path);
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
     return;
   }
   jsonResponse(response, 404, { error: 'not_found' });
@@ -550,11 +642,12 @@ function summaryPayload(state) {
   }
   return {
     source: state.source,
-    path: state.path,
+    path: state.source === 'local' ? state.path : null,
     repository: state.context?.repository ?? null,
     run: safeRun(state.selectedRun),
     workflowType: workflowType ?? 'weapon-sweep',
     runAt: state.data.runAt,
+    floors: state.data.floors ?? null,
     seeds: state.data.seeds,
     weapons: state.data.weapons,
     summaries: state.data.summaries?.map((summary) => ({
@@ -589,11 +682,30 @@ const session = await joinSession({
           },
           path: {
             type: 'string',
-            description: `Optional local weapon-sweep JSON path. Cloud results are the default; legacy default is ${DEFAULT_LOCAL_PATH}.`,
+            description:
+              'Optional explicit local weapon-sweep JSON path. Cloud results remain the default.',
           },
         },
       },
       actions: [
+        {
+          name: 'select_source',
+          description:
+            'Switch between the default cloud catalog and attached-session local results.',
+          inputSchema: {
+            type: 'object',
+            properties: { source: { type: 'string', enum: ['cloud', 'local'] } },
+            required: ['source'],
+          },
+          handler: async (ctx) => {
+            const state =
+              ctx.input.source === 'local'
+                ? await switchToLocalCatalog(ctx.instanceId)
+                : await switchToCloud(ctx.instanceId);
+            if (state.error) throw new CanvasError('source_switch_failed', state.error);
+            return stateSnapshot(state, POLL_INTERVAL_MS);
+          },
+        },
         {
           name: 'load_file',
           description: 'Switch to a local weapon-sweep JSON file.',
@@ -604,6 +716,37 @@ const session = await joinSession({
           },
           handler: async (ctx) => {
             const state = await switchToLocal(ctx.instanceId, ctx.input.path);
+            if (state.error) throw new CanvasError('local_file_error', state.error);
+            return summaryPayload(state);
+          },
+        },
+        {
+          name: 'list_local_runs',
+          description:
+            'List valid weapon-sweep results from the attached session worktree, newest first.',
+          handler: async (ctx) => {
+            const state = states.get(ctx.instanceId);
+            if (!state) throw new CanvasError('no_state', 'Canvas not open');
+            const catalog = await listLocalSweepResults(state.workingDirectory);
+            applyLocalCatalog(state, catalog);
+            notifyClients(ctx.instanceId);
+            return {
+              directory: catalog.directory,
+              runs: catalog.runs.map(safeLocalRun),
+              errors: catalog.errors,
+            };
+          },
+        },
+        {
+          name: 'select_local_run',
+          description: 'Select a discovered attached-session local weapon-sweep result.',
+          inputSchema: {
+            type: 'object',
+            properties: { path: { type: 'string' } },
+            required: ['path'],
+          },
+          handler: async (ctx) => {
+            const state = await switchToLocalCatalog(ctx.instanceId, ctx.input.path);
             if (state.error) throw new CanvasError('local_file_error', state.error);
             return summaryPayload(state);
           },
@@ -691,6 +834,10 @@ const session = await joinSession({
           state = {
             source: ctx.input?.path ? 'local' : 'cloud',
             path: ctx.input?.path ?? null,
+            selectedLocalPath: null,
+            localDirectory: null,
+            localRuns: [],
+            localErrors: [],
             workingDirectory: ctx.session?.workingDirectory ?? null,
             sessionId: ctx.sessionId,
             context: null,
