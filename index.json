@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9ffa0c2bebe5de2ec507e249c0ba98e7b06dd322",
+    "commitDate": "2026-07-18T22:48:17Z",
+    "commitSubject": "Add the stone-maul weapon brief for the Floor 2 asset pipeline (#1526)",
+    "capturedAt": "2026-07-19T00:17:08.162Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29664658769",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/9ffa0c2bebe5de2ec507e249c0ba98e7b06dd322.json"
+  },
+  {
     "commit": "cbc33b2620698062c4cf6226c7974284f79aeaa9",
     "commitDate": "2026-07-18T22:47:50Z",
     "commitSubject": "feat(sprites): add surveyor-map Floor 2 accessory icon — brief, item wiring, placeholder (#1514)",
