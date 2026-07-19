@@ -93,3 +93,13 @@ npm run sprites:asset-pr
 
 - **Azure Storage credentials** — `AZURE_STORAGE_ACCOUNT` / `AZURE_STORAGE_KEY` are not available in the Copilot agent CI environment. The `g2b-harvest-approve.yml` workflow has these credentials and can run the harvest step.
 - **CI refusal** — `sprites:approve` and `sprites:checkin` both refuse when `process.env.CI` is set (Constitutional §3).
+- **Network firewall** — `api.github.com` and `crawlersprites.blob.core.windows.net` are both DNS-blocked from the agent runner. Issue comments and blob downloads cannot be performed directly.
+
+## Session 2 Updates (2026-07-19)
+
+- Committed `briefs/items/quartermaster-cap.yaml` and this handoff to branch `copilot/create-quartermaster-cap-icon`
+- Pushed to remote — PR #1639 is open and shows accurate pipeline state
+- `verify:fast` passing (1295 tests, no regressions)
+- Parallel validation (code review + CodeQL) — ✅ clean
+- `sprite-judge` skill loaded and review criteria documented above
+- No progress possible on harvest/approve/checkin/wiring — all blocked by CI constraints listed above
