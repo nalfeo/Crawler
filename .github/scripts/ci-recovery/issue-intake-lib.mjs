@@ -183,30 +183,21 @@ export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
   }
 
   const text = String(rootComment?.body || '').toLowerCase();
-  const mentionsPlanRequirement =
-    text.includes('plan comment') ||
-    text.includes('implementation plan') ||
-    text.includes('issue comment itself');
-  if (!mentionsPlanRequirement) return [];
+  const planSubject = '(?:plan comment|implementation plan|issue comment itself)';
+  const mentionsMissingPlanRequirement = new RegExp(
+    `(?:\\b(?:missing|required|requires?)\\b[^.!?\\n]{0,120}\\b${planSubject}\\b|` +
+      `\\b${planSubject}\\b[^.!?\\n]{0,120}\\b(?:missing|required)\\b)`,
+    'i',
+  ).test(text);
+  if (!mentionsMissingPlanRequirement) return [];
 
   const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
   const explicitReferences = [...text.matchAll(/(?:\bissue\s+#?|#)(\d+)\b/gi)].map((match) =>
     Number.parseInt(match[1], 10),
   );
-  if (explicitReferences.length > 0) {
-    if (explicitReferences.some((issueNumber) => !issueNumbers.includes(issueNumber))) return [];
-    return [...new Set(explicitReferences)];
-  }
-
-  if (
-    issueNumbers.length === 1 &&
-    (text.includes('source issue') ||
-      text.includes('before the pr') ||
-      text.includes('issue itself'))
-  ) {
-    return issueNumbers;
-  }
-  return [];
+  if (explicitReferences.length === 0) return [];
+  if (explicitReferences.some((issueNumber) => !issueNumbers.includes(issueNumber))) return [];
+  return [...new Set(explicitReferences)];
 }
 
 export async function getCopilotIssueAssignmentContext({
