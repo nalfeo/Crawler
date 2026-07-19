@@ -14,7 +14,11 @@ import { asFamilyId } from '../../src/core/faction-relations.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { applyStatusEffect } from '../../src/core/status-effects.js';
 import { denUnlockGoalId } from '../../src/game/floor2Scenario.js';
-import { setActiveWeapon, getActiveWeaponReadiness, weaponSystem } from '../../src/game/weaponSystem.js';
+import {
+  setActiveWeapon,
+  getActiveWeaponReadiness,
+  weaponSystem,
+} from '../../src/game/weaponSystem.js';
 import { WEAPON } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
