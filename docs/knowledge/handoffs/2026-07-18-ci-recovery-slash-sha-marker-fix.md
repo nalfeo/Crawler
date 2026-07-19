@@ -6,7 +6,15 @@
 
 ## Systems touched
 
-ci-recovery
+ci-policy
+
+## Persona
+
+DevOps Engineer
+
+## Apples
+
+Estimated 🍎, actual 🍎. Exact: the parser and post-main compatibility fix stayed within existing CI recovery logic and tests.
 
 ## Problem
 
@@ -21,6 +29,7 @@ The last comment in that thread (from `copilot-swe-agent`) was:
 ## Root Cause
 
 `parseMarkerShaToken` in `.github/scripts/ci-recovery/state.mjs` only accepted:
+
 1. A single plain hex SHA (`[0-9a-f]{7,40}`)
 2. A full GitHub commit URL
 
@@ -30,6 +39,7 @@ stripping trailing punctuation was `9adef25/28f3d0f` — not a valid hex SHA
 (contains `/`) and not a URL — so `parseMarkerShaToken` returned `null`.
 
 As a result:
+
 - `extractAddressedMarkerSha` returned `null`
 - `9adef25` was never added to `markerShasNeedingLineageCheck`
 - `markerNamesHead` returned `false` for the marker
@@ -40,6 +50,11 @@ As a result:
 ## Fix
 
 Updated `parseMarkerShaToken` to validate exactly two slash-separated hex-SHA components and return the second (later) SHA. Requiring both components to be valid SHAs prevents false positives from malformed tokens like `abc1234/not-a-sha` or `abc1234/def5678/extra`. Returning the second SHA ensures its ancestry in the lineage check proves the complete pair is present.
+
+After updating the branch from `main`, aligned the stale-marker regression fixture
+with canonical PR #1619 semantics by setting `isOutdated: false`. Outdated threads
+are intentionally resolved by the reconciler, while this fixture specifically
+tests an unresolved current-code thread whose marker names a never-pushed SHA.
 
 ```js
 // Handle slash-separated SHA pairs like "9adef25/28f3d0f" (agents sometimes
@@ -59,9 +74,11 @@ if (slashParts.length === 2) {
 
 - `.github/scripts/ci-recovery/state.mjs` — fix in `parseMarkerShaToken`
 - `.github/scripts/ci-recovery/state.test.mjs` — regression tests (second-SHA extraction, malformed-second-component cases)
+- `.github/scripts/ci-recovery/reconcile.test.mjs` — preserve the stale-lineage test under canonical outdated-thread semantics
 - `docs/knowledge/review-ledgers/2026-07-18-ci-recovery-slash-sha-marker-fix.review-ledger.json` — 1🍎 ledger
 
 ## Verification
 
 - All 33 CI recovery state tests pass
+- CI recovery reconciliation tests pass with the PR #1619-compatible stale-marker fixture
 - `npm run verify:fast` passes cleanly
