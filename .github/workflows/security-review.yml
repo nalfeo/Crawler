@@ -33,6 +33,10 @@ jobs:
     outputs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
+      visual_touched: ${{ steps.scope.outputs.visual_touched }}
+      sim_touched: ${{ steps.scope.outputs.sim_touched }}
+      coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
+      sprite_pipeline_touched: ${{ steps.scope.outputs.sprite_pipeline_touched }}
       dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
     steps:
       - uses: actions/checkout@v4
@@ -54,9 +58,17 @@ jobs:
         run: |
           docs_only='${{ steps.detect.outputs.docs_only }}'
           train_promoted='false'
+          visual_touched='${{ steps.detect.outputs.visual_touched }}'
+          sim_touched='${{ steps.detect.outputs.sim_touched }}'
+          coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
+          sprite_pipeline_touched='${{ steps.detect.outputs.sprite_pipeline_touched }}'
           dependencies_touched='${{ steps.detect.outputs.dependencies_touched }}'
           if [ '${{ github.event_name }}' != 'pull_request' ]; then
             docs_only='false'
+            visual_touched='true'
+            sim_touched='true'
+            coverage_touched='true'
+            sprite_pipeline_touched='true'
             dependencies_touched='true'
           else
             # Only trust promotion provenance while the merge train is
@@ -100,6 +112,10 @@ jobs:
           fi
           echo "docs_only=${docs_only}" >>"$GITHUB_OUTPUT"
           echo "train_promoted=${train_promoted}" >>"$GITHUB_OUTPUT"
+          echo "visual_touched=${visual_touched}" >>"$GITHUB_OUTPUT"
+          echo "sim_touched=${sim_touched}" >>"$GITHUB_OUTPUT"
+          echo "coverage_touched=${coverage_touched}" >>"$GITHUB_OUTPUT"
+          echo "sprite_pipeline_touched=${sprite_pipeline_touched}" >>"$GITHUB_OUTPUT"
           echo "dependencies_touched=${dependencies_touched}" >>"$GITHUB_OUTPUT"
 
   # All six security checks consolidated into one job to reduce runner-slot
