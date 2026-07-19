@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -203,7 +203,83 @@ describe('materializeChildIssues — confirm', () => {
     expect(result.outcomes).toHaveLength(0);
     expect(result.created_count).toBe(0);
     expect(result.existing_count).toBe(0);
+    expect(result.dry_run).toBe(false);
     expect(runner.createdIssues).toHaveLength(0);
+  });
+
+  it('paginates existing-issue lookup and avoids duplicate creates beyond page 1', () => {
+    const state = stateWithNoIssues();
+    const plan = buildMaterializationPlan(state);
+    const markerIssue = makeExistingIssue(plan[0]!.node_id, `EDITED: ${plan[0]!.title}`, 9901);
+    const createdIssues: Array<{ title: string; number: number }> = [];
+
+    const runner: GithubWriteRunner & { createdIssues: Array<{ title: string; number: number }> } = {
+      createdIssues,
+      get(path: string): unknown {
+        if (path.includes('page=1')) {
+          return Array.from({ length: 100 }, (_, i) => ({
+            number: 20000 + i,
+            title: `filler-${i}`,
+            html_url: `https://github.com/nalfeo/Crawler/issues/${20000 + i}`,
+          }));
+        }
+        if (path.includes('page=2')) {
+          return [markerIssue];
+        }
+        return [];
+      },
+      post(_path: string, payload: unknown): unknown {
+        const title = (payload as { title: string }).title;
+        const number = 30000 + createdIssues.length;
+        createdIssues.push({ title, number });
+        return {
+          number,
+          html_url: `https://github.com/nalfeo/Crawler/issues/${number}`,
+          title,
+        };
+      },
+    };
+
+    const result = materializeChildIssues(state, runner, { dryRun: false });
+    const markerOutcome = result.outcomes.find((o) => o.node_id === plan[0]!.node_id);
+    expect(markerOutcome?.status).toBe('existing');
+    expect(markerOutcome?.issue_number).toBe(9901);
+  });
+
+  it('throws when a listed issues page has invalid schema', () => {
+    const state = stateWithNoIssues();
+    const runner: GithubWriteRunner = {
+      get(path: string): unknown {
+        if (path.includes('page=1')) {
+          return Array.from({ length: 100 }, (_, i) => ({
+            number: 40000 + i,
+            title: `ok-${i}`,
+            html_url: `https://github.com/nalfeo/Crawler/issues/${40000 + i}`,
+          }));
+        }
+        return [{ broken: true }];
+      },
+      post(): unknown {
+        throw new Error('should not create issues when list schema is invalid');
+      },
+    };
+
+    expect(() => materializeChildIssues(state, runner, { dryRun: false })).toThrow(
+      /unexpected issue list shape/,
+    );
+  });
+
+  it('does not match by title when issue has marker for a different node', () => {
+    const state = stateWithNoIssues();
+    const plan = buildMaterializationPlan(state);
+    const wrongNodeId = plan[1]!.node_id;
+    const target = plan[0]!;
+    const existingIssues = [makeExistingIssue(wrongNodeId, target.title, 9500)];
+    const runner = makeMockWriteRunner(existingIssues);
+    const result = materializeChildIssues(state, runner, { dryRun: false });
+
+    const targetOutcome = result.outcomes.find((o) => o.node_id === target.node_id);
+    expect(targetOutcome?.status).toBe('created');
   });
 
   it('all created outcomes have non-null issue_number and issue_url', () => {
@@ -222,21 +298,13 @@ describe('materializeChildIssues — confirm', () => {
 
 describe('patchEpicStateIssues', () => {
   let tmpDir: string;
-  let epicDir: string;
-  let stateFilePath: string;
 
   beforeEach(() => {
-    // Write a temporary copy of the state file so tests don't mutate the real one.
-    tmpDir = tmpdir();
-    epicDir = join(tmpDir, `epic-materialize-test-${Date.now()}`);
-    mkdirSync(epicDir, { recursive: true });
-    stateFilePath = join(epicDir, 'epic-state.json');
-    const original = readFileSync(resolve(EPIC_DIR, 'epic-state.json'), 'utf8');
-    writeFileSync(stateFilePath, original, 'utf8');
+    tmpDir = mkdtempSync(join(tmpdir(), 'epic-materialize-test-'));
   });
 
   afterEach(() => {
-    rmSync(epicDir, { recursive: true, force: true });
+    rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it('updates nodes in epic-state.json with the provided issue map', () => {

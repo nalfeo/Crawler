@@ -87,13 +87,25 @@ function main(): void {
 
   const state = result.state;
 
-  // Non-schema errors (e.g. git-verification failures in shallow clones) are
-  // reported as warnings but do not block materialization.
+  const hardValidationErrors = result.errors.filter(
+    (e) => e.code !== 'evidence.git-verification-failed',
+  );
+  if (hardValidationErrors.length > 0) {
+    process.stderr.write(
+      `epic:materialize: offline validation has ${hardValidationErrors.length} blocking error(s):\n` +
+        `${hardValidationErrors.map((e) => `  [${e.code}] ${e.message}`).join('\n')}\n` +
+        `Fix validation errors before running dry-run/confirm.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  // Non-schema git-verification errors are reported as warnings but do not block materialization.
   if (result.errors.length > 0) {
     process.stderr.write(
-      `epic:materialize: offline validation has ${result.errors.length} non-schema error(s):\n` +
+      `epic:materialize: offline validation has ${result.errors.length} warning(s):\n` +
         `${result.errors.map((e) => `  [${e.code}] ${e.message}`).join('\n')}\n` +
-        `Proceeding with materialization plan (state is schema-valid).\n`,
+        `Proceeding with materialization plan.\n`,
     );
   }
 

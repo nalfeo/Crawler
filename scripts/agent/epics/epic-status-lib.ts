@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { z } from 'zod';
@@ -2800,11 +2800,9 @@ function extractNodeIdFromBody(body: string | null | undefined): string | null {
 
 /**
  * List all issues in the repo (open or closed) that carry every label in
- * `labels`. Uses `gh api` with up to 100 results per page — sufficient for the
- * floor-2-equipment epic (35 nodes). Warns to stderr when the response is
- * exactly 100 items, which may indicate truncation. Uses `state=all` so that
- * a previously-created-then-closed issue is still detected and prevents
- * a duplicate being created on a subsequent run.
+ * `labels`. Uses `gh api` with `state=all` and paginates (`page=N`,
+ * `per_page=100`) until completion so previously-created (including closed)
+ * issues are detected and duplicates are prevented.
  */
 function listIssuesByLabels(
   runner: GithubRunner,
@@ -2812,18 +2810,27 @@ function listIssuesByLabels(
   labels: ReadonlyArray<string>,
 ): Array<{ number: number; title: string; html_url: string; body: string | null }> {
   const labelParam = encodeURIComponent(labels.join(','));
-  const path = `/repos/${repo}/issues?state=all&labels=${labelParam}&per_page=100`;
-  const raw = runner.get(path);
-  const parsed = z.array(githubIssueApiSchema).safeParse(raw);
-  if (!parsed.success) return [];
-  // Filter out pull requests — the Issues API can return PRs for the same labels.
-  const issues = parsed.data.filter((item) => item.pull_request === undefined);
-  if (issues.length === 100) {
-    process.stderr.write(
-      `epic:materialize: warning: listIssuesByLabels returned exactly 100 items; results may be truncated.\n`,
+  const allIssues: Array<{ number: number; title: string; html_url: string; body: string | null }> = [];
+  for (let page = 1; ; page++) {
+    const path = `/repos/${repo}/issues?state=all&labels=${labelParam}&per_page=100&page=${page}`;
+    const raw = runner.get(path);
+    const parsed = z.array(githubIssueApiSchema).safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(`GitHub API returned unexpected issue list shape (page ${page})`);
+    }
+    // Filter out pull requests — the Issues API can return PRs for the same labels.
+    const issues = parsed.data.filter((item) => item.pull_request === undefined);
+    allIssues.push(
+      ...issues.map((issue) => ({
+        number: issue.number,
+        title: issue.title,
+        html_url: issue.html_url,
+        body: issue.body ?? null,
+      })),
     );
+    if (parsed.data.length < 100) break;
   }
-  return issues.map((issue) => ({
+  return allIssues.map((issue) => ({
     number: issue.number,
     title: issue.title,
     html_url: issue.html_url,
@@ -2864,7 +2871,7 @@ export function materializeChildIssues(
       })),
       created_count: 0,
       existing_count: 0,
-      dry_run: true,
+      dry_run: options.dryRun,
     };
   }
 
@@ -2883,7 +2890,7 @@ export function materializeChildIssues(
   for (const issue of existingIssues) {
     const nodeId = extractNodeIdFromBody(issue.body);
     if (nodeId) existingByNodeId.set(nodeId, issue);
-    existingByTitle.set(issue.title, issue);
+    if (!nodeId) existingByTitle.set(issue.title, issue);
   }
 
   const outcomes: MaterializationOutcome[] = [];
@@ -2967,5 +2974,20 @@ export function patchEpicStateIssues(
     if (gh['issue'] !== null && gh['issue'] !== undefined) continue;
     gh['issue'] = { number: entry.number, url: entry.url };
   }
-  writeFileSync(stateFilePath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+  const tempPath = `${stateFilePath}.tmp-${process.pid}-${Date.now()}`;
+  let tempWritten = false;
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+    tempWritten = true;
+    renameSync(tempPath, stateFilePath);
+    tempWritten = false;
+  } finally {
+    if (tempWritten) {
+      try {
+        unlinkSync(tempPath);
+      } catch {
+        // best-effort cleanup only
+      }
+    }
+  }
 }
