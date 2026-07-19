@@ -8176,6 +8176,27 @@
       "type": "item",
       "contentHash": "51baee84d222c27d4696892674c742ea1d447af94be95f4d70c84463672c4c12"
     },
+    "equipment/hands/duelist-gloves": {
+      "briefId": "equipment/hands/duelist-gloves",
+      "spriteName": "equipment/hands/duelist-gloves",
+      "assetPath": "generated/equipment/hands/duelist-gloves.png",
+      "approvedAt": "2026-07-19T01:30:00.000Z",
+      "sourceRun": "manual-authored/duelist-gloves",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual-authored",
+      "judgeScore": null,
+      "type": "item",
+      "contentHash": "53f582a748383bea949d9b285fc7bb6bb86497dd9697318a21be4335db5ff2c2",
+      "equipment": {
+        "stableId": "hands.duelist-gloves",
+        "runtimeKey": "equipment/hands/duelist-gloves",
+        "category": "armor",
+        "family": "handwear",
+        "slot": "hands",
+        "productionWaveId": "floor2-equipment-ui-hands"
+      }
+    },
     "bone-saw-var-1": {
       "briefId": "bone-saw",
       "spriteName": "bone-saw-var-1",
