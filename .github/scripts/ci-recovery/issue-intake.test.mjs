@@ -151,6 +151,34 @@ test('review plan issue selection fails closed on unmatched explicit issue refer
       {
         comments: {
           nodes: [
+            trustedRoot('Issue #1307 requires no changes; the implementation plan is complete.'),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            trustedRoot(
+              'Issue #1307: the implementation plan is complete; a checklist is required.',
+            ),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
             trustedRoot('Issue #1307 requires the issue comment itself to contain a checklist.'),
           ],
         },
