@@ -376,6 +376,7 @@ _…and 75 older, see `archive/`._
 
 ## ci-policy
 
+- [2026-07-19-fast-verifier-root-ts-recovery](2026-07-19-fast-verifier-root-ts-recovery.md) — Fast verifier root/tool TS recovery
 - [2026-07-19-pr1593-merge-conflict-recovery](2026-07-19-pr1593-merge-conflict-recovery.md) — Handoff: PR #1593 merge-conflict recovery
 - [2026-07-18-active-weapon-snapshots-main-merge-recovery](2026-07-18-active-weapon-snapshots-main-merge-recovery.md) — Handoff: active weapon snapshots main merge recovery
 - [2026-07-18-bone-saw-pr-merge-recovery](2026-07-18-bone-saw-pr-merge-recovery.md) — Handoff: bone-saw PR merge recovery
@@ -395,9 +396,10 @@ _…and 75 older, see `archive/`._
 - [2026-07-18-epic-status-pr1271-recovery-merge](2026-07-18-epic-status-pr1271-recovery-merge.md) — 2026-07-18 — PR #1271 recovery merge + blocker fixes
 - [2026-07-18-epic-status-pr1271-recovery-round2](2026-07-18-epic-status-pr1271-recovery-round2.md) — Handoff: PR #1271 review-thread recovery round 2
 - [2026-07-18-epic-status-pr1271-review-recovery](2026-07-18-epic-status-pr1271-review-recovery.md) — 2026-07-18 — PR #1271 review recovery
+- [2026-07-18-fast-verifier-typecheck](2026-07-18-fast-verifier-typecheck.md) — Fast verifier full-project typecheck
 - [2026-07-18-g2b-seed-issues-recovery](2026-07-18-g2b-seed-issues-recovery.md) — Handoff: G2-B seed-issues PR recovery
 
-_…and 144 older, see `archive/`._
+_…and 145 older, see `archive/`._
 
 ## agent-memory
 
