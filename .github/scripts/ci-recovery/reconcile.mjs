@@ -1669,6 +1669,10 @@ await acquire('automation', null, {
   progressAt: dispatchProgressAt,
 });
 
+// Replace the generic <sha> placeholder with the actual head SHA so the
+// dispatched agent does not have to look it up — this prevents markers of the
+// form "✅ Addressed:" (without a SHA) that fail extractAddressedMarkerSha().
+const concreteMarkerReply = ADDRESSED_MARKER_REPLY.replace('<sha>', headSha);
 const taskBody = [
   `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,
   '@copilot Please recover this PR from the exact blockers below.',
@@ -1700,9 +1704,9 @@ const taskBody = [
   '',
   '**Review-thread protocol:** For every listed review thread, invoke a separate review agent using a model different from your primary model to validate whether the comment is still applicable to the current head. Fix valid findings. Resolve only deterministic non-applicability (outdated/removed line or file, duplicate already addressed) or a validated `✅ Addressed` result. For substantive disagreement, reply with the validator evidence and leave the thread unresolved for escalation.',
   '',
-  `A top-level PR comment is never sufficient for a review-thread blocker; post the ${ADDRESSED_MARKER_REPLY} reply in the exact thread comment listed above.`,
+  `A top-level PR comment is never sufficient for a review-thread blocker; post the ${concreteMarkerReply} reply in the exact thread comment listed above.`,
   '',
-  `When a thread is addressed, use \`reply_to_comment\` with the **Reply target comment ID** listed above for that thread (not the ID of this task comment) and set the body to ${ADDRESSED_MARKER_REPLY}. The CI recovery reconciler will resolve the review thread automatically on its next pass. Do **not** reply to this task comment to record addressed status — a marker reply on the review-thread comment is the only form recognised by the reconciler. Run the repository-required verification and push one consolidated repair commit.`,
+  `When a thread is addressed, use \`reply_to_comment\` with the **Reply target comment ID** listed above for that thread (not the ID of this task comment) and set the body to ${concreteMarkerReply}. The CI recovery reconciler will resolve the review thread automatically on its next pass. Do **not** reply to this task comment to record addressed status — a marker reply on the review-thread comment is the only form recognised by the reconciler. Run the repository-required verification and push one consolidated repair commit.`,
 ].join('\n');
 
 if (live) {

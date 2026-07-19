@@ -3848,6 +3848,18 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
     'task comment should explicitly reject top-level PR comments for review-thread blockers',
   );
+  // The task body must contain the concrete head SHA in the marker instruction so
+  // the dispatched agent does not have to look it up.  Before this fix the literal
+  // placeholder "<sha>" was emitted, causing agents to post "✅ Addressed:" (without
+  // a SHA) which fails extractAddressedMarkerSha() and leaves threads unresolved.
+  assert.ok(
+    taskCommentCall.body.body.includes(`✅ Addressed in ${HEAD_SHA}`),
+    'task comment should contain the concrete current head SHA in the marker instruction',
+  );
+  assert.ok(
+    !taskCommentCall.body.body.includes('✅ Addressed in <sha>'),
+    'task comment must not contain the literal <sha> placeholder in the marker instruction',
+  );
 });
 
 test('task body includes human-approval note when pendingHumanApproval is true', async (t) => {
