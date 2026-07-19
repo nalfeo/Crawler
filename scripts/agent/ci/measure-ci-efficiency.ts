@@ -241,7 +241,28 @@ async function ghGetAll(basePath: string, token: string, pageLimit = 500): Promi
 }
 
 // ---------------------------------------------------------------------------
+// Acceptance thresholds (per issue #1702 acceptance criteria)
+// ---------------------------------------------------------------------------
+
+const ACCEPTANCE = {
+  /** Avoidable share must be below this percentage. */
+  avoidableMaxPercent: 15,
+  /** Superseded runner waste must be reduced by at least this fraction vs. baseline. */
+  supersededReductionMinPercent: 90,
+  /** At least this fraction of runner time must be classifiable. */
+  classificationMinRate: 0.95,
+  /** Minimum number of representative post-rollout days required. */
+  minWindowDays: 7,
+} as const;
+
+// ---------------------------------------------------------------------------
 // Change-impact classification (mirrors detect-art-only.sh)
+// NOTE: This duplicates path patterns from detect-art-only.sh by design so the
+// analysis tool runs without a git checkout. When detect-art-only.sh gains new
+// impact flags (e.g., from issue #1688), update BOTH files.
+// TODO(#1688): Once #1688 merges, extend classifyFiles() to emit the new flags
+//   visual_touched / sim_touched / coverage_touched / sprite_pipeline_touched /
+//   dependencies_touched for more precise avoidable-minute attribution.
 // ---------------------------------------------------------------------------
 
 function classifyFiles(files: string[]): ChangeImpact {
@@ -371,11 +392,19 @@ function detectSupersededRuns(runs: WorkflowRun[]): Set<number> {
     );
     for (let i = 0; i < sorted.length - 1; i++) {
       const older = sorted[i]!;
-      const completedAt = older.updated_at;
+      // Prefer `updated_at` as the closest proxy for job completion available in
+      // the workflow-run list endpoint. The GitHub REST API does not expose a
+      // dedicated `completed_at` field on workflow runs; `updated_at` is set when
+      // all jobs finish and the run transitions to a terminal status. This means
+      // superseded detection slightly under-counts: a run that is still queued
+      // when the next run starts will not be marked superseded until updated_at
+      // advances past created_at of the newer run. The limitation is documented in
+      // the report's apiLimitations section.
+      const completedAtProxy = older.updated_at;
       // Check if any newer run started before the older one completed
       for (let j = i + 1; j < sorted.length; j++) {
         const newer = sorted[j]!;
-        if (newer.created_at < completedAt && newer.id !== older.id) {
+        if (newer.created_at < completedAtProxy && newer.id !== older.id) {
           superseded.add(older.id);
           break;
         }
@@ -530,11 +559,18 @@ async function fetchPrFiles(
   return files.map((f) => f.filename);
 }
 
+/**
+ * Nearest-rank percentile. For p=50 (median) on an odd array this returns the
+ * middle element; on an even array it returns the lower-middle element (not an
+ * interpolated average). This is consistent with the baseline measurement
+ * methodology and avoids fractional runner-minute values in the report.
+ */
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, idx)] ?? 0;
+  // nearest-rank: rank = ceil(p/100 * n), 1-based → 0-based index = rank - 1
+  const rank = Math.ceil((p / 100) * sorted.length);
+  return sorted[Math.max(0, rank - 1)] ?? 0;
 }
 
 async function analyze(args: {
@@ -787,19 +823,19 @@ function renderReport(report: Report): string {
   const fmtMin = (n: number) => `${Math.round(n).toLocaleString()} min`;
 
   const avoidableStatus =
-    report.avoidablePercent < 15
-      ? '✅ PASS (<15%)'
-      : `❌ FAIL (${pct(report.avoidablePercent)}, target <15%)`;
+    report.avoidablePercent < ACCEPTANCE.avoidableMaxPercent
+      ? `✅ PASS (<${ACCEPTANCE.avoidableMaxPercent}%)`
+      : `❌ FAIL (${pct(report.avoidablePercent)}, target <${ACCEPTANCE.avoidableMaxPercent}%)`;
 
   const supersededStatus =
-    deltaSuperseded !== null && deltaSuperseded >= 90
-      ? '✅ PASS (≥90% reduction)'
-      : `❌ FAIL (${deltaSuperseded !== null ? `${fmt(deltaSuperseded)}%` : 'N/A'} reduction, target ≥90%)`;
+    deltaSuperseded !== null && deltaSuperseded >= ACCEPTANCE.supersededReductionMinPercent
+      ? `✅ PASS (≥${ACCEPTANCE.supersededReductionMinPercent}% reduction)`
+      : `❌ FAIL (${deltaSuperseded !== null ? `${fmt(deltaSuperseded)}%` : 'N/A'} reduction, target ≥${ACCEPTANCE.supersededReductionMinPercent}%)`;
 
   const classifiedStatus =
-    report.classificationRate >= 0.95
-      ? '✅ PASS (≥95%)'
-      : `❌ FAIL (${pct(report.classificationRate * 100)}, target ≥95%)`;
+    report.classificationRate >= ACCEPTANCE.classificationMinRate
+      ? `✅ PASS (≥${Math.round(ACCEPTANCE.classificationMinRate * 100)}%)`
+      : `❌ FAIL (${pct(report.classificationRate * 100)}, target ≥${Math.round(ACCEPTANCE.classificationMinRate * 100)}%)`;
 
   const gapsStatus =
     report.classifierGaps.length === 0
@@ -917,9 +953,16 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv);
 
   const windowDays = (args.end.getTime() - args.start.getTime()) / (1000 * 60 * 60 * 24);
-  if (windowDays < 7) {
-    console.warn(`⚠️  Window is ${windowDays.toFixed(1)} days (< 7 representative days required).`);
-    console.warn('   Acceptance criterion requires at least 7 post-rollout days.');
+  if (windowDays < ACCEPTANCE.minWindowDays) {
+    console.error(
+      `❌ Window is ${windowDays.toFixed(1)} days, but the acceptance criterion requires at least` +
+        ` ${ACCEPTANCE.minWindowDays} representative post-rollout days (issue #1702).`,
+    );
+    console.error(
+      '   Run after all dependency issues (#1688, #1689, #1696, #1697, #1698) have merged',
+    );
+    console.error('   and the observation window has elapsed.');
+    process.exit(1);
   }
 
   process.stderr.write(`\nAnalyzing CI efficiency for ${args.owner}/${args.repo}\n`);
