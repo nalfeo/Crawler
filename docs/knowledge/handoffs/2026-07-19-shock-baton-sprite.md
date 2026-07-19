@@ -1,8 +1,8 @@
-# Handoff: shock-baton sprite pipeline (generation + wiring)
+# Handoff: shock-baton sprite pipeline recovery
 
 **Date:** 2026-07-19  
 **Agent:** Graphics Designer (Asset Forge)  
-**Apple estimate:** 1🍎 (pure art pipeline — brief exists, zero-code wiring path confirmed)  
+**Apple estimate:** 1🍎 (docs-only recovery)  
 **Issue:** #1348 (Asset request: shock-baton)  
 **Aggregate tracking:** #1303  
 **Prior handoff:** `docs/knowledge/handoffs/2026-07-18-shock-baton-brief.md`
@@ -11,185 +11,121 @@
 
 ## Summary
 
-Second session for the shock-baton asset pipeline. The brief was authored in the previous session
-(`briefs/weapons/shock-baton.yaml`). This session completed:
+This session investigated why issue #1348 never produced generated art and documented the unblock path.
 
-- ✅ Preflight / persona loaded (Graphics Designer)
-- ✅ Style guide reviewed (`docs/agent-os/sprite-style.md`)
-- ✅ Brief verified correct — inherits `weapon.json` defaults (64×64, vertical orientation, VLM judge enabled)
-- ✅ Pipeline architecture fully investigated
-- ✅ Wiring path confirmed: **zero-code**, auto-resolves via `resolveItemSprite('shock-baton', ...)` at `TIER_BARE_REAL` once approved
-- ✅ Placeholder audit run — shock-baton confirmed at 0 real art (still in the 152-placeholder pool)
-- ✅ Investigated all 558 GitHub Actions `asset-request.yml` workflow runs to find root cause of missing generation
-- ✅ Handoff written
-
-**Blocked on:** Azure sprite generation (requires maintainer to trigger `workflow_dispatch`).
+- ✅ Brief exists and is valid: `briefs/weapons/shock-baton.yaml`
+- ✅ Root cause identified: G2-B queue saturation cancelled the original `asset-request.yml` run before jobs started
+- ✅ Recovery path documented below
+- ⚠️ Runtime wiring is **not** complete yet: approval/check-in alone will not make inventory render a `shock-baton` icon today
 
 ---
 
-## Why generation hasn't happened (root cause)
+## Why generation did not happen
 
-The G2-B seed wave opened all 70 Floor-2 equipment issues nearly simultaneously
-(2026-07-18T01:25–01:27Z). GitHub's queue can only hold one pending run per concurrency group
-(`asset-request-worker`). All 70+ triggered runs were **cancelled before any job started** (0 jobs,
-3-second window). Run 29625171107 was shock-baton's specific cancelled run.
+The G2-B seed wave opened ~70 equipment issues at once. `asset-request.yml` uses a shared worker concurrency path, and many runs were cancelled before any worker job executed.
 
-Since then, all `asset-request.yml` workflow events have been for unrelated non-asset-request
-issues (CI recovery events) — all `skipped`. The Azure queue has not been replenished.
+The shock-baton request never got a successful worker run after that cancellation.
 
 ---
 
-## Brief status
+## Current runtime status (important)
 
-`briefs/weapons/shock-baton.yaml` — **correct and ready to generate:**
+The previous zero-code wiring conclusion was incorrect for current `main`:
 
-```yaml
-type: weapon # inherits weapon.json defaults
-name: shock-baton # = itemId = manifest briefId (bare, TIER_BARE_REAL auto-resolution)
-description: |
-  A compact one-handed shock baton held perfectly vertical and centered...
-  Floor 2 palette: dark graphite, muted steel accents, restrained electric-cyan glow at emitter tip.
-variations:
-  - baton body with segmented insulated rings along the shaft
-  - dual-prong emitter tip instead of a capped single-head tip
-minVariations: 6
-```
+- `shock-baton` is not present in `ITEM_CATALOG` (`src/shared/items.ts`)
+- `shock-baton` is not present in `WEAPON_EQUIPMENT_DEFS` (`src/shared/equipmentDefs.ts`)
+- `FLOOR2_EQUIPMENT_ART_DEFINITIONS` is currently consumed by issue-seeding/test paths, not by inventory runtime wiring
+- Because `shock-baton` is missing from `itemArtIdentitySet()`, approve-time canonicalization does not bare-key `shock-baton-vN`
 
-Inherited from `data/sprite-types/weapon.json`:
-
-- Size: 64×64 px
-- Anchor: x=32 y=56 (bottom-center grip, derived by sensor)
-- Sheet: 4×4 grid, 16 variants per run
-- Sensors: `weapon.orientation=vertical`, `anchor.derive=true`
-- Judge: `enabled=true` (runs locally, not in CI), `maxVariants=16`
+So: generated + approved art can land in the manifest/catalog, but inventory/equipment UI will not request `resolveItemSprite('shock-baton', ...)` until the item/equipment registrations exist.
 
 ---
 
-## Wiring analysis
+## Required maintainer unblock steps
 
-**Wiring path: zero-code (auto-resolution via item-sprites.ts)**
-
-When `npm run sprites:approve` runs with brief `shock-baton`, the manifest entry will have:
-
-- `briefId: 'shock-baton'` (bare, since `shock-baton` is in `itemArtIdentitySet`)
-- `assetPath: 'generated/shock-baton-var-N.png'`
-
-`resolveItemSprite('shock-baton', registry, seed)` in `src/shared/item-sprites.ts` will:
-
-1. Find manifest entry where `briefId === 'shock-baton'` → `matchConcept` returns `{ bare: true }`
-2. Score as `TIER_BARE_REAL` (lowest tier = highest priority)
-3. Return it over any placeholder at `TIER_PLACEHOLDER`
-
-**No code changes needed** for wiring. `sprites:generate-wiring` would produce an empty diff
-(no patches needed since the item-sprites.ts resolution is already in place).
-
-Runtime key `equipment/weapon/shock-baton` is defined in `floor2-equipment-art.ts` line 59+165.
-The stable ID `weapon.shock-baton` maps to runtime key via `runtimeKeyForFloor2Equipment`.
-
----
-
-## Environment blockers (both sessions)
-
-Both this session (2026-07-19) and the previous session (2026-07-18) hit the same hard blocks:
-
-| Blocker                                  | Reason                                                                                                                                 |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Cannot post GitHub issue comments        | DNS monitoring proxy blocks all GitHub REST/GraphQL API calls from this environment                                                    |
-| Cannot trigger `workflow_dispatch`       | Same DNS proxy block; `gh` CLI also has an invalid token (`ghu_*` user access token)                                                   |
-| Cannot run `npm run sprites:run` locally | `isCloudEnv()` returns true (CI=true, GITHUB_ACTIONS=true) → env-bootstrap refuses to write `.env.local` → no Azure OpenAI credentials |
-
-The plan comment required by the maintainer could not be posted. The plan is documented in this
-handoff and was delivered in the session response.
-
----
-
-## Unblock steps (maintainer action required)
-
-**One-time action needed — just trigger the workflow:**
-
-**Option A (browser):**
-Go to https://github.com/nalfeo/Crawler/actions/workflows/asset-request.yml → **Run workflow** →
-**Run workflow** (defaults are fine — the ingest sweep will pick up issue #1348 which is already
-open and labeled `asset-request`).
-
-**Option B (terminal):**
+Issue #1348 currently has **no labels**. Add `asset-request` first.
 
 ```bash
-gh workflow run asset-request.yml --repo nalfeo/Crawler
+gh issue edit 1348 --add-label asset-request --repo nalfeo/Crawler
 ```
 
-**Option C (re-label the issue to fire a `labeled` event):**
+Then choose either trigger path:
+
+### Option A — fire a labeled event (targets #1348 directly)
 
 ```bash
 gh issue edit 1348 --remove-label asset-request --repo nalfeo/Crawler
 gh issue edit 1348 --add-label asset-request --repo nalfeo/Crawler
 ```
 
----
+### Option B — one-time workflow dispatch sweep
 
-## Post-trigger pipeline (no further human action needed)
-
-Once the workflow fires, the pipeline proceeds unattended:
-
-```
-asset-request.yml runs
-  → ingest-once: enqueues issue #1348 into Azure queue
-  → worker: generates 16-variant sheet via Azure OpenAI gpt-image-1
-             judges each variant (sensors + VLM, locally)
-             uploads run artifacts to Azure blob storage
-  → worker exits with success or posts failure comment on #1348
+```bash
+gh workflow run asset-request.yml --repo nalfeo/Crawler
 ```
 
-Then either:
-
-- **Auto-path (g2b-harvest-approve.yml):** The G2-B harvest workflow can be triggered to
-  download the Azure blob run, approve the best `combinedPassed` variant, and open the art PR:
-  ```bash
-  gh workflow run g2b-harvest-approve.yml --repo nalfeo/Crawler \
-    --field dry_run=false --field create_pr=true
-  ```
-- **Manual path (from any machine with Azure creds):**
-  ```bash
-  npm run sprites:approve -- generated/runs/shock-baton/<run-id> --variant N
-  npm run sprites:checkin
-  npm run sprites:asset-pr   # opens art-only PR closing #1348
-  ```
+`workflow_dispatch` discovery uses labeled asset-request issues, so adding the label is required in either path.
 
 ---
 
-## Observe before done (to complete after art lands)
+## What runs in CI after trigger
 
-After the art PR merges:
+`asset-request.yml` runs in GitHub Actions and executes:
 
-1. **Wiring verification:** Run `npm run sprites:generate-wiring -- --since main --output summary`.
-   Expect empty output (zero-code path; no patches needed).
+1. `sprites:ingest-once`
+2. `sprites:worker`
 
-2. **Runtime observation:** In `npm run dev` or `npm run lab -- sprite-gallery`, equip shock-baton
-   in the inventory UI. Confirm the slot renders the approved `shock-baton-var-N.png` sprite
-   (not the placeholder). Capture before/after screenshots.
+The worker generates and judges variants **inside the CI job** (the workflow sets `SPRITES_ALLOW_CI_PIPELINE=true` for this sanctioned path).
 
-3. **Headless probe:** `npm run verify:fast` should pass with the new manifest entry. No new
-   sensor entries needed (manifest entry created by `approve.ts` includes the sensor results).
+---
+
+## Landing the generated art
+
+After a successful worker run, you still need approval/check-in/PR flow.
+
+### Auto path (with caveat)
+
+`g2b-harvest-approve.yml` can automate download + approve + PR creation, but current `ci-harvest-approve.ts` reconstructs run keys as `<base>-v1/<runId>/...` and can miss runs when selector output is `-v2`/`-v3`.
+
+```bash
+gh workflow run g2b-harvest-approve.yml --repo nalfeo/Crawler \
+  --field dry_run=false --field create_pr=true
+```
+
+### Manual path
+
+Before `sprites:approve`, explicitly materialize the Azure run artifacts locally under:
+
+- `generated/runs/<brief-id>/<run-id>/summary.json`
+- `generated/runs/<brief-id>/<run-id>/processed/*.png`
+
+Then run:
+
+```bash
+npm run sprites:approve -- generated/runs/<brief-id>/<run-id> --variant N
+npm run sprites:checkin
+npm run sprites:asset-pr
+```
+
+---
+
+## Observe before done (after art PR merge)
+
+1. **Wiring check scope must use pre-merge ref** (not `--since main` while on `main`):
+
+   ```bash
+   npm run sprites:generate-wiring -- --since HEAD~1 --output summary
+   ```
+
+   (Or use the exact pre-merge SHA.)
+
+2. **Runtime observation must use the real game surface**:
+   - Use `npm run dev`
+   - Equip/inspect where inventory/equipment icons render
+   - Do **not** use `sprite-gallery` for this step (read-only run browser; no inventory/equip UI)
 
 ---
 
 ## Systems touched
 
-- `briefs/weapons/shock-baton.yaml` (read-only this session)
-- `docs/knowledge/handoffs/2026-07-19-shock-baton-sprite.md` (this file)
-
-**When art lands (post-trigger):**
-
-- `public/assets/generated/shock-baton-var-N.png`
-- `public/assets/generated/manifest.json` (approve step)
-- `src/shared/data/sprite-catalog.json` (checkin step)
-- Art-only PR branch (checkin step)
-- No engine/game code changes (zero-code wiring path)
-
----
-
-## Apple estimate rationale
-
-**1🍎** — Pure art pipeline. Brief exists, wiring is zero-code (no engine/game changes). Art-only
-PR is review-ledger-exempt (only `public/assets/**`, catalog, briefs touched). The only blocker is
-the Azure generation step which requires a maintainer workflow dispatch.
+sprite-pipeline, sprite-workflow, inventory, weapons
