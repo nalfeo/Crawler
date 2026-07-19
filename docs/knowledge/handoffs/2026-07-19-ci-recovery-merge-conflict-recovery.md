@@ -34,6 +34,11 @@ CI-recovery behavior:
   kept the stale-marker regression on its intended blocker-summary path
 - repaired the newly merged verifier fixture so Windows-host paths stay native
   for `npx tsc` while files consumed directly by WSL bash use translated paths
+- retained top-level recovery context across reviewer follow-ups by indexing
+  prior task replies by stable GraphQL thread ID as well as the digest-bearing
+  blocker ID used for progress tracking
+- limited marker boundaries to trusted collaborators and bots so untrusted
+  marker-shaped comments cannot suppress prior recovery hints
 
 ## Files touched
 

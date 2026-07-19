@@ -77,6 +77,7 @@ const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
 const TASK_COMMENT_MARKER_PATTERN = /crawler-ci-task:v1 fingerprint=([0-9a-f]+)\b/i;
 const TASK_REVIEW_THREAD_BLOCKER_PATTERN = /\*\*review-thread\*\*\s+`(review-thread:[^`]+)`/gi;
+const REVIEW_THREAD_BLOCKER_ID_PATTERN = /^review-thread:([^:]+):/;
 const KNOWN_RECOVERY_REPLY_LOGINS = new Set([
   'copilot',
   'copilot[bot]',
@@ -116,6 +117,10 @@ function extractTaskReviewThreadBlockerIds(body) {
     String(body ?? '').matchAll(TASK_REVIEW_THREAD_BLOCKER_PATTERN),
     (match) => match[1],
   );
+}
+
+function extractStableReviewThreadId(blockerId) {
+  return String(blockerId ?? '').match(REVIEW_THREAD_BLOCKER_ID_PATTERN)?.[1] ?? null;
 }
 
 function summarizePriorRecoveryIssueComment(body) {
@@ -1138,6 +1143,10 @@ for (const comment of comments) {
 }
 
 const priorTopLevelReplyByBlockerId = new Map();
+// Secondary lookup keyed by stable thread ID (without digest) so that a
+// reviewer follow-up that changes the comment digest between the prior task
+// dispatch and the current run does not lose the top-level-reply hint.
+const priorTopLevelReplyByStableThreadId = new Map();
 for (const comment of comments) {
   const authorLogin = String(comment?.user?.login ?? comment?.author?.login ?? '').toLowerCase();
   if (!KNOWN_RECOVERY_REPLY_LOGINS.has(authorLogin)) continue;
@@ -1162,6 +1171,8 @@ for (const comment of comments) {
   // the least misleading hint for the next recovery run.
   for (const blockerId of blockerIds) {
     priorTopLevelReplyByBlockerId.set(blockerId, priorReply);
+    const stableThreadId = extractStableReviewThreadId(blockerId);
+    if (stableThreadId) priorTopLevelReplyByStableThreadId.set(stableThreadId, priorReply);
   }
 }
 
@@ -1184,21 +1195,40 @@ for (const thread of unresolvedThreads) {
   if (staleAddressedMarkerByThread.has(thread.id)) continue;
   const comments = thread.comments?.nodes ?? [];
   const blockerId = reviewThreadBlockerIdsByThread.get(thread.id);
-  const topLevelPriorReply = blockerId ? priorTopLevelReplyByBlockerId.get(blockerId) : null;
+  // Fall back to the stable-thread-ID index when the digest changed due to a
+  // reviewer follow-up between the prior task dispatch and the current run.
+  const topLevelPriorReply =
+    (blockerId ? priorTopLevelReplyByBlockerId.get(blockerId) : null) ??
+    priorTopLevelReplyByStableThreadId.get(thread.id) ??
+    null;
   if (comments.length >= 2) {
     const last = comments[comments.length - 1];
-    // Skip if the last comment already has a marker (handled by stale path or
-    // auto-resolution above).
-    if (extractAddressedMarkerSha(last?.body)) continue;
+    // Skip if the last comment already has a trusted marker (handled by stale
+    // path or auto-resolution above). Require author trust so an untrusted
+    // commenter cannot suppress this hint by posting a syntactically-valid marker.
+    const lastLogin = String(last?.author?.login ?? '').toLowerCase();
+    const lastAssoc = String(last?.authorAssociation ?? '').toUpperCase();
+    if (
+      (TRUSTED_ASSOCIATIONS.has(lastAssoc) || TRUSTED_BOT_LOGINS.has(lastLogin)) &&
+      extractAddressedMarkerSha(last?.body)
+    )
+      continue;
     let markerFound = false;
     // Reviewer follow-ups can move a recovery reply away from the final position.
     for (let i = comments.length - 1; i >= 1; i--) {
       const c = comments[i];
-      if (extractAddressedMarkerSha(c?.body)) {
+      const login = String(c?.author?.login ?? '').toLowerCase();
+      const assoc = String(c?.authorAssociation ?? '').toUpperCase();
+      // Only a trusted author's marker acts as a boundary; an untrusted commenter
+      // must not be able to suppress the prior-attempt hint by posting a
+      // syntactically-valid marker.
+      if (
+        (TRUSTED_ASSOCIATIONS.has(assoc) || TRUSTED_BOT_LOGINS.has(login)) &&
+        extractAddressedMarkerSha(c?.body)
+      ) {
         markerFound = true;
         break;
       }
-      const login = String(c?.author?.login ?? '').toLowerCase();
       if (KNOWN_RECOVERY_REPLY_LOGINS.has(login)) {
         priorUnresolvedReplyByThread.set(thread.id, String(c?.body ?? '').slice(0, 300));
         break;
