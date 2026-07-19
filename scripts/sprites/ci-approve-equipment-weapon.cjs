@@ -169,7 +169,6 @@ manifest.entries[runtimeKey] = {
   type: category,
   contentHash: contentHash,
   effectiveAnchorSource: anchor.source || null,
-  facingDirection: null,
   equipment: {
     stableId: stableId,
     runtimeKey: runtimeKey,

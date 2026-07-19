@@ -21,6 +21,7 @@ export default tseslint.config(
       'src/devtools/*.js',
       'src/devtools/*.d.ts',
       'scripts/sprites/**/*.js',
+      'scripts/sprites/**/*.cjs',
       'scripts/sprites/**/*.d.ts',
     ],
   },

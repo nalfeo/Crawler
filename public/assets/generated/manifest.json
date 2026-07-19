@@ -8235,7 +8235,6 @@
       "type": "weapon",
       "contentHash": "800144950c5ec4bab0874ac28a6253c8c6335b10fa55ba0839b2d84ebc9823fe",
       "effectiveAnchorSource": "brief",
-      "facingDirection": null,
       "equipment": {
         "stableId": "weapon.war-fan",
         "runtimeKey": "equipment/weapon/war-fan",
