@@ -3917,37 +3917,43 @@ test('live reconcile task comment includes explicit review-thread reply comment 
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'post the `✅ Addressed in <post-push-sha>: <one-line note>` reply',
+      'post the `✅ Addressed in <post-push-head-sha>: <one-line note>` reply',
     ),
-    'top-level-comment warning should require the post-push SHA',
+    'top-level-comment warning should require the post-push HEAD marker',
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'replace `<post-push-sha>` in `✅ Addressed in <post-push-sha>: <one-line note>`',
+      'replace `<post-push-head-sha>` in `✅ Addressed in <post-push-head-sha>: <one-line note>`',
     ),
-    'reply_to_comment instruction should require replacing the post-push SHA placeholder',
+    'reply_to_comment instruction should require replacing the post-push HEAD placeholder',
   );
   assert.ok(
-    !taskCommentCall.body.body.includes('✅ Addressed in <sha>'),
-    'task comment must not contain the literal <sha> placeholder in the marker instruction',
+    taskCommentCall.body.body.includes('push your consolidated repair commit first'),
+    'task comment should require pushing before posting addressed markers',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('then run `git rev-parse HEAD`'),
+    'task comment should require deriving the marker SHA from post-push HEAD',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('✅ Addressed in <sha>'),
+    false,
+    'task comment must not contain the generic <sha> placeholder in marker instructions',
   );
   assert.ok(
     taskCommentCall.body.body.includes(
-      'validated `✅ Addressed in <post-push-sha>: <one-line note>` result',
+      'validated `✅ Addressed in <post-push-head-sha>: <one-line note>` result',
     ),
-    'task comment should require the post-push SHA for ordinary Addressed markers',
+    'task comment should require a post-push SHA for ordinary Addressed markers',
   );
   assert.ok(
     taskCommentCall.body.body.includes(`Branch head at dispatch: \`${HEAD_SHA}\``),
     'task comment should retain the concrete dispatch SHA as context',
   );
-  assert.ok(
-    !taskCommentCall.body.body.includes(`✅ Addressed in ${HEAD_SHA}`),
-    'task comment must not bake the dispatch-time SHA into an addressed marker',
-  );
-  assert.ok(
-    taskCommentCall.body.body.includes('run `git rev-parse HEAD` immediately after pushing'),
-    'task comment should explain how to obtain the repair commit SHA',
+  assert.equal(
+    taskCommentCall.body.body.includes(`✅ Addressed in ${HEAD_SHA}: <one-line note>`),
+    false,
+    'task comment should not prefill dispatch-time HEAD in marker instruction',
   );
   assert.equal(
     taskCommentCall.body.body.includes('validated `✅ Addressed` result'),
