@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-18  
 **Session slug:** ci-recovery-not-applicable-marker  
-**Apple estimate:** 1🍎
+**Apple estimate:** 2🍎
 
 ## Summary
 
@@ -26,8 +26,18 @@ escalated (#1618).
   `hasNotApplicableMarker()` export; updated `shouldResolveThread()` to also
   return `true` when the last trusted comment carries `✅ Not applicable`.
 - `.github/scripts/ci-recovery/reconcile.mjs` — updated recovery instructions
-  to document both valid marker formats for agents.
+  to document both valid marker formats for agents and require a SHA for every
+  ordinary `✅ Addressed` result.
 - `.github/scripts/ci-recovery/state.test.mjs` — added 4 regression tests.
+- `.github/scripts/ci-recovery/reconcile.test.mjs` — verifies the generated
+  task body reserves SHA-less resolution for `✅ Not applicable: <reason>`.
+
+## Consolidation
+
+Compared the overlapping implementations in PRs #1612, #1606, and #1594.
+This PR keeps #1612's explicit non-applicability marker, incorporates #1606's
+fail-closed `✅ Addressed in <sha>` task wording, and rejects #1594's broader
+bare-`✅ Addressed` fallback.
 
 ## Systems touched
 
@@ -36,7 +46,7 @@ ci-recovery
 ## Verification Run
 
 `npm run verify:fast` — 1260 tests pass  
-`node --test .github/scripts/ci-recovery/*.test.mjs` — 241 tests pass  
+`node --test .github/scripts/ci-recovery/reconcile.test.mjs .github/scripts/ci-recovery/state.test.mjs` — 90 pass, 36 skipped on the known Windows subprocess shutdown assertion
 `npm run verify:pr-prereqs` — passed after ledger + handoff committed
 
 ## Unresolved Issues
