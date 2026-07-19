@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { PNG } from 'pngjs';
 
 const RUNTIME_KEY = 'equipment/weapon/void-rapier';
+const BRIGHT_RIM_THRESHOLD = { red: 200, green: 190, blue: 235 } as const;
+const SATURATED_ACCENT_THRESHOLD = { red: 140, greenMax: 120, blue: 220 } as const;
+const BOTTOM_CENTER_ALPHA_INDEX = (124 * 128 + 64) * 4 + 3;
 
 function repoPath(relativePath: string): string {
   return fileURLToPath(new URL(`../../${relativePath}`, import.meta.url));
@@ -60,8 +63,20 @@ describe('void-rapier asset request', () => {
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
-        if (red >= 200 && green >= 190 && blue >= 235) brightRimCount += 1;
-        if (red >= 140 && blue >= 220 && green <= 120) saturatedAccentCount += 1;
+        if (
+          red >= BRIGHT_RIM_THRESHOLD.red &&
+          green >= BRIGHT_RIM_THRESHOLD.green &&
+          blue >= BRIGHT_RIM_THRESHOLD.blue
+        ) {
+          brightRimCount += 1;
+        }
+        if (
+          red >= SATURATED_ACCENT_THRESHOLD.red &&
+          blue >= SATURATED_ACCENT_THRESHOLD.blue &&
+          green <= SATURATED_ACCENT_THRESHOLD.greenMax
+        ) {
+          saturatedAccentCount += 1;
+        }
       }
     }
 
@@ -75,13 +90,13 @@ describe('void-rapier asset request', () => {
     expect(centerX).toBeGreaterThanOrEqual(60);
     expect(centerX).toBeLessThanOrEqual(68);
     expect(minY).toBeLessThanOrEqual(2);
-    expect(png.data[(124 * png.width + 64) * 4 + 3] ?? 0).toBeGreaterThan(0);
+    expect(png.data[BOTTOM_CENTER_ALPHA_INDEX] ?? 0).toBeGreaterThan(0);
 
     expect(brightRimCount).toBeGreaterThanOrEqual(40);
     expect(saturatedAccentCount).toBeGreaterThanOrEqual(20);
 
     const visited = new Uint8Array(png.width * png.height);
-    const queue = new Uint32Array(png.width * png.height);
+    const queue = new Uint32Array(Math.max(opaqueCount, 1));
     let componentCount = 0;
     for (let y = 0; y < png.height; y++) {
       for (let x = 0; x < png.width; x++) {
