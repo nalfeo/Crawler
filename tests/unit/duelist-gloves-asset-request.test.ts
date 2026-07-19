@@ -72,7 +72,18 @@ describe('duelist-gloves asset request', () => {
       }
     }
 
+    // Silhouette: at least one opaque pixel present.
     expect(opaqueCount).toBeGreaterThan(0);
+
+    // Transparent background: all four corners must have alpha = 0 so a fully
+    // opaque fill can never satisfy this test.
+    const alphaAt = (x: number, y: number): number =>
+      png.data[(y * png.width + x) * 4 + 3] ?? 0;
+    expect(alphaAt(0, 0)).toBe(0);
+    expect(alphaAt(png.width - 1, 0)).toBe(0);
+    expect(alphaAt(0, png.height - 1)).toBe(0);
+    expect(alphaAt(png.width - 1, png.height - 1)).toBe(0);
+
     const centerX = (minX + maxX) / 2;
     expect(centerX).toBeGreaterThanOrEqual(60);
     expect(centerX).toBeLessThanOrEqual(68);
