@@ -29,6 +29,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --project integration",
+    "test:equipment-gates": "vitest run tests/integration/generated-equipment-dps-gate.integration.test.ts tests/unit/generated-equipment-distribution-fixtures.test.ts",
     "test:e2e": "vitest run --project e2e",
     "test:headless": "vitest run --project headless --reporter=verbose",
     "test:sprites": "vitest run --project sprites --reporter=verbose",
