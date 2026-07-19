@@ -853,6 +853,19 @@
     "row": 0
   },
   {
+    "id": "generated:flame-tongs-var-0",
+    "kind": "sprite",
+    "label": "flame-tongs-var-0",
+    "description": "Generated sprite from brief: flame-tongs.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "flame-tongs-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/flame-tongs-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:frost-lichen-v1-var-12",
     "kind": "sprite",
     "label": "frost-lichen-v1-var-12",
@@ -1212,6 +1225,19 @@
     "spriteId": "mama-slime-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/mama-slime-v1-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:merchant-sandals-var-0",
+    "kind": "sprite",
+    "label": "merchant-sandals-var-0",
+    "description": "Manually authored sprite for brief: merchant-sandals.",
+    "tags": ["item", "generated", "manual-authored"],
+    "spriteId": "merchant-sandals-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/merchant-sandals-var-0.png",
     "frame": 0,
     "col": 0,
     "row": 0

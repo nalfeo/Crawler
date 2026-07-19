@@ -37,6 +37,8 @@ function sha256OfFile(repoRoot: string, repoRelPath: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
+const CURRENT_TEST_FILE_HASH = sha256OfFile(REPO_ROOT, 'tests/unit/agent/epic-status.test.ts');
+
 /**
  * A repository-independent GitReader for unit tests: reads evidence files
  * from the current working tree (content matches the recorded sha256 hashes)
@@ -313,6 +315,67 @@ describe('Floor 2 equipment epic status', () => {
     expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.claimant');
     expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.session');
     expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.scope');
+  });
+
+  it('rejects mismatched issue and PR number/url pairs', () => {
+    const state = cloneState();
+    state.github.parent_issue = {
+      number: 1264,
+      url: 'https://github.com/nalfeo/Crawler/issues/9999',
+    };
+    state.nodes[0]!.github.pr = {
+      number: 1271,
+      url: 'https://github.com/nalfeo/Crawler/pull/8888',
+      head_sha: FULL_COMMIT,
+    };
+
+    const messages = validate(state).errors.map((error) => error.message);
+
+    expect(messages.some((message) => message.includes('Issue URL does not match number'))).toBe(
+      true,
+    );
+    expect(messages.some((message) => message.includes('PR URL does not match number'))).toBe(true);
+  });
+
+  it('rejects unverifiable required evidence paths for validated nodes', () => {
+    const state = cloneState();
+    validateA0(state);
+    state.nodes[0]!.evidence[2] = {
+      kind: 'offline-validator-and-focused-tests',
+      path_or_check: 'tests/unit/agent/does-not-exist.test.ts',
+      sha256: CURRENT_TEST_FILE_HASH,
+      commit: LEDGER_COMMIT,
+      recorded_at: '2026-07-17T17:55:00.000Z',
+    };
+
+    expect(validate(state).errors.map((error) => error.code)).toContain(
+      'evidence.git-verification-failed',
+    );
+  });
+
+  it('rejects merge facts that point at a non-commit git object', () => {
+    const state = cloneState();
+    validateA0(state);
+    // Use HEAD^{tree} rather than a hardcoded commit SHA that may not be
+    // present in shallow CI checkouts. We only need any tree object SHA to
+    // verify the validator correctly rejects non-commit objects.
+    const treeObject = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    }).trim();
+    state.nodes[0]!.status = 'merged';
+    state.nodes[0]!.merge = {
+      commit: treeObject,
+      merged_at: '2026-07-17T17:50:00.000Z',
+    };
+
+    const result = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain('merge.not-a-commit');
   });
 
   it('renders stable child issue packets with late-bound parent substitution', () => {
