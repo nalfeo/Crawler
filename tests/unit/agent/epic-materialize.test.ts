@@ -91,6 +91,15 @@ function makeExistingIssue(
   };
 }
 
+function issueListPageFromPath(path: string): string | null {
+  try {
+    return new URL(path, 'https://example.test').searchParams.get('page');
+  } catch {
+    const pageMatch = /(?:[?&])page=([^&]+)/.exec(path);
+    return pageMatch?.[1] ?? null;
+  }
+}
+
 describe('materializeChildIssues — dry-run', () => {
   it('returns dry-run outcomes matching buildMaterializationPlan without any GitHub calls', () => {
     const state = stateWithNoIssues();
@@ -217,7 +226,7 @@ describe('materializeChildIssues — confirm', () => {
       {
         createdIssues,
         get(path: string): unknown {
-          const page = new URL(`https://example.test/${path}`).searchParams.get('page');
+          const page = issueListPageFromPath(path);
           if (page === '1') {
             return Array.from({ length: 100 }, (_, i) => ({
               number: 20000 + i,
@@ -252,7 +261,7 @@ describe('materializeChildIssues — confirm', () => {
     const state = stateWithNoIssues();
     const runner: GithubWriteRunner = {
       get(path: string): unknown {
-        const page = new URL(`https://example.test/${path}`).searchParams.get('page');
+        const page = issueListPageFromPath(path);
         if (page === '1') {
           return Array.from({ length: 100 }, (_, i) => ({
             number: 40000 + i,
