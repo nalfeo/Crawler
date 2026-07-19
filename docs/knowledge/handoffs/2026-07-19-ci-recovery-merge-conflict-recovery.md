@@ -24,11 +24,15 @@ CI-recovery behavior:
 - updated two reconcile regression fixtures so the stale-marker and prior-reply
   summary tests remain on their intended code paths after `main`'s new
   outdated-thread auto-marker behavior
+- compared duplicate PR #1623 and retained #1627 as the canonical superset
+- removed the unrelated generated sprite-catalog delta introduced by the merge
+  recovery, restoring `src/shared/data/sprite-catalog.json` exactly to `main`
 
 ## Files touched
 
 - `.github/scripts/ci-recovery/reconcile.mjs`
 - `.github/scripts/ci-recovery/reconcile.test.mjs`
+- `src/shared/data/sprite-catalog.json`
 - `docs/knowledge/handoffs/2026-07-19-ci-recovery-merge-conflict-recovery.md`
 
 ## Verification run
