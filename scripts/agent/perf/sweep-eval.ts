@@ -84,7 +84,9 @@ import {
 import {
   SHARD_SCHEMA_VERSION,
   assertSearchArtifactProvenance,
+  buildLeaderboard,
   deriveRunFacts,
+  selectQualifiedWinner,
   type RunRow,
   type ShardArtifact,
   type ShardMeta,
@@ -208,6 +210,44 @@ function winsOf(rows: readonly RunRow[], id: string): number {
   return rows.filter((r) => r.configId === id && r.officialWin).length;
 }
 
+/**
+ * Pure gate-aware promotion decision for the legacy `--stage search` hill
+ * climb: a candidate may only replace the search's current position if it
+ * ALSO passes {@link selectQualifiedWinner}'s hard safety gate (>=90%
+ * official wins AND zero win→loss flips vs the FIXED original baseline
+ * `incumbentConfigId` — never the search's current position, which would let
+ * the gate itself drift), exactly mirroring `applyRoundResult`'s
+ * round-to-round promotion in `round-plan.ts`. Extracted as a pure function
+ * (taking already-evaluated rows, not running anything) so it is unit
+ * testable without headless game runs — the exact wiring bug class a review
+ * would otherwise only catch by re-deriving this logic by hand.
+ *
+ * Returns `null` when no candidate both qualifies and out-scores
+ * `currentScore` (steps should be halved by the caller in that case).
+ */
+export function selectSearchPromotion(
+  allRows: readonly RunRow[],
+  configs: Readonly<Record<string, SweepConfig>>,
+  comboStr: string,
+  incumbentConfigId: string,
+  candidateIds: ReadonlySet<string>,
+  budgetMs: number,
+  currentScore: number,
+): { bestId: string; bestScore: number } | null {
+  const leaderboard = buildLeaderboard(allRows, {
+    incumbentCombo: comboStr,
+    incumbentConfigId,
+    configs,
+    budgetMs,
+  });
+  const candidateRows = leaderboard.filter((r) => candidateIds.has(r.configId) && !r.isIncumbent);
+  const { winner: qualifiedWinner } = selectQualifiedWinner(candidateRows);
+  if (qualifiedWinner && qualifiedWinner.totalScore > currentScore) {
+    return { bestId: qualifiedWinner.configId, bestScore: qualifiedWinner.totalScore };
+  }
+  return null;
+}
+
 interface SearchResult {
   rows: RunRow[];
   configs: Record<string, SweepConfig>;
@@ -293,16 +333,26 @@ async function searchCombo(
     );
     allRows.push(...rows);
 
-    let bestId: string | null = null;
-    let bestScore = currentScore;
-    for (const c of candidates) {
-      const s = totalScoreOf(rows, c.id);
-      if (bestId === null ? s > currentScore : s > bestScore) {
-        bestId = c.id;
-        bestScore = s;
-      }
-    }
-    if (bestId && bestScore > currentScore) {
+    // Gate promotion through the SAME hard safety gate used for round-plan.ts
+    // and final graduation (see selectSearchPromotion doc comment): a
+    // higher-scoring neighbour must ALSO have >=90% wins AND zero win->loss
+    // flips vs the FIXED original baseline (base.id, not the search's current
+    // position) before it can replace currentId. Naive score-only promotion
+    // here would reintroduce the exact GH-run-29597840666 bug this module
+    // exists to fix, just in the legacy local-smoke-run path instead of CI.
+    const candidateIds = new Set(candidates.map((c) => c.id));
+    const promotion = selectSearchPromotion(
+      allRows,
+      configs,
+      comboStr,
+      base.id,
+      candidateIds,
+      shared.budgetMs,
+      currentScore,
+    );
+
+    if (promotion) {
+      const { bestId, bestScore } = promotion;
       console.log(
         `[${comboStr}] round ${round + 1}: ✅ ${currentScore.toExponential(3)} → ${bestScore.toExponential(3)} via ${bestId.slice(0, 48)}`,
       );
@@ -630,7 +680,12 @@ function emit(artifact: ShardArtifact, out: string | null): void {
   }
 }
 
-if (!isMainThread) {
+// Guard on BOTH !isMainThread AND a real task payload: this module's own
+// runWorkerPool always sends a WorkerPoolTaskPayload, but a plain module
+// import from a non-main worker thread with no payload (e.g. this file
+// being imported for unit tests inside Vitest's own worker-thread pool)
+// must be a no-op, not attempt to run an undefined task.
+if (!isMainThread && workerData != null) {
   const payload = workerData as WorkerPoolTaskPayload<EvalTask, EvalShared>;
   runOne(payload.task, payload.shared)
     .then((result) => {
@@ -645,7 +700,7 @@ if (!isMainThread) {
         error: error instanceof Error ? (error.stack ?? error.message) : String(error),
       } satisfies WorkerTaskFailure);
     });
-} else {
+} else if (isMainThread) {
   main(process.argv).catch((err) => {
     console.error('Fatal:', err instanceof Error ? err.stack : err);
     process.exit(1);

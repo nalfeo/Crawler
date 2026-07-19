@@ -380,6 +380,34 @@ describe('applyRoundResult', () => {
     expect(updated.converged).toBe(checkpoint.converged);
   });
 
+  it('still halves when `plannedCount: 0` is a LEGITIMATE zero (planner ran and decided this combo needed nothing)', () => {
+    // plannedCount=0 means the planner job itself succeeded and produced a
+    // manifest that genuinely lists zero candidates for this combo — this is
+    // real search information (the SAME signal a converged/at-minStep combo
+    // would produce), not an infra failure, so it must still halve/converge
+    // normally. This is the control case that proves `0` and `'unknown'`
+    // (below) are deliberately handled differently.
+    const checkpoint = baseCheckpoint(500);
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, [], { plannedCount: 0 });
+    expect(updated.bestConfigId).toBe(checkpoint.bestConfigId);
+    expect(updated.steps.aggression).toBe(0.25); // halved — genuinely nothing was planned
+    expect(updated.converged).toBe(false);
+  });
+
+  it("does NOT halve/converge when `plannedCount: 'unknown'` — the planner job never produced a manifest at all", () => {
+    // Distinct from the `plannedCount: 0` case above: 'unknown' means
+    // roundN-candidates itself crashed/never uploaded candidates.json, so we
+    // cannot tell whether 0 or N candidates were planned for this combo.
+    // Must ALWAYS be treated as an infra failure (never halve/converge),
+    // even though candidateShards is empty here exactly as it would be for a
+    // genuine dead-end — the sentinel, not the shard count, drives this.
+    const checkpoint = baseCheckpoint(500);
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, [], { plannedCount: 'unknown' });
+    expect(updated.bestConfigId).toBe(checkpoint.bestConfigId);
+    expect(updated.steps).toEqual(checkpoint.steps); // NOT halved
+    expect(updated.converged).toBe(checkpoint.converged);
+  });
+
   it('does NOT halve/converge on a PARTIAL round (some but not all planned candidates arrived) even when the arrived one does not improve', () => {
     const checkpoint = baseCheckpoint(500);
     const worse: SweepConfig = { ...BASE, aggression: 1.5 };

@@ -16,8 +16,25 @@
       "notes": "Adversarial review (gpt-5.4, high reasoning) read all source files and returned verdict REJECTED with 3 blocking concerns, all now fixed: (1) checkpoint-init/round1-candidates lacked if:always(), so one failed baseline matrix leg would skip downstream jobs for ALL combos under implicit if:success() -- fixed by adding if:always() to both jobs. (2) applyRoundResult halved knob steps whenever candidateShards was empty without distinguishing genuine convergence from every matrix leg failing -- fixed by adding a plannedCount param; when plannedCount indicates candidates were planned but none/some arrived, steps are left untouched instead of halved/converged, wired via workflow --planned-count computed from the round candidates.json artifact. (3) Round promotion picked purely by bestScore, so the search hill-climb could itself walk toward a config the hard safety gate would reject (the exact GH-run-29597840666 bug pattern) -- fixed by reusing aggregate-shards.ts buildLeaderboard()+selectQualifiedWinner() (the SAME pure gate functions used for final graduation) directly inside applyRoundResult, so round-to-round promotion now requires zero incumbent flips + >=90% win rate before comparing score. Alternatives considered and rejected: (a) per-combo child reusable workflow -- rejected, adds GH Actions workflow_call indirection/debuggability cost with no wall-time benefit over the explicit bounded DAG; (b) durable cross-run checkpoint storage (e.g. a repo-committed state file) -- rejected, artifacts are sufficient for a single dispatched run and avoid concurrent-run write races; (c) fully generic/dynamic round count via a controller job -- rejected per user constraint (GH Actions dynamic deps make this impractical; explicit bounded 1-3 DAG is the approved fallback); (d) reverting to one serial job -- rejected, defeats the entire wall-clock goal; (e) mirroring the gate logic in a separate function in round-plan.ts instead of reusing aggregate-shards.ts exports -- rejected, reuse of buildLeaderboard/selectQualifiedWinner has zero drift risk vs a hand-maintained mirror; (f) always halving on any non-improvement regardless of planned/received count (status quo) -- rejected, this is exactly concern 2. divergence=minor: all 3 fixes are targeted corrections within the existing round-DAG + checkpoint architecture; no re-architecture of the chosen matrix-fan-out design was warranted or performed."
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flip-gate test used a 50%-win-rate candidate disqualified by the win-rate floor alone, so it did not isolate the flipsVsIncumbent===0 clause. Fixed by adding a dedicated isolating test (90% win rate, exactly 1 flip, mirroring GH run 29597840666) to sweep-round-plan.test.ts; verified via temporary edit/revert that it fails when the flip clause is removed."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Found the mirror-image confound: the win-rate-floor isolation test (sweep-aggregate-shards.test.ts) actually had flipsVsIncumbent=1, so it was inadvertently gated by the flip check rather than the win-rate floor it claimed to isolate. Fixed the fixture so the candidate matches the incumbent on both cells (0 flips, 50% win rate); verified via temporary edit/revert that it fails when the winRate clause is removed. No other issues found across YAML DAG structure, applyRoundResult, selectQualifiedWinner, or toSearchArtifact."
+        }
+      ]
     },
     "multi_model_review": {
       "clean": false,

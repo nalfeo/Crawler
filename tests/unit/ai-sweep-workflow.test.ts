@@ -211,6 +211,14 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       const script = allRunSteps(job);
       expect(script).toContain(`--mode select --round ${n}`);
       expect(script).toContain('--planned-count');
+      // The infra-failure fix: when candidates.json is missing entirely
+      // (roundN-candidates crashed before uploading), PLANNED must fall back
+      // to the 'unknown' sentinel, NOT 0 — 0 is a legitimate "planner ran,
+      // decided nothing was needed" signal that correctly halves/converges,
+      // whereas 'unknown' must always suppress halving/convergence (see
+      // applyRoundResult's plannedCount doc comment).
+      expect(script).toContain('PLANNED=unknown');
+      expect(script).not.toContain('PLANNED=0');
       // Re-uploads to the SAME artifact name with overwrite -- this is the
       // checkpoint-persistence mechanism itself.
       const uploadStep = (job.steps ?? []).find((s) =>

@@ -259,13 +259,23 @@ function assertShardCompatible(checkpoint: RoundCheckpoint, shard: ShardArtifact
  * "the algorithm learned there's no improvement here" from partial data.
  * Legacy/test callers that omit `plannedCount` keep the original
  * always-halve-on-no-improvement behaviour.
+ *
+ * `options.plannedCount === 'unknown'` is a DISTINCT sentinel from `0`:
+ * `0` means "the planner ran successfully and legitimately decided this
+ * combo needed no new candidates" (already converged — halving is correct),
+ * while `'unknown'` means "the planner job itself never produced a
+ * candidates manifest at all" (e.g. `roundN-candidates` crashed before
+ * uploading its artifact) — we cannot tell whether 0 or N candidates were
+ * planned for this combo, so we must NOT infer convergence from that
+ * silence. `'unknown'` always forces the infra-failure (no halve/converge)
+ * path, regardless of `candidateShards.length`.
  */
 export function applyRoundResult(
   checkpoint: RoundCheckpoint,
   round: number,
   knobs: readonly TunableKnob[],
   candidateShards: readonly ShardArtifact[],
-  options: { plannedCount?: number } = {},
+  options: { plannedCount?: number | 'unknown' } = {},
 ): RoundCheckpoint {
   // Idempotent no-op once converged. `planCandidates` never plans anything
   // for a converged checkpoint, so a converged combo should never see
@@ -326,16 +336,23 @@ export function applyRoundResult(
   const steps = { ...checkpoint.steps };
   let converged: boolean = checkpoint.converged;
   if (!improved) {
-    const missing =
-      options.plannedCount !== undefined
-        ? Math.max(0, options.plannedCount - candidateShards.length)
-        : 0;
-    const infraIncomplete =
-      options.plannedCount !== undefined && options.plannedCount > 0 && missing > 0;
+    let infraIncomplete: boolean;
+    if (options.plannedCount === 'unknown') {
+      // The planner job never produced a candidates manifest for this combo
+      // at all (e.g. roundN-candidates crashed/never uploaded) — we cannot
+      // tell "0 planned" from "N planned, all lost", so always treat as an
+      // infra failure rather than risk falsely recording convergence.
+      infraIncomplete = true;
+    } else if (options.plannedCount !== undefined) {
+      const missing = Math.max(0, options.plannedCount - candidateShards.length);
+      infraIncomplete = options.plannedCount > 0 && missing > 0;
+    } else {
+      infraIncomplete = false;
+    }
     if (!infraIncomplete) {
       converged = !halveSteps(steps, knobs);
     }
-    // else: infra failure with incomplete data this round — leave
+    // else: infra failure with incomplete/unknown data this round — leave
     // steps/converged untouched so the same neighbours are retried.
   }
 
@@ -376,7 +393,7 @@ export function toSearchArtifact(checkpoint: RoundCheckpoint): SearchArtifactLik
 // Three modes mirror the three round-DAG workflow steps:
 //   --mode init   <combo> --baseline <shard.json> [--secondary] --out <checkpoint.json>
 //   --mode plan   --round N [--secondary] [--cap N] --out <matrix.json> <checkpoint.json...>
-//   --mode select --round N [--secondary] [--planned-count N] --checkpoint <checkpoint.json> --out <checkpoint.json> [<shard.json...>]
+//   --mode select --round N [--secondary] [--planned-count N|unknown] --checkpoint <checkpoint.json> --out <checkpoint.json> [<shard.json...>]
 // ---------------------------------------------------------------------------
 
 function knobsFor(comboStr: string, secondary: boolean): TunableKnob[] {
@@ -391,7 +408,7 @@ interface CliArgs {
   round: number | null;
   secondary: boolean;
   cap: number;
-  plannedCount: number | null;
+  plannedCount: number | 'unknown' | null;
   out: string | null;
   files: string[];
 }
@@ -437,7 +454,7 @@ function parseCliArgs(argv: readonly string[]): CliArgs {
       args.cap = Number.parseInt(next, 10);
       i++;
     } else if (arg === '--planned-count' && next) {
-      args.plannedCount = Number.parseInt(next, 10);
+      args.plannedCount = next === 'unknown' ? 'unknown' : Number.parseInt(next, 10);
       i++;
     } else if (arg === '--out' && next) {
       args.out = next;

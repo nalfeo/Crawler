@@ -410,12 +410,12 @@ jobs:
           if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
           SHARDS=(shards/*.json)
           # PLANNED = how many candidates this round actually planned for THIS
-          # combo (0 if candidates.json is missing, e.g. round1-candidates
-          # itself failed). Lets round-plan.ts tell "every candidate genuinely
-          # failed this round" (do NOT halve/converge — retry the same
-          # neighbours next round) apart from "nothing was planned" (already
-          # converged) — see applyRoundResult's plannedCount doc comment.
-          PLANNED=0
+          # combo. "unknown" (distinct from the legitimate 0) means
+          # candidates.json itself is missing -- round1-candidates crashed
+          # before uploading its artifact, so we cannot tell "0 planned" from
+          # "N planned, all lost" and must not infer convergence. See
+          # applyRoundResult's plannedCount doc comment.
+          PLANNED=unknown
           if [ -f candidates.json ]; then
             PLANNED=$(jq --arg combo "$COMBO" '[.candidates[] | select(.combo==$combo)] | length' candidates.json)
           fi
@@ -572,7 +572,7 @@ jobs:
           SECONDARY_FLAG=""
           if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
           SHARDS=(shards/*.json)
-          PLANNED=0
+          PLANNED=unknown
           if [ -f candidates.json ]; then
             PLANNED=$(jq --arg combo "$COMBO" '[.candidates[] | select(.combo==$combo)] | length' candidates.json)
           fi
@@ -730,7 +730,7 @@ jobs:
           SECONDARY_FLAG=""
           if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
           SHARDS=(shards/*.json)
-          PLANNED=0
+          PLANNED=unknown
           if [ -f candidates.json ]; then
             PLANNED=$(jq --arg combo "$COMBO" '[.candidates[] | select(.combo==$combo)] | length' candidates.json)
           fi
