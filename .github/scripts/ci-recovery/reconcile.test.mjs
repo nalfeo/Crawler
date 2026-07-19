@@ -6328,21 +6328,20 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 });
 
 // ---------------------------------------------------------------------------
-// Stale-marker detection: thread has trusted ✅ Addressed marker but the SHA
-// was never pushed (compare 404), so the thread remains unresolved.
+// Stale-marker detection: thread has a stale ✅ Addressed marker SHA, but the
+// thread is already outdated, so the reconciler posts a fresh outdated-marker
+// reply against the current head and resolves it without leaving a blocker.
 // ---------------------------------------------------------------------------
 
 test('stale-marker thread includes recovery hint in blocker summary', async (t) => {
   // Simulate the root cause from the PR #1266 loop incident:
-  // The recovery agent replied to a review thread with ✅ Addressed in <sha>
-  // but that commit was created locally and never pushed.  The compare API
-  // returns 404, so the thread stays unresolved and the same fingerprint
-  // repeats indefinitely.  The reconciler should detect the stale marker and
-  // include a targeted hint in the blocker summary so the next recovery agent
-  // knows to re-post the marker with the current-head SHA.
+  // the recovery agent replied with ✅ Addressed in <sha>, but that commit was
+  // created locally and never pushed. The stale marker lineage still matters
+  // for non-outdated threads, but once GitHub marks the thread outdated the
+  // reconciler should replace the stale marker with an OWNER-authored outdated
+  // marker and resolve the thread in the same pass.
   const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
   const threadId = 'PRRT_stale_marker_thread';
-  const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';
 
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
@@ -6429,10 +6428,23 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
 
-  // Thread must NOT be auto-resolved (stale SHA is not reachable).
-  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  const replyCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/pulls/${PR_NUM}/comments/1/replies`,
+  );
+  assert.ok(replyCall, 'expected a fresh outdated-marker reply on the review thread');
+  assert.match(String(replyCall.body?.body || ''), new RegExp(`✅ Addressed in ${HEAD_SHA}`));
+  assert.match(String(replyCall.body?.body || ''), /thread outdated/i);
 
-  // A task comment must be posted because there is still a blocker.
+  const resolveCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'GRAPHQL_MUTATION' &&
+      String(call.body?.query || '').includes('resolveReviewThread') &&
+      call.body?.variables?.threadId === threadId,
+  );
+  assert.ok(resolveCall, 'expected the outdated thread to be resolved via GraphQL mutation');
+
   const taskCommentCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&
@@ -6440,20 +6452,14 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
       typeof call.body?.body === 'string' &&
       call.body.body.includes('crawler-ci-task'),
   );
-  assert.ok(taskCommentCall, 'expected a task comment to be posted for the stale-marker blocker');
+  assert.equal(
+    taskCommentCall,
+    undefined,
+    'resolved outdated thread must not leave a task comment blocker',
+  );
 
-  // The task body must include the stale-marker annotation so the agent knows
-  // to re-post the marker rather than re-investigate.
-  assert.match(
-    taskCommentCall.body.body,
-    new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
-    'task body must identify the stale marker SHA',
-  );
-  assert.match(
-    taskCommentCall.body.body,
-    /verify fix is present.*reply to this thread/i,
-    'task body must instruct the agent to verify and re-post the marker',
-  );
+  assert.match(stdout, /posted outdated-marker thread=PRRT_stale_marker_thread/);
+  assert.match(stdout, new RegExp(`resolved thread=${threadId}`));
 });
 
 test('transient compare failure does not produce a stale-marker hint (generic blocker preserved)', async (t) => {
