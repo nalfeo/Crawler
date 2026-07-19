@@ -4,20 +4,22 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'docs/knowledge/epics/**'
+      - 'docs/knowledge/epics/floor-2-equipment/**'
       - 'scripts/agent/epics/**'
-      - 'tests/unit/agent/epic-status.test.ts'
+      - '.github/actions/setup-node/action.yml'
       - 'package.json'
       - 'package-lock.json'
+      - 'tsconfig*.json'
       - '.github/workflows/epic-drift-audit.yml'
   push:
     branches: [main]
     paths:
-      - 'docs/knowledge/epics/**'
+      - 'docs/knowledge/epics/floor-2-equipment/**'
       - 'scripts/agent/epics/**'
-      - 'tests/unit/agent/epic-status.test.ts'
+      - '.github/actions/setup-node/action.yml'
       - 'package.json'
       - 'package-lock.json'
+      - 'tsconfig*.json'
       - '.github/workflows/epic-drift-audit.yml'
   schedule:
     - cron: '23 10 * * 1'

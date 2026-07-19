@@ -127,10 +127,12 @@ function createHarness({
   };
 
   const api = {
-    listOpenPulls: async () =>
-      state.pulls
+    listOpenPulls: async () => {
+      calls.push(['listOpenPulls']);
+      return state.pulls
         .filter((pull) => String(pull.state || 'open').toLowerCase() === 'open')
-        .map((pull) => structuredClone(pull)),
+        .map((pull) => structuredClone(pull));
+    },
     getPull: async (pullNumber) => {
       calls.push(['getPull', pullNumber]);
       const pull = state.pulls.find((entry) => entry.number === pullNumber);
@@ -307,6 +309,111 @@ test('uses bounded changed-file retries only for the synchronized pull request',
       prNumber: 42,
     }),
     [0],
+  );
+});
+
+test('event-triggered runs inspect only the triggering pull request', async () => {
+  const secondPr = makePr({
+    number: 43,
+    node_id: 'PR_43',
+    head: {
+      sha: 'b'.repeat(40),
+      ref: 'copilot/other-pr',
+      repo: { full_name: REPOSITORY },
+    },
+  });
+  const harness = createHarness({
+    pulls: [makePr(), secondPr],
+  });
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'pull_request_target',
+    payloadAction: 'opened',
+    triggeringPullNumber: 42,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 1,
+    reviewerRemovals: 0,
+  });
+  assert.equal(
+    harness.calls.some(([name]) => name === 'listOpenPulls'),
+    false,
+  );
+  assert.equal(
+    harness.calls.some(([, pullNumber]) => pullNumber === 43),
+    false,
+  );
+});
+
+test('scheduled sweeps still enumerate all open pull requests', async () => {
+  const secondPr = makePr({
+    number: 43,
+    node_id: 'PR_43',
+    draft: false,
+    head: {
+      sha: 'b'.repeat(40),
+      ref: 'copilot/other-pr',
+      repo: { full_name: REPOSITORY },
+    },
+  });
+  const harness = createHarness({
+    pulls: [makePr({ draft: false }), secondPr],
+  });
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'schedule',
+    payloadAction: undefined,
+    triggeringPullNumber: undefined,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    reviewerRemovals: 0,
+  });
+  assert.deepEqual(
+    harness.calls.filter(([name]) => name === 'listOpenPulls'),
+    [['listOpenPulls']],
+  );
+});
+
+test('event-triggered runs fail closed when the triggering pull request number is missing', async () => {
+  const harness = createHarness();
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'pull_request_target',
+    payloadAction: 'opened',
+    triggeringPullNumber: undefined,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    reviewerRemovals: 0,
+  });
+  assert.deepEqual(harness.calls, []);
+  assert.ok(
+    harness.logs.some(
+      ([level, message]) =>
+        level === 'warning' && message.includes('invalid triggering pull request number'),
+    ),
   );
 });
 
