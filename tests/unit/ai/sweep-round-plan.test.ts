@@ -174,7 +174,12 @@ describe('initCheckpoint', () => {
     );
     const legacyBaselineShard = baselineShard(80); // LEGACY config rows (combo: 'legacy+legacy')
 
-    const checkpoint = initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, legacyBaselineShard);
+    const checkpoint = initCheckpoint(
+      NAVMESH_LEGACY,
+      KNOBS,
+      navmeshBaselineShard,
+      legacyBaselineShard,
+    );
     // bestConfigId is the combo's own base (navmesh), not the LEGACY incumbent.
     expect(checkpoint.bestConfigId).toBe(navmeshBaseId);
     // incumbentConfigId is the LEGACY config — matches the graduation gate.

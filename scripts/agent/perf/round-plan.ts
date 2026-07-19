@@ -384,9 +384,7 @@ export function applyRoundResult(
 
   const configs = { ...checkpoint.configs };
   const rows = [...checkpoint.rows];
-  const seenRows = new Map<string, RunRow>(
-    rows.map((r) => [makeRowKey(r), r]),
-  );
+  const seenRows = new Map<string, RunRow>(rows.map((r) => [makeRowKey(r), r]));
   const newCandidateIds = new Set<string>();
 
   for (const shard of candidateShards) {
