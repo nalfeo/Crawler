@@ -97,11 +97,11 @@ mobAbilitySystem]` so Tarnished ticks and expires in the live arena.
 
 - `scripts/agent/data/boss-abilities.floor2.status.json` — added the
   `floor2-boss-production-enable` gate (not-started); Queen's headless
-  canonical-runtime evidence is recorded, but `arenaLabState` remains `blocked`
-  until an actual browser combat-arena observation is captured. She is NOT
-  production-verified while the production gate is off; all 18 abilities still
-  derive as `blocked`; PR #1237 is no longer an arena blocker; PR #1243 remains
-  the authoritative arena dependency.
+  canonical-runtime evidence is recorded and the combat-arena observation is now
+  verified via deterministic headless Chromium. She is NOT production-verified
+  while the production gate is off; all 18 abilities still derive as `blocked`;
+  PR #1237 is no longer an arena blocker; PR #1243 remains the authoritative
+  arena dependency.
 - `.specify/specs/boss-abilities.md`, `docs/knowledge/adr/0064-*.md`,
   `tests/unit/boss-ability-catalog.test.ts` updated to match.
 
@@ -150,20 +150,22 @@ mobAbilitySystem]` so Tarnished ticks and expires in the live arena.
   - DEFAULT NORMAL GAME: runtime disabled, 0 registered casters, 0 casts. → PASS.
 
 Deterministic runtime observation is recorded by the canonical simulation
-harness (`scripts/agent/queen-mab-arena-evidence.ts`) and deterministic visual
+harness (`scripts/agent/queen-mab-arena-evidence.ts`), deterministic visual
 guards in unit coverage (`tests/unit/mob-ability-vfx.test.ts` — 5 tests covering
 the 12ft telegraph footprint, Tarnished indicator, resolution burst, telegraph
 retirement, and cleanup poof with position caching;
-`tests/unit/combat-arena-lab-wiring.test.ts`).
-The `HudAnnouncementBanner` is wired into the combat arena scene
-(`createHudAnnouncementBanner` / `sync` / `destroy` in
+`tests/unit/combat-arena-lab-wiring.test.ts`), and a real browser-lab before/after
+probe in `tests/e2e/queen-mab-arena-observation.test.ts`. That E2E boots the
+actual `combat-arena-lab`, switches to the canonical `f2-queen-mab` preset in
+observer mode, pauses the real Phaser scene, and steps from frame 539 (no cue /
+no announcement) to frame 540 (first telegraph + exact announcement), asserting
+both the world-state transition and visible canvas diffs in the telegraph
+footprint and top-center HUD banner. The `HudAnnouncementBanner` is wired into
+the combat arena scene (`createHudAnnouncementBanner` / `sync` / `destroy` in
 `src/labs/combat-arena-lab/index.ts`), so `bossAbilityCast` announcements are
-rendered in the browser arena, and observer / immortal arena modes now clear the
-starter weapon so the scene shares the same passive-observer setup as the
-headless evidence harness. The Phaser renderer is a pure consumer of the
-committed cue state that the harness and unit tests validate; no direct browser
-observation was performed in this session (the runtime environment is headless),
-so the status sidecar keeps `arenaLabState` blocked pending that capture.
+rendered in the live browser arena, and observer / immortal arena modes clear
+the starter weapon so the scene shares the same passive-observer setup as the
+headless evidence harness.
 
 ## Follow-ups
 

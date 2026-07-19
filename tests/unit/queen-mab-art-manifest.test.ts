@@ -17,6 +17,7 @@ describe('Queen Mab generated-art manifest', () => {
     expect(Array.isArray(QUEEN_MAB_ART_MANIFEST.bosses)).toBe(true);
     expect(QUEEN_MAB_ART_MANIFEST.bosses.length).toBeGreaterThan(0);
     expect(QUEEN_MAB_ART_MANIFEST.bosses[0]!.bossId).toBe('queen-mab-tarnish');
+    expect(QUEEN_MAB_ART_MANIFEST.bosses[0]!.abilityId).toBe('queen-mab-verdigris-glamour');
   });
 
   it('declares every required visual phase with a procedural fallback', () => {
@@ -57,6 +58,7 @@ describe('Queen Mab generated-art manifest', () => {
     extended.generatedArtScope = 'floor2-abilities';
     (extended.bosses as Array<Record<string, unknown>>).push({
       bossId: 'nana-snaggle',
+      abilityId: 'nana-scrap-cart-stampede',
       bossArchetypeId: 'goblin-boss',
       familyId: 'goblins',
     });
@@ -75,6 +77,34 @@ describe('Queen Mab generated-art manifest', () => {
     const bad = structuredClone(QUEEN_MAB_ART_MANIFEST) as unknown as Record<string, unknown>;
     (bad.assets as Array<Record<string, unknown>>)[0]!.blockingForArena = true;
     expect(() => queenMabArtManifestSchema.parse(bad)).toThrow();
+  });
+
+  it('rejects duplicate boss identities outside the Queen-only scope', () => {
+    const bad = structuredClone(QUEEN_MAB_ART_MANIFEST) as unknown as Record<string, unknown>;
+    bad.generatedArtScope = 'floor2-abilities';
+    (bad.bosses as Array<Record<string, unknown>>).push({
+      bossId: 'queen-mab-tarnish',
+      abilityId: 'some-other-ability',
+      bossArchetypeId: 'other-boss',
+      familyId: 'other-family',
+    });
+    expect(() => queenMabArtManifestSchema.parse(bad)).toThrow(/duplicate boss identity/);
+  });
+
+  it('rejects an asset whose abilityId does not match its declared boss ability pair', () => {
+    const bad = structuredClone(QUEEN_MAB_ART_MANIFEST) as unknown as Record<string, unknown>;
+    bad.generatedArtScope = 'floor2-abilities';
+    (bad.assets as Array<Record<string, unknown>>)[0]!.abilityId = 'wrong-ability-id';
+    const parsed = queenMabArtManifestSchema.safeParse(bad);
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message:
+            'asset references abilityId "wrong-ability-id" but boss "queen-mab-tarnish" declares ability "queen-mab-verdigris-glamour"',
+        }),
+      ]),
+    );
   });
 
   it('rejects an asset referencing an unknown visual phase', () => {

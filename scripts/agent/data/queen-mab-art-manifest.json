@@ -156,6 +156,7 @@
   "bosses": [
     {
       "bossId": "queen-mab-tarnish",
+      "abilityId": "queen-mab-verdigris-glamour",
       "bossArchetypeId": "faerie-boss",
       "familyId": "faeries"
     }

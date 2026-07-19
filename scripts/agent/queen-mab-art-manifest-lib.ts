@@ -73,6 +73,7 @@ const generatedArtScopeSchema = z.enum(['queen-mab-only', 'floor2-abilities']);
 const bossIdentitySchema = z
   .object({
     bossId: idSchema,
+    abilityId: idSchema,
     bossArchetypeId: idSchema,
     familyId: idSchema,
   })
@@ -102,26 +103,66 @@ export const queenMabArtManifestSchema = z
   })
   .strict()
   .superRefine((manifest, ctx) => {
-    const knownBossIds = new Set(manifest.bosses.map((boss) => boss.bossId));
+    const knownBossIds = new Set<string>();
+    const knownBossArchetypeIds = new Set<string>();
+    const knownAbilityIds = new Set<string>();
+    const abilityIdByBossId = new Map<string, string>();
+    for (const [index, boss] of manifest.bosses.entries()) {
+      if (knownBossIds.has(boss.bossId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['bosses', index, 'bossId'],
+          message: `duplicate boss identity "${boss.bossId}"`,
+        });
+      }
+      if (knownBossArchetypeIds.has(boss.bossArchetypeId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['bosses', index, 'bossArchetypeId'],
+          message: `duplicate boss archetype "${boss.bossArchetypeId}"`,
+        });
+      }
+      if (knownAbilityIds.has(boss.abilityId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['bosses', index, 'abilityId'],
+          message: `duplicate boss ability identity "${boss.abilityId}"`,
+        });
+      }
+      knownBossIds.add(boss.bossId);
+      knownBossArchetypeIds.add(boss.bossArchetypeId);
+      knownAbilityIds.add(boss.abilityId);
+      abilityIdByBossId.set(boss.bossId, boss.abilityId);
+    }
     for (const [index, asset] of manifest.assets.entries()) {
-      if (!knownBossIds.has(asset.bossId)) {
+      const declaredAbilityId = abilityIdByBossId.get(asset.bossId);
+      if (declaredAbilityId === undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['assets', index, 'bossId'],
           message: `asset references unknown bossId "${asset.bossId}"`,
+        });
+      } else if (asset.abilityId !== declaredAbilityId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['assets', index, 'abilityId'],
+          message: `asset references abilityId "${asset.abilityId}" but boss "${asset.bossId}" declares ability "${declaredAbilityId}"`,
         });
       }
     }
 
     // v1 scope constraint: the `queen-mab-only` scope may only reference Queen.
     if (manifest.generatedArtScope === 'queen-mab-only') {
-      const bossIds = manifest.bosses.map((b) => b.bossId);
-      if (bossIds.length !== 1 || bossIds[0] !== 'queen-mab-tarnish') {
+      const bosses = manifest.bosses;
+      if (
+        bosses.length !== 1 ||
+        bosses[0]?.bossId !== 'queen-mab-tarnish' ||
+        bosses[0]?.abilityId !== 'queen-mab-verdigris-glamour'
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['bosses'],
-          message:
-            'scope "queen-mab-only" requires exactly one boss with bossId "queen-mab-tarnish"',
+          message: 'scope "queen-mab-only" requires exactly one Queen Mab boss/ability identity',
         });
       }
       for (const [index, asset] of manifest.assets.entries()) {

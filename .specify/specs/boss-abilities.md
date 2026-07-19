@@ -13,8 +13,8 @@
 > **Test suites:** `tests/unit/boss-ability-catalog.test.ts`; future runtime work
 > must add integration, headless, and deterministic visual coverage
 > **Known implementation gaps:** the reusable runtime foundation and the Queen
-> Mab arena-only vertical slice are implemented and verified in the combat arena.
-> Production activation remains gated off by
+> Mab arena-only vertical slice are implemented and browser-observed in the
+> combat arena, but production activation remains gated off by
 > `floor2-boss-production-enable`; the other 17 Floor 2 abilities remain blocked
 > until their own runtime slices land.
 
@@ -241,10 +241,12 @@ arena implementation. PR #1243 (the combat arena lab) was squash-merged into
     player; it receives no pre-lock player-position prediction.
 12. The implementation PR records its issue/PR and deterministic arena evidence
     in the status sidecar, marks the foundation and Mab milestones verified, and
-    marks Mab's runtime/telegraph/arena states verified. It must NOT derive Mab as
-    production `verified` while the production-enable gate is off, and it must NOT
-    promote the other 17 abilities to `ready`; they remain blocked behind the
-    separate `floor2-boss-production-enable` gate.
+    marks Mab's runtime/telegraph/arena states verified. **✅ DONE** — PR #1273
+    now records deterministic headless cadence plus a browser-observed
+    combat-arena transition at frame 540 in `tests/e2e/queen-mab-arena-observation.test.ts`.
+    It must NOT derive Mab as production `verified` while the production-enable
+    gate is off, and it must NOT promote the other 17 abilities to `ready`; they
+    remain blocked behind the separate `floor2-boss-production-enable` gate.
 
 ## Test Plan
 
