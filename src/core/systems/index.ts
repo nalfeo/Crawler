@@ -23,7 +23,6 @@ export {
   CORPSE_STEP_RANGE_FT,
   CORPSE_STEP_TRIGGER_CHANCE,
 } from './corpseStepSystem.js';
-export { bloodyFootprintSystem } from './bloodyFootprintSystem.js';
 export { spawnAnimSystem } from './spawnAnimSystem.js';
 export { fovSystem } from './fovSystem.js';
 export { doorSystem } from './doorSystem.js';

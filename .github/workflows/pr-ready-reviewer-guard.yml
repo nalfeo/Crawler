@@ -10,29 +10,139 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   enforce-pr-state:
     name: Enforce ready + reviewer cleanup
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     concurrency:
-      group: pr-ready-reviewer-guard
+      group: pr-ready-reviewer-guard-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: false
     steps:
-      - name: Checkout trusted guard script
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-
-      - name: Pin Node.js version
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Publish drafts, repair empty Copilot shells, and remove requested reviewer
+      - name: Publish drafts and remove requested reviewer
+        uses: actions/github-script@v7
         env:
-          CRAWLER_CI_PAT: ${{ secrets.CRAWLER_CI_PAT }}
           REVIEWER_LOGIN: nalfeo
-        run: node .github/scripts/pr-ready-reviewer-guard.mjs
+        with:
+          github-token: ${{ secrets.CRAWLER_CI_PAT }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const reviewerLoginRaw = (process.env.REVIEWER_LOGIN ?? '').trim();
+            const reviewerLogin = reviewerLoginRaw.toLowerCase();
+
+            if (!reviewerLoginRaw) {
+              throw new Error('REVIEWER_LOGIN is required');
+            }
+
+            const openPrs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            if (openPrs.length === 0) {
+              core.info('No open PRs found.');
+              return;
+            }
+
+            let draftsPublished = 0;
+            let reviewerRemovals = 0;
+            const publishFailures = [];
+
+            async function changedFilesForDraft(prNumber) {
+              const isFreshSynchronize =
+                context.eventName === 'pull_request_target' &&
+                context.payload.action === 'synchronize' &&
+                context.payload.pull_request?.number === prNumber;
+              const delaysMs = isFreshSynchronize ? [0, 1000, 2000] : [0];
+              let changedFiles = 0;
+
+              for (const delayMs of delaysMs) {
+                if (delayMs > 0) {
+                  await new Promise((resolve) => setTimeout(resolve, delayMs));
+                }
+                const details = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                });
+                changedFiles = Number(details.data.changed_files || 0);
+                if (changedFiles > 0) {
+                  break;
+                }
+              }
+
+              return changedFiles;
+            }
+
+            for (const pr of openPrs) {
+              const prNumber = pr.number;
+
+              if (pr.draft) {
+                try {
+                  const changedFiles = await changedFilesForDraft(prNumber);
+                  if (changedFiles === 0) {
+                    core.info(`Kept PR #${prNumber} in draft: no changed files.`);
+                  } else {
+                    await github.graphql(
+                      `
+                      mutation MarkPullRequestReadyForReview($pullRequestId: ID!) {
+                        markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
+                          pullRequest {
+                            number
+                          }
+                        }
+                      }
+                      `,
+                      {
+                        pullRequestId: pr.node_id,
+                      },
+                    );
+                    draftsPublished += 1;
+                    core.info(
+                      `Marked PR #${prNumber} as ready for review with ${changedFiles} changed file(s).`,
+                    );
+                  }
+                } catch (error) {
+                  publishFailures.push(`PR #${prNumber}: ${error.message}`);
+                  core.error(`Could not mark PR #${prNumber} ready: ${error.message}`);
+                }
+              }
+
+              try {
+                const requestedReviewers = pr.requested_reviewers ?? [];
+                const reviewerToRemove = requestedReviewers.find(
+                  (reviewer) => reviewer.login?.toLowerCase() === reviewerLogin,
+                );
+
+                if (!reviewerToRemove?.login) {
+                  continue;
+                }
+
+                await github.rest.pulls.removeRequestedReviewers({
+                  owner,
+                  repo,
+                  pull_number: prNumber,
+                  reviewers: [reviewerToRemove.login],
+                  });
+                reviewerRemovals += 1;
+                core.info(
+                  `Removed @${reviewerToRemove.login} from requested reviewers on PR #${prNumber}.`,
+                );
+              } catch (error) {
+                core.warning(`Could not process reviewers for PR #${prNumber}: ${error.message}`);
+              }
+            }
+
+            core.info(
+              `Done. Drafts published: ${draftsPublished}. Reviewer removals: ${reviewerRemovals}.`,
+            );
+
+            if (publishFailures.length > 0) {
+              core.setFailed(
+                `Failed to publish ${publishFailures.length} draft PR(s):\n${publishFailures.join('\n')}`,
+              );
+            }

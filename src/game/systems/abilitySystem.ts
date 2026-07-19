@@ -1,7 +1,6 @@
 import { hasComponent, query } from 'bitecs';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
-  type AbilityGrantSource,
   type AbilityState,
   type AbilityTriggerCondition,
   type AbilityTriggerEvent,
@@ -13,21 +12,11 @@ import { getAbilityDefinition } from '../abilities/registry.js';
 import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
 import { getActiveWeaponDef } from '../../core/active-weapon.js';
-import type { EquipmentInstanceId } from '../../shared/equipment-types.js';
-import type { GeneratedEquipmentInstanceId } from '../../shared/generated-equipment-types.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
+import { createEmptyAbilityState } from '../../shared/abilities.js';
 
 export function createAbilityState(): AbilityState {
-  return {
-    learnedSpellIds: [],
-    equippedActiveAbilityIds: [],
-    passiveAbilityIds: [],
-    cooldownByAbilityId: new Map(),
-    cooldownFramesByAbilityId: new Map(),
-    appliedPassiveAbilityIds: new Set(),
-    activeAbilityGrantSources: new Map(),
-    passiveAbilityGrantSources: new Map(),
-  };
+  return createEmptyAbilityState();
 }
 
 export function getOrCreateAbilityState(world: GameWorld, holderEid: number): AbilityState {
@@ -38,62 +27,7 @@ export function getOrCreateAbilityState(world: GameWorld, holderEid: number): Ab
   return created;
 }
 
-/**
- * Normalize an `AbilityState` that may have been created before C2 source
- * tracking landed. Any ability present in `equippedActiveAbilityIds` or
- * `passiveAbilityIds` without a corresponding entry in the grant-source maps
- * is back-filled with a `{ kind: 'learned' }` source so all downstream code
- * can assume the maps are always populated.
- *
- * Idempotent: calling it twice on the same state is safe.
- */
-export function migrateAbilityStateToSourceTracking(state: AbilityState): void {
-  for (const abilityId of state.equippedActiveAbilityIds) {
-    if (!state.activeAbilityGrantSources.has(abilityId)) {
-      state.activeAbilityGrantSources.set(abilityId, [{ kind: 'learned' }]);
-    }
-  }
-  for (const abilityId of state.passiveAbilityIds) {
-    if (!state.passiveAbilityGrantSources.has(abilityId)) {
-      state.passiveAbilityGrantSources.set(abilityId, [{ kind: 'learned' }]);
-    }
-  }
-}
-
-/** @internal Record a source for an active ability without modifying the ID list. */
-function _addActiveGrantSource(
-  state: AbilityState,
-  abilityId: string,
-  source: AbilityGrantSource,
-): void {
-  const sources = state.activeAbilityGrantSources.get(abilityId);
-  if (sources === undefined) {
-    state.activeAbilityGrantSources.set(abilityId, [source]);
-  } else {
-    sources.push(source);
-  }
-}
-
-/** @internal Record a source for a passive ability without modifying the ID list. */
-function _addPassiveGrantSource(
-  state: AbilityState,
-  abilityId: string,
-  source: AbilityGrantSource,
-): void {
-  const sources = state.passiveAbilityGrantSources.get(abilityId);
-  if (sources === undefined) {
-    state.passiveAbilityGrantSources.set(abilityId, [source]);
-  } else {
-    sources.push(source);
-  }
-}
-
-export function equipActiveAbility(
-  world: GameWorld,
-  holderEid: number,
-  abilityId: string,
-  source: AbilityGrantSource = { kind: 'learned' },
-): void {
+export function equipActiveAbility(world: GameWorld, holderEid: number, abilityId: string): void {
   const def = getAbilityDefinition(abilityId);
   if (def === undefined) {
     throw new Error(`Unknown ability id: ${abilityId}`);
@@ -103,20 +37,13 @@ export function equipActiveAbility(
   }
 
   const state = getOrCreateAbilityState(world, holderEid);
-
-  // Slot-cap is enforced per-ability-id: a second grant from a different source
-  // does NOT add a second copy to the active list — the ability is already
-  // equipped. Still record the new source so revocation is symmetric.
   if (state.equippedActiveAbilityIds.includes(abilityId)) {
-    _addActiveGrantSource(state, abilityId, source);
     return;
   }
-
   if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
     throw new Error(`Active ability slot cap reached (${ACTIVE_ABILITY_SLOT_LIMIT})`);
   }
   state.equippedActiveAbilityIds.push(abilityId);
-  _addActiveGrantSource(state, abilityId, source);
 }
 
 export function unequipActiveAbility(world: GameWorld, holderEid: number, abilityId: string): void {
@@ -124,7 +51,6 @@ export function unequipActiveAbility(world: GameWorld, holderEid: number, abilit
   const idx = state.equippedActiveAbilityIds.indexOf(abilityId);
   if (idx >= 0) {
     state.equippedActiveAbilityIds.splice(idx, 1);
-    state.activeAbilityGrantSources.delete(abilityId);
   }
 }
 
@@ -140,15 +66,10 @@ export function memorizeSpell(world: GameWorld, holderEid: number, abilityId: st
   if (!state.learnedSpellIds.includes(abilityId)) {
     state.learnedSpellIds.push(abilityId);
   }
-  equipActiveAbility(world, holderEid, abilityId, { kind: 'learned' });
+  equipActiveAbility(world, holderEid, abilityId);
 }
 
-export function grantPassiveAbility(
-  world: GameWorld,
-  holderEid: number,
-  abilityId: string,
-  source: AbilityGrantSource = { kind: 'learned' },
-): void {
+export function grantPassiveAbility(world: GameWorld, holderEid: number, abilityId: string): void {
   const def = getAbilityDefinition(abilityId);
   if (def === undefined) {
     throw new Error(`Unknown ability id: ${abilityId}`);
@@ -158,114 +79,8 @@ export function grantPassiveAbility(
   }
 
   const state = getOrCreateAbilityState(world, holderEid);
-
-  // Duplicate grants (same ability, same or different source) do NOT add a
-  // second copy to the passive list, but DO record the additional source so
-  // revocation removes only that specific source.
   if (!state.passiveAbilityIds.includes(abilityId)) {
     state.passiveAbilityIds.push(abilityId);
-  }
-  _addPassiveGrantSource(state, abilityId, source);
-}
-
-/**
- * Grant an active/spell ability from an equipment instance. Records an
- * `equipment` source so the grant can be cleanly revoked when the item is
- * unequipped, without affecting independently-learned or skill-granted copies.
- *
- * Throws if `abilityId` is unknown or is a passive ability.
- * Throws if the active-slot cap would be exceeded and the ability isn't already
- * equipped (same cap semantics as `equipActiveAbility`).
- */
-export function grantEquipmentActiveAbility(
-  world: GameWorld,
-  holderEid: number,
-  abilityId: string,
-  instanceId: EquipmentInstanceId | GeneratedEquipmentInstanceId,
-): void {
-  equipActiveAbility(world, holderEid, abilityId, { kind: 'equipment', instanceId });
-}
-
-/**
- * Grant a passive ability from an equipment instance. Records an `equipment`
- * source so the grant is revoked only when that specific instance is unequipped.
- *
- * Throws if `abilityId` is unknown or is not a passive ability.
- */
-export function grantEquipmentPassiveAbility(
-  world: GameWorld,
-  holderEid: number,
-  abilityId: string,
-  instanceId: EquipmentInstanceId | GeneratedEquipmentInstanceId,
-): void {
-  grantPassiveAbility(world, holderEid, abilityId, { kind: 'equipment', instanceId });
-}
-
-/**
- * Revoke all ability grants (active and passive) from a specific equipment
- * instance. For each ability:
- * - Removes the matching `equipment` source entry from the grant-source list.
- * - If NO other sources remain, also removes the ability from the equipped/
- *   passive ID lists and clears any applied stat modifiers.
- * - Leaves abilities granted by `learned` or `skill` sources untouched.
- *
- * Idempotent: calling with an `instanceId` that has no matching grants is a
- * no-op. Deterministic: operates only on in-memory state, no side-effects
- * beyond stat-modifier cleanup.
- */
-export function revokeEquipmentAbilityGrants(
-  world: GameWorld,
-  holderEid: number,
-  instanceId: EquipmentInstanceId | GeneratedEquipmentInstanceId,
-): void {
-  const state = world.abilityStatesByEntity.get(holderEid);
-  if (state === undefined) return;
-
-  // --- Active abilities ---
-  for (const abilityId of [...state.equippedActiveAbilityIds]) {
-    const sources = state.activeAbilityGrantSources.get(abilityId);
-    if (sources === undefined) continue;
-    const remaining = sources.filter(
-      (s) => !(s.kind === 'equipment' && s.instanceId === instanceId),
-    );
-    if (remaining.length === sources.length) continue; // nothing matched
-    if (remaining.length > 0) {
-      // Other sources still hold the ability — keep it equipped, just prune.
-      state.activeAbilityGrantSources.set(abilityId, remaining);
-    } else {
-      // Last source removed — unequip entirely.
-      const idx = state.equippedActiveAbilityIds.indexOf(abilityId);
-      if (idx >= 0) state.equippedActiveAbilityIds.splice(idx, 1);
-      state.activeAbilityGrantSources.delete(abilityId);
-    }
-  }
-
-  // --- Passive abilities ---
-  for (const abilityId of [...state.passiveAbilityIds]) {
-    const sources = state.passiveAbilityGrantSources.get(abilityId);
-    if (sources === undefined) continue;
-    const remaining = sources.filter(
-      (s) => !(s.kind === 'equipment' && s.instanceId === instanceId),
-    );
-    if (remaining.length === sources.length) continue; // nothing matched
-    if (remaining.length > 0) {
-      state.passiveAbilityGrantSources.set(abilityId, remaining);
-    } else {
-      // Remove from passive list and revoke any applied stat modifiers.
-      const idx = state.passiveAbilityIds.indexOf(abilityId);
-      if (idx >= 0) state.passiveAbilityIds.splice(idx, 1);
-      state.passiveAbilityGrantSources.delete(abilityId);
-      // Clean up applied modifier if it was active.
-      if (state.appliedPassiveAbilityIds.has(abilityId)) {
-        const def = getAbilityDefinition(abilityId);
-        if (def !== undefined && def.kind === 'passive') {
-          def.effects.forEach((_effect, i) => {
-            removeStatModifiers(world, 'ability', `${abilityId}:passive:${holderEid}:${i}`);
-          });
-          state.appliedPassiveAbilityIds.delete(abilityId);
-        }
-      }
-    }
   }
 }
 

@@ -1,14 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  addIssueAssignees,
-  buildIssueActorIds,
-  ISSUE_INTAKE_BODY,
-  issueIntakeEligibility,
-  removeIssueAssignees,
-  runIssueIntake,
-} from './issue-intake-lib.mjs';
+import { ISSUE_INTAKE_BODY, issueIntakeEligibility, runIssueIntake } from './issue-intake-lib.mjs';
 
 const issue = {
   node_id: 'ISSUE_1067',
@@ -102,8 +95,6 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
             nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
           },
           issue: {
-            id: 'ISSUE_1067',
-            state: 'OPEN',
             assignees: { nodes: [{ id: 'USER_NALFEO', login: 'nalfeo' }] },
           },
         },
@@ -174,7 +165,7 @@ test('deletes the kickoff comment when assignment does not persist', async () =>
           suggestedActors: {
             nodes: [{ id: 'BOT_COPILOT', login: 'copilot-swe-agent', __typename: 'Bot' }],
           },
-          issue: { id: 'ISSUE_1067', state: 'OPEN', assignees: { nodes: [] } },
+          issue: { assignees: { nodes: [] } },
         },
       };
     }
@@ -209,131 +200,4 @@ test('deletes the kickoff comment when assignment does not persist', async () =>
   assert.equal(requestCalls[0].method, 'POST');
   assert.equal(requestCalls[1].method, 'DELETE');
   assert.ok(requestCalls[1].path.includes('/12345'));
-});
-
-test('buildIssueActorIds preserves existing Copilot assignee ids when includeCopilot=true', () => {
-  const actorIds = buildIssueActorIds({
-    assignees: [
-      { id: 'USER_NALFEO', login: 'nalfeo' },
-      { id: 'BOT_LEGACY_COPILOT', login: 'Copilot' },
-    ],
-    copilotActorId: 'BOT_COPILOT_SWE_AGENT',
-    includeCopilot: true,
-  });
-  assert.deepEqual(actorIds, ['USER_NALFEO', 'BOT_LEGACY_COPILOT']);
-});
-
-test('buildIssueActorIds adds discovered Copilot actor when none is currently assigned', () => {
-  const actorIds = buildIssueActorIds({
-    assignees: [{ id: 'USER_NALFEO', login: 'nalfeo' }],
-    copilotActorId: 'BOT_COPILOT_SWE_AGENT',
-    includeCopilot: true,
-  });
-  assert.deepEqual(actorIds, ['USER_NALFEO', 'BOT_COPILOT_SWE_AGENT']);
-});
-
-test('addIssueAssignees sends correct mutation field, variables, and parses returned logins', async () => {
-  const captured = [];
-  const fakeGraphql = async (_token, query, variables) => {
-    captured.push({ query, variables });
-    return {
-      addAssigneesToAssignable: {
-        assignable: {
-          assignees: {
-            nodes: [{ login: 'nalfeo' }, { login: 'copilot-swe-agent' }],
-          },
-        },
-      },
-    };
-  };
-
-  const result = await addIssueAssignees({
-    graphql: fakeGraphql,
-    token: 'token',
-    assignableId: 'ISSUE_NODE_ID',
-    actorIds: ['USER_NALFEO', 'BOT_COPILOT'],
-  });
-
-  assert.equal(captured.length, 1);
-  assert.ok(
-    /^\s*mutation\b/.test(captured[0].query.trim()),
-    'operation must be declared as a mutation, not a query',
-  );
-  assert.ok(
-    captured[0].query.includes('addAssigneesToAssignable'),
-    'mutation must use addAssigneesToAssignable field',
-  );
-  assert.ok(
-    captured[0].query.includes('$assignableId') && captured[0].query.includes('$assigneeIds'),
-    'mutation must accept $assignableId and $assigneeIds variables',
-  );
-  assert.deepEqual(captured[0].variables, {
-    assignableId: 'ISSUE_NODE_ID',
-    assigneeIds: ['USER_NALFEO', 'BOT_COPILOT'],
-  });
-  assert.deepEqual(result, ['nalfeo', 'copilot-swe-agent']);
-});
-
-test('removeIssueAssignees sends correct mutation field, variables, and parses returned logins', async () => {
-  const captured = [];
-  const fakeGraphql = async (_token, query, variables) => {
-    captured.push({ query, variables });
-    return {
-      removeAssigneesFromAssignable: {
-        assignable: {
-          assignees: {
-            nodes: [{ login: 'nalfeo' }],
-          },
-        },
-      },
-    };
-  };
-
-  const result = await removeIssueAssignees({
-    graphql: fakeGraphql,
-    token: 'token',
-    assignableId: 'ISSUE_NODE_ID',
-    actorIds: ['BOT_COPILOT'],
-  });
-
-  assert.equal(captured.length, 1);
-  assert.ok(
-    /^\s*mutation\b/.test(captured[0].query.trim()),
-    'operation must be declared as a mutation, not a query',
-  );
-  assert.ok(
-    captured[0].query.includes('removeAssigneesFromAssignable'),
-    'mutation must use removeAssigneesFromAssignable field',
-  );
-  assert.ok(
-    captured[0].query.includes('$assignableId') && captured[0].query.includes('$assigneeIds'),
-    'mutation must accept $assignableId and $assigneeIds variables',
-  );
-  assert.deepEqual(captured[0].variables, {
-    assignableId: 'ISSUE_NODE_ID',
-    assigneeIds: ['BOT_COPILOT'],
-  });
-  assert.deepEqual(result, ['nalfeo']);
-});
-
-test('addIssueAssignees returns empty array when response is missing the assignees field', async () => {
-  const fakeGraphql = async () => ({ addAssigneesToAssignable: { assignable: {} } });
-  const result = await addIssueAssignees({
-    graphql: fakeGraphql,
-    token: 'token',
-    assignableId: 'ISSUE_NODE_ID',
-    actorIds: ['USER_NALFEO'],
-  });
-  assert.deepEqual(result, []);
-});
-
-test('removeIssueAssignees returns empty array when response is missing the assignees field', async () => {
-  const fakeGraphql = async () => ({ removeAssigneesFromAssignable: { assignable: {} } });
-  const result = await removeIssueAssignees({
-    graphql: fakeGraphql,
-    token: 'token',
-    assignableId: 'ISSUE_NODE_ID',
-    actorIds: ['BOT_COPILOT'],
-  });
-  assert.deepEqual(result, []);
 });

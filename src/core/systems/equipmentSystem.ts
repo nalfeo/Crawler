@@ -38,7 +38,8 @@ import type {
 import { isInSafeContext } from '../safe-space.js';
 import { applyStatusEffect, clearStatusEffects, isValidSpec } from '../status-effects.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
-import { setActiveWeaponDef, clearActiveWeaponDef } from '../active-weapon.js';
+import type { WeaponDef } from '../../shared/weaponDefs.js';
+import { setActiveWeaponDef, clearActiveWeaponDef, getActiveWeaponDef } from '../active-weapon.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
 import { getItemById } from '../../shared/items.js';
 import {
@@ -53,10 +54,16 @@ import {
   type StackableStaticInventoryEntry,
 } from '../../shared/inventory.js';
 import type {
+  EquipmentGrantSourceId,
   GeneratedEquipmentInstanceKey,
   GeneratedEquipmentInstanceV1,
 } from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
+import {
+  createEmptyAbilityState,
+  type AbilityState,
+  type EquipmentGrantOwnership,
+} from '../../shared/abilities.js';
 
 // --- Side-map storage ---
 
@@ -172,8 +179,9 @@ export function resolveEquipmentInstance(
 }
 
 interface GeneratedPhysicalOwner {
-  readonly container: 'bag' | 'equipped';
-  readonly entity: number;
+  readonly container: 'bag' | 'equipped' | 'reward-bundle';
+  readonly entity?: number;
+  readonly bundleId?: string;
 }
 
 function findGeneratedPhysicalOwners(
@@ -192,6 +200,13 @@ function findGeneratedPhysicalOwners(
       owners.push({ container: 'equipped', entity });
     }
   }
+  for (const [bundleId, bundle] of world.generatedEquipmentRewardBundles) {
+    for (const bundleKey of bundle.instanceKeys) {
+      if (bundleKey === instanceKey) {
+        owners.push({ container: 'reward-bundle', bundleId });
+      }
+    }
+  }
   return owners;
 }
 
@@ -202,22 +217,143 @@ function ownershipConflict(
   return { type: 'generatedOwnershipConflict', instanceKey, message };
 }
 
-function generatedContentFailure(
-  instance: GeneratedEquipmentInstanceV1,
-): EquipFailureReason | undefined {
-  if (
-    instance.frozen.activeWeaponSnapshot !== null ||
-    instance.frozen.abilityGrants.length > 0 ||
-    instance.frozen.passiveGrants.length > 0
-  ) {
-    return {
-      type: 'unsupportedGeneratedContent',
-      instanceKey: instance.instanceId,
-      message:
-        'B2 cannot equip generated weapon snapshots or ability/passive grants before their owning slices land',
-    };
+function generatedWeaponDef(instance: GeneratedEquipmentInstanceV1): WeaponDef | undefined {
+  const snapshot = instance.frozen.activeWeaponSnapshot;
+  if (snapshot === null) return undefined;
+  const {
+    schemaVersion: _schemaVersion,
+    sourceWeaponDefId: _sourceWeaponDefId,
+    ...frozen
+  } = snapshot;
+  return Object.freeze({ ...frozen, id: instance.instanceId });
+}
+
+function getOrCreateAbilityStateForEquipment(world: GameWorld, entity: number): AbilityState {
+  const existing = world.abilityStatesByEntity.get(entity);
+  if (existing) return existing;
+  const created = createEmptyAbilityState();
+  world.abilityStatesByEntity.set(entity, created);
+  return created;
+}
+
+function getGrantOwnershipMap(
+  state: AbilityState,
+  kind: 'abilityGrant' | 'passiveGrant',
+): Map<string, EquipmentGrantOwnership> {
+  const existing =
+    kind === 'abilityGrant'
+      ? state.activeEquipmentGrantOwnershipById
+      : state.passiveEquipmentGrantOwnershipById;
+  if (existing) return existing;
+  const created = new Map<string, EquipmentGrantOwnership>();
+  if (kind === 'abilityGrant') {
+    state.activeEquipmentGrantOwnershipById = created;
+  } else {
+    state.passiveEquipmentGrantOwnershipById = created;
   }
-  return undefined;
+  return created;
+}
+
+function equipmentGrantSourceId(
+  instanceKey: GeneratedEquipmentInstanceKey,
+  effectOrdinal: number,
+): EquipmentGrantSourceId {
+  return `equipment:${instanceKey}:${effectOrdinal}`;
+}
+
+function activateGeneratedGrants(
+  world: GameWorld,
+  entity: number,
+  instance: GeneratedEquipmentInstanceV1,
+): void {
+  const state = getOrCreateAbilityStateForEquipment(world, entity);
+  for (const effect of instance.resolvedEffects) {
+    if (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant') continue;
+    const ids =
+      effect.kind === 'abilityGrant' ? state.equippedActiveAbilityIds : state.passiveAbilityIds;
+    const ownershipMap = getGrantOwnershipMap(state, effect.kind);
+    const sourceId = equipmentGrantSourceId(instance.instanceId, effect.effectOrdinal);
+    const ownership = ownershipMap.get(effect.grantId);
+    if (ownership?.sourceIds.has(sourceId)) {
+      throw new Error(`Duplicate generated equipment grant source: ${sourceId}`);
+    }
+    if (ownership) {
+      ownership.sourceIds.add(sourceId);
+    } else {
+      ownershipMap.set(effect.grantId, {
+        retainedWithoutEquipment: ids.includes(effect.grantId),
+        sourceIds: new Set([sourceId]),
+      });
+    }
+    if (!ids.includes(effect.grantId)) ids.push(effect.grantId);
+  }
+}
+
+function deactivateGeneratedGrants(
+  world: GameWorld,
+  entity: number,
+  instance: GeneratedEquipmentInstanceV1,
+): void {
+  const state = world.abilityStatesByEntity.get(entity);
+  if (!state) return;
+  for (const effect of instance.resolvedEffects) {
+    if (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant') continue;
+    const ids =
+      effect.kind === 'abilityGrant' ? state.equippedActiveAbilityIds : state.passiveAbilityIds;
+    const ownershipMap = getGrantOwnershipMap(state, effect.kind);
+    const sourceId = equipmentGrantSourceId(instance.instanceId, effect.effectOrdinal);
+    const ownership = ownershipMap.get(effect.grantId);
+    if (!ownership?.sourceIds.delete(sourceId)) {
+      throw new Error(`Missing generated equipment grant source: ${sourceId}`);
+    }
+    if (ownership.sourceIds.size > 0) continue;
+    ownershipMap.delete(effect.grantId);
+    if (ownership.retainedWithoutEquipment) continue;
+    const index = ids.indexOf(effect.grantId);
+    if (index >= 0) ids.splice(index, 1);
+    if (effect.kind === 'abilityGrant') {
+      state.cooldownByAbilityId.delete(effect.grantId);
+      state.cooldownFramesByAbilityId.delete(effect.grantId);
+    } else {
+      world.statModifiers = world.statModifiers.filter(
+        (modifier) =>
+          !(
+            modifier.sourceType === 'ability' &&
+            modifier.sourceId.startsWith(`${effect.grantId}:passive:${entity}:`)
+          ),
+      );
+      state.appliedPassiveAbilityIds.delete(effect.grantId);
+    }
+  }
+}
+
+function activateGeneratedEquipment(
+  world: GameWorld,
+  entity: number,
+  instance: GeneratedEquipmentInstanceV1,
+): void {
+  activateGeneratedGrants(world, entity, instance);
+  const weaponDef = generatedWeaponDef(instance);
+  if (weaponDef && hasComponent(world.ecs, entity, Player)) {
+    setActiveWeaponDef(world, weaponDef);
+  }
+}
+
+function deactivateGeneratedEquipment(
+  world: GameWorld,
+  entity: number,
+  instanceKey: GeneratedEquipmentInstanceKey,
+): void {
+  const generated = getGeneratedEquipmentInstance(world, instanceKey);
+  if (!generated) throw new Error(`Generated equipment instance not found: ${instanceKey}`);
+  deactivateGeneratedGrants(world, entity, generated);
+  if (
+    generated.frozen.activeWeaponSnapshot !== null &&
+    hasComponent(world.ecs, entity, Player) &&
+    getActiveWeaponDef(world)?.id === instanceKey
+  ) {
+    clearActiveWeaponDef(world);
+  }
 }
 
 interface PreparedDisplacedInstance {
@@ -302,6 +438,7 @@ function movePreparedDisplacedToBag(
       addItem(bag, instance.def.id, 1);
       entries.push(staticInventoryEntry(instance.def));
     } else {
+      deactivateGeneratedEquipment(world, entity, instanceId);
       entries.push(addGeneratedEquipmentReference(bag, instanceId));
     }
     clearStatusEffects(
@@ -310,7 +447,11 @@ function movePreparedDisplacedToBag(
       (effect) =>
         effect.sourceType === 'equipment' && effect.sourceId === equipmentSourceId(instanceId),
     );
-    if (instance.def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    if (
+      typeof instanceId === 'number' &&
+      instance.def.weaponId !== undefined &&
+      hasComponent(world.ecs, entity, Player)
+    ) {
       clearActiveWeaponDef(world);
     }
   }
@@ -611,41 +752,6 @@ function equipmentSourceId(instanceId: EquipmentInstanceId): string {
   return `equipment:${instanceId}`;
 }
 
-function commitEquipInstance(
-  world: GameWorld,
-  entity: number,
-  state: EquipmentState,
-  instance: EquipmentInstance,
-  options?: { persistLegacyInstance?: boolean },
-): void {
-  for (const slotId of instance.def.slots) {
-    state.equipped[slotId] = instance.instanceId;
-  }
-  if (options?.persistLegacyInstance !== false) {
-    if (typeof instance.instanceId !== 'number') {
-      throw new Error('commitEquipInstance expected a numeric legacy instance id');
-    }
-    state.instances.set(instance.instanceId, instance);
-  }
-
-  recomputeEffectiveStats(world, entity);
-
-  for (const spec of instance.def.grantsStatusEffects ?? []) {
-    applyStatusEffect(world, entity, {
-      ...spec,
-      sourceType: 'equipment',
-      sourceId: equipmentSourceId(instance.instanceId),
-    });
-  }
-
-  if (instance.def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
-    const weaponDef = getWeaponDef(instance.def.weaponId);
-    if (weaponDef !== undefined) {
-      setActiveWeaponDef(world, weaponDef);
-    }
-  }
-}
-
 /** Equip an item. Atomic — either fully succeeds or no state change. */
 export function equip(
   world: GameWorld,
@@ -669,7 +775,37 @@ export function equip(
   const state = getOrCreateState(world, entity);
   const instanceId = getNextInstanceId(world);
   const instance: EquipmentInstance = { instanceId, def: itemDef };
-  commitEquipInstance(world, entity, state, instance);
+
+  for (const slotId of itemDef.slots) {
+    state.equipped[slotId] = instanceId;
+  }
+  state.instances.set(instanceId, instance);
+
+  recomputeEffectiveStats(world, entity);
+
+  // Grant any timed/tracked status effects this item provides. Specs were
+  // pre-validated in canEquip (validateItemDef), so these writes are infallible
+  // and equip() stays atomic. Both sourceType and sourceId are normalized to this
+  // equipment instance so unequip() clears them symmetrically (a def's granted spec
+  // can never leak via a non-'equipment' sourceType), and duplicate-capable items
+  // (e.g. two rings) track independently.
+  for (const spec of itemDef.grantsStatusEffects ?? []) {
+    applyStatusEffect(world, entity, {
+      ...spec,
+      sourceType: 'equipment',
+      sourceId: equipmentSourceId(instanceId),
+    });
+  }
+
+  // Weapon-typed equipment: activate the underlying WeaponDef when the player
+  // equips it. Non-player entities silently skip this (equipment is entity-
+  // agnostic in principle; only the player has an active weapon today).
+  if (itemDef.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    const weaponDef = getWeaponDef(itemDef.weaponId);
+    if (weaponDef !== undefined) {
+      setActiveWeaponDef(world, weaponDef);
+    }
+  }
 
   return { ok: true, instanceId };
 }
@@ -699,9 +835,6 @@ export function unequip(
   if (!instance) return { ok: false, reason: 'Instance not found' };
 
   let generatedBagEntry: GeneratedEquipmentInventoryEntry | undefined;
-  let bagWithValidatedGeneratedOwnership:
-    | NonNullable<ReturnType<GameWorld['inventories']['get']>>
-    | undefined;
   if (typeof instId !== 'number') {
     const bag = world.inventories.get(entity);
     if (!bag) return { ok: false, reason: 'Entity has no inventory' };
@@ -712,7 +845,6 @@ export function unequip(
     if (hasGeneratedEquipmentReference(bag, instId)) {
       return { ok: false, reason: `Generated equipment already exists in bag: ${instId}` };
     }
-    bagWithValidatedGeneratedOwnership = bag;
     generatedBagEntry = generatedInventoryEntry(instId);
   }
 
@@ -724,6 +856,8 @@ export function unequip(
   }
   if (typeof instId === 'number') {
     state.instances.delete(instId);
+  } else {
+    deactivateGeneratedEquipment(world, entity, instId);
   }
 
   // Remove only the status effects this specific equipment instance granted.
@@ -736,15 +870,16 @@ export function unequip(
   // Weapon-typed equipment: clear the active weapon when the player unequips
   // it. Non-player entities silently skip this (equipment is entity-agnostic
   // in principle; only the player has an active weapon today).
-  if (instance.def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+  if (
+    typeof instId === 'number' &&
+    instance.def.weaponId !== undefined &&
+    hasComponent(world.ecs, entity, Player)
+  ) {
     clearActiveWeaponDef(world);
   }
 
-  if (generatedBagEntry && bagWithValidatedGeneratedOwnership) {
-    addGeneratedEquipmentReference(
-      bagWithValidatedGeneratedOwnership,
-      generatedBagEntry.instanceKey,
-    );
+  if (generatedBagEntry) {
+    addGeneratedEquipmentReference(world.inventories.get(entity)!, generatedBagEntry.instanceKey);
   }
   recomputeEffectiveStats(world, entity);
   return {
@@ -799,7 +934,7 @@ export function addGeneratedEquipmentToBag(
       reason: ownershipConflict(
         instanceKey,
         `Generated equipment already has an owner: ${owners
-          .map((owner) => `${owner.container}:${owner.entity}`)
+          .map((owner) => `${owner.container}:${owner.entity ?? owner.bundleId}`)
           .join(', ')}`,
       ),
     };
@@ -853,9 +988,6 @@ function equipGeneratedFromBag(
       reasons: [ownershipConflict(instanceKey, 'Generated equipment does not have one bag owner')],
     };
   }
-  const unsupported = generatedContentFailure(generated);
-  if (unsupported) return { ok: false, reasons: [unsupported] };
-
   const def = generatedEquipmentDef(generated);
   const infeasible = swapEquipFailureReasons(world, entity, def);
   if (infeasible.length > 0) return { ok: false, reasons: infeasible };
@@ -881,6 +1013,7 @@ function equipGeneratedFromBag(
   for (const slotId of def.slots) {
     state.equipped[slotId] = instanceKey;
   }
+  activateGeneratedEquipment(world, entity, generated);
   recomputeEffectiveStats(world, entity);
 
   return {
@@ -980,7 +1113,24 @@ export function equipFromBag(
   removeItem(bag, itemId, 1);
   const instanceId = getNextInstanceId(world);
   const instance: EquipmentInstance = { instanceId, def };
-  commitEquipInstance(world, entity, state, instance);
+  for (const slotId of def.slots) {
+    state.equipped[slotId] = instanceId;
+  }
+  state.instances.set(instanceId, instance);
+  for (const spec of def.grantsStatusEffects ?? []) {
+    applyStatusEffect(world, entity, {
+      ...spec,
+      sourceType: 'equipment',
+      sourceId: equipmentSourceId(instanceId),
+    });
+  }
+  if (def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    const weaponDef = getWeaponDef(def.weaponId);
+    if (weaponDef !== undefined) {
+      setActiveWeaponDef(world, weaponDef);
+    }
+  }
+  recomputeEffectiveStats(world, entity);
 
   return {
     ok: true,

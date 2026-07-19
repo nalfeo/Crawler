@@ -3,12 +3,7 @@ import { resolve } from 'node:path';
 import type { Brief } from './brief-schema.js';
 import { variantCount } from './brief-schema.js';
 import { resizeSpriteStrategy } from './size-variants.js';
-import {
-  CRAWLER_DESIGN_LANGUAGE,
-  designLanguageAddendaBlock,
-  floorContextBlock,
-} from './content-direction.js';
-import { resolveDesignLanguageAddenda } from './design-language-addenda.js';
+import { CRAWLER_DESIGN_LANGUAGE, floorContextBlock } from './content-direction.js';
 
 /**
  * Pure prompt builders for the sprite generation pipeline.
@@ -92,12 +87,10 @@ export function extractPreamble(markdown: string): string {
  */
 export function buildPrompt(brief: Brief, styleGuide: string): string {
   const rules = typeRulesBlock(brief);
-  const addenda = designLanguageAddendaBlock(resolveDesignLanguageAddenda(brief.name, brief.floor));
   return [
     styleGuide,
     '',
     floorContextBlock(brief.floor),
-    ...(addenda ? ['', addenda] : []),
     '',
     briefSubjectBlock(brief),
     '',
@@ -121,12 +114,10 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   const count = variants ?? variantCount(brief);
   const rules = typeRulesBlock(brief);
   const variationsBlock = thematicVariationsBlock(brief.variations);
-  const addenda = designLanguageAddendaBlock(resolveDesignLanguageAddenda(brief.name, brief.floor));
   return [
     styleGuide,
     '',
     floorContextBlock(brief.floor),
-    ...(addenda ? ['', addenda] : []),
     '',
     briefSubjectBlock(brief),
     '',

@@ -61,13 +61,25 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   return { eligible: true, reason: 'trusted issue opener' };
 }
 
-export async function getCopilotIssueAssignmentContext({
-  graphql,
-  token,
-  owner,
-  repo,
-  issueNumber,
-}) {
+function isTrustedMarkerComment(comment) {
+  return (
+    String(comment.body || '').includes(ISSUE_INTAKE_MARKER) &&
+    (TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
+      TRUSTED_BOT_LOGINS.has(String(comment.user?.login || '').toLowerCase()))
+  );
+}
+
+async function deleteCommentIfCreated(request, token, owner, repo, commentId) {
+  if (typeof commentId === 'number' && commentId > 0) {
+    await request(token, `/repos/${owner}/${repo}/issues/comments/${commentId}`, {
+      method: 'DELETE',
+    });
+  }
+}
+
+export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
+  // Discover Copilot actor and fetch current issue assignees in one query so we can
+  // preserve existing assignees in the replaceActorsForAssignable mutation.
   const actors = await graphql(
     token,
     `
@@ -86,8 +98,6 @@ export async function getCopilotIssueAssignmentContext({
             }
           }
           issue(number: $issueNumber) {
-            id
-            state
             assignees(first: 50) {
               nodes {
                 id
@@ -98,7 +108,7 @@ export async function getCopilotIssueAssignmentContext({
         }
       }
     `,
-    { owner, repo, issueNumber },
+    { owner, repo, issueNumber: issue.number },
   );
 
   const copilot = (actors.repository?.suggestedActors?.nodes || []).find((actor) => {
@@ -109,152 +119,8 @@ export async function getCopilotIssueAssignmentContext({
     throw new Error('CRAWLER_CI_PAT cannot discover an assignable Copilot actor');
   }
 
-  const issueData = actors.repository?.issue;
-  if (!issueData?.id) {
-    throw new Error(`Issue #${issueNumber} could not be loaded for assignment`);
-  }
-
-  return {
-    copilot,
-    issueId: issueData.id,
-    issueState: issueData.state,
-    assignees: issueData.assignees?.nodes || [],
-  };
-}
-
-export function buildIssueActorIds({ assignees, copilotActorId, includeCopilot }) {
-  const allAssignees = Array.isArray(assignees) ? assignees : [];
-  const nonCopilotActorIds = allAssignees
-    .filter((assignee) => !isCopilotLogin(assignee?.login))
-    .map((assignee) => assignee.id)
-    .filter(Boolean);
-  const copilotActorIds = allAssignees
-    .filter((assignee) => isCopilotLogin(assignee?.login))
-    .map((assignee) => assignee.id)
-    .filter(Boolean);
-  const actorIds = [...nonCopilotActorIds];
-  if (includeCopilot) {
-    if (copilotActorIds.length > 0) {
-      actorIds.push(...copilotActorIds);
-    } else if (copilotActorId) {
-      actorIds.push(copilotActorId);
-    }
-  }
-  return [...new Set(actorIds)];
-}
-
-export async function replaceIssueAssignees({ graphql, token, assignableId, actorIds }) {
-  const assignment = await graphql(
-    token,
-    `
-      mutation ($assignableId: ID!, $actorIds: [ID!]!) {
-        replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
-          assignable {
-            ... on Issue {
-              assignees(first: 20) {
-                nodes {
-                  login
-                }
-              }
-            }
-          }
-        }
-      }
-    `,
-    { assignableId, actorIds },
-  );
-  return (
-    assignment.replaceActorsForAssignable?.assignable?.assignees?.nodes?.map((assignee) =>
-      String(assignee.login || '').toLowerCase(),
-    ) || []
-  );
-}
-
-async function mutateIssueAssignees({
-  graphql,
-  token,
-  mutationField,
-  assignableId,
-  actorIds,
-}) {
-  const assignment = await graphql(
-    token,
-    `
-      mutation ($assignableId: ID!, $assigneeIds: [ID!]!) {
-        ${mutationField}(input: { assignableId: $assignableId, assigneeIds: $assigneeIds }) {
-          assignable {
-            ... on Issue {
-              assignees(first: 20) {
-                nodes {
-                  login
-                }
-              }
-            }
-          }
-        }
-      }
-    `,
-    {
-      assignableId,
-      assigneeIds: actorIds,
-    },
-  );
-  return (
-    assignment?.[mutationField]?.assignable?.assignees?.nodes?.map((assignee) =>
-      String(assignee.login || '').toLowerCase(),
-    ) || []
-  );
-}
-
-export async function addIssueAssignees({ graphql, token, assignableId, actorIds }) {
-  return mutateIssueAssignees({
-    graphql,
-    token,
-    mutationField: 'addAssigneesToAssignable',
-    assignableId,
-    actorIds,
-  });
-}
-
-export async function removeIssueAssignees({ graphql, token, assignableId, actorIds }) {
-  return mutateIssueAssignees({
-    graphql,
-    token,
-    mutationField: 'removeAssigneesFromAssignable',
-    assignableId,
-    actorIds,
-  });
-}
-
-function isTrustedMarkerComment(comment) {
-  return (
-    String(comment.body || '').includes(ISSUE_INTAKE_MARKER) &&
-    (TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
-      TRUSTED_BOT_LOGINS.has(String(comment.user?.login || '').toLowerCase()))
-  );
-}
-
-async function deleteCommentIfCreated(request, token, owner, repo, commentId) {
-  if (typeof commentId === 'number' && commentId > 0) {
-    await request(token, `/repos/${owner}/${repo}/issues/comments/${commentId}`, {
-      method: 'DELETE',
-    });
-  }
-}
-
-export async function runIssueIntake({ graphql, paginate, request, token, owner, repo, issue }) {
-  const assignmentContext = await getCopilotIssueAssignmentContext({
-    graphql,
-    token,
-    owner,
-    repo,
-    issueNumber: issue.number,
-  });
-  const actorIds = buildIssueActorIds({
-    assignees: assignmentContext.assignees,
-    copilotActorId: assignmentContext.copilot.id,
-    includeCopilot: true,
-  });
+  const existingActorIds = (actors.repository?.issue?.assignees?.nodes || []).map((a) => a.id);
+  const actorIds = [...new Set([...existingActorIds, copilot.id])];
 
   // Post the kickoff comment BEFORE assigning Copilot so the instructions are present
   // when the agent session starts. Clean up the new comment if assignment fails.
@@ -283,25 +149,41 @@ export async function runIssueIntake({ graphql, paginate, request, token, owner,
 
   let assignment;
   try {
-    assignment = await replaceIssueAssignees({
-      graphql,
+    assignment = await graphql(
       token,
-      assignableId: issue.node_id,
-      actorIds,
-    });
+      `
+        mutation ($assignableId: ID!, $actorIds: [ID!]!) {
+          replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
+            assignable {
+              ... on Issue {
+                assignees(first: 20) {
+                  nodes {
+                    login
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      { assignableId: issue.node_id, actorIds },
+    );
   } catch (err) {
     await deleteCommentIfCreated(request, token, owner, repo, newCommentId);
     throw err;
   }
 
-  const assignedLogins = assignment;
+  const assignedLogins =
+    assignment.replaceActorsForAssignable?.assignable?.assignees?.nodes?.map((assignee) =>
+      String(assignee.login || '').toLowerCase(),
+    ) || [];
   if (!assignedLogins.some(isCopilotLogin)) {
     await deleteCommentIfCreated(request, token, owner, repo, newCommentId);
     throw new Error(`Copilot assignment did not persist on issue #${issue.number}`);
   }
 
   return {
-    assignee: assignmentContext.copilot.login,
+    assignee: copilot.login,
     comment: existingKickoff ? 'existing' : 'posted',
   };
 }

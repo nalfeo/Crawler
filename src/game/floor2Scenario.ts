@@ -104,7 +104,6 @@ import {
   questSystem,
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
-import { finalizeFloorAchievementProgressOnExit } from './systems/achievementSystem.js';
 import type { SeededRandom } from '../shared/random.js';
 import { SeededRandom as SeededRandomClass, hashStringToSeed } from '../shared/random.js';
 import { setEnemyAppearanceKey } from '../core/spawners/combatants.js';
@@ -750,7 +749,6 @@ export function confirmFloor2StairDescend(world: GameWorld, _playerEid: number):
   // The visual scene switches to safe_room immediately after this callback returns,
   // so complete any goal-backed finale quests before the state flip.
   questSystem(world);
-  finalizeFloorAchievementProgressOnExit(world);
   world.state = 'safe_room';
   return true;
 }
@@ -1079,8 +1077,6 @@ function applyFloor2DirectStartPlayerState(world: GameWorld, playerEid: number):
   statSystem(world);
 
   unequip(world, playerEid, 'neck', { force: true });
-  // TODO(C2→D): call revokeEquipmentAbilityGrants(world, playerEid, <instanceId>) after
-  // unequip once equipment-ability wiring is implemented (see src/game/systems/abilitySystem.ts).
   equip(world, playerEid, MERCHANTS_CHARM_DEF, { force: true });
 }
 

@@ -12,7 +12,6 @@ import type { Page } from 'playwright';
 import { E2E_LAB_BASE_URL } from '../e2e-constants.js';
 // Type-only import (erased at runtime — does NOT execute the lab's registerLab).
 import type {
-  BloodSurfaceProbeSummary,
   HarvestableRenderSummary,
   FamilyHudProbeState,
   MainSceneProbeApi,
@@ -85,17 +84,8 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.getModalPickerLayout()),
   setSimulationPaused: (page: Page, paused: boolean): Promise<void> =>
     page.evaluate((p) => window.__mainSceneProbe!.setSimulationPaused(p), paused),
-  advanceSimulationFrames: (page: Page, frames: number): Promise<void> =>
-    page.evaluate((count) => window.__mainSceneProbe!.advanceSimulationFrames(count), frames),
   setPlayerFeet: (page: Page, x: number, y: number): Promise<void> =>
     page.evaluate(({ x: fx, y: fy }) => window.__mainSceneProbe!.setPlayerFeet(fx, fy), { x, y }),
-  seedBloodPool: (page: Page, x: number, y: number, color: number): Promise<number | null> =>
-    page.evaluate(
-      ({ x: fx, y: fy, color: tint }) => window.__mainSceneProbe!.seedBloodPool(fx, fy, tint),
-      { x, y, color },
-    ),
-  getBloodSurfaceSummary: (page: Page): Promise<BloodSurfaceProbeSummary> =>
-    page.evaluate(() => window.__mainSceneProbe!.getBloodSurfaceSummary()),
   primeNpcInteractionTarget: (page: Page): Promise<ProbePoint | null> =>
     page.evaluate(() => window.__mainSceneProbe!.primeNpcInteractionTarget()),
   primeQuestWaypointArrows: (page: Page): Promise<void> =>

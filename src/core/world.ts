@@ -13,16 +13,6 @@ import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
 import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
-import {
-  createEmptyAchievementFactState,
-  type AchievementFactState,
-} from '../shared/achievements.js';
-import type {
-  BloodFootprintSurface,
-  BloodPoolSurface,
-  BloodyFootprintState,
-} from '../shared/blood-surfaces.js';
-import { createBloodyFootprintState } from '../shared/blood-surfaces.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
 import type { WeaponTelemetry } from './weapon-telemetry.js';
@@ -36,7 +26,10 @@ import {
   createGeneratedEquipmentRegistry,
   type GeneratedEquipmentRegistry,
 } from './generated-equipment-registry.js';
-import type { GeneratedEquipmentGenerationPolicyV1 } from '../shared/generated-equipment-types.js';
+import type {
+  GeneratedEquipmentGenerationPolicyV1,
+  GeneratedEquipmentRewardBundleV1,
+} from '../shared/generated-equipment-types.js';
 import {
   Position,
   Velocity,
@@ -119,13 +112,6 @@ export interface GameWorld {
   ecs: ReturnType<typeof createBitecsWorld>;
   /** Typed-array component stores — read directly: stores.position.x[eid] */
   stores: ComponentStores;
-  /**
-   * Monotonic cosmetic spawn identity per EID. Renderers use it to distinguish
-   * recycled entities without consulting or mutating gameplay state.
-   */
-  entityRenderGeneration: Uint32Array;
-  /** Counter backing {@link entityRenderGeneration}; zero is reserved for unset slots. */
-  nextEntityRenderGeneration: number;
   /** Seeded RNG — never use Math.random() */
   rng: SeededRandom;
   /**
@@ -199,6 +185,8 @@ export interface GameWorld {
   inventories: Map<number, InventoryBag>;
   /** Authoritative generated-equipment records for this run. */
   generatedEquipmentRegistry: GeneratedEquipmentRegistry;
+  /** Unopened achievement rewards own generated instances by registry key only. */
+  generatedEquipmentRewardBundles: Map<string, GeneratedEquipmentRewardBundleV1>;
   /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
   statusEffectsByEntity: Map<number, StatusEffect[]>;
   /** Per-door lock configurations (eid → lock config). */
@@ -254,12 +242,6 @@ export interface GameWorld {
    * so `src/core` stays portable. Capped defensively by `pushAnnouncement`.
    */
   announcements: AnnouncementEvent[];
-  /** Persistent blood pools authored by simulation-side death/contact logic. */
-  bloodPools: BloodPoolSurface[];
-  /** Persistent bloody footprints/smears authored by the core step. */
-  bloodyFootprints: BloodFootprintSurface[];
-  /** Active bloody-footprint source window + overlap tracking. */
-  bloodyFootprintState: BloodyFootprintState;
   /**
    * Per-spawner cached door entity IDs for a sealed-room arena. Populated at
    * arena trigger, cleared once the arena resolves. Side-car (not SoA) because
@@ -408,8 +390,6 @@ export interface GameWorld {
     pendingUnlockIds: string[];
     /** Achievement IDs whose reward has been opened/claimed this run. */
     claimedIds: Set<string>;
-    /** Deterministic run-global achievement facts carried across floor transitions. */
-    runGlobal: AchievementFactState;
   };
   /**
    * True when the player entity's current position is inside a safe room.
@@ -421,40 +401,6 @@ export interface GameWorld {
   debugFlags: {
     /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
     showAllRooms: boolean;
-  };
-  /**
-   * Floor 2 equipment feature flags. All flags default to `false` and apply
-   * only to Floor 2. Floor 1 is unaffected regardless of flag values.
-   *
-   * Dependency closure (enabling a flag without its deps is a config error):
-   *   floor2EquipmentRegistry      — none
-   *   floor2EquipmentCatalog       — registry
-   *   floor2EquipmentRewards       — registry, catalog
-   *   floor2EquipmentEconomy       — registry, catalog
-   *   floor2EquipmentUx            — registry, catalog
-   *   floor2EquipmentWorld         — registry, catalog
-   *   floor2EquipmentAiMaintenance — registry, catalog, economy, UX, world
-   *
-   * Disabling a flag stops new generation/mutation through that consumer but
-   * does NOT delete, rewrite, or reroll persisted v1 records.
-   *
-   * See ADR 0065 DEC-009 and .specify/specs/equipment-system.md §Feature flags.
-   */
-  floor2EquipmentFlags: {
-    /** Enables the generated-instance registry. Gate for all other Floor 2 equipment features. */
-    floor2EquipmentRegistry: boolean;
-    /** Enables the equipment catalog (70 normalized bases). Requires registry. */
-    floor2EquipmentCatalog: boolean;
-    /** Enables achievement equipment reward generation. Requires registry + catalog. */
-    floor2EquipmentRewards: boolean;
-    /** Enables Quartermaster stock + boss chest generation. Requires registry + catalog. */
-    floor2EquipmentEconomy: boolean;
-    /** Enables equipment inventory/equip UX. Requires registry + catalog. */
-    floor2EquipmentUx: boolean;
-    /** Enables world placement (chests, drops). Requires registry + catalog. */
-    floor2EquipmentWorld: boolean;
-    /** Enables AI settlement-maintenance behavior. Requires all other flags. */
-    floor2EquipmentAiMaintenance: boolean;
   };
 }
 
@@ -548,8 +494,6 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   const world: GameWorld = {
     ecs,
     stores,
-    entityRenderGeneration: new Uint32Array(maxEntities),
-    nextEntityRenderGeneration: 0,
     rng: new SeededRandom(options.seed ?? 42),
     seed: options.seed ?? 42,
     frameCount: 0,
@@ -578,6 +522,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       runKey: options.generatedEquipmentRunKey,
       generationPolicy: options.generatedEquipmentGenerationPolicy,
     }),
+    generatedEquipmentRewardBundles: new Map(),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
@@ -586,9 +531,6 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     maxKnockbackStepThisFrame: 0,
     vfxEvents: [],
     announcements: [],
-    bloodPools: [],
-    bloodyFootprints: [],
-    bloodyFootprintState: createBloodyFootprintState(),
     spawnerArenaDoors: new Map(),
     spawnerArenaBarriers: new Map(),
     barriers: createBarrierRegistry(),
@@ -620,21 +562,11 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       unlockedIds: new Set(),
       pendingUnlockIds: [],
       claimedIds: new Set(),
-      runGlobal: createEmptyAchievementFactState(),
     },
     debugFlags: {
       showAllRooms: false,
     },
     playerInSafeRoom: false,
-    floor2EquipmentFlags: {
-      floor2EquipmentRegistry: false,
-      floor2EquipmentCatalog: false,
-      floor2EquipmentRewards: false,
-      floor2EquipmentEconomy: false,
-      floor2EquipmentUx: false,
-      floor2EquipmentWorld: false,
-      floor2EquipmentAiMaintenance: false,
-    },
   };
   logger.info('Created game world', {
     seed: options.seed ?? 42,

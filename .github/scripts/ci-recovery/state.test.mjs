@@ -451,63 +451,6 @@ test('automation staleness waits, retries once, then releases without treating w
   );
 });
 
-test('legacy state without progressKey is never exhausted regardless of historical attempt count', () => {
-  // Regression for Thread 5 (PRRT_kwDOSvo2Ms6Rv6pU): legacy automation states
-  // have no progressKey and carry a historical cumulative attempt count that must
-  // NOT trigger the new progressKey-scoped exhaustion gate (attempt>=2 → release).
-  // Such states should always resolve to 'retry' so they get at least one more
-  // chance under the new per-progress-key budget.
-  const fingerprint = blockerFingerprint([
-    { kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' },
-  ]);
-  const legacyStateAttempt2 = makeState({
-    prNumber: 42,
-    headSha: 'abc',
-    fingerprint,
-    owner: 'automation',
-    status: 'dispatched',
-    blockers: [{ kind: 'ci-failure', id: 'ci:1', summary: 'CI failed' }],
-    attempt: 2,
-    // No progressKey / progressAt — legacy state
-    updatedAt: '2026-07-17T12:00:00.000Z',
-  });
-  const legacyStateAttempt5 = { ...legacyStateAttempt2, attempt: 5 };
-
-  // Fresh enough — should wait regardless of attempt
-  assert.equal(
-    automationStallAction({
-      state: legacyStateAttempt2,
-      headSha: 'abc',
-      fingerprint,
-      now: new Date('2026-07-17T12:10:00.000Z'),
-    }),
-    'wait',
-    'legacy attempt=2 within window should wait',
-  );
-  // Stale — legacy state with attempt=2 must retry, not release
-  assert.equal(
-    automationStallAction({
-      state: legacyStateAttempt2,
-      headSha: 'abc',
-      fingerprint,
-      now: new Date('2026-07-17T12:30:01.000Z'),
-    }),
-    'retry',
-    'legacy attempt=2 should resolve to retry, not release',
-  );
-  // Legacy state with very high historical attempt also retries once
-  assert.equal(
-    automationStallAction({
-      state: legacyStateAttempt5,
-      headSha: 'abc',
-      fingerprint,
-      now: new Date('2026-07-17T12:30:01.000Z'),
-    }),
-    'retry',
-    'legacy attempt=5 should also resolve to retry under new semantics',
-  );
-});
-
 test('broad sweeps suppress only healthy consistent owners', () => {
   const automation = makeState({
     prNumber: 42,

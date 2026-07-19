@@ -823,12 +823,11 @@ function dispatchAttackInner(
  * moment of the swap, not at the next tick.
  */
 export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
-  const previousGeneration = getActiveWeaponGeneration(world);
+  const currentId = getActiveWeaponDef(world)?.id;
   setActiveWeaponDef(world, weaponDef);
   const state = getWeaponState(world);
-  const nextGeneration = getActiveWeaponGeneration(world);
-  const isSwitch = nextGeneration !== previousGeneration;
-  state.lastActiveGeneration = nextGeneration;
+  const isSwitch = currentId !== weaponDef.id;
+  state.lastActiveGeneration = getActiveWeaponGeneration(world);
   if (isSwitch) {
     // Real switch: charge the new weapon so it can fire immediately.
     state.lastFireMs = world.elapsedMs - weaponDef.cooldownMs;

@@ -4,9 +4,8 @@
  * `src/core/generateShopInventory.ts` consumes these archetypes to roll a
  * seeded per-run shop inventory.
  *
- * Archetype entries reference *existing* item ids: the weapon ids in
- * `weapons.json` (id-only; gameplay stats live in `weaponDefs.ts`) and the
- * merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
+ * Archetype entries reference *existing* item ids: the weapons in
+ * `weapons.json` and the merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
  * The loader validates that invariant at load-time so a data typo can't ship.
  *
  * Prices are the *base* per-item price. Runtime price is

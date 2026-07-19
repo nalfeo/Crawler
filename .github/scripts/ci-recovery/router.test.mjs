@@ -444,72 +444,6 @@ test('owner-state hydration is bounded and malformed state remains sweep-visible
   assert.equal(hasHealthyOwnerForSweep(hydrated[7], new Date('2026-07-17T12:10:00Z')), false);
 });
 
-test('incremental hydration continues past healthy owners and stops at six resolved sweep candidates', async () => {
-  const pulls = Array.from({ length: 18 }, (_, index) => ({
-    number: index + 1,
-    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
-    labels: [{ name: `ci-owner-pr-${index + 1}` }],
-  }));
-  const loadedNumbers = [];
-  const hydrated = await hydrateRecoveryOwnership(
-    pulls,
-    async (number) => {
-      loadedNumbers.push(number);
-      await new Promise((resolve) => setTimeout(resolve, 1));
-      if (number <= 6) {
-        return [
-          {
-            body: renderStateComment(automationOwnerState(number, '2026-07-17T12:00:00.000Z')),
-          },
-        ];
-      }
-      return [{ body: '<!-- crawler-ci-state:v1 --> malformed' }];
-    },
-    6,
-    {
-      targetDispatchable: 6,
-      countDispatchable: (resolvedPulls) =>
-        resolvedPulls.filter((pr) => !hasHealthyOwnerForSweep(pr, new Date('2026-07-17T12:10:00Z')))
-          .length,
-    },
-  );
-
-  assert.equal(
-    loadedNumbers.length,
-    12,
-    'must scan past the healthy first batch and stop after six unhealthy owners',
-  );
-  assert.equal(hydrated.length, 18);
-  assert.equal(hydrated[11].recoveryState, null);
-  assert.equal(hydrated[12].recoveryState, undefined, 'younger owners must remain unhydrated');
-});
-
-test('incremental hydration skips younger owners when six older unowned PRs fill the window', async () => {
-  const pulls = Array.from({ length: 12 }, (_, index) => ({
-    number: index + 1,
-    created_at: `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
-    labels: index < 6 ? [] : [{ name: `ci-owner-pr-${index + 1}` }],
-  }));
-  const loadedNumbers = [];
-  const hydrated = await hydrateRecoveryOwnership(
-    pulls,
-    async (number) => {
-      loadedNumbers.push(number);
-      return [];
-    },
-    6,
-    {
-      targetDispatchable: 6,
-      countDispatchable: (resolvedPulls) =>
-        resolvedPulls.filter((pr) => !hasHealthyOwnerForSweep(pr, new Date('2026-07-17T12:10:00Z')))
-          .length,
-    },
-  );
-
-  assert.deepEqual(loadedNumbers, []);
-  assert.equal(hydrated[6].recoveryState, undefined);
-});
-
 test('automation owner with a stale head SHA is unhealthy for sweeps even when progressAt is fresh', () => {
   // Regression for Thread 2: an automation state recorded against an older
   // head SHA must NOT be treated as healthy even if progressAt is recent.
@@ -879,13 +813,14 @@ test('requestWithBackoff stops immediately for non-retryable errors', async () =
   assert.equal(attempts, 1);
 });
 
-test('hydrateRecoveryOwnership stops after six dispatchable PRs in the resolved prefix', async () => {
+test('hydrateRecoveryOwnership stops incrementally after stopAfterDispatchable non-healthy PRs', async () => {
   // Regression for Thread 8: the previous implementation loaded the full
   // comment history for every owner-labeled PR before selecting at most six
   // candidates. With a large owned backlog this scales with the queue length
   // and can exhaust the router API budget or 10-minute timeout.
-  // The updated implementation stops hydrating once the fully-resolved,
-  // age-ordered prefix contains enough dispatchable PRs.
+  // The updated implementation stops hydrating once enough non-healthy PRs
+  // have been found (stopAfterDispatchable), continuing only when a batch is
+  // entirely healthy so stale owners behind a healthy front are not missed.
   const now = new Date('2026-07-17T12:00:00Z');
   const freshProgressKey = automationProgressKey(
     'head-sha',
@@ -942,9 +877,8 @@ test('hydrateRecoveryOwnership stops after six dispatchable PRs in the resolved 
     },
     3, // batchSize — use 3 so each batch is independently healthy/unhealthy
     {
-      targetDispatchable: 6,
-      countDispatchable: (resolvedPulls) =>
-        resolvedPulls.filter((pr) => !hasHealthyOwnerForSweep(pr, now)).length,
+      stopAfterDispatchable: 6,
+      isHealthy: (pr) => hasHealthyOwnerForSweep(pr, now),
     },
   );
 

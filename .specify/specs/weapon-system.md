@@ -138,14 +138,7 @@ A weapon-bearing generated instance captures this value at the final freeze step
 ```typescript
 interface ActiveWeaponSnapshotV1 {
   readonly schemaVersion: 'active-weapon-snapshot/v1';
-  readonly generatedEquipmentInstanceId: GeneratedEquipmentInstanceId;
-  readonly id: string; // runtime-compatible alias for sourceWeaponDefId
   readonly sourceWeaponDefId: string;
-  readonly canonicalSkillTags: readonly [
-    `weapon-class:${WeaponClassSkillId}`,
-    `weapon-type:${WeaponTypeSkillId}`,
-  ];
-  readonly fingerprint: EquipmentFingerprintV1;
   readonly name: string;
   readonly weaponType: WeaponTypeValue;
   readonly baseDamage: number;
@@ -178,18 +171,12 @@ interface ActiveWeaponSnapshotV1 {
 - Capture occurs once after base template, item level, inherent scaling, rarity,
   enhancement, and effects resolve. Every field used by runtime firing is copied,
   including fields whose value is zero for that weapon type.
-- `generatedEquipmentInstanceId` is the immutable per-instance identity. `id` and
-  `sourceWeaponDefId` both point at the base static weapon definition for runtime
-  compatibility + provenance. Runtime attack dispatch, AI ERV scoring, details
-  UI, save/load, and carryover use the frozen snapshot selected by
+- `sourceWeaponDefId` is provenance only. Runtime attack dispatch, AI ERV scoring,
+  details UI, save/load, and carryover use the frozen snapshot selected by
   generated equipment instance ID.
-- `canonicalSkillTags` is derived exactly from `weaponClassSkillId` and
-  `weaponTypeSkillId`; mismatches fail closed.
-- The snapshot carries its own deterministic SHA-256 fingerprint over the
-  complete snapshot content except the fingerprint field. The parent equipment
-  fingerprint includes the complete snapshot and snapshot schema version. A
-  legal enhancement creates a new immutable content revision and fingerprint
-  under the same equipment instance ID.
+- The parent equipment fingerprint includes the complete snapshot and snapshot
+  schema version. A legal enhancement creates a new immutable content revision
+  and fingerprint under the same equipment instance ID.
 - Unknown snapshot versions fail closed. A loader may not substitute the current
   static `WeaponDef`, because doing so could change earned behavior.
 - The existing `ACTIVE_ABILITY_SLOT_LIMIT` remains authoritative at 10. A weapon

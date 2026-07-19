@@ -128,26 +128,18 @@ export function getEncumbranceMovePenalty(band: EncumbranceBand): number {
 /** Compute the total equipped gear weight (lb) with multi-slot instance deduplication. */
 export function computeEquippedWeightLb(
   equipmentState: EquipmentState | undefined,
-  resolveInstance?: (instanceId: EquipmentInstanceId) => EquipmentInstance | undefined,
+  resolveInstance: (instanceId: EquipmentInstanceId) => EquipmentInstance | undefined = (
+    instanceId,
+  ) => equipmentState?.instances.get(instanceId),
 ): number {
   if (!equipmentState) return 0;
-  const resolve =
-    resolveInstance ??
-    ((instanceId: EquipmentInstanceId): EquipmentInstance | undefined => {
-      if (typeof instanceId !== 'number') {
-        throw new Error(
-          'computeEquippedWeightLb requires an explicit resolveInstance for generated instance ids',
-        );
-      }
-      return equipmentState.instances.get(instanceId);
-    });
   const seen = new Set<EquipmentInstanceId>();
   let total = 0;
   for (const slotId of Object.keys(equipmentState.equipped) as EquipmentSlotId[]) {
     const instId = equipmentState.equipped[slotId] ?? null;
     if (instId === null || seen.has(instId)) continue;
     seen.add(instId);
-    const inst = resolve(instId);
+    const inst = resolveInstance(instId);
     if (!inst) continue;
     const w = Number.isFinite(inst.def.weightLb) ? Math.max(0, inst.def.weightLb) : 0;
     total += w;

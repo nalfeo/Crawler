@@ -39,8 +39,6 @@ import { flattenSetPieceLayers, getSetPieceDef } from '../../src/shared/set-piec
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { startEnemyProjectileTelegraph } from '../../src/core/systems/enemyTelegraph.js';
-import { sampleContactAttackMotion } from '../../src/shared/mob-motion.js';
-import { ftToPx } from '../../src/shared/units.js';
 
 /**
  * Faithful local stand-in for a Phaser weapon image on the melee-swing render
@@ -1295,8 +1293,7 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, miniSlime, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
     world.floorScenario!.enemyArchetypes.set(miniSlime, 'slime-mini');
 
-    bridge.sync(world, 0);
-    bridge.sync(world, 500);
+    bridge.sync(world);
 
     expect(images).toHaveLength(2);
     const fullImg = images[0]!;
@@ -1367,82 +1364,6 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
     expect(enemyImg.scaleX).toBeCloseTo(baselineScaleX, 6);
     expect(enemyImg.flipX).toBe(true);
-  });
-
-  it('mirrors contact motion offset and rotation for left-facing enemies', () => {
-    const { scene, images } = createSceneStub({ kenneyLoaded: false });
-    const bridge = createPhaserBridge(scene);
-    const world = createTestWorld();
-    const enemy = addEntity(world.ecs);
-
-    addComponent(world.ecs, enemy, set(Position, { x: 10, y: 10 }));
-    addComponent(world.ecs, enemy, set(Velocity, { x: -1, y: 0 }));
-    addComponent(world.ecs, enemy, Enemy);
-    addComponent(world.ecs, enemy, set(Sprite, { textureId: 1, width: 2, height: 2 }));
-    world.floorScenario = {
-      enemyArchetypes: new Map([[enemy, 'rat']]),
-      objective: { bossBattles: new Map() },
-    } as unknown as NonNullable<typeof world.floorScenario>;
-    bridge.sync(world, 0);
-    world.combatEvents.push({
-      type: 'hit',
-      x: 10,
-      y: 10,
-      amount: 2,
-      targetType: 'player',
-      sourceEid: enemy,
-      sourceRenderGeneration: world.entityRenderGeneration[enemy],
-      delivery: 'contact',
-      timestamp: 1_000,
-    });
-
-    bridge.sync(world, 1_000);
-
-    const enemyImg = images[0]!;
-    const expected = sampleContactAttackMotion(0);
-    expect(enemyImg.flipX).toBe(true);
-    expect(enemyImg.x).toBeCloseTo(ftToPx(10) - ftToPx(expected.offsetX));
-    expect(enemyImg.rotation).toBeCloseTo(-expected.rotation);
-  });
-
-  it('ignores enemy flash overlays on the UI camera at creation time', () => {
-    const { scene, images } = createSceneStub({ kenneyLoaded: false });
-    const uiIgnore = vi.fn();
-    scene.cameras = {
-      getCamera: vi.fn((name: string) =>
-        name === 'ui' ? ({ ignore: uiIgnore } as unknown as Phaser.Cameras.Scene2D.Camera) : null,
-      ),
-    } as unknown as Phaser.Scene['cameras'];
-    const bridge = createPhaserBridge(scene);
-    const world = createTestWorld();
-    const enemy = addEntity(world.ecs);
-
-    addComponent(world.ecs, enemy, set(Position, { x: 8, y: 8 }));
-    addComponent(world.ecs, enemy, set(Velocity, { x: -1, y: 0 }));
-    addComponent(world.ecs, enemy, Enemy);
-    addComponent(world.ecs, enemy, set(Sprite, { textureId: 1, width: 2, height: 2 }));
-    world.floorScenario = {
-      enemyArchetypes: new Map([[enemy, 'rat']]),
-      objective: { bossBattles: new Map() },
-    } as unknown as NonNullable<typeof world.floorScenario>;
-
-    bridge.sync(world, 0);
-    world.combatEvents.push({
-      type: 'hit',
-      x: 8,
-      y: 8,
-      amount: 2,
-      targetType: 'enemy',
-      targetEid: enemy,
-      targetRenderGeneration: world.entityRenderGeneration[enemy],
-      delivery: 'projectile',
-      timestamp: 500,
-    });
-    bridge.sync(world, 500);
-
-    expect(images).toHaveLength(2);
-    expect(uiIgnore).toHaveBeenCalled();
-    expect(uiIgnore).toHaveBeenCalledWith(images[1]);
   });
 
   // A welcome sign is a Sprite+Position entity whose textureId is the welcome
@@ -1544,11 +1465,6 @@ describe('createPhaserBridge', () => {
     expect(images).toHaveLength(2);
     expect(images[0]?.visible).toBe(true);
     expect(images[1]?.visible).toBe(false);
-
-    world.debugFlags.showAllRooms = true;
-    bridge.sync(world, 500);
-    expect(images[1]?.visible).toBe(true);
-    expect(images[1]?.alpha).toBe(0.3);
   });
 
   it('applies a sine-wave bob offset to XP gems each frame', () => {

@@ -152,9 +152,7 @@ export interface Floor2SettlementSnapshot {
   readonly defectorAppearanceKey: string;
   /** Same-family fallback appearance key when preferred art is unavailable. */
   readonly defectorFallbackAppearanceKey: string;
-  /** Guaranteed Quartermaster shop instance, placed in addition to the seeded shops. */
-  readonly quartermasterShop: Floor2ShopInstance;
-  /** 1–2 seeded non-Quartermaster shop instances. */
+  /** 1–2 seeded shop instances. */
   readonly shops: readonly Floor2ShopInstance[];
 }
 

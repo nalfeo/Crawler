@@ -133,9 +133,7 @@ describe('Floor 2 family bosses — real bridge render (generated art at LARGE s
     // Inject the generated-sprite registry the bridge reads (mirrors BootScene).
     (scene.game as unknown) = { registry: { get: () => registry } };
 
-    const bridge = createPhaserBridge(scene);
-    bridge.sync(world, 0);
-    bridge.sync(world, 500);
+    createPhaserBridge(scene).sync(world);
 
     const expectedKeys = new Set(bosses.map((b) => `${b.briefId}-var-0`));
     const renderedKeys = new Set((images as MockImage[]).map((img) => img.textureKey));

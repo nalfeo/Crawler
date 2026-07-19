@@ -1,7 +1,7 @@
+import type { MeleeStyleValue, WeaponTypeValue } from './constants.js';
 import type { EquipmentSlotId } from './equipment-slots.js';
 import type { StatId } from './stats.js';
 import type { WeaponClassSkillId, WeaponTypeSkillId } from './weapon-skills.js';
-import type { WeaponDef } from './weaponDefs.js';
 
 export const GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION = 'floor2-equipment-instance/v1' as const;
 export const GENERATED_EQUIPMENT_BASE_SCHEMA_VERSION = 'floor2-equipment-base/v1' as const;
@@ -13,25 +13,16 @@ export const GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION =
 export const GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION =
   'floor2-equipment-generation-policy/v1' as const;
 export const GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION = 'floor2-equipment-registry/v1' as const;
+export const GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION =
+  'floor2-equipment-reward-bundle/v1' as const;
 
 export type GeneratedEquipmentInstanceId = `gei:v1:${string}:${number}`;
 export type GeneratedEquipmentInstanceKey = GeneratedEquipmentInstanceId;
+export type EquipmentGrantSourceId = `equipment:${GeneratedEquipmentInstanceId}:${number}`;
 export type EquipmentFingerprintV1 = `sha256:${string}`;
 export type GeneratedEquipmentRarity = 'common' | 'uncommon' | 'rare';
 export type GeneratedEquipmentEnhancementLevel = 0 | 1 | 2 | 3 | 4 | 5;
 export type GeneratedEquipmentEffectUnitCost = 1 | 2;
-export type EquipmentGrantSourceId = `equipment:${GeneratedEquipmentInstanceId}:${number}`;
-export type ActiveWeaponClassSkillTag = `weapon-class:${WeaponClassSkillId}`;
-export type ActiveWeaponTypeSkillTag = `weapon-type:${WeaponTypeSkillId}`;
-export type ActiveWeaponSnapshotSkillTag = ActiveWeaponClassSkillTag | ActiveWeaponTypeSkillTag;
-export const RARITY_EFFECT_BUDGET: Readonly<Record<GeneratedEquipmentRarity, number>> = {
-  common: 0,
-  uncommon: 1,
-  rare: 2,
-} as const;
-export const ENHANCEMENT_MIN = 0 as const;
-export const ENHANCEMENT_MAX = 5 as const;
-export const KNOWN_GENERATED_SCHEMA_VERSION = GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION;
 
 export interface GeneratedEquipmentBaseV1 {
   readonly schemaVersion: typeof GENERATED_EQUIPMENT_BASE_SCHEMA_VERSION;
@@ -65,23 +56,39 @@ export interface ResolvedEquipmentGrantEffectV1 extends ResolvedEquipmentEffectB
   readonly grantId: string;
 }
 
-export interface LegacyResolvedEquipmentEffectV1 {
-  readonly effectId: string;
-  readonly magnitude: number;
-  readonly units: GeneratedEquipmentEffectUnitCost;
-}
-
 export type ResolvedEquipmentEffectV1 =
   | ResolvedEquipmentStatEffectV1
-  | ResolvedEquipmentGrantEffectV1
-  | LegacyResolvedEquipmentEffectV1;
+  | ResolvedEquipmentGrantEffectV1;
 
-export interface ActiveWeaponSnapshotV1 extends WeaponDef {
+export interface ActiveWeaponSnapshotV1 {
   readonly schemaVersion: typeof ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION;
-  readonly generatedEquipmentInstanceId: GeneratedEquipmentInstanceId;
   readonly sourceWeaponDefId: string;
-  readonly canonicalSkillTags: readonly [ActiveWeaponClassSkillTag, ActiveWeaponTypeSkillTag];
-  readonly fingerprint: EquipmentFingerprintV1;
+  readonly name: string;
+  readonly weaponType: WeaponTypeValue;
+  readonly baseDamage: number;
+  readonly cooldownMs: number;
+  readonly range: number;
+  readonly projectileSpeed: number;
+  readonly aoeRadius: number;
+  readonly durationMs: number;
+  readonly beamTickMs: number;
+  readonly beamLength: number;
+  readonly trapArmMs: number;
+  readonly trapTriggerRadius: number;
+  readonly trapExplosionRadius: number;
+  readonly returnSpeed: number;
+  readonly maxRange: number;
+  readonly swingArcDeg: number;
+  readonly meleeStyle: MeleeStyleValue;
+  readonly headRadius: number;
+  readonly shaftDamageMult: number;
+  readonly knockback: number;
+  readonly pierce: number;
+  readonly bounceCount: number;
+  readonly goreFactor: number;
+  readonly baseAccuracy: number;
+  readonly weaponClassSkillId: WeaponClassSkillId;
+  readonly weaponTypeSkillId: WeaponTypeSkillId;
 }
 
 export interface FrozenEquipmentFieldsV1 {
@@ -147,27 +154,15 @@ export interface GeneratedEquipmentRegistrySnapshotV1 {
   readonly instances: readonly GeneratedEquipmentInstanceV1[];
 }
 
-const INSTANCE_ID_RE = /^gei:v1:[a-zA-Z0-9_-]+:\d+$/;
-const FINGERPRINT_RE = /^sha256:[0-9a-f]{64}$/;
-
-export function isValidGeneratedInstanceId(id: string): id is GeneratedEquipmentInstanceId {
-  return INSTANCE_ID_RE.test(id);
+export interface GeneratedEquipmentRewardBundleV1 {
+  readonly schemaVersion: typeof GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION;
+  readonly achievementId: string;
+  readonly instanceKeys: readonly GeneratedEquipmentInstanceKey[];
 }
 
-export function isKnownGeneratedSchemaVersion(
-  version: string,
-): version is typeof KNOWN_GENERATED_SCHEMA_VERSION {
-  return version === KNOWN_GENERATED_SCHEMA_VERSION;
-}
-
-export function isValidFingerprintV1(value: string): value is EquipmentFingerprintV1 {
-  return FINGERPRINT_RE.test(value);
-}
-
-export function makeRunKey(seed: number | string): string {
-  const key = String(seed).replace(/[^a-zA-Z0-9_-]/g, '');
-  if (key.length === 0) {
-    throw new Error(`makeRunKey: seed "${seed}" produces an empty run key`);
+export function generatedEquipmentRunKeyFromSeed(seed: number): string {
+  if (!Number.isFinite(seed)) {
+    throw new Error(`Generated equipment run seed must be finite: ${seed}`);
   }
-  return key;
+  return `run-seed-${String(seed).replace('+', 'p')}`;
 }

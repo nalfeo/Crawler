@@ -1,6 +1,6 @@
 /**
- * Active-weapon state — the single source of truth for which weapon definition
- * (static `WeaponDef` or immutable generated snapshot) the player is wielding.
+ * Active-weapon state — the single source of truth for which `WeaponDef` the
+ * player is currently wielding.
  *
  * Layer-safe (core → shared): both `equipmentSystem` (core) and `weaponSystem`
  * (game) read/write this state, so it lives in core to avoid a
@@ -16,16 +16,7 @@
  * does NOT bump the generation.
  */
 
-import {
-  ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
-  type ActiveWeaponSnapshotV1,
-} from '../shared/generated-equipment-types.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
-import {
-  GeneratedEquipmentRegistryError,
-  requireGeneratedEquipmentActiveWeaponSnapshot,
-  validateActiveWeaponSnapshotV1,
-} from './generated-equipment-registry.js';
 import type { GameWorld } from './world.js';
 
 interface ActiveWeaponState {
@@ -34,43 +25,6 @@ interface ActiveWeaponState {
 }
 
 const stateMap = new WeakMap<GameWorld, ActiveWeaponState>();
-
-function isActiveWeaponSnapshot(def: WeaponDef): def is ActiveWeaponSnapshotV1 {
-  return (
-    'schemaVersion' in def &&
-    (def as Partial<ActiveWeaponSnapshotV1>).schemaVersion === ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION
-  );
-}
-
-function activeWeaponIdentity(def: WeaponDef | undefined): string | null {
-  if (def === undefined) return null;
-  if (!isActiveWeaponSnapshot(def)) {
-    return `static:${def.id}`;
-  }
-  return `snapshot:${def.generatedEquipmentInstanceId}:${def.fingerprint}`;
-}
-
-function resolveAuthoritativeSnapshot(
-  world: GameWorld,
-  snapshot: ActiveWeaponSnapshotV1,
-): ActiveWeaponSnapshotV1 {
-  const validated = validateActiveWeaponSnapshotV1(snapshot, {
-    expectedInstanceId: snapshot.generatedEquipmentInstanceId,
-    expectedSourceWeaponDefId: snapshot.sourceWeaponDefId,
-  });
-  const authoritative = requireGeneratedEquipmentActiveWeaponSnapshot(
-    world,
-    validated.generatedEquipmentInstanceId,
-  );
-  if (authoritative.fingerprint !== validated.fingerprint) {
-    throw new GeneratedEquipmentRegistryError(
-      'fingerprint-mismatch',
-      `Snapshot fingerprint ${validated.fingerprint} does not match the registry fingerprint ${authoritative.fingerprint}`,
-      '$.activeWeaponSnapshot.fingerprint',
-    );
-  }
-  return authoritative;
-}
 
 function getOrCreateState(world: GameWorld): ActiveWeaponState {
   let state = stateMap.get(world);
@@ -84,12 +38,11 @@ function getOrCreateState(world: GameWorld): ActiveWeaponState {
 /** Set the player's active weapon. Bumps the generation on a real switch. */
 export function setActiveWeaponDef(world: GameWorld, def: WeaponDef): void {
   const state = getOrCreateState(world);
-  const nextDef = isActiveWeaponSnapshot(def) ? resolveAuthoritativeSnapshot(world, def) : def;
-  if (activeWeaponIdentity(state.def) === activeWeaponIdentity(nextDef)) {
-    state.def = nextDef;
+  if (state.def?.id === def.id) {
+    state.def = def;
     return;
   }
-  state.def = nextDef;
+  state.def = def;
   state.generation += 1;
 }
 
@@ -104,11 +57,6 @@ export function clearActiveWeaponDef(world: GameWorld): void {
 /** Get the player's active `WeaponDef`, or undefined when nothing is active. */
 export function getActiveWeaponDef(world: GameWorld): WeaponDef | undefined {
   return stateMap.get(world)?.def;
-}
-
-export function getActiveWeaponSnapshot(world: GameWorld): ActiveWeaponSnapshotV1 | undefined {
-  const def = stateMap.get(world)?.def;
-  return def !== undefined && isActiveWeaponSnapshot(def) ? def : undefined;
 }
 
 /**

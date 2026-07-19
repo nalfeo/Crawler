@@ -290,7 +290,6 @@ function printSummary(
       readonly styleMatch: { readonly score: number };
       readonly briefMatch: { readonly score: number };
       readonly readability: { readonly score: number };
-      readonly themeAdherence?: { readonly score: number };
       readonly rejectedBy: ReadonlyArray<string>;
     } | null;
     judgeSkipReason: 'judge-disabled' | 'sensor-failed' | 'over-cap' | 'over-budget' | null;
@@ -340,7 +339,7 @@ function printSummary(
   );
   if (judgeEnabled) {
     process.stdout.write(
-      `judge   : enabled (design_language / reference_style_match / brief_match / readability [+ theme_adherence when addendum present], < 3 rejects)\n`,
+      `judge   : enabled (design_language / reference_style_match / brief_match / readability, < 3 rejects)\n`,
     );
   }
   if (chosen) {
@@ -366,12 +365,7 @@ function printSummary(
       if (c.judgeScorecard) {
         const j = c.judgeScorecard;
         const verdict = j.passed ? 'PASS' : `FAIL[${j.rejectedBy.join(',')}]`;
-        const dl = (j.designLanguage ?? j.styleMatch).score;
-        const rsm = (j.referenceStyleMatch ?? j.styleMatch).score;
-        const bm = j.briefMatch.score;
-        const r = j.readability.score;
-        const ta = j.themeAdherence !== undefined ? `/${j.themeAdherence.score}` : '';
-        judgeCol = `${dl}/${rsm}/${bm}/${r}${ta} ${verdict}`;
+        judgeCol = `${(j.designLanguage ?? j.styleMatch).score}/${(j.referenceStyleMatch ?? j.styleMatch).score}/${j.briefMatch.score}/${j.readability.score} ${verdict}`;
       } else {
         judgeCol =
           c.judgeSkipReason === 'sensor-failed'
