@@ -8,52 +8,57 @@ export class CanonicalJsonError extends Error {
   }
 }
 
-function canonicalize(value: unknown, path: string, ancestors: Set<object>): string {
-  if (value === null) return 'null';
-  if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new CanonicalJsonError('Expected a finite number', path);
-    }
-    return JSON.stringify(value);
+function assertAcyclic(value: unknown, stack: Set<object>): void {
+  if (value === null || typeof value !== 'object') {
+    return;
   }
-  if (typeof value !== 'object') {
-    throw new CanonicalJsonError(`Unsupported ${typeof value} value`, path);
+  if (stack.has(value)) {
+    throw new CanonicalJsonError('Circular references are not supported', '$');
   }
-  if (ancestors.has(value)) {
-    throw new CanonicalJsonError('Circular references are not supported', path);
-  }
-
-  ancestors.add(value);
+  stack.add(value);
   try {
     if (Array.isArray(value)) {
-      return `[${value
-        .map((entry, index) => canonicalize(entry, `${path}[${index}]`, ancestors))
-        .join(',')}]`;
+      for (const entry of value) {
+        assertAcyclic(entry, stack);
+      }
+      return;
     }
 
-    if (Object.getPrototypeOf(value) !== Object.prototype) {
-      throw new CanonicalJsonError('Expected a plain object', path);
+    for (const key of Object.keys(value as object)) {
+      assertAcyclic((value as Record<string, unknown>)[key], stack);
     }
-    if (Object.getOwnPropertySymbols(value).length > 0) {
-      throw new CanonicalJsonError('Symbol keys are not supported', path);
-    }
-
-    const record = value as Record<string, unknown>;
-    const properties = Object.keys(record)
-      .sort()
-      .map(
-        (key) => `${JSON.stringify(key)}:${canonicalize(record[key], `${path}.${key}`, ancestors)}`,
-      );
-    return `{${properties.join(',')}}`;
   } finally {
-    ancestors.delete(value);
+    stack.delete(value);
   }
 }
 
-/** Canonical JSON with lexicographically sorted object keys and stable array order. */
+function sortedReplacer(_key: string, value: unknown): unknown {
+  if (value === undefined) {
+    throw new CanonicalJsonError('Undefined values are not permitted in fingerprint input', '$');
+  }
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(value as object).sort()) {
+      sorted[key] = (value as Record<string, unknown>)[key];
+    }
+    return sorted;
+  }
+  return value;
+}
+
+/**
+ * Canonical JSON with lexicographically sorted object keys and stable array order.
+ *
+ * This intentionally mirrors `JSON.stringify` semantics for non-finite numbers and
+ * non-plain objects (except for rejecting circular refs and undefined values).
+ */
 export function canonicalJson(value: unknown): string {
-  return canonicalize(value, '$', new Set());
+  assertAcyclic(value, new Set());
+  const serialized = JSON.stringify(value, sortedReplacer);
+  if (serialized === undefined) {
+    throw new CanonicalJsonError('Value is not JSON-serializable', '$');
+  }
+  return serialized;
 }
 
 const SHA256_INITIAL_STATE = [
