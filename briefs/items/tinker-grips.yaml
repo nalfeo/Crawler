@@ -1,0 +1,34 @@
+type: item
+name: tinker-grips
+floor: 2
+description: |
+  A pair of tinker-style mechanical work grips displayed together as one centered
+  item icon, front-facing and fully inside the frame. The silhouette should read
+  instantly as reinforced handwear with a workshop-salvage mechanical character
+  at 64x64: two compact armored gloves with exposed knuckle reinforcement plates,
+  segmented finger guards made of reclaimed metal strips, and chunky wrist cuffs
+  wrapped in worn leather straps cinched with hex-head bolts. Small gear-tooth
+  details or rivet clusters on the back of each hand suggest tinkered
+  modification. The material is battered workshop iron and dark oiled leather —
+  cold grey metal with deep rust-shadow in the joints, age-darkened leather in
+  warm brown, and a restrained copper or brass accent on the rivets or gear
+  details. Bold 1-pixel dark outlines keep the pair crisp at game scale. No
+  character arms, no glowing elements, no background, no floor — just the two
+  gloves on a transparent background.
+variations:
+  - Compact rectangular work gloves with heavy knuckle iron plate, three hex-bolt
+    rivets along each cuff, and a small gear inlay at the wrist joint. Leather
+    palm with metal strip finger segments.
+  - Articulated mechanical grips with overlapping riveted plate segments over each
+    finger, a broad reinforced cuff with exposed spring-clip fastener, and a brass
+    pip accent at the knuckle plate center.
+  - Sturdy workshop gloves with a wide flared cuff, iron knuckle ridge, finger-tip
+    armor caps, and worn leather grip palm. Dark rust-brown leather with gunmetal
+    plating and copper bolt heads at the cuff rim.
+  - Low-profile tinkerer grips with thin segmented finger guards, a single wide
+    knuckle plate stamped with a gear motif, and a close-fit leather cuff secured
+    by two large bolts. Utilitarian and compact.
+  - Heavy reinforced work grips with thick rounded knuckle guards, padded leather
+    palm, segmented metal fingers, and a cuff plate with visible gear-tooth edge
+    trim. Chunky and industrial looking.
+minVariations: 5

@@ -499,6 +499,33 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     ).toBe(true);
   });
 
+  it('loads and preloads the shipped Floor 2 tinker-grips runtime key from the real manifest', () => {
+    if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
+      return;
+    }
+    const runtimeKey = 'equipment/hands/tinker-grips';
+    const entry = sharedRealRegistry.lookup(runtimeKey);
+    expect(entry, `missing shipped generated-manifest entry for ${runtimeKey}`).not.toBeNull();
+    expect(entry?.textureKey).toBe(runtimeKey);
+    expect(entry?.assetPath).toBe('generated/equipment/hands/tinker-grips.png');
+    expect(entry?.sourceRun).not.toBe('placeholder');
+
+    const queued: Array<{ textureKey: string; url: string }> = [];
+    preloadGeneratedSprites(
+      { image: (textureKey, url) => queued.push({ textureKey, url }) },
+      sharedRealRegistry,
+    );
+    expect(queued).toContainEqual({
+      textureKey: runtimeKey,
+      url: '/assets/generated/equipment/hands/tinker-grips.png',
+    });
+    expect(
+      existsSync(
+        path.resolve(__dirname, '../../public/assets/generated/equipment/hands/tinker-grips.png'),
+      ),
+    ).toBe(true);
+  });
+
   it('loads and preloads the shipped harpoon-gun placeholder key from the real manifest', () => {
     if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
       return;
