@@ -29,13 +29,17 @@
 # visual_touched=true — at least one changed file could affect the rendered
 #   output. False only when every changed file is in the "not visual" safe list:
 #   .github/**, docs/**, .specify/**, scripts/**, src/labs/**, tests/unit/**,
-#   tests/headless/**, tests/integration/**, public/** (excl. public/assets/
-#   generated/**), *.md, *.txt, package-lock.json. Unknown paths → true
-#   (fail closed). Used to gate the E2E visual regression job.
+#   tests/headless/**, tests/integration/**, *.md, *.txt.
+#   NOT safe: public/assets/** (terrain packs are runtime-loaded visuals),
+#   package-lock.json (can alter Phaser/Vite/Playwright behavior).
+#   Unknown paths → true (fail closed). Used to gate the E2E visual regression job.
 #
 # sim_touched=true — the change can affect the deterministic simulation.
-#   Derived as the exact complement of gameplay_safe (same allowlist, positive
-#   signal). Used to gate the headless Floor-1 job.
+#   Computed independently of gameplay_safe with a broader safe list that covers
+#   ALL scripts/**, tests/unit/**, tests/integration/**, public/**, engine, labs,
+#   package-lock.json, and src/shared/data/sprite-catalog.json. Unknown → true.
+#   NOT safe: tests/headless/**, src/core/**, src/game/**, src/shared (non-catalog),
+#   package.json with non-script changes.
 #
 # coverage_touched=true — the change could affect unit test coverage.
 #   False only when every changed file is in the "not coverage" safe list:
@@ -54,8 +58,9 @@
 # Output: writes all flags to $GITHUB_OUTPUT (when set) and stdout.
 # Test hook: SCOPE_FILES_OVERRIDE (newline-separated paths) classifies that list
 # directly instead of deriving it from git — used by the deterministic unit test.
-# Fail-safe: any ambiguity (no base, no changed files, detached history) yields
-# false for every flag, so the full suite runs. This script never blocks CI.
+# Fail-safe: unknown-scope outputs set gameplay_safe=false and positive-signal
+# flags (visual_touched, sim_touched, coverage_touched, dependencies_touched)
+# to true so gate jobs run rather than being silently skipped. Never blocks CI.
 
 set -euo pipefail
 
@@ -169,7 +174,9 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false false false false false false false false
+    # Fail-safe: new positive-signal flags default to true so gate jobs run
+    # rather than being silently skipped on an unknown change set.
+    emit_all false false false false false true true true false true
     exit 0
   fi
 
@@ -186,8 +193,11 @@ echo "Changed files:" >&2
 echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
+# New positive-signal flags (visual_touched, sim_touched, coverage_touched,
+# dependencies_touched) default to true so gate jobs run rather than being
+# silently skipped on an unknown change set.
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false false false false false false false false
+  emit_all false false false false false true true true false true
   exit 0
 fi
 
@@ -267,6 +277,7 @@ while IFS= read -r file; do
     tests/integration/weapons-pipeline.test.ts) ;;
     *.md) ;;
     *.txt) ;;
+    package-lock.json) ;;
     *)
       gameplay_safe=false
       break
@@ -332,6 +343,9 @@ done <<<"$changed"
 # Generated art (public/assets/generated/**) IS visual; it's excluded from the
 # public/* safe entry so it falls through to the catch-all below.
 # Unknown or unclassified paths → true (fail closed).
+# NOT safe: public/assets/** (terrain packs and other assets are runtime-loaded
+# visuals — see tests/e2e/terrain-generated-tiles.test.ts), package-lock.json
+# (lock-file changes can alter Phaser/Vite/Playwright behaviour at runtime).
 visual_touched=false
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -344,23 +358,41 @@ while IFS= read -r file; do
     tests/unit/*) ;;
     tests/headless/*) ;;
     tests/integration/*) ;;
-    public/assets/generated/*) visual_touched=true; break ;;
-    public/*) ;;
     *.md) ;;
     *.txt) ;;
-    package-lock.json) ;;
     *) visual_touched=true; break ;;
   esac
 done <<<"$changed"
 
 # sim_touched: true when the change could affect the deterministic simulation.
-# Derived as the exact semantic complement of gameplay_safe: the two flags always
-# move in lock-step, so derivation is DRY and guarantees consistency.
-if [ "$gameplay_safe" = "true" ]; then
-  sim_touched=false
-else
-  sim_touched=true
-fi
+# Computed independently of gameplay_safe with a broader safe list that covers
+# ALL scripts and ALL unit tests, so CI-tooling-only changes produce
+# sim_touched=false even when gameplay_safe is false.
+# NOT safe: tests/headless (exercises the sim directly), src/core, src/game,
+# src/shared (non-catalog), package.json with non-script changes.
+sim_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    .github/*) ;;
+    docs/*) ;;
+    .specify/*) ;;
+    scripts/*) ;;
+    src/engine/*) ;;
+    src/labs/*) ;;
+    tests/e2e/*) ;;
+    tests/unit/*) ;;
+    tests/integration/*) ;;
+    public/*) ;;
+    *.md) ;;
+    *.txt) ;;
+    package-lock.json) ;;
+    src/shared/data/sprite-catalog.json) ;;
+    package.json)
+      if ! package_json_gameplay_safe; then sim_touched=true; fi ;;
+    *) sim_touched=true; break ;;
+  esac
+done <<<"$changed"
 
 # coverage_touched: true when the change could affect unit test coverage metrics.
 # Safe list (known NOT coverage): CI/workflow config, docs, all scripts, labs,

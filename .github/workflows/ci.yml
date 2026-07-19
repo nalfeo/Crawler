@@ -16,15 +16,30 @@ permissions:
   issues: read
   pull-requests: read
 
+# Cancel in-progress runs on the same PR; allow parallel runs for push/schedule.
+# Including the workflow name prevents cross-workflow cancellation collisions.
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event_name == 'pull_request'
+      && format('pr-{0}', github.event.pull_request.number)
+      || github.run_id
+    }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Job 0: Detect the change scope.
-  # art_only=true      → heavy gameplay gates skipped; typecheck/lint/format/unit run.
-  # docs_only=true     → ALL heavy gates skipped; only commit-lint / lightweight
-  #                      review workflows run. Documentation/governance surfaces
-  #                      cannot change shipped game logic.
-  # gameplay_safe=true → the diff provably can't change the deterministic Floor-1 sim
-  #                      (engine/labs/e2e/docs/assets only), so the headless gate is
-  #                      skipped ON PULL REQUESTS ONLY (main-push still runs it).
+  # art_only=true         → heavy gameplay gates skipped; typecheck/lint/format/unit run.
+  # docs_only=true        → ALL heavy gates skipped; only commit-lint / lightweight
+  #                         review workflows run. Documentation/governance surfaces
+  #                         cannot change shipped game logic.
+  # gameplay_safe=true    → the diff provably can't change the deterministic Floor-1 sim
+  #                         (engine/labs/e2e/docs/assets only), so the headless gate is
+  #                         skipped ON PULL REQUESTS ONLY (main-push still runs it).
+  # visual_touched=true   → change may affect rendered output; E2E visual regression runs.
+  # sim_touched=true      → change may affect the deterministic sim; headless gate runs.
+  # coverage_touched=true → change may affect unit coverage; coverage advisory runs.
+  # dependencies_touched=true → package.json or lock file changed; npm audit runs.
   # The merge-gate treats skipped jobs as PASS for all scope flags.
   changes:
     name: Detect change scope
@@ -37,6 +52,11 @@ jobs:
       sprites_only: ${{ steps.scope.outputs.sprites_only }}
       sprites_touched: ${{ steps.scope.outputs.sprites_touched }}
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
+      visual_touched: ${{ steps.scope.outputs.visual_touched }}
+      sim_touched: ${{ steps.scope.outputs.sim_touched }}
+      coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
+      sprite_pipeline_touched: ${{ steps.scope.outputs.sprite_pipeline_touched }}
+      dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +80,11 @@ jobs:
           gameplay_safe='${{ steps.detect.outputs.gameplay_safe }}'
           sprites_only='${{ steps.detect.outputs.sprites_only }}'
           sprites_touched='${{ steps.detect.outputs.sprites_touched }}'
+          visual_touched='${{ steps.detect.outputs.visual_touched }}'
+          sim_touched='${{ steps.detect.outputs.sim_touched }}'
+          coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
+          sprite_pipeline_touched='${{ steps.detect.outputs.sprite_pipeline_touched }}'
+          dependencies_touched='${{ steps.detect.outputs.dependencies_touched }}'
           train_promoted=false
 
           if [ "${{ github.event_name }}" = "schedule" ]; then
@@ -68,6 +93,11 @@ jobs:
             gameplay_safe=false
             sprites_only=false
             sprites_touched=true
+            visual_touched=true
+            sim_touched=true
+            coverage_touched=true
+            sprite_pipeline_touched=true
+            dependencies_touched=true
           elif [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "push" ]; then
             # Only trust promotion provenance while the merge train is
             # actually enabled. If MERGE_TRAIN_ENABLED is rolled back to
@@ -116,6 +146,11 @@ jobs:
           echo "sprites_only=$sprites_only" >>"$GITHUB_OUTPUT"
           echo "sprites_touched=$sprites_touched" >>"$GITHUB_OUTPUT"
           echo "train_promoted=$train_promoted" >>"$GITHUB_OUTPUT"
+          echo "visual_touched=$visual_touched" >>"$GITHUB_OUTPUT"
+          echo "sim_touched=$sim_touched" >>"$GITHUB_OUTPUT"
+          echo "coverage_touched=$coverage_touched" >>"$GITHUB_OUTPUT"
+          echo "sprite_pipeline_touched=$sprite_pipeline_touched" >>"$GITHUB_OUTPUT"
+          echo "dependencies_touched=$dependencies_touched" >>"$GITHUB_OUTPUT"
 
   # Job 1: Type & Lint checks (can run in parallel)
   check-types-and-lint:
@@ -215,11 +250,16 @@ jobs:
   # Posts a PR comment but is NOT in the merge-gate — a coverage regression
   # surfaces as a visible comment without blocking the branch.
   # Skipped for sprites_only changes (game coverage not relevant).
+  # Also skipped on PULL REQUESTS where coverage_touched=false (change cannot
+  # affect any path included in the vitest coverage report).
   test-unit-coverage:
     name: Unit Tests (coverage)
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
+    if: >-
+      needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.sprites_only != 'true' &&
+      !(github.event_name == 'pull_request' && needs.changes.outputs.coverage_touched != 'true')
     continue-on-error: true
     permissions:
       contents: read
@@ -296,8 +336,8 @@ jobs:
   # Deterministically proves the behavior-tree AI can still clear Floor 1
   # (victory + all quests, under the 5-minute game-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
-  # Scoped: skipped on art_only/docs_only, and on gameplay_safe PULL REQUESTS
-  # (engine/labs/e2e/docs/asset-only diffs the headless runner can't import).
+  # Scoped: skipped on art_only/docs_only, and on PULL REQUESTS where
+  # sim_touched=false (change provably can't affect the deterministic sim).
   # main-push always runs it, so a wrong allowlist is caught post-merge.
   test-headless:
     name: Headless Floor 1 Gate
@@ -306,7 +346,7 @@ jobs:
     if: >-
       needs.changes.outputs.art_only != 'true' &&
       needs.changes.outputs.docs_only != 'true' &&
-      !(github.event_name == 'pull_request' && needs.changes.outputs.gameplay_safe == 'true')
+      !(github.event_name == 'pull_request' && needs.changes.outputs.sim_touched != 'true')
     steps:
       - uses: actions/checkout@v4
 
@@ -349,7 +389,10 @@ jobs:
         run: npm run lint:dead-code
 
       - name: Security audit
-        if: ${{ !cancelled() }}
+        if: >-
+          !cancelled() &&
+          (github.event_name != 'pull_request' ||
+           needs.changes.outputs.dependencies_touched == 'true')
         run: npm audit --audit-level=high
 
       # Full typecheck (src/ + tests/ + scripts/). Separated from the blocking
@@ -467,11 +510,17 @@ jobs:
   # Job: E2E visual regression (blocking — wired into merge-gate below).
   # continue-on-error was removed after 40+ consecutive green runs across all
   # branches proved the Playwright/Vite startup path is stable in CI.
+  # Skipped on PULL REQUESTS where visual_touched=false (change provably cannot
+  # affect rendered output: no engine, no public assets, no lock-file changes).
   test-e2e:
     name: E2E Visual Regression
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.art_only != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
+    if: >-
+      needs.changes.outputs.art_only != 'true' &&
+      needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.sprites_only != 'true' &&
+      !(github.event_name == 'pull_request' && needs.changes.outputs.visual_touched != 'true')
     permissions:
       contents: read
     steps:

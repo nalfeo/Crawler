@@ -15,6 +15,17 @@ permissions:
   contents: read
   issues: write
 
+# Cancel in-progress runs on the same PR; allow parallel runs for push/schedule.
+# Including the workflow name prevents cross-workflow cancellation collisions.
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event_name == 'pull_request'
+      && format('pr-{0}', github.event.pull_request.number)
+      || github.run_id
+    }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   changes:
     name: Detect change scope
@@ -22,6 +33,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
+      dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,8 +54,10 @@ jobs:
         run: |
           docs_only='${{ steps.detect.outputs.docs_only }}'
           train_promoted='false'
+          dependencies_touched='${{ steps.detect.outputs.dependencies_touched }}'
           if [ '${{ github.event_name }}' != 'pull_request' ]; then
             docs_only='false'
+            dependencies_touched='true'
           else
             # Only trust promotion provenance while the merge train is
             # actually enabled, so rollback (MERGE_TRAIN_ENABLED=false)
@@ -86,6 +100,7 @@ jobs:
           fi
           echo "docs_only=${docs_only}" >>"$GITHUB_OUTPUT"
           echo "train_promoted=${train_promoted}" >>"$GITHUB_OUTPUT"
+          echo "dependencies_touched=${dependencies_touched}" >>"$GITHUB_OUTPUT"
 
   # All six security checks consolidated into one job to reduce runner-slot
   # consumption (previously each check spun up its own runner and paid full
@@ -110,7 +125,10 @@ jobs:
         if: needs.changes.outputs.train_promoted != 'true'
 
       - name: npm audit
-        if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
+        if: >-
+          needs.changes.outputs.docs_only != 'true' && !cancelled() &&
+          (github.event_name != 'pull_request' ||
+           needs.changes.outputs.dependencies_touched == 'true')
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm audit --audit-level=high
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
@@ -125,7 +143,10 @@ jobs:
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: Dependency allowlist
-        if: ${{ needs.changes.outputs.docs_only != 'true' && !cancelled() }}
+        if: >-
+          needs.changes.outputs.docs_only != 'true' && !cancelled() &&
+          (github.event_name != 'pull_request' ||
+           needs.changes.outputs.dependencies_touched == 'true')
         run: npx tsx scripts/agent/security/check-deps.ts
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 

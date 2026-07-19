@@ -312,15 +312,16 @@ const cases: Case[] = [
   },
   // New orthogonal flag tests (issue #1688 acceptance criteria).
   {
-    name: 'package-lock.json → dependencies_touched=true, not visual',
+    name: 'package-lock.json → visual+deps_touched, gameplay_safe',
     files: ['package-lock.json'],
-    expected: F(false, false, true, false, false, false, false, false, false, true),
+    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expected: F(false, false, true, false, false, true, false, false, false, true),
   },
   {
     name: 'unit test (non-sprites) → coverage_touched=true, not visual, not sim',
     files: ['tests/unit/ai-runner-lighting-controls.test.ts'],
     //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, false, false, true, false, false),
+    expected: F(false, false, false, false, false, false, false, true, false, false),
   },
   {
     name: 'headless test → sim_touched=true, not visual, not coverage',
@@ -331,7 +332,7 @@ const cases: Case[] = [
     name: 'CI-only scripts (agent scripts) → all touched flags false',
     files: ['scripts/agent/ci/local-scope.sh', 'scripts/agent/security/check-deps.ts'],
     //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, false, false, false, false, false),
+    expected: F(false, false, false, false, false, false, false, false, false, false),
   },
   {
     name: '.specify spec + engine (mixed) → visual, coverage touched; not sim',
@@ -339,10 +340,10 @@ const cases: Case[] = [
     expected: F(false, false, true, false, false, true, false, true, false, false),
   },
   {
-    name: 'package-lock.json + workflow → dependencies_touched, nothing else',
+    name: 'package-lock.json + workflow → visual+deps_touched, gameplay_safe',
     files: ['package-lock.json', '.github/workflows/security-review.yml'],
     //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, false, false, false, false, true),
+    expected: F(false, false, true, false, false, true, false, false, false, true),
   },
   {
     name: 'src/shared (non-catalog) → sim+visual+coverage, not deps',
@@ -357,15 +358,17 @@ describe('detect-art-only.sh change-scope classifier', () => {
   });
 
   it.skipIf(!hasBash)('fail-safe: a blank/whitespace change set runs the full suite', () => {
-    // A lone newline enters the override branch but strips to empty → all-false.
-    expect(run('\n')).toEqual(F(false, false, false, false, false));
+    // A lone newline enters the override branch but strips to empty → fail-safe:
+    // positive-signal flags (visual, sim, coverage, dependencies) are true so
+    // gate jobs run rather than being silently skipped on unknown change sets.
+    expect(run('\n')).toEqual(F(false, false, false, false, false, true, true, true, false, true));
   });
 
   it.skipIf(!hasBash)(
     'fail-safe: an explicitly empty override is honored as an empty change set',
     () => {
       // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
-      expect(run('')).toEqual(F(false, false, false, false, false));
+      expect(run('')).toEqual(F(false, false, false, false, false, true, true, true, false, true));
     },
   );
 
