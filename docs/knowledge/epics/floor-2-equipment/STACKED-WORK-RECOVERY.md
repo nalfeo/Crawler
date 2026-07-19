@@ -72,7 +72,8 @@ Resolve any conflicts. Force-push the branch when clean.
 
 ### Step 3 — Update `stacked_work.rebase_to_main`
 
-Only after ALL of the node's dependencies are in `merged` or `validated` status:
+Only after ALL of the node's dependencies satisfy the same readiness contract as the epic
+itself — `validated`, or `superseded` with a `validated` replacement:
 
 ```json
 "rebase_to_main": {
@@ -81,7 +82,7 @@ Only after ALL of the node's dependencies are in `merged` or `validated` status:
 }
 ```
 
-Premature completion (dependencies not yet merged) is rejected by
+Premature completion (dependencies not yet validated) is rejected by
 `stacked.premature-rebase-complete` validation.
 
 ### Step 4 — Run offline validation
@@ -96,9 +97,12 @@ Confirm no `stacked.*` errors.
 
 ## Normal-Lifecycle Handoff (After Prerequisite Merges or Validates)
 
-When the dependency node reaches `merged` status (PR landed on main) the stacked node is
-eligible for rebase-to-main. When the dependency reaches `validated` status, the stacked
-node is eligible for full normal lifecycle progression. The Producer executes:
+When the dependency node reaches `merged` status (PR landed on main), the stacked branch may
+perform the git rebase from Step 2. The state must remain
+`stacked_work.rebase_to_main.state = "pending"` until the dependency reaches `validated`
+status. Once the dependency reaches `validated` status, the stacked node is eligible to mark
+rebase-to-main complete and continue through the full normal lifecycle. The Producer
+executes:
 
 ### Step 1 — Confirm readiness
 

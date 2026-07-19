@@ -1,27 +1,28 @@
 type: weapon
 name: acid-flask
 description: |
-  A squat, sealed glass or ceramic thrown weapon — a small bottle held
-  upright, grip at the bottom, stopper at the top. The bottle body is
-  round-shouldered and squat, with visible thin glass walls. Inside, vivid
-  acid-green or yellow-green corrosive liquid fills roughly two-thirds of
-  the bottle; the empty headspace and liquid level line are clearly visible.
-  The stopper is a dark cork, wax blob, or metal cap seated firmly at the
-  neck. Glass should appear brittle and fragile — thin dark outline, pale
-  amber or pale-green glass tint on the body, no cracks (it has not been
-  thrown yet). The acid inside is the dominant saturated hue: vivid
-  acid-green (#7fff00 range) or bright yellow-green, with a slightly
-  brighter highlight on the liquid surface. One thin glass-sheen highlight
-  runs vertically along the left side of the bottle body. No glow, no
-  enchantment aura, no cracks, no splash. No text or labels. The silhouette
-  must read instantly as a small corked bottle/flask at game scale — not a
-  potion, not a barrel, not a grenade.
-# Vertical orientation, 4×4 sheet, 64×64 output, anchor at grip base —
-# all inherited from data/sprite-types/weapon.json.
-# The flask stands upright (bottle vertical), which IS the weapon-default
-# orientation, so no orientation override is needed.
+  A small round-bottomed glass flask, roughly two-thirds full of corrosive acid, held
+  upright with the round base at the bottom and the sealed neck at the top.
+  The glass body is dark-tinted but translucent — pale amber or pale
+  yellow-green tint — so the sickly acid inside is visible. The liquid fill
+  sits at roughly two-thirds height, leaving a clear headspace; the liquid
+  level line is distinct. The acid is the dominant saturated hue: vivid
+  acid-green (chartreuse range) or bright yellow-green, with a brighter
+  highlight spot on the liquid surface. A thin glass-sheen highlight stripe
+  runs vertically along the left edge of the bottle body. The stopper is a
+  dark cork sealed with a twist of rough hemp or cloth wick wrapped tightly
+  around the neck and knotted — this fabric wrap is the key silhouette cue
+  that reads "thrown weapon" and not a potion bottle. A faint acid smear or
+  drip on the outside of the glass hints at corrosive handling. One-pixel
+  dark outline on all edges. No glow, no enchantment aura, no cracks (it
+  has not been thrown yet). No text, no label, no decorative framing.
+  Silhouette must read as a small corked flask at game scale.
+floor: 2
+# Vertical orientation is the weapon-type default — flask stands upright,
+# cork at top, base at bottom. No orientation override needed.
+# Inherits: 64×64, 4×4 sheet, anchor at (32,56), judge enabled, kenney-roguelike palette.
 variations:
-  - round squat ceramic bottle with a wax blob seal, pale amber glass tint
-  - elongated teardrop vial with a metal crimp cap, pale green glass
-  - wide-shouldered apothecary bottle with a cork stopper, slight blue-green glass tint
+  - round squat amber-tinted glass flask with a dark cork and wrapped cloth wick
+  - elongated teardrop vial with pale green tint, cork stopper and knotted jute/cloth wick wrapped around the neck
+  - wide-shouldered apothecary bottle with slight blue-green glass tint and a cork stopper wrapped with rough hemp/cloth wick
 minVariations: 8

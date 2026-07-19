@@ -227,6 +227,20 @@ assets:
       kind: sprite-registry
       id: sponsor-sword
 
+  - id: alchemist-sprayer
+    type: weapon
+    label: 'Alchemist Sprayer'
+    brief: >-
+      Alchemist Sprayer — a compact chemical-spray weapon icon for Floor 2.
+      Chunky cylindrical pressure canister with a corroded brass nozzle crown
+      at the top and a wrapped grip at the bottom. Hazard stripes, chemical
+      staining, retro-futurist corporate-decay aesthetic. Silhouette reads as
+      spray weapon at a glance.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: alchemist-sprayer
+
   - id: harpoon-gun
     type: weapon
     label: 'Harpoon Gun'
@@ -238,7 +252,10 @@ assets:
   - id: bone-chakram
     type: weapon
     label: 'Bone Chakram'
-    brief: 'Bone Chakram — a centered thrown weapon icon on a transparent background. Diagonal ring of carved bone with a silhouette that reads clearly as a circular blade. Bone-ivory texture, cracked surface, Floor 2 intensity.'
+    brief: >-
+      Bone Chakram — a centered thrown weapon icon on a transparent background.
+      Diagonal ring of carved bone with a silhouette that reads clearly as a
+      circular blade. Bone-ivory texture, cracked surface, Floor 2 intensity.
     placeholderInUse: true
     integration:
       kind: sprite-registry

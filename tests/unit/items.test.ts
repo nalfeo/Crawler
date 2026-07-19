@@ -15,6 +15,10 @@ describe('Item Catalog', () => {
     expect(ITEM_CATALOG.length).toBeGreaterThanOrEqual(100);
   });
 
+  it('snapshot: current catalog size (update when intentionally adding items)', () => {
+    expect(ITEM_CATALOG).toHaveLength(136);
+  });
+
   it('registers runed-cuirass as rare non-stackable gear', () => {
     expect(getItemById('runed-cuirass')).toEqual({
       id: 'runed-cuirass',
