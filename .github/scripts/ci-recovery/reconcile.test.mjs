@@ -3833,6 +3833,16 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     'task comment should include the review-thread reply target comment ID',
   );
   assert.ok(
+    taskCommentCall.body.body.includes('not the ID of this task comment'),
+    'task comment should instruct the agent NOT to reply to the task comment itself',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'a marker reply on the review-thread comment is the only form recognised by the reconciler',
+    ),
+    'task comment should state that only a review-thread reply is recognised by the reconciler',
+  );
+  assert.ok(
     taskCommentCall.body.body.includes(
       'A top-level PR comment is never sufficient for a review-thread blocker',
     ) && taskCommentCall.body.body.includes('exact thread comment listed above'),

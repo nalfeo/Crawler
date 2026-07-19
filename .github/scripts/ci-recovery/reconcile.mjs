@@ -1696,7 +1696,7 @@ const taskBody = [
   '',
   `A top-level PR comment is never sufficient for a review-thread blocker; post the ${ADDRESSED_MARKER_REPLY} reply in the exact thread comment listed above.`,
   '',
-  `When a thread is addressed, reply in that exact thread with ${ADDRESSED_MARKER_REPLY} and resolve it. Run the repository-required verification and push one consolidated repair commit.`,
+  `When a thread is addressed, use \`reply_to_comment\` with the **Reply target comment ID** listed above for that thread (not the ID of this task comment) and set the body to ${ADDRESSED_MARKER_REPLY}. The CI recovery reconciler will resolve the review thread automatically on its next pass. Do **not** reply to this task comment to record addressed status — a marker reply on the review-thread comment is the only form recognised by the reconciler. Run the repository-required verification and push one consolidated repair commit.`,
 ].join('\n');
 
 if (live) {
