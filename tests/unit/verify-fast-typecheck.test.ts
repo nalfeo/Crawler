@@ -172,6 +172,9 @@ function initGitFixture(dir: string): void {
   runGit('init');
   runGit('config', 'user.name', 'Copilot');
   runGit('config', 'user.email', 'copilot@example.com');
+  // Disable signing so the commit works on any runner regardless of global
+  // commit.gpgsign settings (mirrors local-scope.test.ts:137).
+  runGit('config', 'commit.gpgsign', 'false');
   runGit('add', '.');
   runGit('commit', '-m', 'fixture');
 }
@@ -192,6 +195,82 @@ describe('verify-fast changed TS path coverage', () => {
       writeFileSync(path.join(fixture, 'vitest.config.ts'), narrowingError);
 
       const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:',
+      );
+      expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.ts');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash || !hasGit)(
+    'fails when a changed .mts file is outside the supported verifier roots',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.mts': 'export const unsupportedMtsValue = 1;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(path.join(fixture, 'vitest.config.mts'), 'export const x = 1;\n');
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:',
+      );
+      expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.mts');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash || !hasGit)(
+    'catches a clean-committed unsupported TS file when GITHUB_BASE_SHA is set',
+    () => {
+      // Simulates a shallow CI checkout where there is no origin/main to resolve
+      // a merge base, but GITHUB_BASE_SHA is injected by the Actions runner.
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+      });
+      // First commit: initial clean state (this becomes the base SHA).
+      initGitFixture(fixture);
+      const baseResult = spawnSync('git', ['rev-parse', 'HEAD'], {
+        cwd: fixture,
+        encoding: 'utf8',
+      });
+      const baseSha = baseResult.stdout.trim();
+
+      // Second commit: add an unsupported TS file — clean, no uncommitted changes.
+      writeFileSync(path.join(fixture, 'vitest.config.ts'), 'export const x = 1;\n');
+      spawnSync('git', ['add', 'vitest.config.ts'], { cwd: fixture });
+      spawnSync('git', ['commit', '-m', 'add unsupported file'], {
+        cwd: fixture,
+        env: { ...process.env, GIT_COMMITTER_NAME: 'Copilot', GIT_COMMITTER_EMAIL: 'c@e.com' },
+      });
+
+      // Run with GITHUB_BASE_SHA pointing to the first commit so the diff
+      // includes the unsupported file even without a resolvable origin/main.
+      const env: Record<string, string> = {
+        NODE_ENV: 'test',
+        VERIFY_FAST_TEST_STATIC_ONLY: '1',
+        GITHUB_BASE_SHA: baseSha,
+      };
+      const result = spawnSync('bash', [SCRIPT], {
+        cwd: fixture,
+        encoding: 'utf8',
+        timeout: 30_000,
+        env: bashEnv(env),
+      });
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(

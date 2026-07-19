@@ -38,7 +38,7 @@ if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]
 fi
 
 is_supported_ts_path() {
-  [[ "$1" =~ ^(vite\.config\.ts|(src|tests|scripts|tools)/.*\.ts)$ ]]
+  [[ "$1" =~ ^(vite\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
 }
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
@@ -52,6 +52,11 @@ is_supported_ts_path() {
 LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ tools/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
 if command -v git >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
+  # In CI, use GITHUB_BASE_SHA as a fallback when no local branch is resolvable
+  # (e.g. shallow/detached checkout without origin/main fetched).
+  if [ -z "$base" ] && [ -n "${GITHUB_BASE_SHA:-}" ]; then
+    base="${GITHUB_BASE_SHA}"
+  fi
   changed_repo_ts=()
   changed_ts=()
   unsupported_ts=()
@@ -69,7 +74,7 @@ if command -v git >/dev/null 2>&1; then
       git diff --name-only --diff-filter=ACMR
       git diff --name-only --diff-filter=ACMR --cached
       git ls-files --others --exclude-standard
-    } 2>/dev/null | grep -E '\.ts$' | sort -u
+    } 2>/dev/null | grep -E '\.(tsx?|mts|cts)$' | sort -u
   )
   for f in "${changed_repo_ts[@]}"; do
     if is_supported_ts_path "$f"; then
