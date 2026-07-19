@@ -6,6 +6,8 @@ import {
   isCurrentLocalSelection,
   stabilizeTerminalSnapshot,
 } from '../lib/state-helpers.mjs';
+import { transitionToLocalSource } from '../lib/local-source-transition.mjs';
+import { stateSnapshot } from '../lib/state-snapshot.mjs';
 
 test('formats non-auth cloud failures without auth login guidance', () => {
   const message = formatCloudFailure(
@@ -124,4 +126,80 @@ test('terminal stabilization with custom isComplete callback stops early for AI 
   // Should stop after 1 reload once leaderboard arrives.
   assert.equal(loads, 1);
   assert.ok(stabilized.leaderboardData !== null);
+});
+
+function baseCloudAiState() {
+  return {
+    source: 'cloud',
+    path: null,
+    selectedLocalPath: null,
+    localDirectory: '/workspace/artifacts/weapon-sweeps',
+    localRuns: [],
+    localErrors: [],
+    context: { repository: 'nalfeo/Crawler', branch: 'nalfeo-local-sweep-discovery' },
+    sessionId: 'session-1',
+    runs: [],
+    selectedRun: {
+      id: 123,
+      workflowType: 'ai-sweep',
+      status: 'completed',
+      conclusion: 'success',
+      headBranch: 'nalfeo-local-sweep-discovery',
+      headSha: 'abc',
+      createdAt: '2026-07-19T00:00:00Z',
+      updatedAt: '2026-07-19T00:00:00Z',
+      url: 'https://example.test/run/123',
+      event: 'workflow_dispatch',
+      attempt: 1,
+    },
+    selectionReason: 'explicit-run',
+    expectedWeapons: [],
+    availableWeapons: [],
+    expiredArtifactCount: 0,
+    jobPhases: { total: 4, completed: 4, failed: 0, inProgress: 0, queued: 0 },
+    pollTimer: null,
+    refreshing: false,
+    error: null,
+    warning: null,
+    loadedAt: null,
+    lastRefreshedAt: null,
+    data: null,
+  };
+}
+
+test('cloud(AI) → local explicit-file transition clears cloud-only state and snapshot is non-AI', () => {
+  const state = baseCloudAiState();
+  state.localRuns = [{ path: '/workspace/artifacts/weapon-sweeps/run.json' }];
+  state.path = '/workspace/artifacts/weapon-sweeps/run.json';
+
+  transitionToLocalSource(state);
+
+  const snapshot = stateSnapshot(state, 30_000);
+  const renderedWorkflowType = snapshot.workflowType || snapshot.selectedRun?.workflowType;
+
+  assert.equal(state.source, 'local');
+  assert.equal(state.selectedRun, null);
+  assert.equal(state.jobPhases, null);
+  assert.equal(snapshot.source, 'local');
+  assert.equal(renderedWorkflowType, undefined);
+  assert.notEqual(renderedWorkflowType, 'ai-sweep');
+});
+
+test('cloud(AI) → local empty-catalog transition clears cloud-only state and snapshot is non-AI', () => {
+  const state = baseCloudAiState();
+  state.localRuns = [];
+  state.path = null;
+  state.selectionReason = 'no-local-runs';
+
+  transitionToLocalSource(state);
+
+  const snapshot = stateSnapshot(state, 30_000);
+  const renderedWorkflowType = snapshot.workflowType || snapshot.selectedRun?.workflowType;
+
+  assert.equal(state.source, 'local');
+  assert.equal(state.selectedRun, null);
+  assert.equal(state.jobPhases, null);
+  assert.equal(snapshot.source, 'local');
+  assert.equal(renderedWorkflowType, undefined);
+  assert.notEqual(renderedWorkflowType, 'ai-sweep');
 });

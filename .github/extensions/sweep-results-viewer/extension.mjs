@@ -24,6 +24,8 @@ import {
   isCurrentLocalSelection,
   stabilizeTerminalSnapshot,
 } from './lib/state-helpers.mjs';
+import { transitionToLocalSource } from './lib/local-source-transition.mjs';
+import { safeLocalRun, safeRun, stateSnapshot } from './lib/state-snapshot.mjs';
 import { renderHtml } from './renderer.mjs';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -46,69 +48,11 @@ function compareRunsDesc(left, right) {
   return timeDifference || right.id - left.id;
 }
 
-function safeRun(run) {
-  if (!run) return null;
-  return {
-    id: run.id,
-    status: run.status,
-    conclusion: run.conclusion,
-    headBranch: run.headBranch,
-    headSha: run.headSha,
-    createdAt: run.createdAt,
-    updatedAt: run.updatedAt,
-    url: run.url,
-    event: run.event,
-    attempt: run.attempt,
-    workflowType: run.workflowType ?? null,
-  };
-}
-
-function safeLocalRun(run) {
-  if (!run) return null;
-  return {
-    path: run.path,
-    name: run.name,
-    runAt: run.runAt,
-    modifiedAt: run.modifiedAt,
-    floors: run.floors,
-  };
-}
-
-function stateSnapshot(state) {
-  return {
-    source: state.source,
-    path: state.source === 'local' ? state.path : null,
-    localDirectory: state.localDirectory,
-    localRuns: state.localRuns.map(safeLocalRun),
-    localErrors: state.localErrors,
-    selectedLocalPath: state.selectedLocalPath,
-    repository: state.context?.repository ?? null,
-    branch: state.context?.branch ?? null,
-    sessionId: state.sessionId,
-    runs: state.runs.map(safeRun),
-    selectedRun: safeRun(state.selectedRun),
-    selectionReason: state.selectionReason,
-    workflowType: state.selectedRun?.workflowType ?? null,
-    expectedWeapons: state.expectedWeapons,
-    availableWeapons: state.availableWeapons,
-    expiredArtifactCount: state.expiredArtifactCount,
-    jobPhases: state.jobPhases,
-    pollIntervalMs: POLL_INTERVAL_MS,
-    polling: Boolean(state.pollTimer),
-    refreshing: state.refreshing,
-    error: state.error,
-    warning: state.warning,
-    loadedAt: state.loadedAt,
-    lastRefreshedAt: state.lastRefreshedAt,
-    data: state.data,
-  };
-}
-
 function notifyClients(instanceId) {
   const state = states.get(instanceId);
   const clients = sseClients.get(instanceId);
   if (!state || !clients?.size) return;
-  const payload = `data: ${JSON.stringify(stateSnapshot(state))}\n\n`;
+  const payload = `data: ${JSON.stringify(stateSnapshot(state, POLL_INTERVAL_MS))}\n\n`;
   for (const response of clients) {
     try {
       response.write(payload);
@@ -398,9 +342,7 @@ async function switchToLocal(instanceId, path) {
   const state = states.get(instanceId);
   if (!state) throw new CanvasError('no_state', 'Canvas not open');
   cancelRefresh(state);
-  state.source = 'local';
-  state.selectedRun = null;
-  state.jobPhases = null;
+  transitionToLocalSource(state);
   const catalogMatch = state.localRuns.find((run) => run.path === path);
   return loadLocalSelection(
     instanceId,
@@ -415,9 +357,7 @@ async function switchToLocalCatalog(instanceId, requestedPath) {
   const state = states.get(instanceId);
   if (!state) throw new CanvasError('no_state', 'Canvas not open');
   cancelRefresh(state);
-  state.source = 'local';
-  state.selectedRun = null;
-  state.jobPhases = null;
+  transitionToLocalSource(state);
   state.refreshing = true;
   state.error = null;
   state.warning = null;
@@ -608,23 +548,27 @@ async function handleRequest(instanceId, token, request, response) {
     sseClients.get(instanceId).add(response);
     request.on('close', () => sseClients.get(instanceId)?.delete(response));
     const state = states.get(instanceId);
-    if (state) response.write(`data: ${JSON.stringify(stateSnapshot(state))}\n\n`);
+    if (state) response.write(`data: ${JSON.stringify(stateSnapshot(state, POLL_INTERVAL_MS))}\n\n`);
     return;
   }
   if (url.pathname === '/api/state' && request.method === 'GET') {
     const state = states.get(instanceId);
-    jsonResponse(response, state ? 200 : 404, state ? stateSnapshot(state) : { error: 'not_open' });
+    jsonResponse(
+      response,
+      state ? 200 : 404,
+      state ? stateSnapshot(state, POLL_INTERVAL_MS) : { error: 'not_open' },
+    );
     return;
   }
   if (url.pathname === '/api/reload' && request.method === 'POST') {
     const state = await reloadState(instanceId);
-    jsonResponse(response, 200, stateSnapshot(state));
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
     return;
   }
   if (url.pathname === '/api/select-run' && request.method === 'POST') {
     const body = await readJsonBody(request);
     const state = await switchToCloudRun(instanceId, body.runId);
-    jsonResponse(response, 200, stateSnapshot(state));
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
     return;
   }
   if (url.pathname === '/api/select-source' && request.method === 'POST') {
@@ -639,13 +583,13 @@ async function handleRequest(instanceId, token, request, response) {
       jsonResponse(response, 400, { error: `Unsupported source: ${body.source}` });
       return;
     }
-    jsonResponse(response, 200, stateSnapshot(state));
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
     return;
   }
   if (url.pathname === '/api/select-local' && request.method === 'POST') {
     const body = await readJsonBody(request);
     const state = await switchToLocalCatalog(instanceId, body.path);
-    jsonResponse(response, 200, stateSnapshot(state));
+    jsonResponse(response, 200, stateSnapshot(state, POLL_INTERVAL_MS));
     return;
   }
   jsonResponse(response, 404, { error: 'not_found' });
@@ -759,7 +703,7 @@ const session = await joinSession({
                 ? await switchToLocalCatalog(ctx.instanceId)
                 : await switchToCloud(ctx.instanceId);
             if (state.error) throw new CanvasError('source_switch_failed', state.error);
-            return stateSnapshot(state);
+            return stateSnapshot(state, POLL_INTERVAL_MS);
           },
         },
         {
