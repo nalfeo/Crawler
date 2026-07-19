@@ -117,16 +117,38 @@ jobs:
           echo "sprites_touched=$sprites_touched" >>"$GITHUB_OUTPUT"
           echo "train_promoted=$train_promoted" >>"$GITHUB_OUTPUT"
 
-  # Job 1: Type & Lint checks (can run in parallel)
-  check-types-and-lint:
-    name: Types & Lint
+  # Job 1: Lightweight checks — consolidates Types & Lint, Format & Labs,
+  # advisory dead-code/typecheck, and human-approval into a single runner to
+  # eliminate three repeated setup/checkout sequences on a full CI run.
+  #
+  # Blocking steps (format, lab gate, wiring guard, guard tests, typecheck+lint,
+  # human approval) use GitHub Actions' default fail-fast behaviour. Each step is
+  # named independently so failures remain clearly attributable in logs and
+  # summaries.
+  #
+  # Advisory steps (dead code, security audit, full typecheck) run after the
+  # blocking steps with continue-on-error: true so failures surface without
+  # blocking the merge. They are additionally gated on GAMEPLAY_SAFE != 'true'
+  # so they are skipped for scope-limited PRs (gameplay_safe / sprites_only /
+  # art_only all set gameplay_safe=true) where the headless gate is already
+  # skipped and advisory runtime would otherwise become the new bottleneck.
+  # On full code PRs the headless gate (~306 s) remains the critical-path
+  # bottleneck; check-lightweight is expected to complete in ~235 s or less.
+  check-lightweight:
+    name: Lightweight Checks
     runs-on: ubuntu-latest
     needs: [changes]
     if: needs.changes.outputs.docs_only != 'true'
+    env:
+      GAMEPLAY_SAFE: ${{ needs.changes.outputs.gameplay_safe }}
     steps:
       - uses: actions/checkout@v4
 
+      # Playwright is required by the guard tests: sprite-editor and set-piece-editor
+      # extension tests import chromium directly (see .github/extensions/*/tests/).
       - uses: ./.github/actions/setup-node
+        with:
+          install-playwright: 'true'
 
       # Persist ESLint's incremental cache across runs. The unique run_id suffix
       # forces a fresh (immutable) cache entry each run; restore-keys warm-start
@@ -141,31 +163,7 @@ jobs:
             eslint-${{ runner.os }}-${{ hashFiles('eslint.config.js', 'package-lock.json') }}-
             eslint-${{ runner.os }}-
 
-      # Run typecheck:src and lint in parallel, but FAIL the step if either fails.
-      # typecheck:src covers src/ only (~340 files, strict). The full typecheck
-      # (tests/ + scripts/, ~860 files) runs in the advisory job below so a
-      # breakage in test helpers or scripts surfaces without blocking the merge.
-      - name: Typecheck & Lint
-        run: |
-          npm run typecheck:src & tc=$!
-          npm run lint:cache & lint=$!
-          rc=0
-          wait "$tc" || rc=1
-          wait "$lint" || rc=1
-          exit "$rc"
-
-  # Job 2: Format & Lab gate (fast, independent checks)
-  check-format-and-labs:
-    name: Format & Labs
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true'
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node
-        with:
-          install-playwright: 'true'
+      # --- Blocking checks (fail-fast; each failure is clearly attributable) ---
 
       # Run synchronously so a failing format check actually fails CI. These
       # were previously `npm run format:check &` plus a trailing `run: wait`
@@ -181,8 +179,7 @@ jobs:
       # src/core|src/game must be referenced by a real runtime pipeline (visual
       # bootstrap, engine/AI sim steps, headless runner, MainGameScene) or be on
       # the documented allowlist. Blocks the class of bug where spawnerSystem
-      # shipped inert because only its lab force-called it. Gated into merge-gate
-      # via check-format-and-labs.
+      # shipped inert because only its lab force-called it.
       - name: Orphaned-system wiring guard
         run: npm run check:wired-systems
 
@@ -190,6 +187,55 @@ jobs:
       # nowhere else in CI; this is their merge-gate home.
       - name: Guard + review-ledger tests
         run: npm run test:guards
+
+      # Run typecheck:src and lint in parallel, but FAIL the step if either fails.
+      # typecheck:src covers src/ only (~340 files, strict). The full typecheck
+      # (tests/ + scripts/, ~860 files) runs in the advisory steps below so a
+      # breakage in test helpers or scripts surfaces without blocking the merge.
+      - name: Typecheck & Lint
+        run: |
+          npm run typecheck:src & tc=$!
+          npm run lint:cache & lint=$!
+          rc=0
+          wait "$tc" || rc=1
+          wait "$lint" || rc=1
+          exit "$rc"
+
+      # Human approval gate: exits cleanly for non-PR events (push, schedule)
+      # where PR_NUMBER is undefined. Requires owner comment "APPROVED FOR
+      # CHECK-IN" if the PR has the human-approval-required label, closes an
+      # issue with that label, or originates from a nightly balance branch.
+      # The human-approval-rerun.yml automation watches for this job
+      # (Lightweight Checks) to detect approval-state divergence after CI runs.
+      - name: Human approval
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node .github/scripts/merge-train/human-approval-check.mjs
+
+      # --- Advisory checks (non-blocking; run even if blocking steps failed) ---
+      # Gated on GAMEPLAY_SAFE != 'true': sprites_only / art_only changes also
+      # have gameplay_safe=true so this single gate covers all scope-limited
+      # PR classes. Skipping advisory checks for these PR classes prevents a
+      # ~70 s advisory budget from shifting the merge-gate critical path on runs
+      # where the headless gate is already skipped.
+
+      - name: Dead code detection
+        if: always() && env.GAMEPLAY_SAFE != 'true'
+        continue-on-error: true
+        run: npm run lint:dead-code
+
+      - name: Security audit
+        if: always() && env.GAMEPLAY_SAFE != 'true'
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+      # Full typecheck (src/ + tests/ + scripts/). Separated from the blocking
+      # gate so a broken script or test helper surfaces without stalling the merge.
+      - name: Typecheck (full — tests + scripts)
+        if: always() && env.GAMEPLAY_SAFE != 'true'
+        continue-on-error: true
+        run: npm run typecheck
 
   # Job 3: Unit tests (critical path, must pass)
   # Runs WITHOUT coverage instrumentation so the gate stays fast (~27 s).
@@ -333,59 +379,18 @@ jobs:
       - name: Build
         run: npm run build
 
-  ci-advisory:
-    name: Advisory checks
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true'
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node
-
-      - name: Dead code detection
-        if: ${{ !cancelled() }}
-        run: npm run lint:dead-code
-
-      - name: Security audit
-        if: ${{ !cancelled() }}
-        run: npm audit --audit-level=high
-
-      # Full typecheck (src/ + tests/ + scripts/). Separated from the blocking
-      # gate so a broken script or test helper surfaces without stalling the merge.
-      - name: Typecheck (full — tests + scripts)
-        if: ${{ !cancelled() }}
-        run: npm run typecheck
-
-  human-approval:
-    name: Human approval
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-node
-      - name: Enforce owner approval for human-gated PRs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: node .github/scripts/merge-train/human-approval-check.mjs
-
   merge-gate:
     name: Merge gate
     runs-on: ubuntu-latest
     needs:
       [
         changes,
-        check-types-and-lint,
-        check-format-and-labs,
+        check-lightweight,
         test-unit,
         test-integration,
         test-sprites,
         test-headless,
         test-e2e,
-        human-approval,
       ]
     if: always()
     steps:
@@ -436,11 +441,10 @@ jobs:
           # skippable check, a `changes`/detect-art-only failure on a code PR
           # would skip every heavy gate and be silently counted as PASS.
           check "Change scope detection"        "${{ needs.changes.result }}"
-          # Heavy gameplay gates are allowed to be skipped on art-only or
-          # sprites-only changes (see the `changes` job). They still BLOCK on any
-          # game code change. docs-only changes skip all heavy gates.
-          check "Types & Lint"                  "${{ needs.check-types-and-lint.result }}"
-          check "Format & Labs"                 "${{ needs.check-format-and-labs.result }}"
+          # Lightweight Checks consolidates Types & Lint, Format & Labs,
+          # advisory dead-code/typecheck, and human-approval. Docs-only changes
+          # skip this job; the merge-gate treats the skip as PASS.
+          check "Lightweight Checks"            "${{ needs.check-lightweight.result }}"
           # Unit tests: skipped for sprites_only (allow_skipped=true).
           check "Unit tests"                    "${{ needs.test-unit.result }}"        "true"
           # Integration tests: skipped for art_only or sprites_only (allow_skipped=true).
@@ -449,7 +453,6 @@ jobs:
           check "Sprite pipeline tests"         "${{ needs.test-sprites.result }}"    "true"
           check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"   "true"
           check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"        "true"
-          check "Human approval"                 "${{ needs.human-approval.result }}"
           echo "✅ All required checks passed"
 
   ci:

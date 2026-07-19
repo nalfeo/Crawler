@@ -109,8 +109,16 @@ jobs:
                 run_id: runId,
                 per_page: 100,
               });
-              const humanJob = (response.data.jobs || []).find((job) => job.name === 'Human approval');
-              return humanJob?.conclusion || null;
+              // Human approval is now a step inside the consolidated "Lightweight
+              // Checks" job (check-lightweight). We use the job conclusion as a
+              // proxy for approval state: a passing job means all blocking steps
+              // (including human approval) succeeded; a failing job means at least
+              // one blocking step failed. Spurious reruns can occur when an
+              // unrelated step (e.g. lint) fails concurrently with approval being
+              // granted, but they fail fast and the developer still must fix the
+              // root cause — correctness is preserved.
+              const lightweightJob = (response.data.jobs || []).find((job) => job.name === 'Lightweight Checks');
+              return lightweightJob?.conclusion || null;
             }
 
             function needsRerun(approvalPresent, humanJobConclusion) {
