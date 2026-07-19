@@ -11,6 +11,17 @@
     "path": "by-sha/76bb6d2e95c6d3f57d5bd8c75790c3dd0b6c409e.json"
   },
   {
+    "commit": "b03a5ce6d1a0afab85b4e0d1253bbd0b59bbfa98",
+    "commitDate": "2026-07-18T23:48:35Z",
+    "commitSubject": "Add acid-flask weapon brief for Floor 2 thrown weapon icon (#1543)",
+    "capturedAt": "2026-07-19T01:11:06.060Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29666308712",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/b03a5ce6d1a0afab85b4e0d1253bbd0b59bbfa98.json"
+  },
+  {
     "commit": "f3f2d23433e1e4650c283ad442ff4ae7f6c1b777",
     "commitDate": "2026-07-18T23:48:11Z",
     "commitSubject": "feat(sprites): scaffold batfolk-hood Floor 2 head equipment icon (closes #1370) (#1491)",
