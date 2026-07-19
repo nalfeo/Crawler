@@ -1,6 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { z } from 'zod';
@@ -2810,7 +2817,8 @@ function listIssuesByLabels(
   labels: ReadonlyArray<string>,
 ): Array<{ number: number; title: string; html_url: string; body: string | null }> {
   const labelParam = encodeURIComponent(labels.join(','));
-  const allIssues: Array<{ number: number; title: string; html_url: string; body: string | null }> = [];
+  const allIssues: Array<{ number: number; title: string; html_url: string; body: string | null }> =
+    [];
   for (let page = 1; ; page++) {
     const path = `/repos/${repo}/issues?state=all&labels=${labelParam}&per_page=100&page=${page}`;
     const raw = runner.get(path);

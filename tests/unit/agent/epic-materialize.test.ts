@@ -213,32 +213,34 @@ describe('materializeChildIssues — confirm', () => {
     const markerIssue = makeExistingIssue(plan[0]!.node_id, `EDITED: ${plan[0]!.title}`, 9901);
     const createdIssues: Array<{ title: string; number: number }> = [];
 
-    const runner: GithubWriteRunner & { createdIssues: Array<{ title: string; number: number }> } = {
-      createdIssues,
-      get(path: string): unknown {
-        if (path.includes('page=1')) {
-          return Array.from({ length: 100 }, (_, i) => ({
-            number: 20000 + i,
-            title: `filler-${i}`,
-            html_url: `https://github.com/nalfeo/Crawler/issues/${20000 + i}`,
-          }));
-        }
-        if (path.includes('page=2')) {
-          return [markerIssue];
-        }
-        return [];
-      },
-      post(_path: string, payload: unknown): unknown {
-        const title = (payload as { title: string }).title;
-        const number = 30000 + createdIssues.length;
-        createdIssues.push({ title, number });
-        return {
-          number,
-          html_url: `https://github.com/nalfeo/Crawler/issues/${number}`,
-          title,
-        };
-      },
-    };
+    const runner: GithubWriteRunner & { createdIssues: Array<{ title: string; number: number }> } =
+      {
+        createdIssues,
+        get(path: string): unknown {
+          const page = new URL(`https://example.test/${path}`).searchParams.get('page');
+          if (page === '1') {
+            return Array.from({ length: 100 }, (_, i) => ({
+              number: 20000 + i,
+              title: `filler-${i}`,
+              html_url: `https://github.com/nalfeo/Crawler/issues/${20000 + i}`,
+            }));
+          }
+          if (page === '2') {
+            return [markerIssue];
+          }
+          return [];
+        },
+        post(_path: string, payload: unknown): unknown {
+          const title = (payload as { title: string }).title;
+          const number = 30000 + createdIssues.length;
+          createdIssues.push({ title, number });
+          return {
+            number,
+            html_url: `https://github.com/nalfeo/Crawler/issues/${number}`,
+            title,
+          };
+        },
+      };
 
     const result = materializeChildIssues(state, runner, { dryRun: false });
     const markerOutcome = result.outcomes.find((o) => o.node_id === plan[0]!.node_id);
@@ -250,7 +252,8 @@ describe('materializeChildIssues — confirm', () => {
     const state = stateWithNoIssues();
     const runner: GithubWriteRunner = {
       get(path: string): unknown {
-        if (path.includes('page=1')) {
+        const page = new URL(`https://example.test/${path}`).searchParams.get('page');
+        if (page === '1') {
           return Array.from({ length: 100 }, (_, i) => ({
             number: 40000 + i,
             title: `ok-${i}`,
