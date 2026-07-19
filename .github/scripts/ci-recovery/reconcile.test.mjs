@@ -6328,18 +6328,20 @@ test('handoff converged-elsewhere holds fence through waiting-label cleanup befo
 });
 
 // ---------------------------------------------------------------------------
-// Stale-marker detection: thread has trusted ✅ Addressed marker but the SHA
-// was never pushed (compare 404), so the thread remains unresolved.
+// Stale-marker + outdated-thread interaction: thread has a trusted ✅ Addressed
+// marker whose SHA was never pushed (compare 404), but the thread is also
+// isOutdated. The reconciler posts its own trusted "thread outdated" marker on
+// this pass, which auto-resolves the thread immediately — no separate blocker
+// summary comment is needed.
 // ---------------------------------------------------------------------------
 
 test('outdated stale-marker thread auto-resolves without posting a blocker summary', async (t) => {
-  // Simulate the root cause from the PR #1266 loop incident:
-  // The recovery agent replied to a review thread with ✅ Addressed in <sha>
-  // but that commit was created locally and never pushed.  The compare API
-  // returns 404, so the thread stays unresolved and the same fingerprint
-  // repeats indefinitely.  The reconciler should detect the stale marker and
-  // include a targeted hint in the blocker summary so the next recovery agent
-  // knows to re-post the marker with the current-head SHA.
+  // PR #1266 scenario: the recovery agent replied with ✅ Addressed in <sha>
+  // but the commit was never pushed to GitHub (compare API returns 404).
+  // Because the thread is also isOutdated, the reconciler posts its own trusted
+  // "thread outdated" marker on this pass. That marker causes the thread to
+  // self-heal immediately, so no blocker task comment is emitted — the stale-
+  // marker hint path is bypassed by the isOutdated fast path.
   const staleMarkerSha = 'dead0000aabbccddeeff00112233445566778899';
   const threadId = 'PRRT_stale_marker_thread';
   const originalConcern = 'reviewer: the CLI does not propagate the fifth score.';

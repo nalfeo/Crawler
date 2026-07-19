@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -49,7 +49,7 @@ function makeFixture(files: Record<string, string>): string {
     'tsconfig.json',
     `${JSON.stringify(
       {
-        extends: path.join(REPO_ROOT, 'tsconfig.json'),
+        extends: toBashScriptPath(path.join(REPO_ROOT, 'tsconfig.json')),
         compilerOptions: {
           declaration: false,
           declarationMap: false,
@@ -73,6 +73,14 @@ function makeFixture(files: Record<string, string>): string {
   for (const [relativePath, contents] of Object.entries(files)) {
     write(relativePath, contents);
   }
+
+  // Ensure `npx tsc` resolves from the fixture dir. npm v10 does not traverse
+  // parent directories for `tsc`; it needs a local node_modules/.bin/tsc so it
+  // doesn't fall through to the `tsc` npm-registry stub.
+  const nodeBinDir = path.join(dir, 'node_modules', '.bin');
+  mkdirSync(nodeBinDir, { recursive: true });
+  symlinkSync(path.join(REPO_ROOT, 'node_modules', '.bin', 'tsc'), path.join(nodeBinDir, 'tsc'));
+
   return dir;
 }
 
@@ -82,7 +90,7 @@ function runStaticVerifier(fixtureDir: string, options?: { cwd?: string; project
     VERIFY_FAST_TEST_STATIC_ONLY: '1',
   };
   if (options?.project) {
-    env.VERIFY_FAST_TSC_PROJECT = options.project;
+    env.VERIFY_FAST_TSC_PROJECT = toBashScriptPath(options.project);
   }
   return spawnSync('bash', [SCRIPT], {
     cwd: options?.cwd ?? fixtureDir,
@@ -125,7 +133,6 @@ describe('verify-fast full-project typecheck', () => {
       const fixture = makeFixture(files);
 
       const result = runStaticVerifier(fixture, {
-        cwd: REPO_ROOT,
         project: path.join(fixture, 'tsconfig.json'),
       });
 
@@ -148,12 +155,60 @@ describe('verify-fast full-project typecheck', () => {
       });
 
       const result = runStaticVerifier(fixture, {
-        cwd: REPO_ROOT,
         project: path.join(fixture, 'tsconfig.json'),
       });
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Fast verifier static checks passed');
+    },
+    30_000,
+  );
+});
+
+describe('verify-fast production-default typecheck (no project override)', () => {
+  // These tests exercise the production TSC_PROJECT default ("tsconfig.json") by running
+  // verify-fast.sh from the fixture directory without VERIFY_FAST_TSC_PROJECT set.
+  // The fixture dir is in /tmp — outside any git repo — so the git block is bypassed and
+  // tsc runs with the script's built-in default. If the production default ever regresses
+  // to tsconfig.src.json (which omits tests/**), the clean case would fail (non-zero from
+  // a missing project file) and the error case would fail the TS2339 assertion.
+
+  it.skipIf(!hasBash)(
+    'passes clean inputs using the default tsconfig.json',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+      });
+
+      // No project option → VERIFY_FAST_TSC_PROJECT not set → script uses the
+      // production default TSC_PROJECT="tsconfig.json", found in the fixture dir.
+      const result = runStaticVerifier(fixture);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Fast verifier static checks passed');
+    },
+    30_000,
+  );
+
+  it.skipIf(!hasBash)(
+    'fails for a tests-only narrowed property error using the default tsconfig.json',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/narrowing.test.ts': narrowingError,
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+      });
+
+      const result = runStaticVerifier(fixture);
+
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toMatch(/TS2339/);
     },
     30_000,
   );
