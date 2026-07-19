@@ -43,6 +43,10 @@ CI-recovery behavior:
   forged task marker cannot overwrite the real recovery correlation
 - treated trusted `Not applicable` replies as recovery boundaries alongside
   addressed markers when a reviewer later reopens the conversation
+- normalized prior-reply hints to one bracket-safe line before embedding them
+  in recovery task summaries
+- regenerated the handoff index from source and escaped dynamic regex fixtures
+  consistently in the new regression tests
 
 ## Files touched
 

@@ -7051,7 +7051,7 @@ test('prior-reply thread includes hint in blocker summary when last trusted comm
   // The original reviewer concern must still appear in the summary.
   assert.match(
     taskCommentCall.body.body,
-    new RegExp(originalConcern.slice(0, 40)),
+    new RegExp(escapeRegex(originalConcern.slice(0, 40))),
     'task body must still include the original reviewer concern',
   );
 });
@@ -7182,7 +7182,7 @@ test('prior-reply hint ignores non-recovery collaborator follow-up comments', as
   );
   assert.match(
     taskCommentCall.body.body,
-    new RegExp(originalConcern.slice(0, 40)),
+    new RegExp(escapeRegex(originalConcern.slice(0, 40))),
     'task body must still include the original reviewer concern',
   );
   assert.doesNotMatch(
@@ -7359,7 +7359,9 @@ test('prior-reply hint is preserved when reviewer posts a follow-up after Copilo
   const threadId = 'PRRT_reviewer_followup_after_copilot_thread';
   const originalConcern = 'This method needs a unit test before merge.';
   const copilotThreadReply =
-    'Blocked: the unit test cannot be added without access to the test fixture, which is outside this branch.';
+    'Blocked: the unit test needs the external fixture.\nWaiting on [test owner] approval.';
+  const safeCopilotThreadReply =
+    'Blocked: the unit test needs the external fixture. Waiting on [test owner) approval.';
   const reviewerFollowup =
     'I still need this addressed — please add the test or get approval to skip it.';
   const thread = {
@@ -7470,9 +7472,9 @@ test('prior-reply hint is preserved when reviewer posts a follow-up after Copilo
   assert.match(
     taskCommentCall.body.body,
     new RegExp(
-      String.raw`\[Prior recovery reply \(no marker posted — do not re-post an identical reply\): ${escapeRegex(copilotThreadReply)}`,
+      String.raw`\[Prior recovery reply \(no marker posted — do not re-post an identical reply\): ${escapeRegex(safeCopilotThreadReply)}\]`,
     ),
-    "task body must include Copilot's thread reply as the prior-reply hint (backward search regression)",
+    'task body must include a single-line, bracket-safe prior-reply hint',
   );
 
   // The reviewer follow-up text must NOT appear as the hint — it is not from a
@@ -7493,7 +7495,7 @@ test('prior-reply hint is preserved when reviewer posts a follow-up after Copilo
   // The original concern must still appear in the summary.
   assert.match(
     taskCommentCall.body.body,
-    new RegExp(originalConcern.slice(0, 40)),
+    new RegExp(escapeRegex(originalConcern.slice(0, 40))),
     'task body must still include the original reviewer concern',
   );
 });
@@ -8084,7 +8086,7 @@ test('untrusted marker comment does not suppress prior-reply hint', async (t) =>
   // The original reviewer concern must still appear.
   assert.match(
     taskCommentCall.body.body,
-    new RegExp(originalConcern.slice(0, 30)),
+    new RegExp(escapeRegex(originalConcern.slice(0, 30))),
     'task body must still include the original reviewer concern',
   );
 });

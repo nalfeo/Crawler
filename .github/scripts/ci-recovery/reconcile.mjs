@@ -1538,10 +1538,21 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
   // identical reply (which changes the comment digest, resets the attempt counter,
   // and delays loop-incident detection).  If the requirement is external (e.g.
   // posting to a linked issue), use GitHub API tools rather than gh CLI.
+  // Normalize priorReply to a safe single-line string before embedding it in the
+  // bracketed prefix: collapse newlines so the hint stays on one line (multi-line
+  // in-thread replies come from String(c?.body).slice(0,300) without normalization),
+  // and replace ] to prevent premature visual closure of the bracket.
+  const safePriorReply = priorReply
+    ? String(priorReply)
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/]/g, ')')
+        .trim()
+    : null;
   const summary = staleSha
     ? `[Stale marker: ✅ Addressed in ${staleSha} exists but that commit is not reachable from current head — verify fix is present in the current head and reply to this thread with ✅ Addressed in <head-sha>: <note> to close the marker.] ${reviewerSummary}`
-    : priorReply
-      ? `[Prior recovery reply (no marker posted — do not re-post an identical reply): ${priorReply}] ${reviewerSummary}`
+    : safePriorReply
+      ? `[Prior recovery reply (no marker posted — do not re-post an identical reply): ${safePriorReply}] ${reviewerSummary}`
       : reviewerSummary;
   blockers.push({
     kind: 'review-thread',
