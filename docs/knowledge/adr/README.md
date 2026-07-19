@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 123 ADR files — 95 numbered (0001–0063, with number reuse and gaps in this index — see below) + 28 date-prefixed
+- **Count:** 128 ADR files — 96 numbered (0001–0064, with number reuse and gaps in this index — see below) + 32 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -67,7 +67,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0060**).
+   number** (currently **0065**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -114,6 +114,7 @@ hundreds of inbound references.
 - [Baby slime spawn animation (size + pop-out) and swing-immunity](0026-baby-slime-spawn-animation-and-swing-immunity.md)
 - [Floor 1 spawn density via a director engagement budget](0024-floor1-spawn-density-engagement-budget.md)
 - [Generic Spawner mob-type](0025-spawner-mob-type.md)
+- [Data-driven boss ability catalog and separate delivery evidence](0064-data-driven-boss-ability-catalog.md) — validates all 18 Floor 2 designs while keeping volatile status out of the game bundle.
 
 ### Floors, rooms & map generation
 
@@ -280,4 +281,5 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0062 | [Unlock-aware objective route planning](0062-unlock-aware-objective-route-planning.md)                                                             | Accepted                 | 2026-07-15 |
 | 0063 | [Merge-Train Real GitHub Squash-Merge Promotion (MERGED Completion Semantics)](0063-merge-train-real-squash-merge-promotion.md)                    | Accepted                 | 2026-07-15 |
 | 0064 | [In-Process Floor Transition Carryover](0064-in-process-floor-transition-carryover.md)                                                             | Accepted                 | 2026-07-17 |
+| 0064 | [Data-Driven Boss Ability Catalog and Separate Delivery Evidence](0064-data-driven-boss-ability-catalog.md)                                        | Accepted                 | 2026-07-17 |
 | 0065 | [Versioned Frozen Floor 2 Equipment Instances](0065-versioned-frozen-floor2-equipment-instances.md)                                                | Accepted                 | 2026-07-17 |
