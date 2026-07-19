@@ -1963,6 +1963,15 @@ function validateStackedWork(
           message: `${node.node_id} retargeted to main without an observed rebased dependent head`,
         });
       }
+    } else if (
+      !stacked.dependent.observed_head_sha ||
+      stacked.rebase_to_main.pre_rebase_dependent_head_sha !== stacked.dependent.observed_head_sha
+    ) {
+      result.errors.push({
+        code: 'stacked.rebase-pre-head-unbound',
+        node_id: node.node_id,
+        message: `${node.node_id} rebase_to_main.pre_rebase_dependent_head_sha must equal the observed dependent head before retargeting`,
+      });
     }
   } else if (
     stacked.rebase_to_main.pending ||

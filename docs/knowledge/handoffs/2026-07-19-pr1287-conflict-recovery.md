@@ -69,11 +69,12 @@ implementations independently reached `main`. Full calibration:
 - Multi-model review: four valid round-one concerns resolved; terminal review by
   Claude Opus 4.8, Gemini 3.1 Pro, and GPT-5.3 Codex security review adjudicated
   clean by GPT-5.4.
-- Different-model validation covered all 27 GitHub review threads across two
-  rounds. The final eight tightened owner chronology, live-claim selection,
+- Different-model validation covered all 28 GitHub review threads across three
+  rounds. The final nine tightened owner chronology, live-claim selection,
   merged dependent handling, post-merge base constraints, stacked identity
-  fields, canonical PR identity, and no-PR observation proof.
-- Focused epic-status suite: 79 tests pass.
+  fields, canonical PR identity, no-PR observation proof, and pre-rebase head
+  binding.
+- Focused epic-status suite: 80 tests pass.
 - Source typecheck passes.
 - Offline and credentialed read-only GitHub audits are valid with zero errors,
   warnings, proposals, or operator actions and report `writes_performed=false`.

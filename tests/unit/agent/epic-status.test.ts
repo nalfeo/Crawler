@@ -545,6 +545,28 @@ describe('Floor 2 equipment epic status', () => {
     expect(validate(merged.state).errors).toEqual([]);
   });
 
+  // Thread regression: arbitrary/mismatched pre_rebase_dependent_head_sha must be rejected
+  it('rejects pre_rebase_dependent_head_sha that does not match the observed dependent head', () => {
+    const merged = stackedFixture();
+    const dependency = merged.stacked.dependency_pull_requests[0]!;
+    const mergeCommit = 'b'.repeat(40);
+    dependency.observed_pr_state = 'MERGED';
+    dependency.observed_merge_commit = mergeCommit;
+
+    // Set an arbitrary SHA that differs from the actual observed dependent head
+    const arbitrarySha = '9'.repeat(40);
+    expect(arbitrarySha).not.toBe(merged.stacked.dependent.observed_head_sha);
+    merged.stacked.rebase_to_main = {
+      pending: true,
+      pre_rebase_dependent_head_sha: arbitrarySha,
+      prerequisite_merge_commit: mergeCommit,
+    };
+    // Still on the stack-base branch (not yet retargeted to main)
+    expect(merged.stacked.dependent.base_branch).not.toBe('main');
+    const codes = validate(merged.state).errors.map((e) => e.code);
+    expect(codes).toContain('stacked.rebase-pre-head-unbound');
+  });
+
   it('rejects inconsistent stacked owner and dependent PR snapshots', () => {
     expectStackedDiagnostic('stacked.owner-mismatch', ({ stacked }) => {
       stacked.owner.branch = 'wrong-owner-branch';

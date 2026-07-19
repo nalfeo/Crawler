@@ -38,7 +38,7 @@ or A0 PR #1271:
   cache patches and operator actions but never mutates lifecycle or completion.
 - Made trusted `BLOCKED` comments revoke both normal and speculative ownership,
   so stale stacked metadata can be cleared without waiting for lease expiry.
-- Expanded the focused suite to 79 tests, including nullable dependent-head
+- Expanded the focused suite to 80 tests, including nullable dependent-head
   caching, prerequisite closure, dependent drift, ownership conflicts, and
   GitHub-observed rebase head/base proof.
 - Preserved the approved 37 delivery nodes. Protocol issue #1282 is the sole
@@ -67,7 +67,7 @@ commit.
 - Code-review round 1: two coverage gaps, both resolved.
 - Code-review round 2: prerequisite-closure coverage and missing
   GitHub-observed-main-base completion proof, both resolved.
-- Focused suite: 79 tests pass.
+- Focused suite: 80 tests pass.
 - `npm run verify:fast` passes.
 - Offline and credentialed read-only GitHub audits are valid with zero errors,
   warnings, proposals, or operator actions and report `writes=false`.
