@@ -172,5 +172,34 @@ describe('PR workflow concurrency grouping', () => {
       expect(push).not.toBe(manual);
       expect(schedule).not.toBe(manual);
     });
+
+    it(`${workflow.path} group is stable across workflow display-name changes`, () => {
+      const doc = loadWorkflow(workflow.path);
+      const groupTemplate = doc.concurrency?.group;
+      if (!groupTemplate) throw new Error(`concurrency.group missing in ${workflow.path}`);
+
+      const groupOriginalName = renderActionTemplate(
+        groupTemplate,
+        context({
+          workflow: workflow.workflowName,
+          event_name: 'pull_request',
+          ref: 'refs/pull/42/head',
+          run_id: 5001,
+          event: { pull_request: { number: 42 } },
+        }),
+      );
+      const groupRenamedWorkflow = renderActionTemplate(
+        groupTemplate,
+        context({
+          workflow: `${workflow.workflowName} - Renamed`,
+          event_name: 'pull_request',
+          ref: 'refs/pull/42/head',
+          run_id: 5001,
+          event: { pull_request: { number: 42 } },
+        }),
+      );
+
+      expect(groupOriginalName).toBe(groupRenamedWorkflow);
+    });
   }
 });
