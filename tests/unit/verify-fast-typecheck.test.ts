@@ -139,7 +139,7 @@ describe('verify-fast full-project typecheck', () => {
   );
 });
 
-/** Intentionally long: must outlast the SIGINT that interrupts the verifier. */
+/** Intentionally long: must outlast the SIGTERM that interrupts the verifier. */
 const STUB_DURATION_SECONDS = 300;
 /** Brief wait after seeing "Step 1/3" to let background sleep stubs reach their wait state. */
 const STUB_STARTUP_DELAY_MS = 200;
