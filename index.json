@@ -1,5 +1,16 @@
 [
   {
+    "commit": "070d11e3524440c2ea55d224be84ed5d2487c658",
+    "commitDate": "2026-07-19T00:09:15Z",
+    "commitSubject": "Add merchant-sandals generated equipment icon (#1553)",
+    "capturedAt": "2026-07-19T01:51:31.454Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29667413821",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/070d11e3524440c2ea55d224be84ed5d2487c658.json"
+  },
+  {
     "commit": "9d853d1369aed238f5154068ba3d803c711bd081",
     "commitDate": "2026-07-19T00:09:08Z",
     "commitSubject": "Add flame-tongs generated weapon icon and wire it into generated asset surfaces (#1551)",
