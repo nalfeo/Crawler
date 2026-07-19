@@ -50,8 +50,12 @@ import {
   type SweepConfig,
   type TunableKnob,
 } from './gen-configs.js';
-import { buildLeaderboard, selectQualifiedWinner } from './aggregate-shards.js';
-import type { RunRow, ShardArtifact, ShardMeta } from './aggregate-shards.js';
+import {
+  buildLeaderboard,
+  isBetterQualifiedCandidate,
+  selectQualifiedWinner,
+} from './aggregate-shards.js';
+import type { LeaderboardRow, RunRow, ShardArtifact, ShardMeta } from './aggregate-shards.js';
 
 /** Σ composite score for one config's rows — the search hill-climb heuristic. */
 function totalScoreOf(rows: readonly RunRow[], id: string): number {
@@ -112,11 +116,19 @@ export interface RoundCheckpoint {
   rows: RunRow[];
 }
 
-/** Build the round-0 checkpoint from a combo's baseline shard (`--stage search-baseline`). */
+/** Build the round-0 checkpoint from a combo's baseline shard (`--stage search-baseline`).
+ *
+ * When `legacyBaseline` is provided and the combo is not `legacy+legacy`, the
+ * LEGACY incumbent config becomes the safety-gate reference (matching the final
+ * graduation gate in {@link selectQualifiedWinner}). Without it, the combo's
+ * own base config is used, which can allow a flip-tainted candidate to pass the
+ * in-search gate while still being rejected at graduation.
+ */
 export function initCheckpoint(
   combo: Combo,
   knobs: readonly TunableKnob[],
   baseline: ShardArtifact,
+  legacyBaseline?: ShardArtifact,
 ): RoundCheckpoint {
   const comboStr = comboId(combo);
   const baseIds = Object.keys(baseline.configs);
@@ -130,17 +142,40 @@ export function initCheckpoint(
   for (const knob of knobs) {
     steps[knob] = rangeFor(knob).step;
   }
+
+  // Incumbent for the safety gate: use the LEGACY incumbent (from legacyBaseline)
+  // for non-LEGACY combos so that the in-search flip check mirrors the final
+  // graduation gate (`selectQualifiedWinner`). For `legacy+legacy` the combo
+  // IS the LEGACY incumbent, so no separate baseline is needed.
+  const comboIsLegacy = comboStr === 'legacy+legacy';
+  let incumbentConfigId = baseId;
+  const allConfigs: Record<string, SweepConfig> = { ...baseline.configs };
+  const allRows: RunRow[] = [...baseline.rows];
+
+  if (!comboIsLegacy && legacyBaseline) {
+    const legacyIds = Object.keys(legacyBaseline.configs);
+    const legacyId = legacyIds[0];
+    if (!legacyId || legacyIds.length !== 1) {
+      throw new Error(
+        `initCheckpoint(${comboStr}): legacyBaseline shard must contain exactly one config, got ${legacyIds.length}`,
+      );
+    }
+    incumbentConfigId = legacyId;
+    Object.assign(allConfigs, legacyBaseline.configs);
+    allRows.push(...legacyBaseline.rows);
+  }
+
   return {
     meta: baseline.meta,
     combo: comboStr,
     round: 0,
     bestConfigId: baseId,
     bestScore: totalScoreOf(baseline.rows, baseId),
-    incumbentConfigId: baseId,
+    incumbentConfigId,
     steps,
     converged: false,
-    configs: { ...baseline.configs },
-    rows: [...baseline.rows],
+    configs: allConfigs,
+    rows: allRows,
   };
 }
 
@@ -288,7 +323,9 @@ export function applyRoundResult(
 
   const configs = { ...checkpoint.configs };
   const rows = [...checkpoint.rows];
-  const seenRowKeys = new Set(rows.map((r) => `${r.configId}\u0000${r.weapon}\u0000${r.seed}`));
+  const seenRows = new Map<string, RunRow>(
+    rows.map((r) => [`${r.configId}\u0000${r.weapon}\u0000${r.seed}`, r]),
+  );
   const newCandidateIds = new Set<string>();
 
   for (const shard of candidateShards) {
@@ -305,10 +342,16 @@ export function applyRoundResult(
     }
     for (const r of shard.rows) {
       const key = `${r.configId}\u0000${r.weapon}\u0000${r.seed}`;
-      if (seenRowKeys.has(key)) {
-        continue; // identical/duplicate cross-shard row — benign, skip.
+      const existing = seenRows.get(key);
+      if (existing !== undefined) {
+        if (JSON.stringify(existing) !== JSON.stringify(r)) {
+          throw new Error(
+            `applyRoundResult(${checkpoint.combo}): conflicting run result for key ${key} — determinism violation across shards.`,
+          );
+        }
+        continue; // benign identical duplicate — skip
       }
-      seenRowKeys.add(key);
+      seenRows.set(key, r);
       rows.push(r);
       newCandidateIds.add(r.configId);
     }
@@ -327,7 +370,8 @@ export function applyRoundResult(
 
   let bestId = checkpoint.bestConfigId;
   let bestScore = checkpoint.bestScore;
-  if (qualifiedWinner && qualifiedWinner.totalScore > bestScore) {
+  const bestRow: LeaderboardRow | undefined = leaderboard.find((r) => r.configId === bestId);
+  if (qualifiedWinner && isBetterQualifiedCandidate(qualifiedWinner, bestRow)) {
     bestId = qualifiedWinner.configId;
     bestScore = qualifiedWinner.totalScore;
   }
@@ -404,6 +448,7 @@ interface CliArgs {
   mode: 'init' | 'plan' | 'select' | null;
   combo: string | null;
   baseline: string | null;
+  legacyBaseline: string | null;
   checkpoint: string | null;
   round: number | null;
   secondary: boolean;
@@ -418,6 +463,7 @@ function parseCliArgs(argv: readonly string[]): CliArgs {
     mode: null,
     combo: null,
     baseline: null,
+    legacyBaseline: null,
     checkpoint: null,
     round: null,
     secondary: false,
@@ -441,6 +487,9 @@ function parseCliArgs(argv: readonly string[]): CliArgs {
       i++;
     } else if (arg === '--baseline' && next) {
       args.baseline = next;
+      i++;
+    } else if (arg === '--legacy-baseline' && next) {
+      args.legacyBaseline = next;
       i++;
     } else if (arg === '--checkpoint' && next) {
       args.checkpoint = next;
@@ -493,9 +542,16 @@ function runCli(argv: readonly string[]): void {
     const combo = parseComboId(args.combo);
     const knobs = knobsFor(args.combo, args.secondary);
     const baseline = JSON.parse(readFileSync(args.baseline, 'utf8')) as ShardArtifact;
-    const checkpoint = initCheckpoint(combo, knobs, baseline);
+    const legacyBaseline = args.legacyBaseline
+      ? (JSON.parse(readFileSync(args.legacyBaseline, 'utf8')) as ShardArtifact)
+      : undefined;
+    const checkpoint = initCheckpoint(combo, knobs, baseline, legacyBaseline);
+    const incumbentNote =
+      checkpoint.incumbentConfigId !== checkpoint.bestConfigId
+        ? ` (incumbent=${checkpoint.incumbentConfigId.slice(0, 48)})`
+        : '';
     console.log(
-      `[${checkpoint.combo}] round 0 checkpoint: best=${checkpoint.bestConfigId.slice(0, 48)} score=${checkpoint.bestScore.toExponential(3)}`,
+      `[${checkpoint.combo}] round 0 checkpoint: best=${checkpoint.bestConfigId.slice(0, 48)} score=${checkpoint.bestScore.toExponential(3)}${incumbentNote}`,
     );
     emit(checkpoint, args.out);
     return;

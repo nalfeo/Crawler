@@ -660,6 +660,31 @@ export function selectQualifiedWinner(
   return { winner, qualifying, reason };
 }
 
+/**
+ * Returns true when candidate `a` ranks strictly ahead of `b` under the same
+ * tie-break order used by {@link selectQualifiedWinner}'s qualifying sort:
+ * higher `totalScore` → faster `meanClearTimeMsWins` (lower) → higher
+ * `meanMinHealthPercent` → higher `meanXp` → higher `meanGold`.
+ *
+ * Pass `undefined` for `b` (e.g. when the current position's row is not yet
+ * in the leaderboard) to treat it as "nothing to beat" — returns `false` so
+ * an unknown current position is never blindly displaced.
+ */
+export function isBetterQualifiedCandidate(
+  a: LeaderboardRow,
+  b: LeaderboardRow | undefined,
+): boolean {
+  if (!b) return false;
+  if (a.totalScore !== b.totalScore) return a.totalScore > b.totalScore;
+  const aTime = a.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
+  const bTime = b.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
+  if (aTime !== bTime) return aTime < bTime;
+  if (a.meanMinHealthPercent !== b.meanMinHealthPercent)
+    return a.meanMinHealthPercent > b.meanMinHealthPercent;
+  if (a.meanXp !== b.meanXp) return a.meanXp > b.meanXp;
+  return a.meanGold > b.meanGold;
+}
+
 export interface AggregateResult {
   meta: ShardMeta;
   byComposite: LeaderboardRow[];

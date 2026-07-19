@@ -78,7 +78,6 @@ describe('selectSearchPromotion', () => {
       );
     }
     const allRows = [...rows, ...candidateRows];
-    const currentScore = rows.reduce((a, r) => a + r.score, 0);
 
     const promotion = selectSearchPromotion(
       allRows,
@@ -87,7 +86,7 @@ describe('selectSearchPromotion', () => {
       'base',
       new Set(['flip-tainted']),
       BUDGET_MS,
-      currentScore,
+      'base',
     );
 
     expect(promotion).toBeNull();
@@ -105,7 +104,6 @@ describe('selectSearchPromotion', () => {
       );
     }
     const allRows = [...rows, ...candidateRows];
-    const currentScore = rows.reduce((a, r) => a + r.score, 0);
 
     const promotion = selectSearchPromotion(
       allRows,
@@ -114,7 +112,7 @@ describe('selectSearchPromotion', () => {
       'base',
       new Set(['qualified']),
       BUDGET_MS,
-      currentScore,
+      'base',
     );
 
     expect(promotion).not.toBeNull();
@@ -136,7 +134,6 @@ describe('selectSearchPromotion', () => {
       );
     }
     const allRows = [...rows, ...candidateRows];
-    const currentScore = rows.reduce((a, r) => a + r.score, 0);
 
     const promotion = selectSearchPromotion(
       allRows,
@@ -145,7 +142,7 @@ describe('selectSearchPromotion', () => {
       'base',
       new Set(['lower-score']),
       BUDGET_MS,
-      currentScore,
+      'base',
     );
 
     expect(promotion).toBeNull();
@@ -171,7 +168,6 @@ describe('selectSearchPromotion', () => {
       );
     }
     const allRows = [...rows, ...staleRows];
-    const currentScore = rows.reduce((a, r) => a + r.score, 0);
 
     const promotion = selectSearchPromotion(
       allRows,
@@ -180,7 +176,7 @@ describe('selectSearchPromotion', () => {
       'base',
       new Set(['this-round-candidate-not-present']),
       BUDGET_MS,
-      currentScore,
+      'base',
     );
 
     expect(promotion).toBeNull();

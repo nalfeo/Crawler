@@ -86,7 +86,9 @@ import {
   assertSearchArtifactProvenance,
   buildLeaderboard,
   deriveRunFacts,
+  isBetterQualifiedCandidate,
   selectQualifiedWinner,
+  type LeaderboardRow,
   type RunRow,
   type ShardArtifact,
   type ShardMeta,
@@ -222,8 +224,9 @@ function winsOf(rows: readonly RunRow[], id: string): number {
  * testable without headless game runs — the exact wiring bug class a review
  * would otherwise only catch by re-deriving this logic by hand.
  *
- * Returns `null` when no candidate both qualifies and out-scores
- * `currentScore` (steps should be halved by the caller in that case).
+ * Returns `null` when no candidate both qualifies and ranks ahead of the
+ * current position under the full tie-break ordering (steps should be halved
+ * by the caller in that case).
  */
 export function selectSearchPromotion(
   allRows: readonly RunRow[],
@@ -232,7 +235,7 @@ export function selectSearchPromotion(
   incumbentConfigId: string,
   candidateIds: ReadonlySet<string>,
   budgetMs: number,
-  currentScore: number,
+  currentConfigId: string,
 ): { bestId: string; bestScore: number } | null {
   const leaderboard = buildLeaderboard(allRows, {
     incumbentCombo: comboStr,
@@ -242,7 +245,14 @@ export function selectSearchPromotion(
   });
   const candidateRows = leaderboard.filter((r) => candidateIds.has(r.configId) && !r.isIncumbent);
   const { winner: qualifiedWinner } = selectQualifiedWinner(candidateRows);
-  if (qualifiedWinner && qualifiedWinner.totalScore > currentScore) {
+  if (!qualifiedWinner) return null;
+  // Compare using the full tie-break ordering (score → clear time → HP → XP →
+  // gold) so a tie-equal candidate with a better secondary metric is not
+  // wrongly rejected by a score-only comparison.
+  const currentRow: LeaderboardRow | undefined = leaderboard.find(
+    (r) => r.configId === currentConfigId,
+  );
+  if (isBetterQualifiedCandidate(qualifiedWinner, currentRow)) {
     return { bestId: qualifiedWinner.configId, bestScore: qualifiedWinner.totalScore };
   }
   return null;
@@ -348,7 +358,7 @@ async function searchCombo(
       base.id,
       candidateIds,
       shared.budgetMs,
-      currentScore,
+      currentId,
     );
 
     if (promotion) {

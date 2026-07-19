@@ -64,6 +64,11 @@ const LEGACY_LEGACY: Combo = {
   pathing: AIPathingMode.LEGACY,
   decision: AIDecisionMode.LEGACY,
 };
+// A non-legacy combo for incumbent-mismatch tests.
+const NAVMESH_LEGACY: Combo = {
+  pathing: AIPathingMode.NAVMESH_FUSED,
+  decision: AIDecisionMode.LEGACY,
+};
 const KNOBS: TunableKnob[] = ['aggression'];
 
 const META: ShardMeta = {
@@ -145,6 +150,48 @@ describe('initCheckpoint', () => {
     });
     expect(() => initCheckpoint(LEGACY_LEGACY, KNOBS, bad)).toThrow(
       /must contain exactly one config, got 2/,
+    );
+  });
+
+  it("uses the combo's own base as incumbent when no legacyBaseline is provided (legacy+legacy or smoke runs)", () => {
+    const checkpoint = baseCheckpoint(150);
+    expect(checkpoint.incumbentConfigId).toBe(BASE_ID);
+  });
+
+  it('uses the LEGACY incumbent from legacyBaseline for a non-LEGACY combo, seeding the safety gate correctly', () => {
+    // For a non-LEGACY combo (navmeshFused+legacy), the combo's own base config
+    // would be a wrong reference for the flip check — the graduation gate always
+    // uses legacy+legacy as the incumbent. Providing legacyBaseline fixes this.
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard([row(navmeshBaseId, 'sword', 1, 100)], {
+      [navmeshBaseId]: navmeshBase,
+    });
+    const legacyBaselineShard = baselineShard(80); // LEGACY config
+
+    const checkpoint = initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, legacyBaselineShard);
+    // bestConfigId is the combo's own base (navmesh), not the LEGACY incumbent.
+    expect(checkpoint.bestConfigId).toBe(navmeshBaseId);
+    // incumbentConfigId is the LEGACY config — matches the graduation gate.
+    expect(checkpoint.incumbentConfigId).toBe(BASE_ID);
+    // Both configs and both sets of rows are merged in.
+    expect(Object.keys(checkpoint.configs)).toContain(navmeshBaseId);
+    expect(Object.keys(checkpoint.configs)).toContain(BASE_ID);
+  });
+
+  it('throws when legacyBaseline contains more than one config (ambiguous)', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard([row(navmeshBaseId, 'sword', 1, 100)], {
+      [navmeshBaseId]: navmeshBase,
+    });
+    const other: SweepConfig = { ...BASE, aggression: 1.5 };
+    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100)], {
+      [BASE_ID]: BASE,
+      [configId(other)]: other,
+    });
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /legacyBaseline shard must contain exactly one config, got 2/,
     );
   });
 });
@@ -469,6 +516,59 @@ describe('applyRoundResult', () => {
     const updated = applyRoundResult(checkpoint, 1, KNOBS, [shardA, shardB]);
     // 1 baseline row + 1 deduped candidate row, NOT 1 + 2.
     expect(updated.rows).toHaveLength(2);
+  });
+
+  it('throws on conflicting run facts for the same (configId, weapon, seed) key across two shards', () => {
+    // A conflicting duplicate is NOT a benign cross-shard re-send: the same
+    // (configId, weapon, seed) key producing different scores/outcomes across
+    // two shards is a determinism violation analogous to the config-definition
+    // conflict check — must throw rather than silently keeping the first.
+    const checkpoint = baseCheckpoint();
+    const candidate: SweepConfig = { ...BASE, aggression: 1.5 };
+    const candidateId = configId(candidate);
+    const shardA = shard([row(candidateId, 'sword', 1, 200)], { [candidateId]: candidate });
+    // Same key (candidateId, 'sword', seed 1) but different score — conflicting.
+    const shardB = shard([row(candidateId, 'sword', 1, 999)], { [candidateId]: candidate });
+    expect(() => applyRoundResult(checkpoint, 1, KNOBS, [shardA, shardB])).toThrow(
+      /conflicting run result/,
+    );
+  });
+
+  it('applies the full tie-break ordering (not just score) when selecting among qualifying candidates of equal total score', () => {
+    // Two qualifying candidates have identical totalScore but different clear
+    // times. The one with the FASTER clear time must win — score-only promotion
+    // would arbitrarily keep whichever appeared first (since neither `>` the other).
+    const baseline = shard(
+      Array.from({ length: 10 }, (_, i) => row(BASE_ID, 'sword', i + 1, 100, true)),
+      { [BASE_ID]: BASE },
+    );
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 1000
+
+    const slower: SweepConfig = { ...BASE, aggression: 1.5 };
+    const slowerId = configId(slower);
+    const slowerRows = Array.from({ length: 10 }, (_, i) =>
+      row(slowerId, 'sword', i + 1, 200, true),
+    );
+    // Override gameTimeMs to a SLOWER clear (250_000 ms vs the default 100_000 ms).
+    slowerRows.forEach((r) => {
+      (r as { gameTimeMs: number }).gameTimeMs = 250_000;
+    });
+
+    const faster: SweepConfig = { ...BASE, aggression: 0.5 };
+    const fasterId = configId(faster);
+    const fasterRows = Array.from({ length: 10 }, (_, i) =>
+      row(fasterId, 'sword', i + 1, 200, true),
+    );
+    // Keep gameTimeMs at the default 100_000 ms (faster clear).
+
+    // Both candidates have totalScore = 2000 (equal). faster has meanClearTimeMsWins < slower.
+    const slowerShard = shard(slowerRows, { [slowerId]: slower });
+    const fasterShard = shard(fasterRows, { [fasterId]: faster });
+
+    const updated = applyRoundResult(checkpoint, 1, KNOBS, [slowerShard, fasterShard]);
+    // The faster candidate must be selected via tie-break, not the slower one.
+    expect(updated.bestConfigId).toBe(fasterId);
+    expect(updated.bestScore).toBe(2000);
   });
 
   it('throws when a candidate shard is provenance-incompatible with the checkpoint (schemaVersion mismatch)', () => {

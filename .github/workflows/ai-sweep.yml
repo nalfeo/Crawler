@@ -204,11 +204,10 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # One job per combo: wrap the baseline shard into a round-0 checkpoint. Every
-  # later round-select job OVERWRITES this exact artifact name, so `validate`
-  # always downloads whichever round actually ran last — no separate
-  # "finalize" job needed, and a downstream timeout/failure never discards a
-  # prior round's progress.
+  # One job per combo: wrap the baseline shard into a round-0 checkpoint. Per-round
+  # select jobs upload immutable per-round checkpoint artifacts (search-checkpoint-r1-*,
+  # etc.) rather than overwriting a single artifact, so `validate` can always find
+  # the last successfully-uploaded round even if a later upload failed.
   checkpoint-init:
     name: Checkpoint init ${{ matrix.combo }}
     needs: [preflight, baseline]
@@ -242,6 +241,13 @@ jobs:
         with:
           name: search-baseline-${{ matrix.combo }}
 
+      - name: Download legacy+legacy baseline shard (optional — provides the LEGACY incumbent for non-LEGACY combo flip checks)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: search-baseline-legacy+legacy
+          merge-multiple: true
+          if-no-artifact-found: warn
+
       - name: Build round-0 checkpoint
         env:
           COMBO: ${{ matrix.combo }}
@@ -250,17 +256,22 @@ jobs:
           set -euo pipefail
           SECONDARY_FLAG=""
           if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
+          # For non-LEGACY combos, seed the safety gate with the LEGACY incumbent
+          # so the in-search flip check mirrors the final graduation gate.
+          LEGACY_BASELINE_FLAG=""
+          if [ "$COMBO" != "legacy+legacy" ] && [ -f "baseline-legacy+legacy.json" ]; then
+            LEGACY_BASELINE_FLAG="--legacy-baseline baseline-legacy+legacy.json"
+          fi
           npx tsx scripts/agent/perf/round-plan.ts \
-            --mode init --combo "$COMBO" --baseline "baseline-$COMBO.json" $SECONDARY_FLAG \
-            --out "search-checkpoint-$COMBO.json"
+            --mode init --combo "$COMBO" --baseline "baseline-$COMBO.json" $SECONDARY_FLAG $LEGACY_BASELINE_FLAG \
+            --out "search-checkpoint-init-$COMBO.json"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-${{ matrix.combo }}
-          path: search-checkpoint-*.json
+          name: search-checkpoint-init-${{ matrix.combo }}
+          path: search-checkpoint-init-*.json
           if-no-files-found: error
           retention-days: 7
-          overwrite: true
 
   # ---------------------------------------------------------------------------
   # ROUND 1 — one job triple: candidates (fan-in all combos' checkpoints → one
@@ -292,10 +303,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Download every combo's checkpoint
+      - name: Download every combo's init checkpoint
         uses: actions/download-artifact@v4
         with:
-          pattern: search-checkpoint-*
+          pattern: search-checkpoint-init-*
           merge-multiple: true
           path: checkpoints
 
@@ -397,15 +408,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Download this combo's checkpoint
+      - name: Download this combo's init checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-${{ matrix.combo }}
+          name: search-checkpoint-init-${{ matrix.combo }}
 
       - name: Download round 1's candidate plan (to know this combo's PLANNED count)
         uses: actions/download-artifact@v4
         with:
-          name: round1-candidates
+          pattern: round1-candidates
+          merge-multiple: true
           if-no-artifact-found: warn
 
       - name: Download this combo's round-1 shards (if any)
@@ -437,17 +449,16 @@ jobs:
             PLANNED=$(jq --arg combo "$COMBO" '[.candidates[] | select(.combo==$combo)] | length' candidates.json)
           fi
           npx tsx scripts/agent/perf/round-plan.ts \
-            --mode select --round 1 --checkpoint "search-checkpoint-$COMBO.json" \
+            --mode select --round 1 --checkpoint "search-checkpoint-init-$COMBO.json" \
             --planned-count "$PLANNED" $SECONDARY_FLAG \
-            --out "search-checkpoint-$COMBO.json" "${SHARDS[@]}"
+            --out "search-checkpoint-r1-$COMBO.json" "${SHARDS[@]}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-${{ matrix.combo }}
-          path: search-checkpoint-*.json
+          name: search-checkpoint-r1-${{ matrix.combo }}
+          path: search-checkpoint-r1-*.json
           if-no-files-found: error
           retention-days: 7
-          overwrite: true
 
   # ---------------------------------------------------------------------------
   # ROUND 2 — identical shape to round 1, gated one level deeper.
@@ -465,10 +476,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Download every combo's checkpoint
+      - name: Download every combo's round-1 checkpoint
         uses: actions/download-artifact@v4
         with:
-          pattern: search-checkpoint-*
+          pattern: search-checkpoint-r1-*
           merge-multiple: true
           path: checkpoints
 
@@ -564,15 +575,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Download this combo's checkpoint
+      - name: Download this combo's round-1 checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-${{ matrix.combo }}
+          name: search-checkpoint-r1-${{ matrix.combo }}
 
       - name: Download round 2's candidate plan (to know this combo's PLANNED count)
         uses: actions/download-artifact@v4
         with:
-          name: round2-candidates
+          pattern: round2-candidates
+          merge-multiple: true
           if-no-artifact-found: warn
 
       - name: Download this combo's round-2 shards (if any)
@@ -598,17 +610,16 @@ jobs:
             PLANNED=$(jq --arg combo "$COMBO" '[.candidates[] | select(.combo==$combo)] | length' candidates.json)
           fi
           npx tsx scripts/agent/perf/round-plan.ts \
-            --mode select --round 2 --checkpoint "search-checkpoint-$COMBO.json" \
+            --mode select --round 2 --checkpoint "search-checkpoint-r1-$COMBO.json" \
             --planned-count "$PLANNED" $SECONDARY_FLAG \
-            --out "search-checkpoint-$COMBO.json" "${SHARDS[@]}"
+            --out "search-checkpoint-r2-$COMBO.json" "${SHARDS[@]}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-${{ matrix.combo }}
-          path: search-checkpoint-*.json
+          name: search-checkpoint-r2-${{ matrix.combo }}
+          path: search-checkpoint-r2-*.json
           if-no-files-found: error
           retention-days: 7
-          overwrite: true
 
   # ---------------------------------------------------------------------------
   # ROUND 3 — identical shape, gated one level deeper still. This is the last
@@ -627,10 +638,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Download every combo's checkpoint
+      - name: Download every combo's round-2 checkpoint
         uses: actions/download-artifact@v4
         with:
-          pattern: search-checkpoint-*
+          pattern: search-checkpoint-r2-*
           merge-multiple: true
           path: checkpoints
 
@@ -726,15 +737,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Download this combo's checkpoint
+      - name: Download this combo's round-2 checkpoint
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-${{ matrix.combo }}
+          name: search-checkpoint-r2-${{ matrix.combo }}
 
       - name: Download round 3's candidate plan (to know this combo's PLANNED count)
         uses: actions/download-artifact@v4
         with:
-          name: round3-candidates
+          pattern: round3-candidates
+          merge-multiple: true
           if-no-artifact-found: warn
 
       - name: Download this combo's round-3 shards (if any)
@@ -760,33 +772,28 @@ jobs:
             PLANNED=$(jq --arg combo "$COMBO" '[.candidates[] | select(.combo==$combo)] | length' candidates.json)
           fi
           npx tsx scripts/agent/perf/round-plan.ts \
-            --mode select --round 3 --checkpoint "search-checkpoint-$COMBO.json" \
+            --mode select --round 3 --checkpoint "search-checkpoint-r2-$COMBO.json" \
             --planned-count "$PLANNED" $SECONDARY_FLAG \
-            --out "search-checkpoint-$COMBO.json" "${SHARDS[@]}"
+            --out "search-checkpoint-r3-$COMBO.json" "${SHARDS[@]}"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: search-checkpoint-${{ matrix.combo }}
-          path: search-checkpoint-*.json
+          name: search-checkpoint-r3-${{ matrix.combo }}
+          path: search-checkpoint-r3-*.json
           if-no-files-found: error
           retention-days: 7
-          overwrite: true
 
   # One job per combo: validate that combo's tuned finalist + the untuned incumbent
   # control on the validation panel (full graduation run touches holdout here once).
-  # Downloads whichever round actually ran last — the checkpoint artifact name is
-  # constant across every round, and a `RoundCheckpoint` is a strict superset of
-  # the legacy `SearchArtifact` shape `sweep-eval --stage validate` consumes, so
-  # no reshape step is needed. `if: !cancelled()` so a skipped or
-  # partially-failed round-select job upstream (e.g. `fail-fast:false`
-  # round-eval leaving a `failure` conclusion on the aggregate round-select
-  # job even though most of its per-combo legs succeeded) never silently
-  # skips validation of whatever the search DID manage to produce — each
-  # combo's OWN download-artifact step is what actually gates that specific
-  # combo (it fails only if that combo truly never got as far as
-  # `checkpoint-init`). `!cancelled()` rather than `always()` so a manual
-  # workflow cancellation still stops validation instead of continuing to
-  # burn runner minutes (found in multi-model review, gemini-3.1-pro-preview).
+  # Downloads all per-round checkpoint artifacts for this combo (immutable uploads
+  # from checkpoint-init and every round-select that ran) and selects the latest
+  # available round (r3 > r2 > r1 > init) so a later round's upload failure never
+  # discards an already-computed earlier round's progress. `RoundCheckpoint` is a
+  # strict superset of the legacy `SearchArtifact` shape `sweep-eval --stage
+  # validate` consumes, so no reshape step is needed. `if: !cancelled()` so a
+  # skipped or partially-failed round-select job upstream never silently skips
+  # validation of whatever the search DID manage to produce, while a manual
+  # workflow cancellation still stops validation (unlike `always()`).
   validate:
     name: Validate ${{ matrix.combo }}
     needs: [preflight, checkpoint-init, round1-select, round2-select, round3-select]
@@ -802,10 +809,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
 
-      - name: Download this combo's checkpoint
+      - name: Download all available checkpoints for this combo (immutable per-round artifacts)
         uses: actions/download-artifact@v4
         with:
-          name: search-checkpoint-${{ matrix.combo }}
+          pattern: search-checkpoint-*-${{ matrix.combo }}
+          merge-multiple: true
 
       - name: Validate finalist + incumbent
         env:
@@ -815,9 +823,23 @@ jobs:
           WORKERS: ${{ inputs.workers }}
         run: |
           set -euo pipefail
+          # Select the latest successfully-uploaded round checkpoint (r3 > r2 > r1 > init).
+          CHECKPOINT=""
+          for r in r3 r2 r1 init; do
+            f="search-checkpoint-${r}-$COMBO.json"
+            if [ -f "$f" ]; then
+              CHECKPOINT="$f"
+              break
+            fi
+          done
+          if [ -z "$CHECKPOINT" ]; then
+            echo "::error::No checkpoint found for combo $COMBO"
+            exit 1
+          fi
+          echo "Using checkpoint: $CHECKPOINT"
           npx tsx scripts/agent/perf/sweep-eval.ts \
             --stage validate --combo "$COMBO" \
-            --search-artifact "search-checkpoint-$COMBO.json" \
+            --search-artifact "$CHECKPOINT" \
             --seeds "$VALIDATE_SEEDS" --weapons "$WEAPONS" \
             --workers "$WORKERS" \
             --out "validate-$COMBO.json"

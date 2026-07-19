@@ -154,13 +154,14 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     expect(allRunSteps(baseline)).toContain('--stage search-baseline');
     expect(needsList(checkpointInit)).toContain('baseline');
     expect(allRunSteps(checkpointInit)).toContain('--mode init');
-    // Checkpoint artifact must be overwritten in place -- the core
-    // checkpoint-persistence mechanism this whole redesign relies on.
+    // Checkpoint artifact uses a per-round immutable name (search-checkpoint-init-*)
+    // rather than overwriting a single artifact, so a later-round upload failure
+    // cannot destroy the init checkpoint.
     const uploadStep = (checkpointInit.steps ?? []).find((s) =>
       s.uses?.startsWith('actions/upload-artifact'),
     );
-    expect(uploadStep?.with?.overwrite).toBe(true);
-    expect(uploadStep?.with?.name).toContain('search-checkpoint-');
+    expect(uploadStep?.with?.overwrite).toBeFalsy();
+    expect(uploadStep?.with?.name).toContain('search-checkpoint-init-');
   });
 
   it('gates checkpoint-init and round1-candidates with !cancelled() (not always()) so a partial baseline matrix failure never skips them for every combo, while a manual cancellation still stops the DAG', () => {
@@ -245,13 +246,14 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
       // applyRoundResult's plannedCount doc comment).
       expect(script).toContain('PLANNED=unknown');
       expect(script).not.toContain('PLANNED=0');
-      // Re-uploads to the SAME artifact name with overwrite -- this is the
-      // checkpoint-persistence mechanism itself.
+      // Uploads to an immutable per-round artifact name (search-checkpoint-rN-*)
+      // rather than overwriting a shared artifact, so a round-N upload failure
+      // cannot destroy round-(N-1)'s already-safe checkpoint.
       const uploadStep = (job.steps ?? []).find((s) =>
         s.uses?.startsWith('actions/upload-artifact'),
       );
-      expect(uploadStep?.with?.overwrite).toBe(true);
-      expect(uploadStep?.with?.name).toBe('search-checkpoint-${{ matrix.combo }}');
+      expect(uploadStep?.with?.overwrite).toBeFalsy();
+      expect(String(uploadStep?.with?.name)).toContain(`search-checkpoint-r${n}-`);
       // Shard download tolerates zero candidates this round for this combo
       // (e.g. every knob already converged) without hard-failing.
       const downloadShards = (job.steps ?? []).find(
@@ -260,15 +262,19 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
           s.name?.toLowerCase().includes('shard'),
       );
       expect(downloadShards?.with?.['if-no-artifact-found']).toBe('warn');
-      // Candidate-plan download must ALSO tolerate the "zero candidates
-      // planned this round" case (e.g. all knobs already converged) without
-      // hard-failing the job.
+      // Candidate-plan download must use pattern (not `name`) so that a missing
+      // artifact is non-fatal — `if-no-artifact-found: warn` is only honoured by
+      // the pattern download path (actions/download-artifact@v4 uses listArtifacts
+      // for pattern, which succeeds with zero matches; named downloads use
+      // getArtifact, which throws 404 regardless of the parameter value).
       const downloadCandidates = (job.steps ?? []).find(
         (s) =>
           s.uses?.startsWith('actions/download-artifact') &&
           s.name?.toLowerCase().includes('candidate'),
       );
       expect(downloadCandidates?.with?.['if-no-artifact-found']).toBe('warn');
+      expect(downloadCandidates?.with?.['pattern']).toBeDefined();
+      expect(downloadCandidates?.with?.['name']).toBeUndefined();
     });
 
     it(`${evalJob} uploads its shard under a per-candidate-unique filename, not a fixed shard.json (merge-multiple collision fix)`, () => {
@@ -316,7 +322,10 @@ describe('ai-sweep.yml structure (round-DAG redesign)', () => {
     }
     const script = allRunSteps(job);
     expect(script).toContain('--stage validate');
-    expect(script).toContain('--search-artifact "search-checkpoint-$COMBO.json"');
+    // validate uses a variable reference to the latest checkpoint rather than a
+    // fixed filename, since multiple immutable per-round checkpoint artifacts
+    // may exist and the fallback-selection script picks the latest available.
+    expect(script).toContain('--search-artifact "$CHECKPOINT"');
   });
 
   it('aggregate is gated with !cancelled() (not always()) so a partial validate failure still produces a leaderboard', () => {
