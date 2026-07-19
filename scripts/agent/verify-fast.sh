@@ -24,8 +24,10 @@ run_with_timeout() {
 echo "🔍 Step 1/3: Full-project type checking + linting (parallel)..."
 
 # The production verifier always uses the authoritative project, which includes
-# src/**/*.ts, tests/**/*.ts, and scripts/**/*.ts. TypeScript's existing
-# incremental metadata keeps repeat runs fast without changing compiler context.
+# vite.config.ts plus src/**/*.ts, tests/**/*.ts, scripts/**/*.ts, and
+# tools/**/*.ts.
+# TypeScript's existing incremental metadata keeps repeat runs fast without
+# changing compiler context.
 TSC_PROJECT="tsconfig.json"
 test_static_only=0
 if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]; then
@@ -35,6 +37,13 @@ if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]
   TSC_PROJECT="${VERIFY_FAST_TSC_PROJECT:-$TSC_PROJECT}"
 fi
 
+is_supported_ts_path() {
+  case "$1" in
+    vite.config.ts | src/*.ts | tests/*.ts | scripts/*.ts | tools/*.ts) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
 # lint only the files that changed vs the branch base + the working tree. This
 # is safe: the ESLint config here has NO type-aware or cross-file rules
@@ -43,18 +52,18 @@ fi
 # for its cache even when nothing changed (~22s of pure overhead), whereas a
 # typical change set is a handful of files (~3-5s), making this the biggest win
 # on the most frequently run command.
-LINT_CMD=(npx eslint src/ tests/ scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
-if [ "$test_static_only" -eq 1 ]; then
-  LINT_CMD=(true)
-elif [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
+LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ tools/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+if command -v git >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
+  changed_repo_ts=()
   changed_ts=()
+  unsupported_ts=()
   while IFS= read -r f; do
     # Skip blanks and any path that no longer exists on disk. A file deleted or
     # renamed-away in this branch still shows up in the diff, but ESLint errors
     # when handed a path that isn't there — which would break the most
     # frequently-run command for the life of the branch.
-    [ -n "$f" ] && [ -f "$f" ] && changed_ts+=("$f")
+    [ -n "$f" ] && [ -f "$f" ] && changed_repo_ts+=("$f")
   done < <(
     {
       # --diff-filter=ACMR drops deletions (D) and reports renames at their new
@@ -63,15 +72,34 @@ elif [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
       git diff --name-only --diff-filter=ACMR
       git diff --name-only --diff-filter=ACMR --cached
       git ls-files --others --exclude-standard
-    } 2>/dev/null | grep -E '^(src|tests|scripts)/.*\.ts$' | sort -u
+    } 2>/dev/null | grep -E '\.ts$' | sort -u
   )
-  if [ "${#changed_ts[@]}" -eq 0 ]; then
-    echo "   ✓ No changed TS files to lint (full tree is re-linted in CI)."
-    LINT_CMD=(true)
-  else
-    echo "   Linting ${#changed_ts[@]} changed file(s) (full tree is re-linted in CI)..."
-    LINT_CMD=(npx eslint "${changed_ts[@]}" --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+  for f in "${changed_repo_ts[@]}"; do
+    if is_supported_ts_path "$f"; then
+      changed_ts+=("$f")
+    else
+      unsupported_ts+=("$f")
+    fi
+  done
+  if [ "${#unsupported_ts[@]}" -ne 0 ]; then
+    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:" >&2
+    printf '   - %s\n' "${unsupported_ts[@]}" >&2
+    echo "   Move the file into a supported tree or extend verify:fast + tsconfig.json first." >&2
+    exit 1
   fi
+  if [ "$test_static_only" -eq 1 ]; then
+    LINT_CMD=(true)
+  elif [ -z "${CI:-}" ]; then
+    if [ "${#changed_ts[@]}" -eq 0 ]; then
+      echo "   ✓ No changed TS files to lint (full tree is re-linted in CI)."
+      LINT_CMD=(true)
+    else
+      echo "   Linting ${#changed_ts[@]} changed file(s) (full tree is re-linted in CI)..."
+      LINT_CMD=(npx eslint "${changed_ts[@]}" --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+    fi
+  fi
+elif [ "$test_static_only" -eq 1 ]; then
+  LINT_CMD=(true)
 fi
 
 # In test_static_only mode, allow long-running stubs so signal-lifecycle tests

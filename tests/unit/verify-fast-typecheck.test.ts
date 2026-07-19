@@ -8,6 +8,7 @@ import { bashEnv, toBashScriptPath } from '../helpers/bash-script-path.js';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SCRIPT = toBashScriptPath(path.join(REPO_ROOT, 'scripts/agent/verify-fast.sh'));
 const hasBash = spawnSync('bash', ['-c', 'exit 0']).status === 0;
+const hasGit = spawnSync('git', ['--version']).status === 0;
 const fixtureDirs: string[] = [];
 let fixtureIndex = 0;
 
@@ -61,7 +62,13 @@ function makeFixture(files: Record<string, string>): string {
           outDir: './dist',
           tsBuildInfoFile: './fixture.tsbuildinfo',
         },
-        include: ['src/**/*.ts', 'tests/**/*.ts', 'scripts/**/*.ts'],
+        include: [
+          'vite.config.ts',
+          'src/**/*.ts',
+          'tests/**/*.ts',
+          'scripts/**/*.ts',
+          'tools/**/*.ts',
+        ],
         exclude: [],
       },
       null,
@@ -99,16 +106,26 @@ if (result.kind === 'ready') {
 `;
 
 describe('verify-fast full-project typecheck', () => {
-  it.skipIf(!hasBash).each(['src', 'tests', 'scripts'] as const)(
+  it.skipIf(!hasBash).each(['src', 'tests', 'scripts', 'tools', 'root'] as const)(
     'fails for a %s-only narrowed property error',
     (directory) => {
       const files: Record<string, string> = {
         'src/clean.ts': 'export const sourceValue = 1;\n',
         'tests/clean.test.ts': 'export const testValue = 1;\n',
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
       };
-      const errorPath =
-        directory === 'tests' ? 'tests/narrowing.test.ts' : `${directory}/narrowing.ts`;
+      const errorPath = (() => {
+        switch (directory) {
+          case 'tests':
+            return 'tests/narrowing.test.ts';
+          case 'root':
+            return 'vite.config.ts';
+          default:
+            return `${directory}/narrowing.ts`;
+        }
+      })();
       files[errorPath] = narrowingError;
       const fixture = makeFixture(files);
 
@@ -134,6 +151,53 @@ describe('verify-fast full-project typecheck', () => {
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain('Fast verifier static checks passed');
+    },
+    30_000,
+  );
+});
+
+function initGitFixture(dir: string): void {
+  const runGit = (...args: string[]) => {
+    const result = spawnSync('git', args, {
+      cwd: dir,
+      encoding: 'utf8',
+    });
+    if (result.status !== 0) {
+      throw new Error(
+        `git ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
+  };
+
+  runGit('init');
+  runGit('config', 'user.name', 'Copilot');
+  runGit('config', 'user.email', 'copilot@example.com');
+  runGit('add', '.');
+  runGit('commit', '-m', 'fixture');
+}
+
+describe('verify-fast changed TS path coverage', () => {
+  it.skipIf(!hasBash || !hasGit)(
+    'fails when a changed TS file is outside the supported verifier roots',
+    () => {
+      const fixture = makeFixture({
+        'src/clean.ts': 'export const sourceValue = 1;\n',
+        'tests/clean.test.ts': 'export const testValue = 1;\n',
+        'scripts/clean.ts': 'export const scriptValue = 1;\n',
+        'tools/clean.ts': 'export const toolValue = 1;\n',
+        'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const unsupportedRootValue = 1;\n',
+      });
+      initGitFixture(fixture);
+      writeFileSync(path.join(fixture, 'vitest.config.ts'), narrowingError);
+
+      const result = runStaticVerifier(fixture, { cwd: fixture });
+
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:',
+      );
+      expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.ts');
     },
     30_000,
   );
