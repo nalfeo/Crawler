@@ -10,7 +10,7 @@ Graphics Designer
 
 ## Systems touched
 
-sprite-pipeline, tests/sprites
+sprite-workflow, sprite-pipeline
 
 ## Apples
 

@@ -9,6 +9,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { loadBrief, mergeMinimalIntoDefaults } from '../../../scripts/sprites/load-brief.js';
+import { FLOOR2_EQUIPMENT_ART_DEFINITIONS } from '../../../src/shared/data/floor2-equipment-art.js';
 
 const SAMPLE_BRIEF_YAML = `
 type: weapon
@@ -209,12 +210,13 @@ describe('loadBrief', () => {
 
     const loaded = loadBrief(briefPath, { projectRoot: repoRoot });
 
+    const def = FLOOR2_EQUIPMENT_ART_DEFINITIONS.find((d) => d.stableId === 'weapon.blood-lance');
+    expect(def, 'blood-lance must exist in FLOOR2_EQUIPMENT_ART_DEFINITIONS').toBeDefined();
+
     expect(loaded.brief.type).toBe('weapon');
     expect(loaded.brief.name).toBe('blood-lance');
-    expect(`weapon.${loaded.brief.name}`).toBe('weapon.blood-lance');
-    expect(`equipment/${loaded.brief.type}/${loaded.brief.name}`).toBe(
-      'equipment/weapon/blood-lance',
-    );
+    expect(`weapon.${loaded.brief.name}`).toBe(def!.stableId);
+    expect(`equipment/${loaded.brief.type}/${loaded.brief.name}`).toBe(def!.runtimeKey);
   });
 
   it('treats a minimal-brief references array as a full replacement, not a concat', () => {
