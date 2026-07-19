@@ -3,11 +3,11 @@
   "schema_version": "crawler-epic-state/v1",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-17T17:32:38.205Z",
+  "updated_at": "2026-07-18T13:34:03.559Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
-    "contract_sha256": "ac20446720e2f3f0d14345a49679630b2cf97f194c8bfea98694a6b514d3a8c8"
+    "contract_sha256": "f7e8163107d2ef9060481d7fcdd7633a5b50177aa70f2c1ac7e7ba038af9826c"
   },
   "authority": {
     "state_role": "index-cache",
@@ -28,7 +28,14 @@
     "bootstrap_node": "slice:A0",
     "default_lease_hours": 24,
     "maximum_without_heartbeat_hours": 48,
-    "protocol_headings": ["CLAIMED", "BLOCKED", "UNBLOCKED", "SCOPE-CHANGE-REQUEST", "HANDOFF"]
+    "protocol_headings": [
+      "CLAIMED",
+      "STACKED-WORK",
+      "BLOCKED",
+      "UNBLOCKED",
+      "SCOPE-CHANGE-REQUEST",
+      "HANDOFF"
+    ]
   },
   "github": {
     "repository": "nalfeo/Crawler",
@@ -117,8 +124,8 @@
         "source": "parent-issue-bootstrap",
         "scope": "Slice A0 control plane only; no gameplay",
         "claimed_at": "2026-07-17T17:32:38.205Z",
-        "lease_expires_at": "2026-07-18T17:32:38.205Z",
-        "heartbeat_at": "2026-07-17T17:32:38.205Z",
+        "lease_expires_at": "2026-07-25T18:26:00.000Z",
+        "heartbeat_at": "2026-07-18T18:26:00.000Z",
         "base_commit": "41c5f2aa"
       },
       "merge": {
@@ -131,22 +138,22 @@
           "kind": "handoff",
           "path_or_check": "docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md",
           "sha256": "9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb",
-          "commit": "461b8a334a018ebbf6e81aa7b31f81c74e08aa6b",
+          "commit": "84489aa693a18831b68c024630cf268eed35bd35",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         },
         {
           "kind": "review-ledger",
           "path_or_check": "docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json",
           "sha256": "fa7d39e5a5e9dcc867ffdbc25ccf6b33c0f0ca86edc229cd8403b97df1316afa",
-          "commit": "065591b1717588fd7acdb8e28936946e4a7e63e6",
+          "commit": "84489aa693a18831b68c024630cf268eed35bd35",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         },
         {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
-          "sha256": "fb5415de4d9d32769f767454bc9e36c7415a88432591e3403bbdeff5cf2ad1fc",
-          "commit": "8fbea1c701e5d536891489c7b8bf0f1715df0ca1",
-          "recorded_at": "2026-07-17T18:25:00.000Z"
+          "sha256": "294a8fe466b71466238e72d6090b027c555ba7d7b0a1368bd7c3a65051676425",
+          "commit": "1435703c4983c6b69c9e0ed222b74caaa296489a",
+          "recorded_at": "2026-07-18T22:22:00.000Z"
         }
       ],
       "reconciliation": {
@@ -157,8 +164,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:A1",
@@ -175,7 +181,10 @@
       "deferred_reason": null,
       "status_changed_at": "2026-07-17T17:32:38.205Z",
       "github": {
-        "issue": null,
+        "issue": {
+          "number": 1279,
+          "url": "https://github.com/nalfeo/Crawler/issues/1279"
+        },
         "pr": null
       },
       "ownership": {
@@ -202,8 +211,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:B1",
@@ -247,8 +255,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:B2",
@@ -292,8 +299,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:B3",
@@ -337,8 +343,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:C1",
@@ -382,8 +387,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:C2",
@@ -427,8 +431,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:D1",
@@ -472,8 +475,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:D2-A",
@@ -517,8 +519,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:D2-B",
@@ -562,8 +563,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:D2",
@@ -607,8 +607,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:D3-A",
@@ -652,8 +651,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:D3-B",
@@ -697,8 +695,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:D3",
@@ -742,8 +739,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:E1",
@@ -787,8 +783,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:E2",
@@ -832,8 +827,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:E3-A",
@@ -877,8 +871,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:E3-B",
@@ -922,8 +915,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:E3-C",
@@ -967,8 +959,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:E3",
@@ -1012,8 +1003,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:F1",
@@ -1057,8 +1047,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:F2",
@@ -1102,8 +1091,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:F3",
@@ -1147,8 +1135,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:F4",
@@ -1192,8 +1179,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:G1",
@@ -1237,8 +1223,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:G2-A",
@@ -1282,8 +1267,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:G2-B+",
@@ -1327,8 +1311,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:G2",
@@ -1372,8 +1355,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "packet:G3",
@@ -1417,8 +1399,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:G3",
@@ -1462,8 +1443,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:H1",
@@ -1507,8 +1487,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:H2",
@@ -1552,8 +1531,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:H3",
@@ -1597,8 +1575,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:I1",
@@ -1650,8 +1627,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:I2",
@@ -1695,8 +1671,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:I3",
@@ -1740,8 +1715,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     },
     {
       "node_id": "slice:J",
@@ -1785,8 +1759,7 @@
         "observed_merge_commit": null,
         "drift": []
       },
-      "superseded_by": null,
-      "stacked_work": null
+      "superseded_by": null
     }
   ],
   "reconciliation": {

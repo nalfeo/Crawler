@@ -75,6 +75,7 @@ const RELEASE_HANDOFF_PENDING = 'handoff-pending';
 const RELEASE_HANDOFF_ATTEMPTS = 3;
 const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
+const ADDRESSED_MARKER_REPLY = '`✅ Addressed in <sha>: <one-line note>`';
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -1657,7 +1658,9 @@ const taskBody = [
   '',
   '**Review-thread protocol:** For every listed review thread, invoke a separate review agent using a model different from your primary model to validate whether the comment is still applicable to the current head. Threads marked `(outdated)` only indicate a stale diff anchor; they do not by themselves prove the finding is inapplicable. Still validate outdated threads against the current head, and classify them as `deterministically-inapplicable` only if that validator confirms the line/file is gone or the finding duplicates an already-addressed thread. For all threads: fix valid findings; resolve deterministic non-applicability (removed line or file, duplicate already addressed) or a validated `✅ Addressed` result; for substantive disagreement, reply with the validator evidence and leave the thread unresolved for escalation.',
   '',
-  'When a thread is addressed, reply in that exact thread with `✅ Addressed in <sha>: <one-line note>`. The recovery infrastructure resolves the thread once the marker is detected — do not attempt to resolve it yourself. Run the repository-required verification and push one consolidated repair commit.',
+  `A top-level PR comment is never sufficient for a review-thread blocker; post the ${ADDRESSED_MARKER_REPLY} reply in the exact thread comment listed above.`,
+  '',
+  `When a thread is addressed, reply in that exact thread with ${ADDRESSED_MARKER_REPLY}. The recovery infrastructure resolves the thread once the marker is detected — do not attempt to resolve it yourself. Run the repository-required verification and push one consolidated repair commit.`,
 ].join('\n');
 
 if (live) {

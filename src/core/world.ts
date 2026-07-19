@@ -13,6 +13,10 @@ import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
 import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
+import {
+  createEmptyAchievementFactState,
+  type AchievementFactState,
+} from '../shared/achievements.js';
 import type {
   BloodFootprintSurface,
   BloodPoolSurface,
@@ -28,6 +32,11 @@ import {
   type BarrierHandle,
   type BarrierRegistry,
 } from './barriers/index.js';
+import {
+  createGeneratedEquipmentRegistry,
+  type GeneratedEquipmentRegistry,
+} from './generated-equipment-registry.js';
+import type { GeneratedEquipmentGenerationPolicyV1 } from '../shared/generated-equipment-types.js';
 import {
   Position,
   Velocity,
@@ -110,6 +119,13 @@ export interface GameWorld {
   ecs: ReturnType<typeof createBitecsWorld>;
   /** Typed-array component stores — read directly: stores.position.x[eid] */
   stores: ComponentStores;
+  /**
+   * Monotonic cosmetic spawn identity per EID. Renderers use it to distinguish
+   * recycled entities without consulting or mutating gameplay state.
+   */
+  entityRenderGeneration: Uint32Array;
+  /** Counter backing {@link entityRenderGeneration}; zero is reserved for unset slots. */
+  nextEntityRenderGeneration: number;
   /** Seeded RNG — never use Math.random() */
   rng: SeededRandom;
   /**
@@ -181,6 +197,8 @@ export interface GameWorld {
   abilityTriggerEvents: AbilityTriggerEvent[];
   /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
   inventories: Map<number, InventoryBag>;
+  /** Authoritative generated-equipment records for this run. */
+  generatedEquipmentRegistry: GeneratedEquipmentRegistry;
   /** Per-entity active status effects (eid → effects). Side-car for variable-length data. */
   statusEffectsByEntity: Map<number, StatusEffect[]>;
   /** Per-door lock configurations (eid → lock config). */
@@ -390,6 +408,8 @@ export interface GameWorld {
     pendingUnlockIds: string[];
     /** Achievement IDs whose reward has been opened/claimed this run. */
     claimedIds: Set<string>;
+    /** Deterministic run-global achievement facts carried across floor transitions. */
+    runGlobal: AchievementFactState;
   };
   /**
    * True when the player entity's current position is inside a safe room.
@@ -402,6 +422,40 @@ export interface GameWorld {
     /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
     showAllRooms: boolean;
   };
+  /**
+   * Floor 2 equipment feature flags. All flags default to `false` and apply
+   * only to Floor 2. Floor 1 is unaffected regardless of flag values.
+   *
+   * Dependency closure (enabling a flag without its deps is a config error):
+   *   floor2EquipmentRegistry      — none
+   *   floor2EquipmentCatalog       — registry
+   *   floor2EquipmentRewards       — registry, catalog
+   *   floor2EquipmentEconomy       — registry, catalog
+   *   floor2EquipmentUx            — registry, catalog
+   *   floor2EquipmentWorld         — registry, catalog
+   *   floor2EquipmentAiMaintenance — registry, catalog, economy, UX, world
+   *
+   * Disabling a flag stops new generation/mutation through that consumer but
+   * does NOT delete, rewrite, or reroll persisted v1 records.
+   *
+   * See ADR 0065 DEC-009 and .specify/specs/equipment-system.md §Feature flags.
+   */
+  floor2EquipmentFlags: {
+    /** Enables the generated-instance registry. Gate for all other Floor 2 equipment features. */
+    floor2EquipmentRegistry: boolean;
+    /** Enables the equipment catalog (70 normalized bases). Requires registry. */
+    floor2EquipmentCatalog: boolean;
+    /** Enables achievement equipment reward generation. Requires registry + catalog. */
+    floor2EquipmentRewards: boolean;
+    /** Enables Quartermaster stock + boss chest generation. Requires registry + catalog. */
+    floor2EquipmentEconomy: boolean;
+    /** Enables equipment inventory/equip UX. Requires registry + catalog. */
+    floor2EquipmentUx: boolean;
+    /** Enables world placement (chests, drops). Requires registry + catalog. */
+    floor2EquipmentWorld: boolean;
+    /** Enables AI settlement-maintenance behavior. Requires all other flags. */
+    floor2EquipmentAiMaintenance: boolean;
+  };
 }
 
 export interface CreateWorldOptions {
@@ -409,6 +463,10 @@ export interface CreateWorldOptions {
   floor?: number;
   maxEntities?: number;
   entityCapacityMode?: 'game' | 'lab' | 'test';
+  /** Explicit immutable run identity required before generated equipment can be created. */
+  generatedEquipmentRunKey?: string;
+  /** Frozen-content generation policy; omitted to use the v1 contract policy. */
+  generatedEquipmentGenerationPolicy?: GeneratedEquipmentGenerationPolicyV1;
 }
 
 const DEFAULT_ENTITY_CAPACITY_BY_MODE = {
@@ -490,6 +548,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   const world: GameWorld = {
     ecs,
     stores,
+    entityRenderGeneration: new Uint32Array(maxEntities),
+    nextEntityRenderGeneration: 0,
     rng: new SeededRandom(options.seed ?? 42),
     seed: options.seed ?? 42,
     frameCount: 0,
@@ -514,6 +574,10 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     abilityStatesByEntity: new Map(),
     abilityTriggerEvents: [],
     inventories: new Map(),
+    generatedEquipmentRegistry: createGeneratedEquipmentRegistry({
+      runKey: options.generatedEquipmentRunKey,
+      generationPolicy: options.generatedEquipmentGenerationPolicy,
+    }),
     statusEffectsByEntity: new Map(),
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
@@ -556,11 +620,21 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       unlockedIds: new Set(),
       pendingUnlockIds: [],
       claimedIds: new Set(),
+      runGlobal: createEmptyAchievementFactState(),
     },
     debugFlags: {
       showAllRooms: false,
     },
     playerInSafeRoom: false,
+    floor2EquipmentFlags: {
+      floor2EquipmentRegistry: false,
+      floor2EquipmentCatalog: false,
+      floor2EquipmentRewards: false,
+      floor2EquipmentEconomy: false,
+      floor2EquipmentUx: false,
+      floor2EquipmentWorld: false,
+      floor2EquipmentAiMaintenance: false,
+    },
   };
   logger.info('Created game world', {
     seed: options.seed ?? 42,

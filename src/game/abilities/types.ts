@@ -10,6 +10,7 @@ import {
 
 export { ACTIVE_ABILITY_SLOT_LIMIT } from '../../shared/abilities.js';
 export type {
+  AbilityGrantSource,
   AbilityState,
   AbilityTriggerCondition,
   AbilityTriggerEvent,

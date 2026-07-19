@@ -3832,6 +3832,12 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     taskCommentCall.body.body.includes(`Reply target comment ID: \`${reviewCommentId}\``),
     'task comment should include the review-thread reply target comment ID',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes(
+      'A top-level PR comment is never sufficient for a review-thread blocker',
+    ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
+    'task comment should explicitly reject top-level PR comments for review-thread blockers',
+  );
 });
 
 test('live reconcile annotates outdated review threads in task body', async (t) => {
