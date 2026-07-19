@@ -170,15 +170,19 @@ package_json_deps_changed() {
     return 2
   fi
   BASE_PKG="$base_pkg" HEAD_PKG="$head_pkg" node -e '
-const base = JSON.parse(process.env.BASE_PKG ?? "{}");
-const head = JSON.parse(process.env.HEAD_PKG ?? "{}");
-const depKeys = ["dependencies","devDependencies","peerDependencies","optionalDependencies"];
-for (const key of depKeys) {
-  if (JSON.stringify(base[key] ?? {}) !== JSON.stringify(head[key] ?? {})) {
-    process.exit(0);
+try {
+  const base = JSON.parse(process.env.BASE_PKG ?? "{}");
+  const head = JSON.parse(process.env.HEAD_PKG ?? "{}");
+  const depKeys = ["dependencies","devDependencies","peerDependencies","optionalDependencies","overrides"];
+  for (const key of depKeys) {
+    if (JSON.stringify(base[key] ?? {}) !== JSON.stringify(head[key] ?? {})) {
+      process.exit(0);
+    }
   }
+  process.exit(1);
+} catch (e) {
+  process.exit(2);
 }
-process.exit(1);
 ' >/dev/null 2>&1
 }
 
@@ -189,8 +193,11 @@ process.exit(1);
 # empty change set (→ fail-safe all-false below) rather than silently falling back
 # to git-based diffing.
 base_ref=""
+diff_ok=false
 if [ -n "${SCOPE_FILES_OVERRIDE+x}" ]; then
   changed="${SCOPE_FILES_OVERRIDE:-}"
+  # Caller-provided override: treat as verified (even when empty).
+  diff_ok=true
   # local-scope.sh passes changed files via override; keep a merge-base for optional
   # content-aware checks (for example package.json classification).
   base_ref="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
@@ -210,14 +217,18 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false false false false false false false false
+    emit_all false false false false false true true true true true
     exit 0
   fi
 
-  changed="$(git diff --name-only "${base_ref}...HEAD" 2>/dev/null || true)"
+  diff_rc=0
+  changed="$(git diff --name-only "${base_ref}...HEAD" 2>/dev/null)" || diff_rc=$?
+  if [ "$diff_rc" -eq 0 ]; then diff_ok=true; fi
   if [ -z "$changed" ]; then
     # Two-dot fallback for non-merge-base histories (e.g. force-push).
-    changed="$(git diff --name-only "${base_ref}" HEAD 2>/dev/null || true)"
+    diff_rc=0
+    changed="$(git diff --name-only "${base_ref}" HEAD 2>/dev/null)" || diff_rc=$?
+    if [ "$diff_rc" -eq 0 ]; then diff_ok=true; fi
   fi
 
   echo "Comparison base: ${base_ref}" >&2
@@ -228,7 +239,14 @@ echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false false false false false false false false
+  if [ "$diff_ok" = "true" ]; then
+    # Verified empty change set — nothing to classify.
+    emit_all false false false false false false false false false false
+  else
+    # Git diff resolution failed — impact unknown, fail closed for positive flags.
+    echo "Git diff resolution failed — running full CI for positive flags." >&2
+    emit_all false false false false false true true true true true
+  fi
   exit 0
 fi
 
@@ -499,31 +517,67 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
+# Detect any path not covered by any known surface pattern. A path that is
+# unclassified cannot be proven irrelevant to any surface, so all five new
+# positive impact flags must be forced true (fail-closed). The existing
+# visual/sim/coverage loops already set their own flags via `*) flag=true; break`,
+# but they may break before seeing an unclassified file if an earlier file already
+# triggered a positive. This dedicated pass ensures every file is checked.
+has_unclassified=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    src/*) ;;
+    tests/*) ;;
+    docs/*) ;;
+    .specify/specs/*) ;;
+    *.md) ;;
+    *.txt) ;;
+    .github/*) ;;
+    scripts/*) ;;
+    public/*) ;;
+    package.json) ;;
+    package-lock.json) ;;
+    AGENTS.md) ;;
+    *) has_unclassified=true; break ;;
+  esac
+done <<<"$changed"
+
 # sprite_pipeline_touched: derived directly from sprites_touched to avoid
 # duplicating the allowlist. Same positive set; emitted as a separate output so
 # future consumers can migrate to the orthogonal flag without a rename.
+# Fail-closed: an unclassified path also forces this flag true.
 sprite_pipeline_touched="$sprites_touched"
+if [ "$has_unclassified" = "true" ]; then
+  sprite_pipeline_touched=true
+fi
 
 # dependencies_touched: package.json dependency sections or package-lock.json
 # changed. Fail-closed when content analysis is unavailable (no node, no base,
-# or the dep-vs-scripts distinction cannot be made).
+# or the dep-vs-scripts distinction cannot be made), or when any unclassified
+# path is present.
 dependencies_touched=false
 while IFS= read -r file; do
   [ -z "$file" ] && continue
   case "$file" in
     package-lock.json) dependencies_touched=true; break ;;
     package.json)
-      # Tri-state: 0=deps changed, 1=no dep change, 2=unknown
+      # Tri-state: 0=deps changed, 1=no dep change, 2=unknown; any other failure
+      # is also treated as unknown (→ fail closed). The Node helper normalises its
+      # own errors to exit 2 (try/catch wraps JSON.parse + comparisons).
       pkg_deps_rc=0
       package_json_deps_changed || pkg_deps_rc=$?
-      if [ "$pkg_deps_rc" -eq 0 ] || [ "$pkg_deps_rc" -eq 2 ]; then
-        # deps definitely changed OR cannot determine → fail closed
+      if [ "$pkg_deps_rc" -ne 1 ]; then
+        # deps definitely changed (0), unknown (2), or any other failure → fail closed
         dependencies_touched=true; break
       fi
       # pkg_deps_rc=1: no dep change (scripts-only or other non-dep change)
       ;;
   esac
 done <<<"$changed"
+if [ "$has_unclassified" = "true" ]; then
+  dependencies_touched=true
+fi
 
 emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" \
   "$visual_touched" "$sim_touched" "$coverage_touched" "$sprite_pipeline_touched" "$dependencies_touched"

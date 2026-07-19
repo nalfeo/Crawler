@@ -314,10 +314,11 @@ const cases: Case[] = [
   },
   // ── Unknown / unclassified paths ───────────────────────────────────────────
   {
-    name: 'unknown path → fail-closed for visual/sim/coverage',
+    name: 'unknown path → fail-closed for all five new impact flags',
     files: ['some/weird/unclassified/file.xyz'],
-    // *) in visual/sim/coverage loops → fail closed; not sprite pipeline or dep
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    // *) in visual/sim/coverage loops → those three fail closed; has_unclassified
+    // detection also forces sprite_pipeline_touched and dependencies_touched true
+    expected: F(false, false, false, false, false, true, true, true, true, true),
   },
   // ── Sprite pipeline paths ──────────────────────────────────────────────────
   {

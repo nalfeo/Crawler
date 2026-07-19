@@ -183,7 +183,7 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     expect(hasBash).toBe(true);
   });
 
-  it.skipIf(!hasBash)('CRIT-1: no merge base ⇒ all-false even for a docs-only working tree', () => {
+  it.skipIf(!hasBash)('CRIT-1: no merge base ⇒ legacy flags false, new positive flags true (fail-closed)', () => {
     const repo = makeRepo();
     repo.write('README.md', '# seed\n');
     repo.git('add', '.');
@@ -193,7 +193,17 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     // A docs-only edit would look "safe" if classified from the working tree alone —
     // but with no base we must refuse and force the full suite.
     repo.write('docs/notes.md', 'notes\n');
-    expect(repo.scope()).toEqual(F(false, false, false));
+    // Unknown scope: legacy flags stay false (no false "safe" skip granted);
+    // the five new positive flags are true (fail-closed — cannot prove nothing changed).
+    expect(repo.scope()).toEqual(
+      F(false, false, false, {
+        visual_touched: true,
+        sim_touched: true,
+        coverage_touched: true,
+        sprite_pipeline_touched: true,
+        dependencies_touched: true,
+      }),
+    );
   });
 
   it.skipIf(!hasBash)('clean tree with a resolved base fails safe to all-false', () => {
@@ -272,6 +282,38 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       // src/core deletion → gameplay_safe=false, sim_touched=true, coverage_touched=true
       expect(repo.scope()).toEqual(
         F(false, false, false, { sim_touched: true, coverage_touched: true }),
+      );
+    },
+  );
+
+  it.skipIf(!hasBash)(
+    'CRIT-3: rename across impact classes — both old and new paths are classified',
+    () => {
+      const repo = makeRepo();
+      repo.write('README.md', '# seed\n');
+      repo.write('src/core/moveable.ts', 'export const m = 1;\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'seed');
+      repo.git('branch', '-M', 'main');
+      repo.git('checkout', '-q', '-b', 'feature');
+      // git mv requires the destination directory to exist.
+      mkdirSync(path.join(repo.dir, 'some', 'unknown'), { recursive: true });
+      // Rename the src/core file to an unclassified path (crosses impact classes).
+      repo.git('mv', 'src/core/moveable.ts', 'some/unknown/destination.ts');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'rename core → unclassified');
+      // The diff contains both:
+      //   src/core/moveable.ts  (old path, classified: sim_touched, coverage_touched)
+      //   some/unknown/destination.ts (new path, unclassified → all five new flags)
+      // Neither path should be silently dropped — no --diff-filter is used.
+      expect(repo.scope()).toEqual(
+        F(false, false, false, {
+          visual_touched: true,
+          sim_touched: true,
+          coverage_touched: true,
+          sprite_pipeline_touched: true,
+          dependencies_touched: true,
+        }),
       );
     },
   );
