@@ -6876,3 +6876,160 @@ test('prior-reply hint ignores non-recovery collaborator follow-up comments', as
     'task body must not surface collaborator follow-up text inside the blocker hint',
   );
 });
+
+test('prior-reply hint is preserved when quoted task body contains a stale-marker SHA', async (t) => {
+  // Regression: a recovery reply that QUOTES a task body containing a stale-marker
+  // SHA (e.g. "✅ Addressed in <sha>: ..." inside a "> " blockquote) must NOT be
+  // treated as a marked reply.  The raw-body check at the old code path found the
+  // quoted SHA and skipped the comment, discarding the prior-attempt hint for the
+  // correlated review thread.  The fix builds the unquoted summary first and tests
+  // markers only in that unquoted portion.
+  const threadId = 'PRRT_mixed_stale_plain_thread';
+  const priorTaskFingerprint = 'ab12cd34ef5678901234567890abcdef01234567890abcdef1234567890abcde';
+  const staleMarkerSha = 'cafe1234beef5678dead0000aabbccddeeff0011';
+  const originalConcern = 'Reviewer requires external issue comment before merge.';
+  const priorBlockedReply =
+    'Blocked: the required external issue comment has not been posted yet.';
+  const thread = {
+    id: threadId,
+    isResolved: false,
+    isOutdated: false,
+    path: '.github/scripts/ci-recovery/reconcile.mjs',
+    line: 1073,
+    comments: {
+      nodes: [
+        {
+          id: 'PRIC_reviewer_mixed',
+          body: originalConcern,
+          url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r10`,
+          authorAssociation: 'COLLABORATOR',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+      ],
+    },
+  };
+  const blockerId = reviewThreadBlockerId(thread);
+  // The prior task comment lists the plain thread blocker and also includes a stale
+  // marker from a different, already-resolved thread so the fingerprint is unique.
+  const priorTaskComment = [
+    `<!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '@copilot Please recover this PR from the exact blockers below.',
+    '',
+    `1. **review-thread** \`${blockerId}\` at \`.github/scripts/ci-recovery/reconcile.mjs:1073\``,
+    `   copilot-pull-request-reviewer: ${originalConcern}`,
+  ].join('\n');
+  // The recovery reply quotes the task body which happened to include a stale-marker
+  // line from the previous dispatch.  This simulates a reply that begins with quoted
+  // text containing "✅ Addressed in <sha>:" and then provides the real blocked text
+  // as unquoted content.
+  const priorTopLevelReply = [
+    `> <!-- crawler-ci-task:v1 fingerprint=${priorTaskFingerprint} -->`,
+    '> @copilot Please recover this PR from the exact blockers below.',
+    `> [Stale marker: ✅ Addressed in ${staleMarkerSha}: old note about a different thread]`,
+    '',
+    priorBlockedReply,
+  ].join('\n');
+
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [
+        {
+          id: 10050,
+          body: priorTaskComment,
+          user: { login: 'nalfeo' },
+        },
+        {
+          id: 10051,
+          body: priorTopLevelReply,
+          user: { login: 'Copilot' },
+        },
+      ],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([thread]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 1005 },
+    }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  // Thread must NOT be auto-resolved — the quoted stale marker must not be
+  // mistaken for a real current-head addressed marker.
+  assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+
+  // A task comment must be posted because the thread is still unresolved.
+  const taskCommentCall = mutatingCalls.find(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+      typeof call.body?.body === 'string' &&
+      call.body.body.includes('crawler-ci-task'),
+  );
+  assert.ok(
+    taskCommentCall,
+    'expected a task comment to be posted for the mixed-stale prior-reply blocker',
+  );
+
+  // The prior-reply hint must include the blocked reply text — this is the key
+  // assertion: the quoted stale marker must not have suppressed the hint.
+  assert.match(
+    taskCommentCall.body.body,
+    new RegExp(
+      String.raw`\[Prior recovery reply \(no marker posted — do not re-post an identical reply\): ${escapeRegex(priorBlockedReply)}\]`,
+    ),
+    'task body must include the prior blocked reply even when quoted task body contains a stale-marker SHA',
+  );
+
+  // The stale-marker hint must NOT appear — this thread had a prior plain reply,
+  // not a stale addressed marker in the unquoted portion.
+  assert.doesNotMatch(
+    taskCommentCall.body.body,
+    /Stale marker/i,
+    'task body must NOT include a stale-marker hint when the marker was only in the quoted portion',
+  );
+});

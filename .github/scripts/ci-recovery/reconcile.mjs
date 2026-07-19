@@ -1132,7 +1132,16 @@ const priorTopLevelReplyByBlockerId = new Map();
 for (const comment of comments) {
   const authorLogin = String(comment?.user?.login ?? comment?.author?.login ?? '').toLowerCase();
   if (!KNOWN_RECOVERY_REPLY_LOGINS.has(authorLogin)) continue;
-  if (extractAddressedMarkerSha(comment?.body)) continue;
+  // Test for an addressed marker only in the non-quoted portion of the body.
+  // A recovery reply may quote the prior task body (lines starting with ">"),
+  // and that quoted task may itself contain a stale-marker SHA from an earlier
+  // thread.  Checking the raw body would find the quoted marker and incorrectly
+  // discard the bot's own non-marker reply, losing the prior-attempt context.
+  const unquotedBody = String(comment?.body ?? '')
+    .split(/\r?\n/)
+    .filter((line) => !line.trimStart().startsWith('>'))
+    .join('\n');
+  if (extractAddressedMarkerSha(unquotedBody)) continue;
   const taskFingerprint = extractTaskFingerprint(comment?.body);
   if (!taskFingerprint) continue;
   const blockerIds = taskReviewThreadBlockersByFingerprint.get(taskFingerprint);

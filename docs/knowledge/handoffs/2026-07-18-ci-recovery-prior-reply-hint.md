@@ -6,7 +6,7 @@
 
 ## Systems touched
 
-ci-recovery
+ci-policy
 
 ## Problem
 
