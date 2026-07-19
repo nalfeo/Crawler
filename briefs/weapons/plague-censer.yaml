@@ -1,0 +1,29 @@
+type: weapon
+name: plague-censer
+description: |
+  A Floor 2 magic-focus weapon: an ornate hanging censer — the kind swung
+  on a chain — repurposed as a plague-dispersal focus. Held vertically with
+  the chain grip at the bottom and the censer head at the top. The censer
+  body is a faceted lantern-like vessel, heavily corroded brass or dark
+  bronze, perforated with small holes from which wisps of sickly green-yellow
+  or bilious olive smoke seep. The chain is short (2–3 links visible), thick
+  dungeon iron, attached to a simple wrapped-leather grip below. The censer
+  lid is domed with a small finial — slightly ajar to vent fumes. No bright
+  glow, no magical sparkle — the menace is the slow, steady seep of
+  diseased vapor from the perforations. Surface reads as corroded metal:
+  verdigris patches on the brass, dents, crusted residue around the holes.
+  Accent color: dull sickly green-yellow for the vapor wisps against the dark
+  bronze body. Silhouette must read "lantern-censer on a short chain-handle"
+  at a glance: faceted vessel top, chain links in the middle, handle grip
+  at base.
+# Vertical orientation (grip at bottom, censer head at top) and 4x4 sheet
+# inherited from data/sprite-types/weapon.json. Anchor at (32,56) correct
+# for the lower grip area. judge.enabled: true also inherited.
+#
+# Production wave: floor2-equipment-weapon-magic-focus
+# Stable ID:       weapon.plague-censer
+# Runtime key:     equipment/weapon/plague-censer
+variations:
+  - censer body with wide hexagonal lattice panels and thick chain links
+  - narrow cylindrical censer body with dense circular perforation rows
+minVariations: 6
