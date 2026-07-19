@@ -965,6 +965,13 @@ type UniqueDuplicateRule =
       readonly type: 'convert-upgrade';
       readonly upgradeLevel: number;
       readonly maxUpgradeLevel: number;
+      /**
+       * Outcome when a duplicate is acquired and the existing copy is already
+       * at `maxUpgradeLevel`. Must be declared for every `convert-upgrade` item.
+       * 'burn' applies the item's burn compensation; 'disallow' blocks the slot
+       * and falls back to a generated Rare (same as the disallow rule).
+       */
+      readonly atCapRule: 'burn' | 'disallow';
     };
 
 type UniqueAcquisitionSource =
@@ -982,6 +989,18 @@ type UniqueEligibilityPrereq =
   | { readonly type: 'achievement-completed'; readonly achievementId: string }
   | { readonly type: 'npc-dialogue-state'; readonly npcId: string; readonly stateKey: string };
 
+/**
+ * One ability or passive grant provided by a Unique while it is equipped.
+ * `ordinal` is a stable 0-based index assigned at authoring time and never
+ * reassigned; it forms the stable component of the source ID
+ * `unique:<uniqueId>:<abilityOrdinal>` used by the DEC-006 grant model.
+ */
+interface UniqueGrant {
+  readonly ordinal: number; // stable; never reassigned after first authoring
+  readonly type: 'active-ability' | 'passive';
+  readonly grantId: string; // human-readable key unique within this def, e.g. 'shield-pulse'
+}
+
 interface UniqueEquipmentDef {
   readonly schemaVersion: 'unique-equipment-def/v1';
   readonly uniqueId: UniqueEquipmentId;
@@ -993,11 +1012,18 @@ interface UniqueEquipmentDef {
   readonly vfxKey: UniqueArtKey | null; // optional bespoke VFX
   readonly acquisitionSource: UniqueAcquisitionSource;
   readonly duplicateRule: UniqueDuplicateRule;
-  readonly upgradeLevel: number; // mutable on convert-upgrade; 0 otherwise
+  readonly upgradeLevel: number; // catalog baseline; 0 for non-convert-upgrade items
   readonly maxUpgradeLevel: number; // 0 for non-convert-upgrade items
   readonly eligibilityPrereqs: readonly UniqueEligibilityPrereq[];
   readonly questId: string | null;
   readonly achievementId: string | null;
+  /**
+   * Ordered list of ability/passive grants this Unique provides while equipped.
+   * Each entry's `ordinal` is stable and forms the `<abilityOrdinal>` segment of
+   * the grant source ID `unique:<uniqueId>:<abilityOrdinal>`.
+   * Empty for Uniques that have no ability/passive grants.
+   */
+  readonly grants: readonly UniqueGrant[];
 }
 ```
 
@@ -1012,13 +1038,21 @@ interface PlayerUniqueEquipmentState {
   ownedUniques: UniqueEquipmentId[];
   /** Equipped Unique per slot (null means no Unique in that slot). */
   equippedUniques: Partial<Record<EquipmentSlotId, UniqueEquipmentId>>;
+  /**
+   * Per-player mutable upgrade level for `convert-upgrade` Uniques.
+   * Key is present only for items with `maxUpgradeLevel > 0`.
+   * The `UniqueEquipmentDef.upgradeLevel` field is immutable catalog data;
+   * this map is the authoritative per-save upgrade state.
+   */
+  upgradeLevels: Partial<Record<UniqueEquipmentId, number>>;
 }
 ```
 
 - There is no per-copy instance numbering, no copy counter, and no registry record.
-- For `convert-upgrade` items the `upgradeLevel` is stored inline in the
-  `PlayerUniqueEquipmentState` beside the owned ID:
-  `ownedUniquesWithLevel: Array<{ id: UniqueEquipmentId; upgradeLevel: number }>`.
+- For `convert-upgrade` items, the per-player upgrade level is stored in
+  `upgradeLevels[id]` within `PlayerUniqueEquipmentState`. The catalog-level
+  `UniqueEquipmentDef.upgradeLevel` is read-only authoring data and must not
+  be mutated at runtime.
 - Multiple equipped slots may reference one multi-slot Unique; those references
   count as one owner.
 - A Unique cannot be equipped in a slot already occupied by a generated instance,
@@ -1026,20 +1060,31 @@ interface PlayerUniqueEquipmentState {
 
 ### Acquisition and Duplicate Policy
 
-Acquisition is checked at offer time, not at deliver time:
+Acquisition is validated at offer time **and** revalidated atomically at delivery/claim/purchase:
 
-- `boss-drop`: The loot resolver checks `ownedUniques` at floor-load. If the
-  player already owns the item and the rule is `disallow`, the slot resolves to a
-  fallback generated Rare instance instead.
+- `boss-drop`: The loot resolver checks `ownedUniques` at floor-load to drive
+  stock generation. At the moment the player actually receives the drop (claim),
+  ownership is revalidated atomically; if the player acquired the same Unique
+  from another source between floor-load and claim, the duplicate rule is applied
+  at claim time. If the rule is `disallow`, the slot resolves to a fallback
+  generated Rare instance instead.
 - `quest-reward` and `achievement-reward`: The grant function checks `ownedUniques`
   before granting. If the rule is `burn` and the item is already owned, the
   compensation is applied instead. If the rule is `disallow` the grant is silently
   skipped (the quest/achievement still completes; only the item reward is replaced).
-- `merchant-exclusive`: Stock generation checks `ownedUniques` and applies the
-  `disallow` or `burn` rule at stock-resolve time.
+  In both cases, ownership revalidation occurs atomically at the claim/grant call
+  site, not only at offer presentation.
+- `merchant-exclusive`: Stock generation checks `ownedUniques` at stock-resolve
+  time. The purchase transaction also revalidates ownership atomically at purchase
+  commit; any ownership change between stock generation and purchase applies the
+  `disallow` or `burn` rule at purchase time.
 
-For `convert-upgrade` rules: if the player owns the item at `upgradeLevel < maxUpgradeLevel`,
-the existing copy is upgraded by one level and no new copy is created.
+For `convert-upgrade` rules: if the player owns the item at `upgradeLevels[id] < maxUpgradeLevel`,
+the existing copy is upgraded by one level in `upgradeLevels` and no new copy is created.
+If the player owns the item at `upgradeLevels[id] === maxUpgradeLevel` (at the upgrade cap),
+the `atCapRule` declared in the `UniqueDuplicateRule` governs the outcome: `burn` applies the
+item's declared compensation, and `disallow` blocks the acquisition slot (same fallback-Rare
+behavior as the `disallow` rule). This at-cap outcome applies at every acquisition source.
 
 ### Ability and Passive Grants
 
@@ -1060,22 +1105,26 @@ The existing active-ability slot limit remains the authority.
 
 - **Save format**: `PlayerUniqueEquipmentState` is serialized alongside the
   generated-instance registry. It is initialized to `{ ownedUniques: [],
-equippedUniques: {} }` for saves predating Unique support.
+  equippedUniques: {}, upgradeLevels: {} }` for saves predating Unique support.
 - **Forward compatibility**: Unknown `UniqueEquipmentId` values in `ownedUniques`
   are retained verbatim on load. No migration discards or rerolls known Uniques.
 - **Migration**: A save that contains a `uniqueId` that no longer exists in the
   `UniqueEquipmentDef` catalog is preserved in `ownedUniques` but cannot be
   displayed or equipped (treated as an unknown Unique with a placeholder name in
   UI). Unknown equipped Uniques are cleared from `equippedUniques` on load.
-- **Carryover**: `ownedUniques` and `equippedUniques` carry across floor
-  transitions in the same carryover payload as the generated-instance registry.
+- **Carryover**: `ownedUniques`, `equippedUniques`, and `upgradeLevels` carry across
+  floor transitions in the same carryover payload as the generated-instance registry.
   Uniques do not reset between floors.
 
 ### Compatibility with Inventory, Rewards, Shops, and Chests
 
 - **Inventory/bag**: The bag stores `UniqueEquipmentId` references in a parallel
-  `uniqueSlot` list, not in the same container as generated `instanceId` references.
-  Bag capacity accounting treats each owned Unique as occupying one bag slot.
+  `uniqueSlot` list, separate from generated `instanceId` references. A Unique
+  occupies one bag slot **only when it is unequipped**; equipping a Unique moves
+  it from the bag into an equipment slot and frees the bag slot. Each owned Unique
+  ID has exactly one current location — either the bag (`uniqueSlot`) or an
+  equipment slot (`equippedUniques`) — never both. Equipped items do not consume
+  bag capacity.
 - **Reward bundles**: An achievement or quest reward bundle may contain a
   `UniqueEquipmentId` alongside generated instance IDs. Claim is atomic (all or
   nothing) per ADR 0065 DEC-007.
@@ -1108,6 +1157,10 @@ slots. Required per item:
 - **VFX** (`vfxKey`, optional): a non-looping particle or overlay effect for the
   bespoke mechanic (if the mechanic has an observable trigger moment).
 
-Briefs for Unique art are submitted through the standard sprite pipeline
-(`sprites:enqueue`) and must be approved before the Unique can be wired into
-runtime. See `.specify/specs/unique-equipment-roster.md` for per-item art plans.
+Art direction for each Unique is documented in the per-item brief in
+`.specify/specs/unique-equipment-roster.md`. Unique art is human-authored outside
+the procedural generation pipeline; the authored files are ingested via
+`sprites:checkin` after creation and approval. The generation pipeline
+(`sprites:run`, `sprites:enqueue`) must **not** be used for Unique art slots —
+only for procedurally generated equipment family sprites. Unique sprites must be
+approved before the item can be wired into runtime.

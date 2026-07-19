@@ -59,11 +59,13 @@ Floor 2 equipment epic's 37-node DAG.
 3. Ability grants use the same source-owned model as ADR 0065 DEC-006, with source
    IDs `unique:<uniqueId>:<abilityOrdinal>`.
 
-4. Save format is additive: two new fields (`ownedUniques`, `equippedUniques`) on
-   the player's equipment state, forward-compatible (unknown IDs preserved on load).
+4. Save format is additive: three new fields (`ownedUniques`, `equippedUniques`,
+   `upgradeLevels`) on the player's equipment state, forward-compatible (unknown
+   IDs preserved on load). `upgradeLevels` is the authoritative per-player upgrade
+   state for `convert-upgrade` items; catalog `upgradeLevel` is immutable.
 
 5. Art is never from the generated pipeline — every Unique requires dedicated
-   authored briefs through `sprites:enqueue`.
+   human-authored art ingested via `sprites:checkin` (not `sprites:enqueue`).
 
 ## What's Next / Blockers
 

@@ -38,6 +38,7 @@ schema and provides a human-readable rationale for the mechanic and duplicate ru
   eligibilityPrereqs: [],
   questId: null,
   achievementId: null,
+  grants: [],
 }
 ```
 
@@ -104,6 +105,7 @@ slot resolves to a Rare generated weapon instead.
   ],
   questId: 'curator-npc-chain',
   achievementId: null,
+  grants: [],
 }
 ```
 
@@ -166,12 +168,14 @@ using the same atomic claim model as ADR 0065 DEC-007.
     type: 'convert-upgrade',
     upgradeLevel: 1,         // second copy adds 1 upgrade level
     maxUpgradeLevel: 3,      // capped at +3
+    atCapRule: 'disallow',   // at upgrade cap, slot resolves to a fallback Rare
   },
   upgradeLevel: 0,
   maxUpgradeLevel: 3,
   eligibilityPrereqs: [],
   questId: null,
   achievementId: null,
+  grants: [],
 }
 ```
 
@@ -238,6 +242,7 @@ instead.
   ],
   questId: null,
   achievementId: 'survive-floor2-deathless',
+  grants: [],
 }
 ```
 
@@ -304,6 +309,7 @@ achievement itself, it is impossible to receive a duplicate through normal play.
   ],
   questId: 'echo-keeper-hidden-chain',
   achievementId: null,
+  grants: [],
 }
 ```
 
@@ -315,6 +321,14 @@ target entity ID, and relative position) in a rolling buffer. On kill, there is 
 sequentially as chain strikes against the nearest living enemy within 8 tiles,
 using the original damage values and ignoring the player's current attack speed.
 The chain burst does not grant additional XP or item drops.
+
+**Non-proccing contract:** Echoed chain strikes are explicitly non-proccing.
+They are excluded from the rolling hit buffer (echoed hits cannot replace the
+buffer with their own values or extend the chain). They cannot trigger Echoed
+Finish themselves (no recursive chains). They do not fire any on-hit or on-kill
+side-effects (including ability procs, status applications, or further grant
+triggers). The kill that initially triggers the Echo is the only kill counted
+for on-kill purposes during a chain burst.
 
 At `upgradeLevel` 0 the trigger probability is 5%. The upgrade level for this
 Unique is fixed at 0 (the `burn` duplicate rule prevents any upgrade path).
@@ -375,5 +389,7 @@ brief set. Production order (suggested by acquisition rarity and player impact):
 
 Each item needs: one 32×32 equipped sprite (`unique/<slug>`), one 20×20 icon
 (`unique-icon/<slug>`), and optionally a short non-looping VFX particle set
-(`unique-vfx/<slug>`). Briefs must be submitted through the standard sprite
-pipeline (`sprites:enqueue`) and approved before runtime wiring.
+(`unique-vfx/<slug>`). Art is human-authored outside the procedural generation
+pipeline and ingested via `sprites:checkin` after creation and approval. The
+generation pipeline (`sprites:run`, `sprites:enqueue`) must not be used for
+Unique art slots.

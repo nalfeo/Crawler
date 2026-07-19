@@ -67,18 +67,27 @@ Key constraints from the broader system:
   - `convert-upgrade` — The second copy upgrades the owned copy's notional
     `upgradeLevel` by one (capped at the `maxUpgradeLevel` declared in the def).
     The original's mechanics scale with `upgradeLevel`; no separate copy is stored.
+    Every `convert-upgrade` def must also declare an `atCapRule` (`burn` or
+    `disallow`) governing what happens when a duplicate arrives and the copy is
+    already at `maxUpgradeLevel`.
 
 - **DEC-004**: **Authored acquisition sources.** Each Unique declares exactly one
   primary acquisition source. Valid source types:
   - `boss-drop` — drops from a specific boss on first kill (seed-deterministic;
     the drop outcome is computed from the world seed at floor-load, not at kill
-    time).
-  - `quest-reward` — granted by completing a specific authored quest.
+    time). Ownership is revalidated atomically at claim; if the player acquired
+    the same Unique from another source between floor-load and claim, the
+    duplicate rule is applied at claim time.
+  - `quest-reward` — granted by completing a specific authored quest. Ownership
+    is revalidated atomically at the grant call site.
   - `achievement-reward` — granted by the achievement system at unlock time, using
-    the same atomic claim model as ADR 0065 DEC-007.
+    the same atomic claim model as ADR 0065 DEC-007. Ownership is revalidated
+    atomically at claim.
   - `merchant-exclusive` — appears in exactly one NPC merchant's stock under a
     declared eligibility condition (e.g. having reached a specific reputation tier
-    or having completed a prerequisite).
+    or having completed a prerequisite). Ownership is revalidated atomically at
+    purchase commit; any ownership change between stock generation and purchase
+    applies the duplicate rule at purchase time.
 
 - **DEC-005**: **Ability and passive grants extend DEC-006.** Unique-granted
   abilities use source IDs of the form `unique:<uniqueId>:<abilityOrdinal>`.
@@ -88,16 +97,20 @@ Key constraints from the broader system:
   simultaneously.
 
 - **DEC-006**: **Save and migration model.** The player's persistent equipment
-  state adds two new top-level fields:
+  state adds three new top-level fields:
   - `ownedUniques: UniqueEquipmentId[]` — sorted, deduplicated list of all Unique
     IDs the player has acquired. Preserved verbatim on load; unknown IDs are
     retained without error (forward-compatible).
   - `equippedUniques: { [slot: EquipmentSlotId]: UniqueEquipmentId | null }` — one
     entry per slot that a Unique occupies; null means no Unique in that slot.
+  - `upgradeLevels: { [id: UniqueEquipmentId]: number }` — per-player upgrade level
+    for `convert-upgrade` items; key present only for items with `maxUpgradeLevel > 0`.
+    This is the authoritative runtime upgrade state; `UniqueEquipmentDef.upgradeLevel`
+    is immutable catalog data.
 
-  Migration from a save predating Unique support initializes both fields to empty.
-  No rerolling or recomputation occurs during migration. Uniques carry across floor
-  transitions alongside generated instances.
+  Migration from a save predating Unique support initializes all three fields to
+  empty. No rerolling or recomputation occurs during migration. All three fields
+  carry across floor transitions alongside generated instances.
 
 - **DEC-007**: **Art requirements.** Every `UniqueEquipmentDef` references a
   dedicated `spriteKey` (authored sprite, not from the generated art pipeline), a
