@@ -592,8 +592,15 @@ export function buildLeaderboard(
         // evaluated on an identical (weapon, seed) panel.  Extra or missing
         // cells would inflate/deflate the raw win count and make the comparison
         // meaningless, so leave winsVsIncumbentDelta null for mismatched panels.
+        // We also require each group to contain exactly one row per cell so that
+        // duplicate rows (which would inflate wins/runs for a group without
+        // changing the unique-cell count) cannot corrupt the comparison.
         const candidateCells = new Set(groupRows.map((r) => `${r.weapon}\u0000${r.seed}`));
+        const noDuplicateCandidateCells = candidateCells.size === groupRows.length;
+        const noDuplicateIncumbentCells = incumbentWinByCell.size === incumbentRows.length;
         const panelsMatch =
+          noDuplicateCandidateCells &&
+          noDuplicateIncumbentCells &&
           candidateCells.size === incumbentWinByCell.size &&
           groupRows.every((r) => incumbentWinByCell.has(`${r.weapon}\u0000${r.seed}`));
         if (panelsMatch) {

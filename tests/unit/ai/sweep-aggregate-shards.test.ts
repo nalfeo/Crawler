@@ -569,6 +569,46 @@ describe('selectQualifiedWinner', () => {
     expect(selectQualifiedWinner(lb).winner).toBeNull();
   });
 
+  it('leaves winsVsIncumbentDelta null when the candidate group contains duplicate (weapon,seed) rows', () => {
+    // A candidate with a duplicated winning row satisfies the unique-cell-count
+    // panel check (1 unique cell == 1 incumbent cell) but has runs=2 / wins=2,
+    // giving an inflated positive delta. The fix: require one row per cell.
+    const rows = [
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }), // duplicate
+    ];
+    const lb = buildLeaderboard(rows, {
+      incumbentCombo: 'legacy+legacy',
+      incumbentConfigId: 'inc',
+    });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    expect(candidate.runs).toBe(2);
+    expect(candidate.wins).toBe(2);
+    // Delta must be null — duplicate rows make the comparison untrustworthy.
+    expect(candidate.winsVsIncumbentDelta).toBeNull();
+    expect(selectQualifiedWinner(lb).winner).toBeNull();
+  });
+
+  it('leaves winsVsIncumbentDelta null when the incumbent group contains duplicate (weapon,seed) rows', () => {
+    // If the incumbent itself has a duplicated row its incumbentWins count is
+    // inflated. The fix: treat the incumbent as having duplicate rows and null
+    // out the delta rather than comparing against an inflated baseline.
+    const rows = [
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }), // duplicate
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
+    ];
+    const lb = buildLeaderboard(rows, {
+      incumbentCombo: 'legacy+legacy',
+      incumbentConfigId: 'inc',
+    });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    // Delta must be null — duplicate incumbent rows make the comparison untrustworthy.
+    expect(candidate.winsVsIncumbentDelta).toBeNull();
+    expect(selectQualifiedWinner(lb).winner).toBeNull();
+  });
+
   it('rejects a candidate below the win-rate floor even with strictly more total wins than the incumbent', () => {
     const rows = [
       loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
