@@ -67,10 +67,69 @@ test('the client script exposes token-gated accept and visible queue states', ()
   assert.match(html, /Accepting & queueing…/);
   assert.match(html, /Already queued/);
   assert.match(html, /Open asset issue/);
-  assert.match(html, /Retry accept & queue/);
+  // Any accepted/staged/integrated/unverified variant exposes "Re-accept"
+  // (force-retries the same idempotent sidecar acceptance path) rather than
+  // the old ephemeral-acceptance-driven "Retry accept & queue" label.
+  assert.match(html, /Re-accept/);
+  assert.doesNotMatch(html, /Retry accept & queue/);
   assert.match(html, /'x-workflow-mutation-token': mutationToken/);
   assert.match(html, /var mutationToken = "secret-token"/);
   assert.doesNotMatch(html, /__WORKFLOW_MUTATION_TOKEN__/);
+});
+
+test('the accept button label is driven by per-variant lifecycle, not ephemeral acceptance state', () => {
+  const html = renderHtml('x');
+  assert.match(html, /lifecycleState === 'unaccepted' \? 'Accept & queue' : 'Re-accept'/);
+});
+
+test('per-variant lifecycle pills are wired for all four states', () => {
+  const html = renderHtml('x');
+  assert.match(html, /function lifecyclePill\(/);
+  assert.match(html, /class: 'lifecycle-pill ' \+ lifecycle\.state/);
+  for (const cls of ['unaccepted', 'accepted-staged', 'integrated', 'unverified']) {
+    assert.match(html, new RegExp(`\\.lifecycle-pill\\.${cls}`));
+  }
+});
+
+test('criterion feedback: comment box is hidden until a thumb is selected, and confirm persists a local draft', () => {
+  const html = renderHtml('x');
+  assert.match(html, /function renderCriterionFeedback\(/);
+  assert.match(html, /input\.hidden = !draft\.verdict/);
+  assert.match(html, /class: 'confirm-btn'/);
+  assert.match(html, /if \(!draft\.verdict\) draft\.comment = ''/);
+  assert.match(html, /fetch\('\/api\/feedback'/);
+  assert.match(html, /'x-workflow-mutation-token': mutationToken/);
+});
+
+test('criterion feedback: a confirmed criterion is written to the CANONICAL candidate location, not a disconnected fallback', () => {
+  const html = renderHtml('x');
+  // Regression guard for the finding that a first-time-confirmed criterion
+  // disappeared on the next rerender: renderCriterionFeedback must read/write
+  // through the canonical read/write helpers (spliced from
+  // lib/feedback-summary.mjs), not the old ad-hoc
+  // `(((c.feedback||{})[kind]||{})[criterion]) || {...}` fallback that
+  // confirm() only mutated locally.
+  assert.match(html, /var persisted = readCriterionFeedback\(c, kind, criterion\)/);
+  assert.match(html, /writeCriterionFeedback\(c, kind, criterion, result && result\.feedback\)/);
+  assert.doesNotMatch(html, /\(\(\(c\.feedback \|\| \{\}\)\[kind\] \|\| \{\}\)\[criterion\]\)/);
+});
+
+test('"View Brief" resolves the run\'s exact brief path, not just a basename match', () => {
+  const html = renderHtml('x');
+  // Regression guard for the finding that View Brief could open the WRONG
+  // file when a draft and committed brief share a basename: openBriefModal
+  // must resolve through resolveBriefEntry (which prefers selected.briefPath)
+  // and must no longer call the old basename-only findBriefEntry helper.
+  assert.match(html, /var entry = resolveBriefEntry\(state, sel\)/);
+  assert.doesNotMatch(html, /findBriefEntry\(state, sel\.briefId\)/);
+  assert.match(html, /function resolveBriefEntry\(/);
+});
+
+test('a stale (cache-first) state shows a non-blocking revalidating badge, never a blocking spinner', () => {
+  const html = renderHtml('x');
+  assert.match(html, /state\.stale/);
+  assert.match(html, /stale-badge/);
+  assert.match(html, /revalidating…/);
 });
 
 test('the renderer warns when a queued acceptance batches more than one asset (ADR 0066 RSK-003)', () => {
@@ -108,4 +167,157 @@ test('instanceId is HTML-escaped into the shell', () => {
   const html = renderHtml('a"><script>bad</script>');
   assert.ok(!html.includes('a"><script>bad'));
   assert.match(html, /data-instance="a&quot;&gt;&lt;script&gt;bad&lt;\/script&gt;"/);
+});
+
+// ---- Expanded UX follow-up ------------------------------------------------
+
+test('the client script splices the serialized pure lib helpers (no placeholders left in output)', () => {
+  const html = renderHtml('x');
+  assert.doesNotMatch(html, /__RUN_FILTER_FNS__/);
+  assert.doesNotMatch(html, /__SHEET_DISPLAY_FNS__/);
+  assert.doesNotMatch(html, /__FEEDBACK_SUMMARY_FNS__/);
+  assert.doesNotMatch(html, /__POSTPROCESS_HANDOFF_FNS__/);
+  assert.doesNotMatch(html, /__BRIEF_LOOKUP_FNS__/);
+  assert.match(html, /function filterRuns\(/);
+  assert.match(html, /function computeSheetDisplaySize\(/);
+  assert.match(html, /function summarizeJudge\(/);
+  assert.match(html, /function summarizeSensors\(/);
+  assert.match(html, /function buildPostprocessDeepLink\(/);
+  assert.match(html, /function resolveBriefEntry\(/);
+});
+
+test('runs support type-to-filter search alongside the existing native promotion select', () => {
+  const html = renderHtml('x');
+  assert.match(html, /class: 'run-search'/);
+  assert.match(html, /type: 'search'/);
+  assert.match(html, /filterRuns\(state\.runs \|\| \[\], runFilter, runSearch\)/);
+  // Native select preserved for the promotion filter (Refinement D: not a
+  // bespoke combobox).
+  assert.match(html, /title: 'Filter runs by promotion state'/);
+});
+
+test('the sheet defaults to a constrained (<=512x512) presentation with a full-size toggle, and never touches the <img> src', () => {
+  const html = renderHtml('x');
+  assert.match(html, /var sheetViewMode = 'constrained'/);
+  assert.match(html, /title: 'Sheet display size'/);
+  assert.match(html, /\['constrained', 'Fit to 512/);
+  assert.match(html, /\['full', 'Full size'\]/);
+  assert.match(html, /function applySheetSize\(/);
+  // Toggling recomputes size/overlay in place — it must NOT re-render the
+  // page or touch img.src (that would re-trigger the Azure sheet fetch).
+  assert.match(
+    html,
+    /sizeSelect\.addEventListener\('change', function \(\) \{\s*sheetViewMode = sizeSelect\.value;\s*applySheetSize\(img\);\s*drawOverlay\(sheetWrap, img, sliceMap\);\s*\}\)/,
+  );
+});
+
+test('the overlay is redrawn on load AND on every size-mode toggle (guard against a stale overlay)', () => {
+  const html = renderHtml('x');
+  const loadHandlerMatches = html.match(/drawOverlay\(sheetWrap, img, sliceMap\)/g) || [];
+  // At least: on <img> load, on size toggle, and inside drawOverlay's own
+  // ResizeObserver callback — three distinct call sites.
+  assert.ok(
+    loadHandlerMatches.length >= 3,
+    'drawOverlay must be called from load, toggle, AND resize paths',
+  );
+  assert.match(html, /ResizeObserver/);
+});
+
+test('judge and sensor results show a concise one-line summary by default, with a <details> expander for full detail', () => {
+  const html = renderHtml('x');
+  assert.match(html, /function summarizeJudge\(/);
+  assert.match(html, /function summarizeSensors\(/);
+  assert.match(html, /class: 'concise-summary/);
+  assert.match(html, /document\.createElement\('details'\)/);
+  assert.match(html, /Show per-axis detail & feedback/);
+  assert.match(html, /Show per-sensor detail & feedback/);
+});
+
+test('a "View Brief" button opens an accessible modal (dialog role, aria-modal, focus trap, Escape-to-close, focus return)', () => {
+  const html = renderHtml('x');
+  assert.match(html, /text: 'View Brief'/);
+  assert.match(html, /openBriefModal\(state, ev\.currentTarget\)/);
+  assert.match(html, /role: 'dialog'/);
+  assert.match(html, /'aria-modal': 'true'/);
+  assert.match(html, /'aria-labelledby': 'brief-modal-title'/);
+  assert.match(html, /ev\.key === 'Escape'/);
+  assert.match(html, /ev\.key === 'Tab'/);
+  assert.match(html, /function closeBriefModal\(/);
+  assert.match(html, /id: 'view-brief-btn'/);
+  assert.match(html, /triggerId: triggerEl && triggerEl\.id/);
+  assert.match(html, /document\.getElementById\(triggerId\)/);
+  assert.match(html, /trigger\.focus\(\)/);
+  assert.match(html, /modalContainer\.focus\(\)/);
+  assert.match(html, /pendingFocusModal \|\| restoreModalFocus/);
+});
+
+test('REGRESSION: a late "View Brief" fetch response cannot overwrite a newer modal or clobber a fresher background state', () => {
+  // Guards the finding that closing brief A and opening brief B before A's
+  // `/api/brief` fetch resolves let A's late response overwrite B's modal
+  // (both success and error paths only checked `!briefModal`, which stays
+  // truthy across an A\u2192B reopen), and that re-rendering from the `state`
+  // snapshot captured when the fetch started could revert a newer
+  // background state update (SSE push/reload) that landed while the fetch
+  // was in flight.
+  const html = renderHtml('x');
+  assert.match(html, /var briefModalRequestSeq = 0;/);
+  assert.match(html, /var requestId = \+\+briefModalRequestSeq;/);
+  assert.match(html, /id: requestId,/);
+  // Both the success and the error callback must discard a response that no
+  // longer matches the CURRENT modal's request id, not just check `briefModal`
+  // truthiness (which is insufficient once briefModal has been reassigned to
+  // a newer modal).
+  const openBriefModalBody = html.slice(
+    html.indexOf('function openBriefModal('),
+    html.indexOf('function closeBriefModal('),
+  );
+  const staleGuardMatches =
+    openBriefModalBody.match(/if \(!briefModal \|\| briefModal\.id !== requestId\) return;/g) || [];
+  assert.equal(
+    staleGuardMatches.length,
+    2,
+    'both the success and error callbacks must guard on requestId',
+  );
+  // Neither callback may re-render from the closure-captured `state` — only
+  // from the live `lastState`, so a background update during the fetch is
+  // never reverted.
+  const rerenderCalls = openBriefModalBody.match(/render\((state|lastState)\);/g) || [];
+  assert.deepEqual(rerenderCalls, ['render(state);', 'render(lastState);', 'render(lastState);']);
+});
+
+test('the brief supports thumb up/down with a hidden-until-selected comment box and a confirm checkmark', () => {
+  const html = renderHtml('x');
+  assert.match(html, /function renderBriefFeedback\(/);
+  assert.match(html, /function saveBriefFeedback\(/);
+  assert.match(html, /subjectType: 'brief'/);
+  // Wired inside the View Brief modal, not duplicated inline in the sheet toolbar.
+  assert.match(html, /modal\.appendChild\(renderBriefFeedback\(state\)\)/);
+});
+
+test('the overall sprite sheet supports thumb up/down with a hidden-until-selected comment box and a confirm checkmark', () => {
+  const html = renderHtml('x');
+  assert.match(html, /function renderSheetFeedback\(/);
+  assert.match(html, /function saveSheetFeedback\(/);
+  assert.match(html, /subjectType: 'sheet'/);
+  // Actually wired under the sheet viewer, not merely declared.
+  assert.match(html, /wrap\.appendChild\(renderSheetFeedback\(state\)\)/);
+});
+
+test('brief/sheet/criterion feedback all funnel through ONE generic confirm widget (same store/route)', () => {
+  const html = renderHtml('x');
+  assert.match(html, /function renderFeedbackWidget\(/);
+  // All three call sites delegate to the shared widget.
+  const widgetCallSites = (html.match(/renderFeedbackWidget\(/g) || []).length;
+  assert.ok(
+    widgetCallSites >= 4,
+    'expected renderFeedbackWidget to be both declared and called by criterion/sheet/brief',
+  );
+});
+
+test('a per-variant "Open in Post-process Debugger" control builds a deep link with briefId, runId, sheet, and variantIndex', () => {
+  const html = renderHtml('x');
+  assert.match(html, /text: 'Open in Post-process Debugger'/);
+  assert.match(html, /function renderPostprocessHandoff\(/);
+  assert.match(html, /buildPostprocessDeepLink\(\{/);
+  assert.match(html, /renderPostprocessHandoff\(sel, c\.index\)/);
 });

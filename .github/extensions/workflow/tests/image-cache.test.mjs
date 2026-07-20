@@ -3,6 +3,9 @@
  * VENDORED copy the extension loads; the drift test guarantees it is
  * byte-identical to canonical.
  *
+ * Moved from the now-removed standalone Sprite Review canvas — Workflow
+ * vendors a byte-identical copy of `lib/image-cache.mjs`.
+ *
  * Since ADR 0065 the sidecar is the ONE authoritative cache. Extensions no
  * longer keep an isolated per-extension on-disk cache — this relay never writes
  * to disk. These tests assert that pass-through behavior and that no persistent
@@ -22,7 +25,7 @@ let cacheDir;
 let cache;
 
 before(() => {
-  root = mkdtempSync(path.join(tmpdir(), 'sprite-review-cache-'));
+  root = mkdtempSync(path.join(tmpdir(), 'workflow-cache-'));
   cacheDir = path.join(root, 'cache');
   cache = createImageCache({ dir: cacheDir });
 });
@@ -38,8 +41,8 @@ test('resolveCopilotHome honours COPILOT_HOME then falls back to ~/.copilot', ()
 });
 
 test('resolveExtCacheDir still composes the historical path (no longer written to)', () => {
-  const dir = resolveExtCacheDir('sprite-review', { COPILOT_HOME: '/home/u/.copilot' });
-  assert.equal(dir, path.resolve('/home/u/.copilot/extensions/sprite-review/cache'));
+  const dir = resolveExtCacheDir('workflow', { COPILOT_HOME: '/home/u/.copilot' });
+  assert.equal(dir, path.resolve('/home/u/.copilot/extensions/workflow/cache'));
 });
 
 test('createImageCache is a disabled pass-through: no disk cache is created', () => {

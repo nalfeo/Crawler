@@ -1,8 +1,13 @@
 /**
  * Wiring tests for the GENERIC canvas harness (the vendored copy the extension
- * actually loads). Proves the domain-free server contract slices B–E rely on:
- * `/`, `/api/state`, SSE `/events`, allowlisted JSON routes, streamed binary
- * relay (status + Content-Type preserved), and controlled error codes.
+ * actually loads). Proves the domain-free server contract every canvas
+ * extension relies on: `/`, `/api/state`, SSE `/events`, allowlisted JSON
+ * routes, streamed binary relay (status + Content-Type preserved), and
+ * controlled error codes.
+ *
+ * Moved from the now-removed standalone Sprite Review canvas — Workflow
+ * vendors a byte-identical copy of `lib/canvas-harness.mjs` (see
+ * `harness-drift.test.mjs`), so this coverage belongs here now.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

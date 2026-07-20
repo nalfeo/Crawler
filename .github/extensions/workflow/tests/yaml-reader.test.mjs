@@ -1,6 +1,9 @@
 /**
  * Unit tests for the reusable fs YAML reader, using a throwaway temp fixture tree
  * (no dependency on the repo's real plans/ or briefs/).
+ *
+ * Moved from the now-removed standalone Sprite Review canvas — Workflow has its
+ * own copy of `lib/yaml-reader.mjs` (identical contract).
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +23,7 @@ import {
 let root;
 
 before(() => {
-  root = mkdtempSync(path.join(tmpdir(), 'sprite-review-yaml-'));
+  root = mkdtempSync(path.join(tmpdir(), 'workflow-yaml-'));
   mkdirSync(path.join(root, 'plans', 'nested'), { recursive: true });
   mkdirSync(path.join(root, 'briefs'), { recursive: true });
   writeFileSync(path.join(root, 'plans', 'goblin.art.yaml'), 'id: goblin\nsprites:\n  - idle\n');
@@ -72,7 +75,7 @@ test('loadArtPlans / loadBriefs attach parsed data', () => {
 });
 
 test('listArtPlans returns [] for a repo root with no plans dir', () => {
-  const empty = mkdtempSync(path.join(tmpdir(), 'sprite-review-empty-'));
+  const empty = mkdtempSync(path.join(tmpdir(), 'workflow-yaml-empty-'));
   try {
     assert.deepEqual(listArtPlans({ repoRoot: empty }), []);
     assert.deepEqual(listBriefs({ repoRoot: empty }), []);

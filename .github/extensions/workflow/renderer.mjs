@@ -19,10 +19,21 @@
  *
  * The client script is intentionally template-literal-free (plain string concat +
  * createElement) so this whole file stays one clean outer template literal with no
- * escaping.
+ * escaping. The handful of PURE helpers below (run search filter, sheet display
+ * sizing, judge/sensor summaries, postprocess deep-link) are the one exception:
+ * they are self-contained (no imports/closures) modules under `lib/`, unit-tested
+ * directly in Node, and spliced into the client script here via
+ * `Function.prototype.toString()` — the SAME tested code runs in the iframe (the
+ * pattern already used by `postprocess/renderer.mjs`).
  *
  * @module workflow/renderer
  */
+
+import * as runFilterFns from './lib/run-filter.mjs';
+import * as sheetDisplayFns from './lib/sheet-display.mjs';
+import * as feedbackSummaryFns from './lib/feedback-summary.mjs';
+import * as postprocessHandoffFns from './lib/postprocess-handoff.mjs';
+import * as briefLookupFns from './lib/brief-lookup.mjs';
 
 function escapeHtml(value) {
   return String(value)
@@ -30,6 +41,22 @@ function escapeHtml(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * Serialize a module's exported pure functions into browser source (`var name
+ * = function name(...) {...};` declarations), the same way
+ * `postprocess/renderer.mjs` splices `lib/slice-overlay.mjs` /
+ * `lib/anchor.mjs`. Every module passed here is self-contained (no imports,
+ * no closures over module scope) so `toString()` yields runnable source.
+ * @param {object} mod
+ * @returns {string}
+ */
+function serializePureModule(mod) {
+  return Object.keys(mod)
+    .filter((name) => typeof mod[name] === 'function')
+    .map((name) => 'var ' + name + ' = ' + mod[name].toString() + ';')
+    .join('\n');
 }
 
 const STYLES = `
@@ -139,12 +166,55 @@ const STYLES = `
   .split { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 12px; align-items: start; }
   .draft-tag { font-size: 9px; color: #fde68a; border: 1px solid rgba(253,230,138,0.4); border-radius: 4px;
     padding: 0 4px; margin-left: 6px; }
+  .stale-badge { font-size: 10px; color: #fde68a; border: 1px solid rgba(253,230,138,0.4);
+    border-radius: 999px; padding: 2px 8px; display: inline-flex; align-items: center; gap: 5px; }
+  .stale-badge .spinner { width: 9px; height: 9px; border-width: 1.5px; }
+  .lifecycle-pill { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    padding: 2px 7px; border-radius: 999px; border: 1px solid transparent; align-self: flex-start; }
+  .lifecycle-pill.unaccepted { color: #94a3b8; border-color: rgba(148,163,184,0.35); background: rgba(148,163,184,0.08); }
+  .lifecycle-pill.accepted-staged { color: #7dd3fc; border-color: rgba(125,211,252,0.4); background: rgba(14,116,144,0.16); }
+  .lifecycle-pill.integrated { color: #86efac; border-color: rgba(134,239,172,0.4); background: rgba(22,101,52,0.18); }
+  .lifecycle-pill.unverified { color: #c4b5fd; border-color: rgba(196,181,253,0.4); background: rgba(88,28,135,0.18); }
+  .criterion-feedback { display: flex; flex-direction: column; gap: 4px; margin: 3px 0 7px; }
+  .criterion-feedback .row { gap: 6px; }
+  .criterion-feedback button.thumb { padding: 2px 6px; font-size: 11px; }
+  .criterion-feedback button.thumb.on { border-color: #7dd3fc; background: rgba(14,116,144,0.35); }
+  .criterion-feedback input { min-width: 0; padding: 3px 6px; font-size: 10px; flex: 1; }
+  .criterion-feedback input[hidden] { display: none; }
+  .criterion-feedback button.confirm-btn { padding: 2px 8px; font-size: 11px; color: #64748b; }
+  .criterion-feedback button.confirm-btn.dirty { color: #fde68a; border-color: rgba(253,230,138,0.5);
+    background: rgba(120,53,15,0.25); }
+  .criterion-feedback .feedback-status { font-size: 9px; }
+  .run-search { min-width: 160px; }
+  .details-summary { cursor: pointer; font-size: 11px; color: #7dd3fc; margin-top: 4px; }
+  .details-summary::-webkit-details-marker { color: #7dd3fc; }
+  .concise-summary { font-size: 11px; }
+  .concise-summary.pass { color: #86efac; }
+  .concise-summary.fail { color: #fca5a5; }
+  .concise-summary.unjudged, .concise-summary.none { color: #94a3b8; }
+  .sheet-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(2,6,23,0.75); display: flex;
+    align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
+  .modal-backdrop[hidden] { display: none; }
+  .modal { background: #0f172a; border: 1px solid rgba(148,163,184,0.35); border-radius: 10px;
+    max-width: min(720px, 90vw); max-height: 85vh; overflow: auto; padding: 16px 18px; }
+  .modal h2 { margin: 0 0 8px; font-size: 15px; }
+  .modal-close { float: right; }
+  .deep-link-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+  .deep-link-row input { flex: 1; font-size: 10px; font-family: var(--font-mono, monospace); }
 `;
 
 // NOTE: template-literal-free on purpose (no backticks, no ${}) — see file header.
+// `/*__RUN_FILTER_FNS__*/` etc. are replaced with the serialized pure lib
+// helpers below (Function.prototype.toString() splice — see renderHtml()).
 const CLIENT_SCRIPT = String.raw`
 (function () {
   'use strict';
+  /*__RUN_FILTER_FNS__*/
+  /*__SHEET_DISPLAY_FNS__*/
+  /*__FEEDBACK_SUMMARY_FNS__*/
+  /*__POSTPROCESS_HANDOFF_FNS__*/
+  /*__BRIEF_LOOKUP_FNS__*/
   var STATUS_COLORS = {
     pass: '#86efac', 'sensor-failed': '#fca5a5', 'judge-rejected': '#fca5a5', unjudged: '#94a3b8'
   };
@@ -189,6 +259,9 @@ const CLIENT_SCRIPT = String.raw`
   var lastState = null;
   var openedFile = null; // { relPath, kind, content, error }
   var runFilter = 'all'; // all | promoted | not-promoted (matches sidecar API token)
+  var runSearch = ''; // type-to-filter text over briefId/runId
+  var sheetViewMode = 'constrained'; // 'constrained' (<=512x512) | 'full'
+  var briefModal = null; // { relPath, name, content, error, triggerEl } | null
 
   function h(tag, props, children) {
     var elem = document.createElement(tag);
@@ -238,12 +311,17 @@ const CLIENT_SCRIPT = String.raw`
     if (health.version) meta.push('sidecar ' + health.version);
     if (health.storeBackend) meta.push(health.storeBackend);
     if (state.baseUrl) meta.push(state.baseUrl);
+    var badges = [badge];
+    if (state.stale) {
+      badges.push(h('span', { class: 'stale-badge', title: 'Showing a cached view while a background refresh checks for updates.' },
+        [h('span', { class: 'spinner' }), 'revalidating…']));
+    }
     return h('div', { class: 'between' }, [
       h('div', null, [
         h('h1', { text: 'Sprite Generation Workflow' }),
         h('div', { class: 'muted', text: 'Inspect generated runs and accept a variant into the durable asset queue.' })
       ]),
-      h('div', { class: 'row' }, [badge, h('span', { class: 'muted', text: meta.join('  ·  ') })])
+      h('div', { class: 'row' }, badges.concat([h('span', { class: 'muted', text: meta.join('  ·  ') })]))
     ]);
   }
 
@@ -458,19 +536,38 @@ const CLIENT_SCRIPT = String.raw`
     }
     filterSel.addEventListener('change', function () { runFilter = filterSel.value; if (lastState) render(lastState); });
 
+    // Plain type-to-filter TEXT INPUT (not a bespoke combobox) composed with
+    // the native promotion <select> above — both preserve standard keyboard
+    // (Tab/Arrow/Enter) and screen-reader behavior for free.
+    var searchInput = h('input', {
+      type: 'search',
+      class: 'run-search',
+      placeholder: 'Filter by briefId or runId…',
+      'aria-label': 'Filter runs by briefId or runId',
+      value: runSearch
+    });
+    searchInput.addEventListener('input', function () {
+      runSearch = searchInput.value;
+      if (lastState) render(lastState);
+    });
+
     return h('div', { class: 'row', style: { marginTop: '10px', marginBottom: '4px' } }, [
       h('span', { class: 'muted', text: 'Run:' }), picker,
       h('span', { class: 'muted', text: 'Filter:' }), filterSel,
+      searchInput,
       h('span', { class: 'muted', text: runs.length + ' shown' })
     ]);
   }
 
   function filteredRuns(state) {
-    var runs = state.runs || [];
-    if (runFilter === 'promoted') return runs.filter(function (r) { return r.promoted; });
-    if (runFilter === 'not-promoted') return runs.filter(function (r) { return !r.promoted; });
-    return runs;
+    return filterRuns(state.runs || [], runFilter, runSearch);
   }
+
+  // findBriefEntryByPath / findBriefEntryByBasename / resolveBriefEntry come
+  // from the spliced lib/brief-lookup.mjs (the BRIEF_LOOKUP_FNS splice near
+  // the top of this script) — resolveBriefEntry prefers the run's EXACT
+  // briefPath and only falls back to the ambiguous basename match when no
+  // exact path exists.
 
   function renderSheetSection(state) {
     var sel = state.selected;
@@ -482,6 +579,14 @@ const CLIENT_SCRIPT = String.raw`
       wrap.appendChild(h('div', { class: 'muted', style: { color: '#fde68a', marginBottom: '6px' },
         text: 'Auto-selected latest run (briefId/runId were not specified).' }));
     }
+
+    var toolbar = h('div', { class: 'sheet-toolbar' }, []);
+    var viewBriefBtn = h('button', { id: 'view-brief-btn', type: 'button', text: 'View Brief' });
+    viewBriefBtn.addEventListener('click', function (ev) { openBriefModal(state, ev.currentTarget); });
+    toolbar.appendChild(viewBriefBtn);
+    toolbar.appendChild(renderPostprocessHandoff(sel, null));
+    wrap.appendChild(toolbar);
+
     if (sheets.length === 0) {
       wrap.appendChild(h('div', { class: 'panel warn' }, ['No sprite sheets available for this run.']));
       return wrap;
@@ -512,6 +617,22 @@ const CLIENT_SCRIPT = String.raw`
         text: 'Degraded slice-map: brief could not be loaded, so cell indices are sequential and do NOT map to variant indices.' }));
     }
 
+    // Presentation size toggle: DEFAULTS to constrained (<=512x512), never
+    // upscaled; "Full size" shows the sheet at its natural pixel dimensions.
+    // This ONLY changes the <img>'s CSS display box (computeSheetDisplaySize
+    // is pure sizing math over natural width/height) — the <img> src (and so
+    // the underlying asset's actual pixels) never changes between modes.
+    var sizeSelect = h('select', { title: 'Sheet display size', 'aria-label': 'Sheet display size' });
+    var sizeOpts = [['constrained', 'Fit to 512\u00d7512'], ['full', 'Full size']];
+    for (var so = 0; so < sizeOpts.length; so++) {
+      var sizeOpt = document.createElement('option');
+      sizeOpt.value = sizeOpts[so][0]; sizeOpt.textContent = sizeOpts[so][1];
+      if (sizeOpts[so][0] === sheetViewMode) sizeOpt.selected = true;
+      sizeSelect.appendChild(sizeOpt);
+    }
+    wrap.appendChild(h('div', { class: 'row', style: { marginBottom: '6px' } },
+      [h('span', { class: 'muted', text: 'Size:' }), sizeSelect]));
+
     var sheetWrap = h('div', { class: 'sheet-wrap' }, []);
     var loadingNote = h('div', { class: 'sheet-loading' }, [
       h('span', { class: 'spinner' }), 'Loading sheet from Azure…'
@@ -520,7 +641,11 @@ const CLIENT_SCRIPT = String.raw`
     var img = document.createElement('img');
     img.className = 'sheet-img';
     img.src = imgUrl('sheet', sel.briefId, sel.runId, current);
-    img.addEventListener('load', function () { loadingNote.remove(); drawOverlay(sheetWrap, img, sliceMap); });
+    img.addEventListener('load', function () {
+      loadingNote.remove();
+      applySheetSize(img);
+      drawOverlay(sheetWrap, img, sliceMap);
+    });
     img.addEventListener('error', function () {
       loadingNote.remove();
       sheetWrap.appendChild(h('div', { style: { color: '#fca5a5', padding: '8px' },
@@ -528,7 +653,40 @@ const CLIENT_SCRIPT = String.raw`
     });
     sheetWrap.appendChild(img);
     wrap.appendChild(sheetWrap);
+
+    // Toggling size mode NEVER re-fetches the image or re-renders the page —
+    // it resizes the ALREADY-LOADED <img> in place and recomputes the overlay
+    // off the new display size (img.clientWidth), matching the existing
+    // load-time redraw exactly (same drawOverlay call).
+    sizeSelect.addEventListener('change', function () {
+      sheetViewMode = sizeSelect.value;
+      applySheetSize(img);
+      drawOverlay(sheetWrap, img, sliceMap);
+    });
+    // Belt-and-suspenders: also redraw the overlay if the sheet's rendered box
+    // changes for any OTHER reason (e.g. the host iframe itself is resized).
+    if (typeof ResizeObserver !== 'undefined') {
+      var sheetResizeObserver = new ResizeObserver(function () { drawOverlay(sheetWrap, img, sliceMap); });
+      sheetResizeObserver.observe(img);
+    }
+    // Feedback on the OVERALL sheet (subjectType:'sheet') — distinct from the
+    // brief (subjectType:'brief', in the View Brief modal) and per-criterion
+    // judge/sensor feedback (subjectType:'criterion', per variant card below).
+    wrap.appendChild(renderSheetFeedback(state));
     return wrap;
+  }
+
+  /** Apply the constrained/full presentation size to an already-loaded <img>. */
+  function applySheetSize(img) {
+    var size = computeSheetDisplaySize(img.naturalWidth, img.naturalHeight, sheetViewMode);
+    if (size.width > 0 && size.height > 0) {
+      img.style.width = size.width + 'px';
+      img.style.height = size.height + 'px';
+    } else {
+      img.style.width = '';
+      img.style.height = '';
+    }
+    img.classList.toggle('full', sheetViewMode === 'full');
   }
 
   function drawOverlay(sheetWrap, img, sliceMap) {
@@ -553,55 +711,358 @@ const CLIENT_SCRIPT = String.raw`
     }
   }
 
-  function renderJudge(card, c) {
-    card.appendChild(h('div', { class: 'section-title', text: 'Judge (advisory)' }));
-    if (c.judge) {
-      for (var i = 0; i < JUDGE_AXES.length; i++) {
-        var axis = JUDGE_AXES[i];
-        var score = c.judge[axis.key] || 0;
-        if (!score) continue;
-        var ok = score >= 3;
-        card.appendChild(h('div', { class: 'axis' }, [
-          h('span', { class: 'lbl', text: axis.label }),
-          h('span', { style: { color: ok ? '#86efac' : '#fca5a5', fontWeight: '600' },
-            text: (score || '–') + '/5 ' + (ok ? '✓' : '✗') })
-        ]));
-        var rationale = c.rationale ? c.rationale[axis.key] : null;
-        if (rationale) card.appendChild(h('div', { class: 'rationale', text: rationale }));
+  // ---- "Open in Post-process Debugger" deep-link handoff -----------------
+  // PLATFORM CONSTRAINT (see lib/postprocess-handoff.mjs header): a canvas
+  // iframe has no privileged bridge to the host, so it cannot itself trigger
+  // canvas.open for a DIFFERENT canvas. Clicking the button reveals/selects
+  // a 'project:postprocess ...' deep link carrying the EXACT handoff context
+  // (briefId, runId, sheet, variantIndex) — the SAME convention this codebase
+  // already uses for the Sweep Results Viewer jump — and best-effort copies it
+  // to the clipboard, for the operator to paste into chat to actually open
+  // Post-process pre-seeded on this variant.
+  function renderPostprocessHandoff(sel, variantIndex) {
+    var link = buildPostprocessDeepLink({
+      briefId: sel.briefId, runId: sel.runId, sheet: sel.sheet, variantIndex: variantIndex
+    });
+    var btn = h('button', { type: 'button', title: 'Copy a deep link that opens this exact context in the Post-process Debugger',
+      text: 'Open in Post-process Debugger' });
+    var input = h('input', { type: 'text', readonly: 'true', 'aria-label': 'Post-process Debugger deep link' });
+    var status = h('span', { class: 'muted' });
+    var box = h('div', { class: 'deep-link-row' }, [input, status]);
+    box.hidden = true;
+    btn.addEventListener('click', function () {
+      input.value = link;
+      box.hidden = false;
+      input.focus();
+      input.select();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(function () {
+          status.textContent = 'Copied \u2014 paste into chat to open.';
+        }).catch(function () {
+          status.textContent = 'Selected \u2014 press Ctrl/Cmd+C to copy, then paste into chat.';
+        });
+      } else {
+        status.textContent = 'Selected \u2014 press Ctrl/Cmd+C to copy, then paste into chat.';
       }
-      var verdict = 'Verdict: ' + (c.judge.passed ? 'passed' : 'rejected') + ' · lowest axis ' + c.judge.minScore + '/5';
-      if (c.judge.rejectedBy && c.judge.rejectedBy.length) verdict += ' · rejected on ' + c.judge.rejectedBy.join(', ');
-      card.appendChild(h('div', { style: { fontSize: '10px', color: c.judge.passed ? '#86efac' : '#fca5a5' },
-        text: verdict }));
-      var prov = [];
-      if (c.modelDeployment) prov.push(c.modelDeployment);
-      if (c.judgedAt) prov.push(c.judgedAt);
-      if (prov.length) card.appendChild(h('div', { style: { fontSize: '9px', color: '#64748b' }, text: prov.join(' · ') }));
-    } else {
-      card.appendChild(h('div', { class: 'muted', text: c.judgeSkipMessage || 'Not judged yet.' }));
+    });
+    return h('div', null, [btn, box]);
+  }
+
+  // ---- "View Brief" modal (accessible: focus trap, Escape, aria) ----------
+  var pendingFocusModal = false;
+  // Monotonic request identity for the brief fetch: guards against a late
+  // response for a CLOSED/REPLACED modal (close A, open B before A's fetch
+  // resolves) overwriting the currently-open modal's content with stale
+  // captured state. briefModal itself is reassigned on every open, so a
+  // bare !briefModal truthiness check is not enough - it stays truthy
+  // across an A-to-B reopen and would let A's late response clobber B.
+  var briefModalRequestSeq = 0;
+
+  function openBriefModal(state, triggerEl) {
+    var sel = state.selected;
+    var entry = resolveBriefEntry(state, sel);
+    var requestId = ++briefModalRequestSeq;
+    briefModal = {
+      id: requestId,
+      relPath: entry ? entry.relPath : null,
+      name: sel ? sel.briefId : '',
+      content: null,
+      loading: !!entry,
+      error: entry ? null : ('No brief file found for ' + (sel ? sel.briefId : '')),
+      triggerId: triggerEl && triggerEl.id ? triggerEl.id : null
+    };
+    pendingFocusModal = true;
+    render(state);
+    if (entry) {
+      fetch('/api/brief?relPath=' + encodeURIComponent(entry.relPath)).then(function (r) { return r.json(); }).then(function (data) {
+        // Discard a response that no longer belongs to the CURRENT modal -
+        // either the modal was closed (briefModal is null) or replaced by a
+        // newer open (briefModal.id !== requestId, e.g. a late A response
+        // arriving after B was opened).
+        if (!briefModal || briefModal.id !== requestId) return;
+        briefModal.loading = false;
+        if (data && data.error) briefModal.error = data.error;
+        else briefModal.content = (data && data.content) || '';
+        // Render from the CURRENT lastState, never the state snapshot
+        // captured when this fetch started - a background state update
+        // (SSE push, reload) that landed while the fetch was in flight must
+        // not be silently reverted by re-rendering stale captured state.
+        render(lastState);
+      }).catch(function (err) {
+        if (!briefModal || briefModal.id !== requestId) return;
+        briefModal.loading = false;
+        briefModal.error = String(err);
+        render(lastState);
+      });
     }
   }
 
-  function renderSensors(card, c) {
-    card.appendChild(h('div', { class: 'section-title', text: 'Sensors' }));
-    if (!c.sensors || c.sensors.length === 0) {
-      card.appendChild(h('div', { class: 'muted', text: c.passed
-        ? 'All sensors passed (no per-sensor detail recorded).'
-        : 'No per-sensor detail recorded for this run.' }));
-      return;
+  function closeBriefModal() {
+    var triggerId = briefModal && briefModal.triggerId;
+    briefModal = null;
+    if (lastState) render(lastState);
+    var trigger = triggerId ? document.getElementById(triggerId) : null;
+    if (trigger && typeof trigger.focus === 'function') trigger.focus();
+  }
+
+  function renderBriefModal(state) {
+    if (!briefModal) return null;
+    var backdrop = h('div', { class: 'modal-backdrop' }, []);
+    var modal = h('div', {
+      class: 'modal', role: 'dialog', 'aria-modal': 'true',
+      'aria-labelledby': 'brief-modal-title', tabindex: '-1'
+    }, []);
+    var closeBtn = h('button', { type: 'button', class: 'modal-close', 'aria-label': 'Close brief dialog', text: '\u2715 Close' });
+    closeBtn.addEventListener('click', function () { closeBriefModal(); });
+    modal.appendChild(closeBtn);
+    modal.appendChild(h('h2', { id: 'brief-modal-title', text: 'Brief: ' + briefModal.name }));
+    if (briefModal.loading) {
+      modal.appendChild(h('div', { class: 'busy' }, [h('span', { class: 'spinner' }), 'Loading brief\u2026']));
+    } else if (briefModal.error) {
+      modal.appendChild(h('div', { class: 'panel error', text: briefModal.error }));
+    } else {
+      modal.appendChild(h('pre', { class: 'yaml', text: briefModal.content || '' }));
+    }
+    modal.appendChild(renderBriefFeedback(state));
+    backdrop.appendChild(modal);
+    backdrop.addEventListener('mousedown', function (ev) {
+      if (ev.target === backdrop) closeBriefModal();
+    });
+    backdrop.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') { ev.stopPropagation(); closeBriefModal(); return; }
+      if (ev.key === 'Tab') {
+        var focusables = modal.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length === 0) return;
+        var first = focusables[0];
+        var last = focusables[focusables.length - 1];
+        if (ev.shiftKey && document.activeElement === first) {
+          ev.preventDefault(); last.focus();
+        } else if (!ev.shiftKey && document.activeElement === last) {
+          ev.preventDefault(); first.focus();
+        }
+      }
+    });
+    return backdrop;
+  }
+
+  function postFeedback(payload) {
+    return fetch('/api/feedback', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-workflow-mutation-token': mutationToken
+      },
+      body: JSON.stringify(payload)
+    }).then(function (response) {
+      return response.text().then(function (text) {
+        var body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (e) { body = null; }
+        if (!response.ok) {
+          var message = body && body.message ? body.message : 'Save failed (HTTP ' + response.status + ').';
+          throw new Error(message);
+        }
+        return body;
+      });
+    });
+  }
+
+  function saveFeedback(sel, c, kind, criterion, verdict, comment) {
+    return postFeedback({
+      subjectType: 'criterion',
+      briefId: sel.briefId, runId: sel.runId, variantIndex: c.index,
+      kind: kind, criterion: criterion, verdict: verdict, comment: comment
+    });
+  }
+
+  function saveSheetFeedback(briefId, runId, sheet, verdict, comment) {
+    return postFeedback({
+      subjectType: 'sheet', briefId: briefId, runId: runId, sheet: sheet,
+      verdict: verdict, comment: comment
+    });
+  }
+
+  function saveBriefFeedback(briefId, runId, verdict, comment) {
+    return postFeedback({
+      subjectType: 'brief', briefId: briefId, runId: runId,
+      verdict: verdict, comment: comment
+    });
+  }
+
+  // Generic thumb/comment/confirm widget shared by criterion, sheet, and
+  // brief feedback (subjectType discriminated union — same store/route,
+  // ../shared/sprite-feedback-store.mjs). Edits are a LOCAL DRAFT until the
+  // ✓ confirm button is clicked — nothing is sent to the server on every
+  // click. The comment box stays hidden until a thumb is selected (draft, not
+  // yet persisted). Confirming persists {verdict, comment}; confirming a
+  // deselected thumb (which always clears the draft comment too, since the
+  // box that held it is hidden) deletes the persisted entry server-side. A
+  // reload/reopen only ever shows the last CONFIRMED (persisted) value — the
+  // draft lives purely in this closure and is rebuilt fresh from 'persisted'
+  // every render, so it can never leak across a reload. The confirm handler
+  // NEVER triggers a full render()/reload — see the HARD GATE note on the
+  // /api/feedback route in extension.mjs.
+  function renderFeedbackWidget(persistedIn, save, confirmTitle) {
+    var persisted = persistedIn || { verdict: null, comment: '' };
+    var draft = { verdict: persisted.verdict || null, comment: persisted.comment || '' };
+
+    var up = h('button', { type: 'button', class: 'thumb', title: 'Thumbs up', text: '👍' });
+    var down = h('button', { type: 'button', class: 'thumb', title: 'Thumbs down', text: '👎' });
+    var input = h('input', { type: 'text', maxlength: '1000', placeholder: 'Optional feedback comment' });
+    var confirmBtn = h('button', { type: 'button', class: 'confirm-btn', title: confirmTitle || 'Confirm this feedback', text: '✓' });
+    var status = h('span', { class: 'feedback-status muted' });
+
+    function isDirty() {
+      return draft.verdict !== (persisted.verdict || null) || draft.comment !== (persisted.comment || '');
     }
 
+    function sync() {
+      up.className = 'thumb' + (draft.verdict === 'up' ? ' on' : '');
+      down.className = 'thumb' + (draft.verdict === 'down' ? ' on' : '');
+      input.hidden = !draft.verdict;
+      input.value = draft.comment;
+      var dirty = isDirty();
+      confirmBtn.className = 'confirm-btn' + (dirty ? ' dirty' : '');
+      status.textContent = dirty ? 'Unconfirmed' : (persisted.verdict ? 'Confirmed' : '');
+    }
+
+    function setVerdict(next) {
+      draft.verdict = next;
+      // The comment box is hidden with no verdict selected — a deselected
+      // thumb always carries an EMPTY draft comment, so confirming it deletes
+      // the persisted entry rather than leaving an orphaned comment behind.
+      if (!draft.verdict) draft.comment = '';
+      sync();
+    }
+
+    up.addEventListener('click', function () { setVerdict(draft.verdict === 'up' ? null : 'up'); });
+    down.addEventListener('click', function () { setVerdict(draft.verdict === 'down' ? null : 'down'); });
+    input.addEventListener('input', function () { draft.comment = input.value; sync(); });
+
+    confirmBtn.addEventListener('click', function () {
+      confirmBtn.disabled = true;
+      status.textContent = 'Saving…';
+      save(draft.verdict, draft.comment).then(function () {
+        persisted.verdict = draft.verdict;
+        persisted.comment = draft.comment;
+        confirmBtn.disabled = false;
+        sync();
+      }).catch(function (err) {
+        confirmBtn.disabled = false;
+        status.textContent = err && err.message ? err.message : 'Save failed.';
+      });
+    });
+
+    sync();
+    return h('div', { class: 'criterion-feedback' }, [
+      h('div', { class: 'row' }, [up, down, input, confirmBtn]),
+      status
+    ]);
+  }
+
+  function renderCriterionFeedback(sel, c, kind, criterion) {
+    var persisted = readCriterionFeedback(c, kind, criterion);
+    return renderFeedbackWidget(
+      persisted,
+      function (verdict, comment) {
+        return saveFeedback(sel, c, kind, criterion, verdict, comment).then(function (result) {
+          // Patch-only (HARD GATE, see extension.mjs's /api/feedback route):
+          // write the CANONICAL location on the same c object retained in
+          // lastState.candidates, exactly like sheet/brief feedback already
+          // do. Without this, a first-time-confirmed criterion's fallback
+          // object is orphaned (never stored on c.feedback) and the
+          // confirmed value silently reverts on the next natural rerender.
+          writeCriterionFeedback(c, kind, criterion, result && result.feedback);
+          return result;
+        });
+      },
+      'Confirm this criterion\u2019s feedback'
+    );
+  }
+
+  function renderSheetFeedback(state) {
+    var sel = state.selected;
+    return renderFeedbackWidget(
+      state.sheetFeedback,
+      function (verdict, comment) {
+        return saveSheetFeedback(sel.briefId, sel.runId, sel.sheet, verdict, comment).then(function (result) {
+          // Patch-only: the server never rebuilds/broadcasts full state for a
+          // feedback confirm (HARD GATE) — mutate our own local copy so a
+          // later render() (e.g. tab switch) still reflects the confirmed
+          // value without needing a reload.
+          state.sheetFeedback = result && result.feedback ? result.feedback : null;
+          return result;
+        });
+      },
+      'Confirm feedback on this sheet'
+    );
+  }
+
+  function renderBriefFeedback(state) {
+    var sel = state.selected;
+    return renderFeedbackWidget(
+      state.briefFeedback,
+      function (verdict, comment) {
+        return saveBriefFeedback(sel.briefId, sel.runId, verdict, comment).then(function (result) {
+          state.briefFeedback = result && result.feedback ? result.feedback : null;
+          return result;
+        });
+      },
+      'Confirm feedback on this brief'
+    );
+  }
+
+  function renderJudge(card, c, sel) {
+    var summary = summarizeJudge(c);
+    card.appendChild(h('div', { class: 'section-title', text: 'Judge (advisory)' }));
+    card.appendChild(h('div', { class: 'concise-summary ' + summary.state, text: summary.text }));
+    if (!c.judge) return;
+    var details = document.createElement('details');
+    var summaryEl = h('summary', { class: 'details-summary', text: 'Show per-axis detail & feedback' });
+    details.appendChild(summaryEl);
+    for (var i = 0; i < JUDGE_AXES.length; i++) {
+      var axis = JUDGE_AXES[i];
+      var score = c.judge[axis.key] || 0;
+      if (!score) continue;
+      var ok = score >= 3;
+      details.appendChild(h('div', { class: 'axis' }, [
+        h('span', { class: 'lbl', text: axis.label }),
+        h('span', { style: { color: ok ? '#86efac' : '#fca5a5', fontWeight: '600' },
+          text: (score || '–') + '/5 ' + (ok ? '✓' : '✗') })
+      ]));
+      var rationale = c.rationale ? c.rationale[axis.key] : null;
+      if (rationale) details.appendChild(h('div', { class: 'rationale', text: rationale }));
+      details.appendChild(renderCriterionFeedback(sel, c, 'judge', axis.key));
+    }
+    var prov = [];
+    if (c.modelDeployment) prov.push(c.modelDeployment);
+    if (c.judgedAt) prov.push(c.judgedAt);
+    if (prov.length) details.appendChild(h('div', { style: { fontSize: '9px', color: '#64748b' }, text: prov.join(' · ') }));
+    card.appendChild(details);
+  }
+
+  function renderSensors(card, c, sel) {
+    var summary = summarizeSensors(c);
+    card.appendChild(h('div', { class: 'section-title', text: 'Sensors' }));
+    card.appendChild(h('div', { class: 'concise-summary ' + summary.state, text: summary.text }));
+    if (!c.sensors || c.sensors.length === 0) return;
+
+    var details = document.createElement('details');
+    details.appendChild(h('summary', { class: 'details-summary', text: 'Show per-sensor detail & feedback' }));
     for (var i = 0; i < c.sensors.length; i++) {
       var s = c.sensors[i];
-      card.appendChild(h('div', { class: 'sensor' }, [
+      details.appendChild(h('div', { class: 'sensor' }, [
         h('span', { text: s.sensor }),
         h('span', { style: { color: s.ok ? '#86efac' : '#fca5a5', fontWeight: '700' }, text: s.ok ? '✓' : '✗' })
       ]));
       if (!s.ok && (s.reason || s.pixelCount != null)) {
-        card.appendChild(h('div', { class: 'sensor-reason',
+        details.appendChild(h('div', { class: 'sensor-reason',
           text: (s.reason || 'failed') + (s.pixelCount != null ? ' (' + s.pixelCount + 'px)' : '') }));
       }
+      details.appendChild(renderCriterionFeedback(sel, c, 'sensor', s.sensor));
     }
+    card.appendChild(details);
   }
 
   function acceptanceKey(briefId, runId, variantIndex) {
@@ -692,14 +1153,31 @@ const CLIENT_SCRIPT = String.raw`
     var anyAccepting = !!(state.acceptance && Object.keys(state.acceptance).some(function (k) {
       return state.acceptance[k] && state.acceptance[k].state === 'accepting';
     }));
+    // Label is driven by the per-variant LIFECYCLE (unaccepted/accepted-staged/
+    // integrated/unverified), not by this session's own ephemeral acceptance
+    // bookkeeping — a variant already accepted/staged/integrated/unverified
+    // exposes "Re-accept" (force-retrying the same idempotent sidecar
+    // acceptance path); a genuinely unaccepted variant uses "Accept & queue".
+    var lifecycleState = (candidate.lifecycle && candidate.lifecycle.state) || 'unaccepted';
+    var label = accepting
+      ? 'Accepting & queueing…'
+      : (lifecycleState === 'unaccepted' ? 'Accept & queue' : 'Re-accept');
     var button = h('button', {
       type: 'button',
       class: 'accept-button',
-      text: accepting ? 'Accepting & queueing…' : (acceptance ? 'Retry accept & queue' : 'Accept & queue'),
+      text: label,
       onclick: function () { acceptVariant(sel.briefId, sel.runId, candidate.index); }
     });
     if (anyAccepting) button.disabled = true;
     card.appendChild(button);
+  }
+
+  function lifecyclePill(candidate) {
+    var lifecycle = candidate.lifecycle || { state: 'unaccepted', detail: null };
+    var label = lifecycle.state === 'accepted-staged' ? 'accepted/staged' : lifecycle.state;
+    var pill = h('span', { class: 'lifecycle-pill ' + lifecycle.state, text: label });
+    if (lifecycle.detail) pill.title = lifecycle.detail;
+    return pill;
   }
 
   function renderCandidates(state) {
@@ -722,14 +1200,16 @@ const CLIENT_SCRIPT = String.raw`
         h('span', { text: c.score + '/' + c.outOf, class: 'muted' })
       ]));
       card.appendChild(h('span', { class: 'status-pill', style: { color: STATUS_COLORS[status.kind] }, text: status.label }));
+      card.appendChild(lifecyclePill(c));
       var thumb = document.createElement('img');
       thumb.className = 'thumb';
       thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(c.index) + '.png');
       thumb.alt = 'variant ' + c.index;
       card.appendChild(thumb);
-      renderJudge(card, c);
-      renderSensors(card, c);
+      renderJudge(card, c, sel);
+      renderSensors(card, c, sel);
       renderAcceptance(card, state, sel, c);
+      card.appendChild(renderPostprocessHandoff(sel, c.index));
       grid.appendChild(card);
     }
     wrap.appendChild(grid);
@@ -783,6 +1263,12 @@ const CLIENT_SCRIPT = String.raw`
 
   function render(state) {
     if (!state) return;
+    var restoreModalFocus = !!(
+      briefModal &&
+      document.activeElement &&
+      typeof document.activeElement.closest === 'function' &&
+      document.activeElement.closest('[role="dialog"]')
+    );
     lastState = state;
     var frag = document.createDocumentFragment();
     frag.appendChild(renderHealth(state));
@@ -792,6 +1278,15 @@ const CLIENT_SCRIPT = String.raw`
     frag.appendChild(renderTabs(state));
     frag.appendChild(h('div', { style: { marginTop: '4px' } }, [renderActiveTab(state)]));
     app.replaceChildren(frag);
+    var modalEl = renderBriefModal(state);
+    if (modalEl) {
+      app.appendChild(modalEl);
+      if (pendingFocusModal || restoreModalFocus) {
+        pendingFocusModal = false;
+        var modalContainer = modalEl.querySelector('.modal');
+        if (modalContainer) modalContainer.focus();
+      }
+    }
   }
 
   var selecting = false;
@@ -870,7 +1365,12 @@ export function renderHtml(instanceId, mutationToken = '') {
   const clientScript = CLIENT_SCRIPT.replace(
     '__WORKFLOW_MUTATION_TOKEN__',
     JSON.stringify(mutationToken),
-  );
+  )
+    .replace('/*__RUN_FILTER_FNS__*/', () => serializePureModule(runFilterFns))
+    .replace('/*__SHEET_DISPLAY_FNS__*/', () => serializePureModule(sheetDisplayFns))
+    .replace('/*__FEEDBACK_SUMMARY_FNS__*/', () => serializePureModule(feedbackSummaryFns))
+    .replace('/*__POSTPROCESS_HANDOFF_FNS__*/', () => serializePureModule(postprocessHandoffFns))
+    .replace('/*__BRIEF_LOOKUP_FNS__*/', () => serializePureModule(briefLookupFns));
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8" />',

@@ -1,3 +1,16 @@
+/**
+ * sprite-feedback-request.mjs — HTTP request guards for the mutating
+ * `POST /api/feedback` route: bounded body reads and the trusted-origin /
+ * content-type checks that route enforces alongside its per-instance mutation
+ * token.
+ *
+ * SHARED (not per-extension): consumed by both the Workflow canvas's
+ * `/api/feedback` route and (while it still exists) the standalone Sprite
+ * Review canvas's own route, so the two surfaces enforce byte-identical
+ * security semantics against the same durable feedback file.
+ *
+ * @module shared/sprite-feedback-request
+ */
 import { timingSafeEqual } from 'node:crypto';
 
 export function tokensMatch(actual, expected) {
@@ -10,6 +23,38 @@ export function tokensMatch(actual, expected) {
   );
 }
 
+/**
+ * True only when the request's `Origin` header matches the loopback server's
+ * OWN origin (derived from `entry.url`). A mutating route must never trust a
+ * cross-origin browser request even if it happens to carry a valid token —
+ * this is the second, independent leg of the mutation guard.
+ * @param {import('node:http').IncomingMessage} req
+ * @param {{ url: string }} entry
+ * @returns {boolean}
+ */
+export function isTrustedMutationOrigin(req, entry) {
+  const origin = req.headers.origin;
+  if (typeof origin !== 'string' || origin.trim().length === 0) return false;
+  try {
+    return origin === new URL(entry.url).origin;
+  } catch {
+    return false;
+  }
+}
+
+/** True only for an (optionally-parametrized) `application/json` Content-Type. */
+export function isJsonContentType(req) {
+  const contentType = req.headers['content-type'];
+  if (typeof contentType !== 'string') return false;
+  const normalized = contentType.toLowerCase();
+  return normalized === 'application/json' || normalized.startsWith('application/json;');
+}
+
+/**
+ * Read + JSON-parse a bounded request body. Rejects with `error.code ===
+ * 'body-too-large'` on overflow and `'invalid-json'` on an empty or malformed
+ * body — the feedback route maps those to 413/400 respectively.
+ */
 export function readJsonBody(req, limitBytes = 16 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;

@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import {
-  beginSpriteSidecarStartup,
-  ensureSpriteSidecar,
-} from '../../shared/sprite-sidecar-service.mjs';
+import { beginSpriteSidecarStartup, ensureSpriteSidecar } from '../sprite-sidecar-service.mjs';
 
 test('ensureSpriteSidecar invokes the repo manager and parses its final JSON line', async () => {
   let invocation = null;

@@ -50,6 +50,7 @@ import { beginSpriteSidecarStartup } from '../shared/sprite-sidecar-service.mjs'
 import { createImageCache, resolveExtCacheDir } from './lib/image-cache.mjs';
 import { renderHtml } from './renderer.mjs';
 import { resolveSidecarBaseUrl, createSidecarClient } from './lib/sidecar-client.mjs';
+import { resolveActiveSheet } from './lib/run-selection.mjs';
 import {
   createPostprocessClient,
   extractAppliedBackgroundTweaks,
@@ -86,7 +87,7 @@ let sessionRef = null;
  *   postprocessClient: ReturnType<typeof createPostprocessClient>,
  *   baseUrl: string,
  *   workspaceRoot: string,
- *   requested: { briefId: string | null, runId: string | null, variantIndex: number | null },
+ *   requested: { briefId: string | null, runId: string | null, variantIndex: number | null, sheet: string | null },
  *   selected: { briefId: string, runId: string, variantIndex: number, sheet: string | null } | null,
  *   pushState: (state?: unknown) => Promise<unknown>,
  *   close: () => Promise<void>,
@@ -211,7 +212,11 @@ async function buildState(instanceId) {
         briefId: reqRun.briefId,
         runId: reqRun.runId,
         variantIndex: typeof req.variantIndex === 'number' ? req.variantIndex : 0,
-        sheet: null,
+        // Cold-open honours an explicit requested sheet; it is re-validated
+        // against the run's ACTUAL sheet list below (resolveActiveSheet), so
+        // a stale/nonexistent request degrades to the last-sheet fallback
+        // rather than silently pinning a bad value.
+        sheet: typeof req.sheet === 'string' ? req.sheet : null,
       };
     } else {
       const latest = runs[0];
@@ -282,10 +287,7 @@ async function buildState(instanceId) {
       sheets = [];
     }
   }
-  const activeSheet =
-    selected.sheet && sheets.includes(selected.sheet)
-      ? selected.sheet
-      : (sheets[sheets.length - 1] ?? null);
+  const activeSheet = resolveActiveSheet(sheets, selected.sheet, sheets[sheets.length - 1] ?? null);
 
   // Persist the resolved selection (variant clamp + active sheet) for next call.
   entry.selected = {
@@ -559,6 +561,7 @@ async function startServerForInstance(ctx) {
       briefId: typeof input.briefId === 'string' ? input.briefId : null,
       runId: typeof input.runId === 'string' ? input.runId : null,
       variantIndex: requestedVariant,
+      sheet: typeof input.sheet === 'string' ? input.sheet : null,
     },
     selected: null,
     sidecarStartup: { state: 'starting', error: null, logPath: null },
@@ -598,6 +601,11 @@ const canvas = createCanvas({
       briefId: { type: 'string', description: 'Optional brief to pre-select.' },
       runId: { type: 'string', description: 'Optional run to pre-select (requires briefId).' },
       variantIndex: { type: 'number', description: 'Optional variant index to pre-select.' },
+      sheet: {
+        type: 'string',
+        description:
+          'Optional sheet filename to pre-select (requires briefId/runId); falls back to the last sheet when absent or not present on the run.',
+      },
     },
   },
   actions: [

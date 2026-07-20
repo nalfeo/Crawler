@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { test } from 'node:test';
 
-import { readJsonBody } from '../lib/feedback-request.mjs';
+import { readJsonBody } from '../sprite-feedback-request.mjs';
 
 const BODY_LIMIT = 16 * 1024;
 

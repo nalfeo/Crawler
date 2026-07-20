@@ -1,25 +1,46 @@
 /**
- * workflow — inspect sprite runs and accept selected variants into the asset queue.
+ * workflow — the Sprite Generation Workflow canvas: inspect the asset backlog,
+ * plans/briefs, and generated sprite RUNS (variants + judge + sensors +
+ * sheet/slice-map), record per-criterion reviewer feedback, view each
+ * variant's accept/integration LIFECYCLE, and accept a selected variant into
+ * the durable asset-checkin queue.
  *
- * Functional parity with the READ surface of the `?page=sprite-generation-workflow`
- * DevTool in the monolith (`DEVTOOLS_PAGE_SPRITE_WORKFLOW` in `src/devtools-main.ts`):
- * it browses the asset BACKLOG (per-plan status + integration column), the
- * PLANS/BRIEFS YAML, and generated RUNS (variants + judge + sensors + sheet/slice-map).
- * It never mutates anything — the durable QUEUE + asset-REQUEST manifest (their
- * status reads AND controls) and the write half of the workflow (synthesize /
- * generate / judge / approve / checkin / metadata, worker & issues start-stop, and
- * the interactive queue state machine) are the documented follow-up slice (B2).
+ * This canvas ABSORBED the former standalone `sprite-review` canvas's
+ * read-only run/variant-inspection surface (judge/sensor traces, sheet +
+ * slice-map viewing, per-criterion feedback) once Workflow reached parity with
+ * it and its live behavior was verified — sprite-review has been removed.
+ * Functional parity with the `?page=sprite-generation-workflow` DevTool in the
+ * monolith (`DEVTOOLS_PAGE_SPRITE_WORKFLOW` in `src/devtools-main.ts`) for the
+ * backlog/plans/briefs/runs READ surface. The durable QUEUE + asset-REQUEST
+ * manifest's full read/control surface (synthesize / generate / judge / worker
+ * & issues start-stop, and the interactive queue state machine) beyond the
+ * atomic accept-and-check-in below remains the documented follow-up slice.
  *
- * Architecture (the pattern shared with sprite-review / slices B–E):
- *   - `lib/canvas-harness.mjs`  — GENERIC loopback HTTP server (vendored; single
+ * Mutating routes: `POST /api/accept` (approve + durable check-in, atomic and
+ * idempotent — see `scripts/sprites/sidecar/server.ts`) and `POST /api/feedback`
+ * (criterion/sheet/brief reviewer feedback — a discriminated union on
+ * `subjectType`, persisted to `public/assets/generated/
+ * sprite-review-feedback.json` — shared schema/keying with the removed
+ * sprite-review canvas). Both are guarded by a per-instance mutation token;
+ * feedback additionally checks request Origin + Content-Type (see
+ * `../shared/sprite-feedback-request.mjs`). `/api/feedback` intentionally does
+ * NOT buildState()+pushState() after a save — see the handler for why.
+ *
+ * Architecture (the pattern shared with postprocess/achievements/storage):
+ *   - `lib/canvas-harness.mjs`     — GENERIC loopback HTTP server (vendored; single
  *     source of truth is `scripts/canvas-harness/`; do not hand-edit).
- *   - `lib/image-cache.mjs`     — vendored outside-worktree on-disk image cache.
- *   - `lib/sidecar-client.mjs`  — DOMAIN sidecar adapter (runs + image URL builders).
- *   - `lib/yaml-reader.mjs`     — fs reader for `plans/**` + `briefs/**`.
- *   - `lib/registry-ids.mjs`    — best-effort sprite/item registry id loader.
- *   - `lib/workflow-model.mjs`  — 1:1 port of the monolith's backlog/report logic.
- *   - `renderer.mjs`            — the iframe document (state-driven, SSE).
- *   - `extension.mjs` (this)    — wires them together.
+ *   - `lib/image-cache.mjs`        — vendored outside-worktree on-disk image cache
+ *     (pass-through — the sidecar's `CachingRunStore` is the one authoritative cache).
+ *   - `lib/sidecar-client.mjs`     — DOMAIN sidecar adapter (runs + image URL builders).
+ *   - `lib/yaml-reader.mjs`        — fs reader for `plans/**` + `briefs/**`.
+ *   - `lib/registry-ids.mjs`       — best-effort sprite/item registry id loader.
+ *   - `lib/workflow-model.mjs`     — 1:1 port of the monolith's backlog/report logic.
+ *   - `lib/variant-lifecycle.mjs`  — per-variant unaccepted/accepted-staged/integrated/unverified.
+ *   - `lib/run-view-cache.mjs`     — cache-first / background-revalidate run view.
+ *   - `../shared/sprite-feedback-store.mjs` / `sprite-feedback-request.mjs` — feedback
+ *     persistence + request guards, shared with the (removed) sprite-review canvas.
+ *   - `renderer.mjs`               — the iframe document (state-driven, SSE).
+ *   - `extension.mjs` (this)       — wires them together.
  *
  * stdout is reserved for JSON-RPC — we log via `session.log`, never `console.log`.
  *
@@ -46,7 +67,25 @@ import {
 import { listArtPlans, listBriefs } from './lib/yaml-reader.mjs';
 import { loadRegistryIds } from './lib/registry-ids.mjs';
 import { loadBacklog } from './lib/workflow-model.mjs';
+import { computeVariantLifecycle } from './lib/variant-lifecycle.mjs';
 import { readJsonBody, tokensMatch } from './lib/mutation-security.mjs';
+import {
+  createRunViewCache,
+  resolveCacheFirstState,
+  applyFreshRevalidation,
+} from './lib/run-view-cache.mjs';
+import {
+  briefFeedback,
+  feedbackForRun,
+  readFeedback,
+  saveFeedback,
+  sheetFeedback,
+} from '../shared/sprite-feedback-store.mjs';
+import {
+  isJsonContentType,
+  isTrustedMutationOrigin,
+  readJsonBody as readFeedbackJsonBody,
+} from '../shared/sprite-feedback-request.mjs';
 
 /**
  * Repo root, derived from THIS file's location. The extension physically lives
@@ -61,6 +100,15 @@ import { readJsonBody, tokensMatch } from './lib/mutation-security.mjs';
  */
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
+/** Durable per-criterion reviewer feedback, shared with the (removed) sprite-review canvas. */
+const FEEDBACK_PATH = path.join(
+  REPO_ROOT,
+  'public',
+  'assets',
+  'generated',
+  'sprite-review-feedback.json',
+);
+
 /** @type {import('@github/copilot-sdk/extension').CopilotSession | null} */
 let sessionRef = null;
 
@@ -72,9 +120,11 @@ let sessionRef = null;
  *   baseUrl: string,
  *   workspaceRoot: string,
  *   requested: { briefId: string | null, runId: string | null },
- *   selected: { briefId: string, runId: string, sheet: string | null } | null,
+ *   selected: { briefId: string, runId: string, sheet: string | null, briefPath: string | null } | null,
  *   mutationToken: string,
  *   acceptance: Map<string, object>,
+ *   selectionVersion: number,
+ *   revalidatingKeys: Set<string>,
  *   cache: null | {
  *     registryError: string | null,
  *     backlog: object,
@@ -93,6 +143,20 @@ const instances = new Map();
 // racing a second server; on failure the promise is dropped so a later `open`
 // can retry cleanly (no poisoned map entry).
 const pendingStartups = new Map();
+
+/**
+ * Cross-instance ("cross-surface") cache of the last successfully-rendered
+ * run view, keyed by `${briefId}::${runId}`. See `lib/run-view-cache.mjs` for
+ * the full cache-first / background-revalidate contract this backs.
+ */
+const runViewCache = createRunViewCache();
+/** Most recently viewed run's key, used as the cache-first target for an
+ * instance that has no explicit requested/selected run yet (a bare open). */
+let lastRunKey = null;
+
+function runViewKey(briefId, runId) {
+  return briefId && runId ? `${briefId}::${runId}` : null;
+}
 
 function acceptanceKey(briefId, runId, variantIndex) {
   return `${briefId}/${runId}/${variantIndex}`;
@@ -138,6 +202,7 @@ async function getStatic(entry) {
 
   let backlogClient;
   let promotedRunIds = new Set();
+  let manifestApprovals = [];
   try {
     const backlog = loadBacklog({
       repoRoot: entry.workspaceRoot,
@@ -145,6 +210,7 @@ async function getStatic(entry) {
       itemIds: registry.itemIds,
     });
     promotedRunIds = backlog.promotedRunIds ?? new Set();
+    manifestApprovals = backlog.manifestApprovals ?? [];
     backlogClient = {
       reports: backlog.reports,
       planCount: backlog.planCount,
@@ -181,6 +247,7 @@ async function getStatic(entry) {
     registryError: registry.error ?? null,
     backlog: backlogClient,
     promotedRunIds,
+    manifestApprovals,
     files,
     allowlist,
   };
@@ -188,33 +255,39 @@ async function getStatic(entry) {
 }
 
 /**
- * Build the full read view model for one instance. Never throws — every failure
- * is folded into a structured, renderable state (health badge + degrade panels +
- * per-section error strings), mirroring the monolith's graceful-degrade page.
- * Backlog + plan/brief browsing work even when the sidecar is DOWN (fs-only).
+ * Live (network-hitting) half of the view model: sidecar health probe, run
+ * listing, and (once a target run is resolved) its summary/sheets/slice-map.
+ * Deliberately takes `requested`/`priorSelected` SNAPSHOTS rather than reading
+ * `entry.requested`/`entry.selected` live — this function may run as a
+ * detached BACKGROUND revalidation for an older selection while the
+ * foreground instance has since navigated elsewhere, and reading the entry's
+ * mutable fields mid-flight (after an `await`) would silently resolve against
+ * whatever the user has navigated to by then instead of the target this
+ * particular call was actually resolving. Never mutates `entry`.
+ * @returns {Promise<{
+ *   health: object, runs: object[],
+ *   selected: { briefId: string, runId: string, sheet: string | null, briefPath: string | null } | null,
+ *   autoSelectedLatest: boolean, sheets: string[], candidates: object[],
+ *   sliceMap: object | null, error: string | null,
+ * }>}
  */
-async function buildState(instanceId) {
-  const entry = instances.get(instanceId);
-  if (!entry) return { error: 'instance not found' };
-  const baseUrl = entry.baseUrl;
-
-  const stat = await getStatic(entry);
-  const backlog = stat.backlog;
-  const files = stat.files;
-
+async function liveBuildState(entry, stat, { requested, priorSelected }) {
   const health = await entry.client.probeHealth();
   if (health.state !== 'up') {
     // Sidecar down/wrong-repo: fs-backed backlog + plan/brief browsing still work;
-    // the sidecar-backed Runs tab renders a degrade panel.
+    // the sidecar-backed Runs tab renders a degrade panel. Preserve the prior
+    // selection (rather than clearing it) so a transient sidecar blip doesn't
+    // lose the operator's place — once it's back up, the resolution logic below
+    // re-validates it against the fresh run list anyway.
     return {
       health,
-      baseUrl,
-      backlog,
-      files,
       runs: [],
-      selected: null,
-      acceptance: Object.fromEntries(entry.acceptance),
-      sidecarStartup: entry.sidecarStartup,
+      selected: priorSelected ?? null,
+      autoSelectedLatest: false,
+      sheets: [],
+      candidates: [],
+      sliceMap: null,
+      error: null,
     };
   }
 
@@ -239,7 +312,7 @@ async function buildState(instanceId) {
   // Resolve the selected run (mirrors the monolith: honour a requested
   // briefId/runId when it resolves to a real run; otherwise auto-select latest).
   let autoSelectedLatest = false;
-  let selected = entry.selected;
+  let selected = priorSelected;
   let sheets = [];
   let candidates = [];
   let sliceMap = null;
@@ -250,12 +323,10 @@ async function buildState(instanceId) {
       runs.find((run) => run.briefId === briefId && run.runId === runId) ?? null;
     if (selected && !findRun(selected.briefId, selected.runId)) selected = null;
     if (!selected) {
-      const requested =
-        entry.requested.briefId && entry.requested.runId
-          ? findRun(entry.requested.briefId, entry.requested.runId)
-          : null;
-      if (requested) {
-        selected = { briefId: requested.briefId, runId: requested.runId, sheet: null };
+      const requestedRun =
+        requested.briefId && requested.runId ? findRun(requested.briefId, requested.runId) : null;
+      if (requestedRun) {
+        selected = { briefId: requestedRun.briefId, runId: requestedRun.runId, sheet: null };
       } else {
         const latest = runs[0];
         selected = { briefId: latest.briefId, runId: latest.runId, sheet: null };
@@ -263,9 +334,19 @@ async function buildState(instanceId) {
       }
     }
 
+    // The run's exact brief path (repo-relative, e.g. `briefs/draft/x.yaml`),
+    // as recorded in the run's own summary.json at generation time. Carried
+    // through to `selected.briefPath` so "View Brief" can load THIS run's
+    // brief by its exact allowlisted path instead of guessing by basename —
+    // a basename-only lookup picks the WRONG file when a draft and a
+    // committed brief share a basename (see renderer.mjs's `openBriefModal`).
+    let briefPath = null;
     try {
       const summary = await entry.client.fetchRunSummary(selected.briefId, selected.runId);
       candidates = withSkipMessages(normalizeCandidates(summary));
+      if (typeof summary?.briefPath === 'string' && summary.briefPath.length > 0) {
+        briefPath = summary.briefPath;
+      }
     } catch (err) {
       summaryError = `Failed to load run summary: ${err?.message ?? err}`;
     }
@@ -280,8 +361,7 @@ async function buildState(instanceId) {
     }
     const currentSheet =
       selected.sheet && sheets.includes(selected.sheet) ? selected.sheet : (sheets[0] ?? null);
-    entry.selected = { briefId: selected.briefId, runId: selected.runId, sheet: currentSheet };
-    selected = entry.selected;
+    selected = { briefId: selected.briefId, runId: selected.runId, sheet: currentSheet, briefPath };
     if (currentSheet) {
       try {
         sliceMap = await entry.client.fetchSliceMap(selected.briefId, selected.runId, currentSheet);
@@ -290,24 +370,218 @@ async function buildState(instanceId) {
       }
     }
   } else {
-    entry.selected = null;
     selected = null;
   }
 
   return {
     health,
-    baseUrl,
-    backlog,
-    files,
     runs,
     selected,
     autoSelectedLatest,
     sheets,
     candidates,
     sliceMap,
-    acceptance: Object.fromEntries(entry.acceptance),
     error: summaryError ?? runsError ?? null,
   };
+}
+
+/**
+ * Merge the fs-static parts (backlog/files), this instance's acceptance map,
+ * and — critically — FRESH per-criterion/sheet/brief feedback + per-variant
+ * lifecycle onto a run-view (cached or live). Feedback and lifecycle are
+ * recomputed on every call regardless of whether `view` came from the cache or
+ * the network: both are cheap local reads (fs feedback JSON, in-memory backlog
+ * + acceptance map) with no Azure dependency, so a confirmed feedback edit or a
+ * just-completed acceptance is reflected immediately even while the run view
+ * itself is stale.
+ */
+function composeState(entry, stat, view) {
+  const backlogReports = stat.backlog?.reports ?? [];
+  const manifestApprovals = stat.manifestApprovals ?? [];
+  const selected = view.selected ?? null;
+  let candidates = view.candidates ?? [];
+  let sheetFeedbackValue = null;
+  let briefFeedbackValue = null;
+  if (selected) {
+    const store = readFeedback(FEEDBACK_PATH);
+    const feedbackByVariant = feedbackForRun(store, selected.briefId, selected.runId);
+    candidates = candidates.map((candidate) => ({
+      ...candidate,
+      feedback: feedbackByVariant[String(candidate.index)] ?? { sensor: {}, judge: {} },
+      lifecycle: computeVariantLifecycle({
+        backlogReports,
+        manifestApprovals,
+        acceptanceEntry: entry.acceptance.get(
+          acceptanceKey(selected.briefId, selected.runId, candidate.index),
+        ),
+        briefId: selected.briefId,
+        runId: selected.runId,
+        variantIndex: candidate.index,
+      }),
+    }));
+    if (selected.sheet) {
+      sheetFeedbackValue = sheetFeedback(store, selected.briefId, selected.runId, selected.sheet);
+    }
+    briefFeedbackValue = briefFeedback(store, selected.briefId, selected.runId);
+  }
+  return {
+    health: view.health,
+    baseUrl: entry.baseUrl,
+    backlog: stat.backlog,
+    files: stat.files,
+    runs: view.runs ?? [],
+    selected,
+    autoSelectedLatest: view.autoSelectedLatest === true,
+    sheets: view.sheets ?? [],
+    candidates,
+    sliceMap: view.sliceMap ?? null,
+    sheetFeedback: sheetFeedbackValue,
+    briefFeedback: briefFeedbackValue,
+    acceptance: Object.fromEntries(entry.acceptance),
+    sidecarStartup: entry.sidecarStartup,
+    stale: view.stale === true,
+    error: view.error ?? null,
+  };
+}
+
+/**
+ * Build the full read view model for one instance. Never throws — every failure
+ * is folded into a structured, renderable state (health badge + degrade panels +
+ * per-section error strings), mirroring the monolith's graceful-degrade page.
+ * Backlog + plan/brief browsing work even when the sidecar is DOWN (fs-only).
+ *
+ * CACHE-FIRST: when the target run has already been rendered once (in ANY
+ * instance/surface — `runViewCache` is module-wide), this returns the
+ * last-known-good view synchronously (`stale: true`) with NO awaited network
+ * call, and schedules a background revalidation that pushes fresh state via
+ * SSE once it completes (see `lib/run-view-cache.mjs`). Only a true cold miss
+ * (a target never rendered before) awaits the sidecar.
+ *
+ * @param {string} instanceId
+ * @param {{ explicitSheet?: string | null }} [options] `explicitSheet` is the
+ *   raw `sheet` query param from an explicit `/api/select?...&sheet=` request
+ *   (same run or not). The shared `runViewCache` is keyed ONLY by
+ *   `briefId::runId`, not by sheet, so a run that was already rendered under a
+ *   DIFFERENT sheet would otherwise replay that STALE sheet + slice-map via
+ *   cache-first and silently clobber the just-requested selection — worse, an
+ *   already in-flight background revalidation for the OLD sheet can suppress
+ *   a fresh fetch entirely (see `resolveCacheFirstState`'s "concurrent
+ *   requests never start a second overlapping live fetch" contract). When
+ *   `explicitSheet` is set, this call BYPASSES the cache-first read for the
+ *   run-view cache (forces the cold/live path) so the response always
+ *   reflects the requested sheet, while still overlaying the shared cache
+ *   under the run's own resolved key afterwards for later cache-first reads.
+ */
+async function buildState(instanceId, { explicitSheet = null } = {}) {
+  const entry = instances.get(instanceId);
+  if (!entry) return { error: 'instance not found' };
+  const stat = await getStatic(entry);
+
+  const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
+  const priorSelectedSnapshot = entry.selected;
+  const targetBriefId = requestedSnapshot.briefId ?? priorSelectedSnapshot?.briefId ?? null;
+  const targetRunId = requestedSnapshot.runId ?? priorSelectedSnapshot?.runId ?? null;
+  const naturalKey = runViewKey(targetBriefId, targetRunId) ?? lastRunKey;
+  // An explicit sheet request forces the bypass key (null), which makes
+  // `resolveCacheFirstState` treat this call as a cold miss: it awaits
+  // `liveFetch` unconditionally instead of ever replaying a cached snapshot.
+  const key = explicitSheet ? null : naturalKey;
+  const versionAtCall = entry.selectionVersion;
+
+  const view = await resolveCacheFirstState({
+    cache: runViewCache,
+    key,
+    liveFetch: () =>
+      liveBuildState(entry, stat, {
+        requested: requestedSnapshot,
+        priorSelected: priorSelectedSnapshot,
+      }),
+    isCurrent: () => entry.selectionVersion === versionAtCall,
+    // `applyFreshRevalidation` (lib/run-view-cache.mjs) re-reads the static
+    // half of the view model right before mutating/pushing — NEVER reuse the
+    // `stat` snapshot captured when this call started. A background
+    // revalidation can complete AFTER a static-mutating action
+    // (accept-and-queue, an explicit reload) has already invalidated/rebuilt
+    // `entry.cache`, and `isCurrent()` only tracks `selectionVersion` (bumped
+    // by run/sheet selection), which accept does NOT bump. Pushing with the
+    // stale closed-over `stat` would silently clobber the just-rebuilt
+    // post-accept backlog/promotedRunIds/manifestApprovals (and therefore
+    // per-variant lifecycle) with the pre-accept snapshot even though this
+    // completion is still "current". `getStatic` is cheap when `entry.cache`
+    // is already populated (memoised read), so this adds no cost on the
+    // common path.
+    //
+    // The inverse race also matters: `entry.selectionVersion` can change
+    // WHILE that re-read is in flight (e.g. a user click selects a different
+    // run/sheet). `applyFreshRevalidation` re-checks `isCurrent()` AFTER the
+    // re-read and BEFORE mutating `entry.selected` or pushing — if the
+    // selection moved on during the await, it is a no-op instead of
+    // clobbering the newer selection with this now-superseded completion.
+    onFresh: async (fresh) =>
+      applyFreshRevalidation({
+        isCurrent: () => entry.selectionVersion === versionAtCall,
+        getStatic: () => getStatic(entry),
+        applyMutation: () => {
+          entry.selected = fresh.selected ?? null;
+        },
+        pushState: (currentStat) => entry.pushState?.(composeState(entry, currentStat, fresh)),
+      }),
+    onRevalidateError: (err) =>
+      log(`background run-view revalidate failed: ${err?.message ?? err}`, 'warn'),
+    isRevalidating: () => (key ? entry.revalidatingKeys.has(key) : false),
+    setRevalidating: (value) => {
+      if (!key) return;
+      if (value) entry.revalidatingKeys.add(key);
+      else entry.revalidatingKeys.delete(key);
+    },
+    // A bare open with no explicit target reads under `lastRunKey` as a GUESS
+    // at "whatever was last viewed", but "auto-select latest" may resolve to a
+    // DIFFERENT run — always write the fresh result under ITS OWN resolved
+    // key, never under the (possibly unrelated) guessed read key.
+    deriveWriteKey: (fresh) =>
+      runViewKey(fresh.selected?.briefId ?? null, fresh.selected?.runId ?? null),
+  });
+
+  // Persist the run ACTUALLY resolved by this view as the "last viewed run"
+  // pointer, not the (possibly null) natural/guessed read key — a first-ever,
+  // no-input bootstrap has `naturalKey === null` (nothing requested/selected
+  // yet, and `lastRunKey` itself is still null), so using `naturalKey` here
+  // would leave the just-resolved run un-discoverable by the NEXT bare open,
+  // forcing it to hit Azure again despite the run now being cached. Falling
+  // back to `naturalKey` preserves the previous selection when the sidecar is
+  // down and `view.selected` is null.
+  const resolvedKey =
+    runViewKey(view.selected?.briefId ?? null, view.selected?.runId ?? null) ?? naturalKey;
+  if (resolvedKey) lastRunKey = resolvedKey;
+  entry.selected = view.selected ?? null;
+  return composeState(entry, stat, view);
+}
+
+/**
+ * Force a live (network) rebuild, bypassing the cache-first read entirely —
+ * used by the explicit Refresh action, which the operator expects to actually
+ * re-probe the sidecar rather than replay a snapshot. Updates the cache with
+ * the fresh result so subsequent cache-first reads pick it up.
+ */
+async function forceLiveState(instanceId) {
+  const entry = instances.get(instanceId);
+  if (!entry) return { error: 'instance not found' };
+  entry.selectionVersion += 1;
+  entry.cache = null;
+  const stat = await getStatic(entry);
+  const requestedSnapshot = { briefId: entry.requested.briefId, runId: entry.requested.runId };
+  const priorSelectedSnapshot = entry.selected;
+  const view = await liveBuildState(entry, stat, {
+    requested: requestedSnapshot,
+    priorSelected: priorSelectedSnapshot,
+  });
+  const key = runViewKey(view.selected?.briefId ?? null, view.selected?.runId ?? null);
+  if (key) {
+    runViewCache.set(key, view);
+    lastRunKey = key;
+  }
+  entry.selected = view.selected ?? null;
+  return composeState(entry, stat, { ...view, stale: false });
 }
 
 async function acceptAndQueue(instanceId, briefId, runId, variantIndex) {
@@ -415,12 +689,87 @@ const jsonRoutes = [
           runId,
           sheet: sheet ?? (changedRun ? null : (entry.selected?.sheet ?? null)),
         };
+        // A newer selection supersedes any in-flight background revalidation
+        // for the PREVIOUS target — bumping the version means that stale
+        // completion's `isCurrent()` check will fail and it will be dropped
+        // instead of clobbering this (possibly cache-first, possibly live) read.
+        entry.selectionVersion += 1;
       } else if (sheet && entry.selected) {
         entry.selected = { ...entry.selected, sheet };
+        entry.selectionVersion += 1;
       }
-      const state = await buildState(instanceId);
+      // `sheet` (when present) is an EXPLICIT request — see buildState()'s
+      // `explicitSheet` option doc for why this must bypass the run-view
+      // cache-first read rather than risk replaying a stale cached sheet.
+      const state = await buildState(instanceId, { explicitSheet: sheet || null });
       await entry.pushState?.(state);
       return { json: state };
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/feedback',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      if (!isTrustedMutationOrigin(req, entry)) {
+        return { status: 403, json: { error: 'forbidden-origin' } };
+      }
+      if (!tokensMatch(req.headers['x-workflow-mutation-token'], entry.mutationToken)) {
+        return { status: 403, json: { error: 'forbidden', message: 'Invalid mutation token.' } };
+      }
+      if (!isJsonContentType(req)) {
+        return {
+          status: 415,
+          json: {
+            error: 'unsupported-media-type',
+            message: 'Content-Type must be application/json.',
+          },
+        };
+      }
+      let payload;
+      try {
+        payload = await readFeedbackJsonBody(req);
+      } catch (error) {
+        if (error?.code === 'body-too-large') {
+          return {
+            status: 413,
+            json: { error: 'body-too-large', message: 'Feedback payload exceeds 16 KiB.' },
+          };
+        }
+        if (error?.code === 'invalid-json') {
+          return {
+            status: 400,
+            json: { error: 'bad-request', message: 'Feedback payload must be valid JSON.' },
+          };
+        }
+        throw error;
+      }
+      let feedback;
+      try {
+        feedback = saveFeedback(FEEDBACK_PATH, payload);
+      } catch (error) {
+        if (error?.code === 'invalid-feedback') {
+          return {
+            status: 400,
+            json: { error: 'bad-request', message: error.message },
+          };
+        }
+        throw error;
+      }
+      // HARD GATE (ADR: cache-first sheet load must never regress): do NOT
+      // buildState()+pushState() here. A full state rebuild would broadcast a
+      // brand-new `state` over THIS SAME instance's own SSE connection, whose
+      // `render(state)` handler does a full `app.replaceChildren(...)` —
+      // recreating the sheet `<img>` (and its loading spinner) on every single
+      // criterion/sheet/brief confirm. The response body IS the patch: the
+      // calling widget already applies it to its own local draft (see
+      // `renderCriterionFeedback`/sheet/brief confirm handlers in
+      // renderer.mjs) without any re-render. Other open instances simply pick
+      // up the fresh value on their next natural rebuild (select/reload/
+      // reconnect) — feedback is read fresh from disk on every buildState call
+      // regardless, so no server-side cache goes stale.
+      return { json: { feedback } };
     },
   },
   {
@@ -478,14 +827,15 @@ const jsonRoutes = [
     },
   },
   {
-    // Explicit reload: invalidate the fs-static cache, then rebuild + push.
+    // Explicit reload: invalidate the fs-static cache, force a LIVE (non
+    // cache-first) rebuild, then push. The operator clicking Refresh expects an
+    // actual re-probe, not a replayed snapshot.
     method: 'GET',
     path: '/api/reload',
     handler: async ({ instanceId }) => {
       const entry = instances.get(instanceId);
       if (!entry) return { status: 404, json: { error: 'instance not found' } };
-      entry.cache = null;
-      const state = await buildState(instanceId);
+      const state = await forceLiveState(instanceId);
       await entry.pushState?.(state);
       return { json: state };
     },
@@ -537,6 +887,8 @@ async function startServerForInstance(ctx) {
     selected: null,
     mutationToken: randomBytes(24).toString('hex'),
     acceptance: new Map(),
+    selectionVersion: 0,
+    revalidatingKeys: new Set(),
     cache: null,
     sidecarStartup: { state: 'starting', error: null, logPath: null },
     pushState: async () => {},
@@ -567,7 +919,7 @@ const canvas = createCanvas({
   id: 'workflow',
   displayName: 'Sprite Generation Workflow',
   description:
-    'Inspect the sprite-generation workflow and accept a selected run variant into the durable asset-checkin queue.',
+    'Inspect the sprite-generation workflow, review judge/sensor traces and record per-criterion feedback, see each variant\u2019s accept/integration lifecycle, and accept a selected run variant into the durable asset-checkin queue.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -723,7 +1075,13 @@ const canvas = createCanvas({
         const { briefId, runId, sheet } = ctx.input;
         entry.requested = { briefId, runId };
         entry.selected = { briefId, runId, sheet: sheet ?? null };
-        const state = await buildState(ctx.instanceId);
+        entry.selectionVersion += 1;
+        // Thread `sheet` through exactly like the HTTP `/api/select` route:
+        // an explicit sheet on the SAME run must bypass the run-view
+        // cache-first read (see buildState()'s `explicitSheet` option doc),
+        // otherwise this action-path selection can replay an unrelated
+        // cached sheet/slice-map for the run instead of the one requested.
+        const state = await buildState(ctx.instanceId, { explicitSheet: sheet || null });
         await entry.pushState?.(state);
         return { selected: state.selected, runCount: state.runs?.length ?? 0 };
       },
@@ -762,8 +1120,7 @@ const canvas = createCanvas({
       handler: async (ctx) => {
         const entry = instances.get(ctx.instanceId);
         if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
-        entry.cache = null;
-        const state = await buildState(ctx.instanceId);
+        const state = await forceLiveState(ctx.instanceId);
         await entry.pushState?.(state);
         return { health: state.health, runCount: state.runs?.length ?? 0 };
       },
