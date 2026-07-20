@@ -1,0 +1,10 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "pr1604-merge-conflict-recovery",
+  "task_title": "PR #1604 merge-conflict recovery",
+  "estimated_apples": 2,
+  "apples_rescored_from": 3,
+  "rescore_reason": "The initial 3-apple estimate anticipated a broader merge recovery, but the resulting diff only reconciled two existing CI-recovery files and their existing deterministic tests. It added no module, subsystem, runtime surface, or architectural decision, so the completed work is a 2-apple simple bug-fix scope.",
+  "stages": {}
+}
