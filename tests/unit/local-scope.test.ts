@@ -39,6 +39,9 @@ interface Scope {
   sprites_only: boolean;
   sprites_touched: boolean;
   visual_touched: boolean;
+  game_visual_touched: boolean;
+  asset_visual_touched: boolean;
+  devtool_visual_touched: boolean;
   sim_touched: boolean;
   coverage_touched: boolean;
   sprite_pipeline_touched: boolean;
@@ -61,6 +64,9 @@ const F = (
   sprites_only: false,
   sprites_touched: false,
   visual_touched: false,
+  game_visual_touched: false,
+  asset_visual_touched: false,
+  devtool_visual_touched: false,
   sim_touched: false,
   coverage_touched: false,
   sprite_pipeline_touched: false,
@@ -155,6 +161,9 @@ function makeRepo(): Repo {
       sprites_only: read('sprites_only'),
       sprites_touched: read('sprites_touched'),
       visual_touched: read('visual_touched'),
+      game_visual_touched: read('game_visual_touched'),
+      asset_visual_touched: read('asset_visual_touched'),
+      devtool_visual_touched: read('devtool_visual_touched'),
       sim_touched: read('sim_touched'),
       coverage_touched: read('coverage_touched'),
       sprite_pipeline_touched: read('sprite_pipeline_touched'),
@@ -200,6 +209,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       expect(repo.scope()).toEqual(
         F(false, false, false, {
           visual_touched: true,
+          game_visual_touched: true,
+          asset_visual_touched: true,
+          devtool_visual_touched: true,
           sim_touched: true,
           coverage_touched: true,
           sprite_pipeline_touched: true,
@@ -240,9 +252,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     repo.write('src/core/systems/movementSystem.ts', 'export const x = 1;\n');
     repo.git('add', '.');
     repo.git('commit', '-q', '-m', 'core');
-    // src/core → gameplay_safe=false, sim_touched=true, coverage_touched=true
+    // src/core → gameplay_safe=false, sim_touched=true, coverage_touched=true, visual_touched=true
     expect(repo.scope()).toEqual(
-      F(false, false, false, { sim_touched: true, coverage_touched: true }),
+      F(false, false, false, { visual_touched: true, game_visual_touched: true, sim_touched: true, coverage_touched: true }),
     );
   });
 
@@ -251,9 +263,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     mainWithFeature(repo);
     // No commit on feature; the change exists only as an untracked working file.
     repo.write('src/core/world.ts', 'export const w = 1;\n');
-    // src/core → gameplay_safe=false, sim_touched=true, coverage_touched=true
+    // src/core → gameplay_safe=false, sim_touched=true, coverage_touched=true, visual_touched=true
     expect(repo.scope()).toEqual(
-      F(false, false, false, { sim_touched: true, coverage_touched: true }),
+      F(false, false, false, { visual_touched: true, game_visual_touched: true, sim_touched: true, coverage_touched: true }),
     );
   });
 
@@ -282,9 +294,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       repo.git('commit', '-q', '-m', 'delete core + docs');
       // With --diff-filter=ACMR the deletion would vanish and only docs would remain
       // → a spurious gameplay_safe=true. The helper uses no filter, so it stays false.
-      // src/core deletion → gameplay_safe=false, sim_touched=true, coverage_touched=true
+      // src/core deletion → gameplay_safe=false, sim_touched=true, coverage_touched=true, visual_touched=true
       expect(repo.scope()).toEqual(
-        F(false, false, false, { sim_touched: true, coverage_touched: true }),
+        F(false, false, false, { visual_touched: true, game_visual_touched: true, sim_touched: true, coverage_touched: true }),
       );
     },
   );
@@ -312,6 +324,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       expect(repo.scope()).toEqual(
         F(false, false, false, {
           visual_touched: true,
+          game_visual_touched: true,
+          asset_visual_touched: true,
+          devtool_visual_touched: true,
           sim_touched: true,
           coverage_touched: true,
           sprite_pipeline_touched: true,

@@ -147,23 +147,23 @@ const cases: Case[] = [
   {
     name: 'sprite catalog data',
     files: ['src/shared/data/sprite-catalog.json'],
-    expected: F(true, false, true, false, false, false, false, false, false, true, false, true, false),
+    expected: F(true, false, true, false, false, false, true, false, false, true, false, true, false),
   },
   {
     name: 'package script wiring (safe split)',
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'true' },
-    // SCOPE_FILES_OVERRIDE path → base_ref="" → deps unknown → fail-closed → dependencies_touched=true
-    // GAMEPLAY_SAFE=true → visual gets unknown treatment (package.json unknown in visual loop)
+    // GAMEPLAY_SAFE=true → sim/cov safe; deps: script does actual git comparison → no dep change in test repo
+    // visual: package.json hits catch-all in visual loop → all visual surfaces true
     //                          art   docs  gsafe sponly sptch  sim   cov   spipe deps  vis   game  asset devt
-    expected: F(false, false, true, false, false, false, false, false, true, true, true, true, true),
+    expected: F(false, false, true, false, false, false, false, false, false, true, true, true, true),
   },
   {
     name: 'package core script wiring (unsafe split)',
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
-    // Same as above but gameplay_safe=false
-    expected: F(false, false, false, false, false, true, true, false, true, true, true, true, true),
+    // GAMEPLAY_SAFE=false → sim/cov set; deps: actual git comparison → no dep change in test repo
+    expected: F(false, false, false, false, false, true, true, false, false, true, true, true, true),
   },
   // CI/tooling-only: non-visual.
   {
@@ -244,7 +244,7 @@ const cases: Case[] = [
   {
     name: 'headless test itself',
     files: ['tests/headless/floor1-completion.test.ts'],
-    expected: F(false, false, false, false, false, true, false, false, false, false, false, false, false),
+    expected: F(false, false, false, false, false, true, true, false, false, false, false, false, false),
   },
   {
     name: 'engine + game mixed',
@@ -374,7 +374,7 @@ const cases: Case[] = [
   {
     name: 'devtools.html change → devtool_visual only',
     files: ['devtools.html'],
-    expected: F(false, false, true, false, false, false, true, false, false, true, false, false, true),
+    expected: F(false, false, true, false, false, false, false, false, false, true, false, false, true),
   },
   {
     name: 'src/devtools-main.ts change → devtool_visual only',
@@ -436,8 +436,8 @@ const cases: Case[] = [
   {
     name: 'dependency change (package.json, deps touched)',
     files: ['package.json'],
-    env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
-    // package.json (unsafe) → sim/cov/visual touched; deps unknown in override → fail-closed
+    env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false', PACKAGE_JSON_DEPS_TOUCHED_OVERRIDE: 'true' },
+    // package.json (unsafe) → sim/cov/visual touched; DEPS_TOUCHED_OVERRIDE forces dependencies_touched=true
     expected: F(false, false, false, false, false, true, true, false, true, true, true, true, true),
   },
   // Asset change: sim and coverage untouched.
@@ -466,15 +466,15 @@ const cases: Case[] = [
   },
   // Headless tests: sim touched (test outcome matters), coverage NOT touched.
   {
-    name: 'headless test → sim touched only',
+    name: 'headless test → sim and coverage touched',
     files: ['tests/headless/ai-stuck-wiggle.test.ts'],
-    expected: F(false, false, false, false, false, true, false, false, false, false, false, false, false),
+    expected: F(false, false, false, false, false, true, true, false, false, false, false, false, false),
   },
   // Integration test (non-sprites): neither sim nor coverage touched.
   {
-    name: 'integration test (non-sprites) → neither sim nor coverage',
+    name: 'integration test (non-sprites) → coverage touched, sim not touched',
     files: ['tests/integration/some-game-test.test.ts'],
-    expected: F(false, false, false, false, false, false, false, false, false, false, false, false, false),
+    expected: F(false, false, false, false, false, false, true, false, false, false, false, false, false),
   },
   // Docs handoff + game code → sim and coverage still touched (handoff doesn't neutralise sim flag).
   {

@@ -503,9 +503,12 @@ while IFS= read -r file; do
     # Specific path must precede the broad src/shared/* case.
     src/shared/data/sprite-catalog.json) ;;
     src/shared/*) sim_touched=true; break ;;
-    # Neutral: rendering-only, sprite pipeline, docs, tests that don't affect sim
+    # Neutral: rendering-only, sprite pipeline, devtools, docs, tests that don't affect sim
     src/engine/*) ;;
     src/labs/*) ;;
+    src/devtools/*) ;;
+    src/devtools-main.ts) ;;
+    devtools.html) ;;
     public/*) ;;
     # Sprite-specific test paths before the broad tests/* neutral
     tests/unit/sprites/*) ;;
@@ -565,7 +568,7 @@ while IFS= read -r file; do
     tests/e2e/*) ;;
     # All other tests (unit, integration, ecs, game, etc.) → positive
     tests/*) coverage_touched=true; break ;;
-    # Neutral: docs, public assets, CI/tooling
+    # Neutral: docs, public assets, CI/tooling, devtools HTML entry point
     docs/*) ;;
     .specify/specs/*) ;;
     AGENTS.md) ;;
@@ -574,6 +577,7 @@ while IFS= read -r file; do
     .github/*) ;;
     scripts/*) ;;
     public/*) ;;
+    devtools.html) ;;
     package.json)
       if package_json_gameplay_safe; then
         :
@@ -608,6 +612,7 @@ while IFS= read -r file; do
     package.json) ;;
     package-lock.json) ;;
     AGENTS.md) ;;
+    devtools.html) ;;
     *) has_unclassified=true; break ;;
   esac
 done <<<"$changed"
