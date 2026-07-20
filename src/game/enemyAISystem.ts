@@ -1830,6 +1830,11 @@ export function enemyAISystem(world: GameWorld): void {
     const persona = enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const playerSharesRoom = isPlayerInEnemyRoom(world, eid, playerX, playerY);
+    // Cave interiors can share open geometry without sharing a semantic room ID.
+    // Preserve closed-door isolation while allowing visibly adjacent enemies to
+    // detect the player across those irregular room boundaries.
+    const hasDirectPlayerSight =
+      floorMap !== null && floorMap.hasLineOfSight(enemyX, enemyY, playerX, playerY);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
     // For a mob with a family-driven virtual target we measure aggro against
     // the virtual target (distanceToPlayer already reflects that), and set
@@ -1840,7 +1845,7 @@ export function enemyAISystem(world: GameWorld): void {
     let canDetectPlayer =
       familyBypass ||
       (!playerHiddenInSafeRoom &&
-        (hasOpenRoomDoor || playerSharesRoom || permanentAggro) &&
+        (hasOpenRoomDoor || playerSharesRoom || hasDirectPlayerSight || permanentAggro) &&
         inAggroRange);
 
     if (world.elapsedMs < aggroEnableAtMs) {
