@@ -20,6 +20,7 @@ import {
   COORDINATOR_MARKER,
   ciFilesFor,
   clusterPullRequests,
+  discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
   isCoordinatorStateSemanticallyEqual,
@@ -147,6 +148,45 @@ test('managed groups continue after open membership falls below three', () => {
     [1, 2],
   );
   assert.deepEqual(groups[0].originalMembers, [1, 2, 3]);
+});
+
+test('fresh two-PR overlap stays below threshold without persisted managed state', () => {
+  const pulls = [
+    makePull(3, ['.github/workflows/ci.yml']),
+    makePull(4, ['.github/workflows/ci.yml']),
+  ];
+  assert.deepEqual(discoverCoordinationClusters(pulls, []), []);
+});
+
+test('managed group can absorb a new two-PR overlap after shrinking below threshold', () => {
+  const pulls = [
+    makePull(3, ['.github/workflows/ci.yml']),
+    makePull(4, ['.github/workflows/ci.yml']),
+  ];
+  const state = makeCoordinatorState({
+    prNumber: 3,
+    groupId: 'ci-conflict-existing',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 3,
+    activeNumber: 3,
+    order: [pulls[0]],
+    proofs: [
+      {
+        number: 3,
+        status: 'applied',
+        fingerprint: pulls[0].headSha,
+        representedBy: [],
+      },
+    ],
+    overlapFiles: ['.github/workflows/ci.yml'],
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  assert.deepEqual(
+    discoverCoordinationClusters(pulls, [state]).map((cluster) =>
+      cluster.map((pull) => pull.number),
+    ),
+    [[3, 4]],
+  );
 });
 
 test('coordinator state comment is parseable and semantic updates are idempotent', () => {
@@ -281,6 +321,16 @@ test('coordinator validates automation ownership against the live PR head', () =
     'utf8',
   );
   assert.match(source, /headSha:\s*pull\.headSha/);
+});
+
+test('coordinator only trusts recovery state comments from trusted authors', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /TRUSTED_ASSOCIATIONS/);
+  assert.match(source, /TRUSTED_BOT_LOGINS/);
+  assert.match(source, /requireTrustedAuthor:\s*true/);
 });
 
 test('coordinator claims owner fence and disables auto-merge for every grouped member', () => {

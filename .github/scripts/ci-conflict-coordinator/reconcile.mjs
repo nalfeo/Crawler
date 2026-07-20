@@ -6,6 +6,8 @@ import {
   ownerLabel,
   parseStateComment as parseRecoveryStateComment,
   STATE_MARKER as RECOVERY_STATE_MARKER,
+  TRUSTED_ASSOCIATIONS,
+  TRUSTED_BOT_LOGINS,
 } from '../ci-recovery/state.mjs';
 import {
   parseEnabledFlag,
@@ -24,7 +26,7 @@ import {
   LEADER_LABEL,
   ORDER_WAIT_LABEL,
   ciFilesFor,
-  clusterPullRequests,
+  discoverCoordinationClusters,
   dispatchKey,
   hasHealthyRecoveryOwner,
   isCoordinatorStateSemanticallyEqual,
@@ -142,13 +144,30 @@ async function commentsFor(number) {
   return paginate(token, `/repos/${owner}/${repo}/issues/${number}/comments`);
 }
 
-function singleManagedComment(comments, marker, parser, number, requireCoordinatorApp = false) {
+function isTrustedRecoveryComment(comment) {
+  const authorLogin = String(comment?.user?.login || '').toLowerCase();
+  const authorAssociation = String(comment?.author_association ?? '').toUpperCase();
+  return (
+    Number(comment?.performed_via_github_app?.id) === trustedAppId ||
+    TRUSTED_ASSOCIATIONS.has(authorAssociation) ||
+    TRUSTED_BOT_LOGINS.has(authorLogin)
+  );
+}
+
+function singleManagedComment(
+  comments,
+  marker,
+  parser,
+  number,
+  { requireCoordinatorApp = false, requireTrustedAuthor = false } = {},
+) {
   const matching = comments.filter(
     (comment) =>
       String(comment.body || '')
         .trimStart()
         .startsWith(marker) &&
-      (!requireCoordinatorApp || Number(comment.performed_via_github_app?.id) === trustedAppId),
+      (!requireCoordinatorApp || Number(comment.performed_via_github_app?.id) === trustedAppId) &&
+      (!requireTrustedAuthor || isTrustedRecoveryComment(comment)),
   );
   if (matching.length > 1) {
     throw new Error(`PR #${number} has duplicate managed comments for ${marker}`);
@@ -162,6 +181,7 @@ function recoveryContext(pull, comments) {
     RECOVERY_STATE_MARKER,
     parseRecoveryStateComment,
     pull.number,
+    { requireTrustedAuthor: true },
   );
   const state = managed?.state || null;
   let ownershipError = null;
@@ -193,7 +213,7 @@ async function updateCoordinatorComment(pull, comments, state) {
     COORDINATOR_MARKER,
     parseCoordinatorComment,
     pull.number,
-    true,
+    { requireCoordinatorApp: true },
   );
   if (managed && isCoordinatorStateSemanticallyEqual(managed.state, state)) return;
   const body = renderCoordinatorComment(state);
@@ -421,18 +441,16 @@ const fileLists = await mapLimit(eligible, 8, async (pull) => {
   ];
 });
 const pulls = eligible.map((pull, index) => normalizePull(pull, fileLists[index]));
-const discoveredClusters = clusterPullRequests(pulls);
-const discoveredNumbers = new Set(discoveredClusters.flat().map((pull) => pull.number));
 const managedNumbers = pulls
   .filter((pull) => pull.labelNames.has(COORDINATED_LABEL))
   .map((pull) => pull.number);
-const relevantNumbers = [...new Set([...discoveredNumbers, ...managedNumbers])];
-if (relevantNumbers.length === 0) {
-  process.stdout.write('No CI conflict clusters found\n');
-  process.exit(0);
-}
-
-const commentEntries = await mapLimit(relevantNumbers, 8, async (number) => [
+const stateCandidateNumbers = [
+  ...new Set([
+    ...managedNumbers,
+    ...pulls.filter((pull) => pull.ciFiles.length > 0).map((pull) => pull.number),
+  ]),
+];
+const commentEntries = await mapLimit(stateCandidateNumbers, 8, async (number) => [
   number,
   await commentsFor(number),
 ]);
@@ -445,12 +463,20 @@ for (const [number, comments] of commentEntries) {
     COORDINATOR_MARKER,
     parseCoordinatorComment,
     number,
-    true,
+    { requireCoordinatorApp: true },
   );
   if (managed) {
     existingStates.push(managed.state);
     existingStateByNumber.set(number, managed.state);
   }
+}
+
+const discoveredClusters = discoverCoordinationClusters(pulls, existingStates);
+const discoveredNumbers = new Set(discoveredClusters.flat().map((pull) => pull.number));
+const relevantNumbers = [...new Set([...discoveredNumbers, ...managedNumbers])];
+if (relevantNumbers.length === 0) {
+  process.stdout.write('No CI conflict clusters found\n');
+  process.exit(0);
 }
 
 const groups = mergeCoordinationGroups({
@@ -547,7 +573,7 @@ for (const group of groups) {
           COORDINATOR_MARKER,
           parseCoordinatorComment,
           pull.number,
-          true,
+          { requireCoordinatorApp: true },
         )?.state,
     )
     .filter(Boolean)

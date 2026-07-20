@@ -93,6 +93,18 @@ export function clusterPullRequests(pullRequests, minimumSize = MIN_CLUSTER_SIZE
     .sort((left, right) => left[0].number - right[0].number);
 }
 
+export function discoverCoordinationClusters(
+  pullRequests,
+  existingStates,
+  minimumSize = MIN_CLUSTER_SIZE,
+) {
+  const managedMembers = new Set((existingStates || []).flatMap((state) => state.members || []));
+  return clusterPullRequests(pullRequests, 1).filter(
+    (component) =>
+      component.length >= minimumSize || component.some((pull) => managedMembers.has(pull.number)),
+  );
+}
+
 export function overlappingFiles(pullRequests) {
   const counts = new Map();
   for (const pull of pullRequests || []) {
