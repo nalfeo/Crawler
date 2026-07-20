@@ -18,6 +18,7 @@ import {
 } from './proof.mjs';
 import {
   COORDINATOR_MARKER,
+  MAX_OVERLAP_FILES,
   ciFilesFor,
   clusterPullRequests,
   discoverCoordinationClusters,
@@ -562,4 +563,70 @@ test('full-tree proof preserves unique changes, closes only no-ops, and escalate
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
+});
+
+test('renderCoordinatorComment stays below GitHub comment limit with many overlap files', () => {
+  // Build 200 distinct CI paths — well above the MAX_OVERLAP_FILES cap of 20.
+  const manyFiles = Array.from(
+    { length: 200 },
+    (_, index) => `.github/workflows/workflow-${String(index).padStart(3, '0')}.yml`,
+  );
+  const pull = makePull(1, manyFiles);
+  const state = makeCoordinatorState({
+    prNumber: 1,
+    groupId: 'ci-conflict-size-test',
+    originalMembers: [1, 2, 3],
+    leaderNumber: 1,
+    activeNumber: 1,
+    order: [pull],
+    proofs: [{ number: 1, status: 'applied', fingerprint: 'a'.repeat(64), representedBy: [] }],
+    overlapFiles: manyFiles,
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+
+  // makeCoordinatorState must truncate to MAX_OVERLAP_FILES.
+  assert.equal(state.overlapFiles.length, MAX_OVERLAP_FILES);
+  assert.equal(state.overlapFilesCount, 200);
+
+  const body = renderCoordinatorComment(state);
+
+  // Must stay below the GitHub 65 536-character comment cap.
+  assert.ok(
+    body.length < 65_536,
+    `expected comment below GitHub limit, got ${body.length} characters`,
+  );
+  // The "…and N more" note must be present because files were truncated.
+  const hiddenCount = 200 - MAX_OVERLAP_FILES;
+  assert.ok(
+    body.includes(`…and ${hiddenCount} more`),
+    `expected "…and ${hiddenCount} more" in rendered comment`,
+  );
+  // Only MAX_OVERLAP_FILES file lines should appear (no raw overflow).
+  const fileLines = body.split('\n').filter((line) => line.match(/^- `\.github\/workflows\//));
+  assert.equal(fileLines.length, MAX_OVERLAP_FILES);
+});
+
+test('renderCoordinatorComment round-trips overlapFilesCount through parse', () => {
+  const manyFiles = Array.from(
+    { length: 50 },
+    (_, index) => `.github/workflows/w-${String(index).padStart(2, '0')}.yml`,
+  );
+  const state = makeCoordinatorState({
+    prNumber: 2,
+    groupId: 'ci-conflict-roundtrip',
+    originalMembers: [2, 3, 4],
+    leaderNumber: 2,
+    activeNumber: 2,
+    order: [makePull(2, manyFiles)],
+    proofs: [{ number: 2, status: 'applied', fingerprint: 'b'.repeat(64), representedBy: [] }],
+    overlapFiles: manyFiles,
+    updatedAt: '2026-07-20T00:01:00Z',
+  });
+  const body = renderCoordinatorComment(state);
+  const parsed = parseCoordinatorComment(body);
+  assert.equal(parsed.overlapFilesCount, 50);
+  assert.equal(parsed.overlapFiles.length, MAX_OVERLAP_FILES);
+  // "…and N more" must be rendered for the truncated portion.
+  const hiddenCount = 50 - MAX_OVERLAP_FILES;
+  assert.ok(body.includes(`…and ${hiddenCount} more`));
 });

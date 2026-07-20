@@ -14,7 +14,7 @@ ci-policy
 
 ## Apples
 
-3🍎 estimated, 3🍎 actual (exact — one deterministic coordinator subsystem, trusted workflow wiring, and focused regression coverage).
+4🍎 estimated, 3🍎 actual (miss — multi-system coordination/architectural impact raised the estimate to 4🍎 per complexity-policy; actual implementation required one new coordinator subsystem, trusted workflow wiring, and focused regression coverage).
 
 ## Summary
 

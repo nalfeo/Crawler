@@ -9,6 +9,11 @@ export const LEADER_LABEL = 'ci-conflict-leader';
 export const ESCALATION_LABEL = 'ci-conflict-escalation';
 export const ORDER_WAIT_LABEL = 'ci-conflict-order-wait';
 export const MIN_CLUSTER_SIZE = 3;
+// GitHub caps issue/PR comment bodies at 65 536 characters. A cluster sharing
+// hundreds of CI paths would breach that limit if we render or encode the full
+// list. Store and display at most this many files; the remainder is captured in
+// overlapFilesCount so callers can show an accurate "…and N more" note.
+export const MAX_OVERLAP_FILES = 20;
 
 const CI_PATH_PREFIXES = [
   '.github/actions/',
@@ -300,7 +305,8 @@ export function makeCoordinatorState({
         ...(proof.reason ? { reason: compact(proof.reason) } : {}),
       }))
       .sort((left, right) => left.number - right.number),
-    overlapFiles: [...overlapFiles].sort(),
+    overlapFiles: [...overlapFiles].sort().slice(0, MAX_OVERLAP_FILES),
+    overlapFilesCount: overlapFiles.length,
     escalations: [...escalations].map(compact).filter(Boolean).sort(),
     lastDispatchKey: lastDispatchKey ? compact(lastDispatchKey) : null,
     updatedAt: compact(updatedAt),
@@ -339,6 +345,12 @@ export function validateCoordinatorState(state) {
   ) {
     throw new Error('CI conflict state has invalid overlap files or timestamp');
   }
+  if (
+    state.overlapFilesCount !== undefined &&
+    (!Number.isInteger(state.overlapFilesCount) || state.overlapFilesCount < state.overlapFiles.length)
+  ) {
+    throw new Error('CI conflict state has invalid overlapFilesCount');
+  }
   return state;
 }
 
@@ -360,6 +372,16 @@ export function renderCoordinatorComment(state) {
       (proof) =>
         `- #${proof.number}: full-tree no-op after #${proof.representedBy.join(', #') || 'main'} (\`${proof.fingerprint.slice(0, 12)}\`)`,
     );
+  // overlapFiles is already bounded to MAX_OVERLAP_FILES; overlapFilesCount holds
+  // the original total so we can render an accurate "…and N more" note.
+  const hiddenCount = (state.overlapFilesCount ?? state.overlapFiles.length) - state.overlapFiles.length;
+  const overlapLines =
+    state.overlapFiles.length > 0
+      ? [
+          ...state.overlapFiles.map((file) => `- \`${file}\``),
+          ...(hiddenCount > 0 ? [`- _…and ${hiddenCount} more_`] : []),
+        ]
+      : ['- No current overlap; continuing a previously observed coordination group.'];
   return [
     COORDINATOR_MARKER,
     `${COORDINATOR_DATA_PREFIX}${encoded} -->`,
@@ -373,9 +395,7 @@ export function renderCoordinatorComment(state) {
     ...orderLines,
     '',
     '### Shared CI scope',
-    ...(state.overlapFiles.length > 0
-      ? state.overlapFiles.map((file) => `- \`${file}\``)
-      : ['- No current overlap; continuing a previously observed coordination group.']),
+    ...overlapLines,
     ...(duplicateLines.length > 0
       ? ['', '### Deterministically superseded', ...duplicateLines]
       : []),

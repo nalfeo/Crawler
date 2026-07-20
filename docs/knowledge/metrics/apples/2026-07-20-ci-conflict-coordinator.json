@@ -1,9 +1,9 @@
 {
   "date": "2026-07-20",
   "session": "ci-conflict-coordinator",
-  "estimated_apples": 3,
+  "estimated_apples": 4,
   "actual_apples": 3,
-  "delta": 0,
-  "verdict": "exact",
+  "delta": -1,
+  "verdict": "miss",
   "hello_kitties": 0.6
 }
