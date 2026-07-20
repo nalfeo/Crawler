@@ -57,6 +57,29 @@ export function trainCheckTitle(status, conclusion) {
     : 'Merge-train validation could not start';
 }
 
+export async function promoteValidatedPrefixAfterBuildFailure({ candidates, promotePrefix }) {
+  let validationIndex = -1;
+  for (let index = 0; index < candidates.length; index += 1) {
+    if (candidates[index].state === 'success') validationIndex = index;
+  }
+  if (validationIndex === -1) {
+    return {
+      greenPrefixLength: 0,
+      validationIndex,
+      promotionAttempted: false,
+      promoted: false,
+    };
+  }
+  const greenPrefixLength = validationIndex + 1;
+  const promoted = await promotePrefix(greenPrefixLength, validationIndex);
+  return {
+    greenPrefixLength,
+    validationIndex,
+    promotionAttempted: true,
+    promoted,
+  };
+}
+
 function hasLabel(pr, name) {
   return (pr.labels || []).some((label) => label.name === name);
 }

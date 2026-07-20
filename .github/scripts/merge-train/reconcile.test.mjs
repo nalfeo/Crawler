@@ -10,6 +10,7 @@ import {
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
+  promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
   resolveMergeTrainTokens,
   trainCheckTitle,
@@ -217,6 +218,69 @@ test('buildCandidate leaves non-conflict merge failures retryable', () => {
       return true;
     },
   );
+});
+
+test('later build failure promotes the highest successful cumulative prefix in order', async () => {
+  const train = [1, 2, 3, 4].map((number) => makePr({ number }));
+  const candidates = [
+    { state: 'missing', entries: train.slice(0, 1) },
+    { state: 'success', entries: train.slice(0, 2) },
+    { state: 'pending', entries: train.slice(0, 3) },
+  ];
+  const promotedEntries = [];
+  const result = await promoteValidatedPrefixAfterBuildFailure({
+    candidates,
+    promotePrefix: async (prefixLength, validationIndex) => {
+      assert.equal(validationIndex, 1);
+      promotedEntries.push(...train.slice(0, prefixLength).map((entry) => entry.number));
+      return true;
+    },
+  });
+
+  assert.deepEqual(promotedEntries, [1, 2]);
+  assert.deepEqual(result, {
+    greenPrefixLength: 2,
+    validationIndex: 1,
+    promotionAttempted: true,
+    promoted: true,
+  });
+  assert.deepEqual(
+    train.slice(result.greenPrefixLength).map((entry) => entry.number),
+    [3, 4],
+  );
+});
+
+test('build failure before any successful prefix does not attempt promotion', async () => {
+  let promotionCalls = 0;
+  const result = await promoteValidatedPrefixAfterBuildFailure({
+    candidates: [{ state: 'missing' }, { state: 'pending' }],
+    promotePrefix: async () => {
+      promotionCalls += 1;
+      return true;
+    },
+  });
+
+  assert.equal(promotionCalls, 0);
+  assert.deepEqual(result, {
+    greenPrefixLength: 0,
+    validationIndex: -1,
+    promotionAttempted: false,
+    promoted: false,
+  });
+});
+
+test('build failure recovery never promotes later unvalidated candidates', async () => {
+  const calls = [];
+  const result = await promoteValidatedPrefixAfterBuildFailure({
+    candidates: [{ state: 'success' }, { state: 'failure' }, { state: 'pending' }],
+    promotePrefix: async (...args) => {
+      calls.push(args);
+      return true;
+    },
+  });
+
+  assert.deepEqual(calls, [[1, 0]]);
+  assert.equal(result.greenPrefixLength, 1);
 });
 
 test('live Actions runs require separate promotion and workflow-dispatch tokens', () => {

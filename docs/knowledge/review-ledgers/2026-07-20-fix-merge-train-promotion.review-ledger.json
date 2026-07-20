@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "fix-merge-train-promotion",
+  "task_title": "Promote validated merge-train prefixes before later build failure",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-4.6",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted cumulative-candidate semantics: the highest successful built prefix proves every PR through that index even when intermediate prefixes are missing or pending. Added the canonical missing,success case; clarified that later built-but-unvalidated candidates are excluded. Kept a focused helper because normal maximal-first planning would choose a later missing candidate instead of rescuing an earlier success after a build failure."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

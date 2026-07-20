@@ -23,6 +23,7 @@ import {
   mainHealthReason,
   planLandedRecovery,
   promoteExactBatch,
+  promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
   resolveMergeTrainTokens,
   trainCheckTitle,
@@ -556,6 +557,7 @@ if (train.length === 0) {
 const mainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object
   .sha;
 const candidates = [];
+let retryableBuildFailure = null;
 for (let index = 0; index < train.length; index += 1) {
   const entries = train.slice(0, index + 1);
   const fingerprint = candidateFingerprint(mainSha, entries);
@@ -587,10 +589,8 @@ for (let index = 0; index < train.length; index += 1) {
         detail: error.message,
       }),
     );
-    process.stdout.write(
-      `retryable candidate build failure pr=#${train[index].number} error=${error.message}\n`,
-    );
-    process.exit(0);
+    retryableBuildFailure = { entry: train[index], error };
+    break;
   }
   git(['fetch', 'origin', `${refName}:refs/remotes/origin/${refName}`, '--force']);
   const state = trainCheckState(
@@ -654,6 +654,17 @@ async function promotePrefix(prefixLength, validationIndex) {
     provenanceEntries,
     reattestHealth: mainHealthAllowsPromotion,
   });
+}
+
+if (retryableBuildFailure) {
+  const recovery = await promoteValidatedPrefixAfterBuildFailure({
+    candidates,
+    promotePrefix,
+  });
+  process.stdout.write(
+    `retryable candidate build failure pr=#${retryableBuildFailure.entry.number} error=${retryableBuildFailure.error.message} green_prefix=${recovery.greenPrefixLength} promotion_attempted=${recovery.promotionAttempted}\n`,
+  );
+  process.exit(0);
 }
 
 // Validate the maximal candidate first. Only a genuine terminal maximal failure
