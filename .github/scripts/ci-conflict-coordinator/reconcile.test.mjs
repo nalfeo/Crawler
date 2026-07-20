@@ -212,8 +212,18 @@ async function runScript(port, workDir, extraEnv = {}) {
  *   defaults to pr3Sha (no drift). Pass a different value to simulate drift.
  * @param {number} [opts.reopenStatus]     - HTTP status to return for the reopen PATCH;
  *   defaults to 200 (success).
+ * @param {number} [opts.fenceReleaseStatus] - HTTP status to return for the owner-fence
+ *   DELETE; defaults to 204 (success).
  */
-function buildRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha, postClosePr3Sha, reopenStatus = 200 }) {
+function buildRoutes({
+  mainSha,
+  pr1Sha,
+  pr2Sha,
+  pr3Sha,
+  postClosePr3Sha,
+  reopenStatus = 200,
+  fenceReleaseStatus = 204,
+}) {
   const driftedPr3Sha = postClosePr3Sha ?? pr3Sha;
   let pr3PatchCount = 0;
   let pr3GetCount = 0;
@@ -321,7 +331,10 @@ function buildRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha, postClosePr3Sha, reopenS
     [`DELETE /repos/${OWNER}/${REPO}/issues`]: () => ({ status: 204, body: null }),
 
     // Owner fence label delete (releaseOwnerFence)
-    [`DELETE /repos/${OWNER}/${REPO}/labels`]: () => ({ status: 204, body: null }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels`]: () => ({
+      status: fenceReleaseStatus,
+      body: fenceReleaseStatus < 300 ? null : { message: 'server error' },
+    }),
 
     // Coordinator comments (POST new comment for each PR)
     [`POST /repos/${OWNER}/${REPO}/issues/1/comments`]: () => ({ body: { id: 1001 } }),
@@ -478,4 +491,50 @@ test('coordinator fails workflow when post-close reopen is unrecoverable', async
     'stderr must include UNSAFE escalation message for unrecoverable reopen failure',
   );
   assert.match(stdout, /reopen-attempt-failed pr=#3/, 'stdout must log each failed reopen attempt');
+});
+
+test('UNSAFE reopen error is preserved even when owner-fence release also fails', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const driftedSha = '7'.repeat(40);
+
+  // Both reopen (500) and fence-release DELETE (500) fail simultaneously.
+  // The UNSAFE error from the reopen failure must still surface in stderr,
+  // not be replaced by the fence-release error.
+  const { server, port } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      postClosePr3Sha: driftedSha,
+      reopenStatus: 500,
+      fenceReleaseStatus: 500,
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stderr, stdout } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.notEqual(code, 0, 'reconcile must exit non-zero when reopen is unrecoverable');
+
+  // The UNSAFE message must appear in stderr even with fence-release failure
+  assert.match(
+    stderr,
+    /UNSAFE.*failed to reopen PR #3/,
+    'UNSAFE error must survive fence-release failure in finally block',
+  );
+
+  // Fence-release failure must appear as a warning in stdout (not swallowed, not fatal)
+  assert.match(
+    stdout,
+    /warn: owner-fence release failed for PR #3/,
+    'fence-release failure must be logged as a warning',
+  );
 });
