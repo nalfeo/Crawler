@@ -24,6 +24,7 @@ export type {
 } from './abilitySystem.js';
 export {
   achievementSystem,
+  collectCurrentFloorAchievementFacts,
   evaluateAchievementUnlocksForPhase,
   unlockAchievement,
 } from './achievementSystem.js';

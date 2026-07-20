@@ -109,6 +109,7 @@ export {
 } from './equipment-ability-grants.js';
 export {
   achievementSystem,
+  collectCurrentFloorAchievementFacts,
   evaluateAchievementUnlocksForPhase,
   unlockAchievement,
 } from './systems/achievementSystem.js';
