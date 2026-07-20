@@ -889,10 +889,23 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       // Captures the effect of type-defaults and palette on emptyCells: if
       // those files change, the fingerprint changes, the fingerprinted key
       // misses, and the response is recomputed with fresh inputs.
+      // The replacer sorts object keys at every depth for deterministic output
+      // regardless of property insertion order across Node.js versions or brief
+      // loading paths.
       const briefGenFingerprint =
         brief !== null
           ? createHash('sha256')
-              .update(JSON.stringify(brief.generation))
+              .update(
+                JSON.stringify(brief.generation, (_key, val: unknown) => {
+                  if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+                    const sorted = Object.keys(val as object).sort();
+                    return Object.fromEntries(
+                      sorted.map((k) => [k, (val as Record<string, unknown>)[k]]),
+                    );
+                  }
+                  return val;
+                }),
+              )
               .digest('hex')
               .slice(0, 16)
           : null;
@@ -966,8 +979,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         // non-fingerprinted key (offline fallback for worktrees without source
         // files, where the fingerprint cannot be recomputed on read).
         if (durableBriefMatches && brief !== null && briefGenFingerprint !== null) {
-          await writeCachedJson(store, responseCacheKey, response);
-          await writeCachedJson(store, baseResponseCacheKey, response);
+          await Promise.all([
+            writeCachedJson(store, responseCacheKey, response),
+            writeCachedJson(store, baseResponseCacheKey, response),
+          ]);
         }
         return response;
       } catch (err) {

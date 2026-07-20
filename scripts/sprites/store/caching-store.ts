@@ -96,6 +96,12 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
    * that the cache always reflects the last-committed inner write. Without this
    * serialization, writer A (v1) could cache v1 AFTER writer B (v2) already
    * cached v2, leaving the cache stale relative to the authoritative store.
+   *
+   * Map entries are removed immediately after each put completes (see the
+   * `finally` block in `put()`), so the map is bounded by the number of
+   * concurrently in-flight puts for distinct keys. The sprite pipeline has a
+   * small, bounded set of run artifact keys per run, so this does not grow
+   * unboundedly in practice.
    */
   private readonly putInFlight = new Map<string, Promise<void>>();
 

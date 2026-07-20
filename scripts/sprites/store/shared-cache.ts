@@ -248,6 +248,9 @@ export class SharedResourceCache {
       if (!contentCheck) {
         // Dangling index entry: remove it so callers that immediately call
         // get() don't encounter a confusing miss after a true has() result.
+        // Concurrent has() callers racing on the same dangling key may each
+        // attempt rm.entry; this is a benign race — rm.entry is idempotent
+        // and the extra I/O is negligible compared to the cost of a false hit.
         try {
           await cacache.rm.entry(this.cacheDir, physicalKey);
         } catch {
