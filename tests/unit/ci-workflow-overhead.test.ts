@@ -34,7 +34,17 @@ interface WorkflowDoc {
     pull_request?: TriggerConfig;
     push?: TriggerConfig;
   };
+  concurrency?: {
+    group?: string;
+    'cancel-in-progress'?: string | boolean;
+  };
   jobs: Record<string, WorkflowJob>;
+}
+
+function getStepIf(job: WorkflowJob | undefined, stepName: string): string {
+  const step = job?.steps?.find((s) => s.name === stepName);
+  if (!step) throw new Error(`step "${stepName}" not found`);
+  return String(step.if ?? '').trim();
 }
 
 function loadWorkflow(relativePath: string): WorkflowDoc {
@@ -241,5 +251,77 @@ describe('epic drift audit trigger scope', () => {
     expect(workflow.on.push?.paths).toEqual(expectedPaths);
     expect(workflow.on.pull_request?.paths).not.toContain('docs/knowledge/epics/**');
     expect(workflow.on.pull_request?.paths).toContain('tests/unit/agent/epic-status.test.ts');
+  });
+});
+
+describe('superseded-run concurrency cancellation policy (#1689)', () => {
+  // Both PR-triggered workflows must cancel superseded runs on the same PR while
+  // never cancelling across workflows or across different PRs, and must keep a
+  // distinct non-cancelling group for push/schedule/manual events.
+  for (const relPath of ['.github/workflows/ci.yml', '.github/workflows/security-review.yml']) {
+    it(`${relPath} defines a workflow-namespaced, PR-scoped concurrency group`, () => {
+      const workflow = loadWorkflow(relPath);
+      const group = String(workflow.concurrency?.group ?? '');
+      expect(group, `${relPath} must define a concurrency.group`).toBeTruthy();
+      // Workflow name in the key prevents ci.yml cancelling security-review.yml.
+      expect(group).toContain('github.workflow');
+      // PRs group by PR number so a newer synchronize cancels the older head.
+      expect(group).toContain("github.event_name == 'pull_request'");
+      expect(group).toContain("format('pr-{0}', github.event.pull_request.number)");
+      // Non-PR events fall back to a unique per-run group (never cancel).
+      expect(group).toContain('github.run_id');
+    });
+
+    it(`${relPath} only cancels in-progress runs for pull_request events`, () => {
+      const workflow = loadWorkflow(relPath);
+      const cancel = String(workflow.concurrency?.['cancel-in-progress'] ?? '');
+      // Must be gated on the event being a pull_request so push/schedule/manual
+      // runs are never cancelled mid-flight.
+      expect(cancel).toContain("github.event_name == 'pull_request'");
+    });
+  }
+});
+
+describe('impact-flag job gating contracts (#1697/#1698)', () => {
+  it('test-e2e is skipped on PRs when visual_touched is not true (non-PR runs unconditionally)', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml');
+    const condition = String(workflow.jobs['test-e2e']?.if ?? '').trim();
+    expect(condition).toContain("visual_touched != 'true'");
+    expect(condition).toContain("github.event_name == 'pull_request'");
+    // Still skipped for art_only / docs_only / sprites_only.
+    expect(condition).toContain("art_only != 'true'");
+    expect(condition).toContain("docs_only != 'true'");
+    expect(condition).toContain("sprites_only != 'true'");
+  });
+
+  it('ci-advisory Security audit runs on PRs only when dependencies_touched (non-PR backstop)', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml');
+    const condition = getStepIf(workflow.jobs['ci-advisory'], 'Security audit');
+    expect(condition).toContain("dependencies_touched == 'true'");
+    expect(condition).toContain("github.event_name != 'pull_request'");
+  });
+
+  it('security-review npm audit and dependency allowlist gate on dependencies_touched', () => {
+    const workflow = loadWorkflow('.github/workflows/security-review.yml');
+    const job = workflow.jobs['security-checks'];
+    for (const step of ['npm audit', 'Dependency allowlist']) {
+      const condition = getStepIf(job, step);
+      expect(condition, `${step} must gate on dependencies_touched`).toContain(
+        "dependencies_touched == 'true'",
+      );
+      expect(condition, `${step} must still run on non-PR events`).toContain(
+        "github.event_name != 'pull_request'",
+      );
+    }
+  });
+
+  it('security-review secret scanning stays fail-closed (not gated on scope flags)', () => {
+    const workflow = loadWorkflow('.github/workflows/security-review.yml');
+    const condition = getStepIf(workflow.jobs['security-checks'], 'Scan for committed secrets');
+    // Secret scanning must run for every relevant PR change set: it must NOT be
+    // gated on docs_only or dependencies_touched, only on train-promotion + not-cancelled.
+    expect(condition).toContain("train_promoted != 'true'");
+    expect(condition).not.toContain('dependencies_touched');
+    expect(condition).not.toContain('docs_only');
   });
 });

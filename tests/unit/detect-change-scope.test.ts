@@ -359,16 +359,17 @@ describe('detect-art-only.sh change-scope classifier', () => {
 
   it.skipIf(!hasBash)('fail-safe: a blank/whitespace change set runs the full suite', () => {
     // A lone newline enters the override branch but strips to empty → fail-safe:
-    // positive-signal flags (visual, sim, coverage, dependencies) are true so
-    // gate jobs run rather than being silently skipped on unknown change sets.
-    expect(run('\n')).toEqual(F(false, false, false, false, false, true, true, true, false, true));
+    // every positive-signal flag (sprites, visual, sim, coverage,
+    // sprite_pipeline, dependencies) is true so gate jobs run rather than being
+    // silently skipped on unknown change sets.
+    expect(run('\n')).toEqual(F(false, false, false, false, true, true, true, true, true, true));
   });
 
   it.skipIf(!hasBash)(
     'fail-safe: an explicitly empty override is honored as an empty change set',
     () => {
       // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
-      expect(run('')).toEqual(F(false, false, false, false, false, true, true, true, false, true));
+      expect(run('')).toEqual(F(false, false, false, false, true, true, true, true, true, true));
     },
   );
 

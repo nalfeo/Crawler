@@ -35,10 +35,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 emit_all_false() {
   # Returns the conservative all-run (fail-closed) shape, mirroring
   # detect-art-only.sh's own fail-safe: negative-signal flags are false so no
-  # gate is bypassed, and positive-signal flags (visual_touched, sim_touched,
-  # coverage_touched, dependencies_touched) are true so local consumers that
-  # gate on them will run rather than silently skip when scope is unknowable.
-  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nvisual_touched=true\nsim_touched=true\ncoverage_touched=true\nsprite_pipeline_touched=false\ndependencies_touched=true\n'
+  # gate is bypassed, and every positive-signal flag (sprites_touched,
+  # visual_touched, sim_touched, coverage_touched, sprite_pipeline_touched,
+  # dependencies_touched) is true so local consumers that gate on them will run
+  # rather than silently skip when scope is unknowable. sprites_touched and its
+  # sprite_pipeline_touched alias are kept identical, matching the CI classifier.
+  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=true\nvisual_touched=true\nsim_touched=true\ncoverage_touched=true\nsprite_pipeline_touched=true\ndependencies_touched=true\n'
 }
 
 # Not a git work tree (or git unavailable) → cannot compute a trustworthy set.

@@ -62,9 +62,10 @@
 # Output: writes all flags to $GITHUB_OUTPUT (when set) and stdout.
 # Test hook: SCOPE_FILES_OVERRIDE (newline-separated paths) classifies that list
 # directly instead of deriving it from git — used by the deterministic unit test.
-# Fail-safe: unknown-scope outputs set gameplay_safe=false and positive-signal
-# flags (visual_touched, sim_touched, coverage_touched, dependencies_touched)
-# to true so gate jobs run rather than being silently skipped. Never blocks CI.
+# Fail-safe: unknown-scope outputs set gameplay_safe=false and every
+# positive-signal flag (sprites_touched, visual_touched, sim_touched,
+# coverage_touched, sprite_pipeline_touched, dependencies_touched) to true so
+# gate jobs run rather than being silently skipped. Never blocks CI.
 
 set -euo pipefail
 
@@ -178,9 +179,10 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    # Fail-safe: new positive-signal flags default to true so gate jobs run
-    # rather than being silently skipped on an unknown change set.
-    emit_all false false false false false true true true false true
+    # Fail-safe: every positive-signal flag (including sprites_touched and its
+    # sprite_pipeline_touched alias) defaults to true so gate jobs run rather
+    # than being silently skipped on an unknown change set.
+    emit_all false false false false true true true true true true
     exit 0
   fi
 
@@ -197,11 +199,12 @@ echo "Changed files:" >&2
 echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
-# New positive-signal flags (visual_touched, sim_touched, coverage_touched,
-# dependencies_touched) default to true so gate jobs run rather than being
-# silently skipped on an unknown change set.
+# Every positive-signal flag (sprites_touched, visual_touched, sim_touched,
+# coverage_touched, sprite_pipeline_touched, dependencies_touched) defaults to
+# true so gate jobs run rather than being silently skipped on an unknown change
+# set.
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false false false true true true false true
+  emit_all false false false false true true true true true true
   exit 0
 fi
 

@@ -198,7 +198,7 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       repo.write('docs/notes.md', 'notes\n');
       //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
       expect(repo.scope()).toEqual(
-        F(false, false, false, false, false, true, true, true, false, true),
+        F(false, false, false, false, true, true, true, true, true, true),
       );
     },
   );
@@ -212,7 +212,7 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       // emits gameplay_safe=false with all positive-signal flags true.
       //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
       expect(repo.scope()).toEqual(
-        F(false, false, false, false, false, true, true, true, false, true),
+        F(false, false, false, false, true, true, true, true, true, true),
       );
     },
   );
