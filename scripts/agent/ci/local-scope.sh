@@ -35,7 +35,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 emit_all_false() {
   # Mirror detect-art-only.sh's fail-safe output contract exactly so consumers can
   # parse one shape regardless of which path produced it.
-  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\n'
+  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nsim_touched=true\ncoverage_touched=true\n'
 }
 
 # Not a git work tree (or git unavailable) → cannot compute a trustworthy set.
