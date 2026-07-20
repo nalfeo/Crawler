@@ -1,5 +1,16 @@
 [
   {
+    "commit": "bcd347e923fd8860c7cbcc1086c94b2b5135acea",
+    "commitDate": "2026-07-20T03:00:01Z",
+    "commitSubject": "feat(epics): track speculative stacked work durably (#1287)",
+    "capturedAt": "2026-07-20T04:15:07.018Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29714084485",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/bcd347e923fd8860c7cbcc1086c94b2b5135acea.json"
+  },
+  {
     "commit": "3762275db066bf308dcf9472ccf6b44561b84178",
     "commitDate": "2026-07-20T02:59:53Z",
     "commitSubject": "docs(a1): floor 2 equipment implementation contract lock — constitution, specs, ADR 0065 (#1283)",
