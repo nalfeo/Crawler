@@ -33,7 +33,7 @@ Implemented the full "Stop irrelevant PR validation" Epic (#1685), covering all 
 - **`sim_touched` is independent of `gameplay_safe`**: Broader safe list; script changes produce `sim_touched=false` even when `gameplay_safe=false`.
 - **`src/labs/**`is NOT safe for`visual_touched`**: E2E tests import directly from labs paths. Also NOT safe for `sim_touched` (headless tests import from labs).
 - **Concurrency groups are workflow-namespaced**: `${{ github.workflow }}-pr-N` prevents ci.yml cancelling security-review.yml.
-- **Merge-gate compatibility**: `test-headless` and `test-e2e` already have `allow_skipped=true`; new skip conditions are safe.
+- **Merge-gate compatibility**: headless skips are accepted only for docs-only changes or an explicit `sim_touched=false`; missing classifier output fails closed. Other scope-gated jobs retain their existing skip handling.
 
 ## Review harness
 
@@ -41,4 +41,5 @@ Implemented the full "Stop irrelevant PR validation" Epic (#1685), covering all 
 - Code review round 1 (claude-opus-4.8): 1 finding (engine/labs in sim_touched), fixed
 - Multi-model review (GPT-5.6-luna + gemini-3.1-pro-preview): 1 finding both found (labs in visual_touched), fixed
 - Final-head review (Claude Sonnet 4.6 + Gemini 3.1 Pro, GPT-5.4 adjudication): 1 valid finding (lockfile changes skipped simulation/coverage gates), fixed; remaining suggestions rejected with source/policy evidence
+- Current-main conflict resolution re-review (Claude Sonnet 4.6): clean across the five-flag contract, lockfile fail-closed behavior, non-PR backstops, and aggregate-gate semantics
 - Ledger: `docs/knowledge/review-ledgers/2026-07-19-stop-irrelevant-pr-validation.review-ledger.json`

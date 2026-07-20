@@ -32,7 +32,7 @@
           "concerns_count": 3,
           "resolved_count": 3,
           "clean": true,
-          "notes": "Final-head review raised three concerns. Adjudication validated one: package-lock.json could change resolved runtime/test dependencies while skipping simulation and coverage gates. Removed it from gameplay_safe, sim_touched, and coverage_touched safe lists and updated regression cases. The coverage fetch-depth and duplicate npm-audit concerns were rejected with source/policy evidence."
+          "notes": "Final-head review raised three concerns. Adjudication validated one: package-lock.json could change resolved runtime/test dependencies while skipping simulation and coverage gates. Removed it from gameplay_safe, sim_touched, and coverage_touched safe lists and updated regression cases. The coverage fetch-depth and duplicate npm-audit concerns were rejected with source/policy evidence. After merging current main, Claude Sonnet 4.6 re-reviewed the resolved overlap and found no remaining defects in the five-flag contract, fail-closed classification, non-PR backstops, or aggregate merge-gate semantics."
         }
       ]
     },

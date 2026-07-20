@@ -884,13 +884,13 @@ interface GeneratedEquipmentInstanceV1 {
 
 #### Registry Operations
 
-| Operation    | Signature (logical)                                                            | Failure contract                                          |
-| ------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| `create`     | `(def, itemLevel, rng) → GeneratedEquipmentInstanceV1`                         | Throws on unknown `baseDefId` or invalid `itemLevel`.     |
-| `get`        | `(instanceId) → GeneratedEquipmentInstanceV1 \| undefined`                     | Returns `undefined` for an unknown ID (no throw).         |
-| `transfer`   | `(instanceId, fromContainer, toContainer) → void`                              | Throws if `instanceId` absent in `fromContainer`.         |
-| `replace`    | `(instanceId, updatedRecord) → void`                                           | Throws if `instanceId` unknown or `schemaVersion` differs.|
-| `validateOwnership` | `(instanceId, container) → boolean`                                     | Pure; never mutates registry state.                       |
+| Operation           | Signature (logical)                                        | Failure contract                                           |
+| ------------------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
+| `create`            | `(def, itemLevel, rng) → GeneratedEquipmentInstanceV1`     | Throws on unknown `baseDefId` or invalid `itemLevel`.      |
+| `get`               | `(instanceId) → GeneratedEquipmentInstanceV1 \| undefined` | Returns `undefined` for an unknown ID (no throw).          |
+| `transfer`          | `(instanceId, fromContainer, toContainer) → void`          | Throws if `instanceId` absent in `fromContainer`.          |
+| `replace`           | `(instanceId, updatedRecord) → void`                       | Throws if `instanceId` unknown or `schemaVersion` differs. |
+| `validateOwnership` | `(instanceId, container) → boolean`                        | Pure; never mutates registry state.                        |
 
 ### Resolution Order (immutable after freeze)
 
@@ -934,6 +934,8 @@ static `WeaponDef` template.
 - Unequipping removes only the source keys whose `instanceId` segment matches the unequipped
   instance. Source keys belonging to other instances or non-equipment sources are unaffected.
 - The existing ten-slot active-ability limit remains authoritative.
+
+Rarities above Rare are not valid Floor 2 generation outcomes.
 
 ### Achievement Reward Contracts
 
@@ -987,15 +989,15 @@ If an attempt is made to enable a flag while a dependency is off, the runtime mu
 refuse the mutation (never auto-enable prerequisites silently). Invalid configurations are
 rejected rather than auto-corrected.
 
-| Flag ID                        | Depends on                                                            |
-| ------------------------------ | --------------------------------------------------------------------- |
-| `floor2EquipmentRegistry`      | (none — root flag)                                                    |
-| `floor2EquipmentCatalog`       | `floor2EquipmentRegistry`                                             |
-| `floor2EquipmentRewards`       | `floor2EquipmentCatalog`                                              |
-| `floor2EquipmentEconomy`       | `floor2EquipmentCatalog`                                              |
-| `floor2EquipmentUX`            | `floor2EquipmentRegistry`                                             |
-| `floor2EquipmentWorldInteg`    | `floor2EquipmentRegistry`, `floor2EquipmentCatalog`                   |
-| `floor2EquipmentAIMaintenance` | `floor2EquipmentRegistry`, `floor2EquipmentEconomy`                   |
+| Flag ID                        | Depends on                                          |
+| ------------------------------ | --------------------------------------------------- |
+| `floor2EquipmentRegistry`      | (none — root flag)                                  |
+| `floor2EquipmentCatalog`       | `floor2EquipmentRegistry`                           |
+| `floor2EquipmentRewards`       | `floor2EquipmentCatalog`                            |
+| `floor2EquipmentEconomy`       | `floor2EquipmentCatalog`                            |
+| `floor2EquipmentUX`            | `floor2EquipmentRegistry`                           |
+| `floor2EquipmentWorldInteg`    | `floor2EquipmentRegistry`, `floor2EquipmentCatalog` |
+| `floor2EquipmentAIMaintenance` | `floor2EquipmentRegistry`, `floor2EquipmentEconomy` |
 
 Disabling a flag with persisted items preserves existing instances (no forced unequip or data loss).
 
@@ -1020,3 +1022,255 @@ The pre-V1 floor model uses numeric `EquipmentInstanceId` records (`EquipmentIns
 - A record presenting as a generated instance (non-integer UUID shape) but carrying an
   unrecognised or future `schema_version` fails closed — logged as a structured error,
   no mutation applied, surfaced to the caller as a typed `MigrationFailure` result.
+
+---
+
+## Unique Equipment
+
+> **Authority:** `docs/knowledge/adr/0066-unique-equipment-schema-and-acquisition.md`
+> **Roster:** `.specify/specs/unique-equipment-roster.md`
+> **Status:** Normative design contract; runtime implementation is planned
+> independently of the Floor 2 equipment epic's 37-node DAG.
+
+Unique equipment is a separate authored-singleton tier. Unlike Common, Uncommon,
+and Rare generated instances (which are created by the procedural resolution
+pipeline and stored in the generated-equipment registry), Unique items have
+hand-crafted identities, bespoke mechanics that cannot be expressed as ordinary
+effect-unit budget entries, and deterministic authored acquisition sources.
+
+### Relationship to Generated Instances
+
+- Unique equipment does **not** use `GeneratedEquipmentRarity` and is never
+  produced by the Floor 2 generated-instance resolution pipeline.
+- Uniques are not stored in the generated-equipment registry
+  (`GeneratedEquipmentRegistry`). They have no `instanceId`, no `contentRevision`,
+  no `fingerprint`, and no `resolvedEffects` affix list.
+- The existing `GeneratedEquipmentRarity = 'common' | 'uncommon' | 'rare'` type
+  remains unchanged; adding `'unique'` to that union is explicitly rejected
+  (ADR 0066 § Alternatives Considered).
+
+### Unique Equipment Def Schema (v1)
+
+```typescript
+type UniqueEquipmentId = `unique:${string}`;
+type UniqueArtKey = string; // resolved from the dedicated art production wave
+
+interface UniqueBurnCompensation {
+  readonly type: 'gold';
+  readonly amount: number; // positive integer
+}
+
+interface UniqueCraftingCompensation {
+  readonly type: 'crafting-fragment';
+  readonly fragmentId: string;
+  readonly count: number; // positive integer
+}
+
+type UniqueCompensation = UniqueBurnCompensation | UniqueCraftingCompensation;
+
+type UniqueDuplicateRule =
+  | { readonly type: 'burn'; readonly compensation: UniqueCompensation }
+  | { readonly type: 'disallow' }
+  | {
+      readonly type: 'convert-upgrade';
+      readonly upgradeLevel: number;
+      readonly maxUpgradeLevel: number;
+      /**
+       * Outcome when a duplicate is acquired and the existing copy is already
+       * at `maxUpgradeLevel`. Must be declared for every `convert-upgrade` item.
+       * 'burn' applies the item's burn compensation; 'disallow' blocks the slot
+       * and falls back to a generated Rare (same as the disallow rule).
+       */
+      readonly atCapRule: 'burn' | 'disallow';
+    };
+
+type UniqueAcquisitionSource =
+  | { readonly type: 'boss-drop'; readonly bossId: string; readonly floor: number }
+  | { readonly type: 'quest-reward'; readonly questId: string }
+  | { readonly type: 'achievement-reward'; readonly achievementId: string }
+  | {
+      readonly type: 'merchant-exclusive';
+      readonly merchantId: string;
+      readonly condition: string;
+    };
+
+type UniqueEligibilityPrereq =
+  | { readonly type: 'quest-completed'; readonly questId: string }
+  | { readonly type: 'achievement-completed'; readonly achievementId: string }
+  | { readonly type: 'npc-dialogue-state'; readonly npcId: string; readonly stateKey: string };
+
+/**
+ * One ability or passive grant provided by a Unique while it is equipped.
+ * `ordinal` is a stable 0-based index assigned at authoring time and never
+ * reassigned; it forms the stable component of the source ID
+ * `unique:<uniqueId>:<abilityOrdinal>` used by the DEC-006 grant model.
+ */
+interface UniqueGrant {
+  readonly ordinal: number; // stable; never reassigned after first authoring
+  readonly type: 'active-ability' | 'passive';
+  readonly grantId: string; // human-readable key unique within this def, e.g. 'shield-pulse'
+}
+
+interface UniqueEquipmentDef {
+  readonly schemaVersion: 'unique-equipment-def/v1';
+  readonly uniqueId: UniqueEquipmentId;
+  readonly displayName: string;
+  readonly slot: EquipmentSlotId | readonly EquipmentSlotId[];
+  readonly lore: string; // one to three sentences; shown on first acquire
+  readonly spriteKey: UniqueArtKey; // dedicated authored sprite
+  readonly iconKey: UniqueArtKey; // dedicated authored icon
+  readonly vfxKey: UniqueArtKey | null; // optional bespoke VFX
+  readonly acquisitionSource: UniqueAcquisitionSource;
+  readonly duplicateRule: UniqueDuplicateRule;
+  readonly upgradeLevel: number; // catalog baseline; 0 for non-convert-upgrade items
+  readonly maxUpgradeLevel: number; // 0 for non-convert-upgrade items
+  readonly eligibilityPrereqs: readonly UniqueEligibilityPrereq[];
+  readonly questId: string | null;
+  readonly achievementId: string | null;
+  /**
+   * Ordered list of ability/passive grants this Unique provides while equipped.
+   * Each entry's `ordinal` is stable and forms the `<abilityOrdinal>` segment of
+   * the grant source ID `unique:<uniqueId>:<abilityOrdinal>`.
+   * Empty for Uniques that have no ability/passive grants.
+   */
+  readonly grants: readonly UniqueGrant[];
+}
+```
+
+### Singleton Ownership Model
+
+A player either owns a specific Unique or they do not. Ownership state is stored
+in the player's persistent equipment state as:
+
+```typescript
+interface PlayerUniqueEquipmentState {
+  /** Sorted, deduplicated list of all acquired Uniques. */
+  ownedUniques: UniqueEquipmentId[];
+  /** Equipped Unique per slot (null means no Unique in that slot). */
+  equippedUniques: Partial<Record<EquipmentSlotId, UniqueEquipmentId>>;
+  /**
+   * Per-player mutable upgrade level for `convert-upgrade` Uniques.
+   * Key is present only for items with `maxUpgradeLevel > 0`.
+   * The `UniqueEquipmentDef.upgradeLevel` field is immutable catalog data;
+   * this map is the authoritative per-save upgrade state.
+   */
+  upgradeLevels: Partial<Record<UniqueEquipmentId, number>>;
+}
+```
+
+- There is no per-copy instance numbering, no copy counter, and no registry record.
+- For `convert-upgrade` items, the per-player upgrade level is stored in
+  `upgradeLevels[id]` within `PlayerUniqueEquipmentState`. The catalog-level
+  `UniqueEquipmentDef.upgradeLevel` is read-only authoring data and must not
+  be mutated at runtime.
+- Multiple equipped slots may reference one multi-slot Unique; those references
+  count as one owner.
+- A Unique cannot be equipped in a slot already occupied by a generated instance,
+  and vice versa. Equip validation must check both ownership surfaces.
+
+### Acquisition and Duplicate Policy
+
+Acquisition is validated at offer time **and** revalidated atomically at delivery/claim/purchase:
+
+- `boss-drop`: The loot resolver checks `ownedUniques` at floor-load to drive
+  stock generation. At the moment the player actually receives the drop (claim),
+  ownership is revalidated atomically; if the player acquired the same Unique
+  from another source between floor-load and claim, the duplicate rule is applied
+  at claim time. If the rule is `disallow`, the slot resolves to a fallback
+  generated Rare instance instead.
+- `quest-reward` and `achievement-reward`: The grant function checks `ownedUniques`
+  before granting. If the rule is `burn` and the item is already owned, the
+  compensation is applied instead. If the rule is `disallow` the grant is silently
+  skipped (the quest/achievement still completes; only the item reward is replaced).
+  In both cases, ownership revalidation occurs atomically at the claim/grant call
+  site, not only at offer presentation.
+- `merchant-exclusive`: Stock generation checks `ownedUniques` at stock-resolve
+  time. The purchase transaction also revalidates ownership atomically at purchase
+  commit; any ownership change between stock generation and purchase applies the
+  `disallow` or `burn` rule at purchase time.
+
+For `convert-upgrade` rules: if the player owns the item at `upgradeLevels[id] < maxUpgradeLevel`,
+the existing copy is upgraded by one level in `upgradeLevels` and no new copy is created.
+If the player owns the item at `upgradeLevels[id] === maxUpgradeLevel` (at the upgrade cap),
+the `atCapRule` declared in the `UniqueDuplicateRule` governs the outcome: `burn` applies the
+item's declared compensation, and `disallow` blocks the acquisition slot (same fallback-Rare
+behavior as the `disallow` rule). This at-cap outcome applies at every acquisition source.
+
+### Ability and Passive Grants
+
+Unique-granted abilities use source IDs of the form:
+
+```
+unique:<uniqueId>:<abilityOrdinal>
+```
+
+This extends the DEC-006 source-owned grant model (ADR 0065). The grant is active
+while the Unique is equipped; unequip removes only sources matching the Unique's
+`uniqueId`. Because a Unique cannot be equipped twice simultaneously, duplicate
+grant stacking from the same Unique is not possible by design.
+
+The existing active-ability slot limit remains the authority.
+
+### Save, Migration, and Carryover
+
+- **Save format**: `PlayerUniqueEquipmentState` is serialized alongside the
+  generated-instance registry. It is initialized to `{ ownedUniques: [],
+equippedUniques: {}, upgradeLevels: {} }` for saves predating Unique support.
+- **Forward compatibility**: Unknown `UniqueEquipmentId` values in `ownedUniques`
+  are retained verbatim on load. No migration discards or rerolls known Uniques.
+- **Migration**: A save that contains a `uniqueId` that no longer exists in the
+  `UniqueEquipmentDef` catalog is preserved in `ownedUniques` but cannot be
+  displayed or equipped (treated as an unknown Unique with a placeholder name in
+  UI). Unknown equipped Uniques are cleared from `equippedUniques` on load.
+- **Carryover**: `ownedUniques`, `equippedUniques`, and `upgradeLevels` carry across
+  floor transitions in the same carryover payload as the generated-instance registry.
+  Uniques do not reset between floors.
+
+### Compatibility with Inventory, Rewards, Shops, and Chests
+
+- **Inventory/bag**: The bag stores `UniqueEquipmentId` references in a parallel
+  `uniqueSlot` list, separate from generated `instanceId` references. A Unique
+  occupies one bag slot **only when it is unequipped**; equipping a Unique moves
+  it from the bag into an equipment slot and frees the bag slot. Each owned Unique
+  ID has exactly one current location — either the bag (`uniqueSlot`) or an
+  equipment slot (`equippedUniques`) — never both. Equipped items do not consume
+  bag capacity.
+- **Reward bundles**: An achievement or quest reward bundle may contain a
+  `UniqueEquipmentId` alongside generated instance IDs. Claim is atomic (all or
+  nothing) per ADR 0065 DEC-007.
+- **Shops**: A `merchant-exclusive` Unique appears in a shop's stock as a special
+  entry type distinct from generated stock entries. Standard shop purchase
+  transaction flow applies, with ownership pre-checked before stock generation.
+- **Chests and boss drops**: Boss-drop Uniques appear in a named loot slot that is
+  separate from generated-instance loot rolls. A fallback generated Rare fills the
+  slot when the `disallow` rule prevents the Unique from appearing.
+
+### Director Presentation and Lore
+
+The `lore` field is displayed as a Director commentary card when a Unique is first
+acquired (whether from a quest, achievement, or boss drop). The card format matches
+existing Director presentation for notable events.
+
+Uniques linked to a `questId` or `achievementId` may also receive a short Director
+hint when the player first enters the floor on which the acquisition source is
+reachable (if the player does not yet own the item).
+
+### Art Requirements
+
+Every Unique requires dedicated authored art outside the Floor 2 generated-art
+pipeline. Generated art (`sprites:run` wave output) must not be reused for Unique
+slots. Required per item:
+
+- **Sprite** (`spriteKey`): a 32×32 px authored sprite distinct from any generated
+  equipment family.
+- **Icon** (`iconKey`): a 20×20 px icon for inventory and tooltip display.
+- **VFX** (`vfxKey`, optional): a non-looping particle or overlay effect for the
+  bespoke mechanic (if the mechanic has an observable trigger moment).
+
+Art direction for each Unique is documented in the per-item brief in
+`.specify/specs/unique-equipment-roster.md`. Unique art is human-authored outside
+the procedural generation pipeline; the authored files are ingested via
+`sprites:checkin` after creation and approval. The generation pipeline
+(`sprites:run`, `sprites:enqueue`) must **not** be used for Unique art slots —
+only for procedurally generated equipment family sprites. Unique sprites must be
+approved before the item can be wired into runtime.

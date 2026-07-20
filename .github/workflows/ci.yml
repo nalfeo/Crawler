@@ -315,9 +315,8 @@ jobs:
   # Deterministically proves the behavior-tree AI can still clear Floor 1
   # (victory + all quests, under the 5-minute game-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
-  # Scoped: skipped on art_only/docs_only, and on PULL REQUESTS where
-  # sim_touched=false (change provably can't affect the deterministic sim).
-  # main-push always runs it, so a wrong allowlist is caught post-merge.
+  # Scoped: skipped on art_only/docs_only, and on PRs where sim_touched=false.
+  # Main-push and schedule always run it as a backstop in case the allowlist is wrong.
   test-headless:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
@@ -325,7 +324,7 @@ jobs:
     if: >-
       needs.changes.outputs.art_only != 'true' &&
       needs.changes.outputs.docs_only != 'true' &&
-      !(github.event_name == 'pull_request' && needs.changes.outputs.sim_touched != 'true')
+      (github.event_name != 'pull_request' || needs.changes.outputs.sim_touched == 'true')
     steps:
       - uses: actions/checkout@v4
 
@@ -378,8 +377,8 @@ jobs:
   # does not block or serialize dead-code, security, typecheck, and build checks.
   # All are advisory (continue-on-error: true); independence keeps scheduling
   # flexible — this job can be re-run or skipped without affecting the others.
-  # Also skipped on PULL REQUESTS where coverage_touched=false (change cannot
-  # affect any path included in the vitest coverage report).
+  # Scoped: on PRs, skipped when coverage_touched=false. Fail-closed: only an
+  # explicit 'false' skips the job; a missing value keeps it running.
   ci-coverage:
     name: Advisory coverage
     runs-on: ubuntu-latest
@@ -388,7 +387,7 @@ jobs:
     if: >-
       needs.changes.outputs.docs_only != 'true' &&
       needs.changes.outputs.sprites_only != 'true' &&
-      !(github.event_name == 'pull_request' && needs.changes.outputs.coverage_touched != 'true')
+      (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched != 'false')
     permissions:
       contents: read
       pull-requests: write
@@ -469,6 +468,7 @@ jobs:
           fi
 
           docs_only="${{ needs.changes.outputs.docs_only }}"
+          sim_touched="${{ needs.changes.outputs.sim_touched }}"
 
           check() {
             local name="$1" result="$2" allow_skipped="${3:-false}"
@@ -504,7 +504,19 @@ jobs:
           check "Integration tests"             "${{ needs.test-integration.result }}" "true"
           # Sprite pipeline tests: skipped for art_only or docs_only (allow_skipped=true).
           check "Sprite pipeline tests"         "${{ needs.test-sprites.result }}"    "true"
-          check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"   "true"
+          # A headless skip is intentional only for docs or an explicit
+          # sim_touched=false classification. Missing classifier output fails closed.
+          headless_result="${{ needs.test-headless.result }}"
+          if [ "$headless_result" = "success" ]; then
+            echo "✅ Headless Floor 1 completion: success"
+          elif [ "$headless_result" = "skipped" ] && \
+               { [ "$docs_only" = "true" ] || [ "$sim_touched" = "false" ]; }; then
+            skip_reason="$([ "$docs_only" = "true" ] && echo "docs-only" || echo "sim not touched")"
+            echo "✅ Headless Floor 1 completion: skipped ($skip_reason)"
+          else
+            echo "❌ Headless Floor 1 completion: $headless_result (sim_touched=${sim_touched:-MISSING})"
+            exit 1
+          fi
           check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"        "true"
           check "Human approval"                 "${{ needs.human-approval.result }}"
           echo "✅ All required checks passed"
