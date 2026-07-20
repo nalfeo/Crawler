@@ -797,6 +797,18 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "batfolk-hood-placeholder": {
+      "briefId": "batfolk-hood",
+      "spriteName": "batfolk-hood",
+      "assetPath": "generated/batfolk-hood-placeholder.png",
+      "approvedAt": "2026-07-18T02:49:24.814Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
     "beaded-bracelet-placeholder": {
       "briefId": "beaded-bracelet",
       "spriteName": "beaded-bracelet",
@@ -1082,6 +1094,40 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "bone-saw-var-1": {
+      "briefId": "bone-saw",
+      "spriteName": "bone-saw-var-1",
+      "assetPath": "generated/bone-saw-var-1.png",
+      "approvedAt": "2026-07-18T02:58:53.059Z",
+      "sourceRun": "generated/runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 33,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 33,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 29,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": "4",
+      "type": null,
+      "contentHash": "0ced674d567b500e572fcf4ccc6904fad39cd12b759e03d5c1df3456f85d7a64",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     },
     "bone-shard-var-1": {
       "briefId": "bone-shard",
@@ -1806,6 +1852,18 @@
       "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
+    "compass-charm-placeholder": {
+      "briefId": "compass-charm",
+      "spriteName": "compass-charm",
+      "assetPath": "generated/compass-charm-placeholder.png",
+      "approvedAt": "2026-07-18T04:15:33.306Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "item"
+    },
     "confetti-popper-placeholder": {
       "briefId": "confetti-popper",
       "spriteName": "confetti-popper",
@@ -2111,6 +2169,32 @@
       "type": "item",
       "contentHash": "856b6b7385148d4bf461a2b9de301105eac6660106add6809b44262726bb2ed7"
     },
+    "dueling-saber-v1-var-3": {
+      "briefId": "dueling-saber-v1",
+      "spriteName": "dueling-saber-v1-var-3",
+      "assetPath": "generated/dueling-saber-v1-var-3.png",
+      "approvedAt": "2026-07-20T04:39:33.313Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-I9da9G/dueling-saber-v1/2026-07-18T03-37-29-7149ffde",
+      "variantIndex": 3,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 29,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": "weapon",
+      "contentHash": "0411b9f7b23cbefa3b378032da6af20c0734a9172bb33968aad66c35f1b4b9b6",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
     "echo-bell-placeholder": {
       "briefId": "echo-bell",
       "spriteName": "echo-bell",
@@ -2145,6 +2229,19 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "equipment/accessory/lucky-feather": {
+      "briefId": "lucky-feather",
+      "spriteName": "equipment/accessory/lucky-feather",
+      "assetPath": "generated/equipment-accessory-lucky-feather.png",
+      "approvedAt": "2026-07-18T05:32:55.599Z",
+      "sourceRun": "manual-import/lucky-feather",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual",
+      "judgeScore": null,
+      "type": "item",
+      "contentHash": "51baee84d222c27d4696892674c742ea1d447af94be95f4d70c84463672c4c12"
     },
     "equipment/weapon/bone-saw": {
       "briefId": "equipment/weapon/bone-saw",
@@ -2185,6 +2282,26 @@
         "productionWaveId": "floor2-equipment-weapon-blade"
       }
     },
+    "equipment/weapon/crescent-glaive": {
+      "briefId": "equipment/weapon/crescent-glaive",
+      "spriteName": "equipment/weapon/crescent-glaive",
+      "assetPath": "generated/equipment/weapon/crescent-glaive-placeholder.png",
+      "approvedAt": "2026-07-17T00:00:00.000Z",
+      "sourceRun": "floor2-equipment-placeholder/v1",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon",
+      "equipment": {
+        "stableId": "weapon.crescent-glaive",
+        "runtimeKey": "equipment/weapon/crescent-glaive",
+        "category": "weapon",
+        "family": "polearm",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-polearm"
+      }
+    },
     "equipment/weapon/iron-cleaver": {
       "briefId": "equipment/weapon/iron-cleaver",
       "spriteName": "equipment/weapon/iron-cleaver",
@@ -2197,6 +2314,26 @@
       "judgeScore": null,
       "type": "weapon",
       "contentHash": "245058fad5a81c263a66e6924b4ca276dd829ef978b31613eb319f1414866b3a"
+    },
+    "equipment/weapon/meteor-hammer": {
+      "briefId": "equipment/weapon/meteor-hammer",
+      "spriteName": "equipment/weapon/meteor-hammer",
+      "assetPath": "generated/equipment/weapon/meteor-hammer-placeholder.png",
+      "approvedAt": "2026-07-18T04:30:00.000Z",
+      "sourceRun": "floor2-equipment-placeholder/v1",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon",
+      "equipment": {
+        "stableId": "weapon.meteor-hammer",
+        "runtimeKey": "equipment/weapon/meteor-hammer",
+        "category": "weapon",
+        "family": "trap",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-trap"
+      }
     },
     "equipment/weapon/moon-scythe": {
       "briefId": "equipment/weapon/moon-scythe",
@@ -2219,16 +2356,47 @@
         "productionWaveId": "floor2-equipment-weapon-magic-focus"
       }
     },
-    "harpoon-gun-placeholder": {
-      "briefId": "harpoon-gun",
-      "spriteName": "harpoon-gun",
-      "assetPath": "generated/harpoon-gun-placeholder.png",
-      "approvedAt": "2026-07-18T03:16:24.697Z",
-      "sourceRun": "placeholder",
+    "equipment/weapon/tower-spear": {
+      "briefId": "equipment/weapon/tower-spear",
+      "spriteName": "equipment/weapon/tower-spear",
+      "assetPath": "generated/equipment/weapon/tower-spear.png",
+      "approvedAt": "2026-07-18T04:01:27.655Z",
+      "sourceRun": "generated/runs/tower-spear/2026-07-18T03-50-00-manual",
       "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null
+      "anchor": {
+        "x": 31,
+        "y": 62,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 62,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "1eef33ca8e1b852a5a394e0db7f398d2fd0f7222ff7a8c48c47498edc8e622e4",
+      "postprocessOverrideProfilePath": null,
+      "effectivePipelineSnapshotPath": null,
+      "effectivePipelineSnapshotYamlPath": null,
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right",
+      "equipment": {
+        "stableId": "weapon.tower-spear",
+        "runtimeKey": "equipment/weapon/tower-spear",
+        "category": "weapon",
+        "family": "polearm",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-polearm"
+      }
     },
     "exp-candy-placeholder": {
       "briefId": "exp-candy",
@@ -2287,26 +2455,6 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\faerie-blink\\2026-07-08T03-17-19-8857b01b\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
-    },
-    "equipment/weapon/crescent-glaive": {
-      "briefId": "equipment/weapon/crescent-glaive",
-      "spriteName": "equipment/weapon/crescent-glaive",
-      "assetPath": "generated/equipment/weapon/crescent-glaive-placeholder.png",
-      "approvedAt": "2026-07-17T00:00:00.000Z",
-      "sourceRun": "floor2-equipment-placeholder/v1",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "weapon",
-      "equipment": {
-        "stableId": "weapon.crescent-glaive",
-        "runtimeKey": "equipment/weapon/crescent-glaive",
-        "category": "weapon",
-        "family": "polearm",
-        "slot": "weapon",
-        "productionWaveId": "floor2-equipment-weapon-polearm"
-      }
     },
     "faerie-boss-var-0": {
       "briefId": "faerie-boss",
@@ -3149,6 +3297,17 @@
       "judgeScore": null,
       "type": null
     },
+    "harpoon-gun-placeholder": {
+      "briefId": "harpoon-gun",
+      "spriteName": "harpoon-gun",
+      "assetPath": "generated/harpoon-gun-placeholder.png",
+      "approvedAt": "2026-07-18T03:16:24.697Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "healing-fungus-placeholder": {
       "briefId": "healing-fungus",
       "spriteName": "healing-fungus",
@@ -3332,6 +3491,84 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": "item"
+    },
+    "iron-cleaver-v1-var-0": {
+      "briefId": "iron-cleaver-v1",
+      "spriteName": "iron-cleaver-v1-var-0",
+      "assetPath": "generated/iron-cleaver-v1-var-0.png",
+      "approvedAt": "2026-07-20T04:33:38.441Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-saYZAf/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7",
+      "variantIndex": 0,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 33,
+          "y": 26,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": "weapon",
+      "contentHash": "55c409d8d8eb068d2a772769c762ebe4122c6af3541fb0a181d0b356ac10fd92",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
+    "iron-cleaver-v1-var-10": {
+      "briefId": "iron-cleaver-v1",
+      "spriteName": "iron-cleaver-v1-var-10",
+      "assetPath": "generated/iron-cleaver-v1-var-10.png",
+      "approvedAt": "2026-07-20T04:38:52.183Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-yeRIoN/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7",
+      "variantIndex": 10,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 33,
+          "y": 26,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": "weapon",
+      "contentHash": "42827119ada2b7f5a8472e4c472fa0f7867096c66f3315b42e7eb6c60c3cccc2",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
+    "iron-cleaver-v1-var-5": {
+      "briefId": "iron-cleaver-v1",
+      "spriteName": "iron-cleaver-v1-var-5",
+      "assetPath": "generated/iron-cleaver-v1-var-5.png",
+      "approvedAt": "2026-07-20T04:34:21.096Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2tVrXG/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7",
+      "variantIndex": 5,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 33,
+          "y": 26,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": "weapon",
+      "contentHash": "ef2096746a753bbd88d734c4f605f3c25526da8f64ced2cf8ec4eae92c256896",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
     },
     "iron-greaves-placeholder": {
       "briefId": "iron-greaves",
@@ -8076,139 +8313,6 @@
       "effectivePipelineSnapshotPath": null,
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
-    },
-    "equipment/weapon/meteor-hammer": {
-      "briefId": "equipment/weapon/meteor-hammer",
-      "spriteName": "equipment/weapon/meteor-hammer",
-      "assetPath": "generated/equipment/weapon/meteor-hammer-placeholder.png",
-      "approvedAt": "2026-07-18T04:30:00.000Z",
-      "sourceRun": "floor2-equipment-placeholder/v1",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "weapon",
-      "equipment": {
-        "stableId": "weapon.meteor-hammer",
-        "runtimeKey": "equipment/weapon/meteor-hammer",
-        "category": "weapon",
-        "family": "trap",
-        "slot": "weapon",
-        "productionWaveId": "floor2-equipment-weapon-trap"
-      }
-    },
-    "equipment/weapon/tower-spear": {
-      "briefId": "equipment/weapon/tower-spear",
-      "spriteName": "equipment/weapon/tower-spear",
-      "assetPath": "generated/equipment/weapon/tower-spear.png",
-      "approvedAt": "2026-07-18T04:01:27.655Z",
-      "sourceRun": "generated/runs/tower-spear/2026-07-18T03-50-00-manual",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 31,
-        "y": 62,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 62,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 32,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "8/8",
-      "judgeScore": null,
-      "type": "weapon",
-      "contentHash": "1eef33ca8e1b852a5a394e0db7f398d2fd0f7222ff7a8c48c47498edc8e622e4",
-      "postprocessOverrideProfilePath": null,
-      "effectivePipelineSnapshotPath": null,
-      "effectivePipelineSnapshotYamlPath": null,
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right",
-      "equipment": {
-        "stableId": "weapon.tower-spear",
-        "runtimeKey": "equipment/weapon/tower-spear",
-        "category": "weapon",
-        "family": "polearm",
-        "slot": "weapon",
-        "productionWaveId": "floor2-equipment-weapon-polearm"
-      }
-    },
-    "batfolk-hood-placeholder": {
-      "briefId": "batfolk-hood",
-      "spriteName": "batfolk-hood",
-      "assetPath": "generated/batfolk-hood-placeholder.png",
-      "approvedAt": "2026-07-18T02:49:24.814Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
-    "compass-charm-placeholder": {
-      "briefId": "compass-charm",
-      "spriteName": "compass-charm",
-      "assetPath": "generated/compass-charm-placeholder.png",
-      "approvedAt": "2026-07-18T04:15:33.306Z",
-      "sourceRun": "placeholder",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "placeholder",
-      "judgeScore": null,
-      "type": "item"
-    },
-    "equipment/accessory/lucky-feather": {
-      "briefId": "lucky-feather",
-      "spriteName": "equipment/accessory/lucky-feather",
-      "assetPath": "generated/equipment-accessory-lucky-feather.png",
-      "approvedAt": "2026-07-18T05:32:55.599Z",
-      "sourceRun": "manual-import/lucky-feather",
-      "variantIndex": 0,
-      "anchor": null,
-      "sensorScore": "manual",
-      "judgeScore": null,
-      "type": "item",
-      "contentHash": "51baee84d222c27d4696892674c742ea1d447af94be95f4d70c84463672c4c12"
-    },
-    "bone-saw-var-1": {
-      "briefId": "bone-saw",
-      "spriteName": "bone-saw-var-1",
-      "assetPath": "generated/bone-saw-var-1.png",
-      "approvedAt": "2026-07-18T02:58:53.059Z",
-      "sourceRun": "generated/runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3",
-      "variantIndex": 1,
-      "anchor": {
-        "x": 33,
-        "y": 60,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 33,
-          "y": 60,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 29,
-          "y": 28,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "8/8",
-      "judgeScore": "4",
-      "type": null,
-      "contentHash": "0ced674d567b500e572fcf4ccc6904fad39cd12b759e03d5c1df3456f85d7a64",
-      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.overrides.json",
-      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.json",
-      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.yaml",
-      "effectiveAnchorSource": "derived",
-      "facingDirection": "right"
     }
   }
 }
