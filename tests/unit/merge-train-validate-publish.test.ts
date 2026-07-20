@@ -14,16 +14,12 @@ import { describe, expect, it, vi } from 'vitest';
  * test execution, matching the Actions runner environment.
  */
 if (typeof globalThis.require !== 'function') {
-  (globalThis as unknown as { require: NodeRequire }).require = createRequire(
-    import.meta.url,
-  );
+  (globalThis as unknown as { require: NodeRequire }).require = createRequire(import.meta.url);
 }
 
 /** Mirrors candidateEvidenceId() in state.mjs: SHA-256 of "fingerprint:sha" */
 function testEvidenceId(fingerprint: string, candidateSha: string): string {
-  return createHash('sha256')
-    .update(`${fingerprint}:${candidateSha.toLowerCase()}`)
-    .digest('hex');
+  return createHash('sha256').update(`${fingerprint}:${candidateSha.toLowerCase()}`).digest('hex');
 }
 
 /**
@@ -346,6 +342,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       // token gets an independent chance to succeed even when the original
       // mint step is the thing that failed.
       expect(step.with?.['github-token']).toBe('${{ steps.recovery-app-token.outputs.token }}');
+      expect(step.with?.script).toContain("filter: 'all'");
     });
 
     it('gives the publish step an explicit id so later steps can check its own outcome', () => {
