@@ -32,7 +32,6 @@ function headers(token, extra = {}) {
 export async function request(token, path, options = {}) {
   const method = options.method || 'GET';
   const canRetry = method === 'GET';
-  let lastError = new Error(`GitHub ${method} ${path} failed after ${MAX_RETRY_ATTEMPTS} retries`);
   for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
     if (attempt > 0) {
       await sleep(RETRY_DELAY_MS * Math.pow(2, attempt - 1));
@@ -64,7 +63,7 @@ export async function request(token, path, options = {}) {
         error.cause = parseError;
       }
       if (canRetry && RETRYABLE_STATUSES.has(response.status) && attempt < MAX_RETRY_ATTEMPTS) {
-        lastError = error;
+        // Retryable transient error — next iteration backs off and retries.
         continue;
       }
       throw error;
@@ -82,7 +81,9 @@ export async function request(token, path, options = {}) {
     }
     return { data, headers: response.headers, status: response.status };
   }
-  throw lastError;
+  // Unreachable: every loop iteration either returns, throws, or continues to the
+  // next attempt; the final attempt always throws or returns directly.
+  throw new Error(`GitHub ${method} ${path}: exhausted all retry attempts`);
 }
 
 export async function paginate(token, path) {
