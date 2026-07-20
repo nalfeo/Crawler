@@ -15,13 +15,13 @@ scoped to analysis tooling; no workflow modifications.
 
 ## Routing verdict
 
-✅ Recommended (process-light 1🍎 investigation). Measurement tooling created and
-committed; actual post-rollout analysis is timing-gated on dependency merges + 7 days.
+✅ Recommended (implementation session). Measurement tooling created and committed;
+actual post-rollout analysis is timing-gated on dependency merges + 7 days.
 
 ## Apples
 
-Estimated: 🍎 × 1 (investigation, no code change)
-Actual: 🍎 × 1
+Estimated: 🍎 × 3
+Actual: 🍎 × 3
 Verdict: 🎯 Exact
 
 ## Critical timing finding

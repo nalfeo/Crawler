@@ -1214,7 +1214,7 @@ Window: ${report.analysisWindow.start} → ${report.analysisWindow.end} (${fmt(r
 | Total runner-minutes (window-normalized baseline) | ${fmtMin(report.normalizedBaseline.totalMinutesForWindow)} | ${fmtMin(report.totalMinutes)} | ${fmt(normalizedTotalDeltaPct)}% | — |
 | Total runner-minutes/day | ${fmt(b.totalMinutes / b.days)} | ${fmt(report.analysisWindow.days > 0 ? report.totalMinutes / report.analysisWindow.days : 0)} | — | — |
 | Avoidable % | ${pct(b.avoidablePercent)} | ${pct(report.avoidablePercent)} | ${fmt(deltaAvoidable)}pp | <15% |
-| Superseded minutes/day | ${fmt(report.normalizedBaseline.supersededMinutesPerDay)} | ${fmt(report.analysisWindow.days > 0 ? report.supersededMinutes / report.analysisWindow.days : 0)} | ${report.supersededReductionVsBaseline !== null ? `-${fmt(report.supersededReductionVsBaseline)}%` : 'N/A'} | -90% |
+| Superseded minutes/day | ${fmt(report.normalizedBaseline.supersededMinutesPerDay)} | ${fmt(report.analysisWindow.days > 0 ? report.supersededMinutes / report.analysisWindow.days : 0)} | ${report.supersededReductionVsBaseline !== null ? `${fmt(report.supersededReductionVsBaseline)}%` : 'N/A'} | -90% |
 | Non-visual E2E min | ${fmtMin(b.nonVisualE2eMinutes)} | ${nonVisualValue} | — | — |
 | Non-sim headless min | ${fmtMin(b.nonSimHeadlessMinutes)} | ${fmtMin(report.nonSimHeadlessMinutes)} | — | — |
 | Non-coverage min | ${fmtMin(b.nonCoverageMinutes)} | ${fmtMin(report.nonCoverageMinutes)} | — | — |
@@ -1320,8 +1320,8 @@ function parseArgs(argv: string[]): {
 
   if (!startStr || !endStr) {
     console.error('Usage: GH_TOKEN=<token> npx tsx scripts/agent/ci/measure-ci-efficiency.ts \\');
-    console.error('         --start 2026-07-20T00:00:00Z \\');
-    console.error('         --end 2026-07-27T00:00:00Z \\');
+    console.error('         --start 2026-07-01T00:00:00Z \\');
+    console.error('         --end 2026-07-08T00:00:00Z \\');
     console.error('         [--owner nalfeo] [--repo Crawler] [--out report.json] [--details]');
     process.exit(1);
   }

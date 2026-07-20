@@ -1,8 +1,8 @@
 {
   "schema_version": "review-ledger/v1",
-  "date": "2026-07-19",
-  "session_slug": "post-rollout-ci-measurement",
-  "task_title": "Post-Rollout PR CI Resource Efficiency Measurement",
+  "date": "2026-07-20",
+  "session_slug": "pr1704-blocker-recovery-round2",
+  "task_title": "Recover PR #1704 remaining blockers",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
@@ -11,7 +11,7 @@
       "concerns_count": 7,
       "resolved_count": 7,
       "plan_divergence": "minor",
-      "notes": "Adversarial rubber-duck review identified 7 concerns; resolved by setting exact 3-apple tier, running required review stages, updating handoff apples, and tightening measurement-script examples/output formatting."
+      "notes": "Adversarial plan review evaluated alternatives and flagged seven concerns; resolved by exact 3-apple recovery path, ledger/handoff updates, and measurement-script output/example fixes."
     },
     "code_review": {
       "clean": true,
