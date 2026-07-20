@@ -23,9 +23,9 @@ Estimated: 2🍎. Actual: 2🍎. Verdict: exact.
 - Resolved the 18 reported conflicts by taking the current `main` versions where
   upstream had already advanced the same generated-equipment, epic-status, and
   related contract surfaces beyond this branch snapshot.
+- As a consequence, this branch's net diff no longer carried the original B1
+  generated-instance-registry implementation payload.
 - Revalidated the conflicted registry and epic-status suites on the merged tree.
-- Confirmed the PR had no open review threads, so no thread replies or
-  `✅ Addressed` markers were required for this recovery pass.
 
 ## Files touched
 
@@ -59,11 +59,13 @@ Estimated: 2🍎. Actual: 2🍎. Verdict: exact.
 
 ## Unresolved issues
 
-- None inside the repository worktree. The recovery request only listed the merge
-  conflict blocker, and that blocker is cleared locally.
+- PR #1379 metadata still describes the original B1 implementation scope and
+  closes #1289, but this recovery branch's net diff is now recovery/docs-only.
+  Coordinator follow-up is required to either restore the intended B1 payload or
+  update/close the PR without closing #1289 here.
 
 ## Recommended next steps
 
 - Push the merge-recovery commit plus this session’s ledger/handoff artifacts to
   the PR branch.
-- Let CI re-run on head `48758fa7d3947566a8ead14c6fa75e8123ad0526`.
+- Let CI re-run against the branch's current head commit at dispatch time.
