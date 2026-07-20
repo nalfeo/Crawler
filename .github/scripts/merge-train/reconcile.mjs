@@ -82,13 +82,31 @@ function git(args, options = {}) {
   }).trim();
 }
 
+// GitHub's default `filter=latest` collapses same-named check runs on a ref
+// down to just the newest one. The merge train posts a NEW check run named
+// CANDIDATE_CHECK_NAME (distinct external_id = fingerprint:candidateSha) for
+// every candidate validated against the same mainSha during bisection, so the
+// default filter would hide an earlier candidate's still-relevant evidence
+// behind a later one and break bisection convergence (trainCheckState would
+// see 'missing' for a candidate that actually completed). filter=all keeps
+// every check run; the check-runs envelope (`{ check_runs: [...] }`) isn't a
+// bare array, so it can't reuse the shared `paginate` helper -- page through
+// it explicitly instead of trusting a single 100-item page.
 async function checkRuns(sha) {
-  const response = await request(
-    token,
-    `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`,
-    { headers: { Accept: 'application/vnd.github+json' } },
-  );
-  return response.data.check_runs || [];
+  const encodedSha = encodeURIComponent(sha);
+  const results = [];
+  let page = 1;
+  while (true) {
+    const response = await request(
+      token,
+      `/repos/${owner}/${repo}/commits/${encodedSha}/check-runs?filter=all&per_page=100&page=${page}`,
+      { headers: { Accept: 'application/vnd.github+json' } },
+    );
+    const runs = response.data.check_runs || [];
+    results.push(...runs);
+    if (runs.length < 100) return results;
+    page += 1;
+  }
 }
 
 async function workflowRunJobs(runId) {
@@ -293,17 +311,27 @@ async function fetchCommit(sha) {
   return (await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)).data;
 }
 
-// Publish the fail-closed promotion-postcondition check on the current remote
-// main commit. Candidate commits are transported as opaque bundles and are not
-// repository commit objects. Deliberately named
+// Publish the fail-closed promotion-postcondition check on the SHA the caller
+// selected. `promoteExactBatch` (reconcile-lib.mjs) already picks the
+// semantically-correct target per failure mode -- the real landed commit for
+// a post-merge proof failure, the last proven-good landed commit for the
+// final whole-batch main-moved guard, or the confirmed pre-merge main for a
+// pre-landing merge-API failure -- so this must attach to exactly that `sha`,
+// never re-derive its own. Re-fetching `refs/heads/main` here would silently
+// discard the caller's landed SHA and, under the exact race the final guard
+// exists to catch (main advances again while this async call is in flight),
+// post the failure onto an unrelated/foreign commit instead of the one that
+// actually failed proof -- breaking the crash-recovery consumer
+// (landedCommitHasPostconditionFailure) that looks for this check on a
+// specific PR's `merge_commit_sha`. Candidate commits are transported as
+// opaque bundles and are not repository commit objects, so `sha` here is
+// always a real GitHub commit, never a candidate SHA. Deliberately named
 // PROMOTION_POSTCONDITION_CHECK_NAME, never `merge-train`: a `merge-train`
 // check on a real landed main commit would masquerade as the fast-path
 // attestation ci.yml/mainHealthReason key on.
-async function publishPostconditionCheck(_sha, fingerprint, entries) {
-  const currentMainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
-    .object.sha;
+async function publishPostconditionCheck(sha, fingerprint, entries) {
   await createTrainCheck(
-    currentMainSha,
+    sha,
     fingerprint,
     'completed',
     'failure',

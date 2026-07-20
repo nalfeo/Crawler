@@ -712,7 +712,13 @@ export async function promoteExactBatch({
         );
         return false;
       }
-      await publishPostcondition(candidateShas[index] || finalCandidateSha);
+      // Nothing landed for this entry -- the merge API call itself failed --
+      // so there is no landed commit to blame. Publish on `mainBeforeMerge`,
+      // the confirmed-current, real main commit asserted by the base-CAS
+      // check just above, not a candidate SHA: candidates are transported as
+      // opaque git blobs and are never real commit objects on GitHub, so a
+      // check-run attached to one would not resolve.
+      await publishPostcondition(mainBeforeMerge);
       throw new MergeTrainPromotionError(
         `promotion aborted at pr=#${entry.number}: ${merge.reason}`,
       );
