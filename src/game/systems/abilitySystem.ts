@@ -74,7 +74,13 @@ export function createAbilityState(): AbilityState {
 function cloneSourceMap(
   source: ReadonlyMap<string, ReadonlySet<AbilityGrantSourceId>>,
 ): Map<string, Set<AbilityGrantSourceId>> {
-  return new Map([...source].map(([abilityId, sources]) => [abilityId, new Set(sources)]));
+  const result = new Map<string, Set<AbilityGrantSourceId>>();
+  for (const [abilityId, sources] of source) {
+    // Drop entries with empty source sets — they cannot logically own the ability and
+    // would cause syncDerivedAbilityLists to treat ghost entries as owned.
+    if (sources.size > 0) result.set(abilityId, new Set(sources));
+  }
+  return result;
 }
 
 function validateAbilityKind(abilityId: string, kind: AbilityGrantKind): void {
@@ -268,6 +274,12 @@ export function normalizeAbilityState(state: AbilityStateLike): AbilityState {
 
   sourceOwnerMap(normalized.grantOwnership);
   syncDerivedAbilityLists(normalized);
+  // Canonicalize configured actives: deduplicate and enforce the authoritative slot
+  // limit so legacy/migrated snapshots with over-cap or repeated IDs never bypass the
+  // ten-slot contract enforced by the grant/configure paths.
+  normalized.equippedActiveAbilityIds = [
+    ...new Set(normalized.equippedActiveAbilityIds),
+  ].slice(0, ACTIVE_ABILITY_SLOT_LIMIT);
   return normalized;
 }
 

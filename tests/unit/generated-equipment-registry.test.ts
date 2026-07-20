@@ -381,4 +381,80 @@ describe('generated equipment instance registry', () => {
       instance.frozen.activeWeaponSnapshot,
     );
   });
+
+  it('rejects frozen/resolvedEffects grant mismatches and does not advance the allocator', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'run-grant-mismatch' });
+
+    const grantEffect: ResolvedEquipmentEffectV1 = {
+      schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+      effectId: 'ember-step',
+      effectOrdinal: 0,
+      unitCost: 1,
+      kind: 'abilityGrant',
+      grantId: 'ember-step',
+    };
+    const passiveEffect: ResolvedEquipmentEffectV1 = {
+      schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+      effectId: 'warded',
+      effectOrdinal: 1,
+      unitCost: 1,
+      kind: 'passiveGrant',
+      grantId: 'warded',
+    };
+
+    // resolvedEffects advertises an active grant that frozen.abilityGrants omits.
+    expectRegistryError(
+      () =>
+        createGeneratedEquipmentInstance(world, {
+          ...createInput('common'),
+          resolvedEffects: [grantEffect],
+        }),
+      'invalid-payload',
+    );
+
+    // frozen.abilityGrants advertises an ability that no resolvedEffect applies.
+    expectRegistryError(
+      () =>
+        createGeneratedEquipmentInstance(world, {
+          ...createInput('common'),
+          frozen: { ...frozenFields(), abilityGrants: ['ember-step'] },
+        }),
+      'invalid-payload',
+    );
+
+    // resolvedEffects advertises a passive grant that frozen.passiveGrants omits.
+    expectRegistryError(
+      () =>
+        createGeneratedEquipmentInstance(world, {
+          ...createInput('common'),
+          resolvedEffects: [passiveEffect],
+        }),
+      'invalid-payload',
+    );
+
+    // Order matters: if frozen has two passive grants in reversed order it is rejected.
+    const passiveEffect2: ResolvedEquipmentEffectV1 = {
+      schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+      effectId: 'sturdy',
+      effectOrdinal: 2,
+      unitCost: 1,
+      kind: 'passiveGrant',
+      grantId: 'sturdy',
+    };
+    expectRegistryError(
+      () =>
+        createGeneratedEquipmentInstance(world, {
+          ...createInput('common'),
+          resolvedEffects: [passiveEffect, passiveEffect2],
+          // frozen lists the two passive grants in reverse order — rejected.
+          frozen: { ...frozenFields(), passiveGrants: ['sturdy', 'warded'] },
+        }),
+      'invalid-payload',
+    );
+
+    // After all failed attempts the allocator must not have advanced.
+    expect(createGeneratedEquipmentInstance(world, createInput()).instanceId).toBe(
+      'gei:v1:run-grant-mismatch:0',
+    );
+  });
 });
