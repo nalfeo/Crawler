@@ -59,6 +59,7 @@ import {
   NPC_APPROACH_THREAT_NO_PROGRESS_FRAMES,
   PROJECTILE_DODGE_AOE_BUFFER_FT,
   PROJECTILE_DODGE_CLEARANCE_FT,
+  PROJECTILE_DODGE_VECTOR_SCALE,
   SAFE_LOOT_ENEMY_CLEARANCE_FT,
   LOOT_DETOUR_MAX_FT,
 } from '../../src/game/ai/bt-ai-tuning.js';
@@ -2603,6 +2604,78 @@ describe('BehaviorTreeAI', () => {
     expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
     expect(decision.state).toBe(AIState.ENGAGE);
     expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
+  });
+
+  it('uses committed mob-ability cue geometry to flee a telegraph circle from inside the footprint', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 3, 0);
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    world.mobAbilities.cues.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      casterEid: 99,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: { kind: 'circle', x: 0, y: 0, radiusFt: 12 },
+      dangerColor: 'hostile-red',
+      announcementText: 'VERDIGRIS GLAMOUR — All that glitters will corrode!',
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    expect(dodge.dodgeX).toBeCloseTo(PROJECTILE_DODGE_VECTOR_SCALE);
+    expect(dodge.dodgeY).toBe(0);
+  });
+
+  it('uses full dodge scale when the player is exactly at the committed mob-ability circle center', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 0, 0);
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    world.mobAbilities.cues.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      casterEid: 99,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: { kind: 'circle', x: 0, y: 0, radiusFt: 12 },
+      dangerColor: 'hostile-red',
+      announcementText: 'VERDIGRIS GLAMOUR — All that glitters will corrode!',
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    expect(Math.abs(dodge.dodgeX)).toBeCloseTo(PROJECTILE_DODGE_VECTOR_SCALE);
+    expect(dodge.dodgeY).toBe(0);
+  });
+
+  it('ignores committed mob-ability cue circles when the player is outside the footprint', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 12.5, 0);
+    spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    world.mobAbilities.cues.push({
+      abilityId: 'queen-mab-verdigris-glamour',
+      casterEid: 99,
+      phase: 'telegraph',
+      telegraphProgress: 0.5,
+      geometry: { kind: 'circle', x: 0, y: 0, radiusFt: 12 },
+      dangerColor: 'hostile-red',
+      announcementText: 'VERDIGRIS GLAMOUR — All that glitters will corrode!',
+    });
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    expect(dodge.dodgeX).toBe(0);
+    expect(dodge.dodgeY).toBe(0);
   });
 
   it('uses the raw locked pivot for the telegraphed virtual-projectile dodge, matching the real fire-time spawn point', () => {

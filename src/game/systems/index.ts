@@ -7,12 +7,17 @@ export {
   equipActiveAbility,
   memorizeSpell,
   grantPassiveAbility,
+  grantEquipmentActiveAbility,
+  grantEquipmentPassiveAbility,
+  revokeEquipmentAbilityGrants,
+  migrateAbilityStateToSourceTracking,
   queueAbilityTrigger,
   getOrCreateAbilityState,
   weaponPrerequisiteMet,
 } from './abilitySystem.js';
 export {
   achievementSystem,
+  collectCurrentFloorAchievementFacts,
   evaluateAchievementUnlocksForPhase,
   unlockAchievement,
 } from './achievementSystem.js';

@@ -40,6 +40,10 @@ import {
   FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
 } from '../../shared/quest-types.js';
+import {
+  createBloodPoolSurface,
+  isBloodyFootprintSourceActive,
+} from '../../shared/blood-surfaces.js';
 import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { generatedBriefIdForHarvestable } from '../../engine/phaser-bridge/sprite-kind.js';
 import type { ScreenBounds } from '../../engine/ui-scale.js';
@@ -125,6 +129,7 @@ interface MainSceneInternals {
   requestEquipAction?(): void;
   requestAchievementsToggle?(): void;
   setSimulationPaused(paused: boolean): void;
+  advanceSimulationFrames?(frames?: number): void;
   isSimulationPaused(): boolean;
   getTerrainRenderSummary(): {
     generatedCount: number;
@@ -207,6 +212,10 @@ export interface MainSceneState {
   readonly playerFeet: ProbePoint | null;
   /** Live world-camera center in PIXELS (world space), or null. */
   readonly cameraCenter: ProbePoint | null;
+  /** Floor 2 settlement room count, or zero before/non-Floor-2 initialization. */
+  readonly settlementRoomCount: number;
+  /** Live Floor 2 settlement shop archetype ids in snapshot order. */
+  readonly settlementShopArchetypeIds: readonly string[];
 }
 
 export interface FamilyHudProbeState {
@@ -287,6 +296,16 @@ export interface DoorRenderSummary {
   readonly renderableClosedCount: number;
 }
 
+export interface BloodSurfaceProbeSummary {
+  readonly poolCount: number;
+  readonly footprintCount: number;
+  readonly renderedPoolCount: number;
+  readonly renderedFootprintCount: number;
+  readonly activeSourceColor: number | null;
+  readonly activeSourceRemainingMs: number;
+  readonly footprintColors: number[];
+}
+
 /**
  * Automation surface attached to `window.__mainSceneProbe`. The e2e suite polls
  * {@link MainSceneProbeApi.ready} then drives loadout/camera through these.
@@ -312,8 +331,14 @@ export interface MainSceneProbeApi {
   getModalPickerLayout(): ModalPickerLayoutSnapshot | null;
   /** Pause / unpause the simulation. */
   setSimulationPaused(paused: boolean): void;
+  /** Advance the paused simulation by N fixed steps using the real scene seam. */
+  advanceSimulationFrames(frames: number): void;
   /** Overwrite the player's FEET position and zero its velocity. */
   setPlayerFeet(x: number, y: number): void;
+  /** Seed an authoritative blood pool directly into the live world. */
+  seedBloodPool(x: number, y: number, color: number): number | null;
+  /** World + display-list summary for blood pools / bloody footprints. */
+  getBloodSurfaceSummary(): BloodSurfaceProbeSummary;
   /** Move the player onto the first NPC and mark it interactable for probe tests. */
   primeNpcInteractionTarget(): ProbePoint | null;
   /** Seed three off-screen quests through the real scene's live world. */
@@ -497,6 +522,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         displayObjectCount: phaserScene?.children.list.length ?? 0,
         playerFeet,
         cameraCenter: cameraCenter(),
+        settlementRoomCount: world?.floorExtendedState?.settlement?.settlementRoomIds.length ?? 0,
+        settlementShopArchetypeIds: [
+          ...(world?.floorExtendedState?.settlement?.quartermasterShop
+            ? [world.floorExtendedState.settlement.quartermasterShop.archetypeId]
+            : []),
+          ...(world?.floorExtendedState?.settlement?.shops.map((shop) => shop.archetypeId) ?? []),
+        ],
       };
     },
 
@@ -555,6 +587,14 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
           cooldownByAbilityId: new Map<string, number>(),
           cooldownFramesByAbilityId: new Map<string, number>(),
           appliedPassiveAbilityIds: new Set<string>(),
+          activeAbilityGrantSources: new Map<
+            string,
+            import('../../shared/abilities.js').AbilityGrantSource[]
+          >(),
+          passiveAbilityGrantSources: new Map<
+            string,
+            import('../../shared/abilities.js').AbilityGrantSource[]
+          >(),
         };
         if (state.learnedSpellIds.length === 0 && state.equippedActiveAbilityIds.length === 0) {
           state.learnedSpellIds = ['fireball'];
@@ -602,6 +642,10 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       getScene()?.setSimulationPaused(paused);
     },
 
+    advanceSimulationFrames: (frames: number) => {
+      getScene()?.advanceSimulationFrames?.(frames);
+    },
+
     setPlayerFeet: (x: number, y: number) => {
       const scene = getScene();
       const world = scene?.world;
@@ -613,6 +657,54 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
       world.stores.position.y[eid] = y;
       world.stores.velocity.x[eid] = 0;
       world.stores.velocity.y[eid] = 0;
+    },
+
+    seedBloodPool: (x: number, y: number, color: number): number | null => {
+      const world = getScene()?.world;
+      if (!world) {
+        return null;
+      }
+      const pool = createBloodPoolSurface({
+        worldSeed: world.seed,
+        poolId: world.bloodyFootprintState.nextPoolId++,
+        x,
+        y,
+        color,
+        createdAtMs: world.elapsedMs,
+      });
+      world.bloodPools.push(pool);
+      return pool.id;
+    },
+
+    getBloodSurfaceSummary: (): BloodSurfaceProbeSummary => {
+      const world = getScene()?.world;
+      const phaserScene = getPhaserScene();
+      const elapsedMs = world?.elapsedMs ?? 0;
+      const source = world?.bloodyFootprintState.source ?? null;
+      const activeSource =
+        world && isBloodyFootprintSourceActive(source, elapsedMs) ? source : null;
+      const children = phaserScene?.children.list ?? [];
+      const renderedPoolCount = children.filter(
+        (child) =>
+          typeof (child as { name?: unknown }).name === 'string' &&
+          (child as { name: string }).name.startsWith('blood-pool:'),
+      ).length;
+      const renderedFootprintCount = children.filter(
+        (child) =>
+          typeof (child as { name?: unknown }).name === 'string' &&
+          (child as { name: string }).name.startsWith('bloody-footprint:'),
+      ).length;
+      return {
+        poolCount: world?.bloodPools.length ?? 0,
+        footprintCount: world?.bloodyFootprints.length ?? 0,
+        renderedPoolCount,
+        renderedFootprintCount,
+        activeSourceColor: activeSource?.color ?? null,
+        activeSourceRemainingMs: activeSource
+          ? Math.max(0, activeSource.expiresAtMs - elapsedMs)
+          : 0,
+        footprintColors: world?.bloodyFootprints.map((footprint) => footprint.color) ?? [],
+      };
     },
 
     primeNpcInteractionTarget: (): ProbePoint | null => {

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Enable monitor mode: every background (&) job runs in its own process group.
+# This lets cleanup_parallel send SIGTERM to the entire group (e.g. npx + its
+# spawned node/tsc/eslint children) rather than just the top-level PID.
+set -m
 
 run_with_timeout() {
   local timeout_seconds="$1"
@@ -17,7 +21,25 @@ run_with_timeout() {
   ' "$timeout_seconds" "$@"
 }
 
-echo "🔍 Step 1-2/3: Type checking + Linting (parallel)..."
+echo "🔍 Step 1/3: Full-project type checking + linting (parallel)..."
+
+# The production verifier always uses the authoritative project, which includes
+# vite.config.ts plus src/**/*.ts, tests/**/*.ts, scripts/**/*.ts, and
+# tools/**/*.ts.
+# TypeScript's existing incremental metadata keeps repeat runs fast without
+# changing compiler context.
+TSC_PROJECT="tsconfig.json"
+test_static_only=0
+if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]; then
+  # Regression tests exercise this real parallel gate against isolated projects
+  # and stop before the unrelated unit/headless phases.
+  test_static_only=1
+  TSC_PROJECT="${VERIFY_FAST_TSC_PROJECT:-$TSC_PROJECT}"
+fi
+
+is_supported_ts_path() {
+  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
+}
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
 # lint only the files that changed vs the branch base + the working tree. This
@@ -27,16 +49,23 @@ echo "🔍 Step 1-2/3: Type checking + Linting (parallel)..."
 # for its cache even when nothing changed (~22s of pure overhead), whereas a
 # typical change set is a handful of files (~3-5s), making this the biggest win
 # on the most frequently run command.
-LINT_CMD=(npx eslint src/ tests/ scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
-if [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
+LINT_CMD=(npx eslint vite.config.ts src/ tests/ scripts/ tools/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
+  # In CI, use GITHUB_BASE_SHA as a fallback when no local branch is resolvable
+  # (e.g. shallow/detached checkout without origin/main fetched).
+  if [ -z "$base" ] && [ -n "${GITHUB_BASE_SHA:-}" ]; then
+    base="${GITHUB_BASE_SHA}"
+  fi
+  changed_repo_ts=()
   changed_ts=()
+  unsupported_ts=()
   while IFS= read -r f; do
     # Skip blanks and any path that no longer exists on disk. A file deleted or
     # renamed-away in this branch still shows up in the diff, but ESLint errors
     # when handed a path that isn't there — which would break the most
     # frequently-run command for the life of the branch.
-    [ -n "$f" ] && [ -f "$f" ] && changed_ts+=("$f")
+    [ -n "$f" ] && [ -f "$f" ] && changed_repo_ts+=("$f")
   done < <(
     {
       # --diff-filter=ACMR drops deletions (D) and reports renames at their new
@@ -45,28 +74,84 @@ if [ -z "${CI:-}" ] && command -v git >/dev/null 2>&1; then
       git diff --name-only --diff-filter=ACMR
       git diff --name-only --diff-filter=ACMR --cached
       git ls-files --others --exclude-standard
-    } 2>/dev/null | grep -E '^(src|tests|scripts)/.*\.ts$' | sort -u
+    } 2>/dev/null | grep -E '\.(tsx?|mts|cts)$' | sort -u
   )
-  if [ "${#changed_ts[@]}" -eq 0 ]; then
-    echo "   ✓ No changed TS files to lint (full tree is re-linted in CI)."
+  # Fail safe only when we have no merge base AND no working-tree TS changes. In
+  # that clean-checkout state, committed unsupported TS paths would be invisible.
+  if [ -z "$base" ] && [ "${#changed_repo_ts[@]}" -eq 0 ]; then
+    echo "❌ verify:fast could not determine a git merge base for changed-file scanning." >&2
+    echo "   Fetch origin/main or main locally, or set GITHUB_BASE_SHA in CI, before relying on verify:fast." >&2
+    exit 1
+  fi
+  for f in "${changed_repo_ts[@]}"; do
+    if is_supported_ts_path "$f"; then
+      changed_ts+=("$f")
+    else
+      unsupported_ts+=("$f")
+    fi
+  done
+  if [ "${#unsupported_ts[@]}" -ne 0 ]; then
+    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:" >&2
+    printf '   - %s\n' "${unsupported_ts[@]}" >&2
+    echo "   Move the file into a supported tree or extend verify:fast + tsconfig.json first." >&2
+    exit 1
+  fi
+  if [ "$test_static_only" -eq 1 ]; then
     LINT_CMD=(true)
+  elif [ -z "${CI:-}" ]; then
+    if [ "${#changed_ts[@]}" -eq 0 ]; then
+      echo "   ✓ No changed TS files to lint (full tree is re-linted in CI)."
+      LINT_CMD=(true)
+    else
+      echo "   Linting ${#changed_ts[@]} changed file(s) (full tree is re-linted in CI)..."
+      LINT_CMD=(npx eslint "${changed_ts[@]}" --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+    fi
+  fi
+elif [ "$test_static_only" -eq 1 ]; then
+  LINT_CMD=(true)
+fi
+
+# In test_static_only mode, allow long-running stubs so signal-lifecycle tests
+# can send SIGTERM and assert exit-143 behaviour without real compiler invocations.
+tsc_cmd=(npx tsc --noEmit --project "$TSC_PROJECT")
+if [ "$test_static_only" -eq 1 ] && [ -n "${VERIFY_FAST_TSC_STUB_SECONDS:-}" ]; then
+  stub_secs="${VERIFY_FAST_TSC_STUB_SECONDS//[^0-9]/}"
+  # Cap at 600 s to avoid runaway processes from an accidental large value.
+  if [ -n "$stub_secs" ] && [ "$stub_secs" -gt 600 ]; then stub_secs=600; fi
+  if [ "${VERIFY_FAST_TSC_STUB_WITH_DESCENDANT:-0}" = "1" ]; then
+    # Optional test hook: each stub job launches a long-lived child process so
+    # signal-lifecycle tests can assert process-group cleanup kills descendants.
+    tsc_cmd=(bash -c 'sleep "$1" & child=$!; [ -n "$2" ] && printf "%s\n" "$child" > "$2"; wait "$child"' _ "${stub_secs:-1}" "${VERIFY_FAST_TSC_STUB_TSC_CHILD_PID_FILE:-}")
+    LINT_CMD=(bash -c 'sleep "$1" & child=$!; [ -n "$2" ] && printf "%s\n" "$child" > "$2"; wait "$child"' _ "${stub_secs:-1}" "${VERIFY_FAST_TSC_STUB_ESLINT_CHILD_PID_FILE:-}")
   else
-    echo "   Linting ${#changed_ts[@]} changed file(s) (full tree is re-linted in CI)..."
-    LINT_CMD=(npx eslint "${changed_ts[@]}" --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+    tsc_cmd=(sleep "${stub_secs:-1}")
+    LINT_CMD=(sleep "${stub_secs:-1}")
   fi
 fi
 
-npx tsc --noEmit --project tsconfig.src.json &
+"${tsc_cmd[@]}" &
 TSC_PID=$!
 "${LINT_CMD[@]}" &
 ESLINT_PID=$!
-trap 'kill "$TSC_PID" "$ESLINT_PID" 2>/dev/null || true' EXIT
+
+cleanup_parallel() {
+  # Kill the entire process group for each job (negative PID) so child processes
+  # (e.g. npx → node → tsc/eslint) cannot outlive their launcher.
+  # Works because set -m gives every background job its own process group whose
+  # PGID equals the job leader's PID.
+  kill -- -"$TSC_PID" -"$ESLINT_PID" 2>/dev/null || true
+  # No blocking wait in the EXIT trap — the shell exits immediately after and
+  # the OS reaps any remaining children.
+}
+trap cleanup_parallel EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 tsc_status=0
 eslint_status=0
-wait $TSC_PID || tsc_status=$?
-wait $ESLINT_PID || eslint_status=$?
-trap - EXIT
+wait "$TSC_PID" || tsc_status=$?
+wait "$ESLINT_PID" || eslint_status=$?
+trap - EXIT INT TERM
 
 if [ "$tsc_status" -ne 0 ]; then
   exit "$tsc_status"
@@ -76,7 +161,12 @@ if [ "$eslint_status" -ne 0 ]; then
   exit "$eslint_status"
 fi
 
-echo "🔍 Step 3/3: Unit tests..."
+if [ "$test_static_only" -eq 1 ]; then
+  echo "✅ Fast verifier static checks passed."
+  exit 0
+fi
+
+echo "🔍 Step 2/3: Changed tests..."
 if [ -n "${CI:-}" ]; then
   npx vitest run --project unit --reporter=dot
   npx vitest run --project sprites --reporter=dot
@@ -88,7 +178,7 @@ else
   npx vitest run --changed --project sprites --reporter=dot --passWithNoTests
 fi
 
-echo "🔍 Step 4/4: Physics-defs sync + Size + Weight coverage checks..."
+echo "🔍 Step 3/3: Physics-defs sync + Size + Weight coverage checks..."
 # physics-defs-sync is cheap and checks data drift (a docs-only entity-sizing.md
 # edit is gameplay_safe yet must still be validated against the code), so it always
 # runs.

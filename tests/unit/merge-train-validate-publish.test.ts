@@ -1,8 +1,26 @@
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { describe, expect, it, vi } from 'vitest';
+
+/**
+ * GitHub Actions github-script runs in a CommonJS context where `require` is
+ * available. The test evaluates inline scripts with `new Function`, which runs
+ * in global scope (no module bindings). Inject a CJS-compatible `require` into
+ * `globalThis` so the inline scripts' `require('crypto')` call resolves during
+ * test execution, matching the Actions runner environment.
+ */
+if (typeof globalThis.require !== 'function') {
+  (globalThis as unknown as { require: NodeRequire }).require = createRequire(import.meta.url);
+}
+
+/** Mirrors candidateEvidenceId() in state.mjs: SHA-256 of "fingerprint:sha" */
+function testEvidenceId(fingerprint: string, candidateSha: string): string {
+  return createHash('sha256').update(`${fingerprint}:${candidateSha.toLowerCase()}`).digest('hex');
+}
 
 /**
  * Regression coverage for a real review finding on merge-train-validate.yml's
@@ -109,11 +127,13 @@ async function runPublishScript(
   const previousEnv = {
     VALIDATION_RESULTS: process.env.VALIDATION_RESULTS,
     CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+    ATTESTATION_SHA: process.env.ATTESTATION_SHA,
     FINGERPRINT: process.env.FINGERPRINT,
     PR_NUMBERS: process.env.PR_NUMBERS,
   };
   process.env.VALIDATION_RESULTS = JSON.stringify(validationResults);
   process.env.CANDIDATE_SHA = 'a'.repeat(40);
+  process.env.ATTESTATION_SHA = 'f'.repeat(40);
   process.env.FINGERPRINT = 'deadbeef';
   process.env.PR_NUMBERS = '42,43';
   try {
@@ -322,6 +342,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       // token gets an independent chance to succeed even when the original
       // mint step is the thing that failed.
       expect(step.with?.['github-token']).toBe('${{ steps.recovery-app-token.outputs.token }}');
+      expect(step.with?.script).toContain("filter: 'all'");
     });
 
     it('gives the publish step an explicit id so later steps can check its own outcome', () => {
@@ -439,10 +460,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -460,8 +483,8 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       }
       expect(createArgs).toBeDefined();
       expect(createArgs?.conclusion).toBe('cancelled');
-      expect(createArgs?.head_sha).toBe('b'.repeat(40));
-      expect(createArgs?.external_id).toBe('cafef00d');
+      expect(createArgs?.head_sha).toBe('f'.repeat(40));
+      expect(createArgs?.external_id).toBe(testEvidenceId('cafef00d', 'b'.repeat(40)));
       expect(createCalls).toBe(1);
     });
 
@@ -492,7 +515,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                 check_runs: [
                   {
                     id: 999,
-                    external_id: 'cafef00d',
+                    external_id: testEvidenceId('cafef00d', 'b'.repeat(40)),
                     app: { id: 12345 },
                     status: 'completed',
                     conclusion: 'success',
@@ -514,10 +537,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -545,25 +570,25 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
 
       let createCalls = 0;
       let updateArgs: { check_run_id: number; conclusion: string; head_sha?: string } | undefined;
-      let listArgs: { per_page?: number } | undefined;
+      let listArgs: { per_page?: number; filter?: string } | undefined;
       const github = {
         rest: {
           checks: {
-            listForRef: async (args: { per_page?: number }) => {
+            listForRef: async (args: { per_page?: number; filter?: string }) => {
               listArgs = args;
               return {
                 data: {
                   check_runs: [
                     {
                       id: 700,
-                      external_id: 'cafef00d',
+                      external_id: testEvidenceId('cafef00d', 'b'.repeat(40)),
                       app: { id: 12345 },
                       status: 'completed',
                       conclusion: 'cancelled',
                     },
                     {
                       id: 777,
-                      external_id: 'cafef00d',
+                      external_id: testEvidenceId('cafef00d', 'b'.repeat(40)),
                       app: { id: 12345 },
                       status: 'in_progress',
                       conclusion: null,
@@ -590,10 +615,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -614,6 +641,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(updateArgs?.check_run_id).toBe(777);
       expect(updateArgs?.conclusion).toBe('cancelled');
       expect(listArgs?.per_page).toBe(100);
+      expect(listArgs?.filter).toBe('all');
       // head_sha is create-only on the Checks API -- the update call must
       // not send it (the PATCH endpoint does not accept it and could 422).
       expect(updateArgs?.head_sha).toBeUndefined();
@@ -638,7 +666,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                     // Older run already terminal (a genuine prior success).
                     {
                       id: 700,
-                      external_id: 'cafef00d',
+                      external_id: testEvidenceId('cafef00d', 'b'.repeat(40)),
                       app: { id: 12345 },
                       status: 'completed',
                       conclusion: 'success',
@@ -648,7 +676,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                     // highest-ID rule, and it is NOT terminal.
                     {
                       id: 900,
-                      external_id: 'cafef00d',
+                      external_id: testEvidenceId('cafef00d', 'b'.repeat(40)),
                       app: { id: 12345 },
                       status: 'in_progress',
                       conclusion: null,
@@ -671,10 +699,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -725,7 +755,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                   check_runs: [
                     {
                       id: 555,
-                      external_id: 'cafef00d',
+                      external_id: testEvidenceId('cafef00d', 'd'.repeat(40)),
                       app: { id: 12345 },
                       status: 'in_progress',
                       conclusion: null,
@@ -752,10 +782,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'd'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -806,7 +838,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                   check_runs: [
                     {
                       id: 556,
-                      external_id: 'cafef00d',
+                      external_id: testEvidenceId('cafef00d', 'e'.repeat(40)),
                       app: { id: 12345 },
                       status: 'completed',
                       conclusion: 'failure',
@@ -829,10 +861,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'e'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -885,10 +919,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -937,10 +973,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'c'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'deadbeef';
       process.env.APP_ID = '12345';
       try {
@@ -961,8 +999,8 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       }
       expect(createCalls).toBe(3);
       expect(createArgs?.conclusion).toBe('cancelled');
-      expect(createArgs?.head_sha).toBe('c'.repeat(40));
-      expect(createArgs?.external_id).toBe('deadbeef');
+      expect(createArgs?.head_sha).toBe('f'.repeat(40));
+      expect(createArgs?.external_id).toBe(testEvidenceId('deadbeef', 'c'.repeat(40)));
     });
   });
 

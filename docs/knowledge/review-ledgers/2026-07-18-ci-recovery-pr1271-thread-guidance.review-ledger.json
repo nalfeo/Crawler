@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-pr1271-thread-guidance",
+  "task_title": "Clarify CI recovery in-thread addressed marker protocol",
+  "estimated_apples": 2,
+  "stages": {}
+}

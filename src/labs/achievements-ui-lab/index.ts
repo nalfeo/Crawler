@@ -5,7 +5,7 @@ import {
   isAchievementClaimed,
 } from '../../core/systems/achievementRewards.js';
 import { unlockAchievement } from '../../game/systems/achievementSystem.js';
-import { FLOOR1_ACHIEVEMENTS, type AchievementReward } from '../../shared/achievements.js';
+import { ALL_ACHIEVEMENTS, type AchievementReward } from '../../shared/achievements.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 const LAB_SEED = 7;
@@ -41,7 +41,7 @@ function createAchievementsUiLab(canvasHost: HTMLElement, controls: HTMLElement)
 
   function render(): void {
     root.innerHTML = '<h2 style="margin:0 0 12px">🏆 Achievements (safe-room panel)</h2>';
-    const unlocked = FLOOR1_ACHIEVEMENTS.filter((a) => world.achievements.unlockedIds.has(a.id));
+    const unlocked = ALL_ACHIEVEMENTS.filter((a) => world.achievements.unlockedIds.has(a.id));
     if (unlocked.length === 0) {
       const empty = document.createElement('p');
       empty.style.color = '#9ca3af';
@@ -85,7 +85,7 @@ function createAchievementsUiLab(canvasHost: HTMLElement, controls: HTMLElement)
     f.add(
       {
         all: () => {
-          for (const a of FLOOR1_ACHIEVEMENTS) unlockAchievement(world, a.id);
+          for (const a of ALL_ACHIEVEMENTS) unlockAchievement(world, a.id);
           render();
         },
       },

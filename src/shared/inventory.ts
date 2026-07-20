@@ -73,7 +73,12 @@ export function listInventoryEntries(bag: InventoryBag): readonly InventoryBagEn
         quantity: slot.quantity,
       }),
     ),
-    ...(bag.generatedEquipment ?? []),
+    ...(bag.generatedEquipment ?? []).map(
+      (entry): GeneratedEquipmentInventoryEntry => ({
+        kind: entry.kind,
+        instanceKey: entry.instanceKey,
+      }),
+    ),
   ];
 }
 

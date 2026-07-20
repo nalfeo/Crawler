@@ -846,19 +846,26 @@ describe('generated equipment inventory transfers', () => {
     expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).toContain(
       'magic-missile',
     );
-    expect(
-      world.abilityStatesByEntity
-        .get(entity)
-        ?.activeEquipmentGrantOwnershipById?.get('magic-missile')?.sourceIds,
-    ).toEqual(new Set([`equipment:${generated.instanceId}:0`]));
+    expect(world.abilityStatesByEntity.get(entity)?.activeAbilityGrantSources).toEqual(
+      new Map([
+        [
+          'magic-missile',
+          [
+            {
+              kind: 'generated-equipment',
+              instanceId: generated.instanceId,
+              effectOrdinal: 0,
+            },
+          ],
+        ],
+      ]),
+    );
 
     expect(unequip(world, entity, 'head').ok).toBe(true);
     expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).not.toContain(
       'magic-missile',
     );
-    expect(world.abilityStatesByEntity.get(entity)?.activeEquipmentGrantOwnershipById?.size).toBe(
-      0,
-    );
+    expect(world.abilityStatesByEntity.get(entity)?.activeAbilityGrantSources.size).toBe(0);
   });
 
   it.each([
@@ -915,14 +922,14 @@ describe('equippable slot coverage', () => {
     }
   });
 
-  it('GEAR_ITEM_IDS covers 15 armor/accessory slots and excludes hands + neck', () => {
+  it('GEAR_ITEM_IDS covers 17 armor/accessory slots and excludes hands + neck', () => {
     const gearSlots = new Set<string>();
     for (const id of GEAR_ITEM_IDS) {
       const def = getEquipmentDefForItem(id);
       expect(def, `gear id ${id} has no equipment def`).toBeDefined();
       for (const slotId of def!.slots) gearSlots.add(slotId);
     }
-    expect(GEAR_ITEM_IDS).toHaveLength(15);
+    expect(GEAR_ITEM_IDS).toHaveLength(17);
     expect(gearSlots.has('mainHand')).toBe(false);
     expect(gearSlots.has('offHand')).toBe(false);
     expect(gearSlots.has('neck')).toBe(false);

@@ -93,6 +93,22 @@ describe('InventoryBag', () => {
       expect(bag).toEqual(before);
     });
 
+    it('listInventoryEntries returns a snapshot — mutating a listed entry does not affect the bag', () => {
+      addGeneratedEquipmentReference(bag, first);
+      const entries = listInventoryEntries(bag);
+      const listed = entries.find((e) => e.kind === 'generated-instance');
+      expect(listed).toBeDefined();
+
+      // Force-cast to mutate the returned object
+      (listed as { instanceKey: string }).instanceKey = 'gei:v1:mutated:0';
+
+      // The bag's stored entry must be unchanged
+      expect(hasGeneratedEquipmentReference(bag, first)).toBe(true);
+      expect(
+        hasGeneratedEquipmentReference(bag, 'gei:v1:mutated:0' as GeneratedEquipmentInstanceKey),
+      ).toBe(false);
+    });
+
     it('removes only the requested key and leaves distinct instances intact', () => {
       addGeneratedEquipmentReference(bag, first);
       addGeneratedEquipmentReference(bag, second);

@@ -10,6 +10,8 @@ import {
 } from '../../src/core/systems/equipmentSystem.js';
 import { addStatModifier } from '../../src/game/systems/statsSystem.js';
 import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
+import { initializeFloor1Scenario } from '../../src/game/floorScenario.js';
+import { createEmptyAchievementFactSnapshot } from '../../src/shared/achievements.js';
 import {
   getEquipmentDefForStarterWeapon,
   MERCHANTS_CHARM_DEF,
@@ -62,11 +64,22 @@ describe('player floor carryover', () => {
       cooldownByAbilityId: new Map([['fireball', 980]]),
       cooldownFramesByAbilityId: new Map([['fireball', 120]]),
       appliedPassiveAbilityIds: new Set(),
+      activeAbilityGrantSources: new Map([['fireball', [{ kind: 'learned' }]]]),
+      passiveAbilityGrantSources: new Map(),
     });
     source.frameCount = 1000;
     source.featureUnlocks = { inventory: true, equipment: true, spells: true };
     source.achievements.unlockedIds.add('first-blood');
     source.achievements.pendingUnlockIds.push('first-blood');
+    source.achievements.carriedRunFacts = {
+      ...source.achievements.carriedRunFacts,
+      numberFacts: { ...source.achievements.carriedRunFacts.numberFacts, totalKills: 99 },
+      booleanFacts: {
+        ...source.achievements.carriedRunFacts.booleanFacts,
+        staircaseUnlocked: true,
+      },
+      completedQuestIds: ['floor1-find-welcome'],
+    };
     addStatModifier(source, {
       sourceType: 'skill',
       sourceId: `weapon-class-slashing:level:3:${sourcePlayer}`,
@@ -150,6 +163,11 @@ describe('player floor carryover', () => {
     );
     expect(destination.featureUnlocks).toEqual(source.featureUnlocks);
     expect(destination.achievements.unlockedIds).toEqual(source.achievements.unlockedIds);
+    expect(destination.achievements.carriedRunFacts.numberFacts.totalKills).toBe(99);
+    expect(destination.achievements.carriedRunFacts.booleanFacts.staircaseUnlocked).toBe(true);
+    expect(destination.achievements.carriedRunFacts.completedQuestIds).toContain(
+      'floor1-find-welcome',
+    );
     expect(destination.statModifiers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ sourceId: 'floor2-only' }),
@@ -169,6 +187,67 @@ describe('player floor carryover', () => {
         expect.objectContaining({ sourceId: 'foreign-skill:level:5:1' }),
       ]),
     );
+  });
+
+  it('accumulates each completed floor once across capture and restore', () => {
+    const source = createTestWorld({ seed: 42 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    initializeFloor1Scenario(source, sourcePlayer);
+    source.floorScenario!.objective.ratsKilled = 5;
+    source.floorScenario!.objective.slimesKilled = 2;
+    source.floorScenario!.objective.goldCollected = 7;
+    source.floorScenario!.runSummary = {
+      outcome: 'cleared_floor',
+      viewsEarned: 0,
+      fansEarned: 0,
+    };
+
+    const firstSnapshot = capturePlayerCarryover(source, sourcePlayer);
+    expect(firstSnapshot.achievements.carriedRunFacts?.numberFacts.totalKills).toBe(7);
+    expect(firstSnapshot.achievements.carriedRunFacts?.reachedFloorIds).toEqual([1]);
+    expect(firstSnapshot.achievements.carriedRunFacts?.clearedFloorIds).toEqual([1]);
+
+    const destination = createTestWorld({ seed: 42, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+    destination.floorId = 'floor2';
+    restorePlayerCarryover(destination, destinationPlayer, firstSnapshot);
+    const secondSnapshot = capturePlayerCarryover(destination, destinationPlayer);
+
+    expect(secondSnapshot.achievements.carriedRunFacts?.numberFacts.totalKills).toBe(7);
+    expect(secondSnapshot.achievements.carriedRunFacts?.numberFacts.goldCollected).toBe(7);
+    expect(secondSnapshot.achievements.carriedRunFacts?.reachedFloorIds).toEqual([1, 2]);
+    expect(secondSnapshot.achievements.carriedRunFacts?.clearedFloorIds).toEqual([1]);
+  });
+
+  it('migrates legacy carryover without scoped facts and preserves unlock state', () => {
+    const source = createTestWorld({ seed: 42 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    source.achievements.unlockedIds.add('first-bonk');
+    source.achievements.pendingUnlockIds.push('first-bonk');
+    source.achievements.claimedIds.add('first-bonk');
+    const currentSnapshot = capturePlayerCarryover(source, sourcePlayer);
+    const legacySnapshot = {
+      ...currentSnapshot,
+      achievements: {
+        unlockedIds: currentSnapshot.achievements.unlockedIds,
+        pendingUnlockIds: currentSnapshot.achievements.pendingUnlockIds,
+        claimedIds: currentSnapshot.achievements.claimedIds,
+      },
+    };
+    const destination = createTestWorld({ seed: 42, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(destination.achievements.unlockedIds).toEqual(new Set(['first-bonk']));
+    expect(destination.achievements.pendingUnlockIds).toEqual(['first-bonk']);
+    expect(destination.achievements.claimedIds).toEqual(new Set(['first-bonk']));
+    expect(destination.achievements.carriedRunFacts).toEqual(createEmptyAchievementFactSnapshot());
+  });
+
+  it('starts a new run with no carried achievement facts', () => {
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    expect(world.achievements.carriedRunFacts).toEqual(createEmptyAchievementFactSnapshot());
   });
 
   it('migrates an unversioned static snapshot without changing static carryover', () => {
@@ -193,7 +272,7 @@ describe('player floor carryover', () => {
     expect(destination.inventories.get(destinationPlayer)).toEqual(source.inventories.get(player));
   });
 
-  it('round-trips exact generated ownership, grants, bundles, and frozen weapon behavior', () => {
+  it('round-trips exact generated ownership, bundles, grants, and frozen weapon behavior', () => {
     const runKey = 'carryover-generated-run';
     const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
     const player = spawnPlayer(source, 0, 0);
@@ -247,23 +326,33 @@ describe('player floor carryover', () => {
     );
     const {
       schemaVersion: _weaponSchemaVersion,
+      generatedEquipmentInstanceId: _generatedEquipmentInstanceId,
       sourceWeaponDefId: _sourceWeaponDefId,
+      canonicalSkillTags: _canonicalSkillTags,
+      fingerprint: _fingerprint,
       ...frozenWeapon
     } = equipped.frozen.activeWeaponSnapshot!;
     expect(getActiveWeaponDef(destination)).toEqual({
       ...frozenWeapon,
       id: equipped.instanceId,
     });
-    expect(
-      destination.abilityStatesByEntity.get(destinationPlayer)?.activeEquipmentGrantOwnershipById,
-    ).toEqual(
+    expect(destination.abilityStatesByEntity.get(destinationPlayer)?.equippedActiveAbilityIds).toContain(
+      'magic-missile',
+    );
+    expect(destination.abilityStatesByEntity.get(destinationPlayer)?.passiveAbilityIds).toContain(
+      'combat-flow',
+    );
+    expect(destination.abilityStatesByEntity.get(destinationPlayer)?.activeAbilityGrantSources).toEqual(
       new Map([
         [
           'magic-missile',
-          {
-            retainedWithoutEquipment: false,
-            sourceIds: new Set([`equipment:${equipped.instanceId}:0`]),
-          },
+          [
+            {
+              kind: 'generated-equipment',
+              instanceId: equipped.instanceId,
+              effectOrdinal: 0,
+            },
+          ],
         ],
       ]),
     );
@@ -272,103 +361,18 @@ describe('player floor carryover', () => {
       achievementId: 'carryover-reward',
       instanceKeys: [bundled.instanceId],
     });
-    expect(
-      Object.isFrozen(destination.generatedEquipmentRewardBundles.get('carryover-reward')),
-    ).toBe(true);
+    expect(Object.isFrozen(destination.generatedEquipmentRewardBundles.get('carryover-reward'))).toBe(
+      true,
+    );
 
     expect(unequip(destination, destinationPlayer, 'mainHand', { force: true }).ok).toBe(true);
     expect(getActiveWeaponDef(destination)).toBeUndefined();
     expect(
       destination.abilityStatesByEntity.get(destinationPlayer)?.equippedActiveAbilityIds,
     ).not.toContain('magic-missile');
-    expect(
-      destination.abilityStatesByEntity.get(destinationPlayer)?.passiveAbilityIds,
-    ).not.toContain('combat-flow');
-  });
-
-  it('retains independently owned grants after the last equipment source is removed', () => {
-    const world = createTestWorld({
-      seed: 42,
-      generatedEquipmentRunKey: 'carryover-retained-grant-run',
-    });
-    const player = spawnPlayer(world, 0, 0);
-    world.abilityStatesByEntity.set(player, {
-      learnedSpellIds: [],
-      equippedActiveAbilityIds: ['magic-missile'],
-      passiveAbilityIds: [],
-      cooldownByAbilityId: new Map(),
-      cooldownFramesByAbilityId: new Map(),
-      appliedPassiveAbilityIds: new Set(),
-    });
-    const generated = createGeneratedEquipmentInstance(
-      world,
-      generatedEquipmentInput({ slots: ['head'], grants: true }),
+    expect(destination.abilityStatesByEntity.get(destinationPlayer)?.passiveAbilityIds).not.toContain(
+      'combat-flow',
     );
-    expect(addGeneratedEquipmentToBag(world, player, generated.instanceId).ok).toBe(true);
-    expect(
-      equipFromBag(
-        world,
-        player,
-        { kind: 'generated-instance', instanceKey: generated.instanceId },
-        { force: true },
-      ).ok,
-    ).toBe(true);
-    expect(
-      world.abilityStatesByEntity
-        .get(player)
-        ?.activeEquipmentGrantOwnershipById?.get('magic-missile')?.retainedWithoutEquipment,
-    ).toBe(true);
-
-    expect(unequip(world, player, 'head', { force: true }).ok).toBe(true);
-    expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain(
-      'magic-missile',
-    );
-    expect(world.abilityStatesByEntity.get(player)?.activeEquipmentGrantOwnershipById?.size).toBe(
-      0,
-    );
-  });
-
-  it('rejects a mismatched sourced-grant reference before mutation', () => {
-    const runKey = 'carryover-grant-mismatch-run';
-    const source = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
-    const sourcePlayer = spawnPlayer(source, 0, 0);
-    const generated = createGeneratedEquipmentInstance(
-      source,
-      generatedEquipmentInput({ slots: ['head'], grants: true }),
-    );
-    expect(addGeneratedEquipmentToBag(source, sourcePlayer, generated.instanceId).ok).toBe(true);
-    expect(
-      equipFromBag(
-        source,
-        sourcePlayer,
-        { kind: 'generated-instance', instanceKey: generated.instanceId },
-        { force: true },
-      ).ok,
-    ).toBe(true);
-    const snapshot = capturePlayerCarryover(source, sourcePlayer);
-    const mismatched = {
-      ...snapshot,
-      abilityState: {
-        ...snapshot.abilityState!,
-        activeEquipmentGrantOwnershipById: [
-          [
-            'magic-missile',
-            {
-              retainedWithoutEquipment: false,
-              sourceIds: [`equipment:${generated.instanceId}:99`],
-            },
-          ],
-        ],
-      },
-    };
-    const destination = createTestWorld({ seed: 42, generatedEquipmentRunKey: runKey });
-    const destinationPlayer = spawnPlayer(destination, 0, 0);
-    destination.playerName = 'Unchanged';
-
-    expect(() => restorePlayerCarryover(destination, destinationPlayer, mismatched)).toThrow(
-      'Dangling or mismatched generated grant source',
-    );
-    expect(destination.playerName).toBe('Unchanged');
   });
 
   it('fails before mutation on invalid versions, duplicate owners, and dangling references', () => {

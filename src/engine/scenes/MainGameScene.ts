@@ -2353,6 +2353,8 @@ export class MainGameScene extends Phaser.Scene {
         cooldownByAbilityId: new Map(),
         cooldownFramesByAbilityId: new Map(),
         appliedPassiveAbilityIds: new Set(),
+        activeAbilityGrantSources: new Map(),
+        passiveAbilityGrantSources: new Map(),
       } satisfies AbilityState;
       this.world.abilityStatesByEntity.set(this.playerEid, state);
     }
