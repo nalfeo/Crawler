@@ -83,9 +83,9 @@ token.
 Before the repair, live Merge Train runs `29721471552` and `29721756406` rejected
 the workflow-containing candidate ref. After the repair, deterministic controller
 execution reaches the credential-selected candidate push while preserving
-validation and promotion gates. Live after-observation is intentionally pending:
-this repair changes `merge-train.yml`, so the currently deployed broken controller
-cannot push the repair's own workflow-containing candidate.
+validation and promotion gates. Live after-observation is intentionally pending: #1694 is still the FIFO leader,
+and its workflow-bearing candidate fails before this repair behind it can execute,
+so the currently deployed controller cannot reach the repair's own push.
 
 ## Review harness
 
