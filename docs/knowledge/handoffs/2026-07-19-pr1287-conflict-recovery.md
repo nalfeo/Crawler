@@ -70,11 +70,13 @@ implementations independently reached `main`. Full calibration:
   Claude Opus 4.8, Gemini 3.1 Pro, and GPT-5.3 Codex security review adjudicated
   clean by GPT-5.4.
 - Different-model validation covered all 28 GitHub review threads across three
-  rounds. The final nine tightened owner chronology, live-claim selection,
+  rounds, then covered the final direct-stack-base transition race after the
+  latest `main` merge. The final ten tightened owner chronology, live-claim selection,
   merged dependent handling, post-merge base constraints, stacked identity
   fields, canonical PR identity, no-PR observation proof, and pre-rebase head
-  binding.
-- Focused epic-status suite: 80 tests pass.
+  binding, while retaining exactly one observed-merged direct stack-base snapshot
+  until its bound rebase-to-main proof completes.
+- Focused epic-status suite: 82 tests pass.
 - Source typecheck passes.
 - Offline and credentialed read-only GitHub audits are valid with zero errors,
   warnings, proposals, or operator actions and report `writes_performed=false`.

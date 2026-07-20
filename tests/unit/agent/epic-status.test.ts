@@ -508,6 +508,43 @@ describe('Floor 2 equipment epic status', () => {
     expect(duplicateCodes).toContain('stacked.duplicate-branch');
   });
 
+  it('retains a merged direct stack base once validated, pending its rebase-to-main proof', () => {
+    const merged = stackedFixture();
+    validateA0(merged.state);
+
+    const dependency = merged.stacked.dependency_pull_requests[0]!;
+    const mergeCommit = 'd'.repeat(40);
+    dependency.head_sha = FULL_COMMIT;
+    dependency.observed_head_sha = FULL_COMMIT;
+    dependency.observed_pr_state = 'MERGED';
+    dependency.observed_merge_commit = mergeCommit;
+    merged.stacked.last_resynced_dependency_head_sha = FULL_COMMIT;
+    merged.stacked.rebase_to_main = {
+      pending: true,
+      pre_rebase_dependent_head_sha: merged.stacked.dependent.observed_head_sha,
+      prerequisite_merge_commit: mergeCommit,
+    };
+
+    const codes = validate(merged.state).errors.map((error) => error.code);
+    expect(codes).not.toContain('stacked.dependency-coverage');
+  });
+
+  it('still rejects a validated dependency entry that is not the direct stack base', () => {
+    const merged = stackedFixture();
+    validateA0(merged.state);
+
+    const dependency = merged.stacked.dependency_pull_requests[0]!;
+    dependency.head_sha = FULL_COMMIT;
+    dependency.observed_head_sha = FULL_COMMIT;
+    dependency.observed_pr_state = 'MERGED';
+    dependency.observed_merge_commit = 'e'.repeat(40);
+    dependency.is_stack_base = false;
+    merged.stacked.last_resynced_dependency_head_sha = FULL_COMMIT;
+
+    const codes = validate(merged.state).errors.map((error) => error.code);
+    expect(codes).toContain('stacked.dependency-coverage');
+  });
+
   it('requires rebase-to-main after prerequisite merge and proves the rebased head changed', () => {
     const merged = stackedFixture();
     const dependency = merged.stacked.dependency_pull_requests[0]!;

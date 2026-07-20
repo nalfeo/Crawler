@@ -1784,10 +1784,28 @@ function validateStackedWork(
   const recordedDependencyIds = stacked.dependency_pull_requests
     .map((dependency) => dependency.node_id)
     .filter((dependencyId): dependencyId is string => dependencyId !== null);
+  // A direct stack base can validate before its dependent finishes rebasing.
+  // Retain only the observed merge that is bound to that pending rebase proof.
+  const retainedMergedStackBase = stacked.dependency_pull_requests.find(
+    (dependency) =>
+      dependency.is_stack_base &&
+      dependency.node_id !== null &&
+      node.dependencies.includes(dependency.node_id) &&
+      dependency.observed_pr_state === 'MERGED' &&
+      dependency.observed_merge_commit !== null &&
+      stacked.rebase_to_main.pending &&
+      stacked.rebase_to_main.prerequisite_merge_commit === dependency.observed_merge_commit,
+  );
+  const extraRecordedDependencyIds = recordedDependencyIds.filter(
+    (dependencyId) => !incompleteDependencies.includes(dependencyId),
+  );
   if (
     new Set(recordedDependencyIds).size !== recordedDependencyIds.length ||
-    incompleteDependencies.length !== recordedDependencyIds.length ||
-    incompleteDependencies.some((dependencyId) => !recordedDependencyIds.includes(dependencyId))
+    incompleteDependencies.some((dependencyId) => !recordedDependencyIds.includes(dependencyId)) ||
+    extraRecordedDependencyIds.length > 1 ||
+    extraRecordedDependencyIds.some(
+      (dependencyId) => dependencyId !== retainedMergedStackBase?.node_id,
+    )
   ) {
     result.errors.push({
       code: 'stacked.dependency-coverage',
