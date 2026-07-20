@@ -22,6 +22,14 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["github-copilot-pr-reviewer", "claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Native GitHub Copilot PR reviewer left 4 inline comments on PR #1735 after CI went green: (1) winsVsIncumbentDelta was computed from raw win counts without verifying candidate/incumbent ran an identical (weapon,seed) panel, which could bias the gate if coverage ever diverges from the intended full panel; (2) the decrease-rejection regression test didn't isolate the decrease clause from the 90%-floor clause; (3) a broken markdown paragraph in the handoff doc; (4) a test comment inaccurately claimed a fixture 'recovers nothing else' when it also recovers seed 10. All 4 were fixed concurrently by two actors: an automated copilot-swe-agent[bot] push (commit 6b72ddf2) landed a samePanel Set-equality guard on winsVsIncumbentDelta in aggregate-shards.ts (the only field the hard gate reads), fixed the handoff markdown, redesigned the decrease-test with a 10-seed same-panel fixture, added a new 'rejects a candidate evaluated on a different weapon/seed panel' regression test, and fixed the comment inaccuracy plus 2 sweep-eval-search-promotion.test.ts tests broken by the new panel check. This session independently diagnosed and fixed the same 4 findings in parallel; after a push-rejection surfaced the bot's concurrent commit, this session reset to the bot's tip (avoiding duplicate/conflicting logic) and finished the 3 sweep-round-plan.test.ts tests the bot's fix did not touch, redesigning their fixtures so candidate and incumbent share an identical (weapon,seed) panel. Deliberately did not extend the samePanel guard to flipsVsIncumbent/winRateDeltaVsIncumbent beyond the bot's scope: those two fields are diagnostic/tie-break-only (sortByLexicographic, leaderboard markdown) and are never read by the hard qualification gate, so guarding only winsVsIncumbentDelta closes the actual gate-bypass vector without unnecessary divergence from the already-landed fix. Verified: 299/299 tests/unit/ai pass, tsc --noEmit clean, verify:fast green."
         }
       ]
     }

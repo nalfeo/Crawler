@@ -289,10 +289,19 @@ describe('planRoundMatrix', () => {
 
 describe('applyRoundResult', () => {
   it('adopts a genuinely improving candidate as the new best, leaving steps untouched', () => {
-    const checkpoint = baseCheckpoint(100); // baseline: 1 win
+    // Code-review finding: winsVsIncumbentDelta is only computed when the
+    // candidate's (weapon, seed) cell set is IDENTICAL to the incumbent's, so
+    // this uses a custom 2-cell incumbent panel (not the shared 1-cell
+    // baseCheckpoint helper) that the candidate matches exactly.
+    const baseline = shard(
+      [row(BASE_ID, 'sword', 1, 100, true), row(BASE_ID, 'bow', 2, 100, false)],
+      { [BASE_ID]: BASE },
+    );
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 200, 1 win
     const better: SweepConfig = { ...BASE, aggression: 1.5 };
     const betterId = configId(better);
-    // 2 winning rows -> strictly more total wins (2) than the baseline's 1.
+    // Wins BOTH cells on the same panel -> strictly more total wins (2) than
+    // the incumbent's 1.
     const candidateShard = shard([row(betterId, 'sword', 1, 500), row(betterId, 'bow', 2, 100)], {
       [betterId]: better,
     });
@@ -303,7 +312,7 @@ describe('applyRoundResult', () => {
     expect(updated.steps.aggression).toBe(0.5); // unchanged on improvement
     expect(updated.converged).toBe(false);
     // Prior + new rows/configs both retained.
-    expect(updated.rows).toHaveLength(3);
+    expect(updated.rows).toHaveLength(4); // 2 baseline rows + 2 candidate rows
     expect(Object.keys(updated.configs).sort()).toEqual([BASE_ID, betterId].sort());
   });
 
@@ -329,25 +338,37 @@ describe('applyRoundResult', () => {
     // that out-scores the incumbent while quietly flipping incumbent wins
     // into losses must never be adopted by the search's own hill-climb, even
     // though score-only promotion (the pre-fix behaviour) would pick it.
+    // Code-review finding: winsVsIncumbentDelta is only computed when a
+    // candidate's (weapon, seed) cell set exactly matches the incumbent's, so
+    // all three configs here share the same 3-cell panel (sword/1, bow/2,
+    // dagger/3) — nobody wins a cell the incumbent never ran.
     const baseline = shard(
-      [row(BASE_ID, 'sword', 1, 150, true), row(BASE_ID, 'bow', 2, 150, true)],
+      [
+        row(BASE_ID, 'sword', 1, 150, true),
+        row(BASE_ID, 'bow', 2, 150, true),
+        row(BASE_ID, 'dagger', 3, 150, false),
+      ],
       { [BASE_ID]: BASE },
     );
-    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 300, 2 wins
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 450, 2 wins
 
     const flippy: SweepConfig = { ...BASE, aggression: 1.5 };
     const flippyId = configId(flippy);
-    // Higher score (1400) but flips the incumbent's 'bow'/seed-2 win into a
+    // Higher score (2100) but flips the incumbent's 'bow'/seed-2 win into a
     // loss => 1 total win, strictly FEWER than the incumbent's 2 — a decrease.
     const flippyShard = shard(
-      [row(flippyId, 'sword', 1, 700, true), row(flippyId, 'bow', 2, 700, false)],
+      [
+        row(flippyId, 'sword', 1, 700, true),
+        row(flippyId, 'bow', 2, 700, false),
+        row(flippyId, 'dagger', 3, 700, false),
+      ],
       { [flippyId]: flippy },
     );
 
     const safe: SweepConfig = { ...BASE, aggression: 0.5 };
     const safeId = configId(safe);
-    // Lower score (1050) but wins the two incumbent cells PLUS one more the
-    // incumbent never ran => 3 total wins, strictly MORE than the incumbent's 2.
+    // Lower score (1050) but wins all 3 shared cells => 3 total wins, strictly
+    // MORE than the incumbent's 2.
     const safeShard = shard(
       [
         row(safeId, 'sword', 1, 350, true),
@@ -687,9 +708,15 @@ describe('applyRoundResult', () => {
       ],
       { [navmeshBaseId]: navmeshBase },
     );
-    // The LEGACY incumbent shard (rows tagged with 'legacy+legacy'). 2 total wins.
+    // The LEGACY incumbent shard (rows tagged with 'legacy+legacy'). Wins 2 of
+    // 3 cells (loses dagger/seed-3) so a same-panel candidate can strictly
+    // exceed its win count without needing a cell the incumbent never ran.
     const legacyBaselineShard = shard(
-      [row(BASE_ID, 'sword', 1, 80, true), row(BASE_ID, 'bow', 2, 80, true)],
+      [
+        row(BASE_ID, 'sword', 1, 80, true),
+        row(BASE_ID, 'bow', 2, 80, true),
+        row(BASE_ID, 'dagger', 3, 80, false),
+      ],
       { [BASE_ID]: BASE },
     );
 
@@ -702,8 +729,8 @@ describe('applyRoundResult', () => {
     expect(checkpoint.incumbentCombo).toBe(LEGACY_COMBO_ID);
     expect(checkpoint.incumbentConfigId).toBe(BASE_ID);
 
-    // A navmesh candidate that wins the same (weapon, seed) cells the LEGACY
-    // incumbent won PLUS one more cell the incumbent never ran — 3 total wins,
+    // A navmesh candidate that wins all 3 of the LEGACY incumbent's cells
+    // (same weapon/seed panel: sword/1, bow/2, dagger/3) — 3 total wins,
     // strictly more than the LEGACY incumbent's 2 — so it must be promoted
     // when it outscores the current best.
     const goodCandidate: SweepConfig = { ...navmeshBase, aggression: 1.5 };
