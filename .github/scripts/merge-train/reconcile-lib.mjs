@@ -71,13 +71,40 @@ export async function promoteValidatedPrefixAfterBuildFailure({ candidates, prom
     };
   }
   const greenPrefixLength = validationIndex + 1;
-  const promoted = await promotePrefix(greenPrefixLength, validationIndex);
+  const promotion = await promotePrefix(greenPrefixLength, validationIndex);
+  const promoted = promotion === true || promotion?.promoted === true;
+  const landedCount =
+    promotion === true
+      ? greenPrefixLength
+      : Number.isInteger(promotion?.landedCount)
+        ? promotion.landedCount
+        : 0;
   return {
     greenPrefixLength,
+    landedCount,
     validationIndex,
     promotionAttempted: true,
     promoted,
   };
+}
+
+export function queuePositionAfterRecovery(index, recovery) {
+  let promotedCount = 0;
+  if (
+    recovery?.promoted === true &&
+    Number.isInteger(recovery.greenPrefixLength) &&
+    recovery.greenPrefixLength > 0 &&
+    recovery.greenPrefixLength <= index
+  ) {
+    promotedCount = recovery.greenPrefixLength;
+  } else if (
+    Number.isInteger(recovery?.landedCount) &&
+    recovery.landedCount > 0 &&
+    recovery.landedCount <= index
+  ) {
+    promotedCount = recovery.landedCount;
+  }
+  return index + 1 - promotedCount;
 }
 
 /**
@@ -108,7 +135,8 @@ export async function promoteValidatedPrefixAfterBuildFailure({ candidates, prom
  * @param {Function} opts.onConflict - Handles a classified cumulative conflict.
  * @param {Function} opts.onNoop - Handles a classified no-op candidate.
  * @param {Function} opts.onRetryableFailure - Publishes retryable build status.
- * @param {Function} opts.promotePrefix - (prefixLength, validationIndex) => Promise<boolean>
+ * @param {Function} opts.promotePrefix - (prefixLength, validationIndex) =>
+ *   Promise<boolean | {promoted: boolean, landedCount: number}>
  *   Forwarded to `promoteValidatedPrefixAfterBuildFailure`.
  * @returns {Promise<{action: string, entry?: object, error?: Error, recovery?: object}>}
  */
