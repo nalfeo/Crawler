@@ -242,6 +242,7 @@ test('later build failure promotes the highest successful cumulative prefix in o
   assert.deepEqual(promotedEntries, [1, 2]);
   assert.deepEqual(result, {
     greenPrefixLength: 2,
+    landedCount: 2,
     validationIndex: 1,
     promotionAttempted: true,
     promoted: true,
@@ -463,6 +464,39 @@ test('runTrainBuildLoop preserves the failing PR position when validated-prefix 
 
   assert.equal(capturedRecovery.promotionAttempted, true);
   assert.equal(capturedRecovery.promoted, false);
+  assert.equal(capturedRecovery.landedCount, 0);
+  assert.equal(capturedPosition, 2);
+});
+
+test('runTrainBuildLoop subtracts only the proven landed count after partial promotion', async () => {
+  const train = [1, 2, 3].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let capturedRecovery;
+  let capturedPosition;
+
+  await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index < 2) {
+        return {
+          candidateSha: `sha-${index}`,
+          state: 'success',
+          entries: train.slice(0, index + 1),
+        };
+      }
+      throw new Error('transient git failure');
+    },
+    onRetryableFailure: async (index, _error, recovery) => {
+      capturedRecovery = recovery;
+      capturedPosition = queuePositionAfterRecovery(index, recovery);
+    },
+    promotePrefix: async () => ({ promoted: false, landedCount: 1 }),
+  });
+
+  assert.equal(capturedRecovery.greenPrefixLength, 2);
+  assert.equal(capturedRecovery.promoted, false);
+  assert.equal(capturedRecovery.landedCount, 1);
   assert.equal(capturedPosition, 2);
 });
 

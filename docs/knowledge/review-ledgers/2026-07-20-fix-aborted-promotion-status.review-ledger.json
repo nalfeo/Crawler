@@ -18,9 +18,16 @@
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-4.6"],
-          "concerns_count": 0,
-          "resolved_count": 0,
+          "models": ["claude-sonnet-4.6", "copilot-pull-request-reviewer", "gpt-5.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
           "clean": true
         }
       ]
