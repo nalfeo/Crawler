@@ -1842,6 +1842,7 @@ export function enemyAISystem(world: GameWorld): void {
     // enemy is in range — avoid O(ray-length) work for already-qualified mobs.
     const hasDirectPlayerSight =
       !familyBypass &&
+      world.floor === 2 &&
       !playerHiddenInSafeRoom &&
       inAggroRange &&
       !hasOpenRoomDoor &&
