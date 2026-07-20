@@ -283,21 +283,27 @@ describe('superseded-run concurrency cancellation policy (#1689)', () => {
 });
 
 describe('impact-flag job gating contracts (#1697/#1698)', () => {
-  it('test-e2e is skipped on PRs when visual_touched is not true (non-PR runs unconditionally)', () => {
+  it('test-e2e is skipped on PRs only when visual_touched is explicitly false (fail-closed: != false)', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const condition = String(workflow.jobs['test-e2e']?.if ?? '').trim();
-    expect(condition).toContain("visual_touched != 'true'");
-    expect(condition).toContain("github.event_name == 'pull_request'");
+    // Fail-closed: only an explicit 'false' skips E2E — blank/missing visual_touched runs the suite.
+    expect(condition).toContain("visual_touched != 'false'");
+    expect(condition).toContain("github.event_name != 'pull_request'");
+    // The fail-open form must not be present.
+    expect(condition).not.toContain("visual_touched != 'true'");
     // Still skipped for art_only / docs_only / sprites_only.
     expect(condition).toContain("art_only != 'true'");
     expect(condition).toContain("docs_only != 'true'");
     expect(condition).toContain("sprites_only != 'true'");
   });
 
-  it('ci-advisory Security audit runs on PRs only when dependencies_touched (non-PR backstop)', () => {
+  it('ci-advisory Security audit runs on PRs unless dependencies_touched is explicitly false (fail-closed: != false)', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const condition = getStepIf(workflow.jobs['ci-advisory'], 'Security audit');
-    expect(condition).toContain("dependencies_touched == 'true'");
+    // Fail-closed: only an explicit 'false' skips; blank/missing output keeps the step running.
+    expect(condition).toContain("dependencies_touched != 'false'");
+    // The fail-open form must not be present.
+    expect(condition).not.toContain("dependencies_touched == 'true'");
     expect(condition).toContain("github.event_name != 'pull_request'");
   });
 

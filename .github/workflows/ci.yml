@@ -353,7 +353,7 @@ jobs:
         if: >-
           !cancelled() &&
           (github.event_name != 'pull_request' ||
-           needs.changes.outputs.dependencies_touched == 'true')
+           needs.changes.outputs.dependencies_touched != 'false')
         continue-on-error: true
         run: npm audit --audit-level=high
 
@@ -546,7 +546,7 @@ jobs:
       needs.changes.outputs.art_only != 'true' &&
       needs.changes.outputs.docs_only != 'true' &&
       needs.changes.outputs.sprites_only != 'true' &&
-      !(github.event_name == 'pull_request' && needs.changes.outputs.visual_touched != 'true')
+      (github.event_name != 'pull_request' || needs.changes.outputs.visual_touched != 'false')
     permissions:
       contents: read
     steps:
