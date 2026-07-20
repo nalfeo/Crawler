@@ -38,10 +38,12 @@ _…and 16 older, see `archive/`._
 
 ## ai-combat-balance
 
+- [2026-07-19-local-sweep-discovery-main-merge-recovery](2026-07-19-local-sweep-discovery-main-merge-recovery.md) — Fetched the latest `origin/main` and merged it into `nalfeo-local-sweep-discovery`.
 - [2026-07-16-cloud-sweep-viewer](2026-07-16-cloud-sweep-viewer.md) — Extended the project-scoped Sweep Results Viewer canvas to load weapon-sweep
 - [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
 - [2026-07-16-legacy-floor1-deaths](2026-07-16-legacy-floor1-deaths.md) — Investigated all seven deaths from Weapon Sweep run `29453994290` and reproduced
+- [2026-07-16-local-sweep-discovery](2026-07-16-local-sweep-discovery.md) — Changed the weapon-sweep CLI default from a shared temporary file to
 - [2026-07-16-overhaul-primary-stats](2026-07-16-overhaul-primary-stats.md) — Handoff: Primary stat-system overhaul
 - [2026-07-16-ranged-kiting-strategy](2026-07-16-ranged-kiting-strategy.md) — Handoff: Ranged Kiting Strategy (Multi-Threat Escape + Safe Loot Detour)
 - [2026-07-16-stats-overhaul-pr-recovery](2026-07-16-stats-overhaul-pr-recovery.md) — Handoff: PR #1203 blocker recovery
@@ -56,17 +58,17 @@ _…and 16 older, see `archive/`._
 - [2026-07-11-weapon-stat-personas](2026-07-11-weapon-stat-personas.md) — Weapon-specific AI stat personas
 - [2026-07-10-broker-reputation-gate](2026-07-10-broker-reputation-gate.md) — Handoff — Reputation System Gated Behind Broker Dialogue
 - [2026-07-10-core-stat-scaling-weight-placeholder](2026-07-10-core-stat-scaling-weight-placeholder.md) — Brought the `copilot/review-basic-stats` branch back to a mergeable state by merging `origin/main`, resolving the lone conflict in `src/cor…
-- [2026-07-10-sweep-win-definition-safe-room](2026-07-10-sweep-win-definition-safe-room.md) — Handoff — Sweep win-definition safe-room credit + Floor-1 slack-cap alignment
-- [2026-07-09-ai-sweep-eval-pipeline](2026-07-09-ai-sweep-eval-pipeline.md) — Built the **measurement-only** eval mechanism the maintainer asked for: a
 
-_…and 37 older, see `archive/`._
+_…and 39 older, see `archive/`._
 
 ## ai-behavior-tree
 
 - [2026-07-17-floor-2-equipment-contracts-rebase](2026-07-17-floor-2-equipment-contracts-rebase.md) — Handoff: Floor 2 Equipment Contracts — Rebase to Main
 - [2026-07-17-floor-2-equipment-contracts](2026-07-17-floor-2-equipment-contracts.md) — Handoff: Floor 2 Equipment Contract Foundation
+- [2026-07-17-floor2-boss-ability-catalog](2026-07-17-floor2-boss-ability-catalog.md) — Handoff: Floor 2 boss ability catalog
 - [2026-07-17-floor2-progress-suppression-recovery](2026-07-17-floor2-progress-suppression-recovery.md) — Floor 2 progress suppression recovery
 - [2026-07-17-mob-motion-grid-effects](2026-07-17-mob-motion-grid-effects.md) — Expanded the Mob Motion Lab from three clips into a deterministic 3×2 grid for
+- [2026-07-17-queen-mab-verdigris-glamour](2026-07-17-queen-mab-verdigris-glamour.md) — Handoff: Queen Mab Verdigris Glamour arena slice
 - [2026-07-16-ai-invariant-harness](2026-07-16-ai-invariant-harness.md) — Added a reusable AI invariant fixture that defines the hard-gate invariant
 - [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
@@ -81,10 +83,8 @@ _…and 37 older, see `archive/`._
 - [2026-07-12-deterministic-boss-entry-survival](2026-07-12-deterministic-boss-entry-survival.md) — Proved the representative Floor 1 failures were not final-stair travel attrition: the
 - [2026-07-11-bow-ranged-tempo-fix](2026-07-11-bow-ranged-tempo-fix.md) — Handoff: Bow Ranged Tempo Fix
 - [2026-07-11-class-d-anchor-hardening](2026-07-11-class-d-anchor-hardening.md) — Floor 1 Class-D Anchor Hardening
-- [2026-07-11-floor1-npc-objective-anchor-routability](2026-07-11-floor1-npc-objective-anchor-routability.md) — Floor 1 NPC objective anchors + critical NPC routability
-- [2026-07-11-floor1-npc-review-followups](2026-07-11-floor1-npc-review-followups.md) — Fixed EXPLORE fallback NPC interactions to require actual player-to-target-NPC proximity (`NPC_INTERACT_RANGE_FT`) before dispatching inter…
 
-_…and 35 older, see `archive/`._
+_…and 37 older, see `archive/`._
 
 ## sprite-pipeline
 
@@ -108,8 +108,9 @@ _…and 35 older, see `archive/`._
 - [2026-07-18-gearwork-locket-sprite-brief](2026-07-18-gearwork-locket-sprite-brief.md) — Handled issue #1380 for the `gearwork-locket` Floor 2 equipment accessory icon:
 - [2026-07-18-grave-shovel-brief-again](2026-07-18-grave-shovel-brief-again.md) — Handoff: grave-shovel weapon brief (issue #1439 duplicate path)
 - [2026-07-18-grave-shovel-merge-recovery](2026-07-18-grave-shovel-merge-recovery.md) — Handoff: grave-shovel PR merge recovery
+- [2026-07-18-hand-crossbow-sprite-brief](2026-07-18-hand-crossbow-sprite-brief.md) — Authored the production-ready source brief `briefs/weapons/hand-crossbow.yaml`
 
-_…and 103 older, see `archive/`._
+_…and 102 older, see `archive/`._
 
 ## sprite-workflow
 
@@ -134,7 +135,7 @@ _…and 103 older, see `archive/`._
 - [2026-07-18-meteor-hammer-pr-recovery](2026-07-18-meteor-hammer-pr-recovery.md) — Meteor Hammer PR Recovery
 - [2026-07-18-meteor-hammer-runtime-key-icon](2026-07-18-meteor-hammer-runtime-key-icon.md) — Handoff: meteor-hammer runtime-key icon
 
-_…and 58 older, see `archive/`._
+_…and 60 older, see `archive/`._
 
 ## mapgen
 
@@ -190,6 +191,7 @@ _…and 36 older, see `archive/`._
 
 - [2026-07-18-e1-scoped-run-global-achievements](2026-07-18-e1-scoped-run-global-achievements.md) — 2026-07-18 — E1 scoped + run-global achievements
 - [2026-07-18-runtime-mob-motion-pr1272-recovery](2026-07-18-runtime-mob-motion-pr1272-recovery.md) — Fixed the remaining renderer-ordering review blocker in `src/engine/PhaserBridge.ts` by immediately applying `uiCamera.ignore(...)` when en…
+- [2026-07-17-queen-mab-verdigris-glamour](2026-07-17-queen-mab-verdigris-glamour.md) — Handoff: Queen Mab Verdigris Glamour arena slice
 - [2026-07-16-ai-runner-panel-ux](2026-07-16-ai-runner-panel-ux.md) — Handoff: AI Runner side-panel UX
 - [2026-07-16-equipment-weight-encumbrance](2026-07-16-equipment-weight-encumbrance.md) — Handoff: Author complete equipment weight values for encumbrance
 - [2026-07-16-overhaul-primary-stats](2026-07-16-overhaul-primary-stats.md) — Handoff: Primary stat-system overhaul
@@ -207,9 +209,8 @@ _…and 36 older, see `archive/`._
 - [2026-07-13-hud-encounter-slice](2026-07-13-hud-encounter-slice.md) — Handoff: HUD Encounter Slice
 - [2026-07-13-hud-ux-consistency-rebase-recovery](2026-07-13-hud-ux-consistency-rebase-recovery.md) — Handoff: HUD UX consistency rebase recovery
 - [2026-07-13-hud-ux-consistency-recovery](2026-07-13-hud-ux-consistency-recovery.md) — Validated the five blocker threads called out by the CI recovery comment against HEAD `9e86890`.
-- [2026-07-13-hud-ux-consistency](2026-07-13-hud-ux-consistency.md) — HUD UX Consistency — Saferoom Gate, Toggle-Close, Touch Dismiss
 
-_…and 48 older, see `archive/`._
+_…and 49 older, see `archive/`._
 
 ## mobile-ux
 
@@ -271,8 +272,10 @@ _…and 43 older, see `archive/`._
 
 - [2026-07-18-bloody-footprints](2026-07-18-bloody-footprints.md) — Implemented issue #1267 end to end with a single authoritative blood-surface model in ECS/state instead of renderer-owned pool state.
 - [2026-07-18-runtime-mob-motion-pr1272-recovery](2026-07-18-runtime-mob-motion-pr1272-recovery.md) — Fixed the remaining renderer-ordering review blocker in `src/engine/PhaserBridge.ts` by immediately applying `uiCamera.ignore(...)` when en…
+- [2026-07-17-floor2-boss-ability-catalog](2026-07-17-floor2-boss-ability-catalog.md) — Handoff: Floor 2 boss ability catalog
 - [2026-07-17-mob-motion-grid-effects](2026-07-17-mob-motion-grid-effects.md) — Expanded the Mob Motion Lab from three clips into a deterministic 3×2 grid for
 - [2026-07-17-mob-motion-lab](2026-07-17-mob-motion-lab.md) — Handoff: Generated mob motion prototype
+- [2026-07-17-queen-mab-verdigris-glamour](2026-07-17-queen-mab-verdigris-glamour.md) — Handoff: Queen Mab Verdigris Glamour arena slice
 - [2026-07-17-runtime-mob-motion](2026-07-17-runtime-mob-motion.md) — Promoted the approved Mob Motion Lab language into the shipped Phaser renderer
 - [2026-07-13-weapon-skill-abilities](2026-07-13-weapon-skill-abilities.md) — Implemented the full level-5 weapon skill ability system (issue #1098):
 - [2026-07-11-blood-puddle-flattening](2026-07-11-blood-puddle-flattening.md) — Blood puddle flattening
@@ -287,10 +290,8 @@ _…and 43 older, see `archive/`._
 - [2026-07-04-spawner-battle-arena](2026-07-04-spawner-battle-arena.md) — Spawner Battle Arena — 2026-07-04
 - [2026-07-03-spell-cast-vfx](2026-07-03-spell-cast-vfx.md) — The user reported: "The fireball and pulse shield skills NEVER trigger …
 - [2026-06-30-spawner-spawn-vfx](2026-06-30-spawner-spawn-vfx.md) — Added a dedicated `spawnerPulse` VFX event kind plus world-VFX depth bucket.
-- [2026-06-26-round-damage-numbers](2026-06-26-round-damage-numbers.md) — Diagnosed floating damage numbers rendering as `-8.00000011920929`: damage and
-- [2026-06-26-vfx-effects-pipeline](2026-06-26-vfx-effects-pipeline.md) — Implemented Phase 0 (foundation pipeline) + Phase 1 (high-impact effects) of the
 
-_…and 3 older, see `archive/`._
+_…and 5 older, see `archive/`._
 
 ## weapons
 
@@ -305,7 +306,9 @@ _…and 3 older, see `archive/`._
 - [2026-07-18-thorn-whip-asset](2026-07-18-thorn-whip-asset.md) — 1. **Plan posted** — replied to comment 5009100684 on issue #1337 with the full plan.
 - [2026-07-17-floor-2-equipment-contracts-rebase](2026-07-17-floor-2-equipment-contracts-rebase.md) — Handoff: Floor 2 Equipment Contracts — Rebase to Main
 - [2026-07-17-floor-2-equipment-contracts](2026-07-17-floor-2-equipment-contracts.md) — Handoff: Floor 2 Equipment Contract Foundation
+- [2026-07-17-floor2-boss-ability-catalog](2026-07-17-floor2-boss-ability-catalog.md) — Handoff: Floor 2 boss ability catalog
 - [2026-07-17-player-floor-transition](2026-07-17-player-floor-transition.md) — Replaced the Floor 1 full-page Floor 2 navigation with an in-process
+- [2026-07-17-queen-mab-verdigris-glamour](2026-07-17-queen-mab-verdigris-glamour.md) — Handoff: Queen Mab Verdigris Glamour arena slice
 - [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
 - [2026-07-16-overhaul-primary-stats](2026-07-16-overhaul-primary-stats.md) — Handoff: Primary stat-system overhaul
@@ -322,8 +325,10 @@ _…and 39 older, see `archive/`._
 - [2026-07-19-floor2-mob-activity](2026-07-19-floor2-mob-activity.md) — Handoff - Floor 2 Mob Activity
 - [2026-07-18-bloody-footprints](2026-07-18-bloody-footprints.md) — Implemented issue #1267 end to end with a single authoritative blood-surface model in ECS/state instead of renderer-owned pool state.
 - [2026-07-18-runtime-mob-motion-pr1272-recovery](2026-07-18-runtime-mob-motion-pr1272-recovery.md) — Fixed the remaining renderer-ordering review blocker in `src/engine/PhaserBridge.ts` by immediately applying `uiCamera.ignore(...)` when en…
+- [2026-07-17-floor2-boss-ability-catalog](2026-07-17-floor2-boss-ability-catalog.md) — Handoff: Floor 2 boss ability catalog
 - [2026-07-17-mob-motion-grid-effects](2026-07-17-mob-motion-grid-effects.md) — Expanded the Mob Motion Lab from three clips into a deterministic 3×2 grid for
 - [2026-07-17-mob-motion-lab](2026-07-17-mob-motion-lab.md) — Handoff: Generated mob motion prototype
+- [2026-07-17-queen-mab-verdigris-glamour](2026-07-17-queen-mab-verdigris-glamour.md) — Handoff: Queen Mab Verdigris Glamour arena slice
 - [2026-07-17-runtime-mob-motion](2026-07-17-runtime-mob-motion.md) — Promoted the approved Mob Motion Lab language into the shipped Phaser renderer
 - [2026-07-16-enemy-projectile-telegraph-postmerge-verification](2026-07-16-enemy-projectile-telegraph-postmerge-verification.md) — A short verification-only follow-up requested after the enemy-projectile-telegraph
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
@@ -344,7 +349,9 @@ _…and 76 older, see `archive/`._
 
 ## boss-rooms
 
+- [2026-07-17-floor2-boss-ability-catalog](2026-07-17-floor2-boss-ability-catalog.md) — Handoff: Floor 2 boss ability catalog
 - [2026-07-17-player-floor-transition](2026-07-17-player-floor-transition.md) — Replaced the Floor 1 full-page Floor 2 navigation with an in-process
+- [2026-07-17-queen-mab-verdigris-glamour](2026-07-17-queen-mab-verdigris-glamour.md) — Handoff: Queen Mab Verdigris Glamour arena slice
 - [2026-07-16-legacy-floor1-deaths](2026-07-16-legacy-floor1-deaths.md) — Investigated all seven deaths from Weapon Sweep run `29453994290` and reproduced
 - [2026-07-15-floor2-ai-hunt-progression](2026-07-15-floor2-ai-hunt-progression.md) — Handoff - Floor 2 AI Hunt Progression
 - [2026-07-12-deterministic-boss-entry-survival](2026-07-12-deterministic-boss-entry-survival.md) — Proved the representative Floor 1 failures were not final-stair travel attrition: the
@@ -396,8 +403,9 @@ _…and 76 older, see `archive/`._
 - [2026-07-18-ember-wand-review-recovery](2026-07-18-ember-wand-review-recovery.md) — Handoff: Recover ember-wand PR review threads
 - [2026-07-18-epic-status-ci-recovery](2026-07-18-epic-status-ci-recovery.md) — Restored the missing schema-derived `EvidenceRecord` alias in `scripts/agent/epics/epic-status-lib.ts`, clearing the repo-wide TypeScript f…
 - [2026-07-18-epic-status-merge-recovery](2026-07-18-epic-status-merge-recovery.md) — Handoff: PR #1286 merge-conflict recovery
+- [2026-07-18-epic-status-pr1271-live-claim-recovery](2026-07-18-epic-status-pr1271-live-claim-recovery.md) — Handoff: PR #1271 live-claim + GitReader compatibility recovery
 
-_…and 151 older, see `archive/`._
+_…and 150 older, see `archive/`._
 
 ## agent-memory
 
@@ -410,12 +418,16 @@ _…and 151 older, see `archive/`._
 
 ## devtools
 
+- [2026-07-19-local-sweep-discovery-main-merge-recovery](2026-07-19-local-sweep-discovery-main-merge-recovery.md) — Fetched the latest `origin/main` and merged it into `nalfeo-local-sweep-discovery`.
 - [2026-07-18-bloody-footprints](2026-07-18-bloody-footprints.md) — Implemented issue #1267 end to end with a single authoritative blood-surface model in ECS/state instead of renderer-owned pool state.
+- [2026-07-17-local-sweep-discovery-merge-recovery](2026-07-17-local-sweep-discovery-merge-recovery.md) — Fetched and merged the current `origin/main` into `nalfeo-local-sweep-discovery`.
 - [2026-07-17-mob-motion-grid-effects](2026-07-17-mob-motion-grid-effects.md) — Expanded the Mob Motion Lab from three clips into a deterministic 3×2 grid for
 - [2026-07-17-mob-motion-lab](2026-07-17-mob-motion-lab.md) — Handoff: Generated mob motion prototype
+- [2026-07-17-sweep-viewer-cloud-init-race](2026-07-17-sweep-viewer-cloud-init-race.md) — Added `isCurrentCloudGeneration()` to the sweep viewer state helpers so cloud-only state publication can be guarded by the captured refresh…
 - [2026-07-17-weapon-anchor-pr-recovery](2026-07-17-weapon-anchor-pr-recovery.md) — Weapon Anchor PR Recovery
 - [2026-07-16-ai-runner-panel-ux](2026-07-16-ai-runner-panel-ux.md) — Handoff: AI Runner side-panel UX
 - [2026-07-16-cloud-sweep-viewer](2026-07-16-cloud-sweep-viewer.md) — Extended the project-scoped Sweep Results Viewer canvas to load weapon-sweep
+- [2026-07-16-local-sweep-discovery](2026-07-16-local-sweep-discovery.md) — Changed the weapon-sweep CLI default from a shared temporary file to
 - [2026-07-16-revise-content-prompts](2026-07-16-revise-content-prompts.md) — Revise Content Prompts
 - [2026-07-15-azure-credit-dashboard](2026-07-15-azure-credit-dashboard.md) — Added `.github/extensions/azure-credit-dashboard/`, a project-scoped Copilot
 - [2026-07-13-visual-review-viewport](2026-07-13-visual-review-viewport.md) — Added optional `--viewport WIDTHxHEIGHT` parsing to
@@ -426,12 +438,8 @@ _…and 151 older, see `archive/`._
 - [2026-07-09-dead-code-cleanup](2026-07-09-dead-code-cleanup.md) — Tightened `npm run lint:dead-code` from dependency-only Knip to a real dead-code pass (`dependencies,exports,files`), tuned `knip.json` so …
 - [2026-07-09-devtool-canvas-achievements](2026-07-09-devtool-canvas-achievements.md) — Slice D of the DevTool-canvas epic: ports the read/write **achievements editor**
 - [2026-07-09-devtool-canvas-postprocess](2026-07-09-devtool-canvas-postprocess.md) — Slice C of the DevTool-canvas epic: a self-contained canvas extension that ports
-- [2026-07-09-devtool-canvas-storage](2026-07-09-devtool-canvas-storage.md) — Ported the DevTools monolith storage page (`?page=storage`,
-- [2026-07-09-postprocess-c2-mutation](2026-07-09-postprocess-c2-mutation.md) — Slice C2 of the DevTool-canvas epic: adds the monolith postprocess page's
-- [2026-07-09-set-piece-editor-canvas-suite](2026-07-09-set-piece-editor-canvas-suite.md) — Completed the set-piece editor canvas stack so authored layout and transform changes persist through the real runtime pipeline.
-- [2026-07-09-sprite-review-canvas-ext](2026-07-09-sprite-review-canvas-ext.md) — Slice A of the DevTool-canvas epic: the **pattern-proof + shared-harness slice** that unblocks slices B–E. Adds, **alongside** the untouche…
 
-_…and 31 older, see `archive/`._
+_…and 35 older, see `archive/`._
 
 ## agent-personas
 
