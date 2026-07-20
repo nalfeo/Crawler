@@ -57,6 +57,93 @@ export function trainCheckTitle(status, conclusion) {
     : 'Merge-train validation could not start';
 }
 
+export async function promoteValidatedPrefixAfterBuildFailure({ candidates, promotePrefix }) {
+  let validationIndex = -1;
+  for (let index = 0; index < candidates.length; index += 1) {
+    if (candidates[index].state === 'success') validationIndex = index;
+  }
+  if (validationIndex === -1) {
+    return {
+      greenPrefixLength: 0,
+      validationIndex,
+      promotionAttempted: false,
+      promoted: false,
+    };
+  }
+  const greenPrefixLength = validationIndex + 1;
+  const promoted = await promotePrefix(greenPrefixLength, validationIndex);
+  return {
+    greenPrefixLength,
+    validationIndex,
+    promotionAttempted: true,
+    promoted,
+  };
+}
+
+/**
+ * Runs the candidate build loop for a merge train. For each train entry,
+ * `buildEntry(index)` is called inside the retryable candidate-build boundary.
+ * `finalizeEntry(index, builtEntry)` runs afterward, outside that boundary, so
+ * validation/status failures still fail the reconcile instead of being
+ * reclassified as candidate-build retries.
+ *
+ * Exit conditions:
+ * - `MergeTrainConflictError` / `MergeTrainNoopError` → returns immediately with
+ *   `action: 'conflict'` or `action: 'noop'`; the caller is responsible for exiting.
+ * - Any other (retryable) error → promotes the accumulated validated prefix via
+ *   `promoteValidatedPrefixAfterBuildFailure` and returns
+ *   `action: 'retryable-build-failure'`; the caller is responsible for exiting.
+ * - All entries built without error → returns `action: 'done'`.
+ *
+ * @param {object} opts
+ * @param {object[]} opts.train - Admitted PR entries in positional order
+ * @param {object[]} opts.candidates - Mutable array; successfully built candidate
+ *   records are pushed here so that `promotePrefix` (captured by closure in the
+ *   caller) can read them when invoked during retryable-failure recovery.
+ * @param {Function} opts.buildEntry - (index: number) => Promise<object>
+ *   Builds one cumulative candidate within the retryable build boundary.
+ * @param {Function} opts.finalizeEntry - (index: number, builtEntry: object) => Promise<object>
+ *   Reads validation state and publishes the built candidate status outside the
+ *   retryable build boundary.
+ * @param {Function} opts.onConflict - Handles a classified cumulative conflict.
+ * @param {Function} opts.onNoop - Handles a classified no-op candidate.
+ * @param {Function} opts.onRetryableFailure - Publishes retryable build status.
+ * @param {Function} opts.promotePrefix - (prefixLength, validationIndex) => Promise<boolean>
+ *   Forwarded to `promoteValidatedPrefixAfterBuildFailure`.
+ * @returns {Promise<{action: string, entry?: object, error?: Error, recovery?: object}>}
+ */
+export async function runTrainBuildLoop({
+  train,
+  candidates,
+  buildEntry,
+  finalizeEntry = async (_index, builtEntry) => builtEntry,
+  onConflict = async () => {},
+  onNoop = async () => {},
+  onRetryableFailure = async () => {},
+  promotePrefix,
+}) {
+  for (let index = 0; index < train.length; index += 1) {
+    let builtEntry;
+    try {
+      builtEntry = await buildEntry(index);
+    } catch (error) {
+      if (isMergeTrainConflictError(error)) {
+        await onConflict(index, error);
+        return { action: 'conflict', entry: train[index], error };
+      }
+      if (isMergeTrainNoopError(error)) {
+        await onNoop(index, error);
+        return { action: 'noop', entry: train[index], error };
+      }
+      const recovery = await promoteValidatedPrefixAfterBuildFailure({ candidates, promotePrefix });
+      await onRetryableFailure(index, error, recovery);
+      return { action: 'retryable-build-failure', entry: train[index], error, recovery };
+    }
+    candidates.push(await finalizeEntry(index, builtEntry));
+  }
+  return { action: 'done' };
+}
+
 function hasLabel(pr, name) {
   return (pr.labels || []).some((label) => label.name === name);
 }

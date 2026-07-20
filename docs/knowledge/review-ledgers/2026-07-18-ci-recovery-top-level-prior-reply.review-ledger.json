@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-top-level-prior-reply",
+  "task_title": "Fix ci-recovery top-level prior reply hints",
+  "estimated_apples": 2,
+  "stages": {}
+}
