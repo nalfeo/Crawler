@@ -10,8 +10,11 @@ import {
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
+  promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
+  queuePositionAfterRecovery,
   resolveMergeTrainTokens,
+  runTrainBuildLoop,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 
@@ -217,6 +220,284 @@ test('buildCandidate leaves non-conflict merge failures retryable', () => {
       return true;
     },
   );
+});
+
+test('later build failure promotes the highest successful cumulative prefix in order', async () => {
+  const train = [1, 2, 3, 4].map((number) => makePr({ number }));
+  const candidates = [
+    { state: 'missing', entries: train.slice(0, 1) },
+    { state: 'success', entries: train.slice(0, 2) },
+    { state: 'pending', entries: train.slice(0, 3) },
+  ];
+  const promotedEntries = [];
+  const result = await promoteValidatedPrefixAfterBuildFailure({
+    candidates,
+    promotePrefix: async (prefixLength, validationIndex) => {
+      assert.equal(validationIndex, 1);
+      promotedEntries.push(...train.slice(0, prefixLength).map((entry) => entry.number));
+      return true;
+    },
+  });
+
+  assert.deepEqual(promotedEntries, [1, 2]);
+  assert.deepEqual(result, {
+    greenPrefixLength: 2,
+    landedCount: 2,
+    validationIndex: 1,
+    promotionAttempted: true,
+    promoted: true,
+  });
+  assert.deepEqual(
+    train.slice(result.greenPrefixLength).map((entry) => entry.number),
+    [3, 4],
+  );
+});
+
+test('build failure before any successful prefix does not attempt promotion', async () => {
+  let promotionCalls = 0;
+  const result = await promoteValidatedPrefixAfterBuildFailure({
+    candidates: [{ state: 'missing' }, { state: 'pending' }],
+    promotePrefix: async () => {
+      promotionCalls += 1;
+      return true;
+    },
+  });
+
+  assert.equal(promotionCalls, 0);
+  assert.deepEqual(result, {
+    greenPrefixLength: 0,
+    validationIndex: -1,
+    promotionAttempted: false,
+    promoted: false,
+  });
+});
+
+test('build failure recovery never promotes later unvalidated candidates', async () => {
+  const calls = [];
+  const result = await promoteValidatedPrefixAfterBuildFailure({
+    candidates: [{ state: 'success' }, { state: 'failure' }, { state: 'pending' }],
+    promotePrefix: async (...args) => {
+      calls.push(args);
+      return true;
+    },
+  });
+
+  assert.deepEqual(calls, [[1, 0]]);
+  assert.equal(result.greenPrefixLength, 1);
+});
+
+// Orchestration-level regression: these tests exercise the runTrainBuildLoop
+// controller that was changed in the production bug fix. Calling the lib helper
+// (promoteValidatedPrefixAfterBuildFailure) in isolation would leave these bugs
+// undetected — this seam catches the missing transition.
+
+test('runTrainBuildLoop promotes validated prefix when a later build entry fails with a retryable error', async () => {
+  const train = [1, 2, 3].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  const promotionCalls = [];
+
+  const result = await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index === 0) {
+        return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+      }
+      // index >= 1: retryable failure (not a conflict, not a noop)
+      throw new Error('transient git failure');
+    },
+    promotePrefix: async (prefixLength, validationIndex) => {
+      promotionCalls.push({ prefixLength, validationIndex });
+      return true;
+    },
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  assert.equal(result.entry.number, 2); // PR #2 is the failing entry (index 1)
+  assert.equal(result.recovery.greenPrefixLength, 1);
+  assert.equal(result.recovery.promoted, true);
+  assert.deepEqual(promotionCalls, [{ prefixLength: 1, validationIndex: 0 }]);
+  // Only the first candidate was accumulated; later entries were never reached.
+  assert.equal(builtCandidates.length, 1);
+});
+
+test('runTrainBuildLoop does not attempt promotion when no candidate succeeded before the retryable failure', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let promotionCalled = false;
+
+  const result = await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (_index) => {
+      throw new Error('immediate retryable failure');
+    },
+    promotePrefix: async () => {
+      promotionCalled = true;
+      return true;
+    },
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  assert.equal(result.recovery.promotionAttempted, false);
+  assert.equal(promotionCalled, false);
+  assert.equal(builtCandidates.length, 0);
+});
+
+test('runTrainBuildLoop does not invoke buildEntry for entries beyond the retryable failure', async () => {
+  const train = [1, 2, 3].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  const invoked = [];
+
+  const result = await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      invoked.push(train[index].number);
+      if (index === 1) throw new Error('retryable on #2');
+      return { candidateSha: `sha-${index}`, state: 'pending', entries: train.slice(0, index + 1) };
+    },
+    promotePrefix: async () => true,
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  // Entries 0 (#1) and 1 (#2) were attempted; entry 2 (#3) was never started.
+  assert.deepEqual(invoked, [1, 2]);
+  assert.equal(builtCandidates.length, 1); // only index 0 succeeded and was accumulated
+});
+
+test('runTrainBuildLoop does not reclassify post-build finalization errors as build retries', async () => {
+  let promotionCalled = false;
+  await assert.rejects(
+    runTrainBuildLoop({
+      train: [makePr({ number: 1 })],
+      candidates: [],
+      buildEntry: async () => ({ candidateSha: 'sha-0' }),
+      finalizeEntry: async () => {
+        throw new Error('validation read failed');
+      },
+      promotePrefix: async () => {
+        promotionCalled = true;
+        return true;
+      },
+    }),
+    /validation read failed/,
+  );
+  assert.equal(promotionCalled, false);
+});
+
+test('runTrainBuildLoop promotes prefix even if status reporting rejects', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let promotionCalled = false;
+
+  await assert.rejects(
+    runTrainBuildLoop({
+      train,
+      candidates: builtCandidates,
+      buildEntry: async (index) => {
+        if (index === 0) {
+          return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+        }
+        throw new Error('transient git failure');
+      },
+      onRetryableFailure: async () => {
+        throw new Error('reporting failure');
+      },
+      promotePrefix: async () => {
+        promotionCalled = true;
+        return true;
+      },
+    }),
+    /reporting failure/,
+  );
+
+  assert.equal(promotionCalled, true);
+});
+
+test('runTrainBuildLoop passes recovery to onRetryableFailure so the failing PR position reflects the post-promotion queue', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let capturedPosition;
+
+  await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index === 0) {
+        return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+      }
+      throw new Error('transient git failure');
+    },
+    onRetryableFailure: async (_index, _error, recovery) => {
+      capturedPosition = queuePositionAfterRecovery(_index, recovery);
+    },
+    promotePrefix: async () => true,
+  });
+
+  // PR #2 was at original index 1 (position 2), but PR #1 was promoted (greenPrefixLength=1).
+  // Its new queue position is 2 - 1 = 1.
+  assert.equal(capturedPosition, 1);
+});
+
+test('runTrainBuildLoop preserves the failing PR position when validated-prefix promotion aborts', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let capturedRecovery;
+  let capturedPosition;
+
+  await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index === 0) {
+        return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+      }
+      throw new Error('transient git failure');
+    },
+    onRetryableFailure: async (index, _error, recovery) => {
+      capturedRecovery = recovery;
+      capturedPosition = queuePositionAfterRecovery(index, recovery);
+    },
+    promotePrefix: async () => false,
+  });
+
+  assert.equal(capturedRecovery.promotionAttempted, true);
+  assert.equal(capturedRecovery.promoted, false);
+  assert.equal(capturedRecovery.landedCount, 0);
+  assert.equal(capturedPosition, 2);
+});
+
+test('runTrainBuildLoop subtracts only the proven landed count after partial promotion', async () => {
+  const train = [1, 2, 3].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let capturedRecovery;
+  let capturedPosition;
+
+  await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index < 2) {
+        return {
+          candidateSha: `sha-${index}`,
+          state: 'success',
+          entries: train.slice(0, index + 1),
+        };
+      }
+      throw new Error('transient git failure');
+    },
+    onRetryableFailure: async (index, _error, recovery) => {
+      capturedRecovery = recovery;
+      capturedPosition = queuePositionAfterRecovery(index, recovery);
+    },
+    promotePrefix: async () => ({ promoted: false, landedCount: 1 }),
+  });
+
+  assert.equal(capturedRecovery.greenPrefixLength, 2);
+  assert.equal(capturedRecovery.promoted, false);
+  assert.equal(capturedRecovery.landedCount, 1);
+  assert.equal(capturedPosition, 2);
 });
 
 test('live Actions runs require separate promotion and workflow-dispatch tokens', () => {

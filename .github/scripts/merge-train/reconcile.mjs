@@ -24,7 +24,9 @@ import {
   planLandedRecovery,
   promoteExactBatch,
   promotionStaleReason,
+  queuePositionAfterRecovery,
   resolveMergeTrainTokens,
+  runTrainBuildLoop,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 import {
@@ -556,72 +558,78 @@ if (train.length === 0) {
 const mainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object
   .sha;
 const candidates = [];
-for (let index = 0; index < train.length; index += 1) {
-  const entries = train.slice(0, index + 1);
-  const fingerprint = candidateFingerprint(mainSha, entries);
-  const refName = candidateRef(index + 1, fingerprint);
-  let candidateSha;
-  try {
-    candidateSha = buildCandidate({ baseSha: mainSha, entries, refName, git, live: true });
+const loopResult = await runTrainBuildLoop({
+  train,
+  candidates,
+  buildEntry: async (index) => {
+    const entries = train.slice(0, index + 1);
+    const fingerprint = candidateFingerprint(mainSha, entries);
+    const refName = candidateRef(index + 1, fingerprint);
+    const candidateSha = buildCandidate({ baseSha: mainSha, entries, refName, git, live: true });
     await removeLabel(train[index].number, BLOCKED_LABEL);
     await removeLabel(train[index].number, VALIDATION_FAILED_LABEL);
-  } catch (error) {
-    if (isMergeTrainConflictError(error)) {
-      await blockEntry(train[index], { detail: error.message });
-      const predecessor = train[index - 1]?.number || 0;
-      await dispatchRecovery(train[index].number, `merge-train-cumulative-conflict:${predecessor}`);
-      process.stdout.write(`returned conflict pr=#${train[index].number} to reconciliation\n`);
-      process.exit(0);
-    }
-    if (isMergeTrainNoopError(error)) {
-      await deAdmitNoop(train[index], error.message);
-      process.stdout.write(`returned no-op pr=#${train[index].number} to reconciliation\n`);
-      process.exit(0);
-    }
+    return { candidateSha, entries, fingerprint, refName };
+  },
+  finalizeEntry: async (index, builtEntry) => {
+    git([
+      'fetch',
+      'origin',
+      `${builtEntry.refName}:refs/remotes/origin/${builtEntry.refName}`,
+      '--force',
+    ]);
+    const state = trainCheckState(
+      await checkRuns(builtEntry.candidateSha),
+      builtEntry.fingerprint,
+      trustedAppId,
+      new Date(),
+    );
     await updateStatus(
       train[index].number,
       renderStatus({
         position: index + 1,
+        candidateSha: builtEntry.candidateSha,
+        state,
+        detail:
+          state === 'failure'
+            ? 'Candidate validation failed; the merge train will localize the first failing PR and return it to recovery, promoting the validated green prefix before it.'
+            : 'Candidate is immutable and bound to the listed PR revisions.',
+      }),
+    );
+    return { ...builtEntry, state };
+  },
+  onConflict: async (index, error) => {
+    await blockEntry(train[index], { detail: error.message });
+    const predecessor = train[index - 1]?.number || 0;
+    await dispatchRecovery(train[index].number, `merge-train-cumulative-conflict:${predecessor}`);
+    process.stdout.write(`returned conflict pr=#${train[index].number} to reconciliation\n`);
+  },
+  onNoop: async (index, error) => {
+    await deAdmitNoop(train[index], error.message);
+    process.stdout.write(`returned no-op pr=#${train[index].number} to reconciliation\n`);
+  },
+  onRetryableFailure: async (index, error, recovery) => {
+    await updateStatus(
+      train[index].number,
+      renderStatus({
+        position: queuePositionAfterRecovery(index, recovery),
         candidateSha: '',
         state: 'waiting',
         detail: error.message,
       }),
     );
-    process.stdout.write(
-      `retryable candidate build failure pr=#${train[index].number} error=${error.message}\n`,
-    );
-    process.exit(0);
-  }
-  git(['fetch', 'origin', `${refName}:refs/remotes/origin/${refName}`, '--force']);
-  const state = trainCheckState(
-    await checkRuns(candidateSha),
-    fingerprint,
-    trustedAppId,
-    new Date(),
-  );
-  candidates.push({ candidateSha, entries, fingerprint, refName, state });
-  await updateStatus(
-    train[index].number,
-    renderStatus({
-      position: index + 1,
-      candidateSha,
-      state,
-      detail:
-        state === 'failure'
-          ? 'Candidate validation failed; the merge train will localize the first failing PR and return it to recovery, promoting the validated green prefix before it.'
-          : 'Candidate is immutable and bound to the listed PR revisions.',
-    }),
-  );
-}
+  },
+  promotePrefix,
+});
 
 async function promotePrefix(prefixLength, validationIndex) {
-  if (!(await mainHealthAllowsPromotion())) return false;
+  if (!(await mainHealthAllowsPromotion())) return { promoted: false, landedCount: 0 };
   const provenanceEntries = train.slice(0, prefixLength);
   const validationCandidate = candidates[validationIndex];
   if (!validationCandidate) {
     throw new Error(`Missing validation candidate at prefix index ${validationIndex}`);
   }
-  return promoteExactBatch({
+  let landedCount = 0;
+  const promoted = await promoteExactBatch({
     entries: provenanceEntries,
     candidateShas: candidates.slice(0, prefixLength).map((candidate) => candidate.candidateSha),
     expectedBase: mainSha,
@@ -652,8 +660,23 @@ async function promotePrefix(prefixLength, validationIndex) {
       return state === 'success';
     },
     provenanceEntries,
+    recordMapping: () => {
+      landedCount += 1;
+    },
     reattestHealth: mainHealthAllowsPromotion,
   });
+  return { promoted, landedCount };
+}
+
+if (loopResult.action === 'conflict' || loopResult.action === 'noop') {
+  process.exit(0);
+}
+
+if (loopResult.action === 'retryable-build-failure') {
+  process.stdout.write(
+    `retryable candidate build failure pr=#${loopResult.entry.number} error=${loopResult.error.message} green_prefix=${loopResult.recovery.greenPrefixLength} promotion_attempted=${loopResult.recovery.promotionAttempted}\n`,
+  );
+  process.exit(0);
 }
 
 // Validate the maximal candidate first. Only a genuine terminal maximal failure

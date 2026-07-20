@@ -1,0 +1,912 @@
+{
+  "schemaVersion": "boss-abilities/v1",
+  "floorId": "floor-2",
+  "entries": [
+    {
+      "id": "nana-snaggle-scrap-cart-stampede",
+      "bossArchetypeId": "goblin-boss",
+      "bossName": "Nana Snaggle Grubwix",
+      "familyId": "goblins",
+      "attackName": "SCRAP-CART STAMPEDE",
+      "announcementText": "Nana's got the right of way!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 8000,
+        "cooldownMs": 8000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1250,
+        "shape": "lane",
+        "dangerColor": "hostile-red",
+        "description": "A wide red rectangular lane locks toward the player's position, with expanding chevrons and a filling danger strip showing its exact direction, width, and endpoint.",
+        "metrics": [
+          { "id": "width", "value": 8, "unit": "feet" },
+          { "id": "length-mode", "value": "to-wall-or-arena-edge", "unit": "mode" }
+        ]
+      },
+      "effect": {
+        "description": "Nana rockets down the locked lane, dealing moderate damage and strong knockback, then stops at the lane endpoint or the first solid wall.",
+        "designValues": [
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "knockback-profile", "value": "strong", "unit": "descriptor" },
+          { "id": "stop-rule", "value": "lane-end-or-solid-wall", "unit": "mode" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Nana charges through a locked scrap-cart lane.",
+        "fullDescription": "Nana revs a ramshackle scrap cart before blasting through a clearly marked lane and scattering anything caught in her path.",
+        "counterplay": "Wait for the lane to lock, then sidestep perpendicular to it before the cart launches."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Shaking cart parts, gears, bolts, exhaust, sparks, dust, trailing scrap, screen shake, and an oversized impact burst.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "don-paco-the-big-gob",
+      "bossArchetypeId": "llama-boss",
+      "bossName": "Don Paco 'The Gob'",
+      "familyId": "llamas",
+      "attackName": "THE BIG GOB",
+      "announcementText": "Don Paco's painting the whole block!",
+      "category": "area-denial",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-direction",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1400,
+        "shape": "cone",
+        "dangerColor": "hostile-red",
+        "description": "A locked 70-degree cone shows five red projectile arrows and five expanding red landing circles, exposing every path and impact zone.",
+        "metrics": [
+          { "id": "angle", "value": 70, "unit": "degrees" },
+          { "id": "range", "value": 30, "unit": "feet" },
+          { "id": "projectile-count", "value": 5, "unit": "count" }
+        ]
+      },
+      "effect": {
+        "description": "Don Paco fires five caustic spit globs. Each impact deals moderate damage and leaves a sticky slowing slick for four seconds.",
+        "designValues": [
+          { "id": "projectile-count", "value": 5, "unit": "count" },
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "slick-duration", "value": 4000, "unit": "milliseconds" },
+          { "id": "slow-rule", "value": "while-inside", "unit": "mode" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Don Paco fans caustic spit across a locked cone.",
+        "fullDescription": "Five telegraphed spit globs land across a broad cone, bursting on impact and leaving temporary slowing slicks.",
+        "counterplay": "Escape laterally or circle behind Don Paco after the cone locks, then avoid the marked landing circles and slicks."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Wobbling cheek bulge, foamy bubbles, neon-green trails, huge wet splashes, acidic steam, drips, and bubbling puddle rims.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "big-panda-wei-bamboo-fed-berserk",
+      "bossArchetypeId": "panda-boss",
+      "bossName": "Big Panda Wei",
+      "familyId": "pandas",
+      "attackName": "BAMBOO-FED BERSERK",
+      "announcementText": "Big Wei is collecting personally!",
+      "category": "self-buff",
+      "timing": {
+        "firstEligibleAfterMs": 10000,
+        "cooldownMs": 10000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "self",
+        "lockAt": "self",
+        "tracksPlayer": false,
+        "origin": "follows-caster"
+      },
+      "telegraph": {
+        "durationMs": 1500,
+        "shape": "self-aura",
+        "dangerColor": "ability-theme",
+        "description": "Green-gold concentric pulses contract into Wei while a red aura builds around his planted body, clearly signaling the coming enforcer state.",
+        "metrics": [{ "id": "radius", "value": 10, "unit": "feet" }]
+      },
+      "effect": {
+        "description": "Wei gains 40 percent movement speed, 40 percent melee damage, and heavy knockback resistance for four seconds. The buff never stacks or extends itself.",
+        "designValues": [
+          { "id": "duration", "value": 4000, "unit": "milliseconds" },
+          { "id": "movement-speed-bonus", "value": 40, "unit": "percent" },
+          { "id": "melee-damage-bonus", "value": 40, "unit": "percent" },
+          { "id": "knockback-resistance", "value": "heavy", "unit": "descriptor" },
+          { "id": "stacking", "value": false, "unit": "flag" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Wei chews bamboo to enter a brief enforcer frenzy.",
+        "fullDescription": "After a stationary wind-up, Wei becomes faster, hits harder, and resists knockback while a persistent aura marks the buff.",
+        "counterplay": "Punish the stationary wind-up, then kite until the four-second aura collapses."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Bamboo splinters, swirling leaves, red-envelope confetti, gold sparks, footstep dust, red afterimages, and a roar pulse with screen shake.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "queen-mab-verdigris-glamour",
+      "bossArchetypeId": "faerie-boss",
+      "bossName": "Queen Mab Tarnish",
+      "familyId": "faeries",
+      "attackName": "VERDIGRIS GLAMOUR",
+      "announcementText": "All that glitters will corrode!",
+      "category": "debuff",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1500,
+        "shape": "circle",
+        "dangerColor": "hostile-red",
+        "description": "A 12-foot red faerie circle locks at the player's current position. Crown-point runes form around its edge while the interior fills toward detonation.",
+        "metrics": [{ "id": "radius", "value": 12, "unit": "feet" }]
+      },
+      "effect": {
+        "description": "The circle erupts for moderate damage and applies Tarnished for four seconds: 30 percent lower movement speed and 25 percent lower attack speed. Tarnished does not stack.",
+        "designValues": [
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "debuff-id", "value": "tarnished", "unit": "mode" },
+          { "id": "duration", "value": 4000, "unit": "milliseconds" },
+          { "id": "movement-speed-modifier", "value": -30, "unit": "percent" },
+          { "id": "attack-speed-modifier", "value": -25, "unit": "percent" },
+          { "id": "stacking", "value": false, "unit": "flag" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Mab detonates a locked circle of corroded glamour.",
+        "fullDescription": "A crown-marked faerie circle erupts in verdigris magic, damaging victims and temporarily Tarnishing their movement and attack speed.",
+        "counterplay": "Leave the circle after it locks; it never follows the player during its 1.5-second warning."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Verdigris flame, bronze dust, rust flakes, spectral teal butterflies, black-violet mist, crown sparks, a vertical light column, and a shattering ring pulse.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "king-skritt-roman-candle-coronation",
+      "bossArchetypeId": "kobold-boss",
+      "bossName": "King Skritt the Unburnt",
+      "familyId": "kobolds",
+      "attackName": "ROMAN-CANDLE CORONATION",
+      "announcementText": "All hail the Unburnt!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 8000,
+        "cooldownMs": 8000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "fixed-pattern",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1300,
+        "shape": "radial-projectiles",
+        "dangerColor": "hostile-red",
+        "description": "Twelve long red projectile arrows radiate like clock spokes, showing every fireball path and safe gap. Alternating casts visibly rotate the whole pattern by 15 degrees.",
+        "metrics": [
+          { "id": "projectile-count", "value": 12, "unit": "count" },
+          { "id": "alternate-offset", "value": 15, "unit": "degrees" }
+        ]
+      },
+      "effect": {
+        "description": "Skritt fires twelve straight crown-flame projectiles simultaneously. Casts alternate deterministically between the base pattern and a 15-degree offset.",
+        "designValues": [
+          { "id": "projectile-count", "value": 12, "unit": "count" },
+          { "id": "alternate-offset", "value": 15, "unit": "degrees" },
+          { "id": "homing", "value": false, "unit": "flag" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Skritt launches a rotating twelve-spoke crown barrage.",
+        "fullDescription": "Twelve crown-flame projectiles burst outward along fully telegraphed spokes, with every other cast rotating the deterministic pattern.",
+        "counterplay": "Read the visible spoke pattern and step into a safe gap before the simultaneous launch."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Crown flame jets, an ember halo, upward sparks, smoke plumes, molten-orange trails, impact cinders, char flakes, and a coronation flash.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "sovereign-cap-spore-bloom",
+      "bossArchetypeId": "myconid-boss",
+      "bossName": "The Sovereign Cap",
+      "familyId": "myconids",
+      "attackName": "SOVEREIGN SPORE BLOOM",
+      "announcementText": "The colony claims this ground!",
+      "category": "area-denial",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position-with-offsets",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1600,
+        "shape": "multi-circle",
+        "dangerColor": "hostile-red",
+        "description": "Three 8-foot red circles lock into a triangle around the player's position. Fungal veins crawl inward while every circle fills toward detonation.",
+        "metrics": [
+          { "id": "count", "value": 3, "unit": "count" },
+          { "id": "radius", "value": 8, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "All three blooms deal impact damage, then persist as toxic spore clouds for four seconds and deal light repeated damage inside their glowing rims.",
+        "designValues": [
+          { "id": "zone-count", "value": 3, "unit": "count" },
+          { "id": "impact-damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "cloud-damage-profile", "value": "light-repeated", "unit": "descriptor" },
+          { "id": "cloud-duration", "value": 4000, "unit": "milliseconds" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "The Sovereign Cap blooms three persistent spore zones.",
+        "fullDescription": "Three locked fungal circles erupt together, then linger as clearly rimmed toxic clouds that punish anyone remaining inside.",
+        "counterplay": "Exit the triangle before detonation and route around the persistent glowing cloud rims."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Bioluminescent gill pulses, erupting mushroom sprouts, powder plumes, drifting spores, fungal tendrils, ground fog, and popping puffballs.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "big-mama-bufo-tongue-repossession",
+      "bossArchetypeId": "toadkin-boss",
+      "bossName": "Big Mama Bufo",
+      "familyId": "toadkin",
+      "attackName": "TONGUE REPOSSESSION",
+      "announcementText": "Big Mama wants what's hers!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 8000,
+        "cooldownMs": 8000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1250,
+        "shape": "lane",
+        "dangerColor": "hostile-red",
+        "description": "A narrow red arrow-lane expands from Bufo's mouth toward the player's locked position and shows the tongue's exact width, direction, and endpoint.",
+        "metrics": [
+          { "id": "width", "value": 3, "unit": "feet" },
+          { "id": "max-range", "value": 30, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "Bufo lashes straight down the lane. A hit deals moderate damage and pulls the player to five feet in front of her; a miss causes a brief recovery.",
+        "designValues": [
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "max-range", "value": 30, "unit": "feet" },
+          { "id": "pull-end-distance", "value": 5, "unit": "feet" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Bufo lashes a locked tongue lane and reels victims in.",
+        "fullDescription": "A clearly marked tongue strike deals damage and drags its victim into Big Mama's close-range pressure.",
+        "counterplay": "Sidestep the narrow locked lane and punish Bufo during her miss recovery."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Pulsing throat sac, saliva bubbles, wet tongue streak, elastic trail, swamp spray, mucus strings, impact droplets, drag dust, and a retract snap.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "overseer-fizzwick-clockwork-kill-saw",
+      "bossArchetypeId": "gnome-boss",
+      "bossName": "Overseer Fizzwick",
+      "familyId": "gnomes",
+      "attackName": "CLOCKWORK KILL-SAW",
+      "announcementText": "Mandatory overtime starts now!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1300,
+        "shape": "lane",
+        "dangerColor": "hostile-red",
+        "description": "A red rectangular lane locks toward the player while double-headed arrows show that the gear-saw will travel out and return along the same route.",
+        "metrics": [
+          { "id": "width", "value": 6, "unit": "feet" },
+          { "id": "max-range", "value": 32, "unit": "feet" },
+          { "id": "damaging-passes", "value": 2, "unit": "count" }
+        ]
+      },
+      "effect": {
+        "description": "Fizzwick launches a gear-saw to the lane endpoint, holds it there for 0.3 seconds, then returns it along the same path. Both passes deal damage independently.",
+        "designValues": [
+          { "id": "endpoint-hold", "value": 300, "unit": "milliseconds" },
+          { "id": "damaging-passes", "value": 2, "unit": "count" },
+          { "id": "path-tracking", "value": false, "unit": "flag" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Fizzwick sends a gear-saw out and back through one lane.",
+        "fullDescription": "The same visible lane is dangerous twice as a giant clockwork saw tears outward, pauses, and rips back to its owner.",
+        "counterplay": "Leave the lane after it locks and stay clear until the visibly returning saw is caught."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Brass fragments, spark showers, oily smoke, piston steam, orange saw trails, loose screws, floor scrapes, and a violent re-catch burst.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "plague-boss-squick-undercity-mob-call",
+      "bossArchetypeId": "ratfolk-boss",
+      "bossName": "Plague-Boss Squick",
+      "familyId": "ratfolk",
+      "attackName": "UNDERCITY MOB CALL",
+      "announcementText": "The guild always collects!",
+      "category": "summon",
+      "timing": {
+        "firstEligibleAfterMs": 11000,
+        "cooldownMs": 11000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "fixed-pattern",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1500,
+        "shape": "spawn-circles",
+        "dangerColor": "hostile-red",
+        "description": "Three red sewer-sigil circles lock around Squick, each filling toward a clearly timed minion arrival.",
+        "metrics": [
+          { "id": "count", "value": 3, "unit": "count" },
+          { "id": "radius", "value": 4, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "Squick summons three plague rats into the marked circles, but no more than six minions created by this ability may be alive at once.",
+        "designValues": [
+          { "id": "summon-count", "value": 3, "unit": "count" },
+          { "id": "owned-minion-cap", "value": 6, "unit": "count" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Squick calls plague rats through marked sewer sigils.",
+        "fullDescription": "Three clearly marked summon circles disgorge plague rats until Squick reaches the ability's owned-minion cap.",
+        "counterplay": "Use the warning to reposition away from the circles, then clear owned minions before the next call."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Sewer-green sigils, rattling grates, diseased mist, clawed silhouettes, trash bursts, rat trails, and a shower of filthy guild tokens.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "abuela-saguaro-thorn-ring",
+      "bossArchetypeId": "cactusfolk-boss",
+      "bossName": "Abuela Saguaro",
+      "familyId": "cactusfolk",
+      "attackName": "ABUELA'S THORN RING",
+      "announcementText": "Come give Abuela a hug!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "fixed-pattern",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1400,
+        "shape": "annulus",
+        "dangerColor": "hostile-red",
+        "description": "A red thorn annulus forms around Abuela with exact inner and outer rims, leaving visibly safe regions close to her and beyond the ring.",
+        "metrics": [
+          { "id": "inner-radius", "value": 6, "unit": "feet" },
+          { "id": "outer-radius", "value": 15, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "A dense ring of thorns erupts through the marked annulus, dealing moderate damage and strong outward knockback.",
+        "designValues": [
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "knockback-profile", "value": "strong-outward", "unit": "descriptor" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Abuela erupts a thorn ring with two safe regions.",
+        "fullDescription": "A precisely marked annulus explodes into thorns while the space beside Abuela and the area beyond the outer rim remain safe.",
+        "counterplay": "Commit either inside the inner rim or outside the outer rim before the thorn ring erupts."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Cracking earth, erupting needles, flower petals, pollen clouds, sap droplets, tumbling cactus pads, and a rippling dust ring.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "countess-vesper-midnight-resonance",
+      "bossArchetypeId": "batfolk-boss",
+      "bossName": "Countess Vesper",
+      "familyId": "batfolk",
+      "attackName": "MIDNIGHT RESONANCE",
+      "announcementText": "The Countess rings for silence!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 10000,
+        "cooldownMs": 10000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "fixed-pattern",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1200,
+        "shape": "sequential-annuli",
+        "dangerColor": "hostile-red",
+        "description": "Three concentric red bands lock around Vesper and illuminate in the exact inner-to-outer order in which they will detonate.",
+        "metrics": [
+          { "id": "band-count", "value": 3, "unit": "count" },
+          { "id": "band-width", "value": 8, "unit": "feet" },
+          { "id": "max-radius", "value": 24, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "Three sonic annuli detonate from inner to outer at fixed 0.35-second intervals, each dealing moderate damage and knockback.",
+        "designValues": [
+          { "id": "band-count", "value": 3, "unit": "count" },
+          { "id": "detonation-interval", "value": 350, "unit": "milliseconds" },
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Vesper detonates three sonic rings from inside out.",
+        "fullDescription": "Three concentric warning bands burst in a fixed inner-to-outer sequence, turning each already-detonated band into temporary safe ground.",
+        "counterplay": "Cross behind each detonation as it passes instead of trying to outrun all three rings."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Violet waveform rings, shattered musical glyphs, bat silhouettes, moonlit dust, fluttering cape motes, floor ripples, and bass-heavy screen shake.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "kingpin-molt-shell-company-lockdown",
+      "bossArchetypeId": "crabfolk-boss",
+      "bossName": "Kingpin Molt",
+      "familyId": "crabfolk",
+      "attackName": "SHELL COMPANY LOCKDOWN",
+      "announcementText": "The market is closed!",
+      "category": "defense",
+      "timing": {
+        "firstEligibleAfterMs": 11000,
+        "cooldownMs": 11000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "self",
+        "lockAt": "self",
+        "tracksPlayer": false,
+        "origin": "follows-caster"
+      },
+      "telegraph": {
+        "durationMs": 1200,
+        "shape": "self-aura",
+        "dangerColor": "ability-theme",
+        "description": "Molt clamps down while a thick tide-blue shell aura closes around him, with a visible fill showing exactly when the defensive state begins.",
+        "metrics": [{ "id": "radius", "value": 8, "unit": "feet" }]
+      },
+      "effect": {
+        "description": "Molt gains 70 percent damage reduction and complete knockback immunity for 3.5 seconds. The state does not stack or extend itself.",
+        "designValues": [
+          { "id": "duration", "value": 3500, "unit": "milliseconds" },
+          { "id": "damage-reduction", "value": 70, "unit": "percent" },
+          { "id": "knockback-immunity", "value": true, "unit": "flag" },
+          { "id": "stacking", "value": false, "unit": "flag" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Molt visibly locks down behind a fortified shell.",
+        "fullDescription": "A closing shell aura announces a short defensive state that sharply reduces damage and prevents knockback.",
+        "counterplay": "Use the warning to stop committing cooldowns, reposition, and resume pressure when the shell aura breaks."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Interlocking shell plates, seawater jets, foam, coin-like barnacles, blue shield ripples, salt crystals, and a dramatic shell-break burst.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "broodfather-chitin-turnover",
+      "bossArchetypeId": "beetlefolk-boss",
+      "bossName": "The Broodfather",
+      "familyId": "beetlefolk",
+      "attackName": "CHITIN TURNOVER",
+      "announcementText": "The Broodfather turns the screws!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-direction",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1200,
+        "shape": "arc-sweep",
+        "dangerColor": "hostile-red",
+        "description": "A 100-degree red melee arc locks beside the Broodfather while a rotating arrow shows the complete 360-degree sweep and its deterministic direction.",
+        "metrics": [
+          { "id": "arc-angle", "value": 100, "unit": "degrees" },
+          { "id": "range", "value": 14, "unit": "feet" },
+          { "id": "sweep-angle", "value": 360, "unit": "degrees" }
+        ]
+      },
+      "effect": {
+        "description": "The Broodfather rotates the damaging melee arc through one full revolution over 1.6 seconds. Sweep direction alternates deterministically each cast.",
+        "designValues": [
+          { "id": "sweep-duration", "value": 1600, "unit": "milliseconds" },
+          { "id": "sweep-angle", "value": 360, "unit": "degrees" },
+          { "id": "direction-alternates", "value": true, "unit": "flag" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "The Broodfather rotates a wide melee arc around himself.",
+        "fullDescription": "A red arc and rotation arrow reveal a full chitinous sweep whose direction alternates predictably on every cast.",
+        "counterplay": "Move around the Broodfather in the opposite direction of the visible rotation arrow or retreat beyond the arc."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Chitin shards, wing-case flashes, amber streaks, mandible sparks, floor gouges, dust vortices, beetle silhouettes, and a full-ring impact ripple.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "foreman-grubbs-undermine-the-union",
+      "bossArchetypeId": "molefolk-boss",
+      "bossName": "Foreman Grubbs",
+      "familyId": "molefolk",
+      "attackName": "UNDERMINE THE UNION",
+      "announcementText": "Foreman Grubbs is coming up under you!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1300,
+        "shape": "lane-and-circle",
+        "dangerColor": "hostile-red",
+        "description": "A cracked red lane locks from Grubbs to the player's position and ends in an expanding red eruption circle, showing the full burrow route and impact area.",
+        "metrics": [
+          { "id": "lane-width", "value": 6, "unit": "feet" },
+          { "id": "endpoint-radius", "value": 8, "unit": "feet" },
+          { "id": "max-range", "value": 32, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "Grubbs burrows along the locked lane and erupts at its endpoint for moderate damage and strong outward knockback.",
+        "designValues": [
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "knockback-profile", "value": "strong-outward", "unit": "descriptor" },
+          { "id": "emergence-location", "value": "locked-endpoint", "unit": "mode" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Grubbs burrows down a marked lane and erupts at its end.",
+        "fullDescription": "A cracked-earth lane and endpoint circle expose the exact underground route before the Foreman erupts in a violent blast.",
+        "counterplay": "Step off the lane and clear the endpoint circle; Grubbs cannot retarget once underground."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Rolling earth ridges, flying rocks, warning lamps, drill sparks, dirt fountains, broken signboards, dust columns, and a crater shockwave.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "boss-bandit-rocco-highway-robbery",
+      "bossArchetypeId": "raccoon-boss",
+      "bossName": "Boss Bandit Rocco",
+      "familyId": "raccoons",
+      "attackName": "HIGHWAY ROBBERY",
+      "announcementText": "Rocco's making a withdrawal!",
+      "category": "attack",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1200,
+        "shape": "lane",
+        "dangerColor": "hostile-red",
+        "description": "A broad red dash lane locks toward the player, with coin-shaped chevrons and a bag-marked endpoint showing Rocco's exact route.",
+        "metrics": [
+          { "id": "width", "value": 6, "unit": "feet" },
+          { "id": "max-range", "value": 28, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "Rocco dashes through the lane for moderate damage. A hit steals up to 10 gold, but the exact stolen amount is dropped recoverably at the dash endpoint.",
+        "designValues": [
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "max-stolen-gold", "value": 10, "unit": "count" },
+          { "id": "stolen-gold-recoverable", "value": true, "unit": "flag" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Rocco dashes through a lane and temporarily steals gold.",
+        "fullDescription": "A coin-marked lane announces Rocco's robbery dash; any stolen gold remains recoverable where the dash ends.",
+        "counterplay": "Sidestep the locked route, or collect the dropped gold at the endpoint if Rocco connects."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Coin sprays, receipt ribbons, trash-can lid sparks, bag silhouettes, speed streaks, bottle-cap confetti, skid dust, and a jackpot burst.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "don-honkrado-omerta-honk",
+      "bossArchetypeId": "geese-boss",
+      "bossName": "Don Honkrado the Godgoose",
+      "familyId": "geese",
+      "attackName": "OMERTA HONK",
+      "announcementText": "Nobody squeals but the Don!",
+      "category": "debuff",
+      "timing": {
+        "firstEligibleAfterMs": 9000,
+        "cooldownMs": 9000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-direction",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1500,
+        "shape": "cone",
+        "dangerColor": "hostile-red",
+        "description": "A broad 120-degree red cone locks in front of Honkrado while expanding sound-wave chevrons show the exact reach of the coming honk.",
+        "metrics": [
+          { "id": "angle", "value": 120, "unit": "degrees" },
+          { "id": "range", "value": 24, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "Honkrado unleashes a sonic blast for moderate damage and strong knockback, then applies Rattled for three seconds: 20 percent lower outgoing damage.",
+        "designValues": [
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "knockback-profile", "value": "strong", "unit": "descriptor" },
+          { "id": "debuff-id", "value": "rattled", "unit": "mode" },
+          { "id": "duration", "value": 3000, "unit": "milliseconds" },
+          { "id": "outgoing-damage-modifier", "value": -20, "unit": "percent" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Honkrado blasts a wide cone that leaves victims Rattled.",
+        "fullDescription": "A massive telegraphed honk knocks victims away and briefly reduces the damage they deal.",
+        "counterplay": "Move behind the Don or beyond the cone after its direction locks."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Stacked sound rings, feather cyclones, shattered omerta seals, brass flashes, floor ripples, airborne dust, and a comically oversized HONK shockwave.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "foreman-scorch-hellfire-shift-line",
+      "bossArchetypeId": "imp-boss",
+      "bossName": "Foreman Scorch",
+      "familyId": "imps",
+      "attackName": "HELLFIRE SHIFT LINE",
+      "announcementText": "Break time is cancelled!",
+      "category": "area-denial",
+      "timing": {
+        "firstEligibleAfterMs": 10000,
+        "cooldownMs": 10000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "player-position",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1500,
+        "shape": "lane",
+        "dangerColor": "hostile-red",
+        "description": "A full-arena red line locks through the player's position while ember arrows and a filling heat strip reveal the exact persistent fire-wall footprint.",
+        "metrics": [
+          { "id": "width", "value": 6, "unit": "feet" },
+          { "id": "length-mode", "value": "full-arena", "unit": "mode" }
+        ]
+      },
+      "effect": {
+        "description": "The line erupts for impact damage and remains as a damaging hellfire wall for four seconds without moving or tracking.",
+        "designValues": [
+          { "id": "impact-damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "wall-damage-profile", "value": "light-repeated", "unit": "descriptor" },
+          { "id": "wall-duration", "value": 4000, "unit": "milliseconds" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "Scorch lays a persistent hellfire wall across the arena.",
+        "fullDescription": "A locked full-arena warning line erupts and remains aflame, splitting the battlefield for several seconds.",
+        "counterplay": "Cross the warning line before ignition or route around the persistent wall after it forms."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Coal sparks, molten cracks, black smoke columns, licking flame sheets, flying cinders, scorched timecards, heat distortion, and repeated ember bursts.",
+        "castAnimationRequirement": "optional"
+      }
+    },
+    {
+      "id": "gastropod-godfather-long-squeeze",
+      "bossArchetypeId": "snailfolk-boss",
+      "bossName": "The Gastropod Godfather",
+      "familyId": "snailfolk",
+      "attackName": "THE LONG SQUEEZE",
+      "announcementText": "Nobody outruns the Godfather!",
+      "category": "area-denial",
+      "timing": {
+        "firstEligibleAfterMs": 11000,
+        "cooldownMs": 11000,
+        "cooldownAnchor": "resolution",
+        "randomJitterMs": 0
+      },
+      "targeting": {
+        "mode": "fixed-pattern",
+        "lockAt": "telegraph-start",
+        "tracksPlayer": false,
+        "origin": "locked"
+      },
+      "telegraph": {
+        "durationMs": 1250,
+        "shape": "contracting-annulus",
+        "dangerColor": "hostile-red",
+        "description": "A wide red slime annulus appears at 24 feet with inward arrows showing that the damaging ring will contract to five feet around its locked center.",
+        "metrics": [
+          { "id": "start-radius", "value": 24, "unit": "feet" },
+          { "id": "end-radius", "value": 5, "unit": "feet" },
+          { "id": "ring-width", "value": 4, "unit": "feet" }
+        ]
+      },
+      "effect": {
+        "description": "A four-foot-wide damaging slime ring contracts from 24 feet to five feet over 2.5 seconds. Contact deals moderate damage and applies a 35 percent slow for four seconds.",
+        "designValues": [
+          { "id": "contraction-duration", "value": 2500, "unit": "milliseconds" },
+          { "id": "damage-profile", "value": "moderate", "unit": "descriptor" },
+          { "id": "slow-duration", "value": 4000, "unit": "milliseconds" },
+          { "id": "movement-speed-modifier", "value": -35, "unit": "percent" }
+        ]
+      },
+      "codex": {
+        "shortDescription": "The Godfather closes a damaging slime ring around the arena.",
+        "fullDescription": "A visibly contracting annulus squeezes inward over time, damaging and slowing anyone touched by its moving rim.",
+        "counterplay": "Read the inward arrows, cross the rim once on your terms, and avoid being pinched against terrain."
+      },
+      "presentation": {
+        "vfxStrategy": "procedural",
+        "particleIntensity": "gratuitous",
+        "vfxDescription": "Glittering slime wakes, shell spirals, bubble curtains, oily rainbow highlights, splashing contract stamps, floor ripples, and a closing spiral burst.",
+        "castAnimationRequirement": "optional"
+      }
+    }
+  ]
+}
