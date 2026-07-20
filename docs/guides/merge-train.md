@@ -77,10 +77,12 @@ candidate SHA, and state.
   trusted queue metadata and overwrites the ref; a pre-existing ref is never
   trusted.
 - Ordinary candidate refs are pushed with the repository App credential.
-  Candidates whose commit range changes `.github/workflows/**` use the repository
-  owner PAT only for that one ref push, because GitHub rejects workflow-file
-  updates from an App that lacks the separate Workflows permission. The PAT is
-  never used for checks, labels, comments, validation dispatch, or promotion.
+  Candidates whose commit range changes `.github/workflows/**` are pushed with
+  the recursion-suppressed built-in `GITHUB_TOKEN` (`contents: write`). GitHub
+  suppresses new workflow runs triggered by `GITHUB_TOKEN` pushes, so unvalidated
+  candidate workflow files cannot execute with repository secrets before
+  validation completes. A PAT or App token must not be substituted: those pushes
+  generate real push events that can trigger an unvalidated candidate workflow.
 - Every promotion re-reads the PR and `main`; stale state fails closed.
 
 ## Required repository configuration
@@ -129,11 +131,11 @@ Before live mode:
    create/update rulesets via `POST`/`PUT .../rulesets` -- without it, `enable`
    fails with `403` even though every other prerequisite in this checklist is
    satisfied).
-4. Keep `contents: write` and `workflows: write` on the trusted Merge Train
-   workflow's `GITHUB_TOKEN`. Workflow-bearing candidate refs use this token
-   because GitHub suppresses recursive workflow runs for events created by
-   `GITHUB_TOKEN`; a PAT or App token must not be substituted because its push
-   could execute an unvalidated candidate workflow with repository secrets.
+4. Keep `contents: write` on the trusted Merge Train workflow's `GITHUB_TOKEN`.
+   Workflow-bearing candidate refs use this token because GitHub suppresses
+   recursive workflow runs for events created by `GITHUB_TOKEN`; a PAT or App
+   token must not be substituted because its push could execute an unvalidated
+   candidate workflow with repository secrets.
    A missing or insufficient token fails before candidate-ref mutation and
    leaves the candidate build retryable.
 5. Keep force-pushes to `main` disabled (unchanged, still enforced by classic
@@ -346,7 +348,7 @@ status --app-id <APP_ID>` and verify `classic.requiredStatusChecksDisabled`
   is `true` and `ruleset.problems` is empty. Never merge the PR through the
   ordinary squash path to work around this failure.
 - **Workflow-candidate push denied:** confirm the trusted Merge Train workflow
-  grants its `GITHUB_TOKEN` both `contents: write` and `workflows: write`.
+  grants its `GITHUB_TOKEN` `contents: write`.
   Never substitute a PAT or App token: those pushes can trigger an unvalidated
   candidate workflow with repository secrets. A repair that adds the missing
   permission cannot bootstrap through the deployed App path that is already

@@ -92,7 +92,9 @@ describe('merge-train workflow wake-ups', () => {
   it('uses recursion-suppressed GITHUB_TOKEN for workflow candidate pushes', () => {
     const workflow = loadWorkflow();
     expect(workflow.permissions?.contents).toBe('write');
-    expect(workflow.permissions?.workflows).toBe('write');
+    // 'workflows' is not a valid GitHub Actions permissions key for GITHUB_TOKEN;
+    // contents: write is sufficient to push workflow files with GITHUB_TOKEN.
+    expect(workflow.permissions?.workflows).toBeUndefined();
 
     const steps = workflow.jobs.reconcile?.steps ?? [];
     const reconcileStep = steps.find((step) => step.name === 'Reconcile six-PR build-expiry train');

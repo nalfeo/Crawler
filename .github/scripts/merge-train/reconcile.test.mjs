@@ -352,7 +352,7 @@ test('workflow-bearing live candidates fail before ref mutation when GITHUB_TOKE
         git,
         live: true,
       }),
-    /require GITHUB_TOKEN.*workflows: write/,
+    /require GITHUB_TOKEN.*contents: write/,
   );
   assert.equal(
     calls.some((call) => call.args[0] === 'push'),

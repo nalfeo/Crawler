@@ -371,7 +371,7 @@ export function buildCandidate({
       if (!githubToken) {
         throw new Error(
           'Workflow-bearing merge-train candidates require GITHUB_TOKEN ' +
-            'with workflows: write permission to push workflow file changes',
+            'with contents: write permission to push workflow file changes',
         );
       }
       git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`], {
