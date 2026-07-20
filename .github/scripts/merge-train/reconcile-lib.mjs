@@ -227,22 +227,16 @@ export function resolveMergeTrainTokens(environment) {
   const liveActionsRun = environment.GITHUB_ACTIONS === 'true';
   const promotionToken =
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
-  // workflowDispatchToken must ONLY be the built-in GITHUB_TOKEN — never an
-  // App token or PAT. An App/PAT push creates a real trusted push event and
-  // would allow candidate workflow files to execute (with secrets) before
-  // validation. GITHUB_TOKEN pushes are recursion-suppressed by GitHub so
-  // candidate workflow files cannot create pre-validation runs.
-  // In non-Actions contexts GITHUB_TOKEN may be absent; workflow-bearing
-  // buildCandidate() calls will then fail before ref mutation at the
-  // githubToken guard inside that function.
-  const workflowDispatchToken = environment.GITHUB_TOKEN || '';
+  const workflowDispatchToken =
+    environment.GITHUB_TOKEN || (!liveActionsRun ? environment.MERGE_TRAIN_TOKEN || '' : '');
+  const candidatePushToken = liveActionsRun ? environment.GITHUB_TOKEN || '' : '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
   }
-  if (liveActionsRun && !workflowDispatchToken) {
+  if (!workflowDispatchToken) {
     throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
   }
-  return { promotionToken, workflowDispatchToken };
+  return { promotionToken, workflowDispatchToken, candidatePushToken };
 }
 
 export function mergeTrainGitEnvironment(environment, overrides = {}) {
@@ -315,6 +309,7 @@ export function buildCandidate({
   git,
   live,
   githubToken = '',
+  candidatePushToken,
   environment = process.env,
 }) {
   git(['fetch', 'origin', 'main', '--prune']);
@@ -366,6 +361,7 @@ export function buildCandidate({
   }
   const sha = git(['rev-parse', 'HEAD']);
   if (live) {
+    const workflowToken = candidatePushToken === undefined ? githubToken : candidatePushToken;
     const workflowPaths = git([
       'log',
       '--format=',
@@ -375,14 +371,14 @@ export function buildCandidate({
       '.github/workflows',
     ]);
     if (workflowPaths.trim()) {
-      if (!githubToken) {
+      if (!workflowToken) {
         throw new Error(
           'Workflow-bearing merge-train candidates require GITHUB_TOKEN ' +
             'with contents: write permission to push workflow file changes',
         );
       }
       git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`], {
-        env: workflowPushEnvironment(githubToken, environment),
+        env: workflowPushEnvironment(workflowToken, environment),
       });
     } else {
       git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);

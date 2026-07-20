@@ -128,6 +128,18 @@ test('buildCandidate treats exact-SHA mismatches as retryable operational failur
   );
 });
 
+test('non-Actions runs do not provide a workflow-safe candidate push token', () => {
+  const result = resolveMergeTrainTokens({
+    GITHUB_ACTIONS: 'false',
+    MERGE_TRAIN_TOKEN: 'app-token',
+  });
+  assert.deepEqual(result, {
+    promotionToken: 'app-token',
+    workflowDispatchToken: 'app-token',
+    candidatePushToken: '',
+  });
+});
+
 test('buildCandidate falls back to the branch ref when the direct SHA fetch is unavailable', () => {
   const entry = makePr();
   const { git, calls } = createGitStub({ failDirectShaFetch: true });
@@ -256,7 +268,7 @@ test('workflow-bearing candidates override checkout auth only for the candidate 
     refName: 'merge-train/candidate-workflow',
     git,
     live: true,
-    githubToken,
+    candidatePushToken: githubToken,
     environment: {},
   });
 
@@ -300,7 +312,7 @@ test('workflow push auth preserves pre-existing command-scoped Git configuration
     refName: 'merge-train/candidate-workflow',
     git,
     live: true,
-    githubToken,
+    candidatePushToken: githubToken,
     environment,
   });
 
@@ -331,7 +343,7 @@ test('workflow commit-range detection survives a later final-tree revert', () =>
     refName: 'merge-train/candidate-reverted-workflow',
     git,
     live: true,
-    githubToken: 'github-actions-token',
+    candidatePushToken: 'github-actions-token',
     environment: {},
   });
 
@@ -339,7 +351,7 @@ test('workflow commit-range detection survives a later final-tree revert', () =>
   assert.ok(calls.find((call) => call.args[0] === 'push').options.env);
 });
 
-test('workflow-bearing live candidates fail before ref mutation when GITHUB_TOKEN is missing', () => {
+test('workflow-bearing live candidates fail before ref mutation when the candidate token is missing', () => {
   const { git, calls } = createGitStub({
     workflowPaths: ['.github/workflows/ci.yml'],
   });
@@ -351,6 +363,34 @@ test('workflow-bearing live candidates fail before ref mutation when GITHUB_TOKE
         refName: 'merge-train/candidate-workflow',
         git,
         live: true,
+      }),
+    /require GITHUB_TOKEN.*contents: write/,
+  );
+  assert.equal(
+    calls.some((call) => call.args[0] === 'push'),
+    false,
+  );
+});
+
+test('workflow-bearing non-Actions candidates fail before ref mutation without a candidate token', () => {
+  const tokens = resolveMergeTrainTokens({
+    GITHUB_ACTIONS: 'false',
+    MERGE_TRAIN_TOKEN: 'app-token',
+  });
+  const { git, calls } = createGitStub({
+    workflowPaths: ['.github/workflows/ci.yml'],
+  });
+  assert.equal(tokens.candidatePushToken, '');
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [makePr()],
+        refName: 'merge-train/candidate-workflow',
+        git,
+        live: true,
+        candidatePushToken: tokens.candidatePushToken,
+        environment: {},
       }),
     /require GITHUB_TOKEN.*contents: write/,
   );
@@ -724,6 +764,7 @@ test('live Actions runs require separate promotion and workflow-dispatch tokens'
     {
       promotionToken: 'app-token',
       workflowDispatchToken: 'actions-token',
+      candidatePushToken: 'actions-token',
     },
   );
   assert.throws(
@@ -741,38 +782,6 @@ test('live Actions runs require separate promotion and workflow-dispatch tokens'
         GITHUB_TOKEN: 'actions-token',
       }),
     /requires MERGE_TRAIN_TOKEN for promotion/,
-  );
-});
-
-test('resolveMergeTrainTokens never falls back to MERGE_TRAIN_TOKEN for workflowDispatchToken in non-Actions context', () => {
-  // Outside a live Actions run GITHUB_TOKEN may be absent. workflowDispatchToken
-  // must remain empty rather than picking up MERGE_TRAIN_TOKEN: an App/PAT push
-  // creates a real trusted push event that lets candidate workflow files execute
-  // with secrets before validation. buildCandidate() already guards this path —
-  // it throws before ref mutation when githubToken is absent.
-  const result = resolveMergeTrainTokens({
-    MERGE_TRAIN_TOKEN: 'app-token',
-    // GITHUB_ACTIONS not set → non-Actions context
-  });
-  assert.equal(result.workflowDispatchToken, '');
-  assert.equal(result.promotionToken, 'app-token');
-
-  // With GITHUB_TOKEN present it is still used correctly in non-Actions context.
-  const withGithubToken = resolveMergeTrainTokens({
-    MERGE_TRAIN_TOKEN: 'app-token',
-    GITHUB_TOKEN: 'local-token',
-  });
-  assert.equal(withGithubToken.workflowDispatchToken, 'local-token');
-
-  // In a live Actions context the missing-GITHUB_TOKEN error still fires.
-  assert.throws(
-    () =>
-      resolveMergeTrainTokens({
-        GITHUB_ACTIONS: 'true',
-        MERGE_TRAIN_TOKEN: 'app-token',
-        // no GITHUB_TOKEN
-      }),
-    /requires GITHUB_TOKEN for workflow dispatch/,
   );
 });
 
@@ -1097,6 +1106,6 @@ test('resolveMergeTrainTokens ignores the legacy workflow PAT environment variab
   assert.deepEqual(result, {
     promotionToken: 'app-token',
     workflowDispatchToken: 'github-token',
+    candidatePushToken: 'github-token',
   });
-  assert.equal('candidateWorkflowToken' in result, false);
 });

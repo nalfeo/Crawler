@@ -63,6 +63,7 @@ const [owner, repo] = repository.split('/');
 const {
   promotionToken: token,
   workflowDispatchToken,
+  candidatePushToken,
 } = resolveMergeTrainTokens(process.env);
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
@@ -575,7 +576,7 @@ const loopResult = await runTrainBuildLoop({
       refName,
       git,
       live: true,
-      githubToken: workflowDispatchToken,
+      candidatePushToken,
     });
     await removeLabel(train[index].number, BLOCKED_LABEL);
     await removeLabel(train[index].number, VALIDATION_FAILED_LABEL);
