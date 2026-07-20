@@ -53,7 +53,9 @@ independently validated.
   validation/status failures outside the recovery boundary.
 - Recovery now runs before publishing the failed entry's waiting status, so a
   reporting error cannot suppress promotion; the reporting error still surfaces.
-- The full merge-train suite passes with 185 tests.
+- Retryable failure status reports the post-promotion queue position, while a
+  failed promotion attempt preserves the original position.
+- The full merge-train suite passes with 187 tests.
 
 ## Review harness
 
@@ -65,7 +67,9 @@ independently validated.
   valid orchestration-coverage concern was fixed. A second `gpt-5.3-codex` round
   incorporated a later GitHub review finding, validated with
   `gemini-3.1-pro-preview`, that moved recovery ahead of failure-status
-  publication; the final implementation review was clean.
+  publication. Subsequent review feedback on merge-base scope and post-promotion
+  queue position was independently validated and resolved without adding review
+  rounds.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-20-fix-merge-train-promotion.review-ledger.json`.
 

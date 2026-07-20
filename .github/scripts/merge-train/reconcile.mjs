@@ -24,6 +24,7 @@ import {
   planLandedRecovery,
   promoteExactBatch,
   promotionStaleReason,
+  queuePositionAfterRecovery,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
   trainCheckTitle,
@@ -607,11 +608,10 @@ const loopResult = await runTrainBuildLoop({
     process.stdout.write(`returned no-op pr=#${train[index].number} to reconciliation\n`);
   },
   onRetryableFailure: async (index, error, recovery) => {
-    const promotedCount = recovery?.greenPrefixLength ?? 0;
     await updateStatus(
       train[index].number,
       renderStatus({
-        position: index + 1 - promotedCount,
+        position: queuePositionAfterRecovery(index, recovery),
         candidateSha: '',
         state: 'waiting',
         detail: error.message,

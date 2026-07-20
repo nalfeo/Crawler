@@ -12,6 +12,7 @@ import {
   mainHealthReason,
   promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
+  queuePositionAfterRecovery,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
   trainCheckTitle,
@@ -428,8 +429,7 @@ test('runTrainBuildLoop passes recovery to onRetryableFailure so the failing PR 
       throw new Error('transient git failure');
     },
     onRetryableFailure: async (_index, _error, recovery) => {
-      // Simulate what reconcile.mjs does: compute position from recovery.greenPrefixLength
-      capturedPosition = _index + 1 - (recovery?.greenPrefixLength ?? 0);
+      capturedPosition = queuePositionAfterRecovery(_index, recovery);
     },
     promotePrefix: async () => true,
   });
@@ -437,6 +437,17 @@ test('runTrainBuildLoop passes recovery to onRetryableFailure so the failing PR 
   // PR #2 was at original index 1 (position 2), but PR #1 was promoted (greenPrefixLength=1).
   // Its new queue position is 2 - 1 = 1.
   assert.equal(capturedPosition, 1);
+});
+
+test('queue position remains unchanged when validated-prefix promotion does not complete', () => {
+  assert.equal(
+    queuePositionAfterRecovery(1, {
+      greenPrefixLength: 1,
+      promotionAttempted: true,
+      promoted: false,
+    }),
+    2,
+  );
 });
 
 test('live Actions runs require separate promotion and workflow-dispatch tokens', () => {
