@@ -676,7 +676,23 @@ export async function runPrReadyReviewerGuard({
     throw new Error('REVIEWER_LOGIN is required');
   }
 
-  const openPrs = await api.listOpenPulls();
+  const isEventScopedRun = eventName === 'pull_request_target';
+  let openPrs;
+  if (isEventScopedRun) {
+    const prNumber = Number(triggeringPullNumber);
+    if (!Number.isInteger(prNumber) || prNumber <= 0) {
+      log.warning?.(
+        `Skipping event-scoped PR guard run: invalid triggering pull request number (${String(
+          triggeringPullNumber ?? '',
+        )})`,
+      );
+      return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
+    }
+    const pull = await api.getPull(prNumber);
+    openPrs = String(pull?.state || '').toLowerCase() === 'open' ? [pull] : [];
+  } else {
+    openPrs = await api.listOpenPulls();
+  }
   if (openPrs.length === 0) {
     log.info('No open PRs found.');
     return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
