@@ -132,15 +132,15 @@ test('buildCandidate treats exact-SHA mismatches as retryable operational failur
   );
 });
 
-test('non-Actions runs reuse the App token only for promotion and workflow dispatch', () => {
-  const result = resolveMergeTrainTokens({
-    GITHUB_ACTIONS: 'false',
-    MERGE_TRAIN_TOKEN: 'app-token',
-  });
-  assert.deepEqual(result, {
-    promotionToken: 'app-token',
-    workflowDispatchToken: 'app-token',
-  });
+test('non-Actions runs fail before mutation when only the non-dispatching App token is present', () => {
+  assert.throws(
+    () =>
+      resolveMergeTrainTokens({
+        GITHUB_ACTIONS: 'false',
+        MERGE_TRAIN_TOKEN: 'app-token',
+      }),
+    /requires GITHUB_TOKEN for workflow dispatch/,
+  );
 });
 
 test('buildCandidate falls back to the branch ref when the direct SHA fetch is unavailable', () => {
