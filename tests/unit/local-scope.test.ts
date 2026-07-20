@@ -322,4 +322,31 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       );
     },
   );
+
+  it.skipIf(!hasBash)(
+    'CRIT-4: cross-surface rename src/core→docs exposes old path via --no-renames',
+    () => {
+      const repo = makeRepo();
+      repo.write('README.md', '# seed\n');
+      repo.write('src/core/doomed.ts', 'export const d = 1;\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'seed');
+      repo.git('branch', '-M', 'main');
+      repo.git('checkout', '-q', '-b', 'feature');
+      // Rename across surfaces: src/core/doomed.ts -> docs/doomed.md.
+      // git mv triggers rename detection so `git diff --name-only` (without
+      // --no-renames) shows only the NEW path `docs/doomed.md` and suppresses
+      // the old `src/core/doomed.ts`. That would make the classifier emit
+      // docs_only=true and silently bypass all gates. With --no-renames BOTH
+      // endpoints appear, the src/core path forces gameplay_safe=false / sim_touched.
+      // Create the destination directory first (git mv doesn't auto-create it).
+      mkdirSync(path.join(repo.dir, 'docs'), { recursive: true });
+      repo.git('mv', 'src/core/doomed.ts', 'docs/doomed.md');
+      repo.git('commit', '-q', '-m', 'cross-surface rename via git mv');
+      //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, false),
+      );
+    },
+  );
 });

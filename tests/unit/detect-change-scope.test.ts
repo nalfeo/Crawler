@@ -12,7 +12,10 @@ import { toBashScriptPath, bashEnv } from '../helpers/bash-script-path.js';
  *   - gameplay_safe → skip the headless Floor-1 gate on PRs whose diff
  *                     provably can't change the deterministic sim
  *   - visual_touched  → skip E2E visual regression on non-visual diffs
- *   - sim_touched     → skip headless on non-simulation diffs (complement of gameplay_safe)
+ *   - sim_touched     → skip headless on non-simulation diffs (independent of gameplay_safe;
+ *                       computed with a broader safe list that covers engine/labs so
+ *                       engine/labs changes still trigger the headless test suite even
+ *                       though the sim runner itself never imports those surfaces)
  *   - coverage_touched → skip coverage job on non-coverage diffs
  *   - sprite_pipeline_touched → alias for sprites_touched
  *   - dependencies_touched → gate npm audit / dep-allowlist on dep-manifest diffs
@@ -348,6 +351,24 @@ const cases: Case[] = [
   {
     name: 'src/shared (non-catalog) → sim+visual+coverage, not deps',
     files: ['src/shared/random.ts'],
+    expected: F(false, false, false, false, false, true, true, true, false, false),
+  },
+  // Cross-surface rename regression (thread 1 fix: --no-renames).
+  // With rename detection ON, `git diff --name-only` for a `src/core/foo.ts →
+  // docs/foo.md` rename shows only the destination `docs/foo.md`. That would
+  // make the classifier emit docs_only=true and silently bypass all gates.
+  // `--no-renames` exposes both endpoints; the classifier then sees `src/core/foo.ts`
+  // and correctly marks gameplay_safe=false / sim_touched=true / etc.
+  // This test drives the classifier with BOTH paths (simulating --no-renames output).
+  {
+    name: 'cross-surface rename src/core→docs: both paths present (--no-renames)',
+    files: ['src/core/foo.ts', 'docs/foo.md'],
+    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expected: F(false, false, false, false, false, true, true, true, false, false),
+  },
+  {
+    name: 'cross-surface rename src/game→docs: both paths present (--no-renames)',
+    files: ['src/game/combat.ts', 'docs/combat.md'],
     expected: F(false, false, false, false, false, true, true, true, false, false),
   },
 ];

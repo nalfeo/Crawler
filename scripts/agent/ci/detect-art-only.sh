@@ -186,10 +186,10 @@ else
     exit 0
   fi
 
-  changed="$(git diff --name-only "${base_ref}...HEAD" 2>/dev/null || true)"
+  changed="$(git diff --no-renames --name-only "${base_ref}...HEAD" 2>/dev/null || true)"
   if [ -z "$changed" ]; then
     # Two-dot fallback for non-merge-base histories (e.g. force-push).
-    changed="$(git diff --name-only "${base_ref}" HEAD 2>/dev/null || true)"
+    changed="$(git diff --no-renames --name-only "${base_ref}" HEAD 2>/dev/null || true)"
   fi
 
   echo "Comparison base: ${base_ref}" >&2

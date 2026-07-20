@@ -127,6 +127,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changes]
+    if: always()
     steps:
       - name: Docs-only no-op
         if: needs.changes.outputs.docs_only == 'true'
@@ -144,7 +145,7 @@ jobs:
         if: >-
           needs.changes.outputs.docs_only != 'true' && !cancelled() &&
           (github.event_name != 'pull_request' ||
-           needs.changes.outputs.dependencies_touched == 'true')
+           needs.changes.outputs.dependencies_touched != 'false')
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm audit --audit-level=high
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
@@ -162,7 +163,7 @@ jobs:
         if: >-
           needs.changes.outputs.docs_only != 'true' && !cancelled() &&
           (github.event_name != 'pull_request' ||
-           needs.changes.outputs.dependencies_touched == 'true')
+           needs.changes.outputs.dependencies_touched != 'false')
         run: npx tsx scripts/agent/security/check-deps.ts
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 

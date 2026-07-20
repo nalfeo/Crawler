@@ -301,12 +301,17 @@ describe('impact-flag job gating contracts (#1697/#1698)', () => {
     expect(condition).toContain("github.event_name != 'pull_request'");
   });
 
-  it('security-review npm audit and dependency allowlist gate on dependencies_touched', () => {
+  it('security-review npm audit and dependency allowlist gate on dependencies_touched (fail-closed: != false)', () => {
     const workflow = loadWorkflow('.github/workflows/security-review.yml');
     const job = workflow.jobs['security-checks'];
     for (const step of ['npm audit', 'Dependency allowlist']) {
       const condition = getStepIf(job, step);
-      expect(condition, `${step} must gate on dependencies_touched`).toContain(
+      // Fail-closed: only explicit 'false' skips; blank/missing output keeps the gate running.
+      expect(condition, `${step} must gate on dependencies_touched != false`).toContain(
+        "dependencies_touched != 'false'",
+      );
+      // The old fail-open form must not be present.
+      expect(condition, `${step} must not use fail-open == true`).not.toContain(
         "dependencies_touched == 'true'",
       );
       expect(condition, `${step} must still run on non-PR events`).toContain(
@@ -323,5 +328,13 @@ describe('impact-flag job gating contracts (#1697/#1698)', () => {
     expect(condition).toContain("train_promoted != 'true'");
     expect(condition).not.toContain('dependencies_touched');
     expect(condition).not.toContain('docs_only');
+  });
+
+  it('security-checks job runs even when changes job fails (fail-closed: if: always())', () => {
+    const workflow = loadWorkflow('.github/workflows/security-review.yml');
+    const securityChecks = workflow.jobs['security-checks'];
+    // Without if: always(), a failing changes job skips security-checks entirely —
+    // that silently passes the security gate when scope detection is broken.
+    expect(securityChecks?.if).toBe('always()');
   });
 });

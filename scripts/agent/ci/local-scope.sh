@@ -65,9 +65,9 @@ fi
 # `set -o pipefail`; a partial/empty set only ever degrades toward all-false.
 changed="$(
   {
-    git diff --name-only "$base" HEAD
-    git diff --name-only
-    git diff --name-only --cached
+    git diff --no-renames --name-only "$base" HEAD
+    git diff --no-renames --name-only
+    git diff --no-renames --name-only --cached
     git ls-files --others --exclude-standard
   } 2>/dev/null | sort -u || true
 )"

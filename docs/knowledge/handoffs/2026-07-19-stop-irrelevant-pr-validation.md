@@ -43,4 +43,5 @@ Implemented the five rollout issues of the "Stop irrelevant PR validation" Epic 
 - Final-head review (Claude Sonnet 4.6 + Gemini 3.1 Pro, GPT-5.4 adjudication): 1 valid finding (lockfile changes skipped simulation/coverage gates), fixed; remaining suggestions rejected with source/policy evidence
 - Current-main conflict resolution re-review (Claude Sonnet 4.6): clean across the five-flag contract, lockfile fail-closed behavior, non-PR backstops, and aggregate-gate semantics
 - Post-merge review-thread validation (Claude Opus 4.8 + GPT-5.6 Sol): corrected fail-safe sprite flags, added deterministic workflow-routing coverage, fixed durable scope claims, and assigned four independently estimated #1697/#1698 findings to their still-open child issues
+- Final review-thread validation (Claude Sonnet 4.6): preserved both endpoints for cross-surface renames, made dependency consumers fail closed on missing output and classifier-job failure, and corrected the `sim_touched` contract comment
 - Ledger: `docs/knowledge/review-ledgers/2026-07-19-stop-irrelevant-pr-validation.review-ledger.json`
