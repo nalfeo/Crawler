@@ -205,7 +205,13 @@ describe('buildQueuedAssetMap (durable queue parsing + dedupe)', () => {
     expect(queued.size).toBe(0);
   });
 
-  it('a duplicate queued path from a LATER issue does not overwrite the FIRST issue that claimed it', () => {
+  it('conflicting hashes from two issues for the same path are marked ambiguous (no contentHash), not silently kept as first-seen', () => {
+    // Issue #20 claims the path with 'first-hash'; issue #21 claims the SAME
+    // path with a DIFFERENT 'second-hash'. The old first-seen-wins behavior
+    // kept 'first-hash', which would misclassify the conflict as a benign
+    // duplicate whenever the current asset happened to match 'first-hash'.
+    // The fix: strip contentHash so reconcileQueuedContent always returns
+    // 'ambiguous', failing closed.
     const queued = buildQueuedAssetMap([
       {
         issueUrl: 'https://github.com/nalfeo/Crawler/issues/20',
@@ -217,10 +223,6 @@ describe('buildQueuedAssetMap (durable queue parsing + dedupe)', () => {
           }),
         ]),
       },
-      // A second (e.g. historical, pre-mutex) open issue that ALSO claims the
-      // exact same assetPath — with a DIFFERENT recorded hash. Blindly
-      // `.set()`-ing over the first entry would silently discard the
-      // conflicting duplicate; first-seen-wins must keep issue #20's record.
       {
         issueUrl: 'https://github.com/nalfeo/Crawler/issues/21',
         body: issuePayload('assets/checkin-second', [
@@ -234,14 +236,51 @@ describe('buildQueuedAssetMap (durable queue parsing + dedupe)', () => {
     ]);
 
     expect(queued.size).toBe(1);
-    expect(queued.get('generated/dup-var-1.png')).toMatchObject({
+    // The entry is kept from the first issue (issueUrl, branch) but contentHash
+    // is stripped to mark the queue as ambiguous for this path.
+    const entry = queued.get('generated/dup-var-1.png');
+    expect(entry).toMatchObject({
       issueUrl: 'https://github.com/nalfeo/Crawler/issues/20',
       branch: 'assets/checkin-first',
-      contentHash: 'first-hash',
+    });
+    expect(entry).not.toHaveProperty('contentHash');
+  });
+
+  it('equal hashes from two issues for the same path are a true duplicate: first-seen-wins with hash preserved', () => {
+    const queued = buildQueuedAssetMap([
+      {
+        issueUrl: 'https://github.com/nalfeo/Crawler/issues/50',
+        body: issuePayload('assets/checkin-first', [
+          asset({
+            assetPath: 'generated/dup-var-1.png',
+            manifestKey: 'dup-var-1',
+            contentHash: 'same-hash',
+          }),
+        ]),
+      },
+      {
+        issueUrl: 'https://github.com/nalfeo/Crawler/issues/51',
+        body: issuePayload('assets/checkin-second', [
+          asset({
+            assetPath: 'generated/dup-var-1.png',
+            manifestKey: 'dup-var-1',
+            contentHash: 'same-hash',
+          }),
+        ]),
+      },
+    ]);
+
+    expect(queued.size).toBe(1);
+    expect(queued.get('generated/dup-var-1.png')).toMatchObject({
+      issueUrl: 'https://github.com/nalfeo/Crawler/issues/50',
+      branch: 'assets/checkin-first',
+      contentHash: 'same-hash',
     });
   });
 
-  it('a duplicate queued path within the SAME issue payload also cannot overwrite the first entry', () => {
+  it('conflicting hashes within the SAME issue payload are also marked ambiguous', () => {
+    // Two entries for the same path in one issue with different hashes:
+    // the queue entry is downgraded to ambiguous (no contentHash).
     const queued = buildQueuedAssetMap([
       {
         issueUrl: 'https://github.com/nalfeo/Crawler/issues/30',
@@ -261,7 +300,9 @@ describe('buildQueuedAssetMap (durable queue parsing + dedupe)', () => {
     ]);
 
     expect(queued.size).toBe(1);
-    expect(queued.get('generated/repeat-var-1.png')).toMatchObject({ contentHash: 'hash-one' });
+    const entry = queued.get('generated/repeat-var-1.png');
+    expect(entry).toMatchObject({ issueUrl: 'https://github.com/nalfeo/Crawler/issues/30' });
+    expect(entry).not.toHaveProperty('contentHash');
   });
 
   it('still keeps DIFFERENT paths from a later issue even when one path collides', () => {

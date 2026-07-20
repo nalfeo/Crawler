@@ -683,13 +683,21 @@ const CLIENT_SCRIPT = String.raw`
       }));
     }
     var accepting = acceptance && acceptance.state === 'accepting';
+    // ADR 0066 DEC-004: disable ALL acceptance controls while any transaction
+    // is pending, not just the clicked variant's button. An in-flight accept
+    // is irreversible (approve + check-in); allowing a second click on any
+    // candidate while the first is still in progress could enqueue a
+    // conflicting, concurrent acceptance.
+    var anyAccepting = !!(state.acceptance && Object.keys(state.acceptance).some(function (k) {
+      return state.acceptance[k] && state.acceptance[k].state === 'accepting';
+    }));
     var button = h('button', {
       type: 'button',
       class: 'accept-button',
       text: accepting ? 'Accepting & queueing…' : (acceptance ? 'Retry accept & queue' : 'Accept & queue'),
       onclick: function () { acceptVariant(sel.briefId, sel.runId, candidate.index); }
     });
-    if (accepting) button.disabled = true;
+    if (anyAccepting) button.disabled = true;
     card.appendChild(button);
   }
 

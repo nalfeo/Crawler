@@ -90,7 +90,10 @@ export type CheckinErrorKind =
   /** Queued at the SAME assetPath but either side's content hash is unrecorded
    *  (a legacy issue or manifest entry filed before hashes existed) — equality
    *  can never be established from a missing hash, so this fails closed. */
-  | 'ambiguous-queued-content';
+  | 'ambiguous-queued-content'
+  /** Another check-in is already in progress in this repository (cross-process
+   *  file lock held). The caller should retry after a brief delay. */
+  | 'checkin-locked';
 
 export class CheckinError extends Error {
   constructor(
@@ -248,6 +251,22 @@ export interface CheckinRunnerDeps {
   readonly env?: NodeJS.ProcessEnv;
   /** Clock. Defaults to `() => new Date()`. */
   readonly now?: () => Date;
+  /**
+   * Acquire (and release) a cross-process lock for the entire check-in
+   * operation. Without this, two concurrent processes (e.g. a sidecar and a
+   * CLI) can both observe the same asset as un-queued, then both push
+   * a branch and file a tracking issue — producing duplicate `asset-checkin`
+   * issues. The lock serializes concurrent `runAssetCheckin` calls across
+   * processes: the second caller's `listQueuedAssets` reads the issue filed by
+   * the first and returns `nothing-to-checkin` (or `ambiguous-queued-content`)
+   * instead of publishing again.
+   *
+   * Defaults to a no-op passthrough. Production callers must supply a
+   * file-based implementation (see `createDefaultCheckinDeps` in
+   * `checkin-runtime.ts`). Tests that do not exercise concurrent execution
+   * can omit this field.
+   */
+  readonly withCrossProcessLock?: <T>(fn: () => Promise<T>) => Promise<T>;
 }
 
 export interface RunAssetCheckinOptions {
@@ -421,44 +440,47 @@ export async function runAssetCheckin(
   options: RunAssetCheckinOptions = {},
 ): Promise<AssetCheckinResult> {
   const remote = options.remote ?? 'origin';
-  const { plan } = await prepareAssetCheckin(repoRoot, deps, options);
+  const withLock = deps.withCrossProcessLock ?? ((fn) => fn());
+  return withLock(async () => {
+    const { plan } = await prepareAssetCheckin(repoRoot, deps, options);
 
-  const worktree = await deps.makeTempDir();
-  try {
-    await git(deps.exec, repoRoot, [
-      'worktree',
-      'add',
-      worktree,
-      '-b',
-      plan.branch,
-      `${remote}/${plan.baseBranch}`,
-    ]);
-    await deps.copyArtSurface(repoRoot, worktree, plan.assets);
-    await git(deps.exec, worktree, ['add', '--', ...plan.paths]);
-    await git(deps.exec, worktree, ['commit', '--no-verify', '-m', plan.commitMessage]);
-    await git(deps.exec, worktree, ['push', '--no-verify', '-u', remote, plan.branch]);
-
-    // The branch is now on the remote. asset-pr consolidation discovers branches
-    // ONLY through their tracking issue, so a failed `gh issue create` would
-    // leave the branch orphaned (invisible to the consolidator, never cleaned by
-    // the worktree teardown below). Ensure the label exists first — a fresh repo
-    // has no `asset-checkin` label, which makes `gh issue create --label` fail —
-    // and delete the pushed branch if the issue still can't be filed.
-    let issueUrl: string;
+    const worktree = await deps.makeTempDir();
     try {
-      await ensureLabel(deps.exec, repoRoot, ASSET_CHECKIN_LABEL);
-      issueUrl = await createIssue(deps.exec, repoRoot, plan);
-    } catch (err) {
-      await git(deps.exec, repoRoot, ['push', remote, '--delete', plan.branch]).catch(() => {});
-      throw err;
+      await git(deps.exec, repoRoot, [
+        'worktree',
+        'add',
+        worktree,
+        '-b',
+        plan.branch,
+        `${remote}/${plan.baseBranch}`,
+      ]);
+      await deps.copyArtSurface(repoRoot, worktree, plan.assets);
+      await git(deps.exec, worktree, ['add', '--', ...plan.paths]);
+      await git(deps.exec, worktree, ['commit', '--no-verify', '-m', plan.commitMessage]);
+      await git(deps.exec, worktree, ['push', '--no-verify', '-u', remote, plan.branch]);
+
+      // The branch is now on the remote. asset-pr consolidation discovers branches
+      // ONLY through their tracking issue, so a failed `gh issue create` would
+      // leave the branch orphaned (invisible to the consolidator, never cleaned by
+      // the worktree teardown below). Ensure the label exists first — a fresh repo
+      // has no `asset-checkin` label, which makes `gh issue create --label` fail —
+      // and delete the pushed branch if the issue still can't be filed.
+      let issueUrl: string;
+      try {
+        await ensureLabel(deps.exec, repoRoot, ASSET_CHECKIN_LABEL);
+        issueUrl = await createIssue(deps.exec, repoRoot, plan);
+      } catch (err) {
+        await git(deps.exec, repoRoot, ['push', remote, '--delete', plan.branch]).catch(() => {});
+        throw err;
+      }
+      return { branch: plan.branch, issueUrl, plan };
+    } finally {
+      // Detach the throwaway worktree, then delete the dir. Best-effort: a failed
+      // cleanup must not mask a real error from the try block.
+      await git(deps.exec, repoRoot, ['worktree', 'remove', worktree, '--force']).catch(() => {});
+      await deps.removeDir(worktree).catch(() => {});
     }
-    return { branch: plan.branch, issueUrl, plan };
-  } finally {
-    // Detach the throwaway worktree, then delete the dir. Best-effort: a failed
-    // cleanup must not mask a real error from the try block.
-    await git(deps.exec, repoRoot, ['worktree', 'remove', worktree, '--force']).catch(() => {});
-    await deps.removeDir(worktree).catch(() => {});
-  }
+  });
 }
 
 /**

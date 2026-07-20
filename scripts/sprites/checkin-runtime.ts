@@ -9,7 +9,19 @@
  */
 
 import { execFile } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  closeSync,
+  constants as fsConstants,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -151,14 +163,15 @@ export interface QueuedIssueSource {
  * (body, url) pairs. Pure — no IO — so it is unit-testable without shelling
  * out to `gh`.
  *
- * A path already recorded by an earlier-processed issue is left untouched by
- * a later one: duplicate queued paths (e.g. historical data filed before the
- * process-wide mutation lock existed, or a malformed/duplicated payload)
- * must never silently overwrite each other via `Map.set()`, since that would
- * pick whichever issue happens to be processed last with no signal that a
- * conflicting duplicate was discarded. First-seen-wins instead; the
- * durable-queue conflict, if genuine, still surfaces the next time someone
- * tries to check in that same path (see `reconcileQueuedContent`).
+ * When a path appears in more than one issue (or twice in the same issue):
+ *   - If BOTH sides have a recorded hash AND the hashes are equal, the entries
+ *     are genuinely identical — first-seen-wins, silent skip.
+ *   - Otherwise (hashes differ, or either side's hash is absent) the queue is
+ *     ambiguous: the entry is replaced with a hash-less sentinel so
+ *     `reconcileQueuedContent` always returns 'ambiguous', failing closed.
+ *     Silently keeping the first hash would misclassify a conflicting issue as
+ *     a benign duplicate whenever the current asset content happens to match
+ *     the first-seen hash — hiding the conflicting claim entirely.
  */
 export function buildQueuedAssetMap(
   issues: readonly QueuedIssueSource[],
@@ -168,7 +181,26 @@ export function buildQueuedAssetMap(
     const payload = parseAssetIssueBody(issue.body);
     if (!payload) continue;
     for (const asset of payload.assets) {
-      if (queued.has(asset.assetPath)) continue;
+      const existing = queued.get(asset.assetPath);
+      if (existing !== undefined) {
+        // A later entry claims the same path. Accept the skip only when BOTH
+        // sides have a recorded hash AND they are equal — provably the same
+        // content in two different issues (or duplicated within one issue).
+        // Any other combination means the queue is ambiguous: strip the hash
+        // from the existing entry so reconcileQueuedContent returns 'ambiguous'
+        // for any incoming content, failing closed rather than silently
+        // masking a genuine hash conflict.
+        const isExactDuplicate =
+          existing.contentHash !== undefined &&
+          asset.contentHash !== undefined &&
+          existing.contentHash === asset.contentHash;
+        if (!isExactDuplicate && existing.contentHash !== undefined) {
+          // Downgrade to hash-less sentinel (ambiguous).
+          queued.set(asset.assetPath, { issueUrl: existing.issueUrl, branch: existing.branch });
+        }
+        // If existing already has no hash it already fails closed — no update.
+        continue;
+      }
       queued.set(asset.assetPath, {
         issueUrl: issue.issueUrl,
         branch: payload.branch,
@@ -236,6 +268,52 @@ function makeListQueuedAssets(
   };
 }
 
+/**
+ * Create a cross-process file lock for `runAssetCheckin` keyed by `repoRoot`.
+ *
+ * The lock file is placed in the OS temp directory with a short hash of the
+ * repo path, so different repositories can check in concurrently while
+ * serializing concurrent calls within the SAME repo across processes.
+ *
+ * Uses O_CREAT|O_EXCL which is atomic on POSIX filesystems: only one caller
+ * can create the file at a time. If the file already exists (`EEXIST`), a
+ * concurrent check-in is in progress → throw `CheckinError('checkin-locked')`.
+ * The lock is released (file deleted) in the `finally` block so a crashed
+ * process does not leave a permanent stale lock — callers can also delete it
+ * manually when they know the process died.
+ */
+function makeCheckinFileLock(repoRoot: string): <T>(fn: () => Promise<T>) => Promise<T> {
+  const hash = createHash('sha256').update(repoRoot).digest('hex').slice(0, 16);
+  const lockPath = path.join(tmpdir(), `asset-checkin-${hash}.lock`);
+  return async function withFileLock<T>(fn: () => Promise<T>): Promise<T> {
+    let fd: number;
+    try {
+      fd = openSync(lockPath, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_RDWR);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new CheckinError(
+          'checkin-locked',
+          'Another check-in is already in progress in this repository. ' +
+            'Retry in a moment, or delete ' +
+            lockPath +
+            ' if no other check-in process is running.',
+        );
+      }
+      throw err;
+    }
+    try {
+      return await fn();
+    } finally {
+      try {
+        closeSync(fd);
+        unlinkSync(lockPath);
+      } catch {
+        // Best-effort cleanup — lock removal failure must not mask a real error.
+      }
+    }
+  };
+}
+
 /** Build the production `CheckinRunnerDeps` for a given repo root. */
 export function createDefaultCheckinDeps(
   repoRoot: string,
@@ -251,6 +329,7 @@ export function createDefaultCheckinDeps(
     },
     readManifest: makeReadManifest(repoRoot),
     listQueuedAssets: makeListQueuedAssets(repoRoot),
+    withCrossProcessLock: makeCheckinFileLock(repoRoot),
     env,
   };
 }

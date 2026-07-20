@@ -126,14 +126,17 @@ A follow-up review round found the atomic `/accept` route's AMD-001/AMD-003 prot
 had not been extended to the rest of the check-in surface. All four gaps are fixed in the
 same session.
 
-- **AMD-006 (extends AMD-001)**: `POST /api/checkin` — not just the atomic `/accept`
-  route — now also refuses any request carrying an `Origin` header. A `text/plain` (or
-  content-type-less) POST body is a CORS "simple request" that never triggers a preflight,
-  so the loopback-only CORS allowlist (`isAllowedOrigin`) cannot be relied on to stop a
-  hostile page — even a non-loopback one — from triggering a real check-in (branch push +
-  issue file) merely by having the user's browser visit it while the sidecar happens to be
-  running locally. `POST /api/checkin/prepare` is exempt: it never mutates anything, so it
-  stays reachable from the browser gallery UI.
+- **AMD-006 (extends AMD-001)**: `POST /api/checkin` AND `POST /api/checkin/prepare` — not
+  just the atomic `/accept` route — now also apply an exact per-worktree trusted-origin
+  check. A `text/plain` (or content-type-less) POST body is a CORS "simple request" that
+  never triggers a preflight, so the loopback-only CORS allowlist (`isAllowedOrigin`) cannot
+  be relied on to stop a hostile page — even a non-loopback one — from triggering a real
+  check-in (branch push + issue file) or repeated network I/O (`git fetch`, `gh issue list`)
+  merely by having the user's browser visit it while the sidecar is running locally.
+  Requests whose `Origin` header is present but NOT in the `trustedMutationOrigins` list
+  (the exact per-worktree gallery/lab/devtools origins supplied by the CLI at startup) are
+  rejected with 403. Server-side callers (Node-based `fetch`, the `sprites:checkin` CLI, the
+  workflow canvas extension) send no `Origin` header and remain trusted unconditionally.
 - **AMD-007 (extends DEC-001/AMD-003)**: `prepareAssetCheckin`'s queued-asset filtering is
   now content-addressed instead of path-only, via the SAME `reconcileQueuedContent`
   classifier the atomic `/accept` route's pre-/post-mutation reconciliation already used
@@ -146,12 +149,23 @@ same session.
   `POST /api/checkin` (previously it re-implemented its own path-only, manifest-blind
   detection and ignored injected `checkinDeps` entirely), so the preview can never diverge
   from what execution actually publishes.
-- **AMD-008 (extends DEC-001)**: The durable queued-asset map is now built first-seen-wins
-  (`buildQueuedAssetMap`, pure/unit-tested): a duplicate queued path recorded by a
-  later-processed open issue — or a duplicated entry within one issue's own payload — can
-  no longer silently overwrite an earlier issue's record via `Map.set()`.
+- **AMD-008 (extends DEC-001)**: The durable queued-asset map (`buildQueuedAssetMap`) now
+  detects hash conflicts between duplicate claims: when two issues (or two entries in the
+  same issue) claim the same path with DIFFERENT recorded hashes, the entry is downgraded to
+  a hash-less sentinel so `reconcileQueuedContent` returns `'ambiguous'` — failing closed —
+  rather than silently keeping the first-seen hash and misclassifying the conflict as a
+  benign duplicate whenever the current asset happens to match it. Only when BOTH sides
+  record the SAME hash is the entry a provably identical duplicate (first-seen-wins, hash
+  preserved).
 - **AMD-009 (extends AMD-003)**: The atomic `/accept` route's pre- and post-mutation
   `listQueuedAssets()` reads are now wrapped so a queue-list failure (e.g. a transient
   `gh issue list` error) maps through the SAME shared `mapCheckinError` route-error mapper
   as every other check-in failure (`gh-failed` → 502), instead of an uncaught rejection
   falling through to Fastify's generic, unstructured 500.
+- **AMD-010 (extends DEC-001)**: `runAssetCheckin` now accepts a `withCrossProcessLock` dep
+  (defaulting to a `.git/ASSET_CHECKIN_LOCK` file lock via `O_EXCL` in
+  `createDefaultCheckinDeps`) that serializes the entire prepare + push + issue-file sequence
+  across processes. Without this, a sidecar and a concurrent CLI invocation could both
+  observe the same asset as un-queued, push different branches, and file duplicate tracking
+  issues. The lock throws `CheckinError('checkin-locked')` (mapped to 409) when contended,
+  so the second caller retries rather than racing.

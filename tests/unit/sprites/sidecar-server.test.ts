@@ -2586,6 +2586,63 @@ describe('sidecar POST /api/checkin', () => {
     expect(exec).toHaveBeenCalled();
   });
 
+  it('/api/checkin/prepare applies the same exact trusted-origin guard as /api/checkin', async () => {
+    // prepareAssetCheckin runs git fetch + gh issue list — not a local mutation,
+    // but repeated cross-origin POSTs could drive unbounded network I/O.
+    // The same exact origin allowlist must be enforced.
+    const exec = vi.fn(async () => ({ code: 0, stdout: '', stderr: '' }));
+    const checkinDeps: CheckinRunnerDeps = {
+      exec,
+      makeTempDir: async () => path.join(root, 'prepare-origin-test'),
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+      env: {},
+    };
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+      checkinDeps,
+      trustedMutationOrigins: ['http://localhost:4102'],
+    });
+
+    // Trusted gallery origin is allowed.
+    const gallery = await app.inject({
+      method: 'POST',
+      url: '/api/checkin/prepare',
+      headers: { origin: 'http://localhost:4102' },
+      payload: {},
+    });
+    // This reaches prepareAssetCheckin (git fetch will fail with 'nothing-to-checkin')
+    // but was NOT rejected by the origin guard.
+    expect(gallery.statusCode).not.toBe(403);
+
+    // A different loopback port must be rejected.
+    const hostile = await app.inject({
+      method: 'POST',
+      url: '/api/checkin/prepare',
+      headers: { origin: 'http://127.0.0.1:9999', 'content-type': 'text/plain' },
+      payload: '',
+    });
+    expect(hostile.statusCode).toBe(403);
+    expect(hostile.json()).toMatchObject({ error: 'forbidden-origin' });
+    // The guard fires before prepareAssetCheckin — no git/gh commands ran.
+    exec.mockClear();
+
+    // An external origin must also be rejected.
+    const external = await app.inject({
+      method: 'POST',
+      url: '/api/checkin/prepare',
+      headers: { origin: 'https://evil.example', 'content-type': 'text/plain' },
+      payload: '',
+    });
+    expect(external.statusCode).toBe(403);
+    expect(external.json()).toMatchObject({ error: 'forbidden-origin' });
+    expect(exec).not.toHaveBeenCalled();
+  });
+
   function makePreviewParityDeps(
     diffStdout: string,
     queued: ReadonlyMap<string, QueuedAssetCheckin>,

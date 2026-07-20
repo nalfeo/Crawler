@@ -26,18 +26,16 @@
  *   - The approve route MUST refuse when `process.env.CI` is set
  *     (Constitutional §3 — no LLM-as-judge / no checked-in mutation from
  *     CI gates). Same pattern as `judge.ts`.
- *   - The atomic accept route AND POST /api/checkin MUST additionally refuse
- *     any request that carries an `Origin` header (ADR 0066): loopback
- *     binding alone does not stop a browser-issued request — a `text/plain`
- *     (or content-type-less) POST body needs no CORS preflight at all, so any
- *     page could otherwise trigger a real mutation just by having the user's
- *     browser visit it. Both routes mutate remote state (accept composes
- *     approve + check-in; checkin pushes a branch and files a GitHub issue)
- *     in one call. Their only trusted callers are Node-based `fetch` (the
- *     workflow canvas extension, or the `sprites:checkin` CLI's own sidecar
- *     calls), which never send `Origin`. /api/checkin/prepare is exempt — it
- *     never mutates anything, so it stays reachable from the browser gallery
- *     UI via the loopback CORS allowlist below.
+ *   - The atomic accept route, POST /api/checkin, AND POST /api/checkin/prepare
+ *     apply an exact per-worktree trusted-origin check (ADR 0066 AMD-006):
+ *     loopback binding alone does not stop a browser-issued request — a
+ *     `text/plain` (or content-type-less) POST body needs no CORS preflight at
+ *     all, so any page could trigger a mutation (or repeated git fetch / gh
+ *     issue list calls) just by having the user's browser visit it. Requests
+ *     whose `Origin` header is present but NOT in `trustedMutationOrigins`
+ *     (the per-worktree gallery/lab/devtools origins supplied by the CLI) are
+ *     rejected with 403. Server-side callers (Node-based fetch, no Origin)
+ *     remain trusted unconditionally.
  *   - /approve, /checkin, and /accept all run their mutating work through the
  *     same process-wide `withCheckinMutationLock` so concurrent requests
  *     never race the shared art surface or the durable check-in queue.
@@ -523,7 +521,8 @@ function mapCheckinError(
         ? 403
         : err.kind === 'nothing-to-checkin' ||
             err.kind === 'content-conflict' ||
-            err.kind === 'ambiguous-queued-content'
+            err.kind === 'ambiguous-queued-content' ||
+            err.kind === 'checkin-locked'
           ? 409
           : 502; // git-failed / gh-failed
     reply.code(status);
@@ -2121,6 +2120,20 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   app.post<{ Body: { base?: unknown; remote?: unknown } }>(
     '/api/checkin/prepare',
     async (req, reply) => {
+      // CSRF guard (same policy as /api/checkin): prepareAssetCheckin runs
+      // `git fetch` and `gh issue list`, so a cross-origin POST could
+      // repeatedly trigger unbounded local/network work. Allow only the same
+      // exact per-worktree trusted origins as the mutating /api/checkin route;
+      // server-side callers (Node-based fetch, no Origin header) remain trusted.
+      const origin = req.headers.origin;
+      if (typeof origin === 'string' && !deps.trustedMutationOrigins?.includes(origin)) {
+        reply.code(403);
+        return {
+          error: 'forbidden-origin',
+          message: 'This browser origin is not allowed to trigger asset check-in preparation.',
+        };
+      }
+
       // Fast pre-flight check: detect what will be checked in WITHOUT pushing/filing issue.
       // This provides immediate feedback and allows the UI to show progress for the slow parts.
       // Calls the SAME `prepareAssetCheckin`, with the SAME injected deps/options, that
