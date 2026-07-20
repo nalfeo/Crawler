@@ -55,6 +55,17 @@
     "path": "by-sha/a1c23cbeabdec9d74633a8ffa3f0f9586443936d.json"
   },
   {
+    "commit": "260f6fc61c574f5566cffaf19d254674a0a10dcf",
+    "commitDate": "2026-07-20T14:58:00-07:00",
+    "commitSubject": "fix(deps): update brace-expansion security patch (#1748)",
+    "capturedAt": "2026-07-20T23:19:25.868Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29783121528",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/260f6fc61c574f5566cffaf19d254674a0a10dcf.json"
+  },
+  {
     "commit": "df4a1e97a6556575ea72d039612f55f4b927e672",
     "commitDate": "2026-07-20T14:19:10-07:00",
     "commitSubject": "fix(ci): transport merge-train candidates as opaque bundles (#1747)",
