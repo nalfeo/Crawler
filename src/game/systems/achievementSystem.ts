@@ -2,20 +2,14 @@ import { query } from 'bitecs';
 import { Player } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import {
-  ACHIEVEMENT_BOOLEAN_FACTS,
-  ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS,
-  ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS,
-  ACHIEVEMENT_NUMBER_FACTS,
-  createEmptyAchievementFactState,
-  getAchievementCatalogForFloor,
+  ACHIEVEMENT_CATALOG_REGISTRY,
+  createEmptyAchievementFactSnapshot,
   getAchievementById,
-  isAchievementFloor,
-  type AchievementBooleanFact,
-  type AchievementDef,
-  type AchievementNumberFact,
+  mergeAchievementFactSnapshots,
+  type AchievementCatalogRegistry,
+  type AchievementFactSnapshot,
   type AchievementNumberOperator,
   type AchievementRulePhase,
-  type AchievementScope,
   type AchievementUnlockRule,
 } from '../../shared/achievements.js';
 
@@ -51,39 +45,6 @@ function unlockedAbilityCount(world: GameWorld): number {
   return state?.passiveAbilityIds.length ?? 0;
 }
 
-interface AchievementFacts {
-  readonly numberFacts: Record<AchievementNumberFact, number>;
-  readonly booleanFacts: Record<AchievementBooleanFact, boolean>;
-  readonly completedQuestIds: Set<string>;
-}
-
-const RUN_GLOBAL_SUM_FACTS: readonly AchievementNumberFact[] = [
-  'totalKills',
-  'slimesKilled',
-  'ratsKilled',
-  'goldCollected',
-];
-
-const RUN_GLOBAL_MAX_FACTS: readonly AchievementNumberFact[] = [
-  'maxSkillLevel',
-  'spentStatPoints',
-  'questLogSize',
-  'unlockedAbilityCount',
-];
-
-/**
- * Facts stored as the latest (most-recent-floor) value: values in this array
- * are overwritten on each floor transition rather than accumulated (sum) or
- * high-water-marked (max). `playerGold` is a point-in-time balance that can
- * decrease, so using Math.max would silently prevent `<` / `<=` / `===` rules
- * from ever seeing a reduced balance after a spending-heavy floor.
- */
-const RUN_GLOBAL_LATEST_FACTS: readonly AchievementNumberFact[] = ['playerGold'];
-
-const CURRENT_RUN_NUMBER_FACT_SET = new Set<AchievementNumberFact>(
-  ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS,
-);
-
 function evaluateNumberCompare(
   left: number,
   op: AchievementNumberOperator,
@@ -96,180 +57,80 @@ function evaluateNumberCompare(
   return left === right;
 }
 
-function evaluateUnlockRule(rule: AchievementUnlockRule, facts: AchievementFacts): boolean {
+function evaluateUnlockRule(rule: AchievementUnlockRule, facts: AchievementFactSnapshot): boolean {
   if (rule.type === 'numberCompare') {
     return evaluateNumberCompare(facts.numberFacts[rule.fact], rule.op, rule.value);
   }
   if (rule.type === 'booleanIs') {
     return facts.booleanFacts[rule.fact] === rule.value;
   }
-  return rule.questIds.every((questId) => facts.completedQuestIds.has(questId));
+  const completedQuestIds = new Set(facts.completedQuestIds);
+  return rule.questIds.every((questId) => completedQuestIds.has(questId));
 }
 
-function collectFloor1AchievementFacts(world: GameWorld): AchievementFacts | null {
-  if (!world.floorScenario) {
-    return null;
-  }
-  const floor1Objective = world.floorScenario!.objective;
-  const totalKills = floor1Objective.ratsKilled + floor1Objective.slimesKilled;
-  const completedQuestIds = new Set(
-    [...world.questLog.values()]
-      .filter((quest) => quest.status === 'complete')
-      .map((quest) => quest.questId),
-  );
+export function collectCurrentFloorAchievementFacts(world: GameWorld): AchievementFactSnapshot {
+  const empty = createEmptyAchievementFactSnapshot();
+  const floor1Objective = world.floor === 1 ? world.floorScenario?.objective : undefined;
+  const floor2TrashKills =
+    world.floor === 2
+      ? [...(world.floorExtendedState?.familyState?.trashKillsByFamily?.values() ?? [])].reduce(
+          (total, kills) => total + kills,
+          0,
+        )
+      : 0;
+  const questIds = [...world.questLog.values()].map((quest) => quest.questId).sort();
+  const completedQuestIds = [...world.questLog.values()]
+    .filter((quest) => quest.status === 'complete')
+    .map((quest) => quest.questId)
+    .sort();
+  const floorCleared =
+    (world.floor === 1 && world.floorScenario?.runSummary?.outcome === 'cleared_floor') ||
+    (world.floor === 2 &&
+      (world.floorExtendedState?.familyState?.staircaseDiscovered === true ||
+        world.goalFlags.get('floor2.objective.staircaseDiscovered') === true));
+  const ratsKilled = floor1Objective?.ratsKilled ?? 0;
+  const slimesKilled = floor1Objective?.slimesKilled ?? 0;
 
   return {
     numberFacts: {
-      totalKills,
-      slimesKilled: floor1Objective.slimesKilled,
-      ratsKilled: floor1Objective.ratsKilled,
+      ...empty.numberFacts,
+      totalKills: ratsKilled + slimesKilled + floor2TrashKills,
+      slimesKilled,
+      ratsKilled,
       maxSkillLevel: highestSkillLevel(world),
       spentStatPoints: spentStatPoints(world),
-      goldCollected: floor1Objective.goldCollected,
-      completedQuestCount: completedQuestIds.size,
+      // Floor 2 has no floor-local earned-gold counter yet. Its current balance
+      // remains available through playerGold without double-counting carryover.
+      goldCollected: floor1Objective?.goldCollected ?? 0,
+      completedQuestCount: completedQuestIds.length,
       questLogSize: world.questLog.size,
       playerGold: world.playerGold,
       unlockedAbilityCount: unlockedAbilityCount(world),
+      clearedFloorCount: floorCleared ? 1 : 0,
     },
     booleanFacts: {
-      staircaseBattleStarted: floor1Objective.bossBattles.get('staircase')?.started === true,
-      staircaseUnlocked: floor1Objective.staircaseUnlocked,
-      safeRoomDiscovered: floor1Objective.safeRoomDiscovered,
+      ...empty.booleanFacts,
+      staircaseBattleStarted: floor1Objective?.bossBattles.get('staircase')?.started === true,
+      staircaseUnlocked:
+        floor1Objective?.staircaseUnlocked === true ||
+        world.floorExtendedState?.familyState?.staircaseUnlocked === true,
+      safeRoomDiscovered: floor1Objective?.safeRoomDiscovered === true,
       equipmentUnlocked: world.featureUnlocks.equipment,
-      staircaseDiscovered: floor1Objective.staircaseDiscovered,
-      runClearedFloor: world.floorScenario?.runSummary?.outcome === 'cleared_floor',
+      staircaseDiscovered:
+        floor1Objective?.staircaseDiscovered === true ||
+        world.floorExtendedState?.familyState?.staircaseDiscovered === true,
+      runClearedFloor: floorCleared,
     },
+    questIds,
     completedQuestIds,
+    reachedFloorIds: [world.floor],
+    clearedFloorIds: floorCleared ? [world.floor] : [],
   };
-}
-
-function collectFloor2AchievementFacts(world: GameWorld): AchievementFacts | null {
-  const floor2State = world.floorExtendedState?.familyState;
-  if (!floor2State) {
-    return null;
-  }
-
-  const totalKills = [...(floor2State.trashKillsByFamily?.values() ?? [])].reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-  const completedQuestIds = new Set(
-    [...world.questLog.values()]
-      .filter((quest) => quest.status === 'complete')
-      .map((quest) => quest.questId),
-  );
-
-  return {
-    numberFacts: {
-      totalKills,
-      slimesKilled: 0,
-      ratsKilled: 0,
-      maxSkillLevel: highestSkillLevel(world),
-      spentStatPoints: spentStatPoints(world),
-      goldCollected: 0,
-      completedQuestCount: completedQuestIds.size,
-      questLogSize: world.questLog.size,
-      playerGold: world.playerGold,
-      unlockedAbilityCount: unlockedAbilityCount(world),
-    },
-    booleanFacts: {
-      staircaseBattleStarted: false,
-      staircaseUnlocked: floor2State.staircaseUnlocked === true,
-      safeRoomDiscovered: false,
-      equipmentUnlocked: world.featureUnlocks.equipment,
-      staircaseDiscovered: floor2State.staircaseDiscovered === true,
-      runClearedFloor: floor2State.staircaseDiscovered === true,
-    },
-    completedQuestIds,
-  };
-}
-
-function collectFloorAchievementFacts(world: GameWorld): AchievementFacts | null {
-  if (world.floor === 1) return collectFloor1AchievementFacts(world);
-  if (world.floor === 2) return collectFloor2AchievementFacts(world);
-  return null;
-}
-
-function mergeRunGlobalFacts(world: GameWorld, floorFacts: AchievementFacts): void {
-  for (const fact of RUN_GLOBAL_SUM_FACTS) {
-    world.achievements.runGlobal.numberFacts[fact] += floorFacts.numberFacts[fact];
-  }
-  for (const fact of RUN_GLOBAL_MAX_FACTS) {
-    world.achievements.runGlobal.numberFacts[fact] = Math.max(
-      world.achievements.runGlobal.numberFacts[fact],
-      floorFacts.numberFacts[fact],
-    );
-  }
-  for (const fact of RUN_GLOBAL_LATEST_FACTS) {
-    world.achievements.runGlobal.numberFacts[fact] = floorFacts.numberFacts[fact];
-  }
-  for (const fact of ACHIEVEMENT_BOOLEAN_FACTS) {
-    world.achievements.runGlobal.booleanFacts[fact] =
-      world.achievements.runGlobal.booleanFacts[fact] || floorFacts.booleanFacts[fact];
-  }
-  for (const questId of [...floorFacts.completedQuestIds].sort()) {
-    world.achievements.runGlobal.completedQuestIds.add(questId);
-  }
-  world.achievements.runGlobal.numberFacts.completedQuestCount =
-    world.achievements.runGlobal.completedQuestIds.size;
-}
-
-function collectCurrentRunAchievementFacts(
-  world: GameWorld,
-  floorFacts: AchievementFacts | null,
-): AchievementFacts {
-  const facts = createEmptyAchievementFactState();
-  for (const fact of ACHIEVEMENT_NUMBER_FACTS) {
-    facts.numberFacts[fact] = world.achievements.runGlobal.numberFacts[fact];
-  }
-  for (const fact of ACHIEVEMENT_BOOLEAN_FACTS) {
-    facts.booleanFacts[fact] = world.achievements.runGlobal.booleanFacts[fact];
-  }
-  for (const questId of world.achievements.runGlobal.completedQuestIds) {
-    facts.completedQuestIds.add(questId);
-  }
-
-  if (!floorFacts) {
-    facts.numberFacts.completedQuestCount = facts.completedQuestIds.size;
-    return facts;
-  }
-
-  for (const fact of RUN_GLOBAL_SUM_FACTS) {
-    if (!CURRENT_RUN_NUMBER_FACT_SET.has(fact)) continue;
-    facts.numberFacts[fact] += floorFacts.numberFacts[fact];
-  }
-  for (const fact of RUN_GLOBAL_MAX_FACTS) {
-    if (!CURRENT_RUN_NUMBER_FACT_SET.has(fact)) continue;
-    facts.numberFacts[fact] = Math.max(facts.numberFacts[fact], floorFacts.numberFacts[fact]);
-  }
-  for (const fact of RUN_GLOBAL_LATEST_FACTS) {
-    if (!CURRENT_RUN_NUMBER_FACT_SET.has(fact)) continue;
-    facts.numberFacts[fact] = floorFacts.numberFacts[fact];
-  }
-  for (const fact of ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS) {
-    facts.booleanFacts[fact] = facts.booleanFacts[fact] || floorFacts.booleanFacts[fact];
-  }
-  for (const questId of floorFacts.completedQuestIds) {
-    facts.completedQuestIds.add(questId);
-  }
-  facts.numberFacts.completedQuestCount = facts.completedQuestIds.size;
-  return facts;
-}
-
-function selectFactsForScope(
-  scope: AchievementScope,
-  floorFacts: AchievementFacts | null,
-  runFacts: AchievementFacts,
-): AchievementFacts | null {
-  if (scope === 'current_run') {
-    return runFacts;
-  }
-  return floorFacts;
 }
 
 function shouldUnlockAchievementForPhase(
   ruleSet: readonly AchievementUnlockRule[],
-  facts: AchievementFacts,
+  facts: AchievementFactSnapshot,
   phase: AchievementRulePhase,
 ): boolean {
   const activeRules = ruleSet.filter((rule) => (rule.phase ?? 'tick') === phase);
@@ -280,9 +141,9 @@ function shouldUnlockAchievementForPhase(
 export function unlockAchievement(
   world: GameWorld,
   achievementId: string,
-  def?: AchievementDef,
+  registry: AchievementCatalogRegistry = ACHIEVEMENT_CATALOG_REGISTRY,
 ): boolean {
-  const achievement = def ?? getAchievementById(achievementId);
+  const achievement = getAchievementById(achievementId, registry);
   if (!achievement || world.achievements.unlockedIds.has(achievementId)) {
     return false;
   }
@@ -292,34 +153,34 @@ export function unlockAchievement(
   return true;
 }
 
-function snapshotCurrentFloorIntoRunGlobalAchievementFacts(world: GameWorld): void {
-  const floorFacts = collectFloorAchievementFacts(world);
-  if (!floorFacts) return;
-  mergeRunGlobalFacts(world, floorFacts);
-}
-
-export function finalizeFloorAchievementProgressOnExit(world: GameWorld): void {
-  evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
-  snapshotCurrentFloorIntoRunGlobalAchievementFacts(world);
-}
-
 export function evaluateAchievementUnlocksForPhase(
   world: GameWorld,
   phase: AchievementRulePhase,
-  catalogOverride?: readonly AchievementDef[],
+  registry: AchievementCatalogRegistry = ACHIEVEMENT_CATALOG_REGISTRY,
 ): void {
-  if (!isAchievementFloor(world.floor)) {
-    return;
-  }
+  const currentFloorFacts = collectCurrentFloorAchievementFacts(world);
+  const effectiveRunFacts = mergeAchievementFactSnapshots(
+    world.achievements.carriedRunFacts,
+    currentFloorFacts,
+  );
+  const reachedFloors = new Set(effectiveRunFacts.reachedFloorIds);
 
-  const floorFacts = collectFloorAchievementFacts(world);
-  const runFacts = collectCurrentRunAchievementFacts(world, floorFacts);
-  const catalog = catalogOverride ?? getAchievementCatalogForFloor(world.floor);
-  for (const achievement of catalog) {
-    const activeFacts = selectFactsForScope(achievement.scope, floorFacts, runFacts);
-    if (!activeFacts) continue;
-    if (shouldUnlockAchievementForPhase(achievement.unlockRules, activeFacts, phase)) {
-      unlockAchievement(world, achievement.id, achievement);
+  for (const achievement of registry.all) {
+    if (achievement.scope === 'current_run') {
+      if (!reachedFloors.has(achievement.floor)) {
+        continue;
+      }
+      if (shouldUnlockAchievementForPhase(achievement.unlockRules, effectiveRunFacts, phase)) {
+        unlockAchievement(world, achievement.id, registry);
+      }
+      continue;
+    }
+
+    if (achievement.floor !== world.floor) {
+      continue;
+    }
+    if (shouldUnlockAchievementForPhase(achievement.unlockRules, currentFloorFacts, phase)) {
+      unlockAchievement(world, achievement.id, registry);
     }
   }
 }

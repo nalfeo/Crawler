@@ -11,7 +11,11 @@ import {
   confirmFloor2StairDescend,
 } from '../../src/game/floor2Scenario.js';
 import {
-  asFamilyId,
+  createAchievementCatalog,
+  createAchievementCatalogRegistry,
+  FLOOR1_ACHIEVEMENTS,
+} from '../../src/shared/achievements.js';
+import {
   initializeFactionRelations,
   selectFloor2Roster,
 } from '../../src/core/faction-relations.js';
@@ -200,34 +204,35 @@ describe('confirmFloor2StairDescend', () => {
     expect(world.state).toBe('safe_room');
   });
 
+  it('evaluates Floor 2 run-end achievements before transitioning to the safe room', () => {
+    const world = makeFloor2World({ staircaseSpawned: true, staircaseUnlocked: true });
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(2, [
+        {
+          ...FLOOR1_ACHIEVEMENTS[0],
+          id: 'floor2-clear-test',
+          floor: 2,
+          scope: 'current_run',
+          unlockRules: [
+            {
+              type: 'booleanIs',
+              fact: 'runClearedFloor',
+              value: true,
+              phase: 'run_end_clear',
+            },
+          ],
+        },
+      ]),
+    ]);
+
+    expect(confirmFloor2StairDescend(world, 0, registry)).toBe(true);
+    expect(world.achievements.unlockedIds.has('floor2-clear-test')).toBe(true);
+  });
+
   it('is idempotent — second call returns false after staircase discovered', () => {
     const world = makeFloor2World({ staircaseSpawned: true, staircaseUnlocked: true });
     confirmFloor2StairDescend(world, 0);
     // state is now 'safe_room', not 'playing' — second call must fail
     expect(confirmFloor2StairDescend(world, 0)).toBe(false);
-  });
-
-  it('snapshots floor2 run-global facts on stair descend', () => {
-    const world = makeFloor2World({
-      staircaseSpawned: true,
-      staircaseUnlocked: true,
-      trashKillsByFamily: new Map([
-        [asFamilyId('imps'), 2],
-        [asFamilyId('kobolds'), 3],
-      ]),
-    });
-    world.featureUnlocks.equipment = true;
-    world.questLog.set('floor2-find-settlement', {
-      questId: 'floor2-find-settlement',
-      status: 'complete',
-      tracked: false,
-      progress: {},
-      done: {},
-    });
-
-    expect(confirmFloor2StairDescend(world, 0)).toBe(true);
-    expect(world.achievements.runGlobal.numberFacts.totalKills).toBe(5);
-    expect(world.achievements.runGlobal.booleanFacts.equipmentUnlocked).toBe(true);
-    expect(world.achievements.runGlobal.completedQuestIds.has('floor2-find-settlement')).toBe(true);
   });
 });
