@@ -246,7 +246,7 @@ test('ordinary live candidates keep the checkout App credential for ref pushes',
 });
 
 test('workflow-bearing candidates override checkout auth only for the candidate push', () => {
-  const workflowToken = 'owner-workflow-token';
+  const githubToken = 'github-actions-token';
   const { git, calls } = createGitStub({
     workflowPaths: ['.github/workflows/ci.yml'],
   });
@@ -256,7 +256,7 @@ test('workflow-bearing candidates override checkout auth only for the candidate 
     refName: 'merge-train/candidate-workflow',
     git,
     live: true,
-    candidateWorkflowToken: workflowToken,
+    githubToken,
     environment: {},
   });
 
@@ -270,14 +270,14 @@ test('workflow-bearing candidates override checkout auth only for the candidate 
     '.github/workflows',
   ]);
   const pushCall = calls.find((call) => call.args[0] === 'push');
-  assert.equal(JSON.stringify(pushCall.args).includes(workflowToken), false);
+  assert.equal(JSON.stringify(pushCall.args).includes(githubToken), false);
   assert.deepEqual(pushCall.options.env, {
     GIT_CONFIG_COUNT: '2',
     GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
     GIT_CONFIG_VALUE_0: '',
     GIT_CONFIG_KEY_1: 'http.https://github.com/.extraheader',
     GIT_CONFIG_VALUE_1: `AUTHORIZATION: basic ${Buffer.from(
-      `x-access-token:${workflowToken}`,
+      `x-access-token:${githubToken}`,
       'utf8',
     ).toString('base64')}`,
     GIT_TERMINAL_PROMPT: '0',
@@ -285,7 +285,7 @@ test('workflow-bearing candidates override checkout auth only for the candidate 
 });
 
 test('workflow push auth preserves pre-existing command-scoped Git configuration', () => {
-  const workflowToken = 'owner-workflow-token';
+  const githubToken = 'github-actions-token';
   const environment = {
     GIT_CONFIG_COUNT: '1',
     GIT_CONFIG_KEY_0: 'protocol.version',
@@ -300,7 +300,7 @@ test('workflow push auth preserves pre-existing command-scoped Git configuration
     refName: 'merge-train/candidate-workflow',
     git,
     live: true,
-    candidateWorkflowToken: workflowToken,
+    githubToken,
     environment,
   });
 
@@ -314,7 +314,7 @@ test('workflow push auth preserves pre-existing command-scoped Git configuration
     GIT_CONFIG_VALUE_1: '',
     GIT_CONFIG_KEY_2: 'http.https://github.com/.extraheader',
     GIT_CONFIG_VALUE_2: `AUTHORIZATION: basic ${Buffer.from(
-      `x-access-token:${workflowToken}`,
+      `x-access-token:${githubToken}`,
       'utf8',
     ).toString('base64')}`,
     GIT_TERMINAL_PROMPT: '0',
@@ -331,7 +331,7 @@ test('workflow commit-range detection survives a later final-tree revert', () =>
     refName: 'merge-train/candidate-reverted-workflow',
     git,
     live: true,
-    candidateWorkflowToken: 'owner-workflow-token',
+    githubToken: 'github-actions-token',
     environment: {},
   });
 
@@ -339,7 +339,7 @@ test('workflow commit-range detection survives a later final-tree revert', () =>
   assert.ok(calls.find((call) => call.args[0] === 'push').options.env);
 });
 
-test('workflow-bearing live candidates fail before ref mutation when the PAT is missing', () => {
+test('workflow-bearing live candidates fail before ref mutation when GITHUB_TOKEN is missing', () => {
   const { git, calls } = createGitStub({
     workflowPaths: ['.github/workflows/ci.yml'],
   });
@@ -352,7 +352,7 @@ test('workflow-bearing live candidates fail before ref mutation when the PAT is 
         git,
         live: true,
       }),
-    /require MERGE_TRAIN_WORKFLOW_TOKEN.*CRAWLER_CI_PAT/,
+    /require GITHUB_TOKEN.*workflows: write/,
   );
   assert.equal(
     calls.some((call) => call.args[0] === 'push'),
@@ -361,8 +361,8 @@ test('workflow-bearing live candidates fail before ref mutation when the PAT is 
 });
 
 test('workflow candidate push failures do not expose credentials in command errors', () => {
-  const workflowToken = 'owner-workflow-token';
-  const encodedToken = Buffer.from(`x-access-token:${workflowToken}`, 'utf8').toString('base64');
+  const githubToken = 'github-actions-token';
+  const encodedToken = Buffer.from(`x-access-token:${githubToken}`, 'utf8').toString('base64');
   const { git, calls } = createGitStub({
     failPush: true,
     workflowPaths: ['.github/workflows/ci.yml'],
@@ -375,11 +375,11 @@ test('workflow candidate push failures do not expose credentials in command erro
         refName: 'merge-train/candidate-workflow',
         git,
         live: true,
-        candidateWorkflowToken: workflowToken,
+        githubToken,
         environment: {},
       }),
     (error) => {
-      assert.equal(error.message.includes(workflowToken), false);
+      assert.equal(error.message.includes(githubToken), false);
       assert.equal(error.message.includes(encodedToken), false);
       assert.equal(isMergeTrainConflictError(error), false);
       assert.equal(isMergeTrainNoopError(error), false);
@@ -387,7 +387,7 @@ test('workflow candidate push failures do not expose credentials in command erro
     },
   );
   const pushCall = calls.find((call) => call.args[0] === 'push');
-  assert.equal(JSON.stringify(pushCall.args).includes(workflowToken), false);
+  assert.equal(JSON.stringify(pushCall.args).includes(githubToken), false);
   assert.equal(JSON.stringify(pushCall.args).includes(encodedToken), false);
 });
 
@@ -546,7 +546,7 @@ test('workflow credential push rejection remains a retryable build failure', asy
         refName: 'merge-train/candidate-workflow',
         git,
         live: true,
-        candidateWorkflowToken: 'insufficient-owner-token',
+        githubToken: 'github-actions-token',
         environment: {},
       }),
     }),
@@ -720,24 +720,10 @@ test('live Actions runs require separate promotion and workflow-dispatch tokens'
       GITHUB_ACTIONS: 'true',
       MERGE_TRAIN_TOKEN: 'app-token',
       GITHUB_TOKEN: 'actions-token',
-      MERGE_TRAIN_WORKFLOW_TOKEN: 'owner-workflow-token',
     }),
     {
       promotionToken: 'app-token',
       workflowDispatchToken: 'actions-token',
-      candidateWorkflowToken: 'owner-workflow-token',
-    },
-  );
-  assert.deepEqual(
-    resolveMergeTrainTokens({
-      GITHUB_ACTIONS: 'true',
-      MERGE_TRAIN_TOKEN: 'app-token',
-      GITHUB_TOKEN: 'actions-token',
-    }),
-    {
-      promotionToken: 'app-token',
-      workflowDispatchToken: 'actions-token',
-      candidateWorkflowToken: '',
     },
   );
   assert.throws(

@@ -21,6 +21,7 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  workflows: write
 
 jobs:
   reconcile:
@@ -80,7 +81,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MERGE_TRAIN_TOKEN: ${{ steps.app-token.outputs.token }}
-          MERGE_TRAIN_WORKFLOW_TOKEN: ${{ secrets.CRAWLER_CI_PAT }}
           MERGE_TRAIN_APP_ID: ${{ secrets.APP_ID }}
           MERGE_TRAIN_ENABLED: ${{ vars.MERGE_TRAIN_ENABLED || 'false' }}
           MERGE_TRAIN_ADMISSION_CHECKS: ${{ vars.MERGE_TRAIN_ADMISSION_CHECKS || 'ci,Security checks' }}

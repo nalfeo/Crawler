@@ -229,14 +229,13 @@ export function resolveMergeTrainTokens(environment) {
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
   const workflowDispatchToken =
     environment.GITHUB_TOKEN || (!liveActionsRun ? environment.MERGE_TRAIN_TOKEN || '' : '');
-  const candidateWorkflowToken = environment.MERGE_TRAIN_WORKFLOW_TOKEN || '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
   }
   if (!workflowDispatchToken) {
     throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
   }
-  return { promotionToken, workflowDispatchToken, candidateWorkflowToken };
+  return { promotionToken, workflowDispatchToken };
 }
 
 export function mergeTrainGitEnvironment(environment, overrides = {}) {
@@ -308,7 +307,7 @@ export function buildCandidate({
   refName,
   git,
   live,
-  candidateWorkflowToken = '',
+  githubToken = '',
   environment = process.env,
 }) {
   git(['fetch', 'origin', 'main', '--prune']);
@@ -369,14 +368,14 @@ export function buildCandidate({
       '.github/workflows',
     ]);
     if (workflowPaths.trim()) {
-      if (!candidateWorkflowToken) {
+      if (!githubToken) {
         throw new Error(
-          'Workflow-bearing merge-train candidates require MERGE_TRAIN_WORKFLOW_TOKEN ' +
-            '(repository secret CRAWLER_CI_PAT with workflow-file write permission)',
+          'Workflow-bearing merge-train candidates require GITHUB_TOKEN ' +
+            'with workflows: write permission to push workflow file changes',
         );
       }
       git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`], {
-        env: workflowPushEnvironment(candidateWorkflowToken, environment),
+        env: workflowPushEnvironment(githubToken, environment),
       });
     } else {
       git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);
