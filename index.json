@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b80d3c7b1d1ad7e34a438b690cf2ab46a9e2dc73",
+    "commitDate": "2026-07-20T20:22:15Z",
+    "commitSubject": "fix(docs-update): truncate aggregate report body to stay within GitHub's 65 536-char issue limit (#1744)",
+    "capturedAt": "2026-07-20T21:40:14.304Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29776623597",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/b80d3c7b1d1ad7e34a438b690cf2ab46a9e2dc73.json"
+  },
+  {
     "commit": "53da636a3216d04f928a67fc19a044e8ddc56f41",
     "commitDate": "2026-07-20T18:51:29Z",
     "commitSubject": "fix(merge-train): preserve position after aborted promotion (#1737)",
