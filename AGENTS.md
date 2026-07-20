@@ -121,6 +121,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Check physics defs sync   | `npm run check:physics-defs-sync`         |
 | Check size coverage       | `npm run check:size-coverage`             |
 | Check weight coverage     | `npm run check:weight-coverage`           |
+| Boss ability status       | `npm run boss-abilities:status`           |
 | Docs index                | `npm run docs:index`                      |
 | Visual review             | `npm run review:visual`                   |
 | Visual review (det.)      | `npm run review:visual:deterministic`     |

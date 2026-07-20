@@ -4708,6 +4708,131 @@ test('reconcile skips outdated-marker and logs no-reply-target when first commen
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+test('outdated no-reply-target thread keeps a stable fingerprint when its line changes', async (t) => {
+  function makeGraphqlHandler(outdatedLine) {
+    return () => ({
+      body: gqlReviewThreads(
+        [
+          {
+            id: 'thread-active',
+            isResolved: false,
+            isOutdated: false,
+            path: 'docs/knowledge/handoffs/2026-07-18.md',
+            line: 3,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-active',
+                  body: 'Please post a plan comment before making changes.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r3607713280`,
+                },
+              ],
+            },
+          },
+          {
+            id: 'thread-outdated-no-reply-target',
+            isResolved: false,
+            isOutdated: true,
+            path: 'briefs/items/velvet-coat.yaml',
+            line: outdatedLine,
+            comments: {
+              nodes: [
+                {
+                  id: 'comment-outdated',
+                  body: 'Consider re-wrapping.',
+                  author: { login: 'copilot-pull-request-reviewer' },
+                  authorAssociation: 'NONE',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion-not-a-review-comment`,
+                },
+              ],
+            },
+          },
+        ],
+        [substantiveCopilotReview()],
+      ),
+    });
+  }
+
+  const fingerprints = [];
+  for (const outdatedLine of [10, null]) {
+    const { server, port, mutatingCalls } = await startServer({
+      [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+      [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+      [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+        status: 404,
+        body: { message: 'Not Found' },
+      }),
+      [`POST /graphql`]: (_url, parsed) => {
+        const query = String(parsed?.query ?? '');
+        if (query.includes('suggestedActors')) {
+          return {
+            body: {
+              data: {
+                repository: {
+                  suggestedActors: { nodes: [{ id: 'BOT_copilot', login: 'copilot' }] },
+                },
+              },
+            },
+          };
+        }
+        if (query.includes('replaceActorsForAssignable')) {
+          return {
+            body: {
+              data: {
+                replaceActorsForAssignable: {
+                  assignable: { assignees: { nodes: [{ login: 'copilot' }] } },
+                },
+              },
+            },
+          };
+        }
+        return makeGraphqlHandler(outdatedLine)();
+      },
+      [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+        body: { check_runs: [] },
+      }),
+      [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+      [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+        body: { id: 9001, body: '' },
+      }),
+    });
+
+    const { code, stdout, stderr } = await runScript(port, {
+      RECOVERY_OPERATION: 'reconcile',
+      RECOVERY_TRIGGER: 'workflow_run:completed',
+      CI_RECOVERY_MODE: 'live',
+      MERGE_TRAIN_ENABLED: 'true',
+      MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+    });
+    server.close();
+
+    if (!assertSuccessfulExit(t, code, stderr, `outdatedLine=${outdatedLine}`, true)) return;
+    assert.match(
+      stdout,
+      /skip outdated-marker thread=thread-outdated-no-reply-target reason=no-reply-target/,
+    );
+    const taskCall = mutatingCalls.find(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments` &&
+        typeof call.body?.body === 'string' &&
+        call.body.body.includes('crawler-ci-task:v1'),
+    );
+    assert.ok(taskCall, `expected task comment for outdatedLine=${outdatedLine}`);
+    const [, fingerprint] = taskCall.body.body.match(/fingerprint=([0-9a-f]+)/i) ?? [];
+    assert.ok(fingerprint, `expected fingerprint for outdatedLine=${outdatedLine}`);
+    fingerprints.push(fingerprint);
+  }
+
+  assert.equal(
+    fingerprints[0],
+    fingerprints[1],
+    'outdated thread line change must not alter blocker fingerprint',
+  );
+});
+
 test('live reconcile resolves only a trusted backtick-wrapped current-head marker', async (t) => {
   const trustedThreadId = 'thread-trusted-backtick';
   const untrustedThreadId = 'thread-untrusted-backtick';
@@ -6800,6 +6925,7 @@ test('outdated stale-marker thread remains blocked with a recovery hint', async 
     'must not replace a definitively stale marker with an automatic outdated marker',
   );
 
+
   const taskCommentCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&
@@ -6808,6 +6934,7 @@ test('outdated stale-marker thread remains blocked with a recovery hint', async 
       call.body.body.includes('crawler-ci-task'),
   );
   assert.ok(taskCommentCall, 'expected a task comment for the stale-marker blocker');
+
   assert.match(
     taskCommentCall.body.body,
     new RegExp(`Stale marker.*${staleMarkerSha}`, 'i'),
@@ -6817,6 +6944,103 @@ test('outdated stale-marker thread remains blocked with a recovery hint', async 
     taskCommentCall.body.body,
     /verify fix is present.*reply to this thread/i,
     'task body must instruct the agent to verify and re-post the marker',
+  );
+});
+
+test('outdated thread ignores unreachable marker from an untrusted commenter', async (t) => {
+  const staleMarkerSha = 'dead0000ffeeccdd00112233445566778899aabb';
+  const threadId = 'PRRT_untrusted_stale_marker_thread';
+
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: true,
+            path: 'scripts/sprites/cli.ts',
+            line: 285,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'the CLI does not propagate the fifth score.',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_untrusted_stale_reply',
+                  body: `✅ Addressed in \`${staleMarkerSha}\`: fake marker`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'random-user' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${staleMarkerSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    new RegExp(`would-post outdated-marker thread=${threadId}`),
+    'untrusted stale marker must not suppress outdated-marker posting',
+  );
+  assert.match(
+    stdout,
+    new RegExp(`would-resolve thread=${threadId}`),
+    'reconciler should still resolve the outdated thread after posting its own marker',
   );
 });
 
