@@ -61,6 +61,32 @@ test('the client script wires SSE + run selection', () => {
   assert.match(html, /\/api\/select\?briefId=/);
 });
 
+test('the client script exposes token-gated accept and visible queue states', () => {
+  const html = renderHtml('x', 'secret-token');
+  assert.match(html, /Accept & queue/);
+  assert.match(html, /Accepting & queueing…/);
+  assert.match(html, /Already queued/);
+  assert.match(html, /Open asset issue/);
+  assert.match(html, /Retry accept & queue/);
+  assert.match(html, /'x-workflow-mutation-token': mutationToken/);
+  assert.match(html, /var mutationToken = "secret-token"/);
+  assert.doesNotMatch(html, /__WORKFLOW_MUTATION_TOKEN__/);
+});
+
+test('the renderer warns when a queued acceptance batches more than one asset (ADR 0066 RSK-003)', () => {
+  const html = renderHtml('x');
+  // Styling for the warning state exists.
+  assert.match(html, /\.accept-state\.warn/);
+  // The gate is on assetCount, not just "queued" — a single-asset batch must
+  // not show the warning.
+  assert.match(html, /acceptance\.assetCount > 1/);
+  assert.match(html, /Heads up/);
+  // Existing vs. freshly-queued acceptances get distinct wording so an
+  // operator can tell whether THIS click published the extra assets.
+  assert.match(html, /this open issue batches/);
+  assert.match(html, /accepting this variant also published/);
+});
+
 test('instanceId is HTML-escaped into the shell', () => {
   const html = renderHtml('a"><script>bad</script>');
   assert.ok(!html.includes('a"><script>bad'));

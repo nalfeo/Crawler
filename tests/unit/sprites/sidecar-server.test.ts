@@ -18,6 +18,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
@@ -32,6 +33,12 @@ import type {
   WorkerStartResult,
 } from '../../../scripts/sprites/sidecar/worker-controller.js';
 import type { IssueIngesterController } from '../../../scripts/sprites/sidecar/issue-ingester-controller.js';
+import {
+  CheckinError,
+  type CheckinRunnerDeps,
+  type QueuedAssetCheckin,
+} from '../../../scripts/sprites/checkin.js';
+import { parseAssetIssueBody } from '../../../scripts/sprites/asset-issues.js';
 import type { FastifyInstance } from 'fastify';
 
 function writeMinimalRun(
@@ -1365,6 +1372,73 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     );
   }
 
+  function makeCheckinDeps(
+    queued: Map<string, QueuedAssetCheckin>,
+    onExec?: (command: string, args: readonly string[]) => Promise<void> | void,
+  ): CheckinRunnerDeps & { readonly exec: ReturnType<typeof vi.fn> } {
+    let tempIndex = 0;
+    const exec = vi.fn(
+      async (
+        command: string,
+        args: readonly string[],
+      ): Promise<{
+        code: number;
+        stdout: string;
+        stderr: string;
+      }> => {
+        await onExec?.(command, args);
+        if (command === 'git' && args[0] === 'diff') {
+          return {
+            code: 0,
+            stdout: `public/assets/generated/${briefId}-var-1.png\n`,
+            stderr: '',
+          };
+        }
+        if (command === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+          // Mirror the REAL `makeListQueuedAssets` (checkin-runtime.ts): parse
+          // the actual issue body the route filed so `contentHash` comes from
+          // the genuine check-in plan (sourced from the manifest entry
+          // approveVariant just wrote), not a hand-rolled stand-in.
+          const bodyFlagIndex = args.indexOf('--body');
+          const issueBody = bodyFlagIndex >= 0 ? args[bodyFlagIndex + 1] : undefined;
+          const payload = issueBody ? parseAssetIssueBody(issueBody) : null;
+          if (payload) {
+            for (const asset of payload.assets) {
+              queued.set(asset.assetPath, {
+                issueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+                branch: payload.branch,
+                ...(asset.contentHash !== undefined ? { contentHash: asset.contentHash } : {}),
+              });
+            }
+          }
+          return {
+            code: 0,
+            stdout: 'https://github.com/nalfeo/Crawler/issues/99\n',
+            stderr: '',
+          };
+        }
+        return { code: 0, stdout: '', stderr: '' };
+      },
+    );
+    return {
+      exec,
+      makeTempDir: async () => {
+        const worktree = path.join(root, `checkin-worktree-${tempIndex++}`);
+        mkdirSync(worktree, { recursive: true });
+        return worktree;
+      },
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      listQueuedAssets: async () => new Map(queued),
+      readManifest: async () =>
+        JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+          entries: Record<string, { briefId?: string; sourceRun?: string }>;
+        },
+      env: {},
+      now: () => new Date('2026-07-20T12:00:00.000Z'),
+    };
+  }
+
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), 'crawler-approve-srv-'));
     runsDir = path.join(root, 'runs');
@@ -1395,6 +1469,7 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       headers: { 'content-type': 'application/json' },
       payload: { variantIndex: 1 },
     });
+
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.briefId).toBe(briefId);
@@ -1409,6 +1484,410 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     // Manifest was created on disk too.
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
     expect(manifest.entries[`${briefId}-var-1`].variantIndex).toBe(1);
+  });
+
+  it('accepts and queues a variant in one operation', async () => {
+    await app.close();
+    const queued = new Map<string, QueuedAssetCheckin>();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: makeCheckinDeps(queued),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      state: 'queued',
+      existing: false,
+      briefId,
+      variantIndex: 1,
+      assetPath: `generated/${briefId}-var-1.png`,
+      issueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+      assetCount: 1,
+    });
+  });
+
+  it('reconciles a lost-response retry through the durable queued issue', async () => {
+    await app.close();
+    const queued = new Map<string, QueuedAssetCheckin>();
+    const checkinDeps = makeCheckinDeps(queued);
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+    });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+    const retry = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json()).toMatchObject({
+      state: 'queued',
+      existing: true,
+      issueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+      assetCount: 1,
+    });
+    expect(
+      checkinDeps.exec.mock.calls.filter(
+        ([command, args]) => command === 'gh' && args[0] === 'issue' && args[1] === 'create',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('serializes concurrent accepts so only one tracking issue is filed', async () => {
+    await app.close();
+    const queued = new Map<string, QueuedAssetCheckin>();
+    const checkinDeps = makeCheckinDeps(queued);
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+    });
+
+    const [first, second] = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/runs/${briefId}/${runId}/accept`,
+        payload: { variantIndex: 1 },
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/api/runs/${briefId}/${runId}/accept`,
+        payload: { variantIndex: 1 },
+      }),
+    ]);
+
+    expect([first.json().existing, second.json().existing].sort()).toEqual([false, true]);
+    expect(
+      checkinDeps.exec.mock.calls.filter(
+        ([command, args]) => command === 'gh' && args[0] === 'issue' && args[1] === 'create',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('rejects a request carrying a browser Origin header (CSRF guard), but the trusted no-Origin caller succeeds', async () => {
+    await app.close();
+    const queued = new Map<string, QueuedAssetCheckin>();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: makeCheckinDeps(queued),
+    });
+
+    // An arbitrary LOOPBACK origin (not just a non-loopback one) must still be
+    // denied — binding to 127.0.0.1 does not make the caller trusted.
+    const browserAttempt = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      headers: { origin: 'http://127.0.0.1:9999' },
+      payload: { variantIndex: 1 },
+    });
+    expect(browserAttempt.statusCode).toBe(403);
+    expect(browserAttempt.json()).toMatchObject({ error: 'forbidden-origin' });
+    // Nothing was mutated by the refused request.
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+
+    // The trusted caller (the workflow extension's Node-based fetch) never
+    // sends an Origin header at all and is allowed through.
+    const trusted = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+    expect(trusted.statusCode).toBe(200);
+    expect(trusted.json()).toMatchObject({ state: 'queued', existing: false });
+  });
+
+  it('returns 409 and does NOT mutate when the durable queue has this assetPath with DIFFERENT content', async () => {
+    await app.close();
+    const queued = new Map<string, QueuedAssetCheckin>([
+      [
+        `generated/${briefId}-var-1.png`,
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/50',
+          branch: 'assets/other-content',
+          contentHash: 'f'.repeat(64),
+        },
+      ],
+    ]);
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: makeCheckinDeps(queued),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: 'content-conflict' });
+    // approveVariant must NEVER have run: no PNG, no manifest.
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+    expect(existsSync(manifestPath)).toBe(false);
+  });
+
+  it('fails closed (409) when the queued issue predates content hashes and equality cannot be established', async () => {
+    await app.close();
+    const queued = new Map<string, QueuedAssetCheckin>([
+      [
+        `generated/${briefId}-var-1.png`,
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/51',
+          branch: 'assets/legacy',
+          // No contentHash: a legacy issue filed before the field existed.
+        },
+      ],
+    ]);
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: makeCheckinDeps(queued),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: 'ambiguous-queued-content' });
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+  });
+
+  it('maps a queue-list failure from the PRE-mutation reconciliation to the same structured body as check-in, not a generic 500', async () => {
+    await app.close();
+    const checkinDeps: CheckinRunnerDeps = {
+      exec: vi.fn(async () => ({ code: 0, stdout: '', stderr: '' })),
+      makeTempDir: async () => {
+        const dir = path.join(root, 'checkin-worktree-pre-fail');
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      // Simulates a transient `gh issue list` failure on the PRE-mutation
+      // reconciliation read (before approveVariant ever runs).
+      listQueuedAssets: () =>
+        Promise.reject(new CheckinError('gh-failed', 'gh issue list failed: boom')),
+      env: {},
+    };
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({ error: 'gh-failed' });
+    // The failure happened before any mutation: no PNG, no manifest.
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`))).toBe(false);
+    expect(existsSync(manifestPath)).toBe(false);
+  });
+
+  it('maps a queue-list failure from the POST-nothing-to-checkin retry reconciliation to the same structured body, not a generic 500', async () => {
+    await app.close();
+    let listCalls = 0;
+    const checkinDeps: CheckinRunnerDeps = {
+      exec: vi.fn(async (command: string, args: readonly string[]) => {
+        // No approved art differs from the remote base -> runAssetCheckin's
+        // prepareAssetCheckin throws 'nothing-to-checkin', driving the
+        // accept route's POST-mutation retry-reconciliation path below.
+        if (command === 'git' && args[0] === 'diff') return { code: 0, stdout: '', stderr: '' };
+        return { code: 0, stdout: '', stderr: '' };
+      }),
+      makeTempDir: async () => {
+        const dir = path.join(root, 'checkin-worktree-post-fail');
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      listQueuedAssets: () => {
+        listCalls += 1;
+        // Call 1: the accept route's OWN pre-mutation check (succeeds, not
+        // queued). Call 2: prepareAssetCheckin's internal read while
+        // preparing the (empty) batch (succeeds too). Call 3: the accept
+        // route's OWN post-nothing-to-checkin retry — THIS is the one under
+        // test, and it fails.
+        if (listCalls <= 2) return Promise.resolve(new Map<string, QueuedAssetCheckin>());
+        return Promise.reject(new CheckinError('gh-failed', 'gh issue list failed: boom'));
+      },
+      readManifest: async () =>
+        JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+          entries: Record<string, { briefId?: string; sourceRun?: string }>;
+        },
+      env: {},
+      now: () => new Date('2026-07-20T12:00:00.000Z'),
+    };
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({ error: 'gh-failed' });
+    expect(listCalls).toBe(3);
+  });
+
+  it('derives assetCount for an EXISTING issue from the full parsed batch, not just this asset', async () => {
+    await app.close();
+    // Compute the content hash the SAME way approveVariant does, so the
+    // reconciliation reports a genuine hash match.
+    const contentHash = createHash('sha256').update(Buffer.from('PNG-01')).digest('hex');
+    const queued = new Map<string, QueuedAssetCheckin>([
+      [
+        `generated/${briefId}-var-1.png`,
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/60',
+          branch: 'assets/batch',
+          contentHash,
+        },
+      ],
+      [
+        'generated/other-brief-var-0.png',
+        {
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/60',
+          branch: 'assets/batch',
+          contentHash: 'a'.repeat(64),
+        },
+      ],
+    ]);
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps: makeCheckinDeps(queued),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/accept`,
+      payload: { variantIndex: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      state: 'queued',
+      existing: true,
+      issueUrl: 'https://github.com/nalfeo/Crawler/issues/60',
+      assetCount: 2,
+    });
+  });
+
+  it('serializes /approve with a concurrent /checkin through the SAME mutex (concern #5): a slow check-in step never overlaps an approve write', async () => {
+    await app.close();
+    const queued = new Map<string, QueuedAssetCheckin>();
+    const pngPath = path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`);
+    let existedAtDelayStart: boolean | null = null;
+    let existedAtDelayEnd: boolean | null = null;
+
+    const checkinDeps = makeCheckinDeps(queued, async (command, args) => {
+      if (command === 'git' && args[0] === 'commit') {
+        // If /approve and /checkin were NOT serialized through the same
+        // process-wide lock, approve's (synchronous) PNG write could land
+        // during this async window, since nothing else would be blocking
+        // its handler from running while check-in awaits here.
+        existedAtDelayStart = existsSync(pngPath);
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        existedAtDelayEnd = existsSync(pngPath);
+      }
+    });
+
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      checkinDeps,
+    });
+
+    const [checkinRes, approveRes] = await Promise.all([
+      app.inject({ method: 'POST', url: '/api/checkin', payload: {} }),
+      app.inject({
+        method: 'POST',
+        url: `/api/runs/${briefId}/${runId}/approve`,
+        headers: { 'content-type': 'application/json' },
+        payload: { variantIndex: 1 },
+      }),
+    ]);
+
+    expect(checkinRes.statusCode).toBe(200);
+    expect(approveRes.statusCode).toBe(200);
+    // Whichever route the lock let through first, approve's write must have
+    // been either fully done or not yet started by the time check-in's
+    // git-commit step began — it must never flip mid-delay.
+    expect(existedAtDelayStart).not.toBeNull();
+    expect(existedAtDelayStart).toBe(existedAtDelayEnd);
+    expect(existsSync(pngPath)).toBe(true);
   });
 
   it('approves using the injected store even when runsDir has no local run', async () => {
@@ -1965,6 +2444,228 @@ describe('sidecar POST /api/checkin', () => {
     const res = await app.inject({ method: 'POST', url: '/api/checkin/prepare', payload: {} });
     expect(res.statusCode).toBe(403);
     expect(res.json()).toMatchObject({ error: 'ci-refused' });
+  });
+
+  it('atomic acceptance refuses with 403 before approving when CI is set', async () => {
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: { CI: 'true' },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/runs/iron-sword/run-1/accept',
+      payload: { variantIndex: 1 },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: 'ci-refused' });
+  });
+
+  it('allows only the configured gallery Origin and no-Origin callers to check in', async () => {
+    const exec = vi.fn(async (command: string, args: readonly string[]) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { code: 0, stdout: 'public/assets/generated/foo-var-1.png\n', stderr: '' };
+      }
+      if (command === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+        return { code: 0, stdout: 'https://github.com/nalfeo/Crawler/issues/123\n', stderr: '' };
+      }
+      return { code: 0, stdout: '', stderr: '' };
+    });
+    let tempIndex = 0;
+    const checkinDeps: CheckinRunnerDeps = {
+      exec,
+      makeTempDir: async () => {
+        const dir = path.join(root, `checkin-worktree-origin-${tempIndex++}`);
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      listQueuedAssets: async () => new Map<string, QueuedAssetCheckin>(),
+      env: {},
+    };
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+      checkinDeps,
+      trustedMutationOrigins: ['http://localhost:4102'],
+    });
+
+    const gallery = await app.inject({
+      method: 'POST',
+      url: '/api/checkin',
+      headers: { origin: 'http://localhost:4102' },
+      payload: {},
+    });
+    expect(gallery.statusCode).toBe(200);
+    expect(exec).toHaveBeenCalled();
+    exec.mockClear();
+
+    // A hostile loopback origin on a different port must still be rejected.
+    const hostileLoopback = await app.inject({
+      method: 'POST',
+      url: '/api/checkin',
+      headers: { origin: 'http://127.0.0.1:9999', 'content-type': 'text/plain' },
+      payload: '',
+    });
+    expect(hostileLoopback.statusCode).toBe(403);
+    expect(hostileLoopback.json()).toMatchObject({ error: 'forbidden-origin' });
+
+    // A fully external, non-loopback origin must also be rejected. Both use a
+    // simple text/plain (or empty) body — the CORS "simple request" shape
+    // that never triggers a preflight, so the CORS allowlist above can't be
+    // relied on to stop it.
+    const external = await app.inject({
+      method: 'POST',
+      url: '/api/checkin',
+      headers: { origin: 'https://evil.example', 'content-type': 'text/plain' },
+      payload: '',
+    });
+    expect(external.statusCode).toBe(403);
+    expect(external.json()).toMatchObject({ error: 'forbidden-origin' });
+
+    // Neither refused request ran any git/gh command.
+    expect(exec).not.toHaveBeenCalled();
+
+    // The trusted caller (no Origin header at all, e.g. the sprites:checkin
+    // CLI or the workflow extension's Node-based fetch) is unaffected and
+    // actually reaches the check-in logic.
+    const trusted = await app.inject({ method: 'POST', url: '/api/checkin', payload: {} });
+    expect(trusted.statusCode).toBe(200);
+    expect(exec).toHaveBeenCalled();
+  });
+
+  function makePreviewParityDeps(
+    diffStdout: string,
+    queued: ReadonlyMap<string, QueuedAssetCheckin>,
+    manifestEntries: Record<string, { assetPath: string; contentHash?: string }>,
+  ): CheckinRunnerDeps {
+    let tempIndex = 0;
+    return {
+      exec: vi.fn(async (command: string, args: readonly string[]) => {
+        if (command === 'git' && args[0] === 'diff') {
+          return { code: 0, stdout: diffStdout, stderr: '' };
+        }
+        if (command === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+          return { code: 0, stdout: 'https://github.com/nalfeo/Crawler/issues/77\n', stderr: '' };
+        }
+        return { code: 0, stdout: '', stderr: '' };
+      }),
+      makeTempDir: async () => {
+        const dir = path.join(root, `checkin-prepare-worktree-${tempIndex++}`);
+        mkdirSync(dir, { recursive: true });
+        return dir;
+      },
+      copyArtSurface: async () => undefined,
+      removeDir: async () => undefined,
+      listQueuedAssets: async () => new Map(queued),
+      readManifest: async () => ({ entries: manifestEntries }),
+      env: {},
+      now: () => new Date('2026-07-20T12:00:00.000Z'),
+    };
+  }
+
+  it('preview (/api/checkin/prepare) matches execution (/api/checkin): both exclude an asset already queued with matching content', async () => {
+    const checkinDeps = makePreviewParityDeps(
+      'public/assets/generated/skull-mace-var-2.png\n' +
+        'public/assets/generated/iron-sword-var-1.png\n',
+      new Map([
+        [
+          'generated/skull-mace-var-2.png',
+          {
+            issueUrl: 'https://github.com/nalfeo/Crawler/issues/41',
+            branch: 'assets/queued',
+            contentHash: 'hash-a',
+          },
+        ],
+      ]),
+      {
+        'skull-mace-var-2': { assetPath: 'generated/skull-mace-var-2.png', contentHash: 'hash-a' },
+      },
+    );
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+      checkinDeps,
+    });
+
+    const preview = await app.inject({ method: 'POST', url: '/api/checkin/prepare', payload: {} });
+    expect(preview.statusCode).toBe(200);
+    const previewBody = preview.json() as { assetCount: number; assets: { assetPath: string }[] };
+    expect(previewBody.assetCount).toBe(1);
+    expect(previewBody.assets.map((a) => a.assetPath)).toEqual(['generated/iron-sword-var-1.png']);
+
+    const execute = await app.inject({ method: 'POST', url: '/api/checkin', payload: {} });
+    expect(execute.statusCode).toBe(200);
+    const executeBody = execute.json() as { assets: { assetPath: string }[] };
+    expect(executeBody.assets.map((a) => a.assetPath)).toEqual(['generated/iron-sword-var-1.png']);
+  });
+
+  it('prepare surfaces the SAME typed content-conflict (409) as execution when queued content differs from current content', async () => {
+    const checkinDeps = makePreviewParityDeps(
+      'public/assets/generated/skull-mace-var-2.png\n',
+      new Map([
+        [
+          'generated/skull-mace-var-2.png',
+          {
+            issueUrl: 'https://github.com/nalfeo/Crawler/issues/41',
+            branch: 'assets/queued',
+            contentHash: 'old-hash',
+          },
+        ],
+      ]),
+      {
+        'skull-mace-var-2': {
+          assetPath: 'generated/skull-mace-var-2.png',
+          contentHash: 'new-hash',
+        },
+      },
+    );
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+      checkinDeps,
+    });
+
+    const preview = await app.inject({ method: 'POST', url: '/api/checkin/prepare', payload: {} });
+    expect(preview.statusCode).toBe(409);
+    expect(preview.json()).toMatchObject({ error: 'content-conflict' });
+
+    const execute = await app.inject({ method: 'POST', url: '/api/checkin', payload: {} });
+    expect(execute.statusCode).toBe(409);
+    expect(execute.json()).toMatchObject({ error: 'content-conflict' });
+  });
+
+  it('prepare respects the SAME injected checkinDeps as execution (not always the real default deps)', async () => {
+    // Both routes must consult `deps.checkinDeps` rather than `/prepare`
+    // silently falling back to `createDefaultCheckinDeps` regardless of what
+    // was injected — otherwise a test (or a real caller relying on injected
+    // deps) can never observe prepare's queued-asset-aware behavior.
+    const checkinDeps = makePreviewParityDeps(
+      'public/assets/generated/only-asset-var-1.png\n',
+      new Map(),
+      {},
+    );
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: {},
+      checkinDeps,
+    });
+
+    const preview = await app.inject({ method: 'POST', url: '/api/checkin/prepare', payload: {} });
+    expect(preview.statusCode).toBe(200);
+    expect(checkinDeps.exec).toHaveBeenCalled();
+    const previewBody = preview.json() as { assets: { assetPath: string }[] };
+    expect(previewBody.assets.map((a) => a.assetPath)).toEqual(['generated/only-asset-var-1.png']);
   });
 });
 

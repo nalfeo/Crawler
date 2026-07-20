@@ -109,7 +109,12 @@ export function sliceMapUrl(baseUrl, briefId, runId, sheet) {
   if (typeof sheet === 'string' && sheet.length > 0) {
     return `${base}?sheet=${enc(sheet)}`;
   }
+
   return base;
+}
+
+export function acceptUrl(baseUrl, briefId, runId) {
+  return `${runSummaryUrl(baseUrl, briefId, runId)}/accept`;
 }
 
 // ---------------------------------------------------------------------------
@@ -424,10 +429,37 @@ export function createSidecarClient(options) {
     } catch {
       payload = null;
     }
+
     if (!response.ok) {
       return normalizeSliceMap(payload ?? { error: `http-${response.status}` });
     }
     return normalizeSliceMap(payload);
+  }
+
+  async function acceptVariant(briefId, runId, variantIndex) {
+    const response = await fetchImpl(acceptUrl(baseUrl, briefId, runId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variantIndex }),
+      cache: 'no-store',
+    });
+    let payload = null;
+    try {
+      payload = await readJson(response);
+    } catch {
+      payload = null;
+    }
+    if (!response.ok) {
+      const message =
+        typeof payload?.message === 'string'
+          ? payload.message
+          : `Sprite acceptance failed (${response.status} ${response.statusText})`;
+      const error = new Error(message);
+      error.code = typeof payload?.error === 'string' ? payload.error : `http-${response.status}`;
+      error.status = response.status;
+      throw error;
+    }
+    return payload;
   }
 
   /**
@@ -486,6 +518,7 @@ export function createSidecarClient(options) {
     fetchRunSummary,
     fetchSheets,
     fetchSliceMap,
+    acceptVariant,
     probeHealth,
     urls: {
       health: () => healthUrl(baseUrl),
@@ -496,6 +529,7 @@ export function createSidecarClient(options) {
       processed: (b, r, f) => processedUrl(baseUrl, b, r, f),
       raw: (b, r, f) => rawUrl(baseUrl, b, r, f),
       sliceMap: (b, r, s) => sliceMapUrl(baseUrl, b, r, s),
+      accept: (b, r) => acceptUrl(baseUrl, b, r),
     },
   };
 }

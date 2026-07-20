@@ -12,7 +12,9 @@
  *   - POST /api/runs/:briefId/:runId/postprocess                             — re-run PostProcess on the stored sheet
  *   - POST /api/runs/:briefId/:runId/judge                                   — re-run the VLM judge on stored variants
  *   - POST /api/runs/:briefId/:runId/approve                                 — approve a variant (mutating)
- *   - POST /api/checkin                                                       — publish approved art (branch + issue, no PR)
+ *   - POST /api/runs/:briefId/:runId/accept                                  — atomic approve + check-in (mutating; no browser Origin allowed)
+ *   - POST /api/checkin                                                       — publish approved art (branch + issue, no PR; mutating; exact trusted browser origins only)
+ *   - POST /api/checkin/prepare                                               — preview what /api/checkin would publish (read-only; browser-reachable)
  *
  * Security contract (spec §F8):
  *   - The HTTP server MUST bind to 127.0.0.1 only. Binding is the CLI's job
@@ -24,6 +26,21 @@
  *   - The approve route MUST refuse when `process.env.CI` is set
  *     (Constitutional §3 — no LLM-as-judge / no checked-in mutation from
  *     CI gates). Same pattern as `judge.ts`.
+ *   - The atomic accept route AND POST /api/checkin MUST additionally refuse
+ *     any request that carries an `Origin` header (ADR 0066): loopback
+ *     binding alone does not stop a browser-issued request — a `text/plain`
+ *     (or content-type-less) POST body needs no CORS preflight at all, so any
+ *     page could otherwise trigger a real mutation just by having the user's
+ *     browser visit it. Both routes mutate remote state (accept composes
+ *     approve + check-in; checkin pushes a branch and files a GitHub issue)
+ *     in one call. Their only trusted callers are Node-based `fetch` (the
+ *     workflow canvas extension, or the `sprites:checkin` CLI's own sidecar
+ *     calls), which never send `Origin`. /api/checkin/prepare is exempt — it
+ *     never mutates anything, so it stays reachable from the browser gallery
+ *     UI via the loopback CORS allowlist below.
+ *   - /approve, /checkin, and /accept all run their mutating work through the
+ *     same process-wide `withCheckinMutationLock` so concurrent requests
+ *     never race the shared art surface or the durable check-in queue.
  *
  * No business logic lives here. The sidecar is a thin HTTP shell over file
  * IO — every meaningful piece is implemented (and unit-tested) in the
@@ -43,10 +60,23 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import { parse as parseYaml } from 'yaml';
-import { approveVariant, ApproveError, type ManifestEntry } from '../approve.js';
-import { runAssetCheckin, CheckinError } from '../checkin.js';
+import {
+  approveVariant,
+  ApproveError,
+  resolveVariantIdentity,
+  type ManifestEntry,
+  type VariantIdentity,
+} from '../approve.js';
+import {
+  runAssetCheckin,
+  prepareAssetCheckin,
+  reconcileQueuedContent,
+  CheckinError,
+  type CheckinRunnerDeps,
+  type QueuedAssetCheckin,
+} from '../checkin.js';
 import { createDefaultCheckinDeps } from '../checkin-runtime.js';
 import { SPRITE_TYPES, type Brief } from '../brief-schema.js';
 import { generateOne } from '../generate-one.js';
@@ -166,6 +196,19 @@ export interface SidecarDeps {
    * enqueues issue-originated queue jobs with idempotent claims.
    */
   readonly issueIngester?: IssueIngesterController;
+  /**
+   * Check-in runner deps for `/api/checkin` and the atomic
+   * `/api/runs/:briefId/:runId/accept` route. Defaults to
+   * `createDefaultCheckinDeps(repoRoot, env)`. Inject a fake in tests to
+   * assert the exact git/gh sequence without a real repo or network.
+   */
+  readonly checkinDeps?: CheckinRunnerDeps;
+  /**
+   * Exact browser origins allowed to invoke `/api/checkin`. Production passes
+   * only this worktree's deterministic lab/devtools origins. Omit to reject
+   * every browser-originated request; server-side callers send no Origin.
+   */
+  readonly trustedMutationOrigins?: readonly string[];
 }
 
 export interface RunListEntry {
@@ -320,6 +363,153 @@ const ALLOWED_EXTENSIONS: Readonly<Record<string, string>> = {
   '.png': 'image/png',
   '.json': 'application/json; charset=utf-8',
 };
+
+/**
+ * Process-wide serialization for every route that mutates the shared art
+ * surface (`public/assets/generated/**`, `sprite-catalog.json`) or the
+ * durable check-in queue: `/approve`, `/checkin`, and the atomic `/accept`
+ * route all funnel their mutating work through this single chain so two
+ * concurrent requests — from any Fastify instance in this process — never
+ * race the same worktree, manifest write, or `gh issue create` call.
+ *
+ * A promise chain, not a counting semaphore: each link runs only after the
+ * previous one SETTLES (fulfilled or rejected), so one call's failure never
+ * poisons the queue for the next caller. Callers acquire the lock exactly
+ * once at their own route-handler boundary — nothing here calls another
+ * locked route internally — so there is no re-entrant nesting and thus no
+ * deadlock risk.
+ */
+let checkinMutationChain: Promise<void> = Promise.resolve();
+
+function withCheckinMutationLock<T>(fn: () => Promise<T>): Promise<T> {
+  const result = checkinMutationChain.then(fn, fn);
+  checkinMutationChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+/** Map an `approveVariant`/`resolveVariantIdentity` failure to an HTTP body, setting `reply`'s status code. */
+function mapApproveError(reply: FastifyReply, err: unknown): { error: string; message: string } {
+  if (err instanceof ApproveError) {
+    const status =
+      err.kind === 'variant-not-found' ||
+      err.kind === 'processed-missing' ||
+      err.kind === 'run-not-found'
+        ? 404
+        : err.kind === 'already-approved'
+          ? 409
+          : 500;
+    reply.code(status);
+    return { error: err.kind, message: err.message };
+  }
+  reply.code(500);
+  return { error: 'approve-failed', message: err instanceof Error ? err.message : String(err) };
+}
+
+/**
+ * Map a `CheckinError` (or unknown thrown value) from ANY check-in-shaped
+ * caller — `/api/checkin`, `/api/checkin/prepare`, the atomic `/accept`
+ * route's own check-in step, and its pre-/post-mutation queue-list
+ * reconciliation reads — to the SAME structured `{error, message}` body,
+ * setting `reply`'s status code. One shared mapper keeps the
+ * ci-refused/nothing-to-checkin/content-conflict/ambiguous/git-or-gh-failed
+ * status table from drifting between call sites; without it, a `CheckinError`
+ * thrown somewhere that forgot to catch it falls through to Fastify's
+ * generic (unstructured) 500 instead of this contract.
+ */
+function mapCheckinError(
+  reply: FastifyReply,
+  err: unknown,
+  fallbackError = 'checkin-failed',
+): { error: string; message: string } {
+  if (err instanceof CheckinError) {
+    const status =
+      err.kind === 'ci-refused'
+        ? 403
+        : err.kind === 'nothing-to-checkin' ||
+            err.kind === 'content-conflict' ||
+            err.kind === 'ambiguous-queued-content'
+          ? 409
+          : 502; // git-failed / gh-failed
+    reply.code(status);
+    return { error: err.kind, message: err.message };
+  }
+  reply.code(500);
+  return { error: fallbackError, message: err instanceof Error ? err.message : String(err) };
+}
+
+/** Number of durably-queued assets that share `issueUrl` — the batch size of that check-in. */
+function countQueuedForIssue(
+  queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>,
+  issueUrl: string,
+): number {
+  let count = 0;
+  for (const entry of queuedAssets.values()) {
+    if (entry.issueUrl === issueUrl) count += 1;
+  }
+  return count;
+}
+
+/** Successful atomic-accept response shape (either freshly queued or reconciled against an existing queue entry). */
+interface AcceptedResponse {
+  readonly state: 'queued';
+  readonly existing: boolean;
+  readonly briefId: string;
+  readonly variantIndex: number;
+  readonly assetPath: string;
+  readonly issueUrl: string;
+  readonly assetCount: number;
+}
+
+/**
+ * Reconcile a variant's identity against the durable check-in queue BEFORE
+ * any mutation (ADR 0066 / concern #4): same content hash as the queued entry
+ * -> return the existing queued state; different hash -> 409 conflict; queued
+ * but the entry predates content hashes -> fail closed (409, ambiguous) since
+ * equality can't be established. Returns `undefined` when `identity.assetPath`
+ * isn't queued at all, so the caller should proceed with approve + check-in.
+ */
+function reconcileQueuedAsset(
+  reply: FastifyReply,
+  queuedAssets: ReadonlyMap<string, QueuedAssetCheckin>,
+  identity: VariantIdentity,
+  variantIndex: number,
+): AcceptedResponse | { error: string; message: string } | undefined {
+  const queued = queuedAssets.get(identity.assetPath);
+  const reconciliation = reconcileQueuedContent(queued, identity.contentHash);
+  if (reconciliation === 'new') return undefined;
+
+  if (reconciliation === 'ambiguous') {
+    reply.code(409);
+    return {
+      error: 'ambiguous-queued-content',
+      message:
+        `${identity.assetPath} is already queued (${queued!.issueUrl}) by an issue filed ` +
+        'before content hashes were recorded, so it cannot be verified against the current ' +
+        'content. Resolve the open issue manually before re-accepting this variant.',
+    };
+  }
+  if (reconciliation === 'content-conflict') {
+    reply.code(409);
+    return {
+      error: 'content-conflict',
+      message:
+        `${identity.assetPath} is already queued (${queued!.issueUrl}) with different content. ` +
+        'Approve a different variant, or resolve the existing issue first.',
+    };
+  }
+  return {
+    state: 'queued',
+    existing: true,
+    briefId: identity.briefId,
+    variantIndex,
+    assetPath: identity.assetPath,
+    issueUrl: queued!.issueUrl,
+    assetCount: countQueuedForIssue(queuedAssets, queued!.issueUrl),
+  };
+}
 
 /**
  * Build the Fastify instance. Does NOT call `.listen()` — that's the CLI's
@@ -1379,57 +1569,226 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const catalogPath =
       deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
-    let hydrated: HydratedRunDir | null = null;
-    let entry: ManifestEntry;
-    try {
-      hydrated =
-        store.backend === 'local'
-          ? null
-          : await hydrateRunDirForApproveFromStore(store, briefId, runId, variantIndex);
-      const runDir = hydrated?.runDir ?? safeJoin(deps.runsDir, [briefId, runId]);
-      if (runDir === null) {
-        reply.code(403);
-        return { error: 'forbidden-path' };
-      }
-      entry = approveVariant({
-        runDir,
-        variantIndex,
-        manifestPath,
-        catalogPath,
-        publicAssetsDir,
-        repoRoot: deps.repoRoot,
-      });
-    } catch (err) {
-      if (err instanceof ApproveError) {
-        // variant-not-found / processed-missing -> 404 (resource missing).
-        // already-approved                      -> 409 (conflict; exact dup).
-        // summary-invalid / manifest-invalid    -> 500 (server-side data corruption).
-        // run-not-found                          -> 404.
-        let status: number;
-        if (
-          err.kind === 'variant-not-found' ||
-          err.kind === 'processed-missing' ||
-          err.kind === 'run-not-found'
-        ) {
-          status = 404;
-        } else if (err.kind === 'already-approved') {
-          status = 409;
-        } else {
-          status = 500;
+    // Serialized with /checkin and /accept (concern #5, ADR 0066): approve
+    // mutates the same manifest/catalog/PNG surface a concurrent check-in
+    // worktree operation reads, so both must run under the same process-wide
+    // lock. Acquired here, at the route boundary, not nested inside another
+    // locked call — avoids deadlock.
+    return withCheckinMutationLock(async () => {
+      let hydrated: HydratedRunDir | null = null;
+      let entry: ManifestEntry;
+      try {
+        hydrated =
+          store.backend === 'local'
+            ? null
+            : await hydrateRunDirForApproveFromStore(store, briefId, runId, variantIndex);
+        const runDir = hydrated?.runDir ?? safeJoin(deps.runsDir, [briefId, runId]);
+        if (runDir === null) {
+          reply.code(403);
+          return { error: 'forbidden-path' };
         }
-        reply.code(status);
-        return { error: err.kind, message: err.message };
+        entry = approveVariant({
+          runDir,
+          variantIndex,
+          manifestPath,
+          catalogPath,
+          publicAssetsDir,
+          repoRoot: deps.repoRoot,
+        });
+      } catch (err) {
+        if (err instanceof ApproveError) {
+          // variant-not-found / processed-missing -> 404 (resource missing).
+          // already-approved                      -> 409 (conflict; exact dup).
+          // summary-invalid / manifest-invalid    -> 500 (server-side data corruption).
+          // run-not-found                          -> 404.
+          let status: number;
+          if (
+            err.kind === 'variant-not-found' ||
+            err.kind === 'processed-missing' ||
+            err.kind === 'run-not-found'
+          ) {
+            status = 404;
+          } else if (err.kind === 'already-approved') {
+            status = 409;
+          } else {
+            status = 500;
+          }
+          reply.code(status);
+          return { error: err.kind, message: err.message };
+        }
+        reply.code(500);
+        return {
+          error: 'approve-failed',
+          message: err instanceof Error ? err.message : String(err),
+        };
+      } finally {
+        hydrated?.cleanup();
       }
-      reply.code(500);
+
+      return entry;
+    });
+  });
+
+  app.post<{
+    Params: { briefId: string; runId: string };
+    Body: { variantIndex?: unknown };
+  }>('/api/runs/:briefId/:runId/accept', async (req, reply) => {
+    // CSRF guard (concern #1, ADR 0066 CTX-005): this atomic operation
+    // approves AND files a GitHub issue in one shot, so binding to 127.0.0.1
+    // alone is not enough — modern browsers attach an Origin header to every
+    // non-GET request (same-origin or cross-origin), so ANY browser-issued
+    // request to this route is distinguishable from the trusted caller, the
+    // workflow canvas extension's Node-based `fetch` (which never sends
+    // Origin). Refuse outright rather than trying to allowlist origins here.
+    // /approve and /checkin (used by browser-based gallery UIs) are untouched.
+    const origin = req.headers.origin;
+    if (typeof origin === 'string') {
+      reply.code(403);
       return {
-        error: 'approve-failed',
-        message: err instanceof Error ? err.message : String(err),
+        error: 'forbidden-origin',
+        message: 'Direct browser requests are not allowed on this route.',
       };
-    } finally {
-      hydrated?.cleanup();
     }
 
-    return entry;
+    // Constitutional §3: same CI refusal as /approve and /checkin, checked
+    // before any approval work.
+    const env = deps.env ?? process.env;
+    if (env.CI !== undefined) {
+      reply.code(403);
+      return {
+        error: 'ci-refused',
+        message:
+          'Per Constitutional §3, the sprite-pipeline accept endpoint is local-only. ' +
+          'It approves checked-in assets and files a GitHub issue. ' +
+          'Run the gallery sidecar locally (npm run sprites:gallery) to accept.',
+      };
+    }
+
+    const { briefId, runId } = req.params;
+    if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
+      reply.code(403);
+      return { error: 'forbidden-path' };
+    }
+
+    const body = (req.body ?? {}) as { variantIndex?: unknown };
+    const variantIndex = body.variantIndex;
+    if (typeof variantIndex !== 'number' || !Number.isInteger(variantIndex) || variantIndex < 0) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'briefId, runId, and a non-negative integer variantIndex are required.',
+      };
+    }
+
+    const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
+    const manifestPath =
+      deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+    const catalogPath =
+      deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
+    const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
+    const listQueuedAssets =
+      checkinDeps.listQueuedAssets ??
+      (() => Promise.resolve(new Map<string, QueuedAssetCheckin>()));
+
+    // Serialized with /approve and /checkin (concern #5) — see
+    // withCheckinMutationLock's docstring for why this can't deadlock.
+    return withCheckinMutationLock(async () => {
+      let hydrated: HydratedRunDir | null = null;
+      try {
+        hydrated =
+          store.backend === 'local'
+            ? null
+            : await hydrateRunDirForApproveFromStore(store, briefId, runId, variantIndex);
+        const runDir = hydrated?.runDir ?? safeJoin(deps.runsDir, [briefId, runId]);
+        if (runDir === null) {
+          reply.code(403);
+          return { error: 'forbidden-path' };
+        }
+
+        let identity: VariantIdentity;
+        try {
+          identity = resolveVariantIdentity(runDir, variantIndex);
+        } catch (err) {
+          return mapApproveError(reply, err);
+        }
+
+        // Reconcile BEFORE mutating (concern #4): an already-queued assetPath
+        // short-circuits here — same content hash reports the existing queued
+        // state, a different hash (or an un-hashed legacy entry) refuses with
+        // 409 WITHOUT ever calling approveVariant/runAssetCheckin below. The
+        // queue-list read itself can fail (e.g. `gh issue list` erroring) —
+        // that must surface the SAME structured mapping as every other
+        // check-in failure, not an uncaught-rejection generic 500.
+        let queuedBefore: ReadonlyMap<string, QueuedAssetCheckin>;
+        try {
+          queuedBefore = await listQueuedAssets();
+        } catch (err) {
+          return mapCheckinError(reply, err);
+        }
+        const reconciledBefore = reconcileQueuedAsset(reply, queuedBefore, identity, variantIndex);
+        if (reconciledBefore !== undefined) {
+          return reconciledBefore;
+        }
+
+        try {
+          approveVariant({
+            runDir,
+            variantIndex,
+            manifestPath,
+            catalogPath,
+            publicAssetsDir,
+            repoRoot: deps.repoRoot,
+          });
+        } catch (err) {
+          // already-approved is a safe no-op here: approveVariant throws
+          // BEFORE writing anything when the identical content is already
+          // approved, so it's fine to fall through to check-in using the
+          // identity resolved above. Any other kind is a genuine failure.
+          if (!(err instanceof ApproveError) || err.kind !== 'already-approved') {
+            return mapApproveError(reply, err);
+          }
+        }
+
+        try {
+          const result = await runAssetCheckin(deps.repoRoot, checkinDeps, {});
+          return {
+            state: 'queued' as const,
+            existing: false,
+            briefId: identity.briefId,
+            variantIndex,
+            assetPath: identity.assetPath,
+            issueUrl: result.issueUrl,
+            assetCount: result.plan.assets.length,
+          } satisfies AcceptedResponse;
+        } catch (err) {
+          if (err instanceof CheckinError && err.kind === 'nothing-to-checkin') {
+            // Race: another request/process queued this exact asset between
+            // our pre-mutation check and now. Reconcile once more before
+            // reporting failure — and, same as the pre-mutation read above, a
+            // queue-list failure here must map to the SAME structured body
+            // instead of an uncaught-rejection generic 500.
+            let queuedAfter: ReadonlyMap<string, QueuedAssetCheckin>;
+            try {
+              queuedAfter = await listQueuedAssets();
+            } catch (listErr) {
+              return mapCheckinError(reply, listErr);
+            }
+            const reconciledAfter = reconcileQueuedAsset(
+              reply,
+              queuedAfter,
+              identity,
+              variantIndex,
+            );
+            if (reconciledAfter !== undefined) {
+              return reconciledAfter;
+            }
+          }
+          return mapCheckinError(reply, err);
+        }
+      } finally {
+        hydrated?.cleanup();
+      }
+    });
   });
 
   app.post<{ Body: { base?: unknown; remote?: unknown } }>(
@@ -1437,6 +1796,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     async (req, reply) => {
       // Fast pre-flight check: detect what will be checked in WITHOUT pushing/filing issue.
       // This provides immediate feedback and allows the UI to show progress for the slow parts.
+      // Calls the SAME `prepareAssetCheckin`, with the SAME injected deps/options, that
+      // `/api/checkin` uses to actually execute — so preview and execution can never diverge
+      // (manifest enrichment, queued-content reconciliation, and error mapping included).
       const body = (req.body ?? {}) as { base?: unknown; remote?: unknown };
       const options: { baseBranch?: string; remote?: string } = {};
       if (typeof body.base === 'string' && body.base.trim() !== '') options.baseBranch = body.base;
@@ -1445,53 +1807,21 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
       try {
         const env = deps.env ?? process.env;
-        if (env.CI !== undefined) {
-          reply.code(403);
-          return { error: 'ci-refused', message: 'Check-in is disabled in CI (local-only).' };
-        }
-
-        const remote = options.remote ?? 'origin';
-        const baseBranch = options.baseBranch ?? 'main';
-
-        // Import and use detectApprovedAssets to see what would be checked in
-        const { detectApprovedAssets, planAssetCheckin } = await import('../checkin.js');
-        const defaultDeps = createDefaultCheckinDeps(deps.repoRoot, env);
-
-        // Detect approved assets without full operations (skip manifest enrichment in prepare for speed)
-        const assets = await detectApprovedAssets(
-          defaultDeps.exec,
-          deps.repoRoot,
-          remote,
-          baseBranch,
-          {},
-        );
-
-        if (assets.length === 0) {
-          reply.code(409);
-          return {
-            error: 'nothing-to-checkin',
-            message: `No approved art differs from ${remote}/${baseBranch}.`,
-          };
-        }
-
-        const plan = planAssetCheckin({ assets, now: new Date(), baseBranch });
-        const slug = plan.branch.startsWith('assets/')
-          ? plan.branch.slice('assets/'.length)
-          : plan.branch;
+        const checkinDeps = deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env);
+        const prepared = await prepareAssetCheckin(deps.repoRoot, checkinDeps, options);
+        const slug = prepared.plan.branch.startsWith('assets/')
+          ? prepared.plan.branch.slice('assets/'.length)
+          : prepared.plan.branch;
 
         return {
-          assetCount: assets.length,
-          branch: plan.branch,
+          assetCount: prepared.plan.assets.length,
+          branch: prepared.plan.branch,
           slug,
-          assets: plan.assets,
+          assets: prepared.plan.assets,
           estimatedDuration: 'Pushing: ~5s · Filing issue: ~3s',
         };
       } catch (err) {
-        reply.code(500);
-        return {
-          error: 'prepare-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
+        return mapCheckinError(reply, err, 'prepare-failed');
       }
     },
   );
@@ -1499,6 +1829,24 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   app.post<{ Body: { base?: unknown; remote?: unknown; slug?: unknown } }>(
     '/api/checkin',
     async (req, reply) => {
+      // CSRF guard (ADR 0066): this route
+      // MUTATES (pushes a branch, files a GitHub issue), and binding to
+      // 127.0.0.1 alone is not enough to protect it — a request with a
+      // `text/plain` (or content-type-less) body needs no CORS preflight at
+      // all, so ANY page, even a non-loopback one, could otherwise trigger a
+      // real check-in merely by having the user's browser visit it while the
+      // sidecar happens to be running locally. Browser calls are allowed only
+      // from the exact per-worktree gallery origins supplied by the CLI.
+      // Server-side callers remain trusted because they send no Origin.
+      const origin = req.headers.origin;
+      if (typeof origin === 'string' && !deps.trustedMutationOrigins?.includes(origin)) {
+        reply.code(403);
+        return {
+          error: 'forbidden-origin',
+          message: 'This browser origin is not allowed to publish sprite art.',
+        };
+      }
+
       // Check-in publishes locally-approved art as a remote branch + tracking
       // issue (NO PR). Like approve, it is local-only — `runAssetCheckin` refuses
       // when `env.CI` is set; we map that to 403 here for the e2e/gallery caller.
@@ -1509,34 +1857,27 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         options.remote = body.remote;
       if (typeof body.slug === 'string' && body.slug.trim() !== '') options.slug = body.slug;
 
-      try {
-        const env = deps.env ?? process.env;
-        const result = await runAssetCheckin(
-          deps.repoRoot,
-          createDefaultCheckinDeps(deps.repoRoot, env),
-          options,
-        );
-        return {
-          branch: result.branch,
-          issueUrl: result.issueUrl,
-          issueTitle: result.plan.issueTitle,
-          issueBody: result.plan.issueBody,
-          assets: result.plan.assets,
-        };
-      } catch (err) {
-        if (err instanceof CheckinError) {
-          // ci-refused -> 403, nothing-to-checkin -> 409, git/gh failures -> 502.
-          const status =
-            err.kind === 'ci-refused' ? 403 : err.kind === 'nothing-to-checkin' ? 409 : 502;
-          reply.code(status);
-          return { error: err.kind, message: err.message };
+      // Serialized with /approve and /accept (concern #5, ADR 0066) — see
+      // withCheckinMutationLock's docstring for why (and why this can't deadlock).
+      return withCheckinMutationLock(async () => {
+        try {
+          const env = deps.env ?? process.env;
+          const result = await runAssetCheckin(
+            deps.repoRoot,
+            deps.checkinDeps ?? createDefaultCheckinDeps(deps.repoRoot, env),
+            options,
+          );
+          return {
+            branch: result.branch,
+            issueUrl: result.issueUrl,
+            issueTitle: result.plan.issueTitle,
+            issueBody: result.plan.issueBody,
+            assets: result.plan.assets,
+          };
+        } catch (err) {
+          return mapCheckinError(reply, err);
         }
-        reply.code(500);
-        return {
-          error: 'checkin-failed',
-          message: err instanceof Error ? err.message : String(err),
-        };
-      }
+      });
     },
   );
 

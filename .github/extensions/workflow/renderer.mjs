@@ -13,12 +13,9 @@
  *     browser (server resolves ONLY allowlisted paths — no traversal).
  *   - `GET /img/sheet|processed?briefId=&runId=&file=` — binary image proxies.
  *
- * This is a READ-ONLY parity view of the READ surface of the monolith's
- * `sprite-generation-workflow` page: it browses the asset backlog, plans/briefs,
- * and generated runs. The durable queue + asset-request manifest (their status
- * reads AND controls) plus the write half of the workflow (synthesize/generate/
- * judge/approve/checkin/metadata, worker/issues start-stop, the interactive queue
- * state machine) are the documented follow-up slice (B2).
+ * The canvas browses the asset backlog, plans/briefs, and generated runs. Its
+ * focused write action accepts one variant through the sidecar's atomic
+ * approve-and-check-in operation.
  *
  * The client script is intentionally template-literal-free (plain string concat +
  * createElement) so this whole file stays one clean outer template literal with no
@@ -86,6 +83,18 @@ const STYLES = `
     background: #1e293b; border-radius: 6px; }
   .status-pill { align-self: flex-start; font-size: 10px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.04em; }
+  .accept-button { width: 100%; margin-top: 6px; border-color: rgba(56,189,248,0.65);
+    background: rgba(14,116,144,0.28); color: #e0f2fe; font-weight: 700; }
+  .accept-button:hover:not(:disabled) { background: rgba(14,116,144,0.48); }
+  .accept-button:disabled { opacity: 0.65; cursor: default; }
+  .accept-state { margin-top: 6px; padding: 7px 8px; border-radius: 6px; font-size: 11px; }
+  .accept-state.queued { color: #bbf7d0; background: rgba(22,101,52,0.28);
+    border: 1px solid rgba(134,239,172,0.35); }
+  .accept-state.error { color: #fecaca; background: rgba(127,29,29,0.34);
+    border: 1px solid rgba(252,165,165,0.35); }
+  .accept-state.warn { color: #fde68a; background: rgba(120,53,15,0.4);
+    border: 1px solid rgba(253,230,138,0.4); }
+  .accept-state a { color: inherit; font-weight: 700; }
   .axis { display: flex; justify-content: space-between; font-size: 11px; }
   .axis .lbl { font-weight: 600; }
   .rationale { font-size: 10px; color: #94a3b8; line-height: 1.35; }
@@ -170,6 +179,7 @@ const CLIENT_SCRIPT = String.raw`
     { id: 'runs', label: 'Runs' }
   ];
   var app = document.getElementById('app');
+  var mutationToken = __WORKFLOW_MUTATION_TOKEN__;
   var activeTab = 'backlog';
   var lastState = null;
   var openedFile = null; // { relPath, kind, content, error }
@@ -226,7 +236,7 @@ const CLIENT_SCRIPT = String.raw`
     return h('div', { class: 'between' }, [
       h('div', null, [
         h('h1', { text: 'Sprite Generation Workflow' }),
-        h('div', { class: 'muted', text: 'Read-only parity view: asset backlog, plans/briefs, generated runs.' })
+        h('div', { class: 'muted', text: 'Inspect generated runs and accept a variant into the durable asset queue.' })
       ]),
       h('div', { class: 'row' }, [badge, h('span', { class: 'muted', text: meta.join('  ·  ') })])
     ]);
@@ -566,6 +576,7 @@ const CLIENT_SCRIPT = String.raw`
         : 'No per-sensor detail recorded for this run.' }));
       return;
     }
+
     for (var i = 0; i < c.sensors.length; i++) {
       var s = c.sensors[i];
       card.appendChild(h('div', { class: 'sensor' }, [
@@ -577,6 +588,96 @@ const CLIENT_SCRIPT = String.raw`
           text: (s.reason || 'failed') + (s.pixelCount != null ? ' (' + s.pixelCount + 'px)' : '') }));
       }
     }
+  }
+
+  function acceptanceKey(briefId, runId, variantIndex) {
+    return briefId + '/' + runId + '/' + variantIndex;
+  }
+
+  function acceptVariant(briefId, runId, variantIndex) {
+    if (!lastState) return;
+    var key = acceptanceKey(briefId, runId, variantIndex);
+    lastState.acceptance = lastState.acceptance || {};
+    lastState.acceptance[key] = { state: 'accepting' };
+    render(lastState);
+    setBusy(true, 'Approving and queueing variant…');
+    fetch('/api/accept', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-workflow-mutation-token': mutationToken
+      },
+      body: JSON.stringify({ briefId: briefId, runId: runId, variantIndex: variantIndex })
+    }).then(function (response) {
+      return response.text().then(function (text) {
+        var payload = null;
+        try { payload = text ? JSON.parse(text) : null; } catch (e) { payload = null; }
+        return { ok: response.ok, status: response.status, payload: payload };
+      });
+    }).then(function (result) {
+      if (!result.ok) {
+        var message = result.payload && result.payload.message
+          ? result.payload.message
+          : 'Acceptance failed with HTTP ' + result.status + '.';
+        throw new Error(message);
+      }
+      lastState.acceptance[key] = result.payload;
+      render(lastState);
+    }).catch(function (error) {
+      lastState.acceptance[key] = {
+        state: 'error',
+        message: error && error.message ? error.message : String(error)
+      };
+      render(lastState);
+    }).finally(function () {
+      setBusy(false);
+    });
+  }
+
+  function renderAcceptance(card, state, sel, candidate) {
+    var key = acceptanceKey(sel.briefId, sel.runId, candidate.index);
+    var acceptance = state.acceptance && state.acceptance[key];
+    if (acceptance && acceptance.state === 'queued') {
+      var queued = h('div', { class: 'accept-state queued' }, [
+        document.createTextNode(acceptance.existing ? 'Already queued · ' : 'Queued · '),
+        h('a', {
+          href: acceptance.issueUrl,
+          target: '_blank',
+          rel: 'noreferrer',
+          text: 'Open asset issue'
+        })
+      ]);
+      card.appendChild(queued);
+      // ADR 0066 RSK-003: check-in is intentionally batched — one acceptance
+      // can publish OTHER approved, unqueued art too. Surface the batch size
+      // so operators aren't surprised by what a single click just shipped.
+      if (typeof acceptance.assetCount === 'number' && acceptance.assetCount > 1) {
+        var extra = acceptance.assetCount - 1;
+        var extraNoun = extra === 1 ? 'asset' : 'assets';
+        var warnText = acceptance.existing
+          ? ('Heads up: this open issue batches ' + acceptance.assetCount +
+              ' approved assets (this variant plus ' + extra + ' other ' + extraNoun + ').')
+          : ('Heads up: accepting this variant also published ' + extra +
+              ' other approved, unqueued ' + extraNoun + ' in the same batch.');
+        card.appendChild(h('div', { class: 'accept-state warn', text: warnText }));
+      }
+      return;
+    }
+    if (acceptance && acceptance.state === 'error') {
+      card.appendChild(h('div', {
+        class: 'accept-state error',
+        text: acceptance.message || 'Acceptance failed.'
+      }));
+    }
+    var accepting = acceptance && acceptance.state === 'accepting';
+    var button = h('button', {
+      type: 'button',
+      class: 'accept-button',
+      text: accepting ? 'Accepting & queueing…' : (acceptance ? 'Retry accept & queue' : 'Accept & queue'),
+      onclick: function () { acceptVariant(sel.briefId, sel.runId, candidate.index); }
+    });
+    if (accepting) button.disabled = true;
+    card.appendChild(button);
   }
 
   function renderCandidates(state) {
@@ -606,6 +707,7 @@ const CLIENT_SCRIPT = String.raw`
       card.appendChild(thumb);
       renderJudge(card, c);
       renderSensors(card, c);
+      renderAcceptance(card, state, sel, c);
       grid.appendChild(card);
     }
     wrap.appendChild(grid);
@@ -739,9 +841,14 @@ const CLIENT_SCRIPT = String.raw`
 /**
  * Full HTML document for one canvas instance.
  * @param {string} instanceId
+ * @param {string} mutationToken
  * @returns {string}
  */
-export function renderHtml(instanceId) {
+export function renderHtml(instanceId, mutationToken = '') {
+  const clientScript = CLIENT_SCRIPT.replace(
+    '__WORKFLOW_MUTATION_TOKEN__',
+    JSON.stringify(mutationToken),
+  );
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8" />',
@@ -756,7 +863,7 @@ export function renderHtml(instanceId) {
     '<div id="app" data-instance="' + escapeHtml(instanceId) + '">',
     '<p class="muted">Loading sprite generation workflow…</p>',
     '</div>',
-    '<script>' + CLIENT_SCRIPT + '</script>',
+    '<script>' + clientScript + '</script>',
     '</body></html>',
   ].join('');
 }

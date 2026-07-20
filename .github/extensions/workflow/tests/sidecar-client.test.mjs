@@ -18,6 +18,7 @@ import {
   runSummaryUrl,
   sheetUrl,
   sliceMapUrl,
+  acceptUrl,
   createSidecarClient,
 } from '../lib/sidecar-client.mjs';
 
@@ -54,6 +55,7 @@ test('run/sheet/slice-map url builders encode their path + query segments', () =
   );
   // No sheet → bare slice-map endpoint (no query).
   assert.equal(sliceMapUrl(BASE, 'b', 'r'), `${BASE}/api/runs/b/r/slice-map`);
+  assert.equal(acceptUrl(BASE, 'a b', 'r/1'), `${BASE}/api/runs/a%20b/r%2F1/accept`);
 });
 
 test('listRuns returns the runs array from the sidecar payload with no-store caching', async () => {
@@ -87,4 +89,45 @@ test('listRuns throws on a non-OK response', async () => {
     fetchImpl: async () => jsonResponse({}, false, 503),
   });
   await assert.rejects(() => client.listRuns(), /Failed to load sidecar runs/);
+});
+
+test('acceptVariant posts the selected index and returns durable queue state', async () => {
+  const calls = [];
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return jsonResponse({
+        state: 'queued',
+        existing: false,
+        issueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+      });
+    },
+  });
+
+  const result = await client.acceptVariant('iron sword', 'run/1', 3);
+
+  assert.equal(calls[0].url, `${BASE}/api/runs/iron%20sword/run%2F1/accept`);
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.headers['Content-Type'], 'application/json');
+  assert.deepEqual(JSON.parse(calls[0].options.body), { variantIndex: 3 });
+  assert.equal(result.state, 'queued');
+});
+
+test('acceptVariant surfaces the sidecar error code and actionable message', async () => {
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    fetchImpl: async () =>
+      jsonResponse(
+        { error: 'gh-failed', message: 'GitHub authentication expired; run gh auth login.' },
+        false,
+        502,
+      ),
+  });
+
+  await assert.rejects(
+    () => client.acceptVariant('iron-sword', 'run-1', 1),
+    (error) =>
+      error.code === 'gh-failed' && error.status === 502 && /gh auth login/.test(error.message),
+  );
 });

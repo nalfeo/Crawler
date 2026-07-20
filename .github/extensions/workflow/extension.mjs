@@ -1,5 +1,5 @@
 /**
- * workflow — a READ-ONLY canvas view of the Crawler sprite-generation workflow.
+ * workflow — inspect sprite runs and accept selected variants into the asset queue.
  *
  * Functional parity with the READ surface of the `?page=sprite-generation-workflow`
  * DevTool in the monolith (`DEVTOOLS_PAGE_SPRITE_WORKFLOW` in `src/devtools-main.ts`):
@@ -28,6 +28,7 @@
 
 import process from 'node:process';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createCanvas, CanvasError, joinSession } from '@github/copilot-sdk/extension';
@@ -44,6 +45,7 @@ import {
 import { listArtPlans, listBriefs } from './lib/yaml-reader.mjs';
 import { loadRegistryIds } from './lib/registry-ids.mjs';
 import { loadBacklog } from './lib/workflow-model.mjs';
+import { readJsonBody, tokensMatch } from './lib/mutation-security.mjs';
 
 /**
  * Repo root, derived from THIS file's location. The extension physically lives
@@ -70,6 +72,8 @@ let sessionRef = null;
  *   workspaceRoot: string,
  *   requested: { briefId: string | null, runId: string | null },
  *   selected: { briefId: string, runId: string, sheet: string | null } | null,
+ *   mutationToken: string,
+ *   acceptance: Map<string, object>,
  *   cache: null | {
  *     registryError: string | null,
  *     backlog: object,
@@ -88,6 +92,10 @@ const instances = new Map();
 // racing a second server; on failure the promise is dropped so a later `open`
 // can retry cleanly (no poisoned map entry).
 const pendingStartups = new Map();
+
+function acceptanceKey(briefId, runId, variantIndex) {
+  return `${briefId}/${runId}/${variantIndex}`;
+}
 
 function log(message, level = 'info') {
   try {
@@ -204,6 +212,7 @@ async function buildState(instanceId) {
       files,
       runs: [],
       selected: null,
+      acceptance: Object.fromEntries(entry.acceptance),
     };
   }
 
@@ -294,8 +303,35 @@ async function buildState(instanceId) {
     sheets,
     candidates,
     sliceMap,
+    acceptance: Object.fromEntries(entry.acceptance),
     error: summaryError ?? runsError ?? null,
   };
+}
+
+async function acceptAndQueue(instanceId, briefId, runId, variantIndex) {
+  const entry = instances.get(instanceId);
+  if (!entry) throw new CanvasError('not_open', 'Canvas instance is not open.');
+  const key = acceptanceKey(briefId, runId, variantIndex);
+  entry.acceptance.set(key, { state: 'accepting' });
+  await entry.pushState?.(await buildState(instanceId));
+  try {
+    const result = await entry.client.acceptVariant(briefId, runId, variantIndex);
+    if (!result || result.state !== 'queued' || typeof result.issueUrl !== 'string') {
+      throw new Error('Sidecar returned an invalid acceptance result.');
+    }
+    entry.acceptance.set(key, result);
+    entry.cache = null;
+    await entry.pushState?.(await buildState(instanceId));
+    return result;
+  } catch (error) {
+    entry.acceptance.set(key, {
+      state: 'error',
+      code: typeof error?.code === 'string' ? error.code : 'accept-failed',
+      message: error?.message ?? String(error),
+    });
+    await entry.pushState?.(await buildState(instanceId));
+    throw error;
+  }
 }
 
 /** Relay a sidecar image (sheet / processed / raw) as a streamed web Response. */
@@ -386,6 +422,60 @@ const jsonRoutes = [
     },
   },
   {
+    method: 'POST',
+    path: '/api/accept',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance-not-found' } };
+      if (!tokensMatch(req.headers['x-workflow-mutation-token'], entry.mutationToken)) {
+        return { status: 403, json: { error: 'forbidden', message: 'Invalid mutation token.' } };
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        const tooLarge =
+          error?.statusCode === 413 ||
+          error?.code === 'body-too-large' ||
+          error?.message === 'request body too large';
+        return {
+          status: tooLarge ? 413 : 400,
+          json: {
+            error: tooLarge ? 'body-too-large' : 'bad-request',
+            message: tooLarge ? error.message : 'Request body must be valid JSON.',
+          },
+        };
+      }
+      const { briefId, runId, variantIndex } = body;
+      if (
+        typeof briefId !== 'string' ||
+        typeof runId !== 'string' ||
+        typeof variantIndex !== 'number' ||
+        !Number.isInteger(variantIndex) ||
+        variantIndex < 0
+      ) {
+        return {
+          status: 400,
+          json: {
+            error: 'bad-request',
+            message: 'briefId, runId, and a non-negative integer variantIndex are required.',
+          },
+        };
+      }
+      try {
+        return { json: await acceptAndQueue(instanceId, briefId, runId, variantIndex) };
+      } catch (error) {
+        return {
+          status: Number.isInteger(error?.status) ? error.status : 502,
+          json: {
+            error: typeof error?.code === 'string' ? error.code : 'accept-failed',
+            message: error?.message ?? String(error),
+          },
+        };
+      }
+    },
+  },
+  {
     // Explicit reload: invalidate the fs-static cache, then rebuild + push.
     method: 'GET',
     path: '/api/reload',
@@ -443,6 +533,8 @@ async function startServerForInstance(ctx) {
       runId: typeof input.runId === 'string' ? input.runId : null,
     },
     selected: null,
+    mutationToken: randomBytes(24).toString('hex'),
+    acceptance: new Map(),
     cache: null,
     pushState: async () => {},
     close: async () => {},
@@ -450,7 +542,7 @@ async function startServerForInstance(ctx) {
 
   const server = await startCanvasServer({
     instanceId: ctx.instanceId,
-    renderHtml,
+    renderHtml: () => renderHtml(ctx.instanceId, entry.mutationToken),
     buildState: () => buildState(ctx.instanceId),
     jsonRoutes,
     binaryRoutes,
@@ -471,7 +563,7 @@ const canvas = createCanvas({
   id: 'workflow',
   displayName: 'Sprite Generation Workflow',
   description:
-    'Read-only parity view of the sprite-generation workflow READ surface: asset backlog with integration status, plan/brief YAML browsing, and generated runs (variants + judge + sensors + sheet/slice-map). The durable queue, asset-request manifest, and all write actions are the follow-up slice (B2).',
+    'Inspect the sprite-generation workflow and accept a selected run variant into the durable asset-checkin queue.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,
@@ -630,6 +722,32 @@ const canvas = createCanvas({
         const state = await buildState(ctx.instanceId);
         await entry.pushState?.(state);
         return { selected: state.selected, runCount: state.runs?.length ?? 0 };
+      },
+    },
+    {
+      name: 'accept_variant',
+      description:
+        'Approve a generated variant and publish it to the durable asset-checkin queue atomically.',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['briefId', 'runId', 'variantIndex'],
+        properties: {
+          briefId: { type: 'string' },
+          runId: { type: 'string' },
+          variantIndex: { type: 'integer', minimum: 0 },
+        },
+      },
+      handler: async (ctx) => {
+        const { briefId, runId, variantIndex } = ctx.input;
+        try {
+          return await acceptAndQueue(ctx.instanceId, briefId, runId, variantIndex);
+        } catch (error) {
+          throw new CanvasError(
+            typeof error?.code === 'string' ? error.code : 'accept_failed',
+            error?.message ?? String(error),
+          );
+        }
       },
     },
     {

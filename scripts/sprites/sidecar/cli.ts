@@ -40,21 +40,19 @@ import { createGhAssetRequestIssueApi } from './asset-request-issue-api.js';
 
 const HOST = '127.0.0.1';
 const VERSION = '0.2.0-workflow';
-const DEFAULT_PORT = getSessionServerPorts({ cwd: process.cwd(), env: process.env }).sidecarPort;
-
-function resolvePort(): number {
+function resolvePort(defaultPort: number): number {
   // SPRITES_SIDECAR_PORT lets tests bind to a free port (commonly 0 →
   // "any") so they never race a real instance on the session sidecar port.
   // Production usage (`npm run sprites:gallery`) leaves it unset and gets the
   // deterministic per-session port.
   const raw = process.env['SPRITES_SIDECAR_PORT'];
-  if (!raw) return DEFAULT_PORT;
+  if (!raw) return defaultPort;
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0 || n > 65535) {
     process.stderr.write(
-      `sprites:gallery sidecar: invalid SPRITES_SIDECAR_PORT=${raw}, using ${DEFAULT_PORT}\n`,
+      `sprites:gallery sidecar: invalid SPRITES_SIDECAR_PORT=${raw}, using ${defaultPort}\n`,
     );
-    return DEFAULT_PORT;
+    return defaultPort;
   }
   return n;
 }
@@ -65,6 +63,7 @@ async function main(): Promise<number> {
   // Pick up Azure credentials + SPRITES_* selectors from .env.local (written by
   // `npm run setup:azure`) without overwriting anything already in the shell.
   loadEnvLocal(repoRoot);
+  const sessionPorts = getSessionServerPorts({ cwd: repoRoot, env: process.env });
 
   // The sidecar defaults to the shared Azure backends; local/noop are opt-in
   // for tests and offline runs. Fail fast (don't silently use local) when Azure
@@ -104,8 +103,9 @@ async function main(): Promise<number> {
     queue,
     worker,
     issueIngester,
+    trustedMutationOrigins: [sessionPorts.labBaseUrl, sessionPorts.devtoolsBaseUrl],
   });
-  const port = resolvePort();
+  const port = resolvePort(sessionPorts.sidecarPort);
 
   // SIGINT / SIGTERM both trigger a clean Fastify close so the port is
   // released even when the parent (e.g. the gallery launcher) is killed.
