@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "reduce-pr-automation-overhead",
+  "task_title": "Reduce PR automation and CI setup overhead",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Adjusted the plan after review: kept global PR-guard concurrency while scoping event runs to the triggering PR only; included .github/actions/setup-node/action.yml and tsconfig*.json in Epic Drift inputs; kept the Human approval job untouched to preserve the rerun workflow contract; and folded only advisory/non-blocking coverage + build work into ci-advisory while consolidating the two lightweight static CI jobs. The required issue-plan comment was prepared, but the environment lacks a working issue-comment write path (gh remote is localhost and direct GitHub API calls are blocked), so that blocker will be reported explicitly."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

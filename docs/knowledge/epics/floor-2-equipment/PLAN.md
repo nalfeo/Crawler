@@ -10,17 +10,6 @@ The machine-readable execution index is
 `docs/knowledge/epics/floor-2-equipment/epic-state.json`. That file is a cache
 and coordination index; it never overrides stronger evidence.
 
-## Normative contract links
-
-- Generated equipment, rewards, economy, AI, flags, and migration:
-  [equipment-system.md](../../../../.specify/specs/equipment-system.md)
-- Immutable static weapons and frozen active snapshots:
-  [weapon-system.md](../../../../.specify/specs/weapon-system.md)
-- Cross-system decision and alternatives:
-  [ADR 0065](../../adr/0065-versioned-frozen-floor2-equipment-instances.md)
-- Deferred Unique equipment follow-up (outside this epic's 37-node DAG):
-  <https://github.com/nalfeo/Crawler/issues/1274>
-
 ## Hard acceptance gate
 
 For the representative-build benchmark, the median aggregate DPS ratio must be
@@ -37,34 +26,22 @@ committed as deterministic evidence before the release node can validate.
 ## Product contract
 
 - Equipment rarity is Common, Uncommon, or Rare. No shipped item may exceed
-  Rare. Unique items are explicitly deferred from this epic to
-  <https://github.com/nalfeo/Crawler/issues/1274>.
+  Rare. Unique items are explicitly deferred from this epic.
 - One versioned generated-instance registry is authoritative across inventory,
   equip/unequip, achievement rewards, chests, merchant stock, and floor
   carryover. Consumers must not maintain parallel item-instance shapes.
-- Instance resolution is base template -> item level -> inherent scaling ->
-  rarity scalar/budget -> enhancement +N -> affixes/effects -> frozen
-  stats/name/art/weapon snapshot and fingerprint. The governing equipment and
-  weapon specs own the exact field and migration contracts.
 - Achievement equipment rewards resolve once, at unlock time, to an immutable
   generated instance. Loading, UI rendering, or later catalog edits must not
   reroll an already-resolved reward.
 - Floor 1 remains equipment-free. Equipment generation, rewards, shops, and
   equip affordances are unavailable there.
-- Floor 2 provides 30 floor achievements (10 each at Common, Uncommon, and Rare)
-  plus 6 current-run-global achievements that cross floor transitions and reset
-  on a new run. Floor 2 box equipment affinity is 25% / 50% / 75% for those
-  three tiers; Floor 1 boxes remain equipment-free.
+- Floor 2 provides 30 floor achievements plus 6 run-global achievements.
 - The Floor 2 boss chest selects rarity at 85% Uncommon and 15% Rare.
 - Every Floor 2 settlement has a guaranteed Quartermaster plus 1-2 random
   non-Quartermaster shops. Shop equipment stock is Common or Uncommon only.
 - The launch catalog contains at least 70 base items: exactly 50 weapons and 20
-  non-weapons in the stable manifest below. The 50 weapons are exactly 5 in each
-  of 10 stable weapon families. Future additions append IDs; they do not rename
-  or recycle them.
-- Equipment-granted abilities and passives are source-owned and reference
-  counted so unequip removes only the originating grant. The existing active
-  ability limit of 10 remains authoritative.
+  non-weapons in the stable manifest below. Future additions append IDs; they
+  do not rename or recycle them.
 - Shared chests use one accessible interaction and presentation contract:
   keyboard, pointer, and touch parity; focus management; readable rarity cues
   that do not rely on color alone; and deterministic item details.
@@ -72,9 +49,6 @@ committed as deterministic evidence before the release node can validate.
   merchant, chest, and carryover APIs. Travel must use the existing route
   planner. No AI-only inventory mutations, teleports, or duplicate planner may
   be introduced.
-- The seven release flags remain default off, enforce their documented
-  dependency closure, preserve recognized disabled data, and never expose
-  equipment on Floor 1. Unknown future instance/snapshot versions fail closed.
 
 ## Machine-owned plan contract
 
@@ -210,6 +184,94 @@ manifest rewrite. Changes inside the contract require the plan-change protocol.
     "real_apis_only": true,
     "existing_route_planner_only": true,
     "settlement_maintenance_required": true
+  },
+  "graph": {
+    "dependencies": {
+      "slice:A0": [],
+      "slice:A1": ["slice:A0"],
+      "slice:B1": ["slice:A1"],
+      "slice:B2": ["slice:B1"],
+      "slice:B3": ["slice:B2"],
+      "slice:C1": ["slice:A1"],
+      "slice:C2": ["slice:C1", "slice:B3"],
+      "slice:D1": ["slice:A1"],
+      "packet:D2-A": ["slice:D1", "slice:B1"],
+      "packet:D2-B": ["slice:D1", "slice:C1"],
+      "slice:D2": ["packet:D2-A", "packet:D2-B"],
+      "packet:D3-A": ["slice:D2", "slice:B2"],
+      "packet:D3-B": ["slice:D2", "slice:C1"],
+      "slice:D3": ["packet:D3-A", "packet:D3-B"],
+      "slice:E1": ["slice:A1"],
+      "slice:E2": ["slice:E1", "slice:C1"],
+      "packet:E3-A": ["slice:E2", "slice:B2"],
+      "packet:E3-B": ["slice:E2", "slice:D2"],
+      "packet:E3-C": ["slice:E2", "slice:C1"],
+      "slice:E3": ["packet:E3-A", "packet:E3-B", "packet:E3-C"],
+      "slice:F1": ["slice:B1", "slice:C1"],
+      "slice:F2": ["slice:F1", "slice:B2"],
+      "slice:F3": ["slice:F2", "slice:E2"],
+      "slice:F4": ["slice:F3", "slice:C2"],
+      "slice:G1": ["slice:A1"],
+      "packet:G2-A": ["slice:G1", "slice:C1"],
+      "packet:G2-B+": ["slice:G1", "slice:B2"],
+      "slice:G2": ["packet:G2-A", "packet:G2-B+"],
+      "packet:G3": ["slice:G2", "slice:D3"],
+      "slice:G3": ["packet:G3"],
+      "slice:H1": ["slice:C1", "slice:F1"],
+      "slice:H2": ["slice:H1", "slice:G2"],
+      "slice:H3": ["slice:H2", "slice:G3"],
+      "slice:I1": [
+        "slice:B3",
+        "slice:C2",
+        "slice:D3",
+        "slice:E3",
+        "slice:F4",
+        "slice:G3",
+        "slice:H3"
+      ],
+      "slice:I2": ["slice:I1"],
+      "slice:I3": ["slice:I2"],
+      "slice:J": ["slice:I3"]
+    },
+    "parent_slices": {
+      "slice:A0": null,
+      "slice:A1": null,
+      "slice:B1": null,
+      "slice:B2": null,
+      "slice:B3": null,
+      "slice:C1": null,
+      "slice:C2": null,
+      "slice:D1": null,
+      "packet:D2-A": "slice:D2",
+      "packet:D2-B": "slice:D2",
+      "slice:D2": null,
+      "packet:D3-A": "slice:D3",
+      "packet:D3-B": "slice:D3",
+      "slice:D3": null,
+      "slice:E1": null,
+      "slice:E2": null,
+      "packet:E3-A": "slice:E3",
+      "packet:E3-B": "slice:E3",
+      "packet:E3-C": "slice:E3",
+      "slice:E3": null,
+      "slice:F1": null,
+      "slice:F2": null,
+      "slice:F3": null,
+      "slice:F4": null,
+      "slice:G1": null,
+      "packet:G2-A": "slice:G2",
+      "packet:G2-B+": "slice:G2",
+      "slice:G2": null,
+      "packet:G3": "slice:G3",
+      "slice:G3": null,
+      "slice:H1": null,
+      "slice:H2": null,
+      "slice:H3": null,
+      "slice:I1": null,
+      "slice:I2": null,
+      "slice:I3": null,
+      "slice:J": null
+    }
   }
 }
 ```
@@ -263,8 +325,10 @@ A required node computes ready only when:
 2. a dependency is `superseded`, names a replacement, and that replacement is
    `validated`;
 3. the node has a materialized issue, except for A0's parent-issue bootstrap;
-4. the node itself is not terminal or already beyond ready; and
-5. no plan-change invalidation applies.
+4. the node itself is not terminal or already beyond ready;
+5. no plan-change invalidation applies; and
+6. the node has no `stacked_work` metadata, even if all dependencies would
+   otherwise be `validated`.
 
 A blocked node may carry `stacked_work` only when all of the following hold:
 
@@ -274,8 +338,8 @@ A blocked node may carry `stacked_work` only when all of the following hold:
    `STACKED-WORK` owner comment whose node/session/branch matches state;
 3. every incomplete direct prerequisite is represented once by an open PR
    snapshot, and exactly one PR is marked as the branch's stack base;
-4. each dependency snapshot matches the prerequisite node's cached PR number,
-   URL, and full head SHA, while GitHub audit independently checks current
+4. each dependency snapshot matches the prerequisite node's canonical PR URL
+   and full head SHA, while GitHub audit derives the number from that URL and checks current
    PR/head/base facts;
 5. the dependent branch and open PR, when present, have stable identity and are
    based on the recorded stack-base branch;
@@ -307,6 +371,10 @@ reviewed patches/operator actions; it never writes lifecycle or completion state
 readiness after a plan change or dependency invalidation, the Producer posts
 `BLOCKED`, revokes its lease, moves it to `blocked`, and invalidates downstream
 evidence. Child agents do not continue under a stale claim.
+
+Speculative stacked-work (`stacked_work` on a `blocked` node) is orthogonal to
+the lifecycle. The node status remains `blocked`; `stacked_work` never enters
+the ready queue. See "Speculative stacked-work protocol" for details.
 
 Status requirements:
 
@@ -607,25 +675,38 @@ A fresh Producer must be able to resume with zero conversation context:
 3. Query the parent/child issues, PRs, workflow runs, and referenced branches.
 4. Inspect every referenced handoff and review ledger; verify content hashes and
    commits rather than trusting branch names.
-5. Run
+5. For any node with `stacked_work`, verify every recorded prerequisite PR/head,
+   the one exact stack base, the dependent PR/branch/base identity, resync
+   freshness, and any `rebase_to_main.pending` transition.
+6. Run
    `npm run epic:status -- floor-2-equipment --github --reconcile`.
-6. Review the emitted `repo_patch` and `operator_actions`; the command writes
+7. Review the emitted `repo_patch` and `operator_actions`; the command writes
    nothing.
-7. Resolve stronger-fact conflicts in authority order. Do not copy cached state
+8. Resolve stronger-fact conflicts in authority order. Do not copy cached state
    over GitHub or committed evidence.
-8. Post structured BLOCKED/UNBLOCKED/HANDOFF comments as needed.
-9. For every `stacked_work` entry, verify the dedicated issue's one live
-   `STACKED-WORK` owner, exact prerequisite heads/bases, stable dependent
-   PR/branch/base identity, the nullable dependent-head observation cache, last
-   resync, and any pending rebase-to-main action.
-10. As sole global-state writer, apply one reviewed state update.
-11. Dispatch only nodes in the validator-computed ready queue with materialized
+9. Post structured BLOCKED/UNBLOCKED/STACKED-WORK/HANDOFF comments as needed.
+10. For every `stacked_work` entry, verify the dedicated issue's one live
+    `STACKED-WORK` owner, exact prerequisite heads/bases, stable dependent
+    PR/branch/base identity, the nullable dependent-head observation cache, last
+    resync, and any pending rebase-to-main action.
+11. As sole global-state writer, apply one reviewed state update.
+12. Dispatch only nodes in the validator-computed ready queue with materialized
     child issues.
 
 If the parent issue is unavailable, merged git and deterministic evidence still
 permit recovery. Recreate the issue dashboard from the materialization plan,
 then reconcile issue numbers into state. A session transcript or local
 worktree is never authoritative.
+
+For stacked-work reconciliation after a prerequisite merges:
+
+1. Record `rebase_to_main.pending: true`, the prerequisite merge commit, and the
+   GitHub-observed pre-rebase dependent head.
+2. Rebase the dependent branch onto `main`, retarget its PR, and revalidate the
+   speculative work.
+3. Require GitHub to observe a changed dependent head and `base: main`.
+4. Clear `stacked_work` only after those observations, then let normal readiness
+   compute the next lifecycle transition.
 
 ## Durable plan-change protocol
 

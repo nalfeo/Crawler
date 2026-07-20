@@ -1,9 +1,7 @@
 import { requireGeneratedEquipmentInstance } from '../core/generated-equipment-registry.js';
 import type { GameWorld } from '../core/world.js';
-import {
-  equipmentAbilityGrantSourceId,
-  type GeneratedEquipmentInstanceId,
-} from '../shared/index.js';
+import { equipmentAbilityGrantSourceId } from '../shared/abilities.js';
+import type { GeneratedEquipmentInstanceId } from '../shared/generated-equipment-types.js';
 import {
   grantAbilitySources,
   revokeAbilitySources,
@@ -16,6 +14,7 @@ function grantRequestsForInstance(
 ): readonly AbilityGrantRequest[] {
   const instance = requireGeneratedEquipmentInstance(world, instanceId);
   return instance.resolvedEffects.flatMap((effect): AbilityGrantRequest[] => {
+    if (!('kind' in effect)) return [];
     if (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant') return [];
     return [
       {

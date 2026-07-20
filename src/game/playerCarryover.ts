@@ -8,6 +8,8 @@ import {
 import { statSystem } from '../core/systems/statSystem.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
+import type { EquipmentInstanceId } from '../shared/equipment-types.js';
+import type { AchievementFactState } from '../shared/achievements.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import {
   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
@@ -44,6 +46,12 @@ interface AbilityStateSnapshot {
   };
 }
 
+interface AchievementFactStateSnapshot {
+  readonly numberFacts: AchievementFactState['numberFacts'];
+  readonly booleanFacts: AchievementFactState['booleanFacts'];
+  readonly completedQuestIds: readonly string[];
+}
+
 interface StatModifierSnapshot extends Omit<StatModifier, 'expiresFrame'> {
   readonly expiresInFrames?: number;
 }
@@ -75,6 +83,7 @@ export interface PlayerCarryoverSnapshot {
     readonly unlockedIds: readonly string[];
     readonly pendingUnlockIds: readonly string[];
     readonly claimedIds: readonly string[];
+    readonly runGlobal?: AchievementFactStateSnapshot;
   };
 }
 
@@ -225,7 +234,7 @@ export function capturePlayerCarryover(
 
   const equipment = getEquipmentState(world, playerEid);
   const equippedItemIds: string[] = [];
-  const seenInstances = new Set<number>();
+  const seenInstances = new Set<EquipmentInstanceId>();
   if (equipment) {
     for (const slot of SLOT_REGISTRY) {
       const instanceId = equipment.equipped[slot.id];
@@ -280,6 +289,11 @@ export function capturePlayerCarryover(
       unlockedIds: [...world.achievements.unlockedIds],
       pendingUnlockIds: [...world.achievements.pendingUnlockIds],
       claimedIds: [...world.achievements.claimedIds],
+      runGlobal: {
+        numberFacts: { ...world.achievements.runGlobal.numberFacts },
+        booleanFacts: { ...world.achievements.runGlobal.booleanFacts },
+        completedQuestIds: [...world.achievements.runGlobal.completedQuestIds],
+      },
     },
   };
 }
@@ -306,6 +320,14 @@ export function restorePlayerCarryover(
     unlockedIds: new Set(snapshot.achievements.unlockedIds),
     pendingUnlockIds: [...snapshot.achievements.pendingUnlockIds],
     claimedIds: new Set(snapshot.achievements.claimedIds),
+    runGlobal:
+      snapshot.achievements.runGlobal === undefined
+        ? world.achievements.runGlobal
+        : {
+            numberFacts: { ...snapshot.achievements.runGlobal.numberFacts },
+            booleanFacts: { ...snapshot.achievements.runGlobal.booleanFacts },
+            completedQuestIds: new Set(snapshot.achievements.runGlobal.completedQuestIds),
+          },
   };
 
   clearEquipmentState(world, playerEid);
