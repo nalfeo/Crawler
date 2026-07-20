@@ -17,8 +17,13 @@ import {
   type AbilityState,
   type AbilityStateLike,
 } from '../shared/abilities.js';
-import type { AchievementBooleanFact, AchievementNumberFact } from '../shared/achievements.js';
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
+import {
+  cloneAchievementFactSnapshot,
+  mergeAchievementFactSnapshots,
+  type AchievementFactSnapshot,
+} from '../shared/achievements.js';
+import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
 import {
   migrateAbilityStateToSourceTracking,
   synchronizeAbilityPassives,
@@ -91,11 +96,8 @@ export interface PlayerCarryoverSnapshot {
     readonly unlockedIds: readonly string[];
     readonly pendingUnlockIds: readonly string[];
     readonly claimedIds: readonly string[];
-    readonly runGlobal: {
-      readonly numberFacts: Readonly<Record<AchievementNumberFact, number>>;
-      readonly booleanFacts: Readonly<Record<AchievementBooleanFact, boolean>>;
-      readonly completedQuestIds: readonly string[];
-    };
+    /** Optional for backward compatibility with pre-scoped carryover snapshots. */
+    readonly carriedRunFacts?: AchievementFactSnapshot;
   };
 }
 
@@ -443,11 +445,10 @@ export function capturePlayerCarryover(
       unlockedIds: [...world.achievements.unlockedIds],
       pendingUnlockIds: [...world.achievements.pendingUnlockIds],
       claimedIds: [...world.achievements.claimedIds],
-      runGlobal: {
-        numberFacts: { ...world.achievements.runGlobal.numberFacts },
-        booleanFacts: { ...world.achievements.runGlobal.booleanFacts },
-        completedQuestIds: [...world.achievements.runGlobal.completedQuestIds],
-      },
+      carriedRunFacts: mergeAchievementFactSnapshots(
+        world.achievements.carriedRunFacts,
+        collectCurrentFloorAchievementFacts(world),
+      ),
     },
   };
 }
@@ -474,11 +475,7 @@ export function restorePlayerCarryover(
     unlockedIds: new Set(snapshot.achievements.unlockedIds),
     pendingUnlockIds: [...snapshot.achievements.pendingUnlockIds],
     claimedIds: new Set(snapshot.achievements.claimedIds),
-    runGlobal: {
-      numberFacts: { ...snapshot.achievements.runGlobal.numberFacts },
-      booleanFacts: { ...snapshot.achievements.runGlobal.booleanFacts },
-      completedQuestIds: new Set(snapshot.achievements.runGlobal.completedQuestIds),
-    },
+    carriedRunFacts: cloneAchievementFactSnapshot(snapshot.achievements.carriedRunFacts),
   };
 
   clearEquipmentState(world, playerEid);

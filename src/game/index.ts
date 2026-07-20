@@ -124,6 +124,7 @@ export type {
 } from './generated-equipment-generator.js';
 export {
   achievementSystem,
+  collectCurrentFloorAchievementFacts,
   evaluateAchievementUnlocksForPhase,
   unlockAchievement,
 } from './systems/achievementSystem.js';

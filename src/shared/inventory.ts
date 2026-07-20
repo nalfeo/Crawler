@@ -75,7 +75,7 @@ export function listInventoryEntries(bag: InventoryBag): readonly InventoryBagEn
     ),
     ...(bag.generatedEquipment ?? []).map(
       (entry): GeneratedEquipmentInventoryEntry => ({
-        kind: 'generated-instance',
+        kind: entry.kind,
         instanceKey: entry.instanceKey,
       }),
     ),
