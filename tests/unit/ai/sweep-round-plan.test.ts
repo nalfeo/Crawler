@@ -527,11 +527,19 @@ describe('applyRoundResult', () => {
     // neighbours of the NEW best instead of the OLD best, permanently skipping
     // the missing candidate. The arrived data is still merged in (deduped next
     // round) and the search retries from the same position.
+    // Code-review finding: the candidate must share the incumbent's exact
+    // (weapon, seed) panel for winsVsIncumbentDelta to be non-null, so the
+    // baseline also runs dagger/3 (as a loss) rather than the candidate
+    // winning a cell the incumbent never ran.
     const baseline = shard(
-      [row(BASE_ID, 'sword', 1, 100, true), row(BASE_ID, 'bow', 2, 100, true)],
+      [
+        row(BASE_ID, 'sword', 1, 100, true),
+        row(BASE_ID, 'bow', 2, 100, true),
+        row(BASE_ID, 'dagger', 3, 100, false),
+      ],
       { [BASE_ID]: BASE },
     );
-    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 200, 2 wins
+    const checkpoint = initCheckpoint(LEGACY_LEGACY, KNOBS, baseline); // bestScore = 300, 2 wins
 
     const better: SweepConfig = { ...BASE, aggression: 1.5 };
     const betterId = configId(better);
@@ -550,12 +558,12 @@ describe('applyRoundResult', () => {
     const updated = applyRoundResult(checkpoint, 1, KNOBS, [betterShard], { plannedCount: 2 });
     // Despite `better` qualifying and outscoring the baseline, must NOT be promoted.
     expect(updated.bestConfigId).toBe(BASE_ID); // unchanged
-    expect(updated.bestScore).toBe(200); // unchanged
+    expect(updated.bestScore).toBe(300); // unchanged
     expect(updated.steps.aggression).toBe(0.5); // NOT halved — round was incomplete
     expect(updated.converged).toBe(false);
     // Data is still merged in for deduplication next round.
     expect(updated.configs).toHaveProperty(betterId);
-    expect(updated.rows).toHaveLength(5); // 2 baseline + 3 candidate
+    expect(updated.rows).toHaveLength(6); // 3 baseline + 3 candidate
   });
 
   it('still halves normally when `plannedCount` matches the candidates actually received and none improve (no false safety net)', () => {

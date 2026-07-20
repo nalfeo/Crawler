@@ -175,6 +175,11 @@ describe('selectSearchPromotion', () => {
     for (let seed = 1; seed <= 10; seed++) {
       rows.push(row({ combo: COMBO, configId: 'base', weapon: 'sword', seed }));
     }
+    // Code-review finding: the candidate's extra bow/1 cell must also exist
+    // in the incumbent's panel (as a loss) for winsVsIncumbentDelta to be
+    // non-null — otherwise the candidate is disqualified by panel mismatch,
+    // not by score, and this test stops exercising the score-comparison path.
+    rows.push(loss({ combo: COMBO, configId: 'base', weapon: 'bow', seed: 1 }));
     // Qualifies (11 wins, strictly more than the incumbent's 10) but scores
     // LOWER than the current position — must not be promoted (caller should
     // halve steps instead).
