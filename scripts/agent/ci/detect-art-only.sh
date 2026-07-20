@@ -38,7 +38,7 @@
 # sim_touched=true — the change can affect the deterministic simulation.
 #   Computed independently of gameplay_safe with a broader safe list covering
 #   .github/**, docs/**, .specify/**, scripts/**, tests/unit/**, tests/e2e/**,
-#   tests/integration/**, public/**, *.md, *.txt, package-lock.json,
+#   tests/integration/**, public/**, *.md, *.txt,
 #   src/shared/data/sprite-catalog.json, and safe package.json scripts.
 #   NOT safe: src/engine/**, src/labs/**, tests/headless/**, src/core/**,
 #   src/game/**, src/shared (non-catalog) — headless tests import from engine
@@ -49,7 +49,7 @@
 #   False only when every changed file is in the "not coverage" safe list:
 #   .github/**, docs/**, .specify/**, scripts/**, src/labs/**, tests/e2e/**,
 #   tests/headless/**, tests/integration/**, tests/unit/sprites/**, public/**,
-#   *.md, *.txt, package-lock.json, src/shared/data/sprite-catalog.json.
+#   *.md, *.txt, src/shared/data/sprite-catalog.json.
 #   Unknown paths → true (fail closed). Used to gate the coverage advisory job.
 #
 # sprite_pipeline_touched=true — alias for sprites_touched; exposed under a
@@ -281,7 +281,6 @@ while IFS= read -r file; do
     tests/integration/weapons-pipeline.test.ts) ;;
     *.md) ;;
     *.txt) ;;
-    package-lock.json) ;;
     *)
       gameplay_safe=false
       break
@@ -372,7 +371,7 @@ done <<<"$changed"
 
 # sim_touched: true when the change could affect the deterministic simulation.
 # Computed independently of gameplay_safe with a broader safe list that covers
-# ALL scripts/**, tests/unit/**, tests/integration/**, public/**, and lock files,
+# ALL scripts/**, tests/unit/**, tests/integration/**, and public/**,
 # so CI-tooling-only changes produce sim_touched=false even when gameplay_safe=false.
 # src/engine/** and src/labs/** are NOT in the safe list because headless tests
 # import from both surfaces (fov-discovered-darkening.test.ts → src/engine/lighting;
@@ -392,7 +391,6 @@ while IFS= read -r file; do
     public/*) ;;
     *.md) ;;
     *.txt) ;;
-    package-lock.json) ;;
     src/shared/data/sprite-catalog.json) ;;
     package.json)
       if ! package_json_gameplay_safe; then sim_touched=true; fi ;;
@@ -421,7 +419,6 @@ while IFS= read -r file; do
     public/*) ;;
     *.md) ;;
     *.txt) ;;
-    package-lock.json) ;;
     src/shared/data/sprite-catalog.json) ;;
     *) coverage_touched=true; break ;;
   esac

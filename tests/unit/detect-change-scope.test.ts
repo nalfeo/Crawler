@@ -312,10 +312,10 @@ const cases: Case[] = [
   },
   // New orthogonal flag tests (issue #1688 acceptance criteria).
   {
-    name: 'package-lock.json → visual+deps_touched, gameplay_safe',
+    name: 'package-lock.json → all runtime-sensitive flags + dependencies touched',
     files: ['package-lock.json'],
     //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, true, false, false, false, true),
+    expected: F(false, false, false, false, false, true, true, true, false, true),
   },
   {
     name: 'unit test (non-sprites) → coverage_touched=true, not visual, not sim',
@@ -340,10 +340,10 @@ const cases: Case[] = [
     expected: F(false, false, true, false, false, true, true, true, false, false),
   },
   {
-    name: 'package-lock.json + workflow → visual+deps_touched, gameplay_safe',
+    name: 'package-lock.json + workflow → all runtime-sensitive flags + dependencies touched',
     files: ['package-lock.json', '.github/workflows/security-review.yml'],
     //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, true, false, false, false, true),
+    expected: F(false, false, false, false, false, true, true, true, false, true),
   },
   {
     name: 'src/shared (non-catalog) → sim+visual+coverage, not deps',

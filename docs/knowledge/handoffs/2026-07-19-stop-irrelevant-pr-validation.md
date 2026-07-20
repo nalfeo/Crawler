@@ -21,7 +21,7 @@ Implemented the full "Stop irrelevant PR validation" Epic (#1685), covering all 
 
 ## Files changed
 
-- `scripts/agent/ci/detect-art-only.sh` — Added 5 new flag computation blocks (`visual_touched`, `sim_touched`, `coverage_touched`, `sprite_pipeline_touched`, `dependencies_touched`). Updated fail-safe calls to emit `true` for positive-signal flags. Added `package-lock.json` to `gameplay_safe` safe list.
+- `scripts/agent/ci/detect-art-only.sh` — Added 5 new flag computation blocks (`visual_touched`, `sim_touched`, `coverage_touched`, `sprite_pipeline_touched`, `dependencies_touched`). Updated fail-safe calls to emit `true` for positive-signal flags. Lockfile changes fail closed across gameplay, simulation, visual, and coverage gates because resolved runtime and test dependencies can change behavior.
 - `scripts/agent/ci/local-scope.sh` — Updated `emit_all_false()` to 10 params.
 - `tests/unit/detect-change-scope.test.ts` — Expanded `Scope` interface to 10 fields, rewrote `F()` helper, updated all 34 existing tests plus 7 new test cases (45 total).
 - `.github/workflows/ci.yml` — Added concurrency block, 5 new `changes` outputs, gated `test-headless`/`test-unit-coverage`/`test-e2e` and npm audit step.
@@ -40,4 +40,5 @@ Implemented the full "Stop irrelevant PR validation" Epic (#1685), covering all 
 - Adversarial plan review (GPT-5.4): 7 concerns, all resolved
 - Code review round 1 (claude-opus-4.8): 1 finding (engine/labs in sim_touched), fixed
 - Multi-model review (GPT-5.6-luna + gemini-3.1-pro-preview): 1 finding both found (labs in visual_touched), fixed
+- Final-head review (Claude Sonnet 4.6 + Gemini 3.1 Pro, GPT-5.4 adjudication): 1 valid finding (lockfile changes skipped simulation/coverage gates), fixed; remaining suggestions rejected with source/policy evidence
 - Ledger: `docs/knowledge/review-ledgers/2026-07-19-stop-irrelevant-pr-validation.review-ledger.json`

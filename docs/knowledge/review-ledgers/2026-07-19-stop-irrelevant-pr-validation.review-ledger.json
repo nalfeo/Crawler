@@ -25,6 +25,14 @@
           "resolved_count": 1,
           "clean": true,
           "notes": "One medium finding: src/engine/* and src/labs/* incorrectly in sim_touched safe list — headless tests import from both surfaces. Fixed by removing those entries; engine/labs changes now produce sim_touched=true. All other areas (fail-closed defaults, concurrency groups, YAML syntax, merge-gate compatibility, security gating) checked clean."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true,
+          "notes": "Final-head review raised three concerns. Adjudication validated one: package-lock.json could change resolved runtime/test dependencies while skipping simulation and coverage gates. Removed it from gameplay_safe, sim_touched, and coverage_touched safe lists and updated regression cases. The coverage fetch-depth and duplicate npm-audit concerns were rejected with source/policy evidence."
         }
       ]
     },
@@ -40,6 +48,15 @@
           "valid_count": 1,
           "clean": true,
           "notes": "Both models identified same HIGH finding: src/labs/** incorrectly in visual_touched safe list. E2E tests import from labs (hud-lab, ui-probe-lab, main-scene-probe-lab, abilities-lab, hud-family-relationships-lab). Fixed by removing src/labs/* from visual_touched safe list and updating test cases. Both models confirmed all other areas clean."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "resolved_count": 1,
+          "valid_count": 1,
+          "clean": true,
+          "notes": "Final-head fan-out and clean re-review produced five raw concerns. GPT-5.4 adjudication validated only the package-lock fail-open classification; it was fixed and both scope suites plus verify:fast passed. Fetch-depth, duplicate audit, unused output, and pre-existing guard-exemption suggestions were rejected as non-defects or outside this PR's change."
         }
       ]
     }
