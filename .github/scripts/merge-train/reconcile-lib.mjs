@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import {
   BLOCKED_LABEL,
   LANDED_LABEL,
@@ -57,6 +61,121 @@ export function trainCheckTitle(status, conclusion) {
     : 'Merge-train validation could not start';
 }
 
+export async function promoteValidatedPrefixAfterBuildFailure({ candidates, promotePrefix }) {
+  let validationIndex = -1;
+  for (let index = 0; index < candidates.length; index += 1) {
+    if (candidates[index].state === 'success') validationIndex = index;
+  }
+  if (validationIndex === -1) {
+    return {
+      greenPrefixLength: 0,
+      validationIndex,
+      promotionAttempted: false,
+      promoted: false,
+    };
+  }
+  const greenPrefixLength = validationIndex + 1;
+  const promotion = await promotePrefix(greenPrefixLength, validationIndex);
+  const promoted = promotion === true || promotion?.promoted === true;
+  const landedCount =
+    promotion === true
+      ? greenPrefixLength
+      : Number.isInteger(promotion?.landedCount)
+        ? promotion.landedCount
+        : 0;
+  return {
+    greenPrefixLength,
+    landedCount,
+    validationIndex,
+    promotionAttempted: true,
+    promoted,
+  };
+}
+
+export function queuePositionAfterRecovery(index, recovery) {
+  let promotedCount = 0;
+  if (
+    recovery?.promoted === true &&
+    Number.isInteger(recovery.greenPrefixLength) &&
+    recovery.greenPrefixLength > 0 &&
+    recovery.greenPrefixLength <= index
+  ) {
+    promotedCount = recovery.greenPrefixLength;
+  } else if (
+    Number.isInteger(recovery?.landedCount) &&
+    recovery.landedCount > 0 &&
+    recovery.landedCount <= index
+  ) {
+    promotedCount = recovery.landedCount;
+  }
+  return index + 1 - promotedCount;
+}
+
+/**
+ * Runs the candidate build loop for a merge train. For each train entry,
+ * `buildEntry(index)` is called inside the retryable candidate-build boundary.
+ * `finalizeEntry(index, builtEntry)` runs afterward, outside that boundary, so
+ * validation/status failures still fail the reconcile instead of being
+ * reclassified as candidate-build retries.
+ *
+ * Exit conditions:
+ * - `MergeTrainConflictError` / `MergeTrainNoopError` → returns immediately with
+ *   `action: 'conflict'` or `action: 'noop'`; the caller is responsible for exiting.
+ * - Any other (retryable) error → promotes the accumulated validated prefix via
+ *   `promoteValidatedPrefixAfterBuildFailure` and returns
+ *   `action: 'retryable-build-failure'`; the caller is responsible for exiting.
+ * - All entries built without error → returns `action: 'done'`.
+ *
+ * @param {object} opts
+ * @param {object[]} opts.train - Admitted PR entries in positional order
+ * @param {object[]} opts.candidates - Mutable array; successfully built candidate
+ *   records are pushed here so that `promotePrefix` (captured by closure in the
+ *   caller) can read them when invoked during retryable-failure recovery.
+ * @param {Function} opts.buildEntry - (index: number) => Promise<object>
+ *   Builds one cumulative candidate within the retryable build boundary.
+ * @param {Function} opts.finalizeEntry - (index: number, builtEntry: object) => Promise<object>
+ *   Reads validation state and publishes the built candidate status outside the
+ *   retryable build boundary.
+ * @param {Function} opts.onConflict - Handles a classified cumulative conflict.
+ * @param {Function} opts.onNoop - Handles a classified no-op candidate.
+ * @param {Function} opts.onRetryableFailure - Publishes retryable build status.
+ * @param {Function} opts.promotePrefix - (prefixLength, validationIndex) =>
+ *   Promise<boolean | {promoted: boolean, landedCount: number}>
+ *   Forwarded to `promoteValidatedPrefixAfterBuildFailure`.
+ * @returns {Promise<{action: string, entry?: object, error?: Error, recovery?: object}>}
+ */
+export async function runTrainBuildLoop({
+  train,
+  candidates,
+  buildEntry,
+  finalizeEntry = async (_index, builtEntry) => builtEntry,
+  onConflict = async () => {},
+  onNoop = async () => {},
+  onRetryableFailure = async () => {},
+  promotePrefix,
+}) {
+  for (let index = 0; index < train.length; index += 1) {
+    let builtEntry;
+    try {
+      builtEntry = await buildEntry(index);
+    } catch (error) {
+      if (isMergeTrainConflictError(error)) {
+        await onConflict(index, error);
+        return { action: 'conflict', entry: train[index], error };
+      }
+      if (isMergeTrainNoopError(error)) {
+        await onNoop(index, error);
+        return { action: 'noop', entry: train[index], error };
+      }
+      const recovery = await promoteValidatedPrefixAfterBuildFailure({ candidates, promotePrefix });
+      await onRetryableFailure(index, error, recovery);
+      return { action: 'retryable-build-failure', entry: train[index], error, recovery };
+    }
+    candidates.push(await finalizeEntry(index, builtEntry));
+  }
+  return { action: 'done' };
+}
+
 function hasLabel(pr, name) {
   return (pr.labels || []).some((label) => label.name === name);
 }
@@ -112,8 +231,8 @@ export function resolveMergeTrainTokens(environment) {
   const liveActionsRun = environment.GITHUB_ACTIONS === 'true';
   const promotionToken =
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
-  const workflowDispatchToken =
-    environment.GITHUB_TOKEN || (!liveActionsRun ? environment.MERGE_TRAIN_TOKEN || '' : '');
+  // The repository App receives 403 from workflow_dispatch; never reuse it here.
+  const workflowDispatchToken = environment.GITHUB_TOKEN || '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
   }
@@ -121,6 +240,12 @@ export function resolveMergeTrainTokens(environment) {
     throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
   }
   return { promotionToken, workflowDispatchToken };
+}
+
+export function mergeTrainGitEnvironment(environment, overrides = {}) {
+  const childEnvironment = { ...environment, ...overrides };
+  delete childEnvironment.MERGE_TRAIN_WORKFLOW_TOKEN;
+  return childEnvironment;
 }
 
 export async function dispatchRecoveryWorkflow({ request, token, owner, repo, prNumber, trigger }) {
@@ -144,6 +269,8 @@ export async function dispatchValidationWorkflow({
   owner,
   repo,
   sha,
+  refName,
+  attestationSha,
   fingerprint,
   entries,
 }) {
@@ -156,6 +283,8 @@ export async function dispatchValidationWorkflow({
         ref: 'main',
         inputs: {
           candidate_sha: sha,
+          candidate_ref: refName,
+          attestation_sha: attestationSha,
           fingerprint,
           pr_numbers: entries.map((entry) => entry.number).join(','),
         },
@@ -164,7 +293,50 @@ export async function dispatchValidationWorkflow({
   );
 }
 
+const CANDIDATE_REF_PREFIX = 'refs/merge-train-candidates/';
+
+function pushCandidateBundle({ baseSha, refName, git }) {
+  const bundleDirectory = mkdtempSync(join(tmpdir(), 'crawler-merge-train-'));
+  const bundlePath = join(bundleDirectory, 'candidate.bundle');
+  try {
+    git(['bundle', 'create', bundlePath, 'HEAD', `^${baseSha}`]);
+    const transportSha = git(['hash-object', '-w', bundlePath]);
+    if (!/^[0-9a-f]{40}$/i.test(transportSha)) {
+      throw new Error('Merge-train candidate transport did not produce a Git blob SHA');
+    }
+    git(['update-ref', refName, transportSha]);
+    git(['push', '--force', 'origin', `${refName}:${refName}`]);
+    return transportSha;
+  } finally {
+    rmSync(bundleDirectory, { recursive: true, force: true });
+  }
+}
+
+export function deleteCandidateBundle({ refName, transportSha, git }) {
+  if (!refName.startsWith(CANDIDATE_REF_PREFIX)) {
+    throw new Error(`Candidate cleanup requires the ref namespace ${CANDIDATE_REF_PREFIX}`);
+  }
+  if (!/^[0-9a-f]{40}$/i.test(transportSha)) {
+    throw new Error('Candidate cleanup requires a Git blob SHA');
+  }
+  const remoteLine = git(['ls-remote', '--refs', 'origin', refName]).trim();
+  if (!remoteLine) return false;
+  const [remoteSha, remoteRef] = remoteLine.split(/\s+/);
+  if (remoteRef !== refName || remoteSha !== transportSha) {
+    throw new Error(
+      `Candidate transport ref changed before cleanup: expected ${transportSha}, found ${remoteSha || 'unknown'}`,
+    );
+  }
+  git(['push', `--force-with-lease=${refName}:${transportSha}`, 'origin', `:${refName}`]);
+  return true;
+}
+
 export function buildCandidate({ baseSha, entries, refName, git, live }) {
+  if (live && !refName.startsWith(CANDIDATE_REF_PREFIX)) {
+    throw new Error(
+      `Live merge-train candidates must use the non-event ref namespace ${CANDIDATE_REF_PREFIX}`,
+    );
+  }
   git(['fetch', 'origin', 'main', '--prune']);
   const candidateRefs = entries.map((entry) => fetchCandidateHead(git, entry));
   git(['checkout', '--detach', baseSha]);
@@ -214,7 +386,7 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
   }
   const sha = git(['rev-parse', 'HEAD']);
   if (live) {
-    git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);
+    pushCandidateBundle({ baseSha, refName, git });
   }
   return sha;
 }
@@ -559,7 +731,13 @@ export async function promoteExactBatch({
         );
         return false;
       }
-      await publishPostcondition(candidateShas[index] || finalCandidateSha);
+      // Nothing landed for this entry -- the merge API call itself failed --
+      // so there is no landed commit to blame. Publish on `mainBeforeMerge`,
+      // the confirmed-current, real main commit asserted by the base-CAS
+      // check just above, not a candidate SHA: candidates are transported as
+      // opaque git blobs and are never real commit objects on GitHub, so a
+      // check-run attached to one would not resolve.
+      await publishPostcondition(mainBeforeMerge);
       throw new MergeTrainPromotionError(
         `promotion aborted at pr=#${entry.number}: ${merge.reason}`,
       );
@@ -1012,13 +1190,15 @@ export function buildDispatchBindings({ request, workflowDispatchToken, owner, r
       trigger,
     });
   }
-  async function dispatchValidation(sha, fingerprint, entries) {
+  async function dispatchValidation(sha, refName, attestationSha, fingerprint, entries) {
     await dispatchValidationWorkflow({
       request,
       token: workflowDispatchToken,
       owner,
       repo,
       sha,
+      refName,
+      attestationSha,
       fingerprint,
       entries,
     });

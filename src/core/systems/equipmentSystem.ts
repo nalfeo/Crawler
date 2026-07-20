@@ -40,7 +40,23 @@ import { applyStatusEffect, clearStatusEffects, isValidSpec } from '../status-ef
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { setActiveWeaponDef, clearActiveWeaponDef } from '../active-weapon.js';
 import { getEquipmentDefForItem } from '../../shared/equipmentDefs.js';
-import { addItem, removeItem, hasItem } from '../../shared/inventory.js';
+import { getItemById } from '../../shared/items.js';
+import {
+  addGeneratedEquipmentReference,
+  addItem,
+  hasGeneratedEquipmentReference,
+  hasItem,
+  removeGeneratedEquipmentReference,
+  removeItem,
+  type GeneratedEquipmentInventoryEntry,
+  type InventoryBagEntry,
+  type StackableStaticInventoryEntry,
+} from '../../shared/inventory.js';
+import type {
+  GeneratedEquipmentInstanceKey,
+  GeneratedEquipmentInstanceV1,
+} from '../../shared/generated-equipment-types.js';
+import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
 
 // --- Side-map storage ---
 
@@ -51,6 +67,7 @@ const customRequirements = new WeakMap<
   GameWorld,
   Map<string, (world: GameWorld, entity: number, itemDef: EquipmentItemDef) => boolean>
 >();
+const generatedDefViews = new WeakMap<GeneratedEquipmentInstanceV1, EquipmentItemDef>();
 
 function getEquipmentMap(world: GameWorld): Map<number, EquipmentState> {
   let map = equipmentStates.get(world);
@@ -112,6 +129,192 @@ function getOrCreateState(world: GameWorld, entity: number): EquipmentState {
     map.set(entity, state);
   }
   return state;
+}
+
+function generatedInventoryEntry(
+  instanceKey: GeneratedEquipmentInstanceKey,
+): GeneratedEquipmentInventoryEntry {
+  return { kind: 'generated-instance', instanceKey };
+}
+
+function staticInventoryEntry(def: EquipmentItemDef): StackableStaticInventoryEntry {
+  return { kind: 'stackable-static-item', itemId: def.id, quantity: 1 };
+}
+
+function generatedEquipmentDef(instance: GeneratedEquipmentInstanceV1): EquipmentItemDef {
+  const cached = generatedDefViews.get(instance);
+  if (cached) return cached;
+  const def: EquipmentItemDef = Object.freeze({
+    id: instance.instanceId,
+    name: instance.frozen.displayName,
+    slots: instance.frozen.slots,
+    statBonuses: instance.frozen.statBonuses,
+    rarity: instance.rarity,
+    tags: instance.frozen.tags,
+    weightLb: instance.frozen.weightLb,
+  });
+  generatedDefViews.set(instance, def);
+  return def;
+}
+
+/** Resolve either a legacy numeric instance or an exact B1 registry reference. */
+export function resolveEquipmentInstance(
+  world: GameWorld,
+  state: EquipmentState,
+  instanceId: EquipmentInstanceId,
+): EquipmentInstance | undefined {
+  if (typeof instanceId === 'number') {
+    return state.instances.get(instanceId);
+  }
+  const generated = getGeneratedEquipmentInstance(world, instanceId);
+  if (!generated) return undefined;
+  return { instanceId, def: generatedEquipmentDef(generated) };
+}
+
+interface GeneratedPhysicalOwner {
+  readonly container: 'bag' | 'equipped';
+  readonly entity: number;
+}
+
+function findGeneratedPhysicalOwners(
+  world: GameWorld,
+  instanceKey: GeneratedEquipmentInstanceKey,
+): GeneratedPhysicalOwner[] {
+  const owners: GeneratedPhysicalOwner[] = [];
+  for (const [entity, bag] of world.inventories) {
+    for (const entry of bag.generatedEquipment ?? []) {
+      if (entry.instanceKey !== instanceKey) continue;
+      owners.push({ container: 'bag', entity });
+    }
+  }
+  for (const [entity, state] of equipmentStates.get(world) ?? []) {
+    if (Object.values(state.equipped).some((instanceId) => instanceId === instanceKey)) {
+      owners.push({ container: 'equipped', entity });
+    }
+  }
+  return owners;
+}
+
+function ownershipConflict(
+  instanceKey: GeneratedEquipmentInstanceKey,
+  message: string,
+): EquipFailureReason {
+  return { type: 'generatedOwnershipConflict', instanceKey, message };
+}
+
+function generatedContentFailure(
+  instance: GeneratedEquipmentInstanceV1,
+): EquipFailureReason | undefined {
+  if (
+    instance.frozen.activeWeaponSnapshot !== null ||
+    instance.frozen.abilityGrants.length > 0 ||
+    instance.frozen.passiveGrants.length > 0
+  ) {
+    return {
+      type: 'unsupportedGeneratedContent',
+      instanceKey: instance.instanceId,
+      message:
+        'B2 cannot equip generated weapon snapshots or ability/passive grants before their owning slices land',
+    };
+  }
+  return undefined;
+}
+
+interface PreparedDisplacedInstance {
+  readonly instanceId: EquipmentInstanceId;
+  readonly instance: EquipmentInstance;
+}
+
+type PrepareDisplacedResult =
+  | { readonly ok: true; readonly displaced: readonly PreparedDisplacedInstance[] }
+  | { readonly ok: false; readonly reason: EquipFailureReason };
+
+function prepareDisplacedInstances(
+  world: GameWorld,
+  entity: number,
+  bag: NonNullable<ReturnType<GameWorld['inventories']['get']>>,
+  state: EquipmentState,
+  displacedIds: ReadonlySet<EquipmentInstanceId>,
+): PrepareDisplacedResult {
+  const displaced: PreparedDisplacedInstance[] = [];
+  for (const instanceId of displacedIds) {
+    const instance = resolveEquipmentInstance(world, state, instanceId);
+    if (!instance) {
+      return {
+        ok: false,
+        reason: { type: 'invalidDef', message: `Equipped instance not found: ${instanceId}` },
+      };
+    }
+    if (typeof instanceId === 'number') {
+      const item = getItemById(instance.def.id);
+      if (!item || item.maxStack <= 0) {
+        return {
+          ok: false,
+          reason: {
+            type: 'invalidDef',
+            message: `Cannot return invalid static item to bag: ${instance.def.id}`,
+          },
+        };
+      }
+    } else {
+      const owners = findGeneratedPhysicalOwners(world, instanceId);
+      if (
+        owners.length !== 1 ||
+        owners[0]?.container !== 'equipped' ||
+        owners[0].entity !== entity ||
+        hasGeneratedEquipmentReference(bag, instanceId)
+      ) {
+        return {
+          ok: false,
+          reason: ownershipConflict(
+            instanceId,
+            'Displaced generated equipment ownership is invalid',
+          ),
+        };
+      }
+    }
+    displaced.push({ instanceId, instance });
+  }
+  return { ok: true, displaced };
+}
+
+/**
+ * Commit prevalidated displaced instances to the bag without invoking another
+ * fallible equip/unequip operation. Callers recompute stats once after the full
+ * transfer is complete.
+ */
+function movePreparedDisplacedToBag(
+  world: GameWorld,
+  entity: number,
+  bag: NonNullable<ReturnType<GameWorld['inventories']['get']>>,
+  state: EquipmentState,
+  displaced: readonly PreparedDisplacedInstance[],
+): InventoryBagEntry[] {
+  const entries: InventoryBagEntry[] = [];
+  for (const { instanceId, instance } of displaced) {
+    for (const slotId of Object.keys(state.equipped)) {
+      if (state.equipped[slotId] === instanceId) {
+        state.equipped[slotId] = null;
+      }
+    }
+    if (typeof instanceId === 'number') {
+      state.instances.delete(instanceId);
+      addItem(bag, instance.def.id, 1);
+      entries.push(staticInventoryEntry(instance.def));
+    } else {
+      entries.push(addGeneratedEquipmentReference(bag, instanceId));
+    }
+    clearStatusEffects(
+      world,
+      entity,
+      (effect) =>
+        effect.sourceType === 'equipment' && effect.sourceId === equipmentSourceId(instanceId),
+    );
+    if (instance.def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+      clearActiveWeaponDef(world);
+    }
+  }
+  return entries;
 }
 
 // --- Stat recomputation ---
@@ -314,7 +517,7 @@ function swapEquipFailureReasons(
       if (instId !== null) swappedInstanceIds.add(instId);
     }
   }
-  const postUnequipSources: StatBonusSource[] = uniqueEquippedDefs(state)
+  const postUnequipSources: StatBonusSource[] = uniqueEquippedDefs(world, state)
     .filter((d) => !swappedInstanceIds.has(d.instanceId))
     .map((d) => ({ statBonuses: d.statBonuses, weightLb: d.weightLb }));
   const postUnequipStats = computeEffectiveStatsFromLoadout(base, core, postUnequipSources);
@@ -408,6 +611,55 @@ function equipmentSourceId(instanceId: EquipmentInstanceId): string {
   return `equipment:${instanceId}`;
 }
 
+/**
+ * Commit phase shared by `equip` and `equipFromBag` for static items.
+ * Allocates an instance id, writes slots and instance map, recomputes stats,
+ * grants status effects, and activates the weapon — in the canonical order
+ * established by `equip`.
+ *
+ * Callers are responsible for all pre-validation and bag mutations before
+ * invoking this helper.
+ */
+function commitStaticEquipInstance(
+  world: GameWorld,
+  entity: number,
+  state: EquipmentState,
+  def: EquipmentItemDef,
+): EquipmentInstanceId {
+  const instanceId = getNextInstanceId(world);
+  const instance: EquipmentInstance = { instanceId, def };
+
+  for (const slotId of def.slots) {
+    state.equipped[slotId] = instanceId;
+  }
+  state.instances.set(instanceId, instance);
+
+  recomputeEffectiveStats(world, entity);
+
+  // Grant any timed/tracked status effects this item provides. Specs were
+  // pre-validated in canEquip (validateItemDef), so these writes are infallible
+  // and the caller stays atomic. Both sourceType and sourceId are normalized to
+  // this equipment instance so unequip() clears them symmetrically.
+  for (const spec of def.grantsStatusEffects ?? []) {
+    applyStatusEffect(world, entity, {
+      ...spec,
+      sourceType: 'equipment',
+      sourceId: equipmentSourceId(instanceId),
+    });
+  }
+
+  // Weapon-typed equipment: activate the underlying WeaponDef when the player
+  // equips it. Non-player entities silently skip this.
+  if (def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    const weaponDef = getWeaponDef(def.weaponId);
+    if (weaponDef !== undefined) {
+      setActiveWeaponDef(world, weaponDef);
+    }
+  }
+
+  return instanceId;
+}
+
 /** Equip an item. Atomic — either fully succeeds or no state change. */
 export function equip(
   world: GameWorld,
@@ -429,39 +681,7 @@ export function equip(
   }
 
   const state = getOrCreateState(world, entity);
-  const instanceId = getNextInstanceId(world);
-  const instance: EquipmentInstance = { instanceId, def: itemDef };
-
-  for (const slotId of itemDef.slots) {
-    state.equipped[slotId] = instanceId;
-  }
-  state.instances.set(instanceId, instance);
-
-  recomputeEffectiveStats(world, entity);
-
-  // Grant any timed/tracked status effects this item provides. Specs were
-  // pre-validated in canEquip (validateItemDef), so these writes are infallible
-  // and equip() stays atomic. Both sourceType and sourceId are normalized to this
-  // equipment instance so unequip() clears them symmetrically (a def's granted spec
-  // can never leak via a non-'equipment' sourceType), and duplicate-capable items
-  // (e.g. two rings) track independently.
-  for (const spec of itemDef.grantsStatusEffects ?? []) {
-    applyStatusEffect(world, entity, {
-      ...spec,
-      sourceType: 'equipment',
-      sourceId: equipmentSourceId(instanceId),
-    });
-  }
-
-  // Weapon-typed equipment: activate the underlying WeaponDef when the player
-  // equips it. Non-player entities silently skip this (equipment is entity-
-  // agnostic in principle; only the player has an active weapon today).
-  if (itemDef.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
-    const weaponDef = getWeaponDef(itemDef.weaponId);
-    if (weaponDef !== undefined) {
-      setActiveWeaponDef(world, weaponDef);
-    }
-  }
+  const instanceId = commitStaticEquipInstance(world, entity, state, itemDef);
 
   return { ok: true, instanceId };
 }
@@ -487,8 +707,22 @@ export function unequip(
   const instId = state.equipped[slotId] ?? null;
   if (instId === null) return { ok: false, reason: 'Slot is empty' };
 
-  const instance = state.instances.get(instId);
+  const instance = resolveEquipmentInstance(world, state, instId);
   if (!instance) return { ok: false, reason: 'Instance not found' };
+
+  let generatedBagEntry: GeneratedEquipmentInventoryEntry | undefined;
+  if (typeof instId !== 'number') {
+    const bag = world.inventories.get(entity);
+    if (!bag) return { ok: false, reason: 'Entity has no inventory' };
+    const owners = findGeneratedPhysicalOwners(world, instId);
+    if (owners.length !== 1 || owners[0]?.container !== 'equipped' || owners[0].entity !== entity) {
+      return { ok: false, reason: `Generated equipment ownership conflict: ${instId}` };
+    }
+    if (hasGeneratedEquipmentReference(bag, instId)) {
+      return { ok: false, reason: `Generated equipment already exists in bag: ${instId}` };
+    }
+    generatedBagEntry = generatedInventoryEntry(instId);
+  }
 
   // Free all slots this instance occupies
   for (const sid of Object.keys(state.equipped)) {
@@ -496,7 +730,9 @@ export function unequip(
       state.equipped[sid] = null;
     }
   }
-  state.instances.delete(instId);
+  if (typeof instId === 'number') {
+    state.instances.delete(instId);
+  }
 
   // Remove only the status effects this specific equipment instance granted.
   clearStatusEffects(
@@ -512,14 +748,155 @@ export function unequip(
     clearActiveWeaponDef(world);
   }
 
+  if (generatedBagEntry) {
+    addGeneratedEquipmentReference(world.inventories.get(entity)!, generatedBagEntry.instanceKey);
+  }
   recomputeEffectiveStats(world, entity);
-  return { ok: true, item: instance };
+  return {
+    ok: true,
+    item: instance,
+    entry: generatedBagEntry ?? staticInventoryEntry(instance.def),
+    bagUpdated: generatedBagEntry !== undefined,
+  };
 }
 
 /** Result of `equipFromBag` — like `EquipResult` plus the ids swapped back to the bag. */
 export type EquipFromBagResult =
-  | { readonly ok: true; readonly instanceId: EquipmentInstanceId; readonly swappedOut: string[] }
+  | {
+      readonly ok: true;
+      readonly instanceId: EquipmentInstanceId;
+      readonly swappedOut: string[];
+      readonly swappedOutEntries: readonly InventoryBagEntry[];
+    }
   | { readonly ok: false; readonly reasons: EquipFailureReason[] };
+
+export type AddGeneratedEquipmentToBagResult =
+  | { readonly ok: true; readonly entry: GeneratedEquipmentInventoryEntry }
+  | { readonly ok: false; readonly reason: EquipFailureReason };
+
+/**
+ * Establish initial bag ownership for one registry-owned generated instance.
+ * Later reward/merchant/drop slices must use this seam instead of mutating bags.
+ */
+export function addGeneratedEquipmentToBag(
+  world: GameWorld,
+  entity: number,
+  instanceKey: GeneratedEquipmentInstanceKey,
+): AddGeneratedEquipmentToBagResult {
+  if (!getGeneratedEquipmentInstance(world, instanceKey)) {
+    return {
+      ok: false,
+      reason: {
+        type: 'generatedInstanceNotFound',
+        instanceKey,
+        message: `Generated equipment instance not found: ${instanceKey}`,
+      },
+    };
+  }
+  const bag = world.inventories.get(entity);
+  if (!bag) {
+    return { ok: false, reason: { type: 'invalidDef', message: 'Entity has no inventory' } };
+  }
+  const owners = findGeneratedPhysicalOwners(world, instanceKey);
+  if (owners.length > 0) {
+    return {
+      ok: false,
+      reason: ownershipConflict(
+        instanceKey,
+        `Generated equipment already has an owner: ${owners
+          .map((owner) => `${owner.container}:${owner.entity}`)
+          .join(', ')}`,
+      ),
+    };
+  }
+  return { ok: true, entry: addGeneratedEquipmentReference(bag, instanceKey) };
+}
+
+function equipGeneratedFromBag(
+  world: GameWorld,
+  entity: number,
+  entry: GeneratedEquipmentInventoryEntry,
+  options?: EquipOptions,
+): EquipFromBagResult {
+  const instanceKey = entry.instanceKey;
+  if (!options?.force && !isInSafeContext(world)) {
+    return {
+      ok: false,
+      reasons: [{ type: 'invalidDef', message: 'Equipment changes only allowed in safe rooms' }],
+    };
+  }
+
+  const bag = world.inventories.get(entity);
+  if (!bag) {
+    return { ok: false, reasons: [{ type: 'invalidDef', message: 'Entity has no inventory' }] };
+  }
+  const generated = getGeneratedEquipmentInstance(world, instanceKey);
+  if (!generated) {
+    return {
+      ok: false,
+      reasons: [
+        {
+          type: 'generatedInstanceNotFound',
+          instanceKey,
+          message: `Generated equipment instance not found: ${instanceKey}`,
+        },
+      ],
+    };
+  }
+  if (!hasGeneratedEquipmentReference(bag, instanceKey)) {
+    return {
+      ok: false,
+      reasons: [
+        ownershipConflict(instanceKey, `Generated equipment is not in entity ${entity}'s bag`),
+      ],
+    };
+  }
+  const owners = findGeneratedPhysicalOwners(world, instanceKey);
+  if (owners.length !== 1 || owners[0]?.container !== 'bag' || owners[0].entity !== entity) {
+    return {
+      ok: false,
+      reasons: [ownershipConflict(instanceKey, 'Generated equipment does not have one bag owner')],
+    };
+  }
+  const unsupported = generatedContentFailure(generated);
+  if (unsupported) return { ok: false, reasons: [unsupported] };
+
+  const def = generatedEquipmentDef(generated);
+  const infeasible = swapEquipFailureReasons(world, entity, def);
+  if (infeasible.length > 0) return { ok: false, reasons: infeasible };
+
+  const state = getOrCreateState(world, entity);
+  const displacedIds = new Set<EquipmentInstanceId>();
+  for (const slotId of def.slots) {
+    const displacedId = state.equipped[slotId] ?? null;
+    if (displacedId !== null) displacedIds.add(displacedId);
+  }
+
+  const prepared = prepareDisplacedInstances(world, entity, bag, state, displacedIds);
+  if (!prepared.ok) return { ok: false, reasons: [prepared.reason] };
+
+  const swappedOutEntries = movePreparedDisplacedToBag(
+    world,
+    entity,
+    bag,
+    state,
+    prepared.displaced,
+  );
+  removeGeneratedEquipmentReference(bag, instanceKey);
+  for (const slotId of def.slots) {
+    state.equipped[slotId] = instanceKey;
+  }
+  recomputeEffectiveStats(world, entity);
+
+  return {
+    ok: true,
+    instanceId: instanceKey,
+    swappedOut: swappedOutEntries.map((swapped) =>
+      swapped.kind === 'generated-instance' ? swapped.instanceKey : swapped.itemId,
+    ),
+    swappedOutEntries,
+  };
+}
 
 /**
  * Equip an item that currently sits in the entity's inventory bag, performing
@@ -536,9 +913,25 @@ export type EquipFromBagResult =
 export function equipFromBag(
   world: GameWorld,
   entity: number,
+  entry: GeneratedEquipmentInventoryEntry,
+  options?: EquipOptions,
+): EquipFromBagResult;
+export function equipFromBag(
+  world: GameWorld,
+  entity: number,
   itemId: string,
   options?: EquipOptions,
+): EquipFromBagResult;
+export function equipFromBag(
+  world: GameWorld,
+  entity: number,
+  item: string | GeneratedEquipmentInventoryEntry,
+  options?: EquipOptions,
 ): EquipFromBagResult {
+  if (typeof item !== 'string') {
+    return equipGeneratedFromBag(world, entity, item, options);
+  }
+  const itemId = item;
   if (!options?.force && !isInSafeContext(world)) {
     return {
       ok: false,
@@ -573,40 +966,33 @@ export function equipFromBag(
     return { ok: false, reasons: infeasible };
   }
 
-  // Free every occupied target slot first (returning those items to the bag),
-  // so `equip` below never trips the occupiedSlot guard. Internal equip/unequip
-  // calls are forced because we already cleared the safe-context gate above.
-  const internal = { force: true } as const;
   const state = getOrCreateState(world, entity);
-  const swappedDefs: EquipmentItemDef[] = [];
+  const displacedIds = new Set<EquipmentInstanceId>();
   for (const slotId of def.slots) {
-    if (!isValidSlotId(slotId) || state.equipped[slotId] === null) continue;
-    const removed = unequip(world, entity, slotId, internal);
-    if (removed.ok) {
-      swappedDefs.push(removed.item.def);
-      addItem(bag, removed.item.def.id, 1);
-    }
+    const displacedId = state.equipped[slotId] ?? null;
+    if (displacedId !== null) displacedIds.add(displacedId);
   }
+  const prepared = prepareDisplacedInstances(world, entity, bag, state, displacedIds);
+  if (!prepared.ok) return { ok: false, reasons: [prepared.reason] };
 
+  const swappedOutEntries = movePreparedDisplacedToBag(
+    world,
+    entity,
+    bag,
+    state,
+    prepared.displaced,
+  );
   removeItem(bag, itemId, 1);
-  const result = equip(world, entity, def, internal);
+  const instanceId = commitStaticEquipInstance(world, entity, state, def);
 
-  if (!result.ok) {
-    // Roll back: restore the removed item and re-equip everything we swapped out.
-    addItem(bag, itemId, 1);
-    for (const swappedDef of swappedDefs) {
-      removeItem(bag, swappedDef.id, 1);
-      const restored = equip(world, entity, swappedDef, internal);
-      // Defense-in-depth: the pre-mutation feasibility gate above makes a
-      // forward-equip failure (and thus this rollback) unreachable today, but if
-      // a future change reintroduces one, never silently delete a swapped item —
-      // return it to the bag instead of dropping it on the floor.
-      if (!restored.ok) addItem(bag, swappedDef.id, 1);
-    }
-    return { ok: false, reasons: result.reasons };
-  }
-
-  return { ok: true, instanceId: result.instanceId, swappedOut: swappedDefs.map((d) => d.id) };
+  return {
+    ok: true,
+    instanceId,
+    swappedOut: swappedOutEntries.map((swapped) =>
+      swapped.kind === 'generated-instance' ? swapped.instanceKey : swapped.itemId,
+    ),
+    swappedOutEntries,
+  };
 }
 
 /** Get effective stats for an entity. */
@@ -662,7 +1048,7 @@ export function previewEquipDelta(
     core[p] = world.stores.coreStatPoints[p][entity] ?? 0;
   }
 
-  const currentDefs = uniqueEquippedDefs(state);
+  const currentDefs = uniqueEquippedDefs(world, state);
   const currentStats = computeEffectiveStatsFromLoadout(base, core, currentDefs);
 
   // Identify the instances the new item would displace: any occupying one of
@@ -678,7 +1064,7 @@ export function previewEquipDelta(
   const swappedOut: EquipmentItemDef[] = [];
   if (state) {
     for (const instId of swappedInstanceIds) {
-      const inst = state.instances.get(instId);
+      const inst = resolveEquipmentInstance(world, state, instId);
       if (inst) swappedOut.push(inst.def);
     }
   }

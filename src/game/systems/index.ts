@@ -11,6 +11,10 @@ export {
   equipActiveAbility,
   memorizeSpell,
   grantPassiveAbility,
+  grantEquipmentActiveAbility,
+  grantEquipmentPassiveAbility,
+  revokeEquipmentAbilityGrants,
+  migrateAbilityStateToSourceTracking,
   queueAbilityTrigger,
   getOrCreateAbilityState,
   synchronizeAbilityPassives,
@@ -24,6 +28,7 @@ export type {
 } from './abilitySystem.js';
 export {
   achievementSystem,
+  collectCurrentFloorAchievementFacts,
   evaluateAchievementUnlocksForPhase,
   unlockAchievement,
 } from './achievementSystem.js';

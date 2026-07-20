@@ -140,7 +140,8 @@ test('listAllSweepRuns combines weapon and AI runs sorted newest first', async (
     run_attempt: 1,
   };
   const mockRunGhJson = async (args) => {
-    if (args.some((a) => a.includes('weapon-sweep.yml/runs'))) return { workflow_runs: [weaponRaw] };
+    if (args.some((a) => a.includes('weapon-sweep.yml/runs')))
+      return { workflow_runs: [weaponRaw] };
     if (args.some((a) => a.includes('ai-sweep.yml/runs'))) return { workflow_runs: [aiRaw] };
     throw new Error('Unexpected endpoint');
   };

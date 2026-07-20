@@ -1,5 +1,12 @@
 # Handoff: Deterministic Equipment Generator
 
+> **Backfill note:** This handoff and its companion documentation (review ledgers,
+> apple metrics) were published on the `nalfeo-d1-deterministic-equipment-generator`
+> branch after the implementation was already merged into `main` via the stacked
+> prerequisite PRs (#1552 C1, #1557 C2, and the B1 registry #1379). The PR that
+> carries this backfill is documentation-only; the implementation changes are on
+> `main`. Issue #1558 was closed by the CI bot when the implementation merged.
+
 ## Date
 
 2026-07-18

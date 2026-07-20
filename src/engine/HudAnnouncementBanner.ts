@@ -13,7 +13,7 @@
  * This module has no simulation side-effects (no writes back into `world`),
  * so headless runs that skip HUD rendering behave identically.
  */
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import type { AnnouncementEvent, AnnouncementKind } from '../shared/announcement-events.js';
 import { GAME } from '../shared/constants.js';
@@ -39,6 +39,7 @@ const MAX_LABEL_CHARACTERS = 44;
 const COLORS = {
   start: '#f5f5f5',
   end: '#a7f3d0',
+  boss: '#fca5a5',
   fallback: '#e5e7eb',
 } as const;
 
@@ -53,6 +54,9 @@ function verbForKind(kind: AnnouncementKind): string {
       return 'Battle Begins!';
     case 'spawnerArenaEnd':
       return 'Cleared!';
+    case 'bossAbilityCast':
+      // The full authored announcement is the label; no subtitle verb.
+      return '';
     default: {
       const unreachable: never = kind;
       throw new Error(`Unhandled announcement kind: ${String(unreachable)}`);
@@ -66,6 +70,8 @@ function colorForKind(kind: AnnouncementKind): string {
       return COLORS.start;
     case 'spawnerArenaEnd':
       return COLORS.end;
+    case 'bossAbilityCast':
+      return COLORS.boss;
     default:
       return COLORS.fallback;
   }
@@ -159,12 +165,46 @@ export function createHudAnnouncementBanner(
     }
   }
 
+  function pruneCanceledBossAbilityAnnouncements(world: GameWorld): void {
+    const liveBossEventIds = new Set(
+      world.announcements
+        .filter((event) => event.kind === 'bossAbilityCast')
+        .map((event) => event.eventId),
+    );
+    for (let i = queue.length - 1; i >= 0; i -= 1) {
+      const event = queue[i]!;
+      if (event.kind !== 'bossAbilityCast') continue;
+      if (!liveBossEventIds.has(event.eventId)) {
+        queue.splice(i, 1);
+      }
+    }
+  }
+
   function show(event: AnnouncementEvent): void {
-    const label = event.displayName ?? 'Spawner';
-    labelText.setText(ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS));
-    labelText.setColor(colorForKind(event.kind));
-    verbText.setText(verbForKind(event.kind).toUpperCase());
-    accent.setFillStyle(event.kind === 'spawnerArenaStart' ? 0xf2b542 : 0x46d369);
+    // Boss-ability casts carry a full authored string that must render exactly
+    // (never ellipsized or rebuilt from an archetype index). The panel is 420px
+    // wide; authored strings can exceed the 44-char single-line budget, so we
+    // enable word wrap and vertically re-center the label in the full panel.
+    const BOSS_ABILITY_WRAP_WIDTH = PANEL_WIDTH - 24; // 12px inset on each side
+    if (event.kind === 'bossAbilityCast') {
+      labelText
+        .setWordWrapWidth(BOSS_ABILITY_WRAP_WIDTH, true)
+        .setText(event.text)
+        .setY(ANNOUNCEMENT_PANEL_HEIGHT / 2)
+        .setColor(colorForKind(event.kind));
+      verbText.setText('');
+      accent.setFillStyle(0xef4444);
+    } else {
+      const label = event.displayName ?? 'Spawner';
+      // Disable word wrap for the standard single-line path.
+      labelText
+        .setWordWrapWidth(0)
+        .setText(ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS))
+        .setY(16)
+        .setColor(colorForKind(event.kind));
+      verbText.setText(verbForKind(event.kind).toUpperCase());
+      accent.setFillStyle(event.kind === 'spawnerArenaStart' ? 0xf2b542 : 0x46d369);
+    }
     activeTween?.remove();
     activeTween = scene.tweens.add({
       targets: wrapper,
@@ -191,6 +231,7 @@ export function createHudAnnouncementBanner(
 
   function sync(world: GameWorld): void {
     drainWorldAnnouncements(world);
+    pruneCanceledBossAbilityAnnouncements(world);
     // Drop expired heads until we find one still in its lifespan.
     while (queue.length > 0) {
       const head = queue[0]!;

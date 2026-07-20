@@ -4,8 +4,9 @@
  * `src/core/generateShopInventory.ts` consumes these archetypes to roll a
  * seeded per-run shop inventory.
  *
- * Archetype entries reference *existing* item ids: the weapons in
- * `weapons.json` and the merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
+ * Archetype entries reference *existing* item ids: the weapon ids in
+ * `weapons.json` (id-only; gameplay stats live in `weaponDefs.ts`) and the
+ * merchant's-charm (`SHOPKEEPER_EQUIPMENT_ITEM_ID`).
  * The loader validates that invariant at load-time so a data typo can't ship.
  *
  * Prices are the *base* per-item price. Runtime price is
@@ -15,6 +16,8 @@ import { z } from 'zod';
 import archetypesJson from './shop-archetypes.floor2.json';
 import weaponsJson from './weapons.json';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../quest-types.js';
+
+export const FLOOR2_QUARTERMASTER_ARCHETYPE_ID = 'the-quartermaster';
 
 const shopEntrySchema = z
   .object({
@@ -89,6 +92,14 @@ export function loadShopArchetypes(): readonly ShopArchetypeDef[] {
         );
       }
     }
+  }
+  const quartermasterCount = parsed.archetypes.filter(
+    (archetype) => archetype.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+  ).length;
+  if (quartermasterCount !== 1) {
+    throw new Error(
+      `Floor 2 shop archetypes must contain exactly one "${FLOOR2_QUARTERMASTER_ARCHETYPE_ID}" definition; found ${quartermasterCount}`,
+    );
   }
   cachedArchetypes = Object.freeze(parsed.archetypes.slice());
   return cachedArchetypes;

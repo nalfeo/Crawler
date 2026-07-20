@@ -4,10 +4,11 @@ import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION,
-  type ActiveWeaponSnapshotInputV1,
-  type FrozenEquipmentFieldsInputV1,
+  type ActiveWeaponSnapshotV1,
+  type FrozenEquipmentFieldsV1,
   type GeneratedEquipmentCreateInputV1,
   type GeneratedEquipmentGenerationPolicyV1,
+  type GeneratedEquipmentInstanceId,
   type GeneratedEquipmentRarity,
   type ResolvedEquipmentEffectV1,
 } from '../../src/shared/generated-equipment-types.js';
@@ -17,21 +18,24 @@ import {
   DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1,
   GeneratedEquipmentRegistryError,
   computeEquipmentFingerprint,
-  createActiveWeaponSnapshotInput,
+  createActiveWeaponSnapshotV1,
   createGeneratedEquipmentInstance,
   generatedEquipmentInstanceKey,
   getGeneratedEquipmentInstance,
   hasGeneratedEquipmentInstance,
   listGeneratedEquipmentInstances,
   registerGeneratedEquipmentInstance,
+  requireGeneratedEquipmentActiveWeaponSnapshot,
   requireGeneratedEquipmentInstance,
   restoreGeneratedEquipmentRegistry,
   snapshotGeneratedEquipmentRegistry,
 } from '../../src/core/generated-equipment-registry.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
-function weaponSnapshot(): ActiveWeaponSnapshotInputV1 {
-  return createActiveWeaponSnapshotInput('sword');
+function weaponSnapshot(instanceId: GeneratedEquipmentInstanceId): ActiveWeaponSnapshotV1 {
+  const def = getWeaponDef('sword');
+  if (!def) throw new Error('Expected sword weapon definition');
+  return createActiveWeaponSnapshotV1({ instanceId }, def);
 }
 
 function effectsFor(rarity: GeneratedEquipmentRarity): readonly ResolvedEquipmentEffectV1[] {
@@ -71,8 +75,8 @@ function effectsFor(rarity: GeneratedEquipmentRarity): readonly ResolvedEquipmen
 }
 
 function frozenFields(
-  activeWeaponSnapshot: ActiveWeaponSnapshotInputV1 | null = null,
-): FrozenEquipmentFieldsInputV1 {
+  activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null = null,
+): FrozenEquipmentFieldsV1 {
   return {
     schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
     displayName: 'Ashen Sword',
@@ -89,7 +93,7 @@ function frozenFields(
 
 function createInput(
   rarity: GeneratedEquipmentRarity = 'common',
-  activeWeaponSnapshot: ActiveWeaponSnapshotInputV1 | null = null,
+  activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null = null,
 ): GeneratedEquipmentCreateInputV1 {
   return {
     baseId: 'weapon.iron-cleaver',
@@ -144,7 +148,10 @@ describe('generated equipment instance registry', () => {
     const world = createTestWorld({ generatedEquipmentRunKey: 'run-alpha' });
     const staticWeaponBefore = canonicalJson(getWeaponDef('sword'));
 
-    const first = createGeneratedEquipmentInstance(world, createInput('common', weaponSnapshot()));
+    const first = createGeneratedEquipmentInstance(
+      world,
+      createInput('common', weaponSnapshot(generatedEquipmentInstanceKey('run-alpha', 0))),
+    );
     const second = createGeneratedEquipmentInstance(world, createInput('uncommon'));
 
     expect(first.instanceId).toBe('gei:v1:run-alpha:0');
@@ -157,6 +164,7 @@ describe('generated equipment instance registry', () => {
     expect(Object.isFrozen(first.frozen.statBonuses)).toBe(true);
     expect(Object.isFrozen(first.frozen.activeWeaponSnapshot)).toBe(true);
     expect(Object.isFrozen(first.resolvedEffects)).toBe(true);
+    expect(first.frozen.activeWeaponSnapshot?.generatedEquipmentInstanceId).toBe(first.instanceId);
     expect(canonicalJson(getWeaponDef('sword'))).toBe(staticWeaponBefore);
   });
 
@@ -220,6 +228,22 @@ describe('generated equipment instance registry', () => {
     );
     expect(createGeneratedEquipmentInstance(target, createInput()).instanceId).toBe(
       'gei:v1:run-validation:0',
+    );
+  });
+
+  it('requires the frozen weapon snapshot to match the owning generated instance id', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'run-snapshot-id' });
+
+    expectRegistryError(
+      () =>
+        createGeneratedEquipmentInstance(
+          world,
+          createInput(
+            'common',
+            weaponSnapshot(generatedEquipmentInstanceKey('run-snapshot-id', 99)),
+          ),
+        ),
+      'invalid-payload',
     );
   });
 
@@ -329,6 +353,21 @@ describe('generated equipment instance registry', () => {
     expect(listGeneratedEquipmentInstances(target)).toEqual([]);
     expect(createGeneratedEquipmentInstance(target, createInput()).instanceId).toBe(
       'gei:v1:run-atomic-restore:0',
+    );
+  });
+
+  it('looks up a generated active-weapon snapshot through the registry seam', () => {
+    const world = createTestWorld({ generatedEquipmentRunKey: 'run-active-snapshot' });
+    const instance = createGeneratedEquipmentInstance(
+      world,
+      createInput(
+        'common',
+        weaponSnapshot(generatedEquipmentInstanceKey('run-active-snapshot', 0)),
+      ),
+    );
+
+    expect(requireGeneratedEquipmentActiveWeaponSnapshot(world, instance.instanceId)).toEqual(
+      instance.frozen.activeWeaponSnapshot,
     );
   });
 });

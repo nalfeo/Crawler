@@ -1,206 +1,161 @@
 import { describe, expect, it } from 'vitest';
 import {
-  clearActiveWeaponDef,
-  getActiveWeaponDef,
   getActiveWeaponGeneration,
   getActiveWeaponSnapshot,
   setActiveWeaponDef,
-  setActiveWeaponFromGeneratedInstance,
 } from '../../src/core/active-weapon.js';
 import {
   GeneratedEquipmentRegistryError,
-  computeActiveWeaponSnapshotFingerprint,
-  createActiveWeaponSnapshotInput,
+  createActiveWeaponSnapshotV1,
   createGeneratedEquipmentInstance,
+  generatedEquipmentInstanceKey,
   validateActiveWeaponSnapshotV1,
 } from '../../src/core/generated-equipment-registry.js';
-import { canonicalJson } from '../../src/shared/canonical-json.js';
 import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
-  type ActiveWeaponCombatOverridesV1,
+  GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+  type ActiveWeaponSnapshotV1,
   type GeneratedEquipmentCreateInputV1,
 } from '../../src/shared/generated-equipment-types.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
-function weaponInput(
-  baseWeaponId = 'pistol',
-  overrides: ActiveWeaponCombatOverridesV1 = {},
-): GeneratedEquipmentCreateInputV1 {
+function createInput(snapshot: ActiveWeaponSnapshotV1): GeneratedEquipmentCreateInputV1 {
   return {
-    baseId: `weapon.generated-${baseWeaponId}`,
-    itemLevel: 3,
-    rarity: 'common',
+    baseId: 'weapon.fireball-test',
+    itemLevel: 4,
+    rarity: 'uncommon',
     enhancementLevel: 0,
-    resolvedEffects: [],
+    resolvedEffects: [
+      {
+        schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+        effectId: 'sturdy',
+        effectOrdinal: 0,
+        unitCost: 1,
+        kind: 'stat',
+        stat: 'armor',
+        operation: 'add',
+        value: 2,
+      },
+    ],
     frozen: {
       schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
-      displayName: `Generated ${baseWeaponId}`,
-      artKey: `weapon.generated-${baseWeaponId}`,
+      displayName: 'Ashen Fireball',
+      artKey: 'weapon.fireball-test',
       slots: ['mainHand'],
-      tags: ['weapon'],
-      weightLb: 3,
+      tags: ['weapon', 'magic'],
+      weightLb: 2,
       statBonuses: {},
       abilityGrants: [],
       passiveGrants: [],
-      activeWeaponSnapshot: createActiveWeaponSnapshotInput(baseWeaponId, overrides),
+      activeWeaponSnapshot: snapshot,
     },
   };
 }
 
-function expectRegistryError(
-  action: () => unknown,
-  code: GeneratedEquipmentRegistryError['code'],
-): void {
-  expect(action).toThrowError(
-    expect.objectContaining<Partial<GeneratedEquipmentRegistryError>>({
-      name: 'GeneratedEquipmentRegistryError',
-      code,
-    }),
-  );
+function expectRegistryError(action: () => unknown, code: string): GeneratedEquipmentRegistryError {
+  try {
+    action();
+  } catch (error) {
+    expect(error).toBeInstanceOf(GeneratedEquipmentRegistryError);
+    expect((error as GeneratedEquipmentRegistryError).code).toBe(code);
+    return error as GeneratedEquipmentRegistryError;
+  }
+  throw new Error(`Expected GeneratedEquipmentRegistryError(${code})`);
 }
 
-describe('ActiveWeaponSnapshotV1', () => {
-  it('finalizes generated identity without mutating the static WeaponDef', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'snapshot-finalize' });
-    const staticDef = getWeaponDef('pistol')!;
-    const staticBefore = canonicalJson(staticDef);
+describe('active weapon snapshots', () => {
+  it('creates deterministic per-instance snapshots without mutating the base weapon def', () => {
+    const fireball = getWeaponDef('fireball');
+    if (!fireball) throw new Error('Expected fireball weapon definition');
 
-    const instance = createGeneratedEquipmentInstance(
-      world,
-      weaponInput('pistol', { baseDamage: 41, cooldownMs: 275 }),
-    );
-    const snapshot = instance.frozen.activeWeaponSnapshot!;
+    const before = structuredClone(fireball);
+    const instanceId = generatedEquipmentInstanceKey('run-snapshot', 0);
+    const first = createActiveWeaponSnapshotV1({ instanceId }, fireball, {
+      name: 'Ashen Fireball',
+      baseDamage: fireball.baseDamage + 7,
+      cooldownMs: 333,
+    });
+    const second = createActiveWeaponSnapshotV1({ instanceId }, fireball, {
+      name: 'Ashen Fireball',
+      baseDamage: fireball.baseDamage + 7,
+      cooldownMs: 333,
+    });
 
-    expect(snapshot.generatedEquipmentInstanceId).toBe(instance.instanceId);
-    expect(snapshot.baseWeaponId).toBe(staticDef.id);
-    expect(snapshot.baseDamage).toBe(41);
-    expect(snapshot.cooldownMs).toBe(275);
-    expect(snapshot.weaponClassSkillId).toBe(staticDef.weaponClassSkillId);
-    expect(snapshot.weaponTypeSkillId).toBe(staticDef.weaponTypeSkillId);
-    expect(snapshot.fingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
-    expect(Object.isFrozen(snapshot)).toBe(true);
-    expect(getWeaponDef('pistol')).toBe(staticDef);
-    expect(canonicalJson(staticDef)).toBe(staticBefore);
+    expect(second).toEqual(first);
+    expect(second.fingerprint).toBe(first.fingerprint);
+    expect(first.generatedEquipmentInstanceId).toBe(instanceId);
+    expect(first.id).toBe(fireball.id);
+    expect(first.sourceWeaponDefId).toBe(fireball.id);
+    expect(first.canonicalSkillTags).toEqual([
+      `weapon-class:${first.weaponClassSkillId}`,
+      `weapon-type:${first.weaponTypeSkillId}`,
+    ]);
+    expect(getWeaponDef('fireball')).toEqual(before);
+    expect(getWeaponDef('fireball')).toBe(fireball);
   });
 
-  it('keeps same-base generated copies distinct and switches by instance fingerprint', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'snapshot-copies' });
-    const first = createGeneratedEquipmentInstance(
-      world,
-      weaponInput('pistol', { baseDamage: 10 }),
-    );
-    const second = createGeneratedEquipmentInstance(
-      world,
-      weaponInput('pistol', { baseDamage: 20 }),
+  it('rejects illegal overrides, unsupported versions, and stale fingerprints explicitly', () => {
+    const fireball = getWeaponDef('fireball');
+    if (!fireball) throw new Error('Expected fireball weapon definition');
+    const snapshot = createActiveWeaponSnapshotV1(
+      { instanceId: generatedEquipmentInstanceKey('run-errors', 0) },
+      fireball,
+      { baseDamage: fireball.baseDamage + 5 },
     );
 
-    const firstSnapshot = first.frozen.activeWeaponSnapshot!;
-    const secondSnapshot = second.frozen.activeWeaponSnapshot!;
-    expect(firstSnapshot.baseWeaponId).toBe(secondSnapshot.baseWeaponId);
-    expect(firstSnapshot.generatedEquipmentInstanceId).not.toBe(
-      secondSnapshot.generatedEquipmentInstanceId,
-    );
-    expect(firstSnapshot.fingerprint).not.toBe(secondSnapshot.fingerprint);
-
-    expect(setActiveWeaponFromGeneratedInstance(world, first.instanceId)).toBe(true);
-    const firstGeneration = getActiveWeaponGeneration(world);
-    expect(setActiveWeaponFromGeneratedInstance(world, second.instanceId)).toBe(true);
-    expect(getActiveWeaponGeneration(world)).toBe(firstGeneration + 1);
-    expect(getActiveWeaponDef(world)?.id).toBe('pistol');
-    expect(getActiveWeaponSnapshot(world)).toEqual(secondSnapshot);
-    expect(setActiveWeaponFromGeneratedInstance(world, second.instanceId)).toBe(false);
-    expect(getActiveWeaponGeneration(world)).toBe(firstGeneration + 1);
-  });
-
-  it('preserves static active-weapon identity and live-tuning behavior', () => {
-    const world = createTestWorld();
-    const pistol = getWeaponDef('pistol')!;
-    const tuned = Object.freeze({ ...pistol, baseDamage: pistol.baseDamage + 1 });
-
-    expect(setActiveWeaponDef(world, pistol)).toBe(true);
-    const generation = getActiveWeaponGeneration(world);
-    expect(setActiveWeaponDef(world, tuned)).toBe(false);
-    expect(getActiveWeaponGeneration(world)).toBe(generation);
-    expect(getActiveWeaponDef(world)).toBe(tuned);
-    expect(getActiveWeaponSnapshot(world)).toBeUndefined();
-    clearActiveWeaponDef(world);
-    expect(getActiveWeaponGeneration(world)).toBe(generation + 1);
-  });
-
-  it('fails explicitly for missing identities, unsupported versions, illegal overrides, and drift', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'snapshot-errors' });
-    const instance = createGeneratedEquipmentInstance(world, weaponInput());
-    const snapshot = instance.frozen.activeWeaponSnapshot!;
-    const { generatedEquipmentInstanceId: _missingIdentity, ...withoutIdentity } = snapshot;
-
-    expectRegistryError(() => validateActiveWeaponSnapshotV1(withoutIdentity), 'invalid-payload');
     expectRegistryError(
       () =>
-        validateActiveWeaponSnapshotV1({
-          ...snapshot,
-          schemaVersion: 'active-weapon-snapshot/v2',
-        }),
+        createActiveWeaponSnapshotV1(
+          { instanceId: snapshot.generatedEquipmentInstanceId },
+          fireball,
+          { id: 'hack' },
+        ),
+      'illegal-override',
+    );
+    expectRegistryError(
+      () =>
+        validateActiveWeaponSnapshotV1({ ...snapshot, schemaVersion: 'active-weapon-snapshot/v2' }),
       'unsupported-version',
     );
     expectRegistryError(
-      () =>
-        createActiveWeaponSnapshotInput('pistol', {
-          weaponType: 0,
-        } as unknown as ActiveWeaponCombatOverridesV1),
-      'illegal-override',
-    );
-    expectRegistryError(
-      () =>
-        validateActiveWeaponSnapshotV1({
-          ...snapshot,
-          weaponClassSkillId: 'arcane',
-        }),
-      'illegal-override',
-    );
-    expectRegistryError(
-      () =>
-        validateActiveWeaponSnapshotV1({
-          ...snapshot,
-          baseDamage: snapshot.baseDamage + 1,
-        }),
+      () => validateActiveWeaponSnapshotV1({ ...snapshot, baseDamage: snapshot.baseDamage + 1 }),
       'fingerprint-mismatch',
     );
-    expectRegistryError(
-      () => setActiveWeaponFromGeneratedInstance(world, 'gei:v1:snapshot-errors:99'),
-      'not-found',
-    );
   });
 
-  it('hashes every immutable snapshot field except the fingerprint itself', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'snapshot-coverage' });
-    const snapshot = createGeneratedEquipmentInstance(world, weaponInput()).frozen
-      .activeWeaponSnapshot!;
-    const { fingerprint: _fingerprint, ...content } = snapshot;
-    const baseline = computeActiveWeaponSnapshotFingerprint(content);
+  it('rejects missing registry identities and stores the authoritative registered snapshot', () => {
+    const fireball = getWeaponDef('fireball');
+    if (!fireball) throw new Error('Expected fireball weapon definition');
 
-    for (const key of Object.keys(content) as (keyof typeof content)[]) {
-      const value = content[key];
-      const changed = typeof value === 'number' ? value + 1 : `${String(value)}-changed`;
-      const mutated = { ...content, [key]: changed } as typeof content;
-      expect(
-        computeActiveWeaponSnapshotFingerprint(mutated),
-        `expected ${key} to affect the fingerprint`,
-      ).not.toBe(baseline);
-    }
-  });
-
-  it('rejects activation of a generated non-weapon instance', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'snapshot-non-weapon' });
-    const input = weaponInput();
-    const instance = createGeneratedEquipmentInstance(world, {
-      ...input,
-      frozen: { ...input.frozen, activeWeaponSnapshot: null },
-    });
-
-    expectRegistryError(
-      () => setActiveWeaponFromGeneratedInstance(world, instance.instanceId),
-      'invalid-payload',
+    const missingWorld = createTestWorld({ generatedEquipmentRunKey: 'run-authority' });
+    const missingSnapshot = createActiveWeaponSnapshotV1(
+      { instanceId: generatedEquipmentInstanceKey('run-authority', 0) },
+      fireball,
+      { baseDamage: fireball.baseDamage + 2 },
     );
+    expectRegistryError(() => setActiveWeaponDef(missingWorld, missingSnapshot), 'not-found');
+
+    const world = createTestWorld({ generatedEquipmentRunKey: 'run-authority' });
+    const firstSnapshot = createActiveWeaponSnapshotV1(
+      { instanceId: generatedEquipmentInstanceKey('run-authority', 0) },
+      fireball,
+      { baseDamage: fireball.baseDamage + 2 },
+    );
+    const secondSnapshot = createActiveWeaponSnapshotV1(
+      { instanceId: generatedEquipmentInstanceKey('run-authority', 1) },
+      fireball,
+      { baseDamage: fireball.baseDamage + 9 },
+    );
+    createGeneratedEquipmentInstance(world, createInput(firstSnapshot));
+    createGeneratedEquipmentInstance(world, createInput(secondSnapshot));
+
+    setActiveWeaponDef(world, firstSnapshot);
+    const firstGeneration = getActiveWeaponGeneration(world);
+    expect(getActiveWeaponSnapshot(world)?.fingerprint).toBe(firstSnapshot.fingerprint);
+
+    setActiveWeaponDef(world, secondSnapshot);
+    expect(getActiveWeaponGeneration(world)).toBeGreaterThan(firstGeneration);
+    expect(getActiveWeaponSnapshot(world)?.fingerprint).toBe(secondSnapshot.fingerprint);
   });
 });

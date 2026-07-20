@@ -1,12 +1,16 @@
 import { addComponent, addEntity, set } from 'bitecs';
 import { BloodColor } from '../components.js';
 import type { GameWorld } from '../world.js';
+import { clearMobAbility } from '../mob-abilities/runtime.js';
 
 /** Default blood colour for any enemy that does not specify one (red). */
 export { DEFAULT_BLOOD_COLOR } from '../../shared/constants.js';
 
 /** Zero all typed-array store slots for a recycled entity ID. */
 export function clearEntityStores(world: GameWorld, eid: number): void {
+  // Invalidate any mob-ability runtime state bound to this EID before it can be
+  // recycled into a new entity in the same slot.
+  clearMobAbility(world, eid);
   const { stores } = world;
   for (const group of Object.values(stores)) {
     for (const arr of Object.values(group as Record<string, ArrayLike<number>>)) {
@@ -24,6 +28,10 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
 export function createEntity(world: GameWorld): number {
   const eid = addEntity(world.ecs);
   clearEntityStores(world, eid);
+  let generation = (world.nextEntityRenderGeneration + 1) >>> 0;
+  if (generation === 0) generation = 1;
+  world.nextEntityRenderGeneration = generation;
+  world.entityRenderGeneration[eid] = generation;
   return eid;
 }
 
