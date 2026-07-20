@@ -17,10 +17,12 @@ import {
   buildCandidate,
   buildDispatchBindings,
   createMergePullRequest,
+  deleteCandidateBundle,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
+  mergeTrainGitEnvironment,
   planLandedRecovery,
   promoteExactBatch,
   promotionStaleReason,
@@ -33,6 +35,7 @@ import {
   BLOCKED_LABEL,
   CANDIDATE_CHECK_NAME,
   admissionFingerprint,
+  candidateEvidenceId,
   candidateFingerprint,
   candidateRef,
   hasLeadingMarker,
@@ -76,17 +79,35 @@ function git(args, options = {}) {
   return execFileSync('git', args, {
     encoding: 'utf8',
     stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ...(options.env || {}) },
+    env: mergeTrainGitEnvironment(process.env, options.env),
   }).trim();
 }
 
+// GitHub's default `filter=latest` collapses same-named check runs on a ref
+// down to just the newest one. The merge train posts a NEW check run named
+// CANDIDATE_CHECK_NAME (distinct external_id = fingerprint:candidateSha) for
+// every candidate validated against the same mainSha during bisection, so the
+// default filter would hide an earlier candidate's still-relevant evidence
+// behind a later one and break bisection convergence (trainCheckState would
+// see 'missing' for a candidate that actually completed). filter=all keeps
+// every check run; the check-runs envelope (`{ check_runs: [...] }`) isn't a
+// bare array, so it can't reuse the shared `paginate` helper -- page through
+// it explicitly instead of trusting a single 100-item page.
 async function checkRuns(sha) {
-  const response = await request(
-    token,
-    `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`,
-    { headers: { Accept: 'application/vnd.github+json' } },
-  );
-  return response.data.check_runs || [];
+  const encodedSha = encodeURIComponent(sha);
+  const results = [];
+  let page = 1;
+  while (true) {
+    const response = await request(
+      token,
+      `/repos/${owner}/${repo}/commits/${encodedSha}/check-runs?filter=all&per_page=100&page=${page}`,
+      { headers: { Accept: 'application/vnd.github+json' } },
+    );
+    const runs = response.data.check_runs || [];
+    results.push(...runs);
+    if (runs.length < 100) return results;
+    page += 1;
+  }
 }
 
 async function workflowRunJobs(runId) {
@@ -192,7 +213,7 @@ async function eligible(pr) {
 
 async function createTrainCheck(
   sha,
-  fingerprint,
+  evidenceId,
   status,
   conclusion = undefined,
   name = CANDIDATE_CHECK_NAME,
@@ -204,12 +225,12 @@ async function createTrainCheck(
       name,
       head_sha: sha,
       status,
-      external_id: fingerprint,
+      external_id: evidenceId,
       ...(conclusion ? { conclusion } : {}),
       output: {
         title: trainCheckTitle(status, conclusion),
         summary: [
-          `Fingerprint: ${fingerprint}`,
+          `Evidence: ${evidenceId}`,
           `PR order: ${entries.map((entry) => `#${entry.number}`).join(', ') || 'none'}`,
         ].join('\n'),
       },
@@ -291,8 +312,21 @@ async function fetchCommit(sha) {
   return (await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)).data;
 }
 
-// Publish the fail-closed promotion-postcondition check on the ACTUAL landed
-// commit (or the candidate, if nothing landed). Deliberately named
+// Publish the fail-closed promotion-postcondition check on the SHA the caller
+// selected. `promoteExactBatch` (reconcile-lib.mjs) already picks the
+// semantically-correct target per failure mode -- the real landed commit for
+// a post-merge proof failure, the last proven-good landed commit for the
+// final whole-batch main-moved guard, or the confirmed pre-merge main for a
+// pre-landing merge-API failure -- so this must attach to exactly that `sha`,
+// never re-derive its own. Re-fetching `refs/heads/main` here would silently
+// discard the caller's landed SHA and, under the exact race the final guard
+// exists to catch (main advances again while this async call is in flight),
+// post the failure onto an unrelated/foreign commit instead of the one that
+// actually failed proof -- breaking the crash-recovery consumer
+// (landedCommitHasPostconditionFailure) that looks for this check on a
+// specific PR's `merge_commit_sha`. Candidate commits are transported as
+// opaque bundles and are not repository commit objects, so `sha` here is
+// always a real GitHub commit, never a candidate SHA. Deliberately named
 // PROMOTION_POSTCONDITION_CHECK_NAME, never `merge-train`: a `merge-train`
 // check on a real landed main commit would masquerade as the fast-path
 // attestation ci.yml/mainHealthReason key on.
@@ -483,17 +517,25 @@ async function deAdmitNoop(entry, detail) {
   await dispatchRecovery(entry.number, 'merge-train-noop');
 }
 
-async function dispatchValidation(sha, fingerprint, entries) {
-  await createTrainCheck(sha, fingerprint, 'in_progress', undefined, CANDIDATE_CHECK_NAME, entries);
+async function dispatchValidation(sha, refName, fingerprint, entries) {
+  const evidenceId = candidateEvidenceId(fingerprint, sha);
+  await createTrainCheck(
+    mainSha,
+    evidenceId,
+    'in_progress',
+    undefined,
+    CANDIDATE_CHECK_NAME,
+    entries,
+  );
   try {
-    await baseDispatchValidation(sha, fingerprint, entries);
+    await baseDispatchValidation(sha, refName, mainSha, fingerprint, entries);
   } catch (error) {
     // Model a dispatch/API failure (workflow_dispatch rejected, token
     // issue, transient network error) as an infrastructure problem, not a
     // candidate code failure: use `cancelled` so trainCheckState() treats
     // it as retryable ("missing") on the next reconciliation instead of
     // being bisected as if the candidate's code actually failed CI.
-    await createTrainCheck(sha, fingerprint, 'completed', 'cancelled');
+    await createTrainCheck(mainSha, evidenceId, 'completed', 'cancelled');
     throw error;
   }
 }
@@ -565,21 +607,34 @@ const loopResult = await runTrainBuildLoop({
     const entries = train.slice(0, index + 1);
     const fingerprint = candidateFingerprint(mainSha, entries);
     const refName = candidateRef(index + 1, fingerprint);
-    const candidateSha = buildCandidate({ baseSha: mainSha, entries, refName, git, live: true });
+    const candidateSha = buildCandidate({
+      baseSha: mainSha,
+      entries,
+      refName,
+      git,
+      live: true,
+    });
+    const transportSha = git(['rev-parse', refName]);
     await removeLabel(train[index].number, BLOCKED_LABEL);
     await removeLabel(train[index].number, VALIDATION_FAILED_LABEL);
-    return { candidateSha, entries, fingerprint, refName };
+    return { candidateSha, transportSha, entries, fingerprint, refName };
   },
   finalizeEntry: async (index, builtEntry) => {
-    git([
-      'fetch',
-      'origin',
-      `${builtEntry.refName}:refs/remotes/origin/${builtEntry.refName}`,
-      '--force',
-    ]);
+    const remoteTransportRef = `refs/remotes/merge-train/candidate-${index + 1}`;
+    git(['fetch', 'origin', `${builtEntry.refName}:${remoteTransportRef}`, '--force']);
+    const fetchedTransportSha = git(['rev-parse', remoteTransportRef]);
+    if (fetchedTransportSha !== builtEntry.transportSha) {
+      throw new Error(
+        `Candidate transport ref changed while building slot ${index + 1}: expected ` +
+          `${builtEntry.transportSha}, fetched ${fetchedTransportSha}`,
+      );
+    }
+    if (git(['cat-file', '-t', remoteTransportRef]) !== 'blob') {
+      throw new Error(`Candidate transport ref for slot ${index + 1} is not a Git blob`);
+    }
     const state = trainCheckState(
-      await checkRuns(builtEntry.candidateSha),
-      builtEntry.fingerprint,
+      await checkRuns(mainSha),
+      candidateEvidenceId(builtEntry.fingerprint, builtEntry.candidateSha),
       trustedAppId,
       new Date(),
     );
@@ -595,6 +650,13 @@ const loopResult = await runTrainBuildLoop({
             : 'Candidate is immutable and bound to the listed PR revisions.',
       }),
     );
+    if (state === 'success' || state === 'failure') {
+      deleteCandidateBundle({
+        refName: builtEntry.refName,
+        transportSha: builtEntry.transportSha,
+        git,
+      });
+    }
     return { ...builtEntry, state };
   },
   onConflict: async (index, error) => {
@@ -652,8 +714,8 @@ async function promotePrefix(prefixLength, validationIndex) {
     // bisected batch candidate still has terminal SUCCESS evidence.
     verifyCandidateEvidence: async () => {
       const state = trainCheckState(
-        await checkRuns(validationCandidate.candidateSha),
-        validationCandidate.fingerprint,
+        await checkRuns(mainSha),
+        candidateEvidenceId(validationCandidate.fingerprint, validationCandidate.candidateSha),
         trustedAppId,
         new Date(),
       );
@@ -688,6 +750,7 @@ if (plan.action === 'validate') {
     plan.prefixes.map((index) =>
       dispatchValidation(
         candidates[index].candidateSha,
+        candidates[index].refName,
         candidates[index].fingerprint,
         candidates[index].entries,
       ),
