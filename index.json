@@ -1,5 +1,16 @@
 [
   {
+    "commit": "17617d9127bf73b5edde19df202d0393a546668c",
+    "commitDate": "2026-07-19T23:35:25Z",
+    "commitSubject": "feat(devtools): discover local weapon sweep results (#1208)",
+    "capturedAt": "2026-07-20T00:50:59.083Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29708508424",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/17617d9127bf73b5edde19df202d0393a546668c.json"
+  },
+  {
     "commit": "f568da5d4e8e4481d1df33ca4221fe7a7f1f9b1d",
     "commitDate": "2026-07-19T17:49:26Z",
     "commitSubject": "fix: update stale NIGHTLY_BALANCE_BRANCH_PREFIX in CI recovery automation (#1621)",
