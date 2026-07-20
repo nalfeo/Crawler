@@ -21,8 +21,8 @@ ai-combat-balance
 3🍎 estimated, 3🍎 actual (✅ hit). Single logical rule change (one gate
 condition swapped) but propagated across 2 production call sites + 1 workflow
 doc + 3 test files, with regression tests reproducing an exact prior incident.
-Plan review (gpt-5.4, `plan_divergence: minor`) + a clean single-round
-code-review loop (claude-sonnet-4.6). Full ledger:
+Plan review (gpt-5.4, `plan_divergence: minor`) + a 3-round code-review loop
+(8 concerns resolved across rounds 2–3; round 1 was clean). Full ledger:
 `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 
 ## Why
@@ -142,8 +142,19 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **101/101 passing**
 - Review harness (3🍎 tier): plan review (gpt-5.4, `plan_divergence: minor`,
   4/4 concerns resolved — addressed single-incumbent-invariant documentation +
   test, `sortByLexicographic` diagnostic-only doc clarification, superseded-
-  notice on the prior handoff) + code-review loop (claude-sonnet-4.6, round 1
-  clean, 0 concerns). Ledger:
+  notice on the prior handoff) + 3-round code-review loop (8 concerns resolved):
+  - **Round 1** (claude-sonnet-4.6): 0 concerns, clean.
+  - **Round 2** (github-copilot-pr-reviewer + claude-sonnet-4.6): 4 concerns,
+    all resolved — added `samePanel` Set-equality guard on `winsVsIncumbentDelta`
+    in `aggregate-shards.ts`, redesigned the decrease-rejection test to isolate
+    the decrease clause from the 90%-floor clause (10-seed same-panel fixture),
+    fixed a broken markdown paragraph in this handoff, corrected an inaccurate
+    test comment in `sweep-eval-search-promotion.test.ts`.
+  - **Round 3** (github-copilot-pr-reviewer): 4 concerns, all resolved — 2
+    genuine (sweep-round-plan partial-round test and sweep-eval-search-promotion
+    out-score-isolation test had mismatched candidate/incumbent panels; fixed by
+    adding the missing cells to the incumbent as losses); 2 stale (GitHub line-
+    remap landed old comments onto already-correct lines). Ledger:
   `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 - Apple record: `docs/knowledge/metrics/apples/2026-07-20-ai-sweep-net-win-promotion.json`
   (3🍎 estimated → 3🍎 actual, exact).
