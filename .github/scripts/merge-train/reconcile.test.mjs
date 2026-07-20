@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildCandidate,
   buildDispatchBindings,
+  deleteCandidateBundle,
   dispatchRecoveryWorkflow,
   dispatchValidationWorkflow,
   isDisabledTrainScheduleRun,
@@ -129,6 +130,50 @@ test('buildCandidate treats exact-SHA mismatches as retryable operational failur
       assert.match(error.message, /head changed while building candidate/);
       return true;
     },
+  );
+});
+
+test('deleteCandidateBundle removes only the exact terminal transport ref', () => {
+  const refName = 'refs/merge-train-candidates/candidate-1-deadbeef';
+  const transportSha = 'a'.repeat(40);
+  const calls = [];
+  const deleted = deleteCandidateBundle({
+    refName,
+    transportSha,
+    git: (args) => {
+      calls.push(args);
+      if (args[0] === 'ls-remote') return `${transportSha}\t${refName}`;
+      return '';
+    },
+  });
+  assert.equal(deleted, true);
+  assert.deepEqual(calls[1], [
+    'push',
+    `--force-with-lease=${refName}:${transportSha}`,
+    'origin',
+    `:${refName}`,
+  ]);
+});
+
+test('deleteCandidateBundle is idempotent and rejects ref drift', () => {
+  const refName = 'refs/merge-train-candidates/candidate-1-deadbeef';
+  const transportSha = 'a'.repeat(40);
+  assert.equal(
+    deleteCandidateBundle({
+      refName,
+      transportSha,
+      git: () => '',
+    }),
+    false,
+  );
+  assert.throws(
+    () =>
+      deleteCandidateBundle({
+        refName,
+        transportSha,
+        git: () => `${'b'.repeat(40)}\t${refName}`,
+      }),
+    /changed before cleanup/,
   );
 });
 

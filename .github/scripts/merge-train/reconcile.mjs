@@ -17,6 +17,7 @@ import {
   buildCandidate,
   buildDispatchBindings,
   createMergePullRequest,
+  deleteCandidateBundle,
   isDisabledTrainScheduleRun,
   isMergeTrainConflictError,
   isMergeTrainNoopError,
@@ -649,6 +650,13 @@ const loopResult = await runTrainBuildLoop({
             : 'Candidate is immutable and bound to the listed PR revisions.',
       }),
     );
+    if (state === 'success' || state === 'failure') {
+      deleteCandidateBundle({
+        refName: builtEntry.refName,
+        transportSha: builtEntry.transportSha,
+        git,
+      });
+    }
     return { ...builtEntry, state };
   },
   onConflict: async (index, error) => {

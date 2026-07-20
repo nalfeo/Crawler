@@ -312,6 +312,25 @@ function pushCandidateBundle({ baseSha, refName, git }) {
   }
 }
 
+export function deleteCandidateBundle({ refName, transportSha, git }) {
+  if (!refName.startsWith(CANDIDATE_REF_PREFIX)) {
+    throw new Error(`Candidate cleanup requires the ref namespace ${CANDIDATE_REF_PREFIX}`);
+  }
+  if (!/^[0-9a-f]{40}$/i.test(transportSha)) {
+    throw new Error('Candidate cleanup requires a Git blob SHA');
+  }
+  const remoteLine = git(['ls-remote', '--refs', 'origin', refName]).trim();
+  if (!remoteLine) return false;
+  const [remoteSha, remoteRef] = remoteLine.split(/\s+/);
+  if (remoteRef !== refName || remoteSha !== transportSha) {
+    throw new Error(
+      `Candidate transport ref changed before cleanup: expected ${transportSha}, found ${remoteSha || 'unknown'}`,
+    );
+  }
+  git(['push', `--force-with-lease=${refName}:${transportSha}`, 'origin', `:${refName}`]);
+  return true;
+}
+
 export function buildCandidate({ baseSha, entries, refName, git, live }) {
   if (live && !refName.startsWith(CANDIDATE_REF_PREFIX)) {
     throw new Error(
