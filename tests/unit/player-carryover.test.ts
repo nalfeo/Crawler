@@ -336,13 +336,15 @@ describe('player floor carryover', () => {
       ...frozenWeapon,
       id: equipped.instanceId,
     });
-    expect(destination.abilityStatesByEntity.get(destinationPlayer)?.equippedActiveAbilityIds).toContain(
-      'magic-missile',
-    );
+    expect(
+      destination.abilityStatesByEntity.get(destinationPlayer)?.equippedActiveAbilityIds,
+    ).toContain('magic-missile');
     expect(destination.abilityStatesByEntity.get(destinationPlayer)?.passiveAbilityIds).toContain(
       'combat-flow',
     );
-    expect(destination.abilityStatesByEntity.get(destinationPlayer)?.activeAbilityGrantSources).toEqual(
+    expect(
+      destination.abilityStatesByEntity.get(destinationPlayer)?.activeAbilityGrantSources,
+    ).toEqual(
       new Map([
         [
           'magic-missile',
@@ -361,18 +363,18 @@ describe('player floor carryover', () => {
       achievementId: 'carryover-reward',
       instanceKeys: [bundled.instanceId],
     });
-    expect(Object.isFrozen(destination.generatedEquipmentRewardBundles.get('carryover-reward'))).toBe(
-      true,
-    );
+    expect(
+      Object.isFrozen(destination.generatedEquipmentRewardBundles.get('carryover-reward')),
+    ).toBe(true);
 
     expect(unequip(destination, destinationPlayer, 'mainHand', { force: true }).ok).toBe(true);
     expect(getActiveWeaponDef(destination)).toBeUndefined();
     expect(
       destination.abilityStatesByEntity.get(destinationPlayer)?.equippedActiveAbilityIds,
     ).not.toContain('magic-missile');
-    expect(destination.abilityStatesByEntity.get(destinationPlayer)?.passiveAbilityIds).not.toContain(
-      'combat-flow',
-    );
+    expect(
+      destination.abilityStatesByEntity.get(destinationPlayer)?.passiveAbilityIds,
+    ).not.toContain('combat-flow');
   });
 
   it('fails before mutation on invalid versions, duplicate owners, and dangling references', () => {

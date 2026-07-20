@@ -142,7 +142,9 @@ function snapshotAbilityState(
   if (!state) return undefined;
 
   const nonEquipmentSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
-    sources.filter((source) => source.kind !== 'equipment' && source.kind !== 'generated-equipment');
+    sources.filter(
+      (source) => source.kind !== 'equipment' && source.kind !== 'generated-equipment',
+    );
 
   const filteredActiveSources = new Map<string, AbilityGrantSource[]>();
   for (const [abilityId, sources] of state.activeAbilityGrantSources) {
@@ -346,7 +348,9 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   for (const itemId of snapshot.equippedItemIds) {
     const def = getEquipmentDefForItem(itemId);
     if (!def) {
-      throw new PlayerCarryoverSnapshotError(`Unknown equipped item in player carryover: ${itemId}`);
+      throw new PlayerCarryoverSnapshotError(
+        `Unknown equipped item in player carryover: ${itemId}`,
+      );
     }
     for (const slotId of def.slots) {
       const existing = occupiedSlots.get(slotId);
@@ -376,7 +380,9 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
     return instance;
   });
 
-  if (generatedWeapons.filter((instance) => instance.frozen.activeWeaponSnapshot !== null).length > 1) {
+  if (
+    generatedWeapons.filter((instance) => instance.frozen.activeWeaponSnapshot !== null).length > 1
+  ) {
     throw new PlayerCarryoverSnapshotError(
       'Multiple generated active weapon snapshots are equipped',
     );
@@ -473,7 +479,9 @@ export function capturePlayerCarryover(
     world.frameCount,
   );
   const generatedEquipmentRegistry =
-    world.generatedEquipmentRegistry.runKey === null ? undefined : snapshotGeneratedEquipmentRegistry(world);
+    world.generatedEquipmentRegistry.runKey === null
+      ? undefined
+      : snapshotGeneratedEquipmentRegistry(world);
 
   const snapshot: PlayerCarryoverSnapshot = {
     schemaVersion: PLAYER_CARRYOVER_SCHEMA_VERSION,
@@ -495,11 +503,13 @@ export function capturePlayerCarryover(
       inventory?.generatedEquipment?.map((entry) => entry.instanceKey) ?? [],
     generatedEquippedInstanceKeys,
     ...(generatedEquipmentRegistry ? { generatedEquipmentRegistry } : {}),
-    generatedEquipmentRewardBundles: [...world.generatedEquipmentRewardBundles.values()].map((bundle) => ({
-      schemaVersion: bundle.schemaVersion,
-      achievementId: bundle.achievementId,
-      instanceKeys: [...bundle.instanceKeys],
-    })),
+    generatedEquipmentRewardBundles: [...world.generatedEquipmentRewardBundles.values()].map(
+      (bundle) => ({
+        schemaVersion: bundle.schemaVersion,
+        achievementId: bundle.achievementId,
+        instanceKeys: [...bundle.instanceKeys],
+      }),
+    ),
     disabledEquipmentSlots: equipment ? [...equipment.disabledSlots] : [],
     playerSkills: [...world.playerSkills].map(([id, state]) => [id, snapshotSkillState(state)]),
     ...(abilityState ? { abilityState } : {}),
@@ -562,7 +572,9 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
     ...snapshot.persistentStatModifiers.map(({ expiresInFrames, ...modifier }) => ({
       ...modifier,
       sourceId: remapModifierHolder(modifier, snapshot.sourcePlayerEid, playerEid),
-      ...(expiresInFrames === undefined ? {} : { expiresFrame: world.frameCount + expiresInFrames }),
+      ...(expiresInFrames === undefined
+        ? {}
+        : { expiresFrame: world.frameCount + expiresInFrames }),
     })),
   ];
   statSystem(world);
