@@ -1,5 +1,16 @@
 [
   {
+    "commit": "23e96a492be0bd46a49a517e29e4c4263d417bd0",
+    "commitDate": "2026-07-20T04:56:20Z",
+    "commitSubject": "fix(enemies): engage Floor 2 mobs across cave seams (#1708)",
+    "capturedAt": "2026-07-20T06:04:14.149Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29718630977",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/23e96a492be0bd46a49a517e29e4c4263d417bd0.json"
+  },
+  {
     "commit": "6d9a64fe8366ab0f67a6729c7316925b94323238",
     "commitDate": "2026-07-20T04:36:27Z",
     "commitSubject": "perf(ci): scope PR Ready/Reviewer Guard to the triggering PR (#1695)",
