@@ -39,8 +39,8 @@ token.
   `baseSha..candidateSha`, including an edit followed by a later queued revert.
 - Ordinary candidate pushes remain on the existing checkout/App credential.
 - Workflow-bearing live candidate pushes use the workflow's `GITHUB_TOKEN` with
-  `contents: write` and `workflows: write`; GitHub suppresses recursive workflow
-  runs created by this credential.
+  `contents: write`; GitHub suppresses recursive workflow runs created by this
+  credential.
 - The token is applied only to the candidate-ref Git child by process-local Git
   configuration: an empty `http.extraheader` resets the App authorization before
   the `GITHUB_TOKEN` authorization entry.
