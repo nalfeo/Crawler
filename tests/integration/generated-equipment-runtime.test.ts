@@ -32,7 +32,6 @@ describe('generated equipment runtime integration', () => {
     const staticPistol = getWeaponDef('pistol')!;
     const staticDamage = staticPistol.baseDamage;
     const generated = generateEquipmentInstance(world, GENERATED_WEAPON_REQUEST);
-
     setActiveWeaponFromGeneratedInstance(world, generated.instanceId);
     world.elapsedMs = 10_000;
     weaponSystem(world);

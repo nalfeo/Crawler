@@ -78,15 +78,22 @@ export interface AbilityTriggerEvent {
  * in `AbilityState` so revocation targets only the matching source and never
  * accidentally removes grants from other origins.
  *
- * - `learned`:   Player learned/memorized the ability directly (boss reward spell,
- *                lab grant, etc.). These grants are never auto-revoked.
- * - `skill`:     A skill-milestone (e.g. level-5) automatically granted the
- *                passive. Revoked if the skill is somehow reset (future work);
- *                preserved when equipment sources are removed.
- * - `equipment`: An equipped item instance granted the ability. `instanceId` is
- *                the stable numeric `EquipmentInstanceId` for static items or the
- *                `GeneratedEquipmentInstanceId` string for generated items.
- *                Revoked atomically when that equipment instance is unequipped.
+ * - `learned`:              Player learned/memorized the ability directly (boss reward spell,
+ *                           lab grant, etc.). These grants are never auto-revoked.
+ * - `skill`:                A skill-milestone (e.g. level-5) automatically granted the
+ *                           passive. Revoked if the skill is somehow reset (future work);
+ *                           preserved when equipment sources are removed.
+ * - `equipment`:            An equipped item instance granted the ability. `instanceId` is
+ *                           the stable numeric `EquipmentInstanceId` for static items or the
+ *                           `GeneratedEquipmentInstanceId` string for generated items.
+ *                           Revoked atomically when that equipment instance is unequipped.
+ * - `generated-equipment`:  A Floor 2 generated-equipment instance granted the ability via
+ *                           `grantGeneratedEquipmentActiveAbility` /
+ *                           `grantGeneratedEquipmentPassiveAbility`. Carries `effectOrdinal`
+ *                           so each effect from the same instance has a distinct, idempotent
+ *                           identity (prevents duplicate source entries when the grant
+ *                           wrapper is called more than once). Revoked atomically by
+ *                           `revokeEquipmentAbilityGrants`.
  */
 export type AbilityGrantSource =
   | { readonly kind: 'learned' }
@@ -94,6 +101,11 @@ export type AbilityGrantSource =
   | {
       readonly kind: 'equipment';
       readonly instanceId: EquipmentInstanceId | GeneratedEquipmentInstanceId;
+    }
+  | {
+      readonly kind: 'generated-equipment';
+      readonly instanceId: GeneratedEquipmentInstanceId;
+      readonly effectOrdinal: number;
     };
 
 export type AbilityGrantKind = 'active' | 'passive';

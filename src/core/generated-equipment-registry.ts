@@ -594,10 +594,12 @@ function isActiveWeaponSnapshotCreateInput(
 ): value is ActiveWeaponSnapshotCreateInputV1 {
   if (typeof value !== 'object' || value === null) return false;
   const obj = value as Record<string, unknown>;
-  return (
-    typeof obj.weaponDefId === 'string' &&
-    (obj as Record<string, unknown>).schemaVersion !== ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION
-  );
+  // The deferred form is identified by the presence of `weaponDefId` and the
+  // strict ABSENCE of `schemaVersion`.  Any versioned object (including a
+  // future v2 snapshot) must flow to snapshot validation and be rejected there;
+  // only the exact two-field deferred stub { weaponDefId, overrides? } is
+  // treated as a create-input here.
+  return typeof obj.weaponDefId === 'string' && !('schemaVersion' in obj);
 }
 
 function buildSnapshotFromCreateInput(
@@ -632,8 +634,8 @@ function buildSnapshotFromCreateInput(
  * {@link createGeneratedEquipmentInstance}.
  *
  * @param weaponDefId   The static weapon-def ID to base the snapshot on.
- * @param overrides     Optional combat-stat overrides (validated against the
- *                      allowed-override key list inside the registry).
+ * @param overrides     Optional combat-stat overrides applied on top of the
+ *                      static weapon def's fields.
  */
 export function createActiveWeaponSnapshotInput(
   weaponDefId: string,
@@ -646,6 +648,7 @@ function validateFrozenFields(
   value: unknown,
   path: string,
   expectedInstanceId?: GeneratedEquipmentInstanceId,
+  allowDeferredSnapshot = false,
 ): FrozenEquipmentFieldsV1 {
   const record = requireRecord(value, path);
   requireKeys(
@@ -673,7 +676,10 @@ function validateFrozenFields(
   let activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null;
   if (record.activeWeaponSnapshot === null) {
     activeWeaponSnapshot = null;
-  } else if (isActiveWeaponSnapshotCreateInput(record.activeWeaponSnapshot)) {
+  } else if (
+    allowDeferredSnapshot &&
+    isActiveWeaponSnapshotCreateInput(record.activeWeaponSnapshot)
+  ) {
     activeWeaponSnapshot = buildSnapshotFromCreateInput(
       record.activeWeaponSnapshot,
       expectedInstanceId,
@@ -1090,7 +1096,7 @@ function validateCreateInput(
       policy,
       `${path}.resolvedEffects`,
     ),
-    frozen: validateFrozenFields(record.frozen, `${path}.frozen`, expectedInstanceId),
+    frozen: validateFrozenFields(record.frozen, `${path}.frozen`, expectedInstanceId, true),
   });
 }
 

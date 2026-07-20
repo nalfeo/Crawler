@@ -135,13 +135,15 @@ function snapshotAbilityState(
   // compact itemDef→abilityId manifest here and re-grant on restore so equipment
   // abilities survive the transition without stale instanceId references.
   const nonEquipmentSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
-    sources.filter((s) => s.kind !== 'equipment');
+    sources.filter((s) => s.kind !== 'equipment' && s.kind !== 'generated-equipment');
   const hasNonEquipmentLegacySource = (kind: 'active' | 'passive', abilityId: string): boolean => {
     const sources =
       kind === 'active'
         ? (state.activeAbilityGrantSources.get(abilityId) ?? [])
         : (state.passiveAbilityGrantSources.get(abilityId) ?? []);
-    return sources.some((source) => source.kind !== 'equipment');
+    return sources.some(
+      (source) => source.kind !== 'equipment' && source.kind !== 'generated-equipment',
+    );
   };
   const nonEquipmentSourceIds = (
     kind: 'active' | 'passive',

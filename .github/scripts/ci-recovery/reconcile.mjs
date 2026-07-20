@@ -1016,7 +1016,11 @@ for (const thread of unresolvedThreads.filter((candidate) => {
   const lastComment = candidateComments[candidateComments.length - 1];
   const candidateMarkerSha = extractAddressedMarkerSha(lastComment?.body);
   if (candidateMarkerSha && definitivelyUnreachableMarkerShas.has(candidateMarkerSha)) {
-    return false;
+    const authorLogin = String(lastComment?.author?.login ?? '').toLowerCase();
+    const authorAssociation = String(lastComment?.authorAssociation ?? '').toUpperCase();
+    if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
+      return false;
+    }
   }
   return true;
 })) {
@@ -1384,7 +1388,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
     path: thread.path || undefined,
-    line: thread.line || undefined,
+    line: thread.isOutdated ? undefined : thread.line || undefined,
     summary,
     url: root?.url,
   });

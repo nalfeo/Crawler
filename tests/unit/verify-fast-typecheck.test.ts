@@ -251,18 +251,18 @@ describe('verify-fast changed TS path coverage', () => {
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
-        'vitest.config.ts': 'export const unsupportedRootValue = 1;\n',
+        'project.config.ts': 'export const unsupportedRootValue = 1;\n',
       });
       initGitFixture(fixture);
-      writeFileSync(path.join(fixture, 'vitest.config.ts'), narrowingError);
+      writeFileSync(path.join(fixture, 'project.config.ts'), narrowingError);
 
       const result = runStaticVerifier(fixture, { cwd: fixture });
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:',
       );
-      expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.ts');
+      expect(`${result.stdout}\n${result.stderr}`).toContain('project.config.ts');
     },
     30_000,
   );
@@ -285,7 +285,7 @@ describe('verify-fast changed TS path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:',
       );
       expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.mts');
     },
@@ -309,8 +309,8 @@ describe('verify-fast changed TS path coverage', () => {
       const baseSha = runGit(fixture, 'rev-parse', 'HEAD');
 
       // Second commit: add an unsupported TS file — clean, no uncommitted changes.
-      writeFileSync(path.join(fixture, 'vitest.config.ts'), 'export const x = 1;\n');
-      runGit(fixture, 'add', 'vitest.config.ts');
+      writeFileSync(path.join(fixture, 'project.config.ts'), 'export const x = 1;\n');
+      runGit(fixture, 'add', 'project.config.ts');
       runGit(fixture, 'commit', '-m', 'add unsupported file');
 
       // Run with GITHUB_BASE_SHA pointing to the first commit so the diff
@@ -329,9 +329,9 @@ describe('verify-fast changed TS path coverage', () => {
 
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}\n${result.stderr}`).toContain(
-        'verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:',
+        'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:',
       );
-      expect(`${result.stdout}\n${result.stderr}`).toContain('vitest.config.ts');
+      expect(`${result.stdout}\n${result.stderr}`).toContain('project.config.ts');
     },
     30_000,
   );

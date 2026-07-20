@@ -98,10 +98,10 @@ export interface FrozenEquipmentFieldsV1 {
 }
 
 /**
- * Overrides that the generated-equipment generator may apply on top of a
- * weapon def's static fields when creating a weapon snapshot during item
- * generation.  Validated against {@link ACTIVE_WEAPON_SNAPSHOT_OVERRIDE_KEYS}
- * inside the registry before the snapshot is built.
+ * Optional combat-stat overrides the generated-equipment generator may apply
+ * on top of a weapon def's static fields when building a weapon snapshot.
+ * Validated against {@link ACTIVE_WEAPON_SNAPSHOT_OVERRIDE_KEYS} inside the
+ * registry before the snapshot is materialised.
  */
 export type ActiveWeaponCombatOverridesV1 = Partial<
   Pick<
@@ -137,8 +137,8 @@ export type ActiveWeaponCombatOverridesV1 = Partial<
 
 /**
  * Deferred form of an active-weapon snapshot used only inside a
- * {@link FrozenEquipmentFieldsCreateInputV1}.  The registry resolves this into
- * a full {@link ActiveWeaponSnapshotV1} (with the correct instance ID and
+ * {@link FrozenEquipmentFieldsCreateInputV1}.  The registry expands this into a
+ * full {@link ActiveWeaponSnapshotV1} (with the correct instance ID and
  * fingerprint) when {@link createGeneratedEquipmentInstance} is called.
  */
 export interface ActiveWeaponSnapshotCreateInputV1 {
@@ -149,7 +149,7 @@ export interface ActiveWeaponSnapshotCreateInputV1 {
 /**
  * Input form of {@link FrozenEquipmentFieldsV1} accepted by
  * {@link GeneratedEquipmentCreateInputV1}.  The `activeWeaponSnapshot` field
- * additionally allows a deferred {@link ActiveWeaponSnapshotCreateInputV1};
+ * additionally accepts a deferred {@link ActiveWeaponSnapshotCreateInputV1};
  * the registry resolves it to a full snapshot before persisting the instance.
  *
  * {@link FrozenEquipmentFieldsV1} is structurally assignable here, so existing
