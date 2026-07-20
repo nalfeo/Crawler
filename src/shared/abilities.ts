@@ -90,8 +90,9 @@ interface AbilityStateFields {
   learnedSpellIds: string[];
   equippedActiveAbilityIds: string[];
   /** All catalog-backed active ability IDs with at least one ownership source, including
-   * abilities owned but not yet equipped (e.g. when the active slot cap was full at grant time). */
-  ownedActiveAbilityIds: string[];
+   * abilities owned but not yet equipped (e.g. when the active slot cap was full at grant time).
+   * Derived field — always populated by syncDerivedAbilityLists; may be absent on legacy objects. */
+  ownedActiveAbilityIds?: string[];
   passiveAbilityIds: string[];
   cooldownByAbilityId: Map<string, number>;
   cooldownFramesByAbilityId: Map<string, number>;

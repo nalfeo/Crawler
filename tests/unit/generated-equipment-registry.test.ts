@@ -76,6 +76,8 @@ function effectsFor(rarity: GeneratedEquipmentRarity): readonly ResolvedEquipmen
 
 function frozenFields(
   activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null = null,
+  abilityGrants: readonly string[] = [],
+  passiveGrants: readonly string[] = [],
 ): FrozenEquipmentFieldsV1 {
   return {
     schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
@@ -85,8 +87,8 @@ function frozenFields(
     tags: ['weapon', 'blade'],
     weightLb: 3,
     statBonuses: { strength: 1, critChance: 0.05 },
-    abilityGrants: [],
-    passiveGrants: [],
+    abilityGrants,
+    passiveGrants,
     activeWeaponSnapshot,
   };
 }
@@ -95,13 +97,22 @@ function createInput(
   rarity: GeneratedEquipmentRarity = 'common',
   activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null = null,
 ): GeneratedEquipmentCreateInputV1 {
+  const effects = effectsFor(rarity);
+  const abilityGrants: string[] = [];
+  const passiveGrants: string[] = [];
+  for (const e of effects) {
+    if ('grantId' in e) {
+      if (e.kind === 'abilityGrant') abilityGrants.push(e.grantId);
+      else if (e.kind === 'passiveGrant') passiveGrants.push(e.grantId);
+    }
+  }
   return {
     baseId: 'weapon.iron-cleaver',
     itemLevel: 3,
     rarity,
     enhancementLevel: 0,
-    resolvedEffects: effectsFor(rarity),
-    frozen: frozenFields(activeWeaponSnapshot),
+    resolvedEffects: effects,
+    frozen: frozenFields(activeWeaponSnapshot, abilityGrants, passiveGrants),
   };
 }
 
