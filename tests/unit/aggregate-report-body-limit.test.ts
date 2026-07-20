@@ -41,7 +41,7 @@ beforeAll(() => {
     severity: 'warn',
     message: `Handoff declares unknown system slug 'slug-${i}'; not in docs/systems/README.md.`,
     file: `docs/knowledge/handoffs/2026-07-20-handoff-${i}.md`,
-    remediation: "Add `## Systems touched: <slug1>, <slug2>` to the handoff.",
+    remediation: 'Add `## Systems touched: <slug1>, <slug2>` to the handoff.',
   }));
 
   const summary = {
@@ -68,6 +68,9 @@ describe('aggregate-report.ts body-limit truncation', () => {
         AUTOMATION_REPORT_DIR: tmpDir,
         AUTOMATION_TITLE: 'docs-update: scheduled report',
         GITHUB_WORKFLOW: 'Docs Update Loop',
+        GITHUB_SERVER_URL: 'https://github.com',
+        GITHUB_REPOSITORY: 'nalfeo/Crawler',
+        GITHUB_RUN_ID: '123456',
       },
     });
 
@@ -79,6 +82,7 @@ describe('aggregate-report.ts body-limit truncation', () => {
     // A truncation notice must be appended.
     expect(body).toContain('Report truncated');
     expect(body).toContain('findings total');
+    expect(body).toContain('[workflow run](https://github.com/nalfeo/Crawler/actions/runs/123456)');
 
     // Exit code must be non-zero — findings exist so an issue should be filed.
     expect(result.status).toBe(1);
