@@ -427,11 +427,12 @@ export interface LeaderboardRow {
   /** Aggregate win-rate delta vs the incumbent (null if no incumbent or self). */
   winRateDeltaVsIncumbent: number | null;
   /** Candidate's total wins minus the incumbent's total wins (null if no
-   *  incumbent or self). Positive means the candidate has strictly MORE total
-   *  wins than the incumbent — the hard gate {@link selectQualifiedWinner}
-   *  now uses in place of the old zero-flips requirement, per the human-approved
-   *  net-win promotion rule: a candidate may flip incumbent wins into losses as
-   *  long as its absolute total wins strictly increase over the incumbent's. */
+   *  incumbent, self, or the groups cover different weapon/seed panels).
+   *  Positive means the candidate has strictly MORE total wins than the
+   *  incumbent — the hard gate {@link selectQualifiedWinner} now uses in place
+   *  of the old zero-flips requirement, per the human-approved net-win promotion
+   *  rule: a candidate may flip incumbent wins into losses as long as its
+   *  absolute total wins strictly increase over the incumbent's. */
   winsVsIncumbentDelta: number | null;
   isIncumbent: boolean;
 }
@@ -539,7 +540,17 @@ export function buildLeaderboard(
         winRateDeltaVsIncumbent = wins / runs - incumbentWinRate;
       }
       if (incumbentWins !== null) {
-        winsVsIncumbentDelta = wins - incumbentWins;
+        // Only compute a meaningful delta when the candidate and incumbent were
+        // evaluated on an identical (weapon, seed) panel.  Extra or missing
+        // cells would inflate/deflate the raw win count and make the comparison
+        // meaningless, so leave winsVsIncumbentDelta null for mismatched panels.
+        const candidateCells = new Set(groupRows.map((r) => `${r.weapon}\u0000${r.seed}`));
+        const panelsMatch =
+          candidateCells.size === incumbentWinByCell.size &&
+          groupRows.every((r) => incumbentWinByCell.has(`${r.weapon}\u0000${r.seed}`));
+        if (panelsMatch) {
+          winsVsIncumbentDelta = wins - incumbentWins;
+        }
       }
     }
 

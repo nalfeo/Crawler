@@ -76,14 +76,13 @@ scope to compute its total win count. `flipsVsIncumbent` and
 (still surfaced in the markdown leaderboard and in `sortByLexicographic`'s
 diagnostic-only tie-break), no longer used as a hard gate.
 
-`buildLeaderboard()` supports exactly ONE incumbent identity (`incumbentCombo`
-
-- `incumbentConfigId`) per call — documented explicitly on
-  `BuildLeaderboardOptions` after a plan-review concern about batching rows from
-  multiple differently-incumbented checkpoints/combos into one call (not
-  something any current caller does, but now an explicit, tested invariant:
-  incumbent identity is scoped to the exact `(combo, configId)` pair, not
-  `configId` alone).
+`buildLeaderboard()` supports exactly ONE incumbent identity (`incumbentCombo`,
+`incumbentConfigId`) per call — documented explicitly on
+`BuildLeaderboardOptions` after a plan-review concern about batching rows from
+multiple differently-incumbented checkpoints/combos into one call (not
+something any current caller does, but now an explicit, tested invariant:
+incumbent identity is scoped to the exact `(combo, configId)` pair, not
+`configId` alone).
 
 ### Files changed
 

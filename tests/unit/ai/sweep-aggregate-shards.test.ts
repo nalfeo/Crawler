@@ -522,29 +522,51 @@ describe('selectQualifiedWinner', () => {
     expect(selection.reason).toMatch(/No candidate met the hard gate/);
   });
 
-  it('rejects a candidate whose total wins DECREASE relative to the incumbent, even above the win-rate floor', () => {
+  it('rejects a candidate whose total wins DECREASE relative to the incumbent at the win-rate floor', () => {
+    // Use the same 10-seed panel for both groups so the panel-alignment guard
+    // permits a non-null delta. Incumbent wins all 10 seeds (100%); candidate
+    // wins 9 out of the same 10 seeds (exactly 90% — clears the win-rate
+    // floor). Asserting winRate here ensures the floor is not what causes
+    // the rejection: removing the win-decrease clause would flip this test
+    // from failing to passing.
+    const seeds = Array.from({ length: 10 }, (_, i) => i + 1);
     const rows = [
-      row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
-      row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'bow', seed: 1 }),
-      row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'dagger', seed: 1 }),
-      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'staff', seed: 1 }),
-      // Candidate wins 2/3 of its own runs (>=90%? no — but even if it cleared
-      // the floor this isolates the decrease clause) while the incumbent wins
-      // 3/4. Candidate total wins (2) < incumbent total wins (3).
-      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
-      row({ combo: 'a+legacy', configId: 'a', weapon: 'bow', seed: 1 }),
-      loss({ combo: 'a+legacy', configId: 'a', weapon: 'dagger', seed: 1 }),
+      ...seeds.map((seed) =>
+        row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed }),
+      ),
+      ...seeds.map((seed) =>
+        seed === 10
+          ? loss({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed })
+          : row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed }),
+      ),
     ];
     const lb = buildLeaderboard(rows, {
       incumbentCombo: 'legacy+legacy',
       incumbentConfigId: 'inc',
     });
     const candidate = lb.find((r) => r.configId === 'a')!;
-    expect(candidate.wins).toBe(2);
-    expect(candidate.winsVsIncumbentDelta).toBe(-1); // 2 - 3
+    expect(candidate.wins).toBe(9);
+    expect(candidate.winRate).toBeCloseTo(0.9); // passes the 90% floor…
+    expect(candidate.winsVsIncumbentDelta).toBe(-1); // …but 9 < 10 incumbent wins
     const selection = selectQualifiedWinner(lb);
     expect(selection.winner).toBeNull();
     expect(selection.reason).toMatch(/No candidate met the hard gate/);
+  });
+
+  it('rejects a candidate evaluated on a different weapon/seed panel', () => {
+    const rows = [
+      loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
+      row({ combo: 'a+legacy', configId: 'a', weapon: 'bow', seed: 1 }),
+    ];
+    const lb = buildLeaderboard(rows, {
+      incumbentCombo: 'legacy+legacy',
+      incumbentConfigId: 'inc',
+    });
+    const candidate = lb.find((r) => r.configId === 'a')!;
+    expect(candidate.winRate).toBe(1);
+    expect(candidate.winsVsIncumbentDelta).toBeNull();
+    expect(selectQualifiedWinner(lb).winner).toBeNull();
   });
 
   it('rejects a candidate below the win-rate floor even with strictly more total wins than the incumbent', () => {
@@ -794,11 +816,12 @@ describe('renderMarkdown', () => {
   it('renders the qualified-winner section, calling out a disqualified composite leader', () => {
     const shards = [
       shard([
-        // Incumbent wins its only cell (1 win).
+        // Incumbent wins 1 of the shared 2-cell panel.
         row({ combo: 'legacy+legacy', configId: 'inc', weapon: 'sword', seed: 1 }),
+        loss({ combo: 'legacy+legacy', configId: 'inc', weapon: 'bow', seed: 1 }),
         // Flip-tainted, highest-score challenger: flips the incumbent's win
-        // but recovers nothing else, so its total (1 win) only TIES the
-        // incumbent — must be flagged as disqualified despite the huge score.
+        // and recovers the incumbent's loss, so its total (1 win) only TIES
+        // the incumbent — must be flagged as disqualified despite the huge score.
         loss({ combo: 'a+legacy', configId: 'a', weapon: 'sword', seed: 1 }),
         row({ combo: 'a+legacy', configId: 'a', weapon: 'bow', seed: 1, score: 9_000_000 }),
         // Lower-score qualifier with 2 wins — strictly more than the

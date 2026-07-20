@@ -62,10 +62,10 @@ describe('selectSearchPromotion', () => {
           : row({ combo: COMBO, configId: 'base', weapon: 'sword', seed }),
       );
     }
-    // Candidate: flips seed 5 (a win→loss flip) but recovers nothing else, so
-    // its total wins (9) only TIE the incumbent's (9) — not a strict
-    // increase — even though it clears the 90% win-rate floor and scores
-    // much higher overall.
+    // Candidate: flips seed 5 (win→loss) but also recovers seed 10 (loss→win),
+    // netting to zero — its total wins (9) still only TIE the incumbent's (9),
+    // not a strict increase — even though it clears the 90% win-rate floor and
+    // scores much higher overall.
     const candidateRows: RunRow[] = [];
     for (let seed = 1; seed <= 10; seed++) {
       candidateRows.push(
@@ -139,7 +139,11 @@ describe('selectSearchPromotion', () => {
   it('promotes a higher-scoring, strictly-more-wins qualifying candidate', () => {
     const rows: RunRow[] = [];
     for (let seed = 1; seed <= 10; seed++) {
-      rows.push(row({ combo: COMBO, configId: 'base', weapon: 'sword', seed }));
+      rows.push(
+        seed === 10
+          ? loss({ combo: COMBO, configId: 'base', weapon: 'sword', seed })
+          : row({ combo: COMBO, configId: 'base', weapon: 'sword', seed }),
+      );
     }
     const candidateRows: RunRow[] = [];
     for (let seed = 1; seed <= 10; seed++) {
@@ -147,11 +151,8 @@ describe('selectSearchPromotion', () => {
         row({ combo: COMBO, configId: 'qualified', weapon: 'sword', seed, score: 2_000_000 }),
       );
     }
-    // One extra winning cell the incumbent never ran => 11 total wins,
-    // strictly more than the incumbent's 10.
-    candidateRows.push(
-      row({ combo: COMBO, configId: 'qualified', weapon: 'bow', seed: 1, score: 2_000_000 }),
-    );
+    // Same panel, with seed 10 recovered: 10 wins, strictly more than the
+    // incumbent's 9.
     const allRows = [...rows, ...candidateRows];
 
     const promotion = selectSearchPromotion(
@@ -166,7 +167,7 @@ describe('selectSearchPromotion', () => {
 
     expect(promotion).not.toBeNull();
     expect(promotion?.bestId).toBe('qualified');
-    expect(promotion?.bestScore).toBe(2_000_000 * 11);
+    expect(promotion?.bestScore).toBe(2_000_000 * 10);
   });
 
   it('returns null when the only qualifying candidate does not out-score the current position', () => {
