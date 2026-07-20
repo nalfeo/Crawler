@@ -1,5 +1,16 @@
 [
   {
+    "commit": "469e63400044d41e6ae3a00683c36722f13f103d",
+    "commitDate": "2026-07-20T22:23:19Z",
+    "commitSubject": "ci: cancel superseded PR heads in CI and Security Review workflows (#1694)",
+    "capturedAt": "2026-07-20T23:19:00.893Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29784239355",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/469e63400044d41e6ae3a00683c36722f13f103d.json"
+  },
+  {
     "commit": "b80d3c7b1d1ad7e34a438b690cf2ab46a9e2dc73",
     "commitDate": "2026-07-20T20:22:15Z",
     "commitSubject": "fix(docs-update): truncate aggregate report body to stay within GitHub's 65 536-char issue limit (#1744)",
