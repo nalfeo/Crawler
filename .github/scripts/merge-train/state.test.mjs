@@ -97,7 +97,10 @@ test('candidate refs are bounded and immutable by fingerprint', () => {
 test('candidate evidence binds the queue fingerprint to the exact materialized commit', () => {
   const fingerprint = 'a'.repeat(64);
   const candidateSha = 'B'.repeat(40);
-  assert.equal(candidateEvidenceId(fingerprint, candidateSha), `${fingerprint}:${'b'.repeat(40)}`);
+  assert.equal(
+    candidateEvidenceId(fingerprint, candidateSha),
+    '2f4ce7270f332276802bb030a1cd8f4edd1fea4bab4d75d50f7abd67df82888b',
+  );
   assert.throws(() => candidateEvidenceId('short', candidateSha), /fingerprint/);
   assert.throws(() => candidateEvidenceId(fingerprint, 'short'), /commit SHA/);
 });

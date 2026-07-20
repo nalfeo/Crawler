@@ -128,7 +128,7 @@ export function candidateEvidenceId(fingerprint, candidateSha) {
   if (!/^[0-9a-f]{40}$/i.test(candidateSha)) {
     throw new Error('Candidate evidence requires a Git commit SHA');
   }
-  return `${fingerprint}:${candidateSha.toLowerCase()}`;
+  return createHash('sha256').update(`${fingerprint}:${candidateSha.toLowerCase()}`).digest('hex');
 }
 
 export function admissionFingerprint({

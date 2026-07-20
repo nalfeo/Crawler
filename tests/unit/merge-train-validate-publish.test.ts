@@ -1,8 +1,16 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { describe, expect, it, vi } from 'vitest';
+
+function candidateEvidenceId(fingerprint: string, candidateSha: string): string {
+  return createHash('sha256').update(`${fingerprint}:${candidateSha.toLowerCase()}`).digest('hex');
+}
+
+const nodeRequire = createRequire(import.meta.url);
 
 /**
  * Regression coverage for a real review finding on merge-train-validate.yml's
@@ -119,11 +127,13 @@ async function runPublishScript(
   process.env.FINGERPRINT = 'deadbeef';
   process.env.PR_NUMBERS = '42,43';
   try {
-    const run = new Function('github', 'context', `return (async () => {\n${script}\n})();`) as (
-      github: unknown,
-      context: unknown,
-    ) => Promise<void>;
-    await run(github, context);
+    const run = new Function(
+      'github',
+      'context',
+      'require',
+      `return (async () => {\n${script}\n})();`,
+    ) as (github: unknown, context: unknown, require: typeof nodeRequire) => Promise<void>;
+    await run(github, context, nodeRequire);
   } finally {
     for (const [key, value] of Object.entries(previousEnv)) {
       if (value === undefined) delete process.env[key];
@@ -453,9 +463,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         const run = new Function(
           'github',
           'context',
+          'require',
           `return (async () => {\n${script}\n})();`,
-        ) as (github: unknown, context: unknown) => Promise<void>;
-        await run(github, context);
+        ) as (github: unknown, context: unknown, require: typeof nodeRequire) => Promise<void>;
+        await run(github, context, nodeRequire);
       } finally {
         for (const [key, value] of Object.entries(previousEnv)) {
           if (value === undefined) delete process.env[key];
@@ -465,7 +476,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(createArgs).toBeDefined();
       expect(createArgs?.conclusion).toBe('cancelled');
       expect(createArgs?.head_sha).toBe('f'.repeat(40));
-      expect(createArgs?.external_id).toBe(`cafef00d:${'b'.repeat(40)}`);
+      expect(createArgs?.external_id).toBe(candidateEvidenceId('cafef00d', 'b'.repeat(40)));
       expect(createCalls).toBe(1);
     });
 
@@ -496,7 +507,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                 check_runs: [
                   {
                     id: 999,
-                    external_id: `cafef00d:${'b'.repeat(40)}`,
+                    external_id: candidateEvidenceId('cafef00d', 'b'.repeat(40)),
                     app: { id: 12345 },
                     status: 'completed',
                     conclusion: 'success',
@@ -530,9 +541,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         const run = new Function(
           'github',
           'context',
+          'require',
           `return (async () => {\n${script}\n})();`,
-        ) as (github: unknown, context: unknown) => Promise<void>;
-        await run(github, context);
+        ) as (github: unknown, context: unknown, require: typeof nodeRequire) => Promise<void>;
+        await run(github, context, nodeRequire);
       } finally {
         for (const [key, value] of Object.entries(previousEnv)) {
           if (value === undefined) delete process.env[key];
@@ -562,14 +574,14 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                   check_runs: [
                     {
                       id: 700,
-                      external_id: `cafef00d:${'b'.repeat(40)}`,
+                      external_id: candidateEvidenceId('cafef00d', 'b'.repeat(40)),
                       app: { id: 12345 },
                       status: 'completed',
                       conclusion: 'cancelled',
                     },
                     {
                       id: 777,
-                      external_id: `cafef00d:${'b'.repeat(40)}`,
+                      external_id: candidateEvidenceId('cafef00d', 'b'.repeat(40)),
                       app: { id: 12345 },
                       status: 'in_progress',
                       conclusion: null,
@@ -608,9 +620,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         const run = new Function(
           'github',
           'context',
+          'require',
           `return (async () => {\n${script}\n})();`,
-        ) as (github: unknown, context: unknown) => Promise<void>;
-        await run(github, context);
+        ) as (github: unknown, context: unknown, require: typeof nodeRequire) => Promise<void>;
+        await run(github, context, nodeRequire);
       } finally {
         for (const [key, value] of Object.entries(previousEnv)) {
           if (value === undefined) delete process.env[key];
@@ -646,7 +659,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                     // Older run already terminal (a genuine prior success).
                     {
                       id: 700,
-                      external_id: `cafef00d:${'b'.repeat(40)}`,
+                      external_id: candidateEvidenceId('cafef00d', 'b'.repeat(40)),
                       app: { id: 12345 },
                       status: 'completed',
                       conclusion: 'success',
@@ -656,7 +669,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                     // highest-ID rule, and it is NOT terminal.
                     {
                       id: 900,
-                      external_id: `cafef00d:${'b'.repeat(40)}`,
+                      external_id: candidateEvidenceId('cafef00d', 'b'.repeat(40)),
                       app: { id: 12345 },
                       status: 'in_progress',
                       conclusion: null,
@@ -691,9 +704,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         const run = new Function(
           'github',
           'context',
+          'require',
           `return (async () => {\n${script}\n})();`,
-        ) as (github: unknown, context: unknown) => Promise<void>;
-        await run(github, context);
+        ) as (github: unknown, context: unknown, require: typeof nodeRequire) => Promise<void>;
+        await run(github, context, nodeRequire);
       } finally {
         for (const [key, value] of Object.entries(previousEnv)) {
           if (value === undefined) delete process.env[key];
@@ -735,7 +749,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                   check_runs: [
                     {
                       id: 555,
-                      external_id: `cafef00d:${'d'.repeat(40)}`,
+                      external_id: candidateEvidenceId('cafef00d', 'd'.repeat(40)),
                       app: { id: 12345 },
                       status: 'in_progress',
                       conclusion: null,
@@ -774,9 +788,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         const run = new Function(
           'github',
           'context',
+          'require',
           `return (async () => {\n${script}\n})();`,
-        ) as (github: unknown, context: unknown) => Promise<void>;
-        const runPromise = run(github, context);
+        ) as (github: unknown, context: unknown, require: typeof nodeRequire) => Promise<void>;
+        const runPromise = run(github, context, nodeRequire);
         await vi.runAllTimersAsync();
         await runPromise;
       } finally {
@@ -818,7 +833,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                   check_runs: [
                     {
                       id: 556,
-                      external_id: `cafef00d:${'e'.repeat(40)}`,
+                      external_id: candidateEvidenceId('cafef00d', 'e'.repeat(40)),
                       app: { id: 12345 },
                       status: 'completed',
                       conclusion: 'failure',
@@ -853,9 +868,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         const run = new Function(
           'github',
           'context',
+          'require',
           `return (async () => {\n${script}\n})();`,
-        ) as (github: unknown, context: unknown) => Promise<void>;
-        const runPromise = run(github, context);
+        ) as (github: unknown, context: unknown, require: typeof nodeRequire) => Promise<void>;
+        const runPromise = run(github, context, nodeRequire);
         await vi.runAllTimersAsync();
         await runPromise;
       } finally {
@@ -911,9 +927,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         const run = new Function(
           'github',
           'context',
+          'require',
           `return (async () => {\n${script}\n})();`,
-        ) as (github: unknown, context: unknown) => Promise<void>;
-        const runPromise = run(github, context);
+        ) as (github: unknown, context: unknown, require: typeof nodeRequire) => Promise<void>;
+        const runPromise = run(github, context, nodeRequire);
         await vi.runAllTimersAsync();
         await runPromise;
       } finally {
@@ -965,9 +982,10 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
         const run = new Function(
           'github',
           'context',
+          'require',
           `return (async () => {\n${script}\n})();`,
-        ) as (github: unknown, context: unknown) => Promise<void>;
-        const runPromise = run(github, context);
+        ) as (github: unknown, context: unknown, require: typeof nodeRequire) => Promise<void>;
+        const runPromise = run(github, context, nodeRequire);
         await vi.runAllTimersAsync();
         await runPromise;
       } finally {
@@ -980,7 +998,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(createCalls).toBe(3);
       expect(createArgs?.conclusion).toBe('cancelled');
       expect(createArgs?.head_sha).toBe('f'.repeat(40));
-      expect(createArgs?.external_id).toBe(`deadbeef:${'c'.repeat(40)}`);
+      expect(createArgs?.external_id).toBe(candidateEvidenceId('deadbeef', 'c'.repeat(40)));
     });
   });
 

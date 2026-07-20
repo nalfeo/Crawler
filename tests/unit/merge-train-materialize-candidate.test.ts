@@ -99,7 +99,7 @@ describe.skipIf(!hasBash)('materialize-candidate.sh', () => {
   });
 
   function runScript(candidateSha: string, candidateRef = TRANSPORT_REF) {
-    const command = `cd "${toBashScriptPath(workRepo)}" && "${toBashScriptPath(SCRIPT_PATH)}"`;
+    const command = `cd "${toBashScriptPath(workRepo)}" && bash "${toBashScriptPath(SCRIPT_PATH)}"`;
     return spawnSync('bash', ['-c', command], {
       encoding: 'utf8',
       env: bashEnv({
