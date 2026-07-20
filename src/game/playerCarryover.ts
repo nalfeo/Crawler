@@ -8,18 +8,12 @@ import {
 import { statSystem } from '../core/systems/statSystem.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
-import type { AchievementFactState } from '../shared/achievements.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
-<<<<<<< HEAD
 import {
   ABILITY_GRANT_OWNERSHIP_SCHEMA_VERSION,
   type AbilityGrantSourceId,
   type AbilityStateLike,
 } from '../shared/abilities.js';
-import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
-import { normalizeAbilityState, synchronizeAbilityPassives } from './systems/abilitySystem.js';
-=======
-import type { AbilityGrantSource, AbilityState } from '../shared/abilities.js';
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
 import {
   cloneAchievementFactSnapshot,
@@ -27,8 +21,7 @@ import {
   type AchievementFactSnapshot,
 } from '../shared/achievements.js';
 import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
-import { migrateAbilityStateToSourceTracking } from './systems/abilitySystem.js';
->>>>>>> origin/main
+import { normalizeAbilityState, synchronizeAbilityPassives } from './systems/abilitySystem.js';
 
 interface SkillStateSnapshot {
   readonly level: number;
@@ -55,12 +48,6 @@ interface AbilityStateSnapshot {
       readonly AbilityGrantSourceId[],
     ])[];
   };
-}
-
-interface AchievementFactStateSnapshot {
-  readonly numberFacts: AchievementFactState['numberFacts'];
-  readonly booleanFacts: AchievementFactState['booleanFacts'];
-  readonly completedQuestIds: readonly string[];
 }
 
 interface StatModifierSnapshot extends Omit<StatModifier, 'expiresFrame'> {
@@ -94,12 +81,8 @@ export interface PlayerCarryoverSnapshot {
     readonly unlockedIds: readonly string[];
     readonly pendingUnlockIds: readonly string[];
     readonly claimedIds: readonly string[];
-<<<<<<< HEAD
-    readonly runGlobal?: AchievementFactStateSnapshot;
-=======
     /** Optional for backward compatibility with pre-scoped carryover snapshots. */
     readonly carriedRunFacts?: AchievementFactSnapshot;
->>>>>>> origin/main
   };
 }
 
@@ -346,18 +329,7 @@ export function restorePlayerCarryover(
     unlockedIds: new Set(snapshot.achievements.unlockedIds),
     pendingUnlockIds: [...snapshot.achievements.pendingUnlockIds],
     claimedIds: new Set(snapshot.achievements.claimedIds),
-<<<<<<< HEAD
-    runGlobal:
-      snapshot.achievements.runGlobal === undefined
-        ? world.achievements.runGlobal
-        : {
-            numberFacts: { ...snapshot.achievements.runGlobal.numberFacts },
-            booleanFacts: { ...snapshot.achievements.runGlobal.booleanFacts },
-            completedQuestIds: new Set(snapshot.achievements.runGlobal.completedQuestIds),
-          },
-=======
     carriedRunFacts: cloneAchievementFactSnapshot(snapshot.achievements.carriedRunFacts),
->>>>>>> origin/main
   };
 
   clearEquipmentState(world, playerEid);
