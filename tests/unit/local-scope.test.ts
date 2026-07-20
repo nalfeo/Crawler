@@ -254,7 +254,12 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     repo.git('commit', '-q', '-m', 'core');
     // src/core → gameplay_safe=false, sim_touched=true, coverage_touched=true, visual_touched=true
     expect(repo.scope()).toEqual(
-      F(false, false, false, { visual_touched: true, game_visual_touched: true, sim_touched: true, coverage_touched: true }),
+      F(false, false, false, {
+        visual_touched: true,
+        game_visual_touched: true,
+        sim_touched: true,
+        coverage_touched: true,
+      }),
     );
   });
 
@@ -265,7 +270,12 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     repo.write('src/core/world.ts', 'export const w = 1;\n');
     // src/core → gameplay_safe=false, sim_touched=true, coverage_touched=true, visual_touched=true
     expect(repo.scope()).toEqual(
-      F(false, false, false, { visual_touched: true, game_visual_touched: true, sim_touched: true, coverage_touched: true }),
+      F(false, false, false, {
+        visual_touched: true,
+        game_visual_touched: true,
+        sim_touched: true,
+        coverage_touched: true,
+      }),
     );
   });
 
@@ -296,7 +306,12 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       // → a spurious gameplay_safe=true. The helper uses no filter, so it stays false.
       // src/core deletion → gameplay_safe=false, sim_touched=true, coverage_touched=true, visual_touched=true
       expect(repo.scope()).toEqual(
-        F(false, false, false, { visual_touched: true, game_visual_touched: true, sim_touched: true, coverage_touched: true }),
+        F(false, false, false, {
+          visual_touched: true,
+          game_visual_touched: true,
+          sim_touched: true,
+          coverage_touched: true,
+        }),
       );
     },
   );
