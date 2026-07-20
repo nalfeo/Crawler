@@ -213,7 +213,10 @@ function extractSummary(text: string, fallback: string): string {
 }
 
 function truncate(s: string, max = 140): string {
-  const clean = s.replace(/\s+/g, ' ').trim();
+  const clean = s
+    .replace(/\\([*_`])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
   return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
 }
 
