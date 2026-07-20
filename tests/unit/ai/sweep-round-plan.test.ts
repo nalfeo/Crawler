@@ -286,6 +286,69 @@ describe('initCheckpoint', () => {
       /workflow-sha .* != checkpoint/,
     );
   });
+
+  // A subsequent review round (PR #1735, round 12) found that
+  // assertShardCompatible omitted the `stage` check mergeShards already
+  // applies, and that legacyBaseline's rows were injected with neither a
+  // per-row safeRoomMs sanity check nor a check that every row actually
+  // references the shard's sole declared config — closing the same gap for
+  // the production round-DAG path that assertLegacyBaselineProvenance
+  // already closed for the legacy/manual `--stage search` path.
+  it('throws when legacyBaseline was produced by a different stage than the combo baseline', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badLegacy: ShardArtifact = {
+      meta: { ...META, stage: 'validate' },
+      configs: { [BASE_ID]: BASE },
+      rows: [row(BASE_ID, 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /shard stage 'validate' != checkpoint 'search'/,
+    );
+  });
+
+  it('throws when a legacyBaseline row has an out-of-range safeRoomMs (pre-v2/malformed artifact)', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badRow = { ...row(BASE_ID, 'sword', 1, 100), safeRoomMs: -1 };
+    const badLegacy: ShardArtifact = {
+      meta: { ...META },
+      configs: { [BASE_ID]: BASE },
+      rows: [badRow],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /safeRoomMs=-1 must be a finite number in/,
+    );
+  });
+
+  it("throws when a legacyBaseline row references a configId other than the shard's sole declared config", () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    // legacyBaseline declares only BASE_ID as its config, but its row
+    // references a different (stale/mistyped) configId — without this check
+    // buildLeaderboard's (incumbentCombo, incumbentConfigId) lookup would
+    // silently find no incumbent rows, disqualifying every candidate.
+    const badLegacy: ShardArtifact = {
+      meta: { ...META },
+      configs: { [BASE_ID]: BASE },
+      rows: [row('stale-config-id', 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /legacyBaseline shard rows must all reference its sole config/,
+    );
+  });
 });
 
 describe('planCandidates', () => {

@@ -21,8 +21,8 @@ ai-combat-balance
 3🍎 estimated, 3🍎 actual (✅ hit). Single logical rule change (one gate
 condition swapped) but propagated across 2 production call sites + 1 workflow
 doc + 3 test files, with regression tests reproducing an exact prior incident.
-Plan review (gpt-5.4, `plan_divergence: minor`) + an 11-round code-review loop
-(17 concerns resolved across rounds 2–10; rounds 1 and 11 were clean). Full ledger:
+Plan review (gpt-5.4, `plan_divergence: minor`) + a 13-round code-review loop
+(19 concerns resolved across rounds 2–10 and 12; rounds 1, 11, and 13 were clean). Full ledger:
 `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 
 ## Why
@@ -108,7 +108,13 @@ contextLabel: string)`, adding 4 build-fingerprint checks
   `assertShardCompatible(baseline.meta, legacyBaseline, ...)` plus a
   row-combo-tag check, closing the gap where the production round-DAG's
   `legacyBaseline` parameter had ZERO provenance validation of any kind (see
-  round 10 below).
+  round 10 below). **Round 12**: `assertShardCompatible` gained a `meta.stage`
+  equality check (mirroring `mergeShards`' own stage guard); `initCheckpoint`'s
+  `legacyBaseline` block gained a config-identity check (every row must
+  reference the shard's sole declared config, else the incumbent becomes
+  unfindable via `buildLeaderboard`'s `(incumbentCombo, incumbentConfigId)`
+  lookup) and a per-row `assertRowSafeRoomInRange` loop, closing the last gap
+  between this path and `sweep-eval.ts`'s `assertLegacyBaselineProvenance`.
 - `scripts/agent/perf/sweep-eval.ts` — doc-comment wording updated (round 3);
   **Round 4**: added `incumbentCombo?` param to `selectSearchPromotion`,
   `legacyBaseline?` threading in `searchCombo` (mirrors `initCheckpoint`),
@@ -154,7 +160,10 @@ contextLabel: string)`, adding 4 build-fingerprint checks
   where the test's intent required a genuinely qualifying candidate. **Round
   10**: 4 new regression tests for `initCheckpoint`'s new legacyBaseline
   validation (row-combo-tag mismatch, schemaVersion mismatch, nodeVersion
-  mismatch, workflowSha mismatch).
+  mismatch, workflowSha mismatch). **Round 12**: 3 new regression tests for
+  `initCheckpoint`'s legacyBaseline stage mismatch, out-of-range `safeRoomMs`
+  row, and a row referencing a configId other than the shard's sole declared
+  config.
 - `tests/unit/ai/sweep-eval-search-promotion.test.ts` — new mirrored
   292/300-vs-286/300 qualifying test at the legacy-path level (proves both
   paths share the identical rule via `selectSearchPromotion`); reworked tie-
@@ -189,23 +198,25 @@ No ADR was needed (single-system change, not affecting 2+ systems).
 - `npx tsc --noEmit` — clean, no errors.
 - `npx vitest run tests/unit/ai/sweep-aggregate-shards.test.ts
 tests/unit/ai/sweep-round-plan.test.ts
-tests/unit/ai/sweep-eval-search-promotion.test.ts` — **126/126 passing**
+tests/unit/ai/sweep-eval-search-promotion.test.ts` — **129/129 passing**
   (including the two mirrored 292/300-vs-286/300 regression tests at the
   aggregate-shards and legacy-path levels, the wins-tie rejection test, the
   wins-decrease rejection test, the isolated below-90%-floor test, the
   incumbent-identity-scoping test, 2 non-LEGACY combo path tests, the 8-test
   `assertLegacyBaselineProvenance` suite, 8 build-fingerprint regression tests
   across both provenance-check call sites, 4 `initCheckpoint` legacyBaseline
-  provenance tests, and 2 `currentBuildFingerprint` truncation tests).
-- `npx vitest run tests/unit/ai` (full AI suite) — **323/323 passing**.
+  provenance tests, 2 `currentBuildFingerprint` truncation tests, and 3
+  round-12 `initCheckpoint` legacyBaseline stage/safeRoomMs/config-identity
+  tests).
+- `npx vitest run tests/unit/ai` (full AI suite) — **326/326 passing**.
 - `npm run verify:fast` — ✅ passed (typecheck + lint + changed tests + size/
   weight/physics-defs coverage checks).
 - `npm run verify:pr-prereqs` — checked after handoff + ledger were committed.
 - Review harness (3🍎 tier): plan review (gpt-5.4, `plan_divergence: minor`,
   4/4 concerns resolved — addressed single-incumbent-invariant documentation +
   test, `sortByLexicographic` diagnostic-only doc clarification, superseded-
-  notice on the prior handoff) + 11-round code-review loop (17 concerns
-  resolved, rounds 1 and 11 clean):
+  notice on the prior handoff) + 13-round code-review loop (19 concerns
+  resolved, rounds 1, 11, and 13 clean):
   - **Round 1** (claude-sonnet-4.6): 0 concerns, clean.
   - **Round 2** (github-copilot-pr-reviewer + claude-sonnet-4.6): 4 concerns,
     all resolved — added `samePanel` Set-equality guard on `winsVsIncumbentDelta`
@@ -291,6 +302,30 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **126/126 passing**
     LEGACY-incumbent test path is unaffected, the `nodeVersion` truncation is
     applied symmetrically, and no call site was missed. Honest, independently-
     earned terminal clean round.
+  - **Round 12** (github-copilot-pr-reviewer): 2 concerns, resolved — a fresh
+    GraphQL `reviewThreads` query in a follow-up shepherding session surfaced
+    2 previously-unaddressed threads: (a) `initCheckpoint`'s `legacyBaseline`
+    validation still fell short of `assertLegacyBaselineProvenance` in two
+    ways — `assertShardCompatible` didn't check `meta.stage`, and
+    `legacyBaseline`'s rows were injected with no per-row `safeRoomMs` check
+    and no check that every row references the shard's sole declared config
+    (a mismatch there would silently make the incumbent unfindable via
+    `buildLeaderboard`'s lookup, disqualifying every candidate rather than
+    failing fast); (b) the PR description had drifted stale again relative to
+    the committed ledger/handoff. Fixed by adding the `meta.stage` check to
+    `assertShardCompatible`, a config-identity check, and a per-row
+    `assertRowSafeRoomInRange` loop over `legacyBaseline.rows`; re-synced the
+    PR description. 3 new regression tests added.
+  - **Round 13** (independent background code-review agent,
+    `round12-baseline-boundary-review`): 0 concerns, clean — re-verified
+    `tsc`/`eslint`/tests independently, traced the stage check's correctness
+    against `sweep-eval.ts`'s stage-stamping semantics, confirmed the new
+    tests genuinely exercise the new code paths (not an earlier check), and
+    confirmed no call site was missed. Flagged (not counted as a concern,
+    out of scope for this finding) that `applyRoundResult`'s own candidate-
+    shard merge loop still lacks a per-row `safeRoomMs` check — a real,
+    pre-existing gap unrelated to the baseline-boundary finding this round
+    addressed. Honest, independently-earned terminal clean round.
     Ledger:
     `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 - Apple record: `docs/knowledge/metrics/apples/2026-07-20-ai-sweep-net-win-promotion.json`

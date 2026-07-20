@@ -52,6 +52,7 @@ import {
   type TunableKnob,
 } from './gen-configs.js';
 import {
+  assertRowSafeRoomInRange,
   buildLeaderboard,
   isBetterQualifiedCandidate,
   selectQualifiedWinner,
@@ -228,6 +229,18 @@ export function initCheckpoint(
           `${[...legacyRowCombos].join(', ')}.`,
       );
     }
+    // Every row must reference the shard's sole config (legacyId), or
+    // `buildLeaderboard`'s (incumbentCombo, incumbentConfigId) lookup below
+    // finds no incumbent rows at all — silently making the incumbent
+    // unfindable and disqualifying EVERY candidate (winsVsIncumbentDelta
+    // becomes null for all of them) rather than failing fast here.
+    const legacyRowConfigIds = new Set(legacyBaseline.rows.map((r) => r.configId));
+    if (legacyRowConfigIds.size !== 1 || !legacyRowConfigIds.has(legacyId)) {
+      throw new Error(
+        `initCheckpoint(${comboStr}): legacyBaseline shard rows must all reference its sole ` +
+          `config '${legacyId}', got: ${[...legacyRowConfigIds].join(', ')}.`,
+      );
+    }
     // Vet legacyBaseline's provenance against the combo's own baseline shard
     // (which becomes this checkpoint's meta below) — the production
     // round-DAG's equivalent of sweep-eval.ts's assertLegacyBaselineProvenance
@@ -235,6 +248,13 @@ export function initCheckpoint(
     // stale/wrong-floor/wrong-build legacyBaseline shard from silently
     // seeding a mis-calibrated incumbent.
     assertShardCompatible(baseline.meta, legacyBaseline, `initCheckpoint(${comboStr})`);
+    // Per-row safe-room sanity — mirrors assertLegacyBaselineProvenance's own
+    // per-row loop in sweep-eval.ts, so a pre-v2 or malformed legacyBaseline
+    // artifact (missing/out-of-range safeRoomMs) cannot silently undercount
+    // the incumbent's win classification in the production round-DAG path.
+    for (const row of legacyBaseline.rows) {
+      assertRowSafeRoomInRange(row);
+    }
     incumbentConfigId = legacyId;
     incumbentCombo = LEGACY_COMBO_ID;
     Object.assign(allConfigs, legacyBaseline.configs);
@@ -353,6 +373,13 @@ function assertShardCompatible(
   if (shard.meta.maxFrames !== expectedMeta.maxFrames) {
     throw new Error(
       `${contextLabel}: shard maxFrames ${shard.meta.maxFrames} != checkpoint ${expectedMeta.maxFrames}`,
+    );
+  }
+  // Rows from a different stage are not comparable and must never be merged —
+  // mirrors mergeShards' own stage guard in aggregate-shards.ts.
+  if (shard.meta.stage !== expectedMeta.stage) {
+    throw new Error(
+      `${contextLabel}: shard stage '${shard.meta.stage}' != checkpoint '${expectedMeta.stage}'`,
     );
   }
   // Build-fingerprint checks — mirror mergeShards'/assertSearchArtifactProvenance's
