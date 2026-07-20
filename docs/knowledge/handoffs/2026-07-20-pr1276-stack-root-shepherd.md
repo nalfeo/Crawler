@@ -37,9 +37,10 @@ workflow, Azure, and asset-PR mutations.
 - Merged current `main` into the stack-root history so all downstream branches
   retain ancestry, while making the merge result tree exactly equal to current
   `main` before adding this reconciliation record.
-- Kept source-ref restoration as the first post-merge action: recreate
-  `refs/heads/nalfeo-floor-2-equipment-contracts` at the final PR head after the
-  squash merge auto-deletes it.
+- Kept source-ref preservation as the first post-merge action: verify
+  `refs/heads/nalfeo-floor-2-equipment-contracts` equals the final PR head,
+  recreating it at that exact commit only if GitHub deleted it. An existing ref
+  at any other commit requires diagnosis rather than a blind overwrite.
 
 ## Review
 
@@ -56,6 +57,6 @@ capture, immediate ref restoration, and lease heartbeats.
 - The pre-commit merge tree was compared directly with `origin/main`; only this
   handoff and its generated apple metric are permitted as net new files.
 - PR review threads were empty before the resolution.
-- Final local and GitHub validation is recorded in the parent coordination
-  session together with the final PR head, non-null squash merge commit, and
-  restored remote source ref.
+- Final local validation completed before publication. The required post-merge
+  follow-up is to record the final PR head, non-null squash merge commit, and
+  exact remote source ref in the parent coordination session.
