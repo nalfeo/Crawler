@@ -349,6 +349,32 @@ async function closeDuplicate(proof) {
       method: 'PATCH',
       body: { state: 'closed' },
     });
+    // Post-close revalidation: if main or the leader head has shifted between
+    // the pre-check reads and the close API call, reopen the PR and let the
+    // next coordinator run re-evaluate. GitHub's close endpoint has no CAS, so
+    // a concurrent push can silently make the proof stale.
+    const postMain = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
+      .object.sha;
+    const postLeaderSha = proof.leaderHead
+      ? (await fetchLivePull(proof.leaderHead.number))?.head?.sha
+      : null;
+    const proofDrifted =
+      postMain !== currentMain ||
+      (proof.leaderHead && postLeaderSha !== proof.leaderHead.headSha);
+    if (proofDrifted) {
+      process.stdout.write(`reopen pr=#${proof.number} reason=post-close-proof-drifted\n`);
+      try {
+        await request(token, `/repos/${owner}/${repo}/pulls/${proof.number}`, {
+          method: 'PATCH',
+          body: { state: 'open' },
+        });
+      } catch (reopenError) {
+        process.stdout.write(
+          `reopen-failed pr=#${proof.number} error=${reopenError.message}\n`,
+        );
+      }
+      return false;
+    }
     process.stdout.write(
       `closed pr=#${proof.number} reason=deterministically-superseded proof=${proof.fingerprint}\n`,
     );
@@ -555,6 +581,18 @@ for (const group of groups) {
   for (const duplicate of selection.duplicates) {
     const recovery = recoveryByNumber.get(duplicate.number);
     if (recovery.healthy || recovery.ownershipError) continue;
-    await closeDuplicate(proofByNumber.get(duplicate.number));
+    const proof = proofByNumber.get(duplicate.number);
+    // Only close duplicates that are no-op against current main alone.
+    // A proof with open predecessor heads is superseded by the combination of
+    // main + still-open predecessor PRs; if a predecessor is later force-pushed
+    // or closed without merging, its changes would be permanently lost. Wait
+    // until predecessors land on main before closing.
+    if (proof.predecessorHeads.length > 0) {
+      process.stdout.write(
+        `retain pr=#${duplicate.number} reason=predecessor-dependent-supersession\n`,
+      );
+      continue;
+    }
+    await closeDuplicate(proof);
   }
 }

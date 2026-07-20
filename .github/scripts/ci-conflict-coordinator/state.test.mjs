@@ -280,6 +280,76 @@ function commit(cwd, message) {
   return git(cwd, ['rev-parse', 'HEAD']);
 }
 
+test('main-alone supersession has empty predecessorHeads (safe to close)', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'crawler-ci-conflict-'));
+  try {
+    git(cwd, ['init', '--initial-branch=main']);
+    mkdirSync(path.join(cwd, '.github', 'workflows'), { recursive: true });
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: base\n');
+    const baseSha = commit(cwd, 'base');
+
+    // Advance main with the same change the PR will propose
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: new\n');
+    const mainSha = commit(cwd, 'main-advance');
+
+    // PR branch that proposes the same change (already in main)
+    git(cwd, ['checkout', '-b', 'pr-branch', baseSha]);
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: new\n');
+    const prSha = commit(cwd, 'pr');
+
+    const gitRunner = (args, options) => git(cwd, args, options);
+    const proofs = buildSupersessionProofs({
+      baseSha: mainSha,
+      entries: [{ number: 1, headSha: prSha, ref: prSha }],
+      git: gitRunner,
+    });
+
+    assert.equal(proofs[0].status, 'superseded');
+    // No predecessor dependency — this PR is a no-op against main alone and is safe to close.
+    assert.equal(proofs[0].predecessorHeads.length, 0);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test('predecessor-dependent supersession has non-empty predecessorHeads (retain until predecessor lands)', () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'crawler-ci-conflict-'));
+  try {
+    git(cwd, ['init', '--initial-branch=main']);
+    mkdirSync(path.join(cwd, '.github', 'workflows'), { recursive: true });
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: base\n');
+    const baseSha = commit(cwd, 'base');
+
+    // Leader PR
+    git(cwd, ['checkout', '-b', 'leader', baseSha]);
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: leader\n');
+    const leaderSha = commit(cwd, 'leader');
+
+    // Duplicate PR that proposes the same change as leader (but leader is still open, not in main)
+    git(cwd, ['checkout', '-b', 'duplicate', baseSha]);
+    writeFileSync(path.join(cwd, '.github', 'workflows', 'ci.yml'), 'value: leader\n');
+    const duplicateSha = commit(cwd, 'duplicate');
+
+    const gitRunner = (args, options) => git(cwd, args, options);
+    const proofs = buildSupersessionProofs({
+      baseSha,
+      entries: [
+        { number: 1, headSha: leaderSha, ref: leaderSha },
+        { number: 2, headSha: duplicateSha, ref: duplicateSha },
+      ],
+      git: gitRunner,
+    });
+
+    assert.equal(proofs[1].status, 'superseded');
+    // Has predecessor dependency — closing now would risk permanent change loss if leader is
+    // force-pushed or closed without merging. Must retain until predecessor lands on main.
+    assert.equal(proofs[1].predecessorHeads.length, 1);
+    assert.equal(proofs[1].predecessorHeads[0].number, 1);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test('full-tree proof preserves unique changes, closes only no-ops, and escalates conflicts', () => {
   const cwd = mkdtempSync(path.join(tmpdir(), 'crawler-ci-conflict-'));
   try {
