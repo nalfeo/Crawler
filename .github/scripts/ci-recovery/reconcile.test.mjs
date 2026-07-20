@@ -24,6 +24,7 @@ import {
   WAITING_TRANSITION_LABEL,
 } from './state.mjs';
 import { admissionFingerprint, QUEUE_LABEL } from '../merge-train/state.mjs';
+import { ISSUE_INTAKE_MARKER, ISSUE_RECOVERY_PLAN_MARKER } from './issue-intake-lib.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
