@@ -25,7 +25,11 @@ const SCRIPT = path.resolve(
   '../../scripts/agent/shared/aggregate-report.ts',
 );
 
-/** Mirror of the constants in aggregate-report.ts */
+/**
+ * Mirror of the constants in aggregate-report.ts.
+ * Kept local intentionally so this test validates the external GitHub limit
+ * contract rather than importing implementation internals.
+ */
 const GITHUB_BODY_LIMIT = 65_536;
 const METADATA_OVERHEAD = 400;
 const MAX_BODY_CHARS = GITHUB_BODY_LIMIT - METADATA_OVERHEAD;
@@ -37,6 +41,7 @@ beforeAll(() => {
 
   // Build a report summary whose findings, when rendered to Markdown, will
   // produce a body that exceeds GITHUB_BODY_LIMIT characters.
+  // 1,000 warning findings reliably produce a body that far exceeds MAX_BODY_CHARS.
   const manyFindings = Array.from({ length: 1_000 }, (_, i) => ({
     severity: 'warn',
     message: `Handoff declares unknown system slug 'slug-${i}'; not in docs/systems/README.md.`,
