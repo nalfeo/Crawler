@@ -366,6 +366,46 @@ describe('sprite sidecar service manager', () => {
     expect(result.state).toBe('started');
   });
 
+  it('reclaims a stale invalid registry snapshot and starts successfully', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-invalid-registry-');
+    const registryRoot = makeRoot('crawler-sidecar-invalid-registry-root-');
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    mkdirSync(path.dirname(regPath), { recursive: true });
+    writeFileSync(regPath, '{', 'utf8');
+
+    let health: Record<string, unknown> | null = null;
+    const nowBase = Date.now() + 10_000;
+    const result = await ensureSidecarService(repoRoot, {
+      registryRoot,
+      bootstrap: vi.fn(),
+      now: () => nowBase,
+      probeHealth: async () => health,
+      spawnService: (_root, registry) => {
+        health = {
+          status: 'ok',
+          repoRoot,
+          version: SPRITE_SIDECAR_SERVICE_VERSION,
+          queueBackend: 'azure-queue',
+          worker: { running: true },
+          issueIngester: { running: true },
+          service: {
+            managed: true,
+            instanceId: registry.instanceId,
+            pid: 24680,
+            startedAt: registry.startedAt,
+          },
+        };
+        return { pid: 24680 };
+      },
+      isProcessAlive: () => true,
+      sleep: async () => Promise.resolve(),
+    });
+
+    expect(result.state).toBe('started');
+    const registryRaw = readFileSync(regPath, 'utf8');
+    expect(() => JSON.parse(registryRaw)).not.toThrow();
+  });
+
   it('throws when provenance mismatches and managed shutdown cannot be authenticated', async () => {
     const repoRoot = makeRoot('crawler-sidecar-prov-');
     const registryRoot = makeRoot('crawler-sidecar-prov-registry-');

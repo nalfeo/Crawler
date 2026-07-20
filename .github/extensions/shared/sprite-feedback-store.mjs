@@ -26,8 +26,8 @@
  *
  * Concurrency: a lock file (`<path>.lock`) serializes writers across processes
  * (e.g. two canvas instances editing feedback at once), with stale-lock recovery
- * (a lock older than `staleLockMs` is treated as abandoned and removed) so a
- * crashed writer can never wedge the store permanently. Writes are atomic
+ * (a lock older than `staleLockMs` is atomically reclaimed) so a crashed
+ * writer can never wedge the store permanently. Writes are atomic
  * (temp file + rename) so a reader never observes a partial write.
  *
  * @module shared/sprite-feedback-store
@@ -223,6 +223,7 @@ function withFeedbackLock(filePath, options, fn) {
   const lockPath = `${filePath}.lock`;
   const deadline = options.now().getTime() + options.lockTimeoutMs;
   const maxAttempts = Math.max(1, Math.ceil(options.lockTimeoutMs / FEEDBACK_LOCK_RETRY_MS));
+  let token;
   let fd;
   for (let attempt = 0; attempt < maxAttempts && fd === undefined; attempt += 1) {
     try {
@@ -230,14 +231,23 @@ function withFeedbackLock(filePath, options, fn) {
         lockPath,
         fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_RDWR,
       );
-      options.writeFileSync(lockPath, options.now().toISOString(), 'utf8');
+      token = options.randomUUID();
+      options.writeFileSync(lockPath, token, 'utf8');
     } catch (error) {
       if (error?.code !== 'EEXIST') throw error;
       if (isStaleLock(lockPath, options)) {
         try {
-          options.unlinkSync(lockPath);
+          const recoveryPath = `${lockPath}.recovering.${options.randomUUID()}`;
+          options.renameSync(lockPath, recoveryPath);
+          try {
+            options.unlinkSync(recoveryPath);
+          } catch {
+            // Best-effort cleanup; an orphaned recovery file does not hold the lock.
+          }
           continue;
-        } catch {}
+        } catch {
+          // Another process won the stale-lock rename race.
+        }
       }
       if (options.now().getTime() >= deadline) {
         const lockError = new Error('feedback store is locked');
@@ -258,8 +268,16 @@ function withFeedbackLock(filePath, options, fn) {
   } finally {
     try {
       options.closeSync(fd);
-      options.unlinkSync(lockPath);
-    } catch {}
+    } catch {
+      // Best-effort descriptor cleanup.
+    }
+    try {
+      if (options.readFileSync(lockPath, 'utf8') === token) {
+        options.unlinkSync(lockPath);
+      }
+    } catch {
+      // A successor may already own the lock; stale locks are reclaimed above.
+    }
   }
 }
 

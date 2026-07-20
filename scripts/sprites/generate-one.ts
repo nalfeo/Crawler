@@ -198,6 +198,7 @@ export interface GenerateSheetCoreResult {
 }
 
 const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set(['bad-grid', 'non-png']);
+const ANNOTATION_PARSE_ATTEMPTS = 3;
 
 /**
  * Project a selected manifest entry into the auditable run-summary shape. The
@@ -220,6 +221,32 @@ function toReferenceSpriteRef(entry: ManifestEntry): ReferenceSpriteRef {
     judgeScore: entry.judgeScore ?? null,
     contentHash: entry.contentHash ?? null,
   };
+}
+
+function loadDislikedSpriteNamesFromAnnotations(annotationsPath: string): ReadonlySet<string> {
+  for (let attempt = 0; attempt < ANNOTATION_PARSE_ATTEMPTS; attempt += 1) {
+    try {
+      const raw = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
+        readonly sprites?: unknown;
+      };
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return new Set<string>();
+      const sprites = raw.sprites;
+      if (!sprites || typeof sprites !== 'object' || Array.isArray(sprites))
+        return new Set<string>();
+      const disliked = new Set<string>();
+      for (const [spriteName, note] of Object.entries(sprites as Record<string, unknown>)) {
+        if (!note || typeof note !== 'object' || Array.isArray(note)) continue;
+        if ((note as { readonly disliked?: unknown }).disliked === true) {
+          disliked.add(spriteName);
+        }
+      }
+      return disliked;
+    } catch {
+      // Concurrent sprite-editor writes can expose a transient truncated snapshot.
+      // Retry a bounded number of times, then fail-safe to an empty disliked set.
+    }
+  }
+  return new Set<string>();
 }
 
 export async function generateSheetCore(
@@ -292,14 +319,7 @@ export async function generateSheetCore(
         'sprite-editor-annotations.json',
       );
       if (!existsSync(annotationsPath)) return new Set<string>();
-      const raw = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
-        readonly sprites?: Readonly<Record<string, { readonly disliked?: unknown }>>;
-      };
-      return new Set(
-        Object.entries(raw.sprites ?? {})
-          .filter(([, note]) => note.disliked === true)
-          .map(([spriteName]) => spriteName),
-      );
+      return loadDislikedSpriteNamesFromAnnotations(annotationsPath);
     });
 
   let referencePngs: Buffer[] = [];

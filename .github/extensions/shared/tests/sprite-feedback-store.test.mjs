@@ -80,6 +80,69 @@ test('stale lock files are recovered before writing feedback', () => {
   assert.equal(Object.keys(store.entries).length, 1);
 });
 
+test('stale lock recovery uses atomic rename, not direct unlink', () => {
+  const staleTime = new Date('2026-07-19T00:00:00.000Z');
+  const fs = memoryFs();
+  fs.writeFileSync('feedback.json.lock', staleTime.toISOString());
+  fs.statSync = () => ({ mtimeMs: staleTime.getTime() });
+
+  const renames = [];
+  const originalRename = fs.renameSync;
+  fs.renameSync = (from, to) => {
+    renames.push({ from, to });
+    originalRename(from, to);
+  };
+
+  saveFeedback(
+    'feedback.json',
+    {
+      briefId: 'hero',
+      runId: 'run-stale-rename',
+      variantIndex: 0,
+      kind: 'judge',
+      criterion: 'readability',
+      verdict: 'up',
+      comment: '',
+    },
+    fs,
+  );
+
+  const lockRename = renames.find(({ from }) => from === 'feedback.json.lock');
+  assert.ok(lockRename);
+  assert.match(lockRename.to, /feedback\.json\.lock\.recovering\./);
+});
+
+test('token-checked release does not unlink a successor process lock', () => {
+  const fs = memoryFs();
+  const lockPath = 'feedback.json.lock';
+  let lockUnlinkCount = 0;
+  const originalUnlink = fs.unlinkSync;
+  fs.unlinkSync = (path) => {
+    if (path === lockPath) lockUnlinkCount += 1;
+    originalUnlink(path);
+  };
+
+  const originalRead = fs.readFileSync;
+  saveFeedback(
+    'feedback.json',
+    {
+      briefId: 'hero',
+      runId: 'run-token-checked',
+      variantIndex: 0,
+      kind: 'judge',
+      criterion: 'readability',
+      verdict: 'up',
+      comment: '',
+    },
+    {
+      ...fs,
+      readFileSync: (path) => (path === lockPath ? 'different-owner-token' : originalRead(path)),
+    },
+  );
+
+  assert.equal(lockUnlinkCount, 0);
+});
+
 test('saves and reloads criterion feedback without touching other entries', () => {
   const fs = memoryFs();
   const input = {

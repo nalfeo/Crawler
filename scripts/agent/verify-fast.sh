@@ -38,7 +38,7 @@ if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]
 fi
 
 is_supported_ts_path() {
-  [[ "$1" =~ ^(vite\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
+  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
 }
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
@@ -91,7 +91,7 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
     fi
   done
   if [ "${#unsupported_ts[@]}" -ne 0 ]; then
-    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, src/, tests/, scripts/, and tools/:" >&2
+    echo "❌ verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:" >&2
     printf '   - %s\n' "${unsupported_ts[@]}" >&2
     echo "   Move the file into a supported tree or extend verify:fast + tsconfig.json first." >&2
     exit 1

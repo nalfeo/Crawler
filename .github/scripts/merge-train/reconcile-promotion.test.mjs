@@ -278,7 +278,36 @@ test('promoteExactBatch throws + publishes postcondition on a non-retryable merg
   });
   await assert.rejects(promise, /promotion aborted at pr=#1/);
   assert.equal(records.postconditions.length, 1);
+  // Nothing landed (the merge API call itself failed), so there is no landed
+  // commit to blame. The postcondition must attach to the confirmed-current
+  // real main commit, never a candidate SHA -- candidates are transported as
+  // opaque git blobs and are not real commit objects on GitHub, so a
+  // check-run posted against one would not resolve.
+  assert.equal(records.postconditions[0].sha, BASE);
   assert.equal(records.landedLabels.length, 0);
+});
+
+test('promoteExactBatch publishes postcondition on the just-landed prior commit when a later entry hits a non-retryable merge failure', async () => {
+  // PR1 lands for real (main advances to LAND1); PR2's merge API call then
+  // fails non-retryably. Nothing landed for PR2, so the postcondition must
+  // attach to LAND1 -- the confirmed-current real main at that point -- never
+  // to CAND2 (PR2's candidate SHA, which is a local-only opaque bundle, not a
+  // real GitHub commit) and never to a stale BASE.
+  const { promise, records } = runPromotion({
+    mergePullRequest: async (entry) => {
+      if (entry.number === 1) return { ok: true, sha: LAND1 };
+      return { ok: false, retryable: false, reason: 'policy rejected' };
+    },
+    fetchCommit: async (sha) => ({
+      sha,
+      parents: [{ sha: BASE }],
+      commit: { tree: { sha: TREE1 } },
+    }),
+  });
+  await assert.rejects(promise, /promotion aborted at pr=#2/);
+  assert.equal(records.postconditions.length, 1);
+  assert.equal(records.postconditions[0].sha, LAND1);
+  assert.deepEqual(records.landedLabels, [{ number: 1, name: LANDED_LABEL }]);
 });
 
 test('promoteExactBatch fails closed (returns false) when main moved before a merge (base-CAS)', async () => {
