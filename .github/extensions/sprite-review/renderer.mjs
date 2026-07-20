@@ -338,12 +338,34 @@ const CLIENT_SCRIPT = String.raw`
     var down = h('button', {
       type: 'button', class: verdict === 'down' ? 'on' : '', title: 'Machine result is wrong', text: '👎'
     });
+    // Serialize saves per criterion: only one save in flight at a time.
+    // Controls are disabled while saving and UI is committed only on success.
+    var saving = false;
+    function setDisabled(disabled) {
+      up.disabled = disabled;
+      down.disabled = disabled;
+      input.disabled = disabled;
+    }
+    function renderVerdict(v) {
+      up.className = v === 'up' ? 'on' : '';
+      down.className = v === 'down' ? 'on' : '';
+    }
     function submit(nextVerdict) {
-      verdict = nextVerdict;
-      up.className = verdict === 'up' ? 'on' : '';
-      down.className = verdict === 'down' ? 'on' : '';
-      saveFeedback(sel, c, kind, criterion, verdict, input.value).catch(function (err) {
+      if (saving) return;
+      var prevVerdict = verdict;
+      saving = true;
+      setDisabled(true);
+      saveFeedback(sel, c, kind, criterion, nextVerdict, input.value).then(function () {
+        verdict = nextVerdict;
+        renderVerdict(verdict);
+        input.title = '';
+      }).catch(function (err) {
+        // Restore the prior state and surface the error.
+        renderVerdict(prevVerdict);
         input.title = err.message;
+      }).finally(function () {
+        saving = false;
+        setDisabled(false);
       });
     }
     up.addEventListener('click', function () { submit(verdict === 'up' ? null : 'up'); });
@@ -539,7 +561,11 @@ export function renderHtml(instanceId, mutationToken = '') {
     '<button id="refresh-btn" type="button" title="Reload runs and the selected run from the sidecar">↻ Refresh</button>',
     '<span id="busy" class="busy" hidden><span class="spinner"></span><span id="busy-label">Loading…</span></span>',
     '</div>',
-    '<div id="app" data-instance="' + escapeHtml(instanceId) + '" data-mutation-token="' + escapeHtml(mutationToken) + '">',
+    '<div id="app" data-instance="' +
+      escapeHtml(instanceId) +
+      '" data-mutation-token="' +
+      escapeHtml(mutationToken) +
+      '">',
     '<p class="muted">Loading sprite review…</p>',
     '</div>',
     '<script>' + CLIENT_SCRIPT + '</script>',

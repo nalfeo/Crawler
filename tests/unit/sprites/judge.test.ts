@@ -408,6 +408,33 @@ describe('judgeVariant — happy path', () => {
     expect(scorecard.rejectedBy).toContain('pose_orientation');
   });
 
+  it('skips pose_orientation for enemies with facing: front', async () => {
+    const { provider, calls } = stubProvider({
+      responseJson: {
+        design_language: { score: 5, rationale: 'specific' },
+        reference_style_match: { score: 5, rationale: 'on style' },
+        brief_match: { score: 5, rationale: 'matches' },
+        readability: { score: 5, rationale: 'readable' },
+      },
+    });
+    const scorecard = await judgeVariant({
+      processed: makeTinyPng(),
+      referencePngs: [],
+      brief: makeBrief({
+        type: 'enemy',
+        name: 'front-facing-boss',
+        sensors: { enemy: { facing: 'front', toleranceDeg: 20 } },
+      }),
+      styleGuide: '',
+      provider,
+      variantIndex: 0,
+      env: {},
+    });
+    expect(calls[0]?.request.systemInstructions).not.toContain('pose_orientation');
+    expect(scorecard.poseOrientation).toBeUndefined();
+    expect(scorecard.rejectedBy).not.toContain('pose_orientation');
+  });
+
   it('requires boss presence in addition to enemy pose orientation', async () => {
     const { provider, calls } = stubProvider({
       responseJson: {
