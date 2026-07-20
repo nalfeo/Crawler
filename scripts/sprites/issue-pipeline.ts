@@ -110,9 +110,12 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   await progressComment(
     `🧪 Started asset-request pipeline for \`${request.name}\`.\n\nStage: synthesize`,
   );
-  const spriteType = request.type || inferSpriteTypeFromName(request.name);
   const sizeVariant = resolveAssetRequestSizeVariant(request);
   const mobRole = resolveAssetRequestMobRole(request);
+  // Resolve mobRole first: a type-omitted boss request (e.g. "countess-boss")
+  // must synthesize as 'enemy', not 'character', so the boss prompt and
+  // boss_presence judge axis are activated.
+  const spriteType = request.type || (mobRole === 'boss' ? 'enemy' : inferSpriteTypeFromName(request.name));
   const synth = await synthesizeBrief({
     name: request.name,
     briefHint: request.briefSentence,

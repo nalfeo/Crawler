@@ -477,6 +477,65 @@ describe('runIssuePipeline', () => {
     expect(mockSynthesizeBrief.mock.calls[0]![0].sizeVariant).toBe(expected);
   });
 
+  it('type-omitted boss request infers enemy type so boss prompt and boss_presence activate', async () => {
+    // Regression: a type-omitted request like "countess-boss" resolved mobRole:'boss'
+    // but inferSpriteTypeFromName defaulted the sprite type to 'character', preventing
+    // both the boss prompt and boss_presence judge axis from running.
+    const winnerPath = path.join(repoRoot, 'countess-boss.yaml');
+    writeFileSync(winnerPath, 'name: countess-boss\njudge:\n  enabled: false\n', 'utf8');
+    const store = makeStore();
+    mockSynthesizeBrief.mockResolvedValueOnce({
+      name: 'countess-boss',
+      type: 'enemy',
+      sizeVariant: 'large',
+      outDir: repoRoot,
+      written: [
+        {
+          id: 'countess-boss-v1',
+          type: 'enemy',
+          description: 'An aristocratic batfolk crime boss.',
+          embellishmentSeeds: [],
+          synthesisRationale: 'boss silhouette',
+          yamlPath: winnerPath,
+        },
+      ],
+      rejected: [],
+      sidecarPath: path.join(repoRoot, 'synthesis.json'),
+      providerLabel: 'azure-openai:synth',
+      promptHash: 'prompt-hash',
+    });
+    mockRunFull.mockResolvedValueOnce({
+      summary: { brief: 'countess-boss', runId: 'run-boss' },
+      summaryPath: '/tmp/run-boss/summary.json',
+    } as never);
+
+    await runIssuePipeline({
+      request: makeRequest({
+        name: 'countess-boss',
+        briefSentence: 'An aristocratic batfolk crime boss with folded cloak-like wings.',
+        // No explicit type — should infer 'enemy' from mobRole:'boss'
+      }),
+      repoRoot,
+      store,
+      imageProvider: {} as never,
+      textProvider: null,
+      synthProvider: {} as never,
+      briefSelectorProvider: {
+        modelDeployment: 'selector-deploy',
+        async selectBrief() {
+          return { index: 0, rationale: 'best match', modelDeployment: 'selector-deploy' };
+        },
+      },
+      visionProvider: null,
+      issueApi: { comment: async () => {} },
+      env: {},
+    });
+
+    const callArgs = mockSynthesizeBrief.mock.calls[0]![0];
+    expect(callArgs.type).toBe('enemy');
+    expect(callArgs.mobRole).toBe('boss');
+  });
+
   it('mirrors the post-enableJudge brief bytes into the store before runFull executes', async () => {
     // Regression test: issue-pipeline must mirror the promoted brief to the store
     // (via mirrorBriefToStore) AFTER enableJudge mutates it and BEFORE runFull starts,
