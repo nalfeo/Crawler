@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "floor-2-equipment-materialize",
+  "task_title": "Floor 2 equipment child-issue materialization automation",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "1. Blocking: idempotency keyed on mutable title - fixed to use stable Node: body marker as primary key with title fallback. 2. Blocking: post-write validation did not check post-run hard errors - fixed to exit 1 on non-git errors. 3. Non-blocking: endpoint returned PRs - fixed by filtering pull_request field. 4. Suggestion: per_page truncation warning added. All 4 concerns resolved; no architectural re-design needed; chosen design (CLI+lib split, dry-run default, single state write) confirmed sound."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

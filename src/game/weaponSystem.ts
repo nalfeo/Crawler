@@ -32,6 +32,7 @@ import {
 import type { GameWorld } from '../core/world.js';
 import { getBodyRadius } from '../core/physics-body.js';
 import { tagDamageMeta } from '../core/damage-meta.js';
+import { computeEffectiveValue, getStatusEffects } from '../core/status-effects.js';
 import {
   setActiveWeaponDef,
   clearActiveWeaponDef,
@@ -123,7 +124,18 @@ function syncActiveWeaponGeneration(world: GameWorld, state: WeaponState): void 
   const player = getPlayerEntity(world);
   const cooldownMs =
     player === undefined ? def.cooldownMs : getEffectiveCooldownMs(world, player, def.cooldownMs);
-  state.lastFireMs = world.elapsedMs - cooldownMs;
+  if (!Number.isFinite(cooldownMs)) {
+    // Preserve the "cannot fire" gate for non-positive attack-speed multipliers.
+    // Using elapsedMs - Infinity here would store -Infinity and make
+    // `(elapsed - lastFire) < cooldown` comparisons misfire (Infinity < Infinity
+    // is false), allowing shots while disabled.
+    state.lastFireMs = world.elapsedMs;
+    return;
+  }
+  // Mirror setActiveWeapon's floating-point guard: with non-integer effective
+  // cooldowns (for example under attack-speed debuffs), `x - (x - y)` can be
+  // fractionally below `y` and delay readiness by one tick.
+  state.lastFireMs = world.elapsedMs - (cooldownMs + 1);
 }
 
 function normalizeVector(x: number, y: number): { x: number; y: number } {
@@ -201,12 +213,25 @@ function isLeadingProjectileWeapon(def: WeaponDef): boolean {
 }
 
 function getEffectiveCooldownMs(world: GameWorld, player: number, baseCooldownMs: number): number {
-  if (!hasComponent(world.ecs, player, EffectiveStats)) {
-    return baseCooldownMs;
+  let cooldownMs = baseCooldownMs;
+  if (hasComponent(world.ecs, player, EffectiveStats)) {
+    const attackSpeedBonus = world.stores.effectiveStats.attackSpeed[player] ?? 0;
+    const reduction = world.stores.effectiveStats.cooldownReduction[player] ?? 0;
+    cooldownMs = applyAttackSpeedAndCooldownReduction(cooldownMs, attackSpeedBonus, reduction);
   }
-  const attackSpeedBonus = world.stores.effectiveStats.attackSpeed[player] ?? 0;
-  const reduction = world.stores.effectiveStats.cooldownReduction[player] ?? 0;
-  return applyAttackSpeedAndCooldownReduction(baseCooldownMs, attackSpeedBonus, reduction);
+  // Fold in the `attackSpeed` status channel (e.g. Queen Mab's Tarnished 0.75x).
+  // A multiplier < 1 means "attacks slower", so it LENGTHENS the cooldown.
+  // A zero or negative multiplier represents a "cannot attack" state (e.g. a
+  // stun/disarm effect). Negative values are mathematically invalid as a rate
+  // and zero yields a divide-by-zero; both map to Infinity so the weapon never
+  // fires while the effect is active.
+  const attackSpeedMult = computeEffectiveValue(1, getStatusEffects(world, player), 'attackSpeed');
+  if (attackSpeedMult <= 0) {
+    cooldownMs = Infinity;
+  } else if (attackSpeedMult !== 1) {
+    cooldownMs /= attackSpeedMult;
+  }
+  return cooldownMs;
 }
 
 function getPlayerEntity(world: GameWorld): number | undefined {
@@ -823,12 +848,36 @@ function dispatchAttackInner(
  * moment of the swap, not at the next tick.
  */
 export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
-  const isSwitch = setActiveWeaponDef(world, weaponDef);
+  const previousGeneration = getActiveWeaponGeneration(world);
+  setActiveWeaponDef(world, weaponDef);
   const state = getWeaponState(world);
-  state.lastActiveGeneration = getActiveWeaponGeneration(world);
+  const nextGeneration = getActiveWeaponGeneration(world);
+  const isSwitch = nextGeneration !== previousGeneration;
+  state.lastActiveGeneration = nextGeneration;
   if (isSwitch) {
     // Real switch: charge the new weapon so it can fire immediately.
-    state.lastFireMs = world.elapsedMs - weaponDef.cooldownMs;
+    // Use the effective cooldown (folding in status-effect attack-speed
+    // multipliers such as Tarnished's 0.75x) so the fresh weapon is actually
+    // ready at the switch instant when the player is slowed. Mirrors the same
+    // logic in syncActiveWeaponGeneration.
+    //
+    // Adding 1ms to the back-offset guarantees the gate
+    // `elapsedMs - lastFireMs >= effectiveCooldown` is satisfied even when
+    // effectiveCooldown is non-integer (e.g. 500/0.75 ≈ 666.6̄ms), avoiding
+    // floating-point rounding where `x − (x − y) < y`.
+    const player = getPlayerEntity(world);
+    const effectiveCooldown =
+      player !== undefined
+        ? getEffectiveCooldownMs(world, player, weaponDef.cooldownMs)
+        : weaponDef.cooldownMs;
+    state.lastFireMs =
+      world.elapsedMs -
+      (Number.isFinite(effectiveCooldown)
+        ? effectiveCooldown + 1
+        : // Non-finite (Infinity or NaN) means "cannot attack" (e.g. zero/negative
+          // attack speed). Setting lastFireMs = elapsedMs means elapsed = 0 ≪
+          // Infinity cooldown → ready = false, preserving the disabled state.
+          0);
   }
   if (!isSwitch) {
     logger.debug('Updated active weapon tuning in place', { weaponId: weaponDef.id });

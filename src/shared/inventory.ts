@@ -15,6 +15,7 @@ import {
 } from './items.js';
 import { getEquipmentDefForItem } from './equipmentDefs.js';
 import type { EquipmentSlotId } from './equipment-slots.js';
+import type { GeneratedEquipmentInstanceKey } from './generated-equipment-types.js';
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -25,8 +26,22 @@ export interface InventorySlot {
   quantity: number;
 }
 
+export interface StackableStaticInventoryEntry extends InventorySlot {
+  readonly kind: 'stackable-static-item';
+}
+
+export interface GeneratedEquipmentInventoryEntry {
+  readonly kind: 'generated-instance';
+  readonly instanceKey: GeneratedEquipmentInstanceKey;
+}
+
+export type InventoryBagEntry = StackableStaticInventoryEntry | GeneratedEquipmentInventoryEntry;
+
 export interface InventoryBag {
+  /** Legacy static-item lane. Existing item/count consumers remain unchanged. */
   slots: InventorySlot[];
+  /** Generated equipment stores identity references only; B1 owns full records. */
+  generatedEquipment?: GeneratedEquipmentInventoryEntry[];
 }
 
 export interface TabPreferences {
@@ -46,6 +61,66 @@ export function createInventoryBag(): InventoryBag {
 
 export function createTabPreferences(): TabPreferences {
   return { order: [...KNOWN_TAGS], hidden: new Set() };
+}
+
+/** Canonical discriminated view across the legacy static and generated-reference lanes. */
+export function listInventoryEntries(bag: InventoryBag): readonly InventoryBagEntry[] {
+  return [
+    ...bag.slots.map(
+      (slot): StackableStaticInventoryEntry => ({
+        kind: 'stackable-static-item',
+        itemId: slot.itemId,
+        quantity: slot.quantity,
+      }),
+    ),
+    ...(bag.generatedEquipment ?? []).map(
+      (entry): GeneratedEquipmentInventoryEntry => ({
+        kind: entry.kind,
+        instanceKey: entry.instanceKey,
+      }),
+    ),
+  ];
+}
+
+/** Check for one exact generated instance reference. */
+export function hasGeneratedEquipmentReference(
+  bag: InventoryBag,
+  instanceKey: GeneratedEquipmentInstanceKey,
+): boolean {
+  return (bag.generatedEquipment ?? []).some((entry) => entry.instanceKey === instanceKey);
+}
+
+/**
+ * Add one exact generated instance reference.
+ *
+ * This low-level bag primitive enforces local uniqueness. World/registry ownership
+ * validation belongs to the core transfer API.
+ */
+export function addGeneratedEquipmentReference(
+  bag: InventoryBag,
+  instanceKey: GeneratedEquipmentInstanceKey,
+): GeneratedEquipmentInventoryEntry {
+  if (hasGeneratedEquipmentReference(bag, instanceKey)) {
+    throw new Error(`Generated equipment instance already exists in bag: ${instanceKey}`);
+  }
+  const entry: GeneratedEquipmentInventoryEntry = {
+    kind: 'generated-instance',
+    instanceKey,
+  };
+  (bag.generatedEquipment ??= []).push(entry);
+  return entry;
+}
+
+/** Remove one exact generated instance reference without matching on base identity. */
+export function removeGeneratedEquipmentReference(
+  bag: InventoryBag,
+  instanceKey: GeneratedEquipmentInstanceKey,
+): GeneratedEquipmentInventoryEntry | undefined {
+  const entries = bag.generatedEquipment;
+  if (!entries) return undefined;
+  const index = entries.findIndex((entry) => entry.instanceKey === instanceKey);
+  if (index < 0) return undefined;
+  return entries.splice(index, 1)[0];
 }
 
 // ---------------------------------------------------------------------------

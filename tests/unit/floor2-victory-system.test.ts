@@ -11,6 +11,11 @@ import {
   confirmFloor2StairDescend,
 } from '../../src/game/floor2Scenario.js';
 import {
+  createAchievementCatalog,
+  createAchievementCatalogRegistry,
+  FLOOR1_ACHIEVEMENTS,
+} from '../../src/shared/achievements.js';
+import {
   initializeFactionRelations,
   selectFloor2Roster,
 } from '../../src/core/faction-relations.js';
@@ -197,6 +202,31 @@ describe('confirmFloor2StairDescend', () => {
     expect(result).toBe(true);
     expect(world.floorExtendedState?.familyState?.staircaseDiscovered).toBe(true);
     expect(world.state).toBe('safe_room');
+  });
+
+  it('evaluates Floor 2 run-end achievements before transitioning to the safe room', () => {
+    const world = makeFloor2World({ staircaseSpawned: true, staircaseUnlocked: true });
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(2, [
+        {
+          ...FLOOR1_ACHIEVEMENTS[0],
+          id: 'floor2-clear-test',
+          floor: 2,
+          scope: 'current_run',
+          unlockRules: [
+            {
+              type: 'booleanIs',
+              fact: 'runClearedFloor',
+              value: true,
+              phase: 'run_end_clear',
+            },
+          ],
+        },
+      ]),
+    ]);
+
+    expect(confirmFloor2StairDescend(world, 0, registry)).toBe(true);
+    expect(world.achievements.unlockedIds.has('floor2-clear-test')).toBe(true);
   });
 
   it('is idempotent — second call returns false after staircase discovered', () => {

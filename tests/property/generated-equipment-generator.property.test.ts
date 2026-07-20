@@ -71,26 +71,57 @@ describe('generated equipment properties', () => {
             world.generatedEquipmentRegistry.generationPolicy.rarityEffectUnits[rarity];
           const effectIds = instance.resolvedEffects.map((effect) => effect.effectId);
 
-          expect(instance.resolvedEffects.reduce((sum, effect) => sum + effect.unitCost, 0)).toBe(
-            requiredUnits,
-          );
+          expect(
+            instance.resolvedEffects.reduce(
+              (sum, effect) => sum + ('unitCost' in effect ? effect.unitCost : 0),
+              0,
+            ),
+          ).toBe(requiredUnits);
           expect(new Set(effectIds).size).toBe(effectIds.length);
           expect(effectIds.includes('vital') && effectIds.includes('fortunate')).toBe(false);
-          expect(instance.resolvedEffects.map((effect) => effect.effectOrdinal)).toEqual(
-            instance.resolvedEffects.map((_, index) => index),
-          );
+          expect(
+            instance.resolvedEffects.map((effect) =>
+              'effectOrdinal' in effect ? effect.effectOrdinal : -1,
+            ),
+          ).toEqual(instance.resolvedEffects.map((_, index) => index));
           expect(instance.frozen.abilityGrants).toEqual(
             instance.resolvedEffects.flatMap((effect) =>
-              effect.kind === 'abilityGrant' ? [effect.grantId] : [],
+              'kind' in effect && effect.kind === 'abilityGrant' ? [effect.grantId] : [],
             ),
           );
           expect(instance.frozen.passiveGrants).toEqual(
             instance.resolvedEffects.flatMap((effect) =>
-              effect.kind === 'passiveGrant' ? [effect.grantId] : [],
+              'kind' in effect && effect.kind === 'passiveGrant' ? [effect.grantId] : [],
             ),
           );
         },
       ),
     );
+  });
+});
+
+describe('effect catalog coverage invariants', () => {
+  it('has at least one legal effect shape for every target-kind/rarity-budget combination', () => {
+    // weapon=2 armor=2 accessory=2 (rare), uncommon=1; common is always valid (budget=0)
+    // We enumerate each base type and each non-zero rarity to prove no shape gap
+    const worlds = [
+      ['plasma-pistol', 'uncommon', 1],
+      ['plasma-pistol', 'rare', 2],
+      ['iron-breastplate', 'uncommon', 1],
+      ['iron-breastplate', 'rare', 2],
+      ['band-of-fortune', 'uncommon', 1],
+      ['band-of-fortune', 'rare', 2],
+    ] as const;
+
+    for (const [baseId, rarity, _budget] of worlds) {
+      const world = createTestWorld({
+        seed: 99,
+        generatedEquipmentRunKey: `catalog-${baseId}-${rarity}`,
+      });
+      // Should not throw — if it does, the catalog has a gap
+      expect(() =>
+        generateEquipmentInstance(world, { baseId, itemLevel: 1, rarity, enhancementLevel: 0 }),
+      ).not.toThrow();
+    }
   });
 });

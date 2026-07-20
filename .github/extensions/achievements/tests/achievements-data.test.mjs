@@ -169,6 +169,29 @@ test('parseAchievementCatalog rejects malformed catalogs', () => {
   );
 });
 
+test('parseAchievementCatalog defaults missing scope to floor and rejects invalid explicit scopes', () => {
+  // Missing scope → defaults to 'floor'
+  const [noScope] = parseAchievementCatalog([makeAchievement()]);
+  assert.equal(noScope.scope, 'floor');
+
+  // Explicit 'floor' and 'current_run' are accepted
+  const [explicit] = parseAchievementCatalog([makeAchievement({ scope: 'floor' })]);
+  assert.equal(explicit.scope, 'floor');
+  const [runScoped] = parseAchievementCatalog([makeAchievement({ scope: 'current_run' })]);
+  assert.equal(runScoped.scope, 'current_run');
+
+  // A typo like 'run' must be rejected (not silently mapped to 'floor')
+  assert.throws(
+    () => parseAchievementCatalog([makeAchievement({ scope: 'run' })]),
+    /scope must be 'floor' or 'current_run'/,
+  );
+  // null is also treated as an unsupported explicit value
+  assert.throws(
+    () => parseAchievementCatalog([makeAchievement({ scope: null })]),
+    /scope must be 'floor' or 'current_run'/,
+  );
+});
+
 test('parseAchievementCatalog applies the flavor transform', () => {
   const [entry] = parseAchievementCatalog([
     makeAchievement({
@@ -177,6 +200,7 @@ test('parseAchievementCatalog applies the flavor transform', () => {
     }),
   ]);
   assert.equal(entry.directorFlavor, 'Wow.');
+  assert.equal(entry.scope, 'floor');
 });
 
 test('loadAchievementsData returns the full view model via an injected reader', () => {

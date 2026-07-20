@@ -413,7 +413,7 @@ export function generateEquipmentInstance(
     statBonuses.armor = resolvedInherent;
   }
   for (const effect of resolvedEffects) {
-    if (effect.kind === 'stat') {
+    if ('kind' in effect && effect.kind === 'stat') {
       statBonuses[effect.stat] = (statBonuses[effect.stat] ?? 0) + effect.value;
     }
   }
@@ -422,10 +422,10 @@ export function generateEquipmentInstance(
   }
 
   const abilityGrants = resolvedEffects.flatMap((effect) =>
-    effect.kind === 'abilityGrant' ? [effect.grantId] : [],
+    'kind' in effect && effect.kind === 'abilityGrant' ? [effect.grantId] : [],
   );
   const passiveGrants = resolvedEffects.flatMap((effect) =>
-    effect.kind === 'passiveGrant' ? [effect.grantId] : [],
+    'kind' in effect && effect.kind === 'passiveGrant' ? [effect.grantId] : [],
   );
   const activeWeaponSnapshot =
     resolvedBase.weaponDef === null
