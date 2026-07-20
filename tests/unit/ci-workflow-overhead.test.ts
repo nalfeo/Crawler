@@ -194,11 +194,14 @@ describe('merge-gate aggregation policy', () => {
     const script = String(step?.run ?? '');
     // Unit tests, integration tests, and E2E all use allow_skipped=true via the check() helper.
     // Headless Floor 1 uses a custom sim_touched validation block instead — see ci-gating-policy.test.ts.
+    // E2E has been split into three surface-targeted jobs (PR #1698).
     const allowSkippedJobs = [
       'Unit tests',
       'Integration tests',
       'Sprite pipeline tests',
-      'E2E Visual Regression',
+      'E2E Visual — Game/UI',
+      'E2E Visual — Asset Smoke',
+      'E2E Visual — Devtools',
     ];
     for (const name of allowSkippedJobs) {
       expect(script, `"${name}" check should have allow_skipped=true`).toMatch(
@@ -215,11 +218,15 @@ describe('merge-gate aggregation policy', () => {
     expect(needs).toContain('test-unit');
     expect(needs).toContain('test-integration');
     expect(needs).toContain('test-headless');
-    expect(needs).toContain('test-e2e');
+    // E2E split into three surface-targeted jobs (PR #1698).
+    expect(needs).toContain('test-e2e-game');
+    expect(needs).toContain('test-e2e-assets');
+    expect(needs).toContain('test-e2e-devtools');
     expect(needs).toContain('human-approval');
     // Old job names must not appear.
     expect(needs).not.toContain('check-types-and-lint');
     expect(needs).not.toContain('check-format-and-labs');
+    expect(needs).not.toContain('test-e2e');
   });
 });
 
