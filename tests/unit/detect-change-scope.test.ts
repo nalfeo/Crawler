@@ -6,19 +6,20 @@ import { toBashScriptPath, bashEnv } from '../helpers/bash-script-path.js';
 
 /**
  * Deterministic coverage for the CI change-scope classifier
- * (`scripts/agent/ci/detect-art-only.sh`). The script gates CI decisions:
- *   - art_only      → skip heavy gameplay gates on approved-art diffs
- *   - docs_only     → skip ALL heavy gates on markdown/text diffs
- *   - gameplay_safe → skip the headless Floor-1 gate on PRs whose diff
- *                     provably can't change the deterministic sim
- *   - visual_touched  → skip E2E visual regression on non-visual diffs
- *   - sim_touched     → skip headless on non-simulation diffs (independent of gameplay_safe;
- *                       computed with a broader safe list but intentionally EXCLUDING
- *                       engine/labs so engine/labs changes still trigger the headless test
- *                       suite even though the sim runner itself never imports those surfaces)
- *   - coverage_touched → skip coverage job on non-coverage diffs
- *   - sprite_pipeline_touched → alias for sprites_touched
- *   - dependencies_touched → gate npm audit / dep-allowlist on dep-manifest diffs
+ * (`scripts/agent/ci/detect-art-only.sh`). The script gates seven CI decisions:
+ *   - art_only        → skip heavy gameplay gates on approved-art diffs
+ *   - docs_only       → skip ALL heavy gates on markdown/text diffs
+ *   - gameplay_safe   → skip the 306s headless Floor-1 gate on PRs whose diff
+ *                       provably can't change the deterministic sim
+ *   - sim_touched     → run the headless Floor-1 gate on PRs (fail-closed:
+ *                       unknown paths set sim_touched=true)
+ *   - coverage_touched → run the advisory unit-coverage job on PRs (fail-closed:
+ *                        unknown paths set coverage_touched=true)
+ * And four visual-routing outputs added in #1688/#1698:
+ *   - visual_touched       → any visual rendering surface was changed
+ *   - game_visual_touched  → game/engine/UI visual surface (e2e-game suite)
+ *   - asset_visual_touched → generated art / sprite catalog (e2e-assets suite)
+ *   - devtool_visual_touched → devtools browser UI (e2e-devtools suite)
  * A misclassification here silently drops a required gate, so we exercise the
  * real bash implementation via its SCOPE_FILES_OVERRIDE hook (no git needed).
  */
@@ -38,11 +39,12 @@ interface Scope {
   gameplay_safe: boolean;
   sprites_only: boolean;
   sprites_touched: boolean;
-  visual_touched: boolean;
   sim_touched: boolean;
   coverage_touched: boolean;
-  sprite_pipeline_touched: boolean;
-  dependencies_touched: boolean;
+  visual_touched: boolean;
+  game_visual_touched: boolean;
+  asset_visual_touched: boolean;
+  devtool_visual_touched: boolean;
 }
 
 function run(override: string, extraEnv: Record<string, string> = {}): Scope {
@@ -73,11 +75,12 @@ function run(override: string, extraEnv: Record<string, string> = {}): Scope {
     gameplay_safe: read('gameplay_safe'),
     sprites_only: read('sprites_only'),
     sprites_touched: read('sprites_touched'),
-    visual_touched: read('visual_touched'),
     sim_touched: read('sim_touched'),
     coverage_touched: read('coverage_touched'),
-    sprite_pipeline_touched: read('sprite_pipeline_touched'),
-    dependencies_touched: read('dependencies_touched'),
+    visual_touched: read('visual_touched'),
+    game_visual_touched: read('game_visual_touched'),
+    asset_visual_touched: read('asset_visual_touched'),
+    devtool_visual_touched: read('devtool_visual_touched'),
   };
 }
 
@@ -91,329 +94,384 @@ interface Case {
   env?: Record<string, string>;
 }
 
+/**
+ * Build a Scope expectation.
+ * Positional args (original 5): art_only, docs_only, gameplay_safe, sprites_only, sprites_touched
+ * Visual args (new 4):          visual_touched, game_visual_touched, asset_visual_touched, devtool_visual_touched
+ */
 const F = (
   art_only: boolean,
   docs_only: boolean,
   gameplay_safe: boolean,
   sprites_only: boolean,
   sprites_touched: boolean,
-  visual_touched: boolean,
   sim_touched: boolean,
   coverage_touched: boolean,
-  sprite_pipeline_touched: boolean,
-  dependencies_touched: boolean,
+  visual_touched: boolean,
+  game_visual_touched: boolean,
+  asset_visual_touched: boolean,
+  devtool_visual_touched: boolean,
 ): Scope => ({
   art_only,
   docs_only,
   gameplay_safe,
   sprites_only,
   sprites_touched,
-  visual_touched,
   sim_touched,
   coverage_touched,
-  sprite_pipeline_touched,
-  dependencies_touched,
+  visual_touched,
+  game_visual_touched,
+  asset_visual_touched,
+  devtool_visual_touched,
 });
 
 const cases: Case[] = [
-  // Approved-art surface.
+  // Approved-art surface: visual but only asset-visual (no game/devtool).
   {
     name: 'generated sprites + manifest',
     files: ['public/assets/generated/manifest.json'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(true, false, true, false, false, true, false, false, false, false),
+    //                          art   docs  gsafe sponly sptch  vis   game  asset devt
+    expected: F(true, false, true, false, false, false, false, true, false, true, false),
   },
   {
     name: 'sprite catalog data',
     files: ['src/shared/data/sprite-catalog.json'],
-    expected: F(true, false, true, false, false, true, false, false, false, false),
+    expected: F(true, false, true, false, false, false, false, true, false, true, false),
   },
   {
     name: 'package script wiring (safe split)',
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'true' },
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, true, false, true, false, true),
+    //                          art   docs  gsafe sponly sptch  vis   game  asset devt
+    expected: F(false, false, true, false, false, false, false, true, true, true, true),
   },
   {
     name: 'package core script wiring (unsafe split)',
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
-    expected: F(false, false, false, false, false, true, true, true, false, true),
+    expected: F(false, false, false, false, false, true, true, true, true, true, true),
   },
+  // CI/tooling-only: non-visual.
   {
     name: 'scope classifier script',
     files: ['scripts/agent/ci/detect-art-only.sh'],
-    expected: F(false, false, true, false, false, false, false, false, false, false),
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'scope classifier unit test',
     files: ['tests/unit/detect-change-scope.test.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, false, false, true, false, false),
+    expected: F(false, false, true, false, false, false, true, false, false, false, false),
   },
-  // Docs / text.
+  // Docs / text: non-visual.
   {
     name: 'docs markdown',
     files: ['docs/architecture.md'],
-    expected: F(false, true, true, false, false, false, false, false, false, false),
+    expected: F(false, true, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'docs knowledge metric json',
     files: ['docs/knowledge/metrics/apples/2026-07-08-adr-cleanup.json'],
-    expected: F(false, true, true, false, false, false, false, false, false, false),
+    expected: F(false, true, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'spec markdown',
     files: ['.specify/specs/spawner-battle-arena.md'],
-    expected: F(false, true, true, false, false, false, false, false, false, false),
+    expected: F(false, true, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'agents governance doc',
     files: ['AGENTS.md'],
-    expected: F(false, true, true, false, false, false, false, false, false, false),
+    expected: F(false, true, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'root readme',
     files: ['README.md'],
-    expected: F(false, true, true, false, false, false, false, false, false, false),
+    expected: F(false, true, true, false, false, false, false, false, false, false, false),
   },
-  // Gameplay-safe surfaces the headless runner never imports.
+  // Gameplay-safe surfaces: visual (game_visual) but not headless-unsafe.
   {
     name: 'engine-only (rendering)',
     files: ['src/engine/render/floorRenderer.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, true, true, true, false, false),
+    expected: F(false, false, true, false, false, true, true, true, true, false, false),
   },
   {
     name: 'labs-only',
     files: ['src/labs/combatLab.ts'],
-    expected: F(false, false, true, false, false, true, true, false, false, false),
+    expected: F(false, false, true, false, false, true, false, true, true, false, false),
   },
   {
-    name: 'e2e tests',
+    name: 'e2e tests (non-devtool)',
     files: ['tests/e2e/hud-overlap-visual.test.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, true, false, false, false, false),
+    // tests/e2e/* → sim=false (excluded), cov=false (excluded), game_visual=true
+    expected: F(false, false, true, false, false, false, false, true, true, false, false),
   },
   {
     name: 'docs + engine mixed',
     files: ['docs/x.md', 'src/engine/foo.ts'],
-    expected: F(false, false, true, false, false, true, true, true, false, false),
+    expected: F(false, false, true, false, false, true, true, true, true, false, false),
   },
-  // Anything that CAN change the sim must force the gate to run.
+  // Anything that CAN change the sim must force the headless gate to run.
+  // These also set game_visual_touched (src/* → visual, game).
   {
     name: 'core system',
     files: ['src/core/systems/movementSystem.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false),
   },
   {
     name: 'game system',
     files: ['src/game/combat.ts'],
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false),
   },
   {
     name: 'shared (non-catalog)',
     files: ['src/shared/random.ts'],
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false),
   },
   {
     name: 'headless test itself',
     files: ['tests/headless/floor1-completion.test.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, false, true, false, false, false),
+    expected: F(false, false, false, false, false, true, false, false, false, false, false),
   },
   {
     name: 'engine + game mixed',
     files: ['src/engine/render/foo.ts', 'src/game/combat.ts'],
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false),
   },
+  // CI/tooling-only: non-visual.
   {
     name: 'ci script change',
     files: ['scripts/agent/ci/detect-art-only.sh'],
-    expected: F(false, false, true, false, false, false, false, false, false, false),
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'workflow change',
     files: ['.github/workflows/ci.yml'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, false, false, false, false, false),
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'github actions change',
     files: ['.github/actions/setup-node/action.yml'],
-    expected: F(false, false, true, false, false, false, false, false, false, false),
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'github extensions change',
     files: ['.github/extensions/copilot-guards/guard.ts'],
-    expected: F(false, false, true, false, false, false, false, false, false, false),
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
   },
   {
     name: 'mixed workflow + engine (non-gameplay)',
     files: ['.github/workflows/ci.yml', 'src/engine/render/foo.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, false, true, true, true, false, false),
+    expected: F(false, false, true, false, false, true, true, true, true, false, false),
   },
   {
     name: 'workflow + game code (gameplay-unsafe)',
     files: ['.github/workflows/ci.yml', 'src/game/combat.ts'],
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false),
   },
   // Sprite pipeline paths: gameplay_safe=true, sprites_only=true, sprites_touched=true.
+  // These are non-visual (pipeline scripts, not the rendered output).
   {
     name: 'sprites pipeline script',
     files: ['scripts/sprites/run-full.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, true, true, false, false, false, true, false),
+    expected: F(false, false, true, true, true, false, false, false, false, false, false),
   },
   {
     name: 'sprites pipeline unit test',
     files: ['tests/unit/sprites/run-pipeline.test.ts'],
-    expected: F(false, false, true, true, true, false, false, false, true, false),
+    expected: F(false, false, true, true, true, false, false, false, false, false, false),
   },
   {
     name: 'sprites integration test',
     files: ['tests/integration/sprites/rerun.test.ts'],
-    expected: F(false, false, true, true, true, false, false, false, true, false),
+    expected: F(false, false, true, true, true, false, false, false, false, false, false),
   },
   {
     name: 'sprites pipeline + unit test (pure sprites change)',
     files: ['scripts/sprites/batch.ts', 'tests/unit/sprites/batch.test.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, true, true, false, false, false, true, false),
+    expected: F(false, false, true, true, true, false, false, false, false, false, false),
   },
   {
     name: 'sprites pipeline + game code (mixed) → sprites_only=false, sprites_touched=true',
     files: ['scripts/sprites/batch.ts', 'src/game/combat.ts'],
-    expected: F(false, false, false, false, true, true, true, true, true, false),
+    expected: F(false, false, false, false, true, true, true, true, true, false, false),
   },
   {
     name: 'sprites pipeline + engine code → sprites_only=false, gameplay_safe=true, sprites_touched=true',
     files: ['scripts/sprites/run-full.ts', 'src/engine/renderer.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, true, false, true, true, true, true, true, false),
+    expected: F(false, false, true, false, true, true, true, true, true, false, false),
   },
   // Root pipeline integration tests: in sprites surface, so sprites_only=true, sprites_touched=true.
   {
     name: 'root pipeline integration test (batch-cli)',
     files: ['tests/integration/batch-cli.test.ts'],
-    expected: F(false, false, true, true, true, false, false, false, true, false),
+    expected: F(false, false, true, true, true, false, false, false, false, false, false),
   },
   {
     name: 'root pipeline integration test (sidecar-lifecycle)',
     files: ['tests/integration/sidecar-lifecycle.test.ts'],
-    expected: F(false, false, true, true, true, false, false, false, true, false),
+    expected: F(false, false, true, true, true, false, false, false, false, false, false),
   },
-  // Game-only change → sprites_touched=false.
+  // Game-only change → sprites_touched=false, game_visual_touched=true.
   {
     name: 'game-only change → sprites_touched=false',
     files: ['src/game/combat.ts', 'src/core/systems/movementSystem.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false),
   },
-  // New orthogonal flag tests (issue #1688 acceptance criteria).
+  // ── New: visual surface routing cases (#1698) ──────────────────────────────
+  // Devtools-only: devtool_visual_touched, NOT game_visual_touched.
   {
-    name: 'package-lock.json → all runtime-sensitive flags + dependencies touched',
-    files: ['package-lock.json'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, true, true, true, false, true),
-  },
-  {
-    name: 'npm-shrinkwrap.json → all runtime-sensitive flags + dependencies touched',
-    files: ['npm-shrinkwrap.json'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, true, true, true, false, true),
+    name: 'devtools source change',
+    files: ['src/devtools/sprite-workflow-queue.ts'],
+    expected: F(false, false, true, false, false, true, true, true, false, false, true),
   },
   {
-    name: 'brief-only change → visual only (not sim/coverage/deps)',
-    files: ['briefs/items/foo.yaml'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, true, false, false, false, false),
+    name: 'devtools e2e test change',
+    files: ['tests/e2e/sprite-workflow-sensors.test.ts'],
+    // tests/e2e/* → sim=false, cov=false; devtool_visual=true (sprite-workflow-sensors specific)
+    expected: F(false, false, true, false, false, false, false, true, false, false, true),
+  },
+  // Mixed devtools + game → both surfaces touched.
+  {
+    name: 'devtools + engine mixed',
+    files: ['src/devtools/index.ts', 'src/engine/render/foo.ts'],
+    expected: F(false, false, true, false, false, true, true, true, true, false, true),
+  },
+  // Non-visual: CI, docs, scripts, non-e2e tests.
+  {
+    name: 'ci-only change → visual_touched=false',
+    files: ['.github/workflows/ci.yml', 'scripts/agent/ci/detect-art-only.sh'],
+    // .github/*, scripts/agent/* → sim=false, cov=false, visual=false
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
   },
   {
-    name: 'unit test (non-sprites) → coverage_touched=true, not visual, not sim',
-    files: ['tests/unit/ai-runner-lighting-controls.test.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, false, false, true, false, false),
+    name: 'unit tests only → visual_touched=false',
+    files: ['tests/unit/movementSystem.test.ts', 'tests/headless/floor1.test.ts'],
+    expected: F(false, false, false, false, false, true, true, false, false, false, false),
+  },
+  // Mixed art + devtools → both asset and devtool visual.
+  {
+    name: 'art + devtools (mixed) → asset and devtool visual both touched',
+    files: ['public/assets/generated/manifest.json', 'src/devtools/sprite-workflow-queue.ts'],
+    expected: F(false, false, true, false, false, true, true, true, false, true, true),
+  },
+  // DevTools entrypoints: devtools.html and src/devtools-main.ts must route
+  // to devtool_visual only, NOT game_visual.
+  {
+    name: 'devtools.html change → devtool_visual only',
+    files: ['devtools.html'],
+    expected: F(false, false, true, false, false, true, true, true, false, false, true),
   },
   {
-    name: 'headless test → sim_touched=true, not visual, not coverage',
-    files: ['tests/headless/floor1-completion.test.ts'],
-    expected: F(false, false, false, false, false, false, true, false, false, false),
+    name: 'src/devtools-main.ts change → devtool_visual only',
+    files: ['src/devtools-main.ts'],
+    expected: F(false, false, true, false, false, true, true, true, false, false, true),
+  },
+  // Shared E2E infrastructure (global-setup, e2e-constants, helpers/**) is consumed
+  // by all three projects → must enable ALL three visual surfaces.
+  // Note: tests/e2e/* is gameplay_safe (no src/ change), so gameplay_safe=true here.
+  {
+    name: 'e2e global-setup change → all three visual surfaces',
+    files: ['tests/e2e/global-setup.ts'],
+    // tests/e2e/* → sim=false, cov=false; shared e2e infra → all visual surfaces
+    expected: F(false, false, true, false, false, false, false, true, true, true, true),
   },
   {
-    name: 'CI-only scripts (agent scripts) → all touched flags false',
-    files: ['scripts/agent/ci/local-scope.sh', 'scripts/agent/security/check-deps.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, false, false, false, false, false),
+    name: 'e2e-constants change → all three visual surfaces',
+    files: ['tests/e2e/e2e-constants.ts'],
+    // tests/e2e/* → sim=false, cov=false; shared e2e infra → all visual surfaces
+    expected: F(false, false, true, false, false, false, false, true, true, true, true),
   },
   {
-    name: '.specify spec + engine (mixed) → visual, sim, coverage touched; not deps',
-    files: ['.specify/specs/foo.md', 'src/engine/rendering/debugLayer.ts'],
-    expected: F(false, false, true, false, false, true, true, true, false, false),
+    name: 'e2e helpers/ui-probe change → all three visual surfaces',
+    files: ['tests/e2e/helpers/ui-probe.ts'],
+    // tests/e2e/* → sim=false, cov=false; shared e2e infra → all visual surfaces
+    expected: F(false, false, true, false, false, false, false, true, true, true, true),
+  },
+  // Unknown path: must enable ALL three visual surfaces (fail toward broader validation).
+  {
+    name: 'unknown path (vitest.config.ts) → all three visual surfaces',
+    files: ['vitest.config.ts'],
+    expected: F(false, false, false, false, false, true, true, true, true, true, true),
   },
   {
-    name: 'package-lock.json + workflow → all runtime-sensitive flags + dependencies touched',
-    files: ['package-lock.json', '.github/workflows/security-review.yml'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, true, true, true, false, true),
+    name: 'unknown path (root script) → all three visual surfaces',
+    files: ['some-unknown-file.ts'],
+    expected: F(false, false, false, false, false, true, true, true, true, true, true),
+  },
+  // ── New: sim_touched / coverage_touched cases ──────────────────────────────
+  // CI/tooling-only changes: sim and coverage untouched.
+  {
+    name: 'CI-only: github workflow change',
+    files: ['.github/workflows/ci.yml'],
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
   },
   {
-    name: 'src/shared (non-catalog) → sim+visual+coverage, not deps',
-    files: ['src/shared/random.ts'],
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    name: 'CI-only: scripts/agent tooling change',
+    files: ['scripts/agent/preflight.sh'],
+    expected: F(false, false, false, false, false, false, false, false, false, false, false),
   },
+  // Note: scripts/agent/ is NOT in gameplay_safe allowlist (only detect-art-only.sh explicitly is),
+  // but scripts/* IS safe for sim_touched and coverage_touched.
   {
-    name: 'unknown path → fail closed for runtime-sensitive + dependencies gates',
-    files: ['tooling/new-surface/config.yaml'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, true, true, true, false, true),
+    name: 'CI-only: pure .github change',
+    files: ['.github/actions/setup-node/action.yml', '.github/instructions/core.instructions.md'],
+    expected: F(false, false, true, false, false, false, false, false, false, false, false),
   },
-  // Cross-surface rename regression (thread 1 fix: --no-renames).
-  // With rename detection ON, `git diff --name-only` for a `src/core/foo.ts →
-  // docs/foo.md` rename shows only the destination `docs/foo.md`. That would
-  // make the classifier emit docs_only=true and silently bypass all gates.
-  // `--no-renames` exposes both endpoints; the classifier then sees `src/core/foo.ts`
-  // and correctly marks gameplay_safe=false / sim_touched=true / etc.
-  // This test drives the classifier with BOTH paths (simulating --no-renames output).
+  // Dependency change: unsafe for both sim and coverage.
   {
-    name: 'cross-surface rename src/core→docs: both paths present (--no-renames)',
-    files: ['src/core/foo.ts', 'docs/foo.md'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    name: 'dependency change (package.json, deps touched)',
+    files: ['package.json'],
+    env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
+    // package.json (unsafe) falls to catch-all → all visual surfaces touched
+    expected: F(false, false, false, false, false, true, true, true, true, true, true),
   },
+  // Asset change: sim and coverage untouched.
   {
-    name: 'cross-surface rename src/game→docs: both paths present (--no-renames)',
-    files: ['src/game/combat.ts', 'docs/combat.md'],
-    expected: F(false, false, false, false, false, true, true, true, false, false),
+    name: 'asset-only: generated sprite sheet',
+    files: ['public/assets/generated/sprites.png', 'public/assets/generated/manifest.json'],
+    expected: F(true, false, true, false, false, false, false, true, false, true, false),
   },
-  // Unit-project taxonomy regression (threads 2 & 3: visual/sim safe-list gaps).
-  // vitest.config.ts:81 defines the 'unit' project as tests/{unit,ecs,game,property,
-  // determinism,sensors}/**. The safe lists must treat all these directories as
-  // equivalent to tests/unit/** — changing tests/ files cannot affect E2E visual
-  // output or headless sim behavior; only coverage is touched.
+  // Unknown/unclassified path → fail-closed: sim_touched=true, coverage_touched=true.
   {
-    name: 'ecs unit test → not visual, not sim, coverage touched',
-    files: ['tests/ecs/aoe-on-impact-system.test.ts'],
-    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expected: F(false, false, false, false, false, false, false, true, false, false),
+    name: 'unknown unclassified path → fail-closed',
+    files: ['some-new-build-output/bundle.js'],
+    expected: F(false, false, false, false, false, true, true, true, true, true, true),
   },
+  // Game unit test (non-sprites): coverage_touched=true, sim_touched=false.
   {
-    name: 'game unit test → not visual, not sim, coverage touched',
-    files: ['tests/game/ability-grant-sources.test.ts'],
-    expected: F(false, false, false, false, false, false, false, true, false, false),
+    name: 'game unit test (non-sprites) → coverage touched, sim not touched',
+    files: ['tests/unit/some-game-logic.test.ts'],
+    expected: F(false, false, false, false, false, false, true, false, false, false, false),
   },
+  // Bootstrap wiring: both sim and coverage touched.
   {
-    name: 'property test → not visual, not sim, coverage touched',
-    files: ['tests/property/active-weapon-snapshot.property.test.ts'],
-    expected: F(false, false, false, false, false, false, false, true, false, false),
+    name: 'bootstrap wiring file → sim and coverage touched',
+    files: ['src/bootstrap/floor-main-scene-options.ts'],
+    expected: F(false, false, false, false, false, true, true, true, true, false, false),
   },
+  // Headless tests: sim touched (test outcome matters), coverage NOT touched.
   {
-    name: 'determinism test → not visual, not sim, coverage touched',
-    files: ['tests/determinism/determinism.test.ts'],
-    expected: F(false, false, false, false, false, false, false, true, false, false),
+    name: 'headless test → sim touched only',
+    files: ['tests/headless/ai-stuck-wiggle.test.ts'],
+    expected: F(false, false, false, false, false, true, false, false, false, false, false),
+  },
+  // Integration test (non-sprites): neither sim nor coverage touched.
+  {
+    name: 'integration test (non-sprites) → neither sim nor coverage',
+    files: ['tests/integration/some-game-test.test.ts'],
+    expected: F(false, false, false, false, false, false, false, false, false, false, false),
+  },
+  // Docs handoff + game code → sim and coverage still touched (handoff doesn't neutralise sim flag).
+  {
+    name: 'handoff + game code → sim and coverage touched',
+    files: ['docs/knowledge/handoffs/2026-07-19-my-feature.md', 'src/game/combat.ts'],
+    expected: F(false, false, false, false, false, true, true, true, true, false, false),
+  },
+  // Docs handoff alone → neutral (docs/* safe for both).
+  {
+    name: 'handoff alone → neutral companion',
+    files: ['docs/knowledge/handoffs/2026-07-19-my-feature.md'],
+    expected: F(false, true, true, false, false, false, false, false, false, false, false),
   },
 ];
 
@@ -422,21 +480,24 @@ describe('detect-art-only.sh change-scope classifier', () => {
     expect(hasBash).toBe(true);
   });
 
-  it.skipIf(!hasBash)('fail-safe: a blank/whitespace change set runs the full suite', () => {
-    // A lone newline enters the override branch but strips to empty → fail-safe:
-    // every positive-signal flag (sprites, visual, sim, coverage,
-    // sprite_pipeline, dependencies) is true so gate jobs run rather than being
-    // silently skipped on unknown change sets.
-    expect(run('\n')).toEqual(F(false, false, false, false, true, true, true, true, true, true));
-  });
-
   it.skipIf(!hasBash)(
-    'fail-safe: an explicitly empty override is honored as an empty change set',
+    'fail-safe: an empty/whitespace change set enables all visual suites (unknown diff → run everything)',
     () => {
-      // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
-      expect(run('')).toEqual(F(false, false, false, false, true, true, true, true, true, true));
+      // A lone newline enters the override branch but strips to empty.
+      // Empty/unknown changeset → we cannot safely skip visual suites, so all
+      // three surface flags must be true (same fail-safe as the no-base-ref path).
+      expect(run('\n')).toEqual(
+        F(false, false, false, false, false, true, true, true, true, true, true),
+      );
     },
   );
+
+  it.skipIf(!hasBash)('fail-safe: an explicitly empty override enables all visual suites', () => {
+    // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
+    expect(run('')).toEqual(
+      F(false, false, false, false, false, true, true, true, true, true, true),
+    );
+  });
 
   for (const c of cases) {
     it.skipIf(!hasBash)(`classifies ${c.name}`, () => {

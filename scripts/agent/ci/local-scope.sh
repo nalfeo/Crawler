@@ -33,14 +33,20 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 emit_all_false() {
-  # Returns the conservative all-run (fail-closed) shape, mirroring
-  # detect-art-only.sh's own fail-safe: negative-signal flags are false so no
-  # gate is bypassed, and every positive-signal flag (sprites_touched,
-  # visual_touched, sim_touched, coverage_touched, sprite_pipeline_touched,
-  # dependencies_touched) is true so local consumers that gate on them will run
-  # rather than silently skip when scope is unknowable. sprites_touched and its
-  # sprite_pipeline_touched alias are kept identical, matching the CI classifier.
-  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=true\nvisual_touched=true\nsim_touched=true\ncoverage_touched=true\nsprite_pipeline_touched=true\ndependencies_touched=true\n'
+<<<<<<< Updated upstream
+  # Mirror detect-art-only.sh's fail-safe output contract exactly so consumers can
+  # parse one shape regardless of which path produced it.
+  # Legacy flags (safe/only): false → broader gates run.
+  # New positive-contract flags: true → fail toward broader validation when
+  # scope cannot be determined (consistent with detect-art-only.sh fail-safe).
+=======
+  # Mirror detect-art-only.sh's output shape so consumers can parse one contract
+  # regardless of which path produced it.
+  # Legacy flags (safe/only): false → broader gates run.
+  # New positive-contract flags: true → fail toward broader validation when
+  # scope cannot be determined.
+>>>>>>> Stashed changes
+  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=true\nsim_touched=true\ncoverage_touched=true\nsprite_pipeline_touched=true\ndependencies_touched=true\nvisual_touched=true\ngame_visual_touched=true\nasset_visual_touched=true\ndevtool_visual_touched=true\n'
 }
 
 # Not a git work tree (or git unavailable) → cannot compute a trustworthy set.
@@ -73,6 +79,13 @@ changed="$(
 )"
 
 echo "local-scope: base=${base}" >&2
+
+# Empty working-tree union should fail closed for local heavy-check gating.
+if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
+  echo "local-scope: no changed files detected — forcing full-suite (all-false)." >&2
+  emit_all_false
+  exit 0
+fi
 
 # Hand the working-tree-aware set to the shared CI classifier via its documented
 # test hook. SCOPE_FILES_OVERRIDE is presence-detected (${VAR+x}) there, so even
