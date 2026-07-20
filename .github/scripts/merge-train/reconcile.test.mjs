@@ -10,6 +10,7 @@ import {
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
+  mergeTrainGitEnvironment,
   promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
   queuePositionAfterRecovery,
@@ -47,6 +48,7 @@ function createGitStub({
   mergeConflict = false,
   failDirectShaFetch = false,
   noSquashChanges = false,
+  workflowPaths = [],
 }) {
   const calls = [];
   const refs = new Map();
@@ -77,6 +79,7 @@ function createGitStub({
     if (args[0] === 'rev-parse' && args[1] === 'HEAD') return candidateSha;
     if (args[0] === 'rev-parse' && args[1] === `${candidateSha}^`) return parentSha;
     if (args[0] === 'rev-parse') return refs.get(args[1]) || fetchedSha;
+    if (args[0] === 'log') return workflowPaths.join('\n');
     return '';
   };
   return { git, calls };
@@ -222,6 +225,190 @@ test('buildCandidate leaves non-conflict merge failures retryable', () => {
   );
 });
 
+test('ordinary live candidates keep the checkout App credential for ref pushes', () => {
+  const { git, calls } = createGitStub({});
+  buildCandidate({
+    baseSha,
+    entries: [makePr()],
+    refName: 'merge-train/candidate-ordinary',
+    git,
+    live: true,
+  });
+
+  const pushCall = calls.find((call) => call.args[0] === 'push');
+  assert.deepEqual(pushCall.args, [
+    'push',
+    '--force',
+    'origin',
+    `${candidateSha}:refs/heads/merge-train/candidate-ordinary`,
+  ]);
+  assert.deepEqual(pushCall.options, {});
+});
+
+test('workflow-bearing candidates override checkout auth only for the candidate push', () => {
+  const workflowToken = 'owner-workflow-token';
+  const { git, calls } = createGitStub({
+    workflowPaths: ['.github/workflows/ci.yml'],
+  });
+  buildCandidate({
+    baseSha,
+    entries: [makePr()],
+    refName: 'merge-train/candidate-workflow',
+    git,
+    live: true,
+    candidateWorkflowToken: workflowToken,
+    environment: {},
+  });
+
+  const logCall = calls.find((call) => call.args[0] === 'log');
+  assert.deepEqual(logCall.args, [
+    'log',
+    '--format=',
+    '--name-only',
+    `${baseSha}..${candidateSha}`,
+    '--',
+    '.github/workflows',
+  ]);
+  const pushCall = calls.find((call) => call.args[0] === 'push');
+  assert.equal(JSON.stringify(pushCall.args).includes(workflowToken), false);
+  assert.deepEqual(pushCall.options.env, {
+    GIT_CONFIG_COUNT: '2',
+    GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+    GIT_CONFIG_VALUE_0: '',
+    GIT_CONFIG_KEY_1: 'http.https://github.com/.extraheader',
+    GIT_CONFIG_VALUE_1: `AUTHORIZATION: basic ${Buffer.from(
+      `x-access-token:${workflowToken}`,
+      'utf8',
+    ).toString('base64')}`,
+    GIT_TERMINAL_PROMPT: '0',
+  });
+});
+
+test('workflow push auth preserves pre-existing command-scoped Git configuration', () => {
+  const workflowToken = 'owner-workflow-token';
+  const environment = {
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'protocol.version',
+    GIT_CONFIG_VALUE_0: '2',
+  };
+  const { git, calls } = createGitStub({
+    workflowPaths: ['.github/workflows/ci.yml'],
+  });
+  buildCandidate({
+    baseSha,
+    entries: [makePr()],
+    refName: 'merge-train/candidate-workflow',
+    git,
+    live: true,
+    candidateWorkflowToken: workflowToken,
+    environment,
+  });
+
+  const pushCall = calls.find((call) => call.args[0] === 'push');
+  const childEnvironment = mergeTrainGitEnvironment(environment, pushCall.options.env);
+  assert.deepEqual(childEnvironment, {
+    GIT_CONFIG_COUNT: '3',
+    GIT_CONFIG_KEY_0: 'protocol.version',
+    GIT_CONFIG_VALUE_0: '2',
+    GIT_CONFIG_KEY_1: 'http.https://github.com/.extraheader',
+    GIT_CONFIG_VALUE_1: '',
+    GIT_CONFIG_KEY_2: 'http.https://github.com/.extraheader',
+    GIT_CONFIG_VALUE_2: `AUTHORIZATION: basic ${Buffer.from(
+      `x-access-token:${workflowToken}`,
+      'utf8',
+    ).toString('base64')}`,
+    GIT_TERMINAL_PROMPT: '0',
+  });
+});
+
+test('workflow commit-range detection survives a later final-tree revert', () => {
+  const { git, calls } = createGitStub({
+    workflowPaths: ['.github/workflows/ci.yml', '.github/workflows/ci.yml'],
+  });
+  buildCandidate({
+    baseSha,
+    entries: [makePr({ number: 1 }), makePr({ number: 2 })],
+    refName: 'merge-train/candidate-reverted-workflow',
+    git,
+    live: true,
+    candidateWorkflowToken: 'owner-workflow-token',
+    environment: {},
+  });
+
+  assert.ok(calls.some((call) => call.args[0] === 'log'));
+  assert.ok(calls.find((call) => call.args[0] === 'push').options.env);
+});
+
+test('workflow-bearing live candidates fail before ref mutation when the PAT is missing', () => {
+  const { git, calls } = createGitStub({
+    workflowPaths: ['.github/workflows/ci.yml'],
+  });
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [makePr()],
+        refName: 'merge-train/candidate-workflow',
+        git,
+        live: true,
+      }),
+    /require MERGE_TRAIN_WORKFLOW_TOKEN.*CRAWLER_CI_PAT/,
+  );
+  assert.equal(
+    calls.some((call) => call.args[0] === 'push'),
+    false,
+  );
+});
+
+test('workflow candidate push failures do not expose credentials in command errors', () => {
+  const workflowToken = 'owner-workflow-token';
+  const encodedToken = Buffer.from(`x-access-token:${workflowToken}`, 'utf8').toString('base64');
+  const { git, calls } = createGitStub({
+    failPush: true,
+    workflowPaths: ['.github/workflows/ci.yml'],
+  });
+  assert.throws(
+    () =>
+      buildCandidate({
+        baseSha,
+        entries: [makePr()],
+        refName: 'merge-train/candidate-workflow',
+        git,
+        live: true,
+        candidateWorkflowToken: workflowToken,
+        environment: {},
+      }),
+    (error) => {
+      assert.equal(error.message.includes(workflowToken), false);
+      assert.equal(error.message.includes(encodedToken), false);
+      assert.equal(isMergeTrainConflictError(error), false);
+      assert.equal(isMergeTrainNoopError(error), false);
+      return true;
+    },
+  );
+  const pushCall = calls.find((call) => call.args[0] === 'push');
+  assert.equal(JSON.stringify(pushCall.args).includes(workflowToken), false);
+  assert.equal(JSON.stringify(pushCall.args).includes(encodedToken), false);
+});
+
+test('raw workflow credentials are stripped from every Git child environment', () => {
+  assert.deepEqual(
+    mergeTrainGitEnvironment(
+      {
+        PATH: '/usr/bin',
+        MERGE_TRAIN_WORKFLOW_TOKEN: 'owner-workflow-token',
+      },
+      {
+        GIT_CONFIG_COUNT: '1',
+      },
+    ),
+    {
+      PATH: '/usr/bin',
+      GIT_CONFIG_COUNT: '1',
+    },
+  );
+});
+
 test('later build failure promotes the highest successful cumulative prefix in order', async () => {
   const train = [1, 2, 3, 4].map((number) => makePr({ number }));
   const candidates = [
@@ -342,6 +529,33 @@ test('runTrainBuildLoop does not attempt promotion when no candidate succeeded b
   assert.equal(result.recovery.promotionAttempted, false);
   assert.equal(promotionCalled, false);
   assert.equal(builtCandidates.length, 0);
+});
+
+test('workflow credential push rejection remains a retryable build failure', async () => {
+  const { git } = createGitStub({
+    failPush: true,
+    workflowPaths: ['.github/workflows/ci.yml'],
+  });
+  const result = await runTrainBuildLoop({
+    train: [makePr()],
+    candidates: [],
+    buildEntry: async () => ({
+      candidateSha: buildCandidate({
+        baseSha,
+        entries: [makePr()],
+        refName: 'merge-train/candidate-workflow',
+        git,
+        live: true,
+        candidateWorkflowToken: 'insufficient-owner-token',
+        environment: {},
+      }),
+    }),
+    promotePrefix: async () => true,
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  assert.match(result.error.message, /lease rejected/);
+  assert.equal(result.recovery.promotionAttempted, false);
 });
 
 test('runTrainBuildLoop does not invoke buildEntry for entries beyond the retryable failure', async () => {
@@ -506,10 +720,24 @@ test('live Actions runs require separate promotion and workflow-dispatch tokens'
       GITHUB_ACTIONS: 'true',
       MERGE_TRAIN_TOKEN: 'app-token',
       GITHUB_TOKEN: 'actions-token',
+      MERGE_TRAIN_WORKFLOW_TOKEN: 'owner-workflow-token',
     }),
     {
       promotionToken: 'app-token',
       workflowDispatchToken: 'actions-token',
+      candidateWorkflowToken: 'owner-workflow-token',
+    },
+  );
+  assert.deepEqual(
+    resolveMergeTrainTokens({
+      GITHUB_ACTIONS: 'true',
+      MERGE_TRAIN_TOKEN: 'app-token',
+      GITHUB_TOKEN: 'actions-token',
+    }),
+    {
+      promotionToken: 'app-token',
+      workflowDispatchToken: 'actions-token',
+      candidateWorkflowToken: '',
     },
   );
   assert.throws(

@@ -76,6 +76,11 @@ candidate SHA, and state.
   fingerprint. Reconciliation always reconstructs their expected SHA from
   trusted queue metadata and overwrites the ref; a pre-existing ref is never
   trusted.
+- Ordinary candidate refs are pushed with the repository App credential.
+  Candidates whose commit range changes `.github/workflows/**` use the repository
+  owner PAT only for that one ref push, because GitHub rejects workflow-file
+  updates from an App that lacks the separate Workflows permission. The PAT is
+  never used for checks, labels, comments, validation dispatch, or promotion.
 - Every promotion re-reads the PR and `main`; stale state fails closed.
 
 ## Required repository configuration
@@ -124,12 +129,19 @@ Before live mode:
    create/update rulesets via `POST`/`PUT .../rulesets` -- without it, `enable`
    fails with `403` even though every other prerequisite in this checklist is
    satisfied).
-4. Keep force-pushes to `main` disabled (unchanged, still enforced by classic
+4. Configure `CRAWLER_CI_PAT` as the repository owner's token with repository
+   Contents read/write plus permission to update workflow files (`workflow`
+   scope for a classic PAT, or Workflows read/write for a fine-grained PAT).
+   The workflow maps it to `MERGE_TRAIN_WORKFLOW_TOKEN` only for trusted
+   reconciliation. A missing token fails before candidate-ref mutation; an
+   insufficient token leaves the candidate build retryable and prints GitHub's
+   permission rejection without exposing the credential.
+5. Keep force-pushes to `main` disabled (unchanged, still enforced by classic
    protection). Promotion no longer pushes `main` directly at all -- it uses
    GitHub's own squash-merge API, one PR at a time.
-5. Ensure `MERGE_TRAIN_ADMISSION_CHECKS` names the current PR admission checks.
+6. Ensure `MERGE_TRAIN_ADMISSION_CHECKS` names the current PR admission checks.
    The default is `ci,Security checks`.
-6. Verify the postcondition before enabling the train:
+7. Verify the postcondition before enabling the train:
 
    ```bash
    node .github/scripts/merge-train/protection.mjs status --app-id <APP_ID>
@@ -333,6 +345,13 @@ repaired `main`.
 status --app-id <APP_ID>` and verify `classic.requiredStatusChecksDisabled`
   is `true` and `ruleset.problems` is empty. Never merge the PR through the
   ordinary squash path to work around this failure.
+- **Workflow-candidate push denied:** confirm `CRAWLER_CI_PAT` exists and has the
+  workflow-file permissions listed above. A repair that adds this credential
+  path cannot bootstrap through an App that is already blocked from pushing its
+  workflow-bearing candidate. Do not directly merge or bypass protection. An
+  operator must explicitly authorize either the existing emergency rollback
+  lane or the minimum GitHub App installation permission update required to
+  land the repair, then restore the intended credential boundary.
 - **Main-health deadlock:** every hourly full-CI run for the current `main` SHA
   is red (or missing/pending), so `mainHealthAllowsPromotion()` pauses all
   promotion, including the repair PR's own. This is the one case where the

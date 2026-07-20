@@ -21,6 +21,7 @@ import {
   isMergeTrainConflictError,
   isMergeTrainNoopError,
   mainHealthReason,
+  mergeTrainGitEnvironment,
   planLandedRecovery,
   promoteExactBatch,
   promotionStaleReason,
@@ -59,7 +60,11 @@ import { humanApprovalRejection } from './human-approval.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
-const { promotionToken: token, workflowDispatchToken } = resolveMergeTrainTokens(process.env);
+const {
+  promotionToken: token,
+  workflowDispatchToken,
+  candidateWorkflowToken,
+} = resolveMergeTrainTokens(process.env);
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
@@ -76,7 +81,7 @@ function git(args, options = {}) {
   return execFileSync('git', args, {
     encoding: 'utf8',
     stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ...(options.env || {}) },
+    env: mergeTrainGitEnvironment(process.env, options.env),
   }).trim();
 }
 
@@ -565,7 +570,14 @@ const loopResult = await runTrainBuildLoop({
     const entries = train.slice(0, index + 1);
     const fingerprint = candidateFingerprint(mainSha, entries);
     const refName = candidateRef(index + 1, fingerprint);
-    const candidateSha = buildCandidate({ baseSha: mainSha, entries, refName, git, live: true });
+    const candidateSha = buildCandidate({
+      baseSha: mainSha,
+      entries,
+      refName,
+      git,
+      live: true,
+      candidateWorkflowToken,
+    });
     await removeLabel(train[index].number, BLOCKED_LABEL);
     await removeLabel(train[index].number, VALIDATION_FAILED_LABEL);
     return { candidateSha, entries, fingerprint, refName };

@@ -16,6 +16,7 @@ interface WorkflowDoc {
     reconcile?: {
       if?: string;
       concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
+      steps?: Array<{ name?: string; env?: Record<string, string> }>;
     };
   };
 }
@@ -85,6 +86,17 @@ describe('merge-train workflow wake-ups', () => {
     expect(concurrency?.group).toBe('crawler-merge-train');
     expect(concurrency?.queue).toBe('single');
     expect(concurrency?.['cancel-in-progress']).not.toBe(true);
+  });
+
+  it('exposes the owner PAT only to the trusted reconcile step for workflow candidate pushes', () => {
+    const steps = loadWorkflow().jobs.reconcile?.steps ?? [];
+    const reconcileStep = steps.find((step) => step.name === 'Reconcile six-PR build-expiry train');
+    expect(reconcileStep?.env?.MERGE_TRAIN_WORKFLOW_TOKEN).toBe('${{ secrets.CRAWLER_CI_PAT }}');
+    expect(
+      steps
+        .filter((step) => step !== reconcileStep)
+        .every((step) => step.env?.MERGE_TRAIN_WORKFLOW_TOKEN === undefined),
+    ).toBe(true);
   });
 
   it('subscribes to all required pull_request_target event types', () => {

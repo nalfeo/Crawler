@@ -229,13 +229,20 @@ export function resolveMergeTrainTokens(environment) {
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
   const workflowDispatchToken =
     environment.GITHUB_TOKEN || (!liveActionsRun ? environment.MERGE_TRAIN_TOKEN || '' : '');
+  const candidateWorkflowToken = environment.MERGE_TRAIN_WORKFLOW_TOKEN || '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
   }
   if (!workflowDispatchToken) {
     throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
   }
-  return { promotionToken, workflowDispatchToken };
+  return { promotionToken, workflowDispatchToken, candidateWorkflowToken };
+}
+
+export function mergeTrainGitEnvironment(environment, overrides = {}) {
+  const childEnvironment = { ...environment, ...overrides };
+  delete childEnvironment.MERGE_TRAIN_WORKFLOW_TOKEN;
+  return childEnvironment;
 }
 
 export async function dispatchRecoveryWorkflow({ request, token, owner, repo, prNumber, trigger }) {
@@ -279,7 +286,31 @@ export async function dispatchValidationWorkflow({
   );
 }
 
-export function buildCandidate({ baseSha, entries, refName, git, live }) {
+function workflowPushEnvironment(token, environment) {
+  const existingCount = Number.parseInt(environment.GIT_CONFIG_COUNT || '0', 10);
+  if (!Number.isInteger(existingCount) || existingCount < 0) {
+    throw new Error('Workflow candidate push requires a valid GIT_CONFIG_COUNT');
+  }
+  const authorization = Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64');
+  return {
+    GIT_CONFIG_COUNT: String(existingCount + 2),
+    [`GIT_CONFIG_KEY_${existingCount}`]: 'http.https://github.com/.extraheader',
+    [`GIT_CONFIG_VALUE_${existingCount}`]: '',
+    [`GIT_CONFIG_KEY_${existingCount + 1}`]: 'http.https://github.com/.extraheader',
+    [`GIT_CONFIG_VALUE_${existingCount + 1}`]: `AUTHORIZATION: basic ${authorization}`,
+    GIT_TERMINAL_PROMPT: '0',
+  };
+}
+
+export function buildCandidate({
+  baseSha,
+  entries,
+  refName,
+  git,
+  live,
+  candidateWorkflowToken = '',
+  environment = process.env,
+}) {
   git(['fetch', 'origin', 'main', '--prune']);
   const candidateRefs = entries.map((entry) => fetchCandidateHead(git, entry));
   git(['checkout', '--detach', baseSha]);
@@ -329,7 +360,27 @@ export function buildCandidate({ baseSha, entries, refName, git, live }) {
   }
   const sha = git(['rev-parse', 'HEAD']);
   if (live) {
-    git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);
+    const workflowPaths = git([
+      'log',
+      '--format=',
+      '--name-only',
+      `${baseSha}..${sha}`,
+      '--',
+      '.github/workflows',
+    ]);
+    if (workflowPaths.trim()) {
+      if (!candidateWorkflowToken) {
+        throw new Error(
+          'Workflow-bearing merge-train candidates require MERGE_TRAIN_WORKFLOW_TOKEN ' +
+            '(repository secret CRAWLER_CI_PAT with workflow-file write permission)',
+        );
+      }
+      git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`], {
+        env: workflowPushEnvironment(candidateWorkflowToken, environment),
+      });
+    } else {
+      git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);
+    }
   }
   return sha;
 }
