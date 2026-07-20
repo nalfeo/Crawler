@@ -115,7 +115,8 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   // Resolve mobRole first: a type-omitted boss request (e.g. "countess-boss")
   // must synthesize as 'enemy', not 'character', so the boss prompt and
   // boss_presence judge axis are activated.
-  const spriteType = request.type || (mobRole === 'boss' ? 'enemy' : inferSpriteTypeFromName(request.name));
+  const spriteType =
+    request.type || (mobRole === 'boss' ? 'enemy' : inferSpriteTypeFromName(request.name));
   const synth = await synthesizeBrief({
     name: request.name,
     briefHint: request.briefSentence,
