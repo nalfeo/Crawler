@@ -103,6 +103,7 @@ import {
   type IssueIngesterController,
 } from './issue-ingester-controller.js';
 import { createGhAssetRequestIssueApi } from './asset-request-issue-api.js';
+import type { SidecarServiceControl } from './service-contract.js';
 import {
   WORKFLOW_STATE_KEY,
   computeStateEtag,
@@ -166,6 +167,8 @@ export interface SidecarDeps {
    * enqueues issue-originated queue jobs with idempotent claims.
    */
   readonly issueIngester?: IssueIngesterController;
+  /** Optional managed-service provenance and authenticated shutdown hook. */
+  readonly service?: SidecarServiceControl;
 }
 
 export interface RunListEntry {
@@ -398,7 +401,23 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     queueBackend: queue.backend,
     worker: worker.status(),
     issueIngester: issueIngester.status(),
+    service: deps.service?.identity ?? null,
   }));
+
+  app.post('/api/service/shutdown', async (req, reply) => {
+    if (!deps.service) {
+      reply.code(404);
+      return { error: 'not-managed', message: 'This sprite sidecar is not manager-owned.' };
+    }
+    const token = req.headers['x-crawler-sidecar-token'];
+    if (token !== deps.service.shutdownToken) {
+      reply.code(403);
+      return { error: 'forbidden', message: 'Invalid managed-service shutdown token.' };
+    }
+    const instanceId = deps.service.identity.instanceId;
+    setImmediate(deps.service.requestShutdown);
+    return { ok: true, instanceId };
+  });
 
   app.get<{ Querystring: RunsQuery }>('/api/runs', async (req, reply) => {
     const promotedRaw = req.query.promoted;

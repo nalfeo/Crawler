@@ -1,13 +1,9 @@
 /**
  * `npm run sprites:gallery` launcher.
  *
- * Spawns two foreground child processes — the read-only sidecar and the
- * Vite lab dev server — and forwards SIGINT/SIGTERM to both so Ctrl-C
- * tears down the whole stack cleanly. When either child exits the
- * launcher initiates shutdown of the other child, then exits itself
- * after the remaining child closes (or after a 4-second hard fallback
- * if it ignores SIGINT) — "one half is dead" is a useless state for
- * review.
+ * Ensures the repo-scoped managed sidecar service is ready, then runs the Vite
+ * lab in the foreground. The sidecar intentionally outlives this launcher so
+ * canvases and later gallery opens can reuse the same worker and ingester.
  *
  * Intentionally avoids `concurrently` / `npm-run-all` — they obscure
  * child PIDs and signal forwarding gets flaky on Windows. Vanilla
@@ -18,34 +14,10 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSessionServerPorts } from '../../shared/session-server-ports.js';
-import { ensureAzureEnvLocal, EnvBootstrapError } from './env-bootstrap.js';
-import { loadEnvLocal } from './env-local.js';
+import { ensureSidecarService } from './service-manager.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SESSION_PORTS = getSessionServerPorts({ cwd: REPO_ROOT, env: process.env });
-
-/**
- * Merges key=value pairs from `.env.local` into `process.env` (without
- * overwriting variables already set in the shell) so the spawned sidecar and
- * Vite children inherit the Azure credentials written by
- * `scripts/setup-azure-env.ps1`. Shared with the sidecar entry point.
- */
-loadEnvLocal(REPO_ROOT);
-
-/**
- * Make `npm run sprites:gallery` a true one command on a fresh worktree: if the
- * sidecar needs Azure credentials it does not already have, generate `.env.local`
- * via the fast env-only setup path before spawning children. Skips instantly when
- * creds are present, and fails fast (never falls back to local) with an
- * actionable message otherwise — see `env-bootstrap.ts` for the full contract.
- */
-try {
-  ensureAzureEnvLocal({ repoRoot: REPO_ROOT });
-} catch (err) {
-  const message = err instanceof EnvBootstrapError ? err.message : String(err);
-  process.stderr.write(`\n[launcher] Azure environment not ready:\n${message}\n\n`);
-  process.exit(1);
-}
 
 interface ChildSpec {
   readonly name: string;
@@ -55,15 +27,6 @@ interface ChildSpec {
 }
 
 const CHILDREN: readonly ChildSpec[] = [
-  {
-    name: 'sidecar',
-    // Windows requires .cmd shims to be invoked via the shell wrapper; tsx
-    // ships as `tsx.cmd`. Spawning with `shell: true` papers over both
-    // platforms.
-    command: 'npx',
-    args: ['tsx', path.join('scripts', 'sprites', 'sidecar', 'cli.ts')],
-    color: '\x1b[36m', // cyan
-  },
   {
     name: 'vite-lab',
     command: 'npx',
@@ -82,7 +45,19 @@ function prefixedWrite(name: string, color: string, chunk: Buffer | string): voi
   }
 }
 
-function runLauncher(): void {
+async function runLauncher(): Promise<void> {
+  let sidecar;
+  try {
+    sidecar = await ensureSidecarService(REPO_ROOT);
+  } catch (error) {
+    process.stderr.write(
+      `\n[launcher] sprite sidecar service failed: ${
+        error instanceof Error ? error.message : String(error)
+      }\n\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   const children: ChildProcess[] = [];
   let shuttingDown = false;
 
@@ -145,12 +120,13 @@ function runLauncher(): void {
     [
       '',
       '[launcher] sprite gallery starting…',
-      `  sidecar  → ${SESSION_PORTS.sidecarBaseUrl}/api/health`,
+      `  sidecar  → ${SESSION_PORTS.sidecarBaseUrl}/api/health (${sidecar.state}, pid=${sidecar.pid ?? 'unknown'})`,
       `  lab page → ${SESSION_PORTS.labBaseUrl}/lab.html?lab=sprite-gallery`,
-      '  press Ctrl-C to stop both',
+      '  press Ctrl-C to stop the lab (the shared sidecar remains available)',
+      '  stop service with: npm run sprites:sidecar:stop',
       '',
     ].join('\n'),
   );
 }
 
-runLauncher();
+void runLauncher();

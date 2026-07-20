@@ -213,6 +213,54 @@ describe('buildServer routes (inject)', () => {
     expect(body.storeBackend).toBe('local');
     expect(body.queueBackend).toBe('noop');
     expect(body.issueIngester).toMatchObject({ running: false });
+    expect(body.service).toBeNull();
+  });
+
+  it('managed service exposes provenance and requires its shutdown token', async () => {
+    const requestShutdown = vi.fn();
+    const managedApp = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'managed-runs'),
+      version: 'managed-test',
+      service: {
+        identity: {
+          managed: true,
+          instanceId: 'instance-1',
+          pid: 1234,
+          startedAt: '2026-07-20T00:00:00.000Z',
+        },
+        shutdownToken: 'secret-token',
+        requestShutdown,
+      },
+    });
+    try {
+      const health = await managedApp.inject({ method: 'GET', url: '/api/health' });
+      expect(health.json().service).toEqual({
+        managed: true,
+        instanceId: 'instance-1',
+        pid: 1234,
+        startedAt: '2026-07-20T00:00:00.000Z',
+      });
+
+      const forbidden = await managedApp.inject({
+        method: 'POST',
+        url: '/api/service/shutdown',
+        headers: { 'x-crawler-sidecar-token': 'wrong' },
+      });
+      expect(forbidden.statusCode).toBe(403);
+      expect(requestShutdown).not.toHaveBeenCalled();
+
+      const accepted = await managedApp.inject({
+        method: 'POST',
+        url: '/api/service/shutdown',
+        headers: { 'x-crawler-sidecar-token': 'secret-token' },
+      });
+      expect(accepted.statusCode).toBe(200);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(requestShutdown).toHaveBeenCalledOnce();
+    } finally {
+      await managedApp.close();
+    }
   });
 
   it('CORS allows loopback origins only', async () => {

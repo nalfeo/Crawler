@@ -328,10 +328,18 @@ const CLIENT_SCRIPT = String.raw`
         h('div', { style: { marginTop: '8px' } }, ['Restart the sidecar from THIS worktree: ', h('code', { text: 'npm run sprites:gallery' })])
       ]);
     }
+    var startup = state.sidecarStartup || {};
+    if (startup.state === 'starting') {
+      return h('div', { class: 'panel warn' }, [
+        h('div', { class: 'label', text: 'Starting sprite service…' }),
+        h('div', null, ['The repo-scoped service is launching automatically. This view will refresh when it is ready.'])
+      ]);
+    }
     return h('div', { class: 'panel warn' }, [
-      h('div', { class: 'label', text: 'Sprite sidecar not running' }),
-      h('div', null, ['The postprocess debugger needs the sprite sidecar. Start it, then reload this canvas:']),
-      h('div', { style: { marginTop: '8px' } }, [h('code', { text: 'npm run sprites:gallery' })]),
+      h('div', { class: 'label', text: 'Sprite service failed to start' }),
+      h('div', null, [startup.error || 'The managed sprite service is unavailable.']),
+      startup.logPath ? h('div', { class: 'muted', style: { marginTop: '6px' } }, ['Log: ', h('code', { text: startup.logPath })]) : null,
+      h('div', { style: { marginTop: '8px' } }, ['Compatibility fallback: ', h('code', { text: 'npm run sprites:gallery' })]),
       state.baseUrl ? h('div', { class: 'muted', style: { marginTop: '6px' } }, ['Expected at ', h('code', { text: state.baseUrl })]) : null
     ]);
   }
