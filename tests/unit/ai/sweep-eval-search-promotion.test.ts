@@ -26,7 +26,7 @@
  * mis-calibrated incumbent — `assertLegacyBaselineProvenance` closes that gap
  * (tested below).
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertLegacyBaselineProvenance,
   currentBuildFingerprint,
@@ -487,9 +487,22 @@ describe('assertLegacyBaselineProvenance', () => {
     (artifact.rows[0] as { safeRoomMs?: number }).safeRoomMs = undefined;
     expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/safeRoomMs/);
   });
+
+  it('rejects rows that do not reference the artifact sole configId', () => {
+    const artifact = validArtifact();
+    const firstRow = artifact.rows[0]!;
+    artifact.rows[0] = { ...firstRow, configId: 'wrong-config-id' };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(
+      /must all reference the sole configId/,
+    );
+  });
 });
 
 describe('currentBuildFingerprint', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("truncates nodeVersion to the major version only, matching setup-node's major-only pin", () => {
     // A multi-model review round flagged that comparing the FULL process.version
     // (e.g. 'v22.4.1') would spuriously reject an otherwise-valid same-run
@@ -506,5 +519,18 @@ describe('currentBuildFingerprint', () => {
   it('reports runnerOs as platform-arch', () => {
     const fingerprint = currentBuildFingerprint();
     expect(fingerprint.runnerOs).toBe(`${process.platform}-${process.arch}`);
+  });
+
+  it('uses an explicit GITHUB_SHA when present', () => {
+    vi.stubEnv('GITHUB_SHA', 'abc123');
+    const fingerprint = currentBuildFingerprint();
+    expect(fingerprint.workflowSha).toBe('abc123');
+  });
+
+  it('uses a local revision fingerprint instead of constant "local" when GITHUB_SHA is absent', () => {
+    vi.stubEnv('GITHUB_SHA', '');
+    const fingerprint = currentBuildFingerprint();
+    expect(fingerprint.workflowSha).toMatch(/^local:[0-9a-f]+:[0-9a-f]{12}$/);
+    expect(fingerprint.workflowSha).not.toBe('local');
   });
 });

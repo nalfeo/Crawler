@@ -62,6 +62,7 @@
  *   npm run ai:sweep-eval -- --stage validate        --combo navmeshFused+slackAware --search-artifact search.json --seeds 1-100 --workers 4 --out validate.json
  */
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -336,6 +337,11 @@ export function assertLegacyBaselineProvenance(
     workflowSha: expected.workflowSha,
   });
   for (const row of artifact.rows) {
+    if (row.configId !== legacyId) {
+      throw new Error(
+        `--legacy-baseline artifact rows must all reference the sole configId '${legacyId}', got row configId '${row.configId}'.`,
+      );
+    }
     assertRowSafeRoomInRange(row);
   }
   return legacyId;
@@ -532,6 +538,26 @@ function packageLockHash(): string {
   }
 }
 
+function localWorkflowSha(packageLock: string): string {
+  const head = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  const dirty = spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  const headSha =
+    head.status === 0 && typeof head.stdout === 'string' && head.stdout.trim().length > 0
+      ? head.stdout.trim()
+      : 'unknown-head';
+  const dirtyHash =
+    dirty.status === 0 && typeof dirty.stdout === 'string'
+      ? createHash('sha256').update(dirty.stdout).digest('hex').slice(0, 12)
+      : packageLock.slice(0, 12);
+  return `local:${headSha}:${dirtyHash}`;
+}
+
 /**
  * The current process's build fingerprint (OS/arch, Node runtime, dependency
  * hash, code revision). Shared by {@link buildMeta} (stamped onto every shard
@@ -553,11 +579,13 @@ export function currentBuildFingerprint(): Pick<
   ShardMeta,
   'runnerOs' | 'nodeVersion' | 'packageLockHash' | 'workflowSha'
 > {
+  const lockHash = packageLockHash();
+  const workflowSha = process.env.GITHUB_SHA?.trim();
   return {
     runnerOs: `${process.platform}-${process.arch}`,
     nodeVersion: process.version.match(/^v\d+/)?.[0] ?? process.version,
-    packageLockHash: packageLockHash(),
-    workflowSha: process.env.GITHUB_SHA ?? 'local',
+    packageLockHash: lockHash,
+    workflowSha: workflowSha && workflowSha.length > 0 ? workflowSha : localWorkflowSha(lockHash),
   };
 }
 
