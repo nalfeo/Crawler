@@ -9,6 +9,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
@@ -29,6 +30,8 @@ const START_TIMEOUT_MS = 60_000;
 const JOINER_GRACE_MS = 5_000;
 const PROBE_TIMEOUT_MS = 1_500;
 const POLL_INTERVAL_MS = 300;
+/** Maximum sidecar log size before the file is rotated (renamed to `.old`). */
+const LOG_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
 interface SidecarHealth {
   readonly status?: string;
@@ -229,6 +232,21 @@ function isReady(health: SidecarHealth, repoRoot: string): boolean {
   return true;
 }
 
+/**
+ * Rotate the sidecar log file when it exceeds LOG_MAX_BYTES. The current log
+ * is renamed to `<logPath>.old` so the next append opens a fresh file. Only
+ * ever called for the managed sidecar's own log, not arbitrary paths.
+ */
+export function rotateLogIfNeeded(logPath: string): void {
+  try {
+    if (statSync(logPath).size > LOG_MAX_BYTES) {
+      renameSync(logPath, `${logPath}.old`);
+    }
+  } catch {
+    // File doesn't exist yet or stat failed; no rotation needed.
+  }
+}
+
 function defaultBootstrap(repoRoot: string): void {
   loadEnvLocal(repoRoot);
   ensureAzureEnvLocal({ repoRoot });
@@ -242,6 +260,7 @@ function defaultSpawnService(
   registryPath: string,
 ): SpawnedService {
   const sidecarCli = path.join(repoRoot, 'scripts', 'sprites', 'sidecar', 'cli.ts');
+  rotateLogIfNeeded(registry.logPath);
   const logFd = openSync(registry.logPath, 'a', 0o600);
   let child: ChildProcess;
   try {
@@ -380,6 +399,12 @@ export async function ensureSidecarService(
     const startedAt = new Date(now()).toISOString();
     const instanceId = randomUUID();
     const logPath = path.join(registryRoot, `${path.basename(registryPath, '.json')}.log`);
+    if (desiredPorts.sidecarPort === 0) {
+      throw new Error(
+        'SPRITES_SIDECAR_PORT=0 (bind-any-port) is not supported for the managed sidecar ' +
+          'service; set a specific port number or omit the variable to use the default.',
+      );
+    }
     const candidate: ServiceRegistry = {
       schema: REGISTRY_SCHEMA,
       repoRoot,
@@ -441,7 +466,9 @@ export async function ensureSidecarService(
         if (shutdownSent) {
           let stopped = false;
           for (let i = 0; i < 20; i++) {
-            if (!(await probeHealth(baseUrl))) {
+            // Require both health gone AND pid exited: health null only proves
+            // Fastify stopped, not that the detached process fully drained.
+            if (!(await probeHealth(baseUrl)) && !isProcessAlive(spawned.pid)) {
               stopped = true;
               break;
             }
@@ -491,7 +518,10 @@ export async function ensureSidecarService(
 
 export async function stopSidecarService(
   repoRootInput: string,
-  deps: Pick<SidecarServiceManagerDeps, 'registryRoot' | 'probeHealth' | 'sleep'> = {},
+  deps: Pick<
+    SidecarServiceManagerDeps,
+    'registryRoot' | 'probeHealth' | 'sleep' | 'isProcessAlive'
+  > = {},
 ): Promise<boolean> {
   const repoRoot = canonicalRepoRoot(repoRootInput);
   const registryPath = registryPathFor(repoRoot, deps.registryRoot ?? defaultRegistryRoot());
@@ -502,10 +532,16 @@ export async function stopSidecarService(
   const requested = await requestManagedShutdown(baseUrl, registry, probeHealth);
   if (!requested) return false;
   const sleep = deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const isProcessAlive = deps.isProcessAlive ?? defaultIsProcessAlive;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     if (!(await probeHealth(baseUrl))) {
-      releaseSidecarRegistry(registryPath, registry.instanceId);
-      return true;
+      // Health null proves Fastify stopped, but the detached process may still be
+      // draining in-flight work. Only release the registry once the PID has also
+      // exited so a concurrent ensure cannot spawn a duplicate worker/ingester.
+      if (registry.pid === null || !isProcessAlive(registry.pid)) {
+        releaseSidecarRegistry(registryPath, registry.instanceId);
+        return true;
+      }
     }
     await sleep(100);
   }

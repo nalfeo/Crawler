@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +7,7 @@ import {
   stopSidecarService,
   sidecarRegistryExists,
   registryPathFor,
+  rotateLogIfNeeded,
   type SidecarServiceManagerDeps,
 } from '../../../scripts/sprites/sidecar/service-manager.js';
 import { SPRITE_SIDECAR_SERVICE_VERSION } from '../../../scripts/sprites/sidecar/service-contract.js';
@@ -597,7 +598,7 @@ describe('sprite sidecar service manager', () => {
     }
   });
 
-  it('stops using the registry port even when environment port differs', async () => {
+  it('releases registry when process has already exited and uses registry port even when environment port differs', async () => {
     const repoRoot = makeRoot('crawler-sidecar-stop-port-');
     const registryRoot = makeRoot('crawler-sidecar-stop-port-registry-');
     const regPath = registryPathFor(repoRoot, registryRoot);
@@ -640,6 +641,7 @@ describe('sprite sidecar service manager', () => {
           }
           return null;
         },
+        isProcessAlive: () => false, // process has exited
         sleep: async () => Promise.resolve(),
       });
       expect(stopped).toBe(true);
@@ -652,5 +654,133 @@ describe('sprite sidecar service manager', () => {
       else process.env.SPRITES_SIDECAR_PORT = originalPort;
       vi.unstubAllGlobals();
     }
+  });
+
+  it('waits for registry pid to exit before releasing registry after shutdown', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-pid-wait-');
+    const registryRoot = makeRoot('crawler-sidecar-pid-wait-registry-');
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    mkdirSync(registryRoot, { recursive: true });
+    writeFileSync(
+      regPath,
+      JSON.stringify({
+        schema: 1,
+        repoRoot,
+        port: 4999,
+        version: SPRITE_SIDECAR_SERVICE_VERSION,
+        instanceId: 'pid-wait-instance',
+        shutdownToken: 'pid-wait-token',
+        startedAt: new Date().toISOString(),
+        logPath: path.join(registryRoot, 'pid-wait.log'),
+        pid: 55555,
+      }),
+    );
+    const fetchMock = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    let healthCallCount = 0;
+    let processAliveCallCount = 0;
+    try {
+      const stopped = await stopSidecarService(repoRoot, {
+        registryRoot,
+        probeHealth: async () => {
+          healthCallCount++;
+          if (healthCallCount === 1) {
+            // First call is for requestManagedShutdown authentication
+            return {
+              service: {
+                managed: true,
+                instanceId: 'pid-wait-instance',
+                pid: 55555,
+                startedAt: new Date().toISOString(),
+              },
+            };
+          }
+          return null; // Health gone after shutdown request
+        },
+        isProcessAlive: (pid) => {
+          expect(pid).toBe(55555);
+          processAliveCallCount++;
+          // PID alive for first 2 checks (process draining), then exited
+          return processAliveCallCount < 3;
+        },
+        sleep: async () => Promise.resolve(),
+      });
+      expect(stopped).toBe(true);
+      // Must have polled pid at least until it exited (3+ checks)
+      expect(processAliveCallCount).toBeGreaterThanOrEqual(3);
+      expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('rejects SPRITES_SIDECAR_PORT=0 with an actionable error', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-port-zero-');
+    const registryRoot = makeRoot('crawler-sidecar-port-zero-registry-');
+    const originalPort = process.env.SPRITES_SIDECAR_PORT;
+    process.env.SPRITES_SIDECAR_PORT = '0';
+    try {
+      await expect(
+        ensureSidecarService(repoRoot, {
+          registryRoot,
+          bootstrap: vi.fn(),
+          probeHealth: async () => null,
+          spawnService: vi.fn(() => ({ pid: 1 })),
+          isProcessAlive: () => false,
+          sleep: async () => Promise.resolve(),
+        }),
+      ).rejects.toThrow(/SPRITES_SIDECAR_PORT=0/);
+      // No registry should have been created
+      expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(false);
+    } finally {
+      if (originalPort === undefined) delete process.env.SPRITES_SIDECAR_PORT;
+      else process.env.SPRITES_SIDECAR_PORT = originalPort;
+    }
+  });
+});
+
+describe('rotateLogIfNeeded', () => {
+  const roots: string[] = [];
+
+  function makeRoot(prefix: string): string {
+    const root = mkdtempSync(path.join(tmpdir(), prefix));
+    roots.push(root);
+    return root;
+  }
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not rotate a log file below the size cap', () => {
+    const dir = makeRoot('crawler-rotate-small-');
+    const logPath = path.join(dir, 'test.log');
+    writeFileSync(logPath, 'small content', 'utf8');
+    rotateLogIfNeeded(logPath);
+    expect(statSync(logPath).size).toBeGreaterThan(0); // original still present
+    expect(() => statSync(`${logPath}.old`)).toThrow(); // .old must not exist
+  });
+
+  it('rotates a log file that exceeds the size cap', () => {
+    const dir = makeRoot('crawler-rotate-large-');
+    const logPath = path.join(dir, 'test.log');
+    // Write slightly over 10 MB
+    const chunk = Buffer.alloc(1024 * 1024, 'x'); // 1 MB chunk
+    for (let i = 0; i < 11; i++) {
+      writeFileSync(logPath, chunk, { flag: 'a' });
+    }
+    expect(statSync(logPath).size).toBeGreaterThan(10 * 1024 * 1024);
+    rotateLogIfNeeded(logPath);
+    expect(() => statSync(logPath)).toThrow(); // original renamed away
+    expect(statSync(`${logPath}.old`).size).toBeGreaterThan(10 * 1024 * 1024);
+  });
+
+  it('is a no-op when the log file does not exist', () => {
+    const dir = makeRoot('crawler-rotate-missing-');
+    const logPath = path.join(dir, 'nonexistent.log');
+    // Should not throw
+    expect(() => rotateLogIfNeeded(logPath)).not.toThrow();
   });
 });

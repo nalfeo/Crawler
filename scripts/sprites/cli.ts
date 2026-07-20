@@ -24,7 +24,6 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { getSessionServerPorts } from '../shared/session-server-ports.js';
 import { JudgeBudget } from './cost-tracker.js';
 import { runFull } from './run-full.js';
 import { JudgeCache } from './judge-cache.js';
@@ -68,12 +67,11 @@ interface BriefRunOutcome {
   readonly message?: string;
 }
 
-const SESSION_PORTS = getSessionServerPorts({ cwd: process.cwd(), env: process.env });
 async function ensureSidecarRunning(): Promise<void> {
   try {
     const result = await ensureSidecarService(process.cwd());
     process.stdout.write(
-      `sidecar : ${result.state} (${SESSION_PORTS.sidecarBaseUrl}/api/health, pid=${result.pid ?? 'unknown'})\n`,
+      `sidecar : ${result.state} (${result.baseUrl}/api/health, pid=${result.pid ?? 'unknown'})\n`,
     );
   } catch (err) {
     process.stderr.write(

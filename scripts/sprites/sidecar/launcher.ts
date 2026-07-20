@@ -120,7 +120,7 @@ async function runLauncher(): Promise<void> {
     [
       '',
       '[launcher] sprite gallery starting…',
-      `  sidecar  → ${SESSION_PORTS.sidecarBaseUrl}/api/health (${sidecar.state}, pid=${sidecar.pid ?? 'unknown'})`,
+      `  sidecar  → ${sidecar.baseUrl}/api/health (${sidecar.state}, pid=${sidecar.pid ?? 'unknown'})`,
       `  lab page → ${SESSION_PORTS.labBaseUrl}/lab.html?lab=sprite-gallery`,
       '  press Ctrl-C to stop the lab (the shared sidecar remains available)',
       '  stop service with: npm run sprites:sidecar:stop',
