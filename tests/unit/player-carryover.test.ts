@@ -399,6 +399,17 @@ describe('player floor carryover', () => {
           'gei:v1:carryover-invalid-run:999' as GeneratedEquipmentInstanceKey,
         ],
       },
+      // bundle.instanceKeys must be an array; a non-array value must fail closed
+      {
+        ...snapshot,
+        generatedEquipmentRewardBundles: [
+          {
+            schemaVersion: GENERATED_EQUIPMENT_REWARD_BUNDLE_SCHEMA_VERSION,
+            achievementId: 'test-bundle',
+            instanceKeys: '',
+          },
+        ],
+      },
     ];
 
     for (const invalid of invalidInputs) {

@@ -338,6 +338,7 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
       );
     }
     bundleIds.add(bundle.achievementId);
+    assertArray(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
     assertUniqueStrings(bundle.instanceKeys, `rewardBundles.${bundle.achievementId}.instanceKeys`);
     for (const key of bundle.instanceKeys) {
       claim(key, `reward-bundle:${bundle.achievementId}`);

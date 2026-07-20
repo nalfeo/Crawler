@@ -16,6 +16,10 @@ import { getActiveWeaponDef } from '../../core/active-weapon.js';
 import type { EquipmentInstanceId } from '../../shared/equipment-types.js';
 import type { GeneratedEquipmentInstanceId } from '../../shared/generated-equipment-types.js';
 import { pushVfxEvent } from '../../shared/vfx-events.js';
+import {
+  coreGrantGeneratedEquipmentActiveAbility,
+  coreGrantGeneratedEquipmentPassiveAbility,
+} from '../../core/ability-grants.js';
 
 export function createAbilityState(): AbilityState {
   return {
@@ -231,34 +235,7 @@ export function grantGeneratedEquipmentActiveAbility(
   if (def.kind === 'passive') {
     throw new Error(`Cannot equip passive ability ${abilityId} in an active slot`);
   }
-  const state = getOrCreateAbilityState(world, holderEid);
-  const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
-  // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
-  const existing = state.activeAbilityGrantSources.get(abilityId);
-  if (
-    existing?.some(
-      (s) =>
-        s.kind === 'generated-equipment' &&
-        s.instanceId === instanceId &&
-        s.effectOrdinal === effectOrdinal,
-    )
-  ) {
-    return;
-  }
-  if (state.equippedActiveAbilityIds.includes(abilityId)) {
-    // Already equipped (from another source) — just track the new source.
-    _addActiveGrantSource(state, abilityId, source);
-    return;
-  }
-  if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
-    // Slot cap reached — record as known-inactive: source tracked, not equipped.
-    // The ability is available to the character but cannot be used until a slot
-    // opens up (e.g. another ability is unequipped).
-    _addActiveGrantSource(state, abilityId, source);
-    return;
-  }
-  state.equippedActiveAbilityIds.push(abilityId);
-  _addActiveGrantSource(state, abilityId, source);
+  coreGrantGeneratedEquipmentActiveAbility(world, holderEid, abilityId, instanceId, effectOrdinal);
 }
 
 /**
@@ -283,24 +260,7 @@ export function grantGeneratedEquipmentPassiveAbility(
   if (def.kind !== 'passive') {
     throw new Error(`Ability ${abilityId} is not passive`);
   }
-  const state = getOrCreateAbilityState(world, holderEid);
-  const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
-  // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
-  const existing = state.passiveAbilityGrantSources.get(abilityId);
-  if (
-    existing?.some(
-      (s) =>
-        s.kind === 'generated-equipment' &&
-        s.instanceId === instanceId &&
-        s.effectOrdinal === effectOrdinal,
-    )
-  ) {
-    return;
-  }
-  if (!state.passiveAbilityIds.includes(abilityId)) {
-    state.passiveAbilityIds.push(abilityId);
-  }
-  _addPassiveGrantSource(state, abilityId, source);
+  coreGrantGeneratedEquipmentPassiveAbility(world, holderEid, abilityId, instanceId, effectOrdinal);
 }
 
 /**

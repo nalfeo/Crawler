@@ -59,11 +59,10 @@ import type {
 } from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
 import {
-  ACTIVE_ABILITY_SLOT_LIMIT,
-  createEmptyAbilityState,
-  type AbilityState,
-  type AbilityGrantSource,
-} from '../../shared/abilities.js';
+  coreGrantGeneratedEquipmentActiveAbility,
+  coreGrantGeneratedEquipmentPassiveAbility,
+} from '../ability-grants.js';
+import { type AbilityGrantSource } from '../../shared/abilities.js';
 
 // --- Side-map storage ---
 
@@ -231,79 +230,29 @@ function generatedWeaponDef(instance: GeneratedEquipmentInstanceV1): WeaponDef |
   return Object.freeze({ ...frozen, id: instance.instanceId });
 }
 
-function getOrCreateAbilityStateForEquipment(world: GameWorld, entity: number): AbilityState {
-  const existing = world.abilityStatesByEntity.get(entity);
-  if (existing) return existing;
-  const created = createEmptyAbilityState();
-  world.abilityStatesByEntity.set(entity, created);
-  return created;
-}
-
-function appendAbilitySource(
-  sources: Map<string, AbilityGrantSource[]>,
-  abilityId: string,
-  source: AbilityGrantSource,
-): void {
-  const existing = sources.get(abilityId);
-  if (existing) {
-    existing.push(source);
-  } else {
-    sources.set(abilityId, [source]);
-  }
-}
-
 function activateGeneratedEquipment(
   world: GameWorld,
   entity: number,
   instance: GeneratedEquipmentInstanceV1,
 ): void {
-  const state = getOrCreateAbilityStateForEquipment(world, entity);
-  for (const effect of instance.resolvedEffects) {
-    if (!('kind' in effect) || (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant')) {
-      continue;
-    }
-    const source: AbilityGrantSource = {
-      kind: 'generated-equipment',
-      instanceId: instance.instanceId,
-      effectOrdinal: effect.effectOrdinal,
-    };
-    if (effect.kind === 'abilityGrant') {
-      const existing = state.activeAbilityGrantSources.get(effect.grantId);
-      if (
-        existing?.some(
-          (grantSource) =>
-            grantSource.kind === 'generated-equipment' &&
-            grantSource.instanceId === instance.instanceId &&
-            grantSource.effectOrdinal === effect.effectOrdinal,
-        )
-      ) {
-        continue;
-      }
-      if (
-        !state.equippedActiveAbilityIds.includes(effect.grantId) &&
-        state.equippedActiveAbilityIds.length < ACTIVE_ABILITY_SLOT_LIMIT
-      ) {
-        state.equippedActiveAbilityIds.push(effect.grantId);
-      }
-      appendAbilitySource(state.activeAbilityGrantSources, effect.grantId, source);
-      continue;
-    }
-
-    const existing = state.passiveAbilityGrantSources.get(effect.grantId);
-    if (
-      existing?.some(
-        (grantSource) =>
-          grantSource.kind === 'generated-equipment' &&
-          grantSource.instanceId === instance.instanceId &&
-          grantSource.effectOrdinal === effect.effectOrdinal,
-      )
-    ) {
-      continue;
-    }
-    if (!state.passiveAbilityIds.includes(effect.grantId)) {
-      state.passiveAbilityIds.push(effect.grantId);
-    }
-    appendAbilitySource(state.passiveAbilityGrantSources, effect.grantId, source);
+  const { abilityGrants, passiveGrants } = instance.frozen;
+  for (let i = 0; i < abilityGrants.length; i++) {
+    coreGrantGeneratedEquipmentActiveAbility(
+      world,
+      entity,
+      abilityGrants[i]!,
+      instance.instanceId,
+      i,
+    );
+  }
+  for (let i = 0; i < passiveGrants.length; i++) {
+    coreGrantGeneratedEquipmentPassiveAbility(
+      world,
+      entity,
+      passiveGrants[i]!,
+      instance.instanceId,
+      i,
+    );
   }
 
   const weaponDef = generatedWeaponDef(instance);
