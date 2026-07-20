@@ -78,7 +78,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "don-paco-the-big-gob",
@@ -106,7 +108,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "big-panda-wei-bamboo-fed-berserk",
@@ -134,7 +138,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "queen-mab-verdigris-glamour",
@@ -180,7 +186,9 @@
         "title": "feat(bosses): Queen Mab Verdigris Glamour \u2014 arena-only ability runtime slice (production-off)",
         "url": "https://github.com/nalfeo/Crawler/pull/1273"
       },
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "king-skritt-roman-candle-coronation",
@@ -208,7 +216,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "sovereign-cap-spore-bloom",
@@ -236,7 +246,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "big-mama-bufo-tongue-repossession",
@@ -264,7 +276,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "overseer-fizzwick-clockwork-kill-saw",
@@ -292,7 +306,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "plague-boss-squick-undercity-mob-call",
@@ -320,7 +336,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "abuela-saguaro-thorn-ring",
@@ -354,7 +372,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "countess-vesper-midnight-resonance",
@@ -388,7 +408,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "kingpin-molt-shell-company-lockdown",
@@ -416,7 +438,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "broodfather-chitin-turnover",
@@ -450,7 +474,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "foreman-grubbs-undermine-the-union",
@@ -478,7 +504,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "boss-bandit-rocco-highway-robbery",
@@ -506,7 +534,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "don-honkrado-omerta-honk",
@@ -540,7 +570,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "foreman-scorch-hellfire-shift-line",
@@ -568,7 +600,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     },
     {
       "abilityId": "gastropod-godfather-long-squeeze",
@@ -596,7 +630,9 @@
       "animationLabEvidence": null,
       "implementationIssue": null,
       "implementationPullRequest": null,
-      "blockers": ["floor2-boss-production-enable"]
+      "blockers": [
+        "floor2-boss-production-enable"
+      ]
     }
   ]
 }

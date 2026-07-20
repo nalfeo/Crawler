@@ -231,7 +231,10 @@ test('rejects records with invalid outcome and missing required numeric fields',
       summaries: [validSummary('sword')],
       allRecords: [{ ...validRecord('sword', 1), closeCallCount: undefined }],
     };
-    await writeFile(join(directory, 'missing-closecall.json'), JSON.stringify(missingCloseCall));
+    await writeFile(
+      join(directory, 'missing-closecall.json'),
+      JSON.stringify(missingCloseCall),
+    );
 
     const discovered = await listLocalSweepResults(workspace);
     assert.deepEqual(discovered.runs, []);

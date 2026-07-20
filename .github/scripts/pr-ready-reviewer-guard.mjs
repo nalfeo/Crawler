@@ -758,11 +758,11 @@ export async function runPrReadyReviewerGuard({
         // entire job and trigger a false-positive repair-failure alert.
         const isRateLimit =
           error?.status === 403 &&
-          String(error?.data?.message ?? error?.message ?? '')
-            .toLowerCase()
-            .includes('rate limit');
+          String(error?.data?.message ?? error?.message ?? '').toLowerCase().includes('rate limit');
         if (isRateLimit) {
-          log.warn(`skip pr=#${prNumber} reason=rate-limit: ${getErrorMessage(error)}`);
+          log.warn(
+            `skip pr=#${prNumber} reason=rate-limit: ${getErrorMessage(error)}`,
+          );
         } else {
           const prError = `PR #${prNumber}: ${getErrorMessage(error)}`;
           if (attemptedRepair) {

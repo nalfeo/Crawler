@@ -548,8 +548,7 @@ async function handleRequest(instanceId, token, request, response) {
     sseClients.get(instanceId).add(response);
     request.on('close', () => sseClients.get(instanceId)?.delete(response));
     const state = states.get(instanceId);
-    if (state)
-      response.write(`data: ${JSON.stringify(stateSnapshot(state, POLL_INTERVAL_MS))}\n\n`);
+    if (state) response.write(`data: ${JSON.stringify(stateSnapshot(state, POLL_INTERVAL_MS))}\n\n`);
     return;
   }
   if (url.pathname === '/api/state' && request.method === 'GET') {
