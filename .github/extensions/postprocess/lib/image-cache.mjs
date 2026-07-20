@@ -1,49 +1,45 @@
 /**
- * image-cache.mjs — a small, dependency-free, on-disk cache for immutable
- * binary assets (sprite sheets, processed variants, slice-map overlays) that a
- * canvas extension proxies from a slow upstream (the sprite sidecar → Azure
- * Blob Storage).
+ * image-cache.mjs — a thin, dependency-free PASS-THROUGH relay for binary
+ * assets (sprite sheets, processed variants, slice-map overlays) that a canvas
+ * extension proxies from the sprite sidecar.
  *
- * WHY THIS EXISTS
- * ---------------
- * The sprite sidecar streams sheets from Azure. A cold sheet fetch can take
- * several seconds and the same bytes are re-fetched every time a canvas
- * instance re-renders — in every worktree. Sidecar runs are timestamped and
- * IMMUTABLE (a `runId` never changes its bytes), so the cache needs no
- * invalidation: once a `(kind, briefId, runId, file)` tuple is on disk it is
- * valid forever.
+ * WHY THIS IS NOW A PASS-THROUGH (ADR 0065)
+ * -----------------------------------------
+ * The sidecar is the ONE authoritative cache. Its `CachingRunStore` wraps Azure
+ * Blob Storage in a single, shared, size-bounded content-addressable cache
+ * (`scripts/sprites/store/shared-cache.ts`) that every worktree and session on
+ * the machine shares. A warmed sidecar therefore already serves these bytes
+ * fast and from a single physical copy.
  *
- * The cache dir lives OUTSIDE any git worktree (under `$COPILOT_HOME`, default
- * `~/.copilot`), so every worktree on the machine SHARES one cache. This is the
- * "outside-of-worktree caching for the sheets we pull from azure for perf" ask.
+ * Previously EACH canvas extension kept its OWN unbounded on-disk cache under
+ * `$COPILOT_HOME/extensions/<ext>/cache`. That produced four+ independent,
+ * uncapped caches storing duplicate copies of the same bytes — impossible to
+ * bound or keep coherent. Those per-extension disk caches are removed. This
+ * module keeps the exact same public API and response shapes so extensions need
+ * no changes, but it NEVER writes to disk: every request is relayed to the
+ * sidecar, which serves from the shared authoritative cache.
  *
- * DESIGN CONTRACT (this is a canonical harness file — B–E reuse it verbatim)
- * -------------------------------------------------------------------------
- * - NEVER throws from the hot path. Any invalid key, fs error, or race falls
- *   back to a graceful cache MISS / pass-through. A broken cache must never
- *   break image relaying.
- * - Path-traversal safe: every key segment is validated against a strict
- *   charset AND the resolved entry path is asserted to be under the cache root.
- * - Atomic writes: bytes are written to a temp file then renamed, so a
- *   concurrent reader never sees a half-written asset.
- * - Content-Type is preserved alongside the bytes in a sibling `.ctype` file.
+ * DESIGN CONTRACT (this is a canonical harness file — extensions reuse it verbatim)
+ * --------------------------------------------------------------------------------
+ * - NEVER throws from the hot path. Any error falls back to a graceful
+ *   pass-through. A relay must never break image serving.
+ * - No persistent per-extension disk cache is ever created or written.
+ * - Non-OK / bodyless upstream responses are passed back verbatim so the caller
+ *   relays the real status/headers.
+ * - The path helpers (`resolveCopilotHome`, `resolveExtCacheDir`) are retained
+ *   for backward compatibility but no longer back a live disk cache.
  *
  * @module canvas-harness/image-cache
  */
 
-import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { Buffer } from 'node:buffer';
-import { randomBytes } from 'node:crypto';
-
-/** Segment charset: alnum first char, then alnum / dot / underscore / hyphen. */
-const SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
- * Resolve `$COPILOT_HOME` (default `~/.copilot`). Mirrors the SDK's own
- * home-dir resolution so caches land where the rest of Copilot state lives.
+ * Resolve `$COPILOT_HOME` (default `~/.copilot`). Retained for backward
+ * compatibility; no longer used to create a disk cache.
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {string}
  */
@@ -54,9 +50,10 @@ export function resolveCopilotHome(env = process.env) {
 }
 
 /**
- * Resolve the per-extension cache directory:
- * `$COPILOT_HOME/extensions/<extName>/cache`. This is intentionally OUTSIDE the
- * git worktree so sibling worktrees share the cache.
+ * Resolve the (historical) per-extension cache directory path:
+ * `$COPILOT_HOME/extensions/<extName>/cache`. Retained for backward
+ * compatibility with callers that still compute this path; nothing is written
+ * there any more — the sidecar owns the one shared cache.
  * @param {string} extName
  * @param {NodeJS.ProcessEnv} [env]
  * @returns {string}
@@ -65,123 +62,61 @@ export function resolveExtCacheDir(extName, env = process.env) {
   return path.join(resolveCopilotHome(env), 'extensions', extName, 'cache');
 }
 
-/** True if every segment is a non-empty, traversal-safe token. */
-function segmentsValid(segments) {
-  if (!Array.isArray(segments) || segments.length === 0) return false;
-  for (const seg of segments) {
-    if (typeof seg !== 'string' || seg.length === 0) return false;
-    if (seg === '.' || seg === '..') return false;
-    if (!SEGMENT_RE.test(seg)) return false;
-  }
-  return true;
-}
-
 /**
- * Create an on-disk image cache rooted at `dir`.
+ * Create a pass-through image relay. The `options` are accepted (and ignored
+ * for disk-caching purposes) so existing call sites keep working unchanged.
  *
- * @param {{ dir: string, log?: (msg: string) => void }} options
+ * @param {{ dir?: string, log?: (msg: string) => void }} [options]
  * @returns {{
  *   enabled: boolean,
  *   dir: string,
  *   entryPath: (segments: string[]) => string | null,
- *   get: (segments: string[]) => Promise<{ bytes: Buffer, contentType: string } | null>,
+ *   get: (segments: string[]) => Promise<null>,
  *   put: (segments: string[], bytes: Buffer, contentType: string) => Promise<boolean>,
  *   fetchThrough: (
  *     segments: string[],
  *     fetchFn: () => Promise<Response>,
  *   ) => Promise<
- *     | { hit: true, bytes: Buffer, contentType: string }
  *     | { hit: false, bytes: Buffer, contentType: string, cached: boolean }
  *     | { hit: false, response: Response }
  *   >,
  * }}
  */
 export function createImageCache(options = {}) {
-  const dir = options.dir;
   const log = typeof options.log === 'function' ? options.log : () => {};
-  let enabled = Boolean(dir);
 
-  if (enabled) {
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-    } catch (err) {
-      enabled = false;
-      log(
-        `image-cache: disabled (cannot create ${dir}): ${err && err.message ? err.message : err}`,
-      );
-    }
+  // No persistent disk cache: reads always miss, writes are no-ops.
+  function entryPath() {
+    return null;
   }
 
-  const rootResolved = enabled ? path.resolve(dir) : null;
-
-  /** Resolve the on-disk path for a key, or null if the key is unsafe. */
-  function entryPath(segments) {
-    if (!enabled || !segmentsValid(segments)) return null;
-    const candidate = path.resolve(rootResolved, ...segments);
-    // Defense-in-depth: even with a valid charset, assert containment.
-    const rel = path.relative(rootResolved, candidate);
-    if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
-    return candidate;
+  async function get() {
+    return null;
   }
 
-  async function get(segments) {
-    const file = entryPath(segments);
-    if (!file) return null;
-    try {
-      const [bytes, ctypeRaw] = await Promise.all([
-        fs.promises.readFile(file),
-        fs.promises.readFile(`${file}.ctype`, 'utf8').catch(() => ''),
-      ]);
-      const contentType = ctypeRaw.trim() || 'application/octet-stream';
-      return { bytes, contentType };
-    } catch {
-      return null; // miss (ENOENT or any read error)
-    }
-  }
-
-  async function put(segments, bytes, contentType) {
-    const file = entryPath(segments);
-    if (!file) return false;
-    if (!Buffer.isBuffer(bytes) || bytes.length === 0) return false;
-    try {
-      await fs.promises.mkdir(path.dirname(file), { recursive: true });
-      const suffix = randomBytes(6).toString('hex');
-      const tmp = `${file}.tmp-${suffix}`;
-      const tmpCtype = `${file}.ctype.tmp-${suffix}`;
-      await fs.promises.writeFile(tmp, bytes);
-      await fs.promises.writeFile(tmpCtype, String(contentType || 'application/octet-stream'));
-      // Rename bytes last: a reader that sees the bytes file always finds a
-      // ctype file too (written+renamed first).
-      await fs.promises.rename(tmpCtype, `${file}.ctype`);
-      await fs.promises.rename(tmp, file);
-      return true;
-    } catch (err) {
-      log(
-        `image-cache: put failed for ${segments.join('/')}: ${err && err.message ? err.message : err}`,
-      );
-      return false;
-    }
+  async function put() {
+    return false;
   }
 
   /**
-   * Serve from cache if present, else run `fetchFn`, cache a successful body,
-   * and return the bytes. Non-OK / bodyless upstream responses are passed back
-   * verbatim (uncached) so the caller can relay the real status/headers.
+   * Relay through to the sidecar. A successful body is returned as bytes (never
+   * persisted locally); non-OK / bodyless responses are passed back verbatim.
    */
-  async function fetchThrough(segments, fetchFn) {
-    const cached = await get(segments);
-    if (cached) return { hit: true, bytes: cached.bytes, contentType: cached.contentType };
-
+  async function fetchThrough(_segments, fetchFn) {
     const response = await fetchFn();
     if (!response || !response.ok || !response.body) {
       return { hit: false, response };
     }
-    const arrayBuffer = await response.arrayBuffer();
-    const bytes = Buffer.from(arrayBuffer);
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
-    const didCache = await put(segments, bytes, contentType);
-    return { hit: false, bytes, contentType, cached: didCache };
+    try {
+      const arrayBuffer = await response.arrayBuffer();
+      const bytes = Buffer.from(arrayBuffer);
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      return { hit: false, bytes, contentType, cached: false };
+    } catch (err) {
+      log(`image-cache: relay read failed: ${err && err.message ? err.message : err}`);
+      return { hit: false, response };
+    }
   }
 
-  return { enabled, dir: enabled ? dir : '', entryPath, get, put, fetchThrough };
+  return { enabled: false, dir: '', entryPath, get, put, fetchThrough };
 }

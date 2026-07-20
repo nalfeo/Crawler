@@ -95,6 +95,7 @@ import {
 } from '../brief-durability.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { writeCatalogJson } from '../catalog-io.js';
+import { hasDerivedResourceCache } from '../store/caching-store.js';
 import { LocalRunStore } from '../store/local-store.js';
 import { StoreNotFoundError, type RunStore } from '../store/types.js';
 import { createWorkerController, type WorkerController } from './worker-controller.js';
@@ -111,6 +112,22 @@ import {
   serializeWorkflowState,
   workflowBriefKey,
 } from './workflow-state.js';
+
+async function readCachedJson(store: RunStore, key: string): Promise<unknown | null> {
+  if (!hasDerivedResourceCache(store)) return null;
+  const bytes = await store.getCachedResource(key);
+  if (bytes === null) return null;
+  try {
+    return JSON.parse(bytes.toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function writeCachedJson(store: RunStore, key: string, value: unknown): Promise<void> {
+  if (!hasDerivedResourceCache(store)) return;
+  await store.setCachedResource(key, Buffer.from(JSON.stringify(value), 'utf8'));
+}
 
 export interface SidecarDeps {
   /** Repository root — used in /api/health for operator visibility. */
@@ -675,6 +692,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(403);
         return { error: 'forbidden-path' };
       }
+      const responseCacheKey = `route/brief/${briefId}/${runId}`;
+      const cachedResponse = await readCachedJson(store, responseCacheKey);
+      if (cachedResponse !== null) return cachedResponse;
+
       const summaryKey = `${briefId}/${runId}/summary.json`;
       if (!(await store.has(summaryKey))) {
         reply.code(404);
@@ -689,6 +710,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
 
       let briefYaml: string | null = null;
+      let snapshotEligible = false;
       if (typeof summary.briefPath === 'string' && summary.briefPath !== '') {
         // Resolve brief path safely — must stay under repoRoot.
         const resolved = path.isAbsolute(summary.briefPath)
@@ -696,20 +718,35 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           : path.resolve(deps.repoRoot, summary.briefPath);
         const rel = path.relative(deps.repoRoot, resolved);
         if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-          try {
-            briefYaml = readFileSync(resolved, 'utf8');
-          } catch {
-            briefYaml = null;
+          const durableKey = workflowBriefKey(toRepoRelativePath(deps.repoRoot, resolved));
+          if (await store.has(durableKey)) {
+            try {
+              briefYaml = (await store.get(durableKey)).toString('utf8');
+              snapshotEligible = true;
+            } catch {
+              briefYaml = null;
+            }
+          }
+          if (briefYaml === null) {
+            try {
+              briefYaml = readFileSync(resolved, 'utf8');
+            } catch {
+              briefYaml = null;
+            }
           }
         }
       }
 
-      return {
+      const response = {
         briefId,
         runId,
         briefYaml,
         promptText: typeof summary.prompt === 'string' ? summary.prompt : null,
       };
+      if (briefYaml !== null && snapshotEligible) {
+        await writeCachedJson(store, responseCacheKey, response);
+      }
+      return response;
     },
   );
 
@@ -770,6 +807,23 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(403);
         return { error: 'forbidden-path' };
       }
+      const requestedSheet = req.query.sheet;
+      if (
+        typeof requestedSheet === 'string' &&
+        requestedSheet.length > 0 &&
+        !/^sheet-\d+\.png$/i.test(requestedSheet)
+      ) {
+        reply.code(415);
+        return { error: 'unsupported-sheet-filename', sheet: requestedSheet };
+      }
+      const responseCacheKey =
+        `route/slice-map/${briefId}/${runId}/` +
+        (typeof requestedSheet === 'string' && requestedSheet.length > 0
+          ? requestedSheet
+          : 'latest');
+      const cachedResponse = await readCachedJson(store, responseCacheKey);
+      if (cachedResponse !== null) return cachedResponse;
+
       const summaryKey = `${briefId}/${runId}/summary.json`;
       if (!(await store.has(summaryKey))) {
         reply.code(404);
@@ -794,8 +848,27 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(403);
         return { error: 'forbidden-brief-path' };
       }
+      let durableBrief: Buffer | null = null;
+      if (hasDerivedResourceCache(store)) {
+        const durableKey = workflowBriefKey(toRepoRelativePath(deps.repoRoot, resolved));
+        if (await store.has(durableKey)) {
+          try {
+            durableBrief = await store.get(durableKey);
+          } catch {
+            durableBrief = null;
+          }
+        }
+      }
       // Recover a wiped gitignored draft brief from the store before loading.
       await tryMaterialiseBrief(resolved);
+      let durableBriefMatches = false;
+      if (durableBrief !== null) {
+        try {
+          durableBriefMatches = readFileSync(resolved).equals(durableBrief);
+        } catch {
+          durableBriefMatches = false;
+        }
+      }
       // Pass `projectRoot` so loadBrief resolves palette / type-defaults against
       // THIS repo (every other call site does; omitting it falls back to
       // process.cwd()). A brief that still cannot load degrades to a brief-less
@@ -816,13 +889,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(404);
         return { error: 'sheet-not-found' };
       }
-      const requestedSheet = req.query.sheet;
       let sheetFile = sheetFiles[sheetFiles.length - 1]!;
       if (typeof requestedSheet === 'string' && requestedSheet.length > 0) {
-        if (!/^sheet-\d+\.png$/i.test(requestedSheet)) {
-          reply.code(415);
-          return { error: 'unsupported-sheet-filename', sheet: requestedSheet };
-        }
         if (!sheetFiles.includes(requestedSheet)) {
           reply.code(404);
           return { error: 'sheet-not-found', sheet: requestedSheet };
@@ -845,12 +913,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         const sliceMap = brief
           ? computeSliceMap(sheetPng, { emptyCells: brief.generation.sheet.emptyCells })
           : computeSliceMap(sheetPng, {});
-        return {
+        const response = {
           ...sliceMap,
           sheetFile,
           algorithm: 'content-aware',
           emptyCellsApplied: brief !== null,
         };
+        if (durableBriefMatches) await writeCachedJson(store, responseCacheKey, response);
+        return response;
       } catch (err) {
         reply.code(500);
         return { error: 'slice-failed', message: String(err) };
