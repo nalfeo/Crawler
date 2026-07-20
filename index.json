@@ -11,6 +11,17 @@
     "path": "by-sha/be9ff2386ca2fd7996d037b304487c944a7f05a2.json"
   },
   {
+    "commit": "3b1ad636b721c76c9ff7676747ddab3fb229a1a9",
+    "commitDate": "2026-07-19T23:35:40Z",
+    "commitSubject": "feat(bosses): Queen Mab Verdigris Glamour — arena-only ability runtime slice (production-off) (#1273)",
+    "capturedAt": "2026-07-20T00:58:24.886Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29708547436",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/3b1ad636b721c76c9ff7676747ddab3fb229a1a9.json"
+  },
+  {
     "commit": "17617d9127bf73b5edde19df202d0393a546668c",
     "commitDate": "2026-07-19T23:35:25Z",
     "commitSubject": "feat(devtools): discover local weapon sweep results (#1208)",
