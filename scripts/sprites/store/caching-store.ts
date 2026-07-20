@@ -251,9 +251,7 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
       // and all fingerprinted variants (e.g. `latest:<fp>`, `sheet-1.png:<fp>`)
       // are cleared atomically. Leaving any fingerprinted key would allow a
       // cache-first read to return stale geometry from the old PNG.
-      await this.cache.removeByPrefix(
-        `${DERIVED_PREFIX}route/slice-map/${routePrefix}/latest`,
-      );
+      await this.cache.removeByPrefix(`${DERIVED_PREFIX}route/slice-map/${routePrefix}/latest`);
       await this.cache.removeByPrefix(
         `${DERIVED_PREFIX}route/slice-map/${routePrefix}/${filename}`,
       );
