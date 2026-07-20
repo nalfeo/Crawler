@@ -1054,3 +1054,17 @@ test('mainHealthReason allows promotion when a non-no-op schedule run is green',
     null,
   );
 });
+
+test('resolveMergeTrainTokens ignores the legacy workflow PAT environment variable', () => {
+  const result = resolveMergeTrainTokens({
+    GITHUB_ACTIONS: 'true',
+    MERGE_TRAIN_TOKEN: 'app-token',
+    GITHUB_TOKEN: 'github-token',
+    MERGE_TRAIN_WORKFLOW_TOKEN: 'a-pat-that-must-not-be-used',
+  });
+  assert.deepEqual(result, {
+    promotionToken: 'app-token',
+    workflowDispatchToken: 'github-token',
+  });
+  assert.equal('candidateWorkflowToken' in result, false);
+});

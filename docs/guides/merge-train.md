@@ -129,13 +129,13 @@ Before live mode:
    create/update rulesets via `POST`/`PUT .../rulesets` -- without it, `enable`
    fails with `403` even though every other prerequisite in this checklist is
    satisfied).
-4. Configure `CRAWLER_CI_PAT` as the repository owner's token with repository
-   Contents read/write plus permission to update workflow files (`workflow`
-   scope for a classic PAT, or Workflows read/write for a fine-grained PAT).
-   The workflow maps it to `MERGE_TRAIN_WORKFLOW_TOKEN` only for trusted
-   reconciliation. A missing token fails before candidate-ref mutation; an
-   insufficient token leaves the candidate build retryable and prints GitHub's
-   permission rejection without exposing the credential.
+4. Keep `contents: write` and `workflows: write` on the trusted Merge Train
+   workflow's `GITHUB_TOKEN`. Workflow-bearing candidate refs use this token
+   because GitHub suppresses recursive workflow runs for events created by
+   `GITHUB_TOKEN`; a PAT or App token must not be substituted because its push
+   could execute an unvalidated candidate workflow with repository secrets.
+   A missing or insufficient token fails before candidate-ref mutation and
+   leaves the candidate build retryable.
 5. Keep force-pushes to `main` disabled (unchanged, still enforced by classic
    protection). Promotion no longer pushes `main` directly at all -- it uses
    GitHub's own squash-merge API, one PR at a time.
@@ -345,13 +345,14 @@ repaired `main`.
 status --app-id <APP_ID>` and verify `classic.requiredStatusChecksDisabled`
   is `true` and `ruleset.problems` is empty. Never merge the PR through the
   ordinary squash path to work around this failure.
-- **Workflow-candidate push denied:** confirm `CRAWLER_CI_PAT` exists and has the
-  workflow-file permissions listed above. A repair that adds this credential
-  path cannot bootstrap through an App that is already blocked from pushing its
-  workflow-bearing candidate. Do not directly merge or bypass protection. An
-  operator must explicitly authorize either the existing emergency rollback
-  lane or the minimum GitHub App installation permission update required to
-  land the repair, then restore the intended credential boundary.
+- **Workflow-candidate push denied:** confirm the trusted Merge Train workflow
+  grants its `GITHUB_TOKEN` both `contents: write` and `workflows: write`.
+  Never substitute a PAT or App token: those pushes can trigger an unvalidated
+  candidate workflow with repository secrets. A repair that adds the missing
+  permission cannot bootstrap through the deployed App path that is already
+  blocked from pushing its workflow-bearing candidate. Do not directly merge,
+  reorder FIFO, or bypass protection; stop for explicit authorization of the
+  documented protected emergency lane.
 - **Main-health deadlock:** every hourly full-CI run for the current `main` SHA
   is red (or missing/pending), so `mainHealthAllowsPromotion()` pauses all
   promotion, including the repair PR's own. This is the one case where the

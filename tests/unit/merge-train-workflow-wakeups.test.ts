@@ -89,18 +89,20 @@ describe('merge-train workflow wake-ups', () => {
     expect(concurrency?.['cancel-in-progress']).not.toBe(true);
   });
 
-  it('uses GITHUB_TOKEN with workflows: write for workflow-bearing candidate pushes (loop-suppressed)', () => {
+  it('uses recursion-suppressed GITHUB_TOKEN for workflow candidate pushes', () => {
     const workflow = loadWorkflow();
-    // workflows: write grants GITHUB_TOKEN the ability to push workflow files.
-    // GITHUB_TOKEN pushes are loop-suppressed — they do not trigger new workflow runs,
-    // so candidate workflow additions cannot exfiltrate secrets via push events.
-    expect(workflow.permissions?.['workflows']).toBe('write');
-    // MERGE_TRAIN_WORKFLOW_TOKEN / CRAWLER_CI_PAT must NOT be present anywhere in the
-    // workflow: PAT-authenticated pushes create real push events and expose secrets.
+    expect(workflow.permissions?.contents).toBe('write');
+    expect(workflow.permissions?.workflows).toBe('write');
+
     const steps = workflow.jobs.reconcile?.steps ?? [];
-    steps.forEach((step) => {
-      expect(step.env?.MERGE_TRAIN_WORKFLOW_TOKEN).toBeUndefined();
-    });
+    const reconcileStep = steps.find((step) => step.name === 'Reconcile six-PR build-expiry train');
+    expect(reconcileStep?.env?.GITHUB_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}');
+    expect(steps.every((step) => step.env?.MERGE_TRAIN_WORKFLOW_TOKEN === undefined)).toBe(true);
+    expect(
+      steps.every(
+        (step) => !Object.values(step.env ?? {}).includes('${{ secrets.CRAWLER_CI_PAT }}'),
+      ),
+    ).toBe(true);
   });
 
   it('subscribes to all required pull_request_target event types', () => {

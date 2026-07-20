@@ -27,27 +27,32 @@ GitHub's workflow-write permission.
 
 `actions/checkout` persists the App credential as an `http.extraheader`. Adding a
 second authorization header is insufficient because Git treats that setting as
-multi-valued. The controller therefore needs an explicit header reset before
-authorizing the narrowly scoped candidate push with the existing owner token.
+multi-valued. More importantly, a PAT-authenticated push would emit a trusted
+`push` event: a queued PR could add a workflow matching `merge-train/**` and run
+it with repository secrets before validation. Workflow-bearing candidate pushes
+therefore require the recursion-suppressed `GITHUB_TOKEN`, never a PAT or App
+token.
 
 ## What changed
 
 - Candidate construction detects workflow-file changes across every commit in
   `baseSha..candidateSha`, including an edit followed by a later queued revert.
 - Ordinary candidate pushes remain on the existing checkout/App credential.
-- Workflow-bearing live candidate pushes use `CRAWLER_CI_PAT`, exposed as
-  `MERGE_TRAIN_WORKFLOW_TOKEN` only to the trusted reconcile step.
-- The PAT is applied only to the candidate-ref Git child by process-local Git
+- Workflow-bearing live candidate pushes use the workflow's `GITHUB_TOKEN` with
+  `contents: write` and `workflows: write`; GitHub suppresses recursive workflow
+  runs created by this credential.
+- The token is applied only to the candidate-ref Git child by process-local Git
   configuration: an empty `http.extraheader` resets the App authorization before
-  the PAT authorization entry.
+  the `GITHUB_TOKEN` authorization entry.
 - Existing `GIT_CONFIG_*` entries are preserved and the controller appends its two
   entries after the existing index space.
-- The raw token is removed from every Git child-process environment and never
-  appears in arguments, remote URLs, status output, or errors.
+- The legacy workflow-token environment variable is removed from every Git child
+  environment, and the selected token never appears in arguments, remote URLs,
+  status output, or errors.
 - A missing token fails before candidate-ref mutation. An insufficient token remains
   a retryable candidate-build failure; validation and promotion do not proceed.
-- The merge-train guide documents minimum token permissions and the protected
-  bootstrap boundary.
+- The merge-train guide documents the recursion-suppressed credential boundary and
+  protected bootstrap blocker.
 
 ## Safety invariants
 
@@ -55,22 +60,23 @@ authorizing the narrowly scoped candidate push with the existing owner token.
 - Branch protection, admission checks, candidate validation, and promotion are not
   weakened or bypassed.
 - No direct merge, queue reorder, admin bypass, or fallback credential is added.
-- Required token permission is repository access plus `workflow` for a classic PAT,
-  or Contents read/write plus Workflows read/write for a fine-grained PAT.
+- PAT and App credentials are forbidden for workflow-bearing candidate pushes
+  because they can trigger unvalidated candidate workflows.
 
 ## Deterministic coverage
 
 - Ordinary candidates keep the App credential path.
-- Workflow-bearing candidates select the owner token.
-- Missing workflow token fails before ref mutation.
+- Workflow-bearing candidates select `GITHUB_TOKEN` regardless of any legacy PAT
+  environment variable.
+- Missing `GITHUB_TOKEN` fails before ref mutation.
 - Secrets are absent from Git arguments, URLs, errors, status output, and inherited
   Git environments.
 - Existing command-scoped Git configuration is preserved.
 - Reverted workflow edits remain workflow-bearing because the full commit range is
   inspected.
 - FIFO and immutable-ref behavior remains covered by the merge-train suite.
-- Focused controller tests pass 45/45, the full merge-train script suite passes
-  193/193, workflow tests pass 45 with 7 skipped, and `verify:fast` passes.
+- The full merge-train script suite passes 195/195. Workflow tests and
+  `verify:fast` pass.
 
 ## Runtime observation
 
@@ -87,6 +93,9 @@ cannot push the repair's own workflow-containing candidate.
   `plan_divergence: minor`.
 - Code review round 1 found two related Git-environment concerns; both were fixed.
 - Code review round 2 was clean.
+- Post-publication review found the PAT-triggered workflow execution boundary.
+  `claude-sonnet-4.6` and `gpt-5.6-luna` validated it; the repair now uses only
+  recursion-suppressed `GITHUB_TOKEN` for workflow-bearing candidate pushes.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-20-repair-train-credentials.review-ledger.json`.
 
@@ -94,12 +103,12 @@ cannot push the repair's own workflow-containing candidate.
 
 No repository-provided self-bootstrap path was found that preserves current
 protection. The repair PR must remain behind #1694 in FIFO and cannot activate until
-a human authorizes one of the existing protected bootstrap mechanisms. The minimum
-direct administrative action is to grant the installed GitHub App temporary
-Workflows read/write permission, let this repair land through the normal protected
-train path, then restore the intended PAT-only boundary. If that permission change
-is unavailable, a separately authorized documented emergency lane is required.
+a human explicitly authorizes the documented protected emergency lane. Temporarily
+granting the installed GitHub App workflow-write permission is not safe: the App
+push could trigger the same unvalidated candidate workflow that the final design
+prevents.
 
 After activation on `main`, wake Merge Train and verify a new #1694 candidate ref
-proceeds through normal validation and promotion before declaring the incident
-resolved.
+proceeds through normal validation and promotion. Then normally re-admit #1706 and
+verify its workflow-bearing candidate ref through the same path before declaring
+the incident resolved.
