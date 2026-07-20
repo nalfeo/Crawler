@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "instance-aware-inventory",
+  "task_title": "Instance-aware inventory and atomic equipment movement",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Adopted canonical listInventoryEntries union over compatibility lanes; one world-aware resolver for all in-scope core dereferences; exact discriminated movement results; complete prevalidation before mutation; B2 rejects snapshot/grant-bearing instances; world-wide ownership prevents duplicate bag/equipped or cross-entity ownership."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
