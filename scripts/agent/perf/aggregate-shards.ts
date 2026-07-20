@@ -567,6 +567,125 @@ export function sortByLexicographic(rows: readonly LeaderboardRow[]): Leaderboar
   });
 }
 
+/**
+ * Approved hard-gate win-rate floor for search/graduation candidate
+ * selection: >=90% official wins. See {@link selectQualifiedWinner}.
+ */
+export const QUALIFICATION_MIN_WIN_RATE = 0.9;
+
+export interface SelectQualifiedWinnerOptions {
+  /** Win-rate floor a candidate must clear. Defaults to {@link QUALIFICATION_MIN_WIN_RATE}. */
+  minWinRate?: number;
+}
+
+export interface QualifiedSelection {
+  /** The selected candidate, or null when nothing met the hard safety gate. */
+  winner: LeaderboardRow | null;
+  /** Every non-incumbent candidate that passed BOTH the win-rate floor and the
+   *  zero-flips-vs-incumbent hard gate, best-first (see tie-break order). */
+  qualifying: LeaderboardRow[];
+  /** Non-null only when the single highest-composite-score candidate overall
+   *  was disqualified by the hard gate -- i.e. a naive score-only ranking
+   *  would have picked a candidate this gate correctly rejected. */
+  reason: string | null;
+}
+
+/**
+ * Approved qualification order for promoting a search/graduation candidate
+ * over the LEGACY incumbent: (1) >=90% official win rate AND (2) zero
+ * win->loss flips vs the incumbent are a HARD gate -- a candidate failing
+ * EITHER is disqualified regardless of composite score. Among qualifiers,
+ * rank by (3) highest composite score (Sigma), tie-broken by (4) faster mean
+ * clear time on wins, then (5) higher mean minimum HP%, then (6) higher mean
+ * XP, then (7) higher mean gold.
+ *
+ * This is the fix for the GH run 29597840666 failure mode: both
+ * riskRewardFused+legacy and slackAware+legacy out-scored the incumbent
+ * (97.3% vs 95.3% wins) but each had 5 win->loss flips vs the incumbent -- a
+ * hard-gate violation that pure composite-score (or even win-rate) ranking
+ * never caught. `buildLeaderboard`'s `flipsVsIncumbent` column exists so this
+ * gate can enforce that safety contract directly, ahead of any score
+ * comparison.
+ */
+export function selectQualifiedWinner(
+  rows: readonly LeaderboardRow[],
+  options: SelectQualifiedWinnerOptions = {},
+): QualifiedSelection {
+  const minWinRate = options.minWinRate ?? QUALIFICATION_MIN_WIN_RATE;
+  const candidates = rows.filter((r) => !r.isIncumbent);
+  if (candidates.length === 0) {
+    return {
+      winner: null,
+      qualifying: [],
+      reason: 'No non-incumbent candidates to select from.',
+    };
+  }
+
+  // Hard gate: flipsVsIncumbent must be EXACTLY 0 -- `null` (no incumbent
+  // identifiable) must never be treated as "zero flips".
+  const qualifying = candidates
+    .filter((r) => r.flipsVsIncumbent === 0 && r.winRate >= minWinRate)
+    .sort((a, b) => {
+      if (a.totalScore !== b.totalScore) return a.totalScore > b.totalScore ? -1 : 1;
+      const aTime = a.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
+      const bTime = b.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
+      if (aTime !== bTime) return aTime < bTime ? -1 : 1;
+      if (a.meanMinHealthPercent !== b.meanMinHealthPercent) {
+        return a.meanMinHealthPercent > b.meanMinHealthPercent ? -1 : 1;
+      }
+      if (a.meanXp !== b.meanXp) return a.meanXp > b.meanXp ? -1 : 1;
+      if (a.meanGold !== b.meanGold) return a.meanGold > b.meanGold ? -1 : 1;
+      return 0;
+    });
+
+  if (qualifying.length === 0) {
+    return {
+      winner: null,
+      qualifying: [],
+      reason:
+        `No candidate met the hard gate (>=${(minWinRate * 100).toFixed(0)}% win rate AND ` +
+        `zero flips vs incumbent) among ${candidates.length} candidate(s).`,
+    };
+  }
+
+  const winner = qualifying[0]!;
+  const topOverall = [...candidates].sort((a, b) => b.totalScore - a.totalScore)[0]!;
+  const topIsDisqualified = !qualifying.includes(topOverall);
+  const reason =
+    topIsDisqualified && topOverall.totalScore > winner.totalScore
+      ? `${topOverall.combo} scored higher (totalScore=${topOverall.totalScore}) but was ` +
+        `disqualified by the hard safety gate (winRate=${(topOverall.winRate * 100).toFixed(1)}%, ` +
+        `flipsVsIncumbent=${topOverall.flipsVsIncumbent ?? 'unknown'}).`
+      : null;
+
+  return { winner, qualifying, reason };
+}
+
+/**
+ * Returns true when candidate `a` ranks strictly ahead of `b` under the same
+ * tie-break order used by {@link selectQualifiedWinner}'s qualifying sort:
+ * higher `totalScore` → faster `meanClearTimeMsWins` (lower) → higher
+ * `meanMinHealthPercent` → higher `meanXp` → higher `meanGold`.
+ *
+ * When `b` is undefined (e.g. the current position's row is not yet in the
+ * leaderboard), `a` is treated as unconditionally better so any qualifying
+ * candidate displaces an unknown current position.
+ */
+export function isBetterQualifiedCandidate(
+  a: LeaderboardRow,
+  b: LeaderboardRow | undefined,
+): boolean {
+  if (!b) return true;
+  if (a.totalScore !== b.totalScore) return a.totalScore > b.totalScore;
+  const aTime = a.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
+  const bTime = b.meanClearTimeMsWins ?? Number.POSITIVE_INFINITY;
+  if (aTime !== bTime) return aTime < bTime;
+  if (a.meanMinHealthPercent !== b.meanMinHealthPercent)
+    return a.meanMinHealthPercent > b.meanMinHealthPercent;
+  if (a.meanXp !== b.meanXp) return a.meanXp > b.meanXp;
+  return a.meanGold > b.meanGold;
+}
+
 export interface AggregateResult {
   meta: ShardMeta;
   byComposite: LeaderboardRow[];
@@ -678,6 +797,27 @@ export function renderMarkdown(result: AggregateResult): string {
         `${row.winRateDeltaVsIncumbent !== null ? (row.winRateDeltaVsIncumbent >= 0 ? '+' : '') + (row.winRateDeltaVsIncumbent * 100).toFixed(1) : '—'} |`,
     );
   });
+
+  // Approved qualification order (>=90% wins AND zero flips, then score) —
+  // surfaced separately from the raw composite ranking above so a human
+  // never mistakes the top composite-score row for the safe recommendation.
+  const selection = selectQualifiedWinner(result.byComposite);
+  lines.push('');
+  lines.push('### Qualified winner (safety-gated recommendation)');
+  lines.push('');
+  if (selection.winner) {
+    lines.push(
+      `✅ **\`${selection.winner.combo}\`** qualifies (win rate ` +
+        `${(selection.winner.winRate * 100).toFixed(1)}%, zero flips vs incumbent, ` +
+        `Σscore ${selection.winner.totalScore.toExponential(3)}).`,
+    );
+  } else {
+    lines.push('🚫 **No candidate qualifies.**');
+  }
+  if (selection.reason) {
+    lines.push('');
+    lines.push(`> ${selection.reason}`);
+  }
   return lines.join('\n');
 }
 
