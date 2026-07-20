@@ -92,19 +92,19 @@ function log(message, level = 'info') {
   } catch {
     // logging must never take down a handler
   }
+}
 
-  function isTrustedMutationOrigin(req, entry) {
-    const origin = req.headers.origin;
-    if (typeof origin !== 'string' || origin.trim().length === 0) return false;
-    return origin === new URL(entry.url).origin;
-  }
+function isTrustedMutationOrigin(req, entry) {
+  const origin = req.headers.origin;
+  if (typeof origin !== 'string' || origin.trim().length === 0) return false;
+  return origin === new URL(entry.url).origin;
+}
 
-  function isJsonContentType(req) {
-    const contentType = req.headers['content-type'];
-    if (typeof contentType !== 'string') return false;
-    const normalized = contentType.toLowerCase();
-    return normalized === 'application/json' || normalized.startsWith('application/json;');
-  }
+function isJsonContentType(req) {
+  const contentType = req.headers['content-type'];
+  if (typeof contentType !== 'string') return false;
+  const normalized = contentType.toLowerCase();
+  return normalized === 'application/json' || normalized.startsWith('application/json;');
 }
 
 /**

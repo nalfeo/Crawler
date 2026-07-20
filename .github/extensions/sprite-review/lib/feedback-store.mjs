@@ -114,18 +114,31 @@ function withFeedbackLock(filePath, options, fn) {
   const lockPath = `${filePath}.lock`;
   const deadline = options.now().getTime() + options.lockTimeoutMs;
   const maxAttempts = Math.max(1, Math.ceil(options.lockTimeoutMs / FEEDBACK_LOCK_RETRY_MS));
+  let token;
   let fd;
   for (let attempt = 0; attempt < maxAttempts && fd === undefined; attempt += 1) {
     try {
       fd = options.openSync(lockPath, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_RDWR);
-      options.writeFileSync(lockPath, options.now().toISOString(), 'utf8');
+      token = options.randomUUID();
+      options.writeFileSync(lockPath, token, 'utf8');
     } catch (error) {
       if (error?.code !== 'EEXIST') throw error;
       if (isStaleLock(lockPath, options)) {
         try {
-          options.unlinkSync(lockPath);
+          // Atomic steal: rename to a unique recovery path so concurrent processes
+          // cannot both succeed. Only the process that wins the rename reclaims the
+          // lock; the loser sees ENOENT and falls through to retry.
+          const recovery = `${lockPath}.recovering.${options.randomUUID()}`;
+          options.renameSync(lockPath, recovery);
+          try {
+            options.unlinkSync(recovery);
+          } catch {
+            // Best-effort cleanup; the recovery temp file is harmless if left behind.
+          }
           continue;
-        } catch {}
+        } catch {
+          // Another process won the rename race — fall through to retry.
+        }
       }
       if (options.now().getTime() >= deadline) {
         const lockError = new Error('feedback store is locked');
@@ -146,8 +159,19 @@ function withFeedbackLock(filePath, options, fn) {
   } finally {
     try {
       options.closeSync(fd);
-      options.unlinkSync(lockPath);
-    } catch {}
+    } catch {
+      // Best-effort fd close.
+    }
+    try {
+      // Token-checked release: only unlink if we still own the lock. A concurrent
+      // process that reclaimed a stale lock after our crash would have a different
+      // token, so this guard prevents us from deleting the successor's lock.
+      if (options.readFileSync(lockPath, 'utf8') === token) {
+        options.unlinkSync(lockPath);
+      }
+    } catch {
+      // Best-effort cleanup — stale locks are auto-reclaimed by the next acquirer.
+    }
   }
 }
 

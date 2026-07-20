@@ -77,6 +77,83 @@ test('stale lock files are recovered before writing feedback', () => {
   assert.equal(Object.keys(store.entries).length, 1);
 });
 
+test('stale lock recovery uses atomic rename, not direct unlink', () => {
+  const staleTime = new Date('2026-07-19T00:00:00.000Z');
+  const fs = memoryFs();
+  fs.writeFileSync('feedback.json.lock', staleTime.toISOString());
+  fs.statSync = () => ({ mtimeMs: staleTime.getTime() });
+  fs.now = () => new Date('2026-07-20T04:00:00.000Z');
+
+  const renames = [];
+  const originalRename = fs.renameSync;
+  fs.renameSync = (from, to) => {
+    renames.push({ from, to });
+    originalRename(from, to);
+  };
+
+  saveFeedback(
+    'feedback.json',
+    {
+      briefId: 'hero',
+      runId: 'run-stale-rename',
+      variantIndex: 0,
+      kind: 'judge',
+      criterion: 'readability',
+      verdict: 'up',
+      comment: '',
+    },
+    fs,
+  );
+
+  // The stale lock file should have been atomically renamed to a recovery path
+  // (not directly unlinked), so concurrent processes cannot both succeed.
+  const lockRename = renames.find((r) => r.from === 'feedback.json.lock');
+  assert.ok(lockRename, 'expected a rename of the stale lock file to a recovery path');
+  assert.match(lockRename.to, /feedback\.json\.lock\.recovering\./);
+});
+
+test('token-checked release does not unlink a successor process lock', () => {
+  const fs = memoryFs();
+  const lockPath = 'feedback.json.lock';
+
+  // Track unlink calls on the lock file specifically.
+  let lockUnlinkCount = 0;
+  const originalUnlink = fs.unlinkSync;
+  fs.unlinkSync = (path) => {
+    if (path === lockPath) lockUnlinkCount++;
+    originalUnlink(path);
+  };
+
+  // Override readFileSync so reading the lock file returns a different token,
+  // simulating a successor process that atomically reclaimed the lock during
+  // our callback and wrote its own token.
+  const originalRead = fs.readFileSync;
+  saveFeedback(
+    'feedback.json',
+    {
+      briefId: 'hero',
+      runId: 'run-token-checked',
+      variantIndex: 0,
+      kind: 'judge',
+      criterion: 'readability',
+      verdict: 'up',
+      comment: '',
+    },
+    {
+      ...fs,
+      readFileSync: (path) => {
+        // When the finally-block reads the lock to verify ownership, return a
+        // different token so the guard triggers and the lock is NOT deleted.
+        if (path === lockPath) return 'different-owner-token';
+        return originalRead(path);
+      },
+    },
+  );
+
+  // With a mismatched token the lock should NOT have been unlinked by us.
+  assert.equal(lockUnlinkCount, 0, 'lock should not be unlinked when token does not match');
+});
+
 test('saves and reloads criterion feedback without touching other entries', () => {
   const fs = memoryFs();
   const input = {
