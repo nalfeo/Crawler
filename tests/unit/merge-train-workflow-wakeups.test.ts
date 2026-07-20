@@ -150,6 +150,7 @@ describe('merge-train workflow wake-ups', () => {
       expect(publish?.with?.script).not.toContain(
         '`${process.env.FINGERPRINT}:${process.env.CANDIDATE_SHA}`',
       );
+      // Shared attestation SHAs require the fallback to inspect every same-name check.
       expect(publish?.with?.script).toContain('head_sha: process.env.ATTESTATION_SHA');
       expect(publish?.with?.script).not.toContain('head_sha: process.env.CANDIDATE_SHA');
     });
