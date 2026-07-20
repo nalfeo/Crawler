@@ -937,7 +937,6 @@ static `WeaponDef` template.
 
 Rarities above Rare are not valid Floor 2 generation outcomes.
 
-
 ### Achievement Reward Contracts
 
 - Reward instances resolve atomically at unlock time and are immutable inside the reward bundle.
@@ -1216,7 +1215,7 @@ The existing active-ability slot limit remains the authority.
 
 - **Save format**: `PlayerUniqueEquipmentState` is serialized alongside the
   generated-instance registry. It is initialized to `{ ownedUniques: [],
-  equippedUniques: {}, upgradeLevels: {} }` for saves predating Unique support.
+equippedUniques: {}, upgradeLevels: {} }` for saves predating Unique support.
 - **Forward compatibility**: Unknown `UniqueEquipmentId` values in `ownedUniques`
   are retained verbatim on load. No migration discards or rerolls known Uniques.
 - **Migration**: A save that contains a `uniqueId` that no longer exists in the
