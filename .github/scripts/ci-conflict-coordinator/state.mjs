@@ -101,9 +101,14 @@ export function discoverCoordinationClusters(
   const managedMembers = new Set(
     (existingStates || []).flatMap((state) => state.members || state.originalMembers || []),
   );
-  return clusterPullRequests(pullRequests, 1).filter(
-    (component) =>
-      component.length >= minimumSize || component.some((pull) => managedMembers.has(pull.number)),
+  return clusterPullRequests(pullRequests, 1).filter((component) =>
+    shouldCoordinateComponent(component, minimumSize, managedMembers),
+  );
+}
+
+function shouldCoordinateComponent(component, minimumSize, managedMembers) {
+  return (
+    component.length >= minimumSize || component.some((pull) => managedMembers.has(pull.number))
   );
 }
 

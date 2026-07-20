@@ -146,10 +146,10 @@ async function commentsFor(number) {
 
 function isTrustedRecoveryComment(comment) {
   if (!comment) return false;
-  const authorLogin = String(comment?.user?.login || '').toLowerCase();
-  const authorAssociation = String(comment?.author_association ?? '').toUpperCase();
+  const authorLogin = String(comment.user?.login || '').toLowerCase();
+  const authorAssociation = String(comment.author_association ?? '').toUpperCase();
   return (
-    Number(comment?.performed_via_github_app?.id) === trustedAppId ||
+    Number(comment.performed_via_github_app?.id) === trustedAppId ||
     TRUSTED_ASSOCIATIONS.has(authorAssociation) ||
     TRUSTED_BOT_LOGINS.has(authorLogin)
   );
