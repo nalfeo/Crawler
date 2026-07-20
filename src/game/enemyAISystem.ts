@@ -1840,6 +1840,8 @@ export function enemyAISystem(world: GameWorld): void {
     // Cave interiors can share open geometry without sharing a semantic room ID.
     // Evaluate the costly Bresenham LOS only after cheap gates fail and the
     // enemy is in range — avoid O(ray-length) work for already-qualified mobs.
+    // Scope this seam fallback to Floor 2: Floor 1 parity gates intentionally
+    // keep legacy room/door-driven aggro behavior.
     const hasDirectPlayerSight =
       !familyBypass &&
       world.floor === 2 &&
