@@ -1,5 +1,16 @@
 [
   {
+    "commit": "6d9a64fe8366ab0f67a6729c7316925b94323238",
+    "commitDate": "2026-07-20T04:36:27Z",
+    "commitSubject": "perf(ci): scope PR Ready/Reviewer Guard to the triggering PR (#1695)",
+    "capturedAt": "2026-07-20T05:58:22.582Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29717726237",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/6d9a64fe8366ab0f67a6729c7316925b94323238.json"
+  },
+  {
     "commit": "7d52966d8c47af882674e92b3b385386cc476c8c",
     "commitDate": "2026-07-20T04:23:45Z",
     "commitSubject": "feat(ci): post-rollout CI efficiency measurement tooling (issue #1702) (#1704)",
