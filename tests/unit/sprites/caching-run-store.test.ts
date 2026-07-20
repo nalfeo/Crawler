@@ -1,36 +1,26 @@
 /**
- * Unit tests for CachingRunStore + helpers.
+ * Unit tests for CachingRunStore over the SharedResourceCache.
  *
- * Uses a real temp directory for both the "inner" LocalRunStore and the
- * cache directory so the read-through, invalidate, and atomicity paths are
- * exercised at the filesystem level with no mocks.
+ * Uses a real temp LocalRunStore for the "inner" store and a real temp
+ * SharedResourceCache dir so read-through, write-through, invalidation, list
+ * snapshots, and the offline hard-gate are exercised at the filesystem level
+ * with no mocks. Counting/throwing inner wrappers assert exactly which remote
+ * operations happen (and, for warmed paths, that ZERO happen).
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  mkdtempSync,
-  existsSync,
-  mkdirSync,
-  rmSync,
-  statSync,
-  symlinkSync,
-  utimesSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import {
-  CachingRunStore,
-  defaultAzureSheetCacheDir,
-  isAzureCacheEnabled,
-  isSheetKey,
-  parseMaxCacheBytes,
-} from '../../../scripts/sprites/store/caching-store.js';
+import { CachingRunStore, isCacheableKey } from '../../../scripts/sprites/store/caching-store.js';
+import { SharedResourceCache } from '../../../scripts/sprites/store/shared-cache.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
 import { StoreNotFoundError, type RunStore } from '../../../scripts/sprites/store/types.js';
+import { WORKFLOW_STATE_KEY } from '../../../scripts/sprites/sidecar/workflow-state.js';
 
-// A minimal counting wrapper so we can assert that repeat reads never hit
-// the inner store when a cache entry exists.
+const noop = (): void => {};
+
+/** Counts every operation and delegates to a real inner store. */
 class CountingStore implements RunStore {
   readonly backend = 'azure-blob' as const;
   gets = 0;
@@ -64,20 +54,58 @@ class CountingStore implements RunStore {
   }
 }
 
+/** Simulates a totally unavailable Azure: every READ op throws (and is counted). */
+class ThrowingStore implements RunStore {
+  readonly backend = 'azure-blob' as const;
+  gets = 0;
+  has_ = 0;
+  lists = 0;
+  async put(): Promise<void> {
+    throw new Error('offline: put');
+  }
+  async get(key: string): Promise<Buffer> {
+    this.gets++;
+    throw new StoreNotFoundError(key);
+  }
+  async has(): Promise<boolean> {
+    this.has_++;
+    throw new Error('offline: has');
+  }
+  async list(): Promise<readonly string[]> {
+    this.lists++;
+    throw new Error('offline: list');
+  }
+  async remove(): Promise<void> {
+    throw new Error('offline: remove');
+  }
+  resolve(key: string): string {
+    return key;
+  }
+}
+
 const SHEET = 'iron-sword/run-abc/sheet-00.png';
 const RAW = 'iron-sword/run-abc/raw/00.png';
+const PROCESSED = 'iron-sword/run-abc/processed/00.png';
+const SCORECARD = 'iron-sword/run-abc/processed/00.scorecard.json';
 const SUMMARY = 'iron-sword/run-abc/summary.json';
+const BRIEF = 'workflow-state/briefs/briefs/draft/iron-sword.yaml';
+const ALL_ARTIFACTS = [SHEET, RAW, PROCESSED, SCORECARD, SUMMARY, BRIEF];
 
 let innerDir: string;
 let cacheDir: string;
 let inner: CountingStore;
+let cache: SharedResourceCache;
 let store: CachingRunStore;
 
+const newCache = (d: string): SharedResourceCache =>
+  new SharedResourceCache({ cacheDir: d, maxBytes: 0, log: noop });
+
 beforeEach(() => {
-  innerDir = mkdtempSync(path.join(tmpdir(), 'crawler-cache-inner-'));
-  cacheDir = mkdtempSync(path.join(tmpdir(), 'crawler-cache-outer-'));
+  innerDir = mkdtempSync(path.join(tmpdir(), 'crawler-caching-inner-'));
+  cacheDir = mkdtempSync(path.join(tmpdir(), 'crawler-caching-cache-'));
   inner = new CountingStore(new LocalRunStore(innerDir));
-  store = new CachingRunStore({ inner, cacheDir });
+  cache = newCache(cacheDir);
+  store = new CachingRunStore({ inner, cache });
 });
 
 afterEach(() => {
@@ -85,372 +113,296 @@ afterEach(() => {
   rmSync(cacheDir, { recursive: true, force: true });
 });
 
-describe('isSheetKey', () => {
-  it('matches sheet-NN.png under briefId/runId/', () => {
-    expect(isSheetKey('iron-sword/run-abc/sheet-00.png')).toBe(true);
-    expect(isSheetKey('some-brief/run-XYZ/sheet-42.png')).toBe(true);
+describe('isCacheableKey', () => {
+  it('caches every artifact category', () => {
+    for (const key of ALL_ARTIFACTS) expect(isCacheableKey(key)).toBe(true);
   });
-  it('rejects non-sheet artifacts', () => {
-    expect(isSheetKey('iron-sword/run-abc/raw/00.png')).toBe(false);
-    expect(isSheetKey('iron-sword/run-abc/processed/00.png')).toBe(false);
-    expect(isSheetKey('iron-sword/run-abc/summary.json')).toBe(false);
-    expect(isSheetKey('sheet-00.png')).toBe(false);
-    expect(isSheetKey('iron-sword/run-abc/subdir/sheet-00.png')).toBe(false);
+  it('excludes the mutable ETag-controlled workflow queue document', () => {
+    expect(isCacheableKey(WORKFLOW_STATE_KEY)).toBe(false);
   });
 });
 
-describe('CachingRunStore backend / resolve', () => {
-  it('proxies backend tag from inner', () => {
+describe('backend / resolve', () => {
+  it('proxies backend tag and resolve() from inner', () => {
     expect(store.backend).toBe('azure-blob');
-  });
-  it('resolve() forwards to inner', () => {
     expect(store.resolve(SHEET)).toBe(new LocalRunStore(innerDir).resolve(SHEET));
   });
 });
 
-describe('CachingRunStore get / put — sheet keys', () => {
-  it('first get hits inner + populates cache; second get hits cache only', async () => {
-    const data = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
-    await inner.put(SHEET, data);
-    inner.puts = 0;
+describe('read-through / write-through — all artifact categories', () => {
+  it.each(ALL_ARTIFACTS)(
+    'first get populates cache; second get is a cache hit (%s)',
+    async (key) => {
+      const data = Buffer.from(`bytes-for-${key}`);
+      await inner.put(key, data);
+      inner.puts = 0;
 
-    const first = await store.get(SHEET);
-    expect(first).toEqual(data);
-    expect(inner.gets).toBe(1);
+      expect(await store.get(key)).toEqual(data);
+      expect(inner.gets).toBe(1);
+      expect(await store.get(key)).toEqual(data);
+      expect(inner.gets).toBe(1); // second read served from cache
+    },
+  );
 
-    const second = await store.get(SHEET);
-    expect(second).toEqual(data);
-    // Cache hit must NOT touch the inner store on the second read.
-    expect(inner.gets).toBe(1);
-
-    // Cache file lives under cacheDir with the same key layout.
-    expect(existsSync(path.join(cacheDir, 'iron-sword', 'run-abc', 'sheet-00.png'))).toBe(true);
-  });
-
-  it('put mirrors into the cache so subsequent gets are cache hits', async () => {
-    const data = Buffer.from('sheet-bytes');
-    await store.put(SHEET, data);
+  it('put mirrors into the cache so subsequent gets never hit inner', async () => {
+    await store.put(PROCESSED, Buffer.from('proc'));
     expect(inner.puts).toBe(1);
-
-    const readback = await store.get(SHEET);
-    expect(readback).toEqual(data);
-    // Cache should have served this — inner.get never invoked.
+    inner.gets = 0;
+    expect(await store.get(PROCESSED)).toEqual(Buffer.from('proc'));
     expect(inner.gets).toBe(0);
   });
 
-  it('has() short-circuits to true when cache has the key', async () => {
-    await store.put(SHEET, Buffer.from('x'));
+  it('has() short-circuits to true from the cache', async () => {
+    await store.put(SUMMARY, Buffer.from('{}'));
     inner.has_ = 0;
-    expect(await store.has(SHEET)).toBe(true);
+    expect(await store.has(SUMMARY)).toBe(true);
     expect(inner.has_).toBe(0);
   });
 
-  it('remove() invalidates cache before delegating', async () => {
-    await store.put(SHEET, Buffer.from('x'));
-    expect(existsSync(path.join(cacheDir, 'iron-sword', 'run-abc', 'sheet-00.png'))).toBe(true);
+  it('propagates StoreNotFoundError from inner on a genuine miss', async () => {
+    await expect(store.get(SHEET)).rejects.toBeInstanceOf(StoreNotFoundError);
+  });
 
+  it('surfaces corrupt cache content as a miss and falls through to inner', async () => {
+    const data = Buffer.from('fresh-from-azure');
+    await inner.put(SHEET, data);
+    await store.get(SHEET); // populate cache
+    inner.gets = 0;
+    // Corrupt the cached content so its integrity check fails.
+    const info = await import('cacache').then((c) => c.default.get.info(cacheDir, `blob:${SHEET}`));
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(info!.path, 'tampered');
+    expect(await store.get(SHEET)).toEqual(data);
+    expect(inner.gets).toBe(1); // corruption forced a re-fetch
+  });
+});
+
+describe('mutable-key invalidation', () => {
+  it('put replaces the cached value (not assumed immutable)', async () => {
+    await store.put(SUMMARY, Buffer.from('v1'));
+    expect(await store.get(SUMMARY)).toEqual(Buffer.from('v1'));
+    await store.put(SUMMARY, Buffer.from('v2'));
+    inner.gets = 0;
+    expect(await store.get(SUMMARY)).toEqual(Buffer.from('v2'));
+    expect(inner.gets).toBe(0); // served the replaced cache value
+  });
+
+  it('remove invalidates the cache before delegating to inner', async () => {
+    await store.put(SHEET, Buffer.from('x'));
     await store.remove(SHEET);
-    expect(existsSync(path.join(cacheDir, 'iron-sword', 'run-abc', 'sheet-00.png'))).toBe(false);
     expect(inner.removes).toBe(1);
     expect(await store.has(SHEET)).toBe(false);
   });
 
-  it('propagates StoreNotFoundError from inner when key does not exist', async () => {
-    await expect(store.get(SHEET)).rejects.toBeInstanceOf(StoreNotFoundError);
+  it('invalidates derived route snapshots when their source artifacts change', async () => {
+    const routePrefix = 'iron-sword/run-abc';
+    await store.setCachedResource(`route/brief/${routePrefix}`, Buffer.from('brief'));
+    await store.setCachedResource(`route/slice-map/${routePrefix}/latest`, Buffer.from('latest'));
+    await store.setCachedResource(
+      `route/slice-map/${routePrefix}/sheet-00.png`,
+      Buffer.from('sheet'),
+    );
+
+    await store.put(SUMMARY, Buffer.from('{}'));
+    expect(await store.getCachedResource(`route/brief/${routePrefix}`)).toBeNull();
+    expect(await store.getCachedResource(`route/slice-map/${routePrefix}/latest`)).toBeNull();
+    expect(await store.getCachedResource(`route/slice-map/${routePrefix}/sheet-00.png`)).toBeNull();
+
+    await store.setCachedResource(`route/slice-map/${routePrefix}/latest`, Buffer.from('latest'));
+    await store.setCachedResource(
+      `route/slice-map/${routePrefix}/sheet-00.png`,
+      Buffer.from('sheet'),
+    );
+    await store.put(SHEET, Buffer.from('new-sheet'));
+    expect(await store.getCachedResource(`route/slice-map/${routePrefix}/latest`)).toBeNull();
+    expect(await store.getCachedResource(`route/slice-map/${routePrefix}/sheet-00.png`)).toBeNull();
   });
 
-  it('surfaces corrupt cache as a miss (falls through to inner)', async () => {
-    const data = Buffer.from('fresh-from-azure');
-    await inner.put(SHEET, data);
-    // Simulate a torn / corrupt cache entry by writing a directory where the
-    // file should be — statSync().isFile() will be false, so we should miss.
-    const cachePath = path.join(cacheDir, 'iron-sword', 'run-abc');
-    rmSync(cachePath, { recursive: true, force: true });
-    // Instead: pre-write a directory at the cache file path.
-    const filePath = path.join(cachePath, 'sheet-00.png');
-    // mkdir + a stray file inside it makes filePath a directory.
-    const { mkdirSync } = await import('node:fs');
-    mkdirSync(filePath, { recursive: true });
+  it('retains per-run brief snapshot on summary updates, but removes it when the run is removed', async () => {
+    const routePrefix = 'iron-sword/run-abc';
+    await store.setCachedResource(`brief-snapshot/${routePrefix}`, Buffer.from('snapshot-v1'));
+    await store.put(SUMMARY, Buffer.from('{"v":2}'));
+    expect((await store.getCachedResource(`brief-snapshot/${routePrefix}`))?.toString()).toBe(
+      'snapshot-v1',
+    );
+    await store.remove(SUMMARY);
+    expect(await store.getCachedResource(`brief-snapshot/${routePrefix}`)).toBeNull();
+  });
 
-    const result = await store.get(SHEET);
-    expect(result).toEqual(data);
-    expect(inner.gets).toBe(1);
+  it('invalidates all brief-derived snapshots when a durable brief changes', async () => {
+    await store.setCachedResource('route/brief/a/run-1', Buffer.from('a'));
+    await store.setCachedResource('route/slice-map/b/run-2/latest', Buffer.from('b'));
+    await store.put(BRIEF, Buffer.from('updated brief'));
+    expect(await store.getCachedResource('route/brief/a/run-1')).toBeNull();
+    expect(await store.getCachedResource('route/slice-map/b/run-2/latest')).toBeNull();
   });
 });
 
-describe('CachingRunStore get / put — non-sheet keys bypass cache', () => {
-  it('non-sheet get always hits inner', async () => {
-    const data = Buffer.from('raw-bytes');
-    await inner.put(RAW, data);
+describe('workflow queue document bypasses the cache', () => {
+  it('never caches get/has for the ETag-controlled queue key', async () => {
+    await inner.put(WORKFLOW_STATE_KEY, Buffer.from('{"v":1}'));
     inner.gets = 0;
-
-    await store.get(RAW);
-    await store.get(RAW);
-    expect(inner.gets).toBe(2);
-    // Cache dir must stay empty for non-sheet keys.
-    expect(existsSync(path.join(cacheDir, 'iron-sword', 'run-abc', 'raw', '00.png'))).toBe(false);
-  });
-
-  it('non-sheet put does not populate cache', async () => {
-    await store.put(SUMMARY, Buffer.from('{}'));
-    expect(existsSync(path.join(cacheDir, 'iron-sword', 'run-abc', 'summary.json'))).toBe(false);
-  });
-
-  it('non-sheet has() always delegates to inner', async () => {
-    await store.put(RAW, Buffer.from('r'));
     inner.has_ = 0;
-    await store.has(RAW);
+    await store.get(WORKFLOW_STATE_KEY);
+    await store.get(WORKFLOW_STATE_KEY);
+    await store.has(WORKFLOW_STATE_KEY);
+    expect(inner.gets).toBe(2); // every read hits inner — no caching
     expect(inner.has_).toBe(1);
   });
 });
 
-describe('CachingRunStore list', () => {
-  it('list() forwards to inner (never consults cache)', async () => {
-    await inner.put(SHEET, Buffer.from('a'));
-    await inner.put(RAW, Buffer.from('b'));
-    const result = await store.list('iron-sword/run-abc/');
-    expect(result).toContain(SHEET);
-    expect(result).toContain(RAW);
-    expect(inner.lists).toBe(1);
+describe('list snapshots', () => {
+  it('refreshes online listings so external writers cannot leave a fresh snapshot stale', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.put(RAW, Buffer.from('b'));
+    const first = await store.list('iron-sword/run-abc/');
+    expect(first).toEqual(expect.arrayContaining([SHEET, RAW]));
+    const listsAfterWarm = inner.lists;
+    const second = await store.list('iron-sword/run-abc/');
+    expect(second).toEqual(first);
+    expect(inner.lists).toBe(listsAfterWarm + 1);
   });
-});
 
-describe('CachingRunStore custom shouldCache predicate', () => {
-  it('honours a caller-supplied predicate (e.g. also cache raw PNGs)', async () => {
-    const custom = new CachingRunStore({
-      inner,
-      cacheDir,
-      shouldCache: (k) => k.endsWith('.png'),
+  it('refreshes from inner after a mutation bumps the epoch', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.list('iron-sword/run-abc/');
+    const before = inner.lists;
+    await store.put(RAW, Buffer.from('b')); // bumps epoch → snapshot stale
+    const refreshed = await store.list('iron-sword/run-abc/');
+    expect(inner.lists).toBe(before + 1);
+    expect(refreshed).toEqual(expect.arrayContaining([SHEET, RAW]));
+  });
+
+  it('rethrows when the remote fails and no snapshot exists', async () => {
+    const throwing = new ThrowingStore();
+    const s = new CachingRunStore({ inner: throwing, cache: newCache(cacheDir) });
+    await expect(s.list('never-listed/')).rejects.toThrow('offline: list');
+  });
+
+  it('falls back to a warmed snapshot when the remote later fails', async () => {
+    // Warm the snapshot online.
+    await store.put(SHEET, Buffer.from('a'));
+    await store.list('iron-sword/run-abc/');
+    // A fresh instance whose inner is now unavailable still serves the snapshot.
+    const throwing = new ThrowingStore();
+    const s = new CachingRunStore({ inner: throwing, cache });
+    const keys = await s.list('iron-sword/run-abc/');
+    expect(keys).toEqual(expect.arrayContaining([SHEET]));
+    expect(throwing.lists).toBe(1); // it tried the remote, then fell back
+  });
+
+  it('rejects a known-stale snapshot when the online remote fails', async () => {
+    await store.put(SHEET, Buffer.from('a'));
+    await store.list('iron-sword/run-abc/');
+    cache.bumpEpoch();
+    const throwing = new ThrowingStore();
+    const s = new CachingRunStore({ inner: throwing, cache });
+    await expect(s.list('iron-sword/run-abc/')).rejects.toThrow('offline: list');
+  });
+
+  it('keeps a warmed listing available offline after LRU pressure', async () => {
+    const boundedCache = new SharedResourceCache({ cacheDir, maxBytes: 300, log: noop });
+    const boundedStore = new CachingRunStore({ inner, cache: boundedCache });
+    await boundedStore.put(SHEET, Buffer.alloc(100, 1));
+    const warmed = await boundedStore.list('iron-sword/run-abc/');
+    await boundedCache.set('pressure:1', Buffer.alloc(200, 2));
+    await boundedCache.set('pressure:2', Buffer.alloc(200, 3));
+
+    const offlineInner = new ThrowingStore();
+    const offline = new CachingRunStore({
+      inner: offlineInner,
+      cache: new SharedResourceCache({ cacheDir, maxBytes: 300, log: noop }),
+      offline: true,
     });
-    await custom.put(RAW, Buffer.from('raw'));
-    inner.gets = 0;
-    await custom.get(RAW);
-    expect(inner.gets).toBe(0);
+    expect(await offline.list('iron-sword/run-abc/')).toEqual(warmed);
+    expect(offlineInner.lists).toBe(0);
   });
 });
 
-describe('CachingRunStore cache write safety', () => {
-  it('cache write failure does not fail get()', async () => {
-    const data = Buffer.from('data');
-    await inner.put(SHEET, data);
-    // Poison the cache dir by replacing it with a file — subsequent mkdir
-    // under it will fail. The get() must still succeed with the inner bytes.
-    rmSync(cacheDir, { recursive: true, force: true });
-    writeFileSync(cacheDir, 'not-a-directory');
-    const result = await store.get(SHEET);
-    expect(result).toEqual(data);
-  });
+describe('offline hard-gate: warm in A, read in B with Azure unavailable', () => {
+  it('serves exact bytes + listing from a warmed cache with ZERO remote reads', async () => {
+    // ── Warm worktree A (online) ──────────────────────────────────────────
+    const bytesByKey = new Map<string, Buffer>();
+    for (const key of ALL_ARTIFACTS) {
+      const data = Buffer.from(`payload::${key}`);
+      bytesByKey.set(key, data);
+      await store.put(key, data); // write-through populates the shared cache
+    }
+    const warmList = await store.list(''); // capture a listing snapshot
 
-  it('cache write failure does not fail put()', async () => {
-    rmSync(cacheDir, { recursive: true, force: true });
-    writeFileSync(cacheDir, 'not-a-directory');
-    await expect(store.put(SHEET, Buffer.from('x'))).resolves.toBeUndefined();
-    // Inner still received the write.
-    expect(await inner.has(SHEET)).toBe(true);
-  });
-});
-
-describe('CachingRunStore path traversal guard', () => {
-  it('normalises `..` segments so cache stays inside cacheDir', async () => {
-    // `../` at the start of a key gets stripped by cachePath's guard.
-    const evil = '../../etc/passwd';
-    const dummyInner = new LocalRunStore(innerDir);
-    const s = new CachingRunStore({
-      inner: dummyInner,
-      cacheDir,
-      shouldCache: () => true,
+    // ── Worktree B: separate instance, SAME shared cache, Azure unavailable ─
+    const offlineInner = new ThrowingStore();
+    const b = new CachingRunStore({
+      inner: offlineInner,
+      cache: newCache(cacheDir), // same physical cache dir, fresh instance
+      offline: true,
     });
-    await dummyInner.put(evil, Buffer.from('x'));
-    await s.get(evil);
-    // Anything written should be under cacheDir, never above it.
-    expect(existsSync(path.join(cacheDir, 'etc', 'passwd'))).toBe(true);
-  });
-});
 
-describe('defaultAzureSheetCacheDir', () => {
-  it('respects SPRITES_AZURE_CACHE_DIR when set', () => {
-    expect(
-      defaultAzureSheetCacheDir(
-        { SPRITES_AZURE_CACHE_DIR: '/custom/cache' },
-        () => '/home/u',
-        'linux',
-      ),
-    ).toBe('/custom/cache');
-  });
-
-  it('uses LOCALAPPDATA on win32', () => {
-    const dir = defaultAzureSheetCacheDir(
-      { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' },
-      () => 'C:\\Users\\u',
-      'win32',
-    );
-    expect(dir).toContain('Crawler');
-    expect(dir).toContain('sprite-sheets');
-    expect(dir.startsWith('C:\\Users\\u\\AppData\\Local')).toBe(true);
-  });
-
-  it('falls back to XDG_CACHE_HOME on non-Windows', () => {
-    const dir = defaultAzureSheetCacheDir({ XDG_CACHE_HOME: '/xdg' }, () => '/home/u', 'linux');
-    expect(dir).toBe(path.join('/xdg', 'crawler', 'sprite-sheets'));
-  });
-
-  it('falls back to ~/.cache when nothing else is set', () => {
-    const dir = defaultAzureSheetCacheDir({}, () => '/home/u', 'linux');
-    expect(dir).toBe(path.join('/home/u', '.cache', 'crawler', 'sprite-sheets'));
-  });
-
-  it('ignores empty override / LOCALAPPDATA / XDG values', () => {
-    const dir = defaultAzureSheetCacheDir(
-      { SPRITES_AZURE_CACHE_DIR: '', LOCALAPPDATA: '', XDG_CACHE_HOME: '' },
-      () => '/home/u',
-      'linux',
-    );
-    expect(dir).toBe(path.join('/home/u', '.cache', 'crawler', 'sprite-sheets'));
-  });
-});
-
-describe('isAzureCacheEnabled', () => {
-  it('defaults to on', () => {
-    expect(isAzureCacheEnabled({})).toBe(true);
-  });
-  it('respects explicit on', () => {
-    expect(isAzureCacheEnabled({ SPRITES_AZURE_CACHE: 'on' })).toBe(true);
-  });
-  it.each(['off', 'OFF', '0', 'false', 'False'])('honours disable value %s', (v) => {
-    expect(isAzureCacheEnabled({ SPRITES_AZURE_CACHE: v })).toBe(false);
-  });
-});
-
-describe('parseMaxCacheBytes', () => {
-  it('defaults to 2 GiB when unset', () => {
-    expect(parseMaxCacheBytes({})).toBe(2 * 1024 * 1024 * 1024);
-  });
-  it('parses an explicit non-negative integer', () => {
-    expect(parseMaxCacheBytes({ SPRITES_AZURE_CACHE_MAX_BYTES: '1048576' })).toBe(1048576);
-  });
-  it('treats 0 as unbounded (returns 0)', () => {
-    expect(parseMaxCacheBytes({ SPRITES_AZURE_CACHE_MAX_BYTES: '0' })).toBe(0);
-  });
-  it('trims surrounding whitespace', () => {
-    expect(parseMaxCacheBytes({ SPRITES_AZURE_CACHE_MAX_BYTES: '  2048  ' })).toBe(2048);
-  });
-  it.each(['', 'abc', '-5', '3.5', '1e6', '0x10', '  ', '9999999999999999999999'])(
-    'falls back to the default for malformed value %j',
-    (v) => {
-      expect(parseMaxCacheBytes({ SPRITES_AZURE_CACHE_MAX_BYTES: v })).toBe(2 * 1024 * 1024 * 1024);
-    },
-  );
-});
-
-describe('CachingRunStore size-cap eviction', () => {
-  const K1 = 'br/run-1/sheet-00.png';
-  const K2 = 'br/run-2/sheet-00.png';
-  const K3 = 'br/run-3/sheet-00.png';
-  const K4 = 'br/run-4/sheet-00.png';
-  const cachedPath = (key: string): string => path.join(cacheDir, ...key.split('/'));
-  const chunk = (n: number): Buffer => Buffer.alloc(n, 1);
-
-  it('evicts the oldest owned entries once the total exceeds the cap', async () => {
-    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 300 });
-    await capped.put(K1, chunk(100));
-    await capped.put(K2, chunk(100));
-    await capped.put(K3, chunk(100));
-    // All three fit exactly (300 <= 300): nothing evicted yet.
-    expect(existsSync(cachedPath(K1))).toBe(true);
-
-    // Make K1 the oldest, K3 the newest (deterministic mtime ordering).
-    utimesSync(cachedPath(K1), 1000, 1000);
-    utimesSync(cachedPath(K2), 2000, 2000);
-    utimesSync(cachedPath(K3), 3000, 3000);
-
-    // The 4th write pushes total to 400 > 300 → oldest (K1) is evicted.
-    await capped.put(K4, chunk(100));
-
-    expect(existsSync(cachedPath(K1))).toBe(false);
-    expect(existsSync(cachedPath(K2))).toBe(true);
-    expect(existsSync(cachedPath(K3))).toBe(true);
-    expect(existsSync(cachedPath(K4))).toBe(true);
-  });
-
-  it('never evicts the just-written entry, even if it sorts oldest by mtime', async () => {
-    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 150 });
-    await capped.put(K1, chunk(100));
-    // Backdate the NEW write's target so K2 (written next, mtime≈now) looks
-    // "older" than K1 — the exemption is by path identity, not mtime.
-    const future = Math.floor(Date.now() / 1000) + 10_000;
-    utimesSync(cachedPath(K1), future, future);
-
-    await capped.put(K2, chunk(100)); // total 200 > 150
-
-    // K2 is exempt (just written) so K1 is evicted despite its future mtime.
-    expect(existsSync(cachedPath(K1))).toBe(false);
-    expect(existsSync(cachedPath(K2))).toBe(true);
-  });
-
-  it('does not evict when unbounded (maxCacheBytes = 0)', async () => {
-    const unbounded = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 0 });
-    for (const k of [K1, K2, K3, K4]) {
-      await unbounded.put(k, chunk(1000));
+    for (const key of ALL_ARTIFACTS) {
+      expect(await b.get(key)).toEqual(bytesByKey.get(key)); // exact bytes
+      expect(await b.has(key)).toBe(true);
     }
-    for (const k of [K1, K2, K3, K4]) {
-      expect(existsSync(cachedPath(k))).toBe(true);
-    }
+    const offlineList = await b.list('');
+    expect([...offlineList].sort()).toEqual([...warmList].sort()); // identical listing
+
+    // The hard gate: not a single remote read operation occurred in B.
+    expect(offlineInner.gets).toBe(0);
+    expect(offlineInner.has_).toBe(0);
+    expect(offlineInner.lists).toBe(0);
   });
 
-  it('does not cache a single entry larger than the whole cap', async () => {
-    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 50 });
-    const data = chunk(100);
-    await capped.put(K1, data);
-    // Oversized entry is never written to the cache…
-    expect(existsSync(cachedPath(K1))).toBe(false);
-    // …but the inner store still received it and reads still work.
-    expect(await inner.has(K1)).toBe(true);
-    expect(await capped.get(K1)).toEqual(data);
-    // The failed-cache get must not have created a cache file either.
-    expect(existsSync(cachedPath(K1))).toBe(false);
+  it('offline get of an un-warmed key misses without contacting the remote', async () => {
+    const offlineInner = new ThrowingStore();
+    const b = new CachingRunStore({ inner: offlineInner, cache, offline: true });
+    await expect(b.get('never/warmed/sheet-00.png')).rejects.toBeInstanceOf(StoreNotFoundError);
+    expect(offlineInner.gets).toBe(0);
+    expect(await b.has('never/warmed/sheet-00.png')).toBe(false);
+    expect(offlineInner.has_).toBe(0);
   });
 
-  it('sweeps stale .tmp- staging files but keeps in-flight ones', async () => {
-    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 100_000 });
-    const runDir = path.join(cacheDir, 'br', 'run-tmp');
-    mkdirSync(runDir, { recursive: true });
-    const stale = path.join(runDir, 'sheet-00.png.tmp-stale');
-    const fresh = path.join(runDir, 'sheet-01.png.tmp-fresh');
-    writeFileSync(stale, chunk(10));
-    writeFileSync(fresh, chunk(10));
-    const twoHoursAgoSec = Math.floor(Date.now() / 1000) - 2 * 3600;
-    utimesSync(stale, twoHoursAgoSec, twoHoursAgoSec);
+  it('does not republish stale read-through data after a concurrent remove', async () => {
+    const key = SHEET;
+    const initial = Buffer.from('v1');
+    await inner.put(key, initial);
+    await cache.remove(`blob:${key}`);
 
-    // Any successful cacheable write triggers the housekeeping walk.
-    await capped.put(K1, chunk(10));
-
-    expect(existsSync(stale)).toBe(false);
-    expect(existsSync(fresh)).toBe(true);
+    let signalFillStarted!: () => void;
+    const fillStarted = new Promise<void>((resolve) => {
+      signalFillStarted = () => resolve();
+    });
+    let releaseFillGate!: () => void;
+    const fillGate = new Promise<void>((resolve) => {
+      releaseFillGate = () => resolve();
+    });
+    class BlockingCache extends SharedResourceCache {
+      override async setIfAbsent(
+        cacheKey: string,
+        data: Buffer,
+        metadata?: Record<string, unknown>,
+        expectedMutationToken?: string,
+      ): Promise<boolean> {
+        if (cacheKey === `blob:${key}`) {
+          signalFillStarted();
+          await fillGate;
+        }
+        return super.setIfAbsent(cacheKey, data, metadata, expectedMutationToken);
+      }
+    }
+    const blockingCache = new BlockingCache({ cacheDir, maxBytes: 0, log: noop });
+    const raceStore = new CachingRunStore({ inner, cache: blockingCache });
+    const inflightGet = raceStore.get(key);
+    await fillStarted;
+    await raceStore.remove(key);
+    releaseFillGate();
+    await expect(inflightGet).resolves.toEqual(initial);
+    await expect(raceStore.has(key)).resolves.toBe(false);
+    await expect(raceStore.get(key)).rejects.toBeInstanceOf(StoreNotFoundError);
   });
 
-  it('does not delete unrelated files reached through a symlinked subdir', async () => {
-    // Files the cache does not own must survive even if they live under a
-    // symlink/junction inside the cache dir. Best-effort on platforms where
-    // link creation is not permitted.
-    const external = mkdtempSync(path.join(tmpdir(), 'crawler-cache-external-'));
-    const secret = path.join(external, 'secret.bin');
-    writeFileSync(secret, chunk(5000));
-    let linked = false;
-    try {
-      symlinkSync(external, path.join(cacheDir, 'linked'), 'junction');
-      linked = true;
-    } catch {
-      // Symlink/junction creation not permitted here — skip the link assertion.
-    }
-
-    const capped = new CachingRunStore({ inner, cacheDir, maxCacheBytes: 100 });
-    await capped.put(K1, chunk(100));
-
-    expect(existsSync(secret)).toBe(true);
-    if (linked) {
-      // Sanity: the external file is genuinely reachable through the link.
-      expect(statSync(path.join(cacheDir, 'linked', 'secret.bin')).size).toBe(5000);
-    }
-    rmSync(external, { recursive: true, force: true });
+  it('offline list of an un-warmed prefix throws rather than hiding the gap', async () => {
+    const offlineInner = new ThrowingStore();
+    const b = new CachingRunStore({ inner: offlineInner, cache, offline: true });
+    await expect(b.list('never/warmed/')).rejects.toBeInstanceOf(StoreNotFoundError);
+    expect(offlineInner.lists).toBe(0);
   });
 });

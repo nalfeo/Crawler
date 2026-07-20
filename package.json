@@ -130,6 +130,7 @@
   "dependencies": {
     "@recast-navigation/wasm": "0.43.1",
     "bitecs": "^0.4.0",
+    "cacache": "^20.0.4",
     "loglevel": "^1.9.2",
     "phaser": "^4.1.0",
     "recast-navigation": "0.43.1",
@@ -142,6 +143,7 @@
     "@stryker-mutator/core": "^9.6.1",
     "@stryker-mutator/typescript-checker": "^9.6.1",
     "@stryker-mutator/vitest-runner": "^9.6.1",
+    "@types/cacache": "^20.0.1",
     "@types/node": "^25.9.1",
     "@types/pngjs": "^6.0.5",
     "@vitest/coverage-v8": "^4.1.8",

@@ -276,14 +276,8 @@ test('workflow runs trusted default-branch script with single global concurrency
   assert.equal(workflow.permissions.contents, 'read');
   assert.equal(workflow.permissions['pull-requests'], undefined);
   assert.equal(workflow.jobs['enforce-pr-state']['timeout-minutes'], 15);
-  assert.equal(
-    workflow.jobs['enforce-pr-state'].concurrency.group,
-    'pr-ready-reviewer-guard',
-  );
-  assert.equal(
-    workflow.jobs['enforce-pr-state'].concurrency['cancel-in-progress'],
-    false,
-  );
+  assert.equal(workflow.jobs['enforce-pr-state'].concurrency.group, 'pr-ready-reviewer-guard');
+  assert.equal(workflow.jobs['enforce-pr-state'].concurrency['cancel-in-progress'], false);
   assert.equal(workflow.jobs['enforce-pr-state'].steps[0].uses, 'actions/checkout@v4');
   assert.equal(
     workflow.jobs['enforce-pr-state'].steps[0].with.ref,
