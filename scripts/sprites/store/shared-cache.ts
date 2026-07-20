@@ -376,7 +376,7 @@ export class SharedResourceCache {
     const physicalKey = this.physicalKey(key);
     try {
       const existing = await cacache.get.info(this.cacheDir, physicalKey);
-      if (existing !== null) return; // already present; skip write
+      if (existing !== null) return; // first writer wins — skip write if already present
       await cacache.put(this.cacheDir, physicalKey, data, metadata ? { metadata } : undefined);
       this.touch(physicalKey);
       if (this.maxBytes > 0) await this.pruneLocked(lockToken);

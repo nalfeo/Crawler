@@ -564,7 +564,7 @@ describe('loadBriefFromYaml', () => {
       'name: bad-brief',
       'description: "A bad brief."',
       'size: { width: 16, height: 16 }',
-      'palette: { id: test-palette }',
+      'palette: { id: "test-palette" }',
       'anchor: { x: "not-a-number", y: 8 }',
     ].join('\n');
     expect(() =>

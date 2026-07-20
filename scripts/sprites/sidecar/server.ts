@@ -1002,6 +1002,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       //   succeeded, diskBytes is non-null → snapshotBytes = diskBytes.
       if (brief !== null && perRunSnapshotBytes === null) {
         const snapshotBytes = durableBrief ?? diskBytes;
+        // Defensive null check: per the invariant above snapshotBytes is always
+        // non-null when brief !== null, but we guard here to be safe against any
+        // future code changes that break that invariant.
         if (snapshotBytes !== null) {
           await writePerRunBrief(store, briefId, runId, snapshotBytes);
         }
