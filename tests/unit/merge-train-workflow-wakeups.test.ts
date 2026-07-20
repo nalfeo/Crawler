@@ -11,19 +11,50 @@ interface WorkflowDoc {
     workflow_run?: { workflows?: string[]; types?: string[]; branches?: string[] };
     pull_request_target?: { types?: string[] };
   };
+  permissions?: Record<string, string>;
   concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
   jobs: {
     reconcile?: {
       if?: string;
       concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
+      steps?: Array<{
+        name?: string;
+        env?: Record<string, string>;
+        with?: Record<string, string>;
+      }>;
     };
   };
+}
+
+interface ValidationWorkflowDoc {
+  on: {
+    workflow_dispatch: {
+      inputs: Record<string, { required?: boolean; type?: string }>;
+    };
+  };
+  jobs: Record<
+    string,
+    {
+      steps?: Array<{
+        name?: string;
+        run?: string;
+        env?: Record<string, string>;
+        with?: Record<string, string>;
+      }>;
+    }
+  >;
 }
 
 function loadWorkflow(): WorkflowDoc {
   return parse(
     readFileSync(path.join(REPO_ROOT, '.github/workflows/merge-train.yml'), 'utf8'),
   ) as WorkflowDoc;
+}
+
+function loadValidationWorkflow(): ValidationWorkflowDoc {
+  return parse(
+    readFileSync(path.join(REPO_ROOT, '.github/workflows/merge-train-validate.yml'), 'utf8'),
+  ) as ValidationWorkflowDoc;
 }
 
 function evaluatesReconcileCondition(
@@ -85,6 +116,74 @@ describe('merge-train workflow wake-ups', () => {
     expect(concurrency?.group).toBe('crawler-merge-train');
     expect(concurrency?.queue).toBe('single');
     expect(concurrency?.['cancel-in-progress']).not.toBe(true);
+  });
+
+  describe('merge-train candidate transport', () => {
+    it('materializes every candidate job from an opaque custom-ref bundle', () => {
+      const workflow = loadValidationWorkflow();
+      expect(workflow.on.workflow_dispatch.inputs.candidate_ref?.required).toBe(true);
+      expect(workflow.on.workflow_dispatch.inputs.attestation_sha?.required).toBe(true);
+
+      for (const jobName of ['static', 'unit-tests', 'sprite-tests', 'health', 'security']) {
+        const steps = workflow.jobs[jobName]?.steps ?? [];
+        const checkout = steps.find(
+          (step) => step.name === 'Check out trusted candidate materializer',
+        );
+        const materialize = steps.find((step) => step.name === 'Materialize immutable candidate');
+        expect(checkout?.with?.ref).toBe('${{ github.event.repository.default_branch }}');
+        expect(checkout?.with?.['persist-credentials']).toBe(false);
+        expect(materialize?.run).toBe('bash .github/scripts/merge-train/materialize-candidate.sh');
+        expect(materialize?.env?.CANDIDATE_REF).toBe('${{ inputs.candidate_ref }}');
+        expect(materialize?.env?.CANDIDATE_SHA).toBe('${{ inputs.candidate_sha }}');
+      }
+    });
+
+    it('publishes validation evidence on the trusted main attestation commit', () => {
+      const publish = loadValidationWorkflow().jobs.publish?.steps?.find(
+        (step) => step.name === 'Publish immutable candidate result',
+      );
+      expect(publish?.env?.ATTESTATION_SHA).toBe('${{ inputs.attestation_sha }}');
+      expect(publish?.with?.script).toContain("const { createHash } = require('crypto')");
+      expect(publish?.with?.script).toContain(
+        "createHash('sha256').update(`${process.env.FINGERPRINT}:${(process.env.CANDIDATE_SHA || '').toLowerCase()}`).digest('hex')",
+      );
+      expect(publish?.with?.script).not.toContain(
+        '`${process.env.FINGERPRINT}:${process.env.CANDIDATE_SHA}`',
+      );
+      // Shared attestation SHAs require the fallback to inspect every same-name check.
+      expect(publish?.with?.script).toContain('head_sha: process.env.ATTESTATION_SHA');
+      expect(publish?.with?.script).not.toContain('head_sha: process.env.CANDIDATE_SHA');
+    });
+
+    it('requests all check runs (filter: all) in the fallback recovery step to prevent hidden results masking bisection', () => {
+      const steps = loadValidationWorkflow().jobs.publish?.steps ?? [];
+      const fallback = steps.find(
+        (step) => step.name === 'Mark candidate check retryable if publishing failed',
+      );
+      // The fallback listForRef must request all runs so a newer in_progress run
+      // is never hidden behind an earlier terminal result for the same check name.
+      expect(fallback?.with?.script).toContain("filter: 'all'");
+    });
+  });
+
+  it('uses the App checkout credential for candidates and never exposes a PAT', () => {
+    const workflow = loadWorkflow();
+    expect(workflow.permissions?.contents).toBe('read');
+    expect(workflow.permissions?.workflows).toBeUndefined();
+
+    const steps = workflow.jobs.reconcile?.steps ?? [];
+    const checkoutStep = steps.find(
+      (step) => step.name === 'Checkout trusted merge-train implementation',
+    );
+    const reconcileStep = steps.find((step) => step.name === 'Reconcile six-PR build-expiry train');
+    expect(checkoutStep?.with?.token).toBe('${{ steps.app-token.outputs.token }}');
+    expect(reconcileStep?.env?.GITHUB_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}');
+    expect(steps.every((step) => step.env?.MERGE_TRAIN_WORKFLOW_TOKEN === undefined)).toBe(true);
+    expect(
+      steps.every(
+        (step) => !Object.values(step.env ?? {}).includes('${{ secrets.CRAWLER_CI_PAT }}'),
+      ),
+    ).toBe(true);
   });
 
   it('subscribes to all required pull_request_target event types', () => {

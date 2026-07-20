@@ -38,7 +38,7 @@ if [ "${NODE_ENV:-}" = "test" ] && [ "${VERIFY_FAST_TEST_STATIC_ONLY:-}" = "1" ]
 fi
 
 is_supported_ts_path() {
-  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|(\.github/scripts|src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
+  [[ "$1" =~ ^(vite\.config\.ts|vitest\.config\.ts|\.github/scripts/.*\.(tsx?|mts|cts)|(src|tests|scripts|tools)/.*\.(tsx?|mts|cts))$ ]]
 }
 
 # Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we

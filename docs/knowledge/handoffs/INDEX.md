@@ -382,6 +382,7 @@ _…and 78 older, see `archive/`._
 - [2026-07-20-pr1276-stack-root-shepherd](2026-07-20-pr1276-stack-root-shepherd.md) — Handoff: PR #1276 Stack-Root Shepherd
 - [2026-07-20-pr1379-merge-conflict-recovery](2026-07-20-pr1379-merge-conflict-recovery.md) — PR #1379 merge-conflict recovery
 - [2026-07-20-pr1704-blocker-recovery-round2](2026-07-20-pr1704-blocker-recovery-round2.md) — Handoff: PR #1704 blocker recovery (round 2)
+- [2026-07-20-repair-train-credentials](2026-07-20-repair-train-credentials.md) — Merge-train workflow candidate credential repair
 - [2026-07-19-ci-headless-coverage-gating](2026-07-19-ci-headless-coverage-gating.md) — Gate headless and coverage jobs by change impact
 - [2026-07-19-ci-recovery-merge-conflict-recovery](2026-07-19-ci-recovery-merge-conflict-recovery.md) — Handoff: CI recovery merge-conflict recovery
 - [2026-07-19-ci-recovery-pr1367-exhausted-redispatch](2026-07-19-ci-recovery-pr1367-exhausted-redispatch.md) — Handoff: CI recovery PR #1367 exhausted redispatch guard
