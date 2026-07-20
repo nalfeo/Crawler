@@ -202,6 +202,7 @@ describe.skipIf(!hasBash || !hasJq)(
         'steps.detect.outputs.dependencies_touched': 'false',
         'steps.detect.outputs.ai_code_touched': 'false',
         'steps.detect.outputs.codeowners_touched': 'false',
+        'steps.detect.outputs.source_code_touched': 'false',
         'github.event_name': 'pull_request',
         'vars.MERGE_TRAIN_ENABLED': mergeTrainEnabled,
       });

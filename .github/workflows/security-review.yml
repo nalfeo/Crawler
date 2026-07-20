@@ -31,6 +31,7 @@ jobs:
       dependencies_touched: ${{ steps.scope.outputs.dependencies_touched }}
       ai_code_touched: ${{ steps.scope.outputs.ai_code_touched }}
       codeowners_touched: ${{ steps.scope.outputs.codeowners_touched }}
+      source_code_touched: ${{ steps.scope.outputs.source_code_touched }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,6 +55,7 @@ jobs:
           dependencies_touched='${{ steps.detect.outputs.dependencies_touched }}'
           ai_code_touched='${{ steps.detect.outputs.ai_code_touched }}'
           codeowners_touched='${{ steps.detect.outputs.codeowners_touched }}'
+          source_code_touched='${{ steps.detect.outputs.source_code_touched }}'
           train_promoted='false'
           if [ '${{ github.event_name }}' != 'pull_request' ]; then
             # Scheduled and workflow_dispatch runs must execute the full security
@@ -64,6 +66,7 @@ jobs:
             dependencies_touched='true'
             ai_code_touched='true'
             codeowners_touched='true'
+            source_code_touched='true'
           else
             # Only trust promotion provenance while the merge train is
             # actually enabled, so rollback (MERGE_TRAIN_ENABLED=false)
@@ -110,6 +113,7 @@ jobs:
           echo "dependencies_touched=${dependencies_touched}" >>"$GITHUB_OUTPUT"
           echo "ai_code_touched=${ai_code_touched}" >>"$GITHUB_OUTPUT"
           echo "codeowners_touched=${codeowners_touched}" >>"$GITHUB_OUTPUT"
+          echo "source_code_touched=${source_code_touched}" >>"$GITHUB_OUTPUT"
 
   # All security checks consolidated into one job to reduce runner-slot
   # consumption. Each step is independently gated by impact flags from the
@@ -122,7 +126,7 @@ jobs:
     needs: [changes]
     steps:
       - name: Docs/asset-only fast-path
-        if: needs.changes.outputs.docs_only == 'true' && needs.changes.outputs.train_promoted != 'true'
+        if: (needs.changes.outputs.docs_only == 'true' || needs.changes.outputs.art_only == 'true') && needs.changes.outputs.train_promoted != 'true'
         run: echo "Docs/asset-only PR — only secret scanning runs; Node setup and unrelated checks skipped."
 
       # Checkout is required for git-based checks (secret scan, all source checks).
@@ -132,24 +136,24 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Node setup is NOT needed for the docs-only path (only the bash-based secret
+      # Node setup is NOT needed for the docs/asset-only path (only the bash-based secret
       # scan runs there). Skip it to avoid unnecessary npm ci cost for docs/art PRs.
       - uses: ./.github/actions/setup-node
-        if: needs.changes.outputs.train_promoted != 'true' && needs.changes.outputs.docs_only != 'true'
+        if: needs.changes.outputs.train_promoted != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.art_only != 'true'
 
       # ── Secret scanning ──────────────────────────────────────────────────────
       # Fail-closed: runs for every PR change set (except merge-train-promoted heads
       # that have already passed a full security review).
       #
       # Docs/asset-only path: runs scan-secrets.sh directly (no Node wrapper needed
-      # since setup-node is skipped for docs-only).
+      # since setup-node is skipped for docs-only and art-only).
       - name: Scan for committed secrets (docs/asset-only)
-        if: needs.changes.outputs.train_promoted != 'true' && needs.changes.outputs.docs_only == 'true' && !cancelled()
+        if: needs.changes.outputs.train_promoted != 'true' && (needs.changes.outputs.docs_only == 'true' || needs.changes.outputs.art_only == 'true') && !cancelled()
         run: bash scripts/agent/security/scan-secrets.sh
 
       # Non-docs path: wrap for structured scheduled-run reporting.
       - name: Scan for committed secrets
-        if: needs.changes.outputs.train_promoted != 'true' && needs.changes.outputs.docs_only != 'true' && !cancelled()
+        if: needs.changes.outputs.train_promoted != 'true' && needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.art_only != 'true' && !cancelled()
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-scan-secrets -- bash scripts/agent/security/scan-secrets.sh
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
@@ -176,10 +180,11 @@ jobs:
 
       # ── Dynamic-execution patterns ───────────────────────────────────────────
       # Scans src/core, src/engine, src/game, src/shared for forbidden eval/Function
-      # patterns. Skipped for docs-only and art/sprite-only changes (no source code
-      # present in those surfaces).
+      # patterns. Skipped when no production source file changed (docs, tests,
+      # CI/tooling, art-only, lockfile-only, etc. all have source_code_touched=false).
+      # Fail-safe: runs when source_code_touched is absent or not explicitly 'false'.
       - name: Dynamic-execution patterns
-        if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.art_only != 'true' && !cancelled()
+        if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.source_code_touched != 'false' && !cancelled()
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-dynamic-patterns -- bash scripts/agent/security/check-dynamic-patterns.sh
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 

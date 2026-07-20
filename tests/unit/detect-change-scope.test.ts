@@ -48,6 +48,7 @@ interface Scope {
   dependencies_touched: boolean;
   ai_code_touched: boolean;
   codeowners_touched: boolean;
+  source_code_touched: boolean;
 }
 
 function run(override: string, extraEnv: Record<string, string> = {}): Scope {
@@ -87,6 +88,7 @@ function run(override: string, extraEnv: Record<string, string> = {}): Scope {
     dependencies_touched: read('dependencies_touched'),
     ai_code_touched: read('ai_code_touched'),
     codeowners_touched: read('codeowners_touched'),
+    source_code_touched: read('source_code_touched'),
   };
 }
 
@@ -120,6 +122,7 @@ const F = (
   dependencies_touched: boolean = false,
   ai_code_touched: boolean = false,
   codeowners_touched: boolean = false,
+  source_code_touched: boolean = false,
 ): Scope => ({
   art_only,
   docs_only,
@@ -135,6 +138,7 @@ const F = (
   dependencies_touched,
   ai_code_touched,
   codeowners_touched,
+  source_code_touched,
 });
 
 const cases: Case[] = [
@@ -182,6 +186,7 @@ const cases: Case[] = [
       true,
       true,
       true,
+      true,
     ),
   },
   {
@@ -219,7 +224,7 @@ const cases: Case[] = [
   {
     name: 'engine-only (rendering)',
     files: ['src/engine/render/floorRenderer.ts'],
-    expected: F(false, false, true, false, false, true, true, true, true, false, false),
+    expected: F(false, false, true, false, false, true, true, true, true, false, false, false, false, false, true),
   },
   {
     name: 'labs-only',
@@ -235,24 +240,24 @@ const cases: Case[] = [
   {
     name: 'docs + engine mixed',
     files: ['docs/x.md', 'src/engine/foo.ts'],
-    expected: F(false, false, true, false, false, true, true, true, true, false, false),
+    expected: F(false, false, true, false, false, true, true, true, true, false, false, false, false, false, true),
   },
   // Anything that CAN change the sim must force the headless gate to run.
   // These also set game_visual_touched (src/* → visual, game).
   {
     name: 'core system',
     files: ['src/core/systems/movementSystem.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false, false, false, false, true),
   },
   {
     name: 'game system',
     files: ['src/game/combat.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false, false, false, false, true),
   },
   {
     name: 'shared (non-catalog)',
     files: ['src/shared/random.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false, false, false, false, true),
   },
   {
     name: 'headless test itself',
@@ -262,7 +267,7 @@ const cases: Case[] = [
   {
     name: 'engine + game mixed',
     files: ['src/engine/render/foo.ts', 'src/game/combat.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false, false, false, false, true),
   },
   // CI/tooling-only: non-visual.
   {
@@ -280,6 +285,7 @@ const cases: Case[] = [
       false,
       false,
       false,
+      true,
       true,
       true,
       true,
@@ -333,6 +339,7 @@ const cases: Case[] = [
       false,
       false,
       true,
+      true,
     ),
   },
   {
@@ -352,6 +359,7 @@ const cases: Case[] = [
       false,
       false,
       false,
+      true,
       true,
     ),
   },
@@ -380,12 +388,12 @@ const cases: Case[] = [
   {
     name: 'sprites pipeline + game code (mixed) → sprites_only=false, sprites_touched=true',
     files: ['scripts/sprites/batch.ts', 'src/game/combat.ts'],
-    expected: F(false, false, false, false, true, true, true, true, true, false, false),
+    expected: F(false, false, false, false, true, true, true, true, true, false, false, false, false, false, true),
   },
   {
     name: 'sprites pipeline + engine code → sprites_only=false, gameplay_safe=true, sprites_touched=true',
     files: ['scripts/sprites/run-full.ts', 'src/engine/renderer.ts'],
-    expected: F(false, false, true, false, true, true, true, true, true, false, false),
+    expected: F(false, false, true, false, true, true, true, true, true, false, false, false, false, false, true),
   },
   // Root pipeline integration tests: in sprites surface, so sprites_only=true, sprites_touched=true.
   {
@@ -402,7 +410,7 @@ const cases: Case[] = [
   {
     name: 'game-only change → sprites_touched=false',
     files: ['src/game/combat.ts', 'src/core/systems/movementSystem.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false, false, false, false, true),
   },
   // ── New: visual surface routing cases (#1698) ──────────────────────────────
   // Devtools-only: devtool_visual_touched, NOT game_visual_touched.
@@ -421,7 +429,7 @@ const cases: Case[] = [
   {
     name: 'devtools + engine mixed',
     files: ['src/devtools/index.ts', 'src/engine/render/foo.ts'],
-    expected: F(false, false, true, false, false, true, true, true, true, false, true),
+    expected: F(false, false, true, false, false, true, true, true, true, false, true, false, false, false, true),
   },
   // Non-visual: CI, docs, scripts, non-e2e tests.
   {
@@ -440,6 +448,7 @@ const cases: Case[] = [
       false,
       false,
       false,
+      true,
       true,
       true,
       true,
@@ -493,12 +502,12 @@ const cases: Case[] = [
   {
     name: 'unknown path (vitest.config.ts) → all three visual surfaces',
     files: ['vitest.config.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, true, true),
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, false, false, false, true),
   },
   {
     name: 'unknown path (root script) → all three visual surfaces',
     files: ['some-unknown-file.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, true, true),
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, false, false, false, true),
   },
   // ── New: sim_touched / coverage_touched cases ──────────────────────────────
   // CI/tooling-only changes: sim and coverage untouched.
@@ -553,7 +562,7 @@ const cases: Case[] = [
   {
     name: 'unknown unclassified path → fail-closed',
     files: ['some-new-build-output/bundle.js'],
-    expected: F(false, false, false, false, false, true, true, true, true, true, true),
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, false, false, false, true),
   },
   // Game unit test (non-sprites): coverage_touched=true, sim_touched=false.
   {
@@ -565,7 +574,7 @@ const cases: Case[] = [
   {
     name: 'bootstrap wiring file → sim and coverage touched',
     files: ['src/bootstrap/floor-main-scene-options.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false, false, false, false, true),
   },
   // Headless tests: sim touched (test outcome matters), coverage NOT touched.
   {
@@ -583,7 +592,7 @@ const cases: Case[] = [
   {
     name: 'handoff + game code → sim and coverage touched',
     files: ['docs/knowledge/handoffs/2026-07-19-my-feature.md', 'src/game/combat.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, false, false),
+    expected: F(false, false, false, false, false, true, true, true, true, false, false, false, false, false, true),
   },
   // Docs handoff alone → neutral (docs/* safe for both).
   {
@@ -628,6 +637,8 @@ const cases: Case[] = [
       true,
       false,
       false,
+      false,
+      true,
       false,
       true,
     ),
@@ -706,7 +717,7 @@ const cases: Case[] = [
     ),
   },
   // Security infra: changes to the security workflow or scope classifier force all
-  // three security flags so modified gates are exercised in the same PR.
+  // four security flags so modified gates are exercised in the same PR.
   {
     name: 'security-review.yml → all security flags',
     files: ['.github/workflows/security-review.yml'],
@@ -725,6 +736,7 @@ const cases: Case[] = [
       true,
       true,
       true,
+      true,
     ),
   },
   // Mixed: package.json + game code.
@@ -732,14 +744,30 @@ const cases: Case[] = [
     name: 'package.json + game code → dependencies_touched, not gameplay_safe',
     files: ['package.json', 'src/game/combat.ts'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
-    expected: F(false, false, false, false, false, true, true, true, true, true, true, true),
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, true, false, false, true),
   },
   // Mixed: AI source + dep change.
   {
     name: 'AI source + package.json → ai_code_touched + dependencies_touched',
     files: ['src/game/ai/bt-ai-provider.ts', 'package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
-    expected: F(false, false, false, false, false, true, true, true, true, true, true, true, true),
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, true, true, false, true),
+  },
+  // source_code_touched: dynamic-execution validator itself.
+  {
+    name: 'check-dynamic-patterns.sh validator → source_code_touched',
+    files: ['scripts/agent/security/check-dynamic-patterns.sh'],
+    expected: F(false, false, false, false, false, false, false, false, false, false, false, false, false, false, true),
+  },
+  // Art-only scope regression: art_only=true, docs_only=false, source_code_touched=false.
+  // The security workflow fast-path must check art_only explicitly (docs_only is false for
+  // art paths) and Node setup must be skipped. source_code_touched=false ensures the
+  // dynamic-execution scan is skipped for sprite-only PRs.
+  {
+    name: 'art-only scope regression: art_only=true, docs_only=false → workflow fast-path via art_only',
+    files: ['public/assets/generated/sprites.png'],
+    // docs_only=false, art_only=true: security-review.yml must use art_only to gate fast-path
+    expected: F(true, false, true, false, false, false, false, true, false, true, false),
   },
 ];
 
@@ -752,7 +780,7 @@ describe('detect-art-only.sh change-scope classifier', () => {
     // A lone newline enters the override branch but strips to empty → fail-safe.
     // sim_touched=true, coverage_touched=true, and all security flags true ensure all gates run.
     expect(run('\n')).toEqual(
-      F(false, false, false, false, false, true, true, true, true, true, true, true, true, true),
+      F(false, false, false, false, false, true, true, true, true, true, true, true, true, true, true),
     );
   });
 
@@ -763,7 +791,7 @@ describe('detect-art-only.sh change-scope classifier', () => {
       // Empty/unknown changeset → we cannot safely skip visual suites, so all
       // surface flags must be true (same fail-safe as the no-base-ref path).
       expect(run('\n')).toEqual(
-        F(false, false, false, false, false, true, true, true, true, true, true, true, true, true),
+        F(false, false, false, false, false, true, true, true, true, true, true, true, true, true, true),
       );
     },
   );
@@ -772,7 +800,7 @@ describe('detect-art-only.sh change-scope classifier', () => {
     // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
     // Security-impact flags default to true on ambiguous scope so checks always run.
     expect(run('')).toEqual(
-      F(false, false, false, false, false, true, true, true, true, true, true, true, true, true),
+      F(false, false, false, false, false, true, true, true, true, true, true, true, true, true, true),
     );
   });
 

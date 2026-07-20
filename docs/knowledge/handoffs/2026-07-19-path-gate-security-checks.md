@@ -25,15 +25,17 @@ Removed the duplicate `npm audit` from `ci.yml`'s advisory job.
 
 ### New classifier flags
 
-| Flag                   | `true` when…                                                                                                                            |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `dependencies_touched` | `package.json`, `package-lock.json`, `yarn.lock`, `npm-shrinkwrap.json`, or `scripts/agent/security/check-deps.ts` changed              |
-| `ai_code_touched`      | `src/game/ai/**`, `scripts/agent/security/check-ai-prompts.ts`, `.github/copilot-instructions.md`, or `.github/instructions/**` changed |
-| `codeowners_touched`   | `CODEOWNERS`, `.github/workflows/**`, or `scripts/agent/security/check-codeowners.ts` changed                                           |
+| Flag                   | `true` when…                                                                                                         |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `dependencies_touched` | `package.json`, `package-lock.json`, `yarn.lock`, `npm-shrinkwrap.json`, or `scripts/agent/security/check-deps.ts` changed |
+| `ai_code_touched`      | `src/game/ai/**` or `scripts/agent/security/check-ai-prompts.ts` changed (instruction `.md` files are intentionally excluded — `check-ai-prompts.ts` only scans `src/game/ai`) |
+| `codeowners_touched`   | `CODEOWNERS`, `.github/workflows/**`, or `scripts/agent/security/check-codeowners.ts` changed                       |
+| `source_code_touched`  | Any file in `src/core/**`, `src/engine/**`, `src/game/**`, or `src/shared/**` (excluding data-only `sprite-catalog.json`) changed, or `scripts/agent/security/check-dynamic-patterns.sh` changed. Fail-safe: unknown/unclassified paths set `true`. |
 
-All three flags default to `false` (fail-safe → `emit_all` passes them through;
-the security-review.yml normalize step forces them to `true` for non-PR events so
-scheduled runs always execute the full suite).
+All four flags default to `false` (no matching file); fail-safe paths (`emit_all` no-base and
+empty-diff branches) emit `true` for all four security-impact flags so that all gated checks
+always run on ambiguous scope. The security-review.yml normalize step forces them to `'true'`
+for non-PR events so scheduled runs always execute the full suite.
 
 ### security-review.yml changes
 
@@ -85,11 +87,11 @@ authoritative path for npm audit on PRs.
 | ---------------------------------------------- | ------------------------------------------------- |
 | Dep allowlist + npm audit gated on manifests   | `dependencies_touched != 'false'`                 |
 | AI prompt-injection gated on AI surfaces       | `ai_code_touched != 'false'`                      |
-| Dynamic-execution gated on executable surfaces | `docs_only != 'true' && art_only != 'true'`       |
+| Dynamic-execution gated on executable surfaces | `source_code_touched != 'false'` (src/core/engine/game/shared or dynamic-execution validator) |
 | Secret scan fail-closed                        | Always runs (except `train_promoted`)             |
 | CODEOWNERS gated on ownership changes          | `codeowners_touched != 'false'`                   |
 | npm audit one authoritative path               | Removed from `ci-advisory` in `ci.yml`            |
-| Docs/asset PRs: no Node setup                  | `setup-node` skipped when `docs_only == 'true'`   |
+| Docs/asset PRs: no Node setup                  | `setup-node` skipped when `docs_only == 'true'` OR `art_only == 'true'` |
 | Classifier failures → broader set              | Fail-safe `!= 'false'` pattern                    |
 | Scheduled runs unchanged                       | Normalize step forces all flags `true` for non-PR |
 
