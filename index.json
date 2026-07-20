@@ -1,5 +1,16 @@
 [
   {
+    "commit": "b03d506e4d84ee315264b927756d51de36a1bc4b",
+    "commitDate": "2026-07-20T05:28:03Z",
+    "commitSubject": "fix(merge-train): promote validated prefix before retry (#1709)",
+    "capturedAt": "2026-07-20T06:46:20.935Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29719644016",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/b03d506e4d84ee315264b927756d51de36a1bc4b.json"
+  },
+  {
     "commit": "ca0ffac149dc99da01694a95906278440f29aae9",
     "commitDate": "2026-07-20T04:56:27Z",
     "commitSubject": "feat(sprites): consolidate approved iron-cleaver-v1 assets (var-0, var-5) (#1711)",
