@@ -16,13 +16,13 @@
 # gates (including typecheck/lint/unit) because these surfaces do not contain
 # shipped game logic.
 #
-# gameplay_safe=true — every changed file provably cannot change the deterministic
-# Floor-1 simulation the headless gate runs (src/engine rendering, src/labs,
-# tests/e2e, docs, *.md/*.txt, public/**). The headless runner imports only
-# src/core, src/shared and src/game/ai — never src/engine (ESLint layer rule) —
-# so these surfaces cannot alter the sim outcome. ci.yml uses this to skip the
-# 306s headless job on PULL_REQUESTS ONLY; main-push always runs it, preserving
-# an observe-after-merge backstop in case the allowlist is ever wrong.
+# gameplay_safe=true — (legacy compatibility signal; no longer gates headless)
+# every changed file provably cannot change the deterministic Floor-1 simulation
+# the headless gate runs (src/engine rendering, src/labs, tests/e2e, docs, *.md/*.txt,
+# public/**). The headless runner imports only src/core, src/shared and src/game/ai —
+# never src/engine (ESLint layer rule) — so these surfaces cannot alter the sim
+# outcome. Preserved for backward compatibility. See sim_touched for current headless
+# gating logic.
 #
 # New orthogonal impact flags (used by Wave-2 CI gating):
 #
@@ -345,9 +345,9 @@ done <<<"$changed"
 
 # visual_touched: true when the change could affect the rendered output.
 # Safe list (known NOT visual): CI/workflow config, docs, all scripts,
-# unit/headless/integration tests, most of public/ (non-art), and plain text.
-# Generated art (public/assets/generated/**) IS visual; it's excluded from the
-# public/* safe entry so it falls through to the catch-all below.
+# unit/headless/integration tests, and plain text.
+# Note: public/* (including generated assets like public/assets/generated/**)
+# is NOT safe-listed and correctly marks visual changes via the catch-all.
 # Unknown or unclassified paths → true (fail closed).
 # NOT safe: src/labs/** — E2E tests import from labs paths (hud-lab, ui-probe-lab,
 # main-scene-probe-lab, abilities-lab, hud-family-relationships-lab), so changes
@@ -376,9 +376,9 @@ done <<<"$changed"
 # Computed independently of gameplay_safe with a broader safe list that covers
 # ALL scripts/**, tests/unit/**, tests/integration/**, and public/**,
 # so CI-tooling-only changes produce sim_touched=false even when gameplay_safe=false.
-# src/engine/** and src/labs/** are NOT in the safe list because headless tests
-# import from both surfaces (fov-discovered-darkening.test.ts → src/engine/lighting;
-# spawner-sealable-room-entry.test.ts → src/labs/ai-runner-lab).
+# src/engine/** and src/labs/** are intentionally EXCLUDED from the safe list
+# because headless tests import from both surfaces (fov-discovered-darkening.test.ts
+# → src/engine/lighting; spawner-sealable-room-entry.test.ts → src/labs/ai-runner-lab).
 # Unknown or unclassified paths → true (fail closed).
 sim_touched=false
 while IFS= read -r file; do

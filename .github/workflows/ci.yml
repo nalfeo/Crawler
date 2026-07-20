@@ -33,9 +33,10 @@ jobs:
   # docs_only=true        → ALL heavy gates skipped; only commit-lint / lightweight
   #                         review workflows run. Documentation/governance surfaces
   #                         cannot change shipped game logic.
-  # gameplay_safe=true    → the diff provably can't change the deterministic Floor-1 sim
-  #                         (engine/labs/e2e/docs/assets only), so the headless gate is
-  #                         skipped ON PULL REQUESTS ONLY (main-push still runs it).
+  # gameplay_safe=true    → (legacy compatibility signal) the diff provably can't change
+  #                         the deterministic Floor-1 sim (engine/labs/e2e/docs/assets only).
+  #                         No longer used to gate jobs; see sim_touched for current headless
+  #                         gating logic.
   # visual_touched=true   → change may affect rendered output; E2E visual regression runs.
   # sim_touched=true      → change may affect the deterministic sim; headless gate runs.
   # coverage_touched=true → change may affect unit coverage; coverage advisory runs.

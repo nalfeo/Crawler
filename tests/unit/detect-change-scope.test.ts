@@ -13,9 +13,9 @@ import { toBashScriptPath, bashEnv } from '../helpers/bash-script-path.js';
  *                     provably can't change the deterministic sim
  *   - visual_touched  → skip E2E visual regression on non-visual diffs
  *   - sim_touched     → skip headless on non-simulation diffs (independent of gameplay_safe;
- *                       computed with a broader safe list that covers engine/labs so
- *                       engine/labs changes still trigger the headless test suite even
- *                       though the sim runner itself never imports those surfaces)
+ *                       computed with a broader safe list but intentionally EXCLUDING
+ *                       engine/labs so engine/labs changes still trigger the headless test
+ *                       suite even though the sim runner itself never imports those surfaces)
  *   - coverage_touched → skip coverage job on non-coverage diffs
  *   - sprite_pipeline_touched → alias for sprites_touched
  *   - dependencies_touched → gate npm audit / dep-allowlist on dep-manifest diffs
