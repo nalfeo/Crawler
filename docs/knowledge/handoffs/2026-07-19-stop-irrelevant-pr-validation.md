@@ -15,7 +15,7 @@ Implemented the five rollout issues of the "Stop irrelevant PR validation" Epic 
 
 - **#1688** — Impact classifier foundation: added 5 new orthogonal flags to `detect-art-only.sh`
 - **#1689** — Superseded-run cancellation: added `concurrency` blocks to `ci.yml` and `security-review.yml`
-- **#1696** — Headless and coverage gating: `test-headless` gated on `sim_touched`, `test-unit-coverage` gated on `coverage_touched`
+- **#1696** — Headless and coverage gating: `test-headless` gated on `sim_touched`, `ci-coverage` gated on `coverage_touched`
 - **#1697** — Security path gating: wired `dependencies_touched` into the `npm audit` + dependency-allowlist steps. The remaining #1697 acceptance criteria (per-surface routing for CODEOWNERS / dynamic-execution / AI-prompt, docs/asset no-Node, and removing the duplicate advisory audit) stay open in #1697.
 - **#1698** — Visual surface routing: wired `visual_touched` to gate `test-e2e`. The remaining #1698 criterion (a targeted asset/manifest visual smoke path and runtime/devtool suite partitioning) stays open in #1698.
 

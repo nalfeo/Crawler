@@ -321,6 +321,18 @@ const cases: Case[] = [
     expected: F(false, false, false, false, false, true, true, true, false, true),
   },
   {
+    name: 'npm-shrinkwrap.json → all runtime-sensitive flags + dependencies touched',
+    files: ['npm-shrinkwrap.json'],
+    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expected: F(false, false, false, false, false, true, true, true, false, true),
+  },
+  {
+    name: 'brief-only change → visual only (not sim/coverage/deps)',
+    files: ['briefs/items/foo.yaml'],
+    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expected: F(false, false, false, false, false, true, false, false, false, false),
+  },
+  {
     name: 'unit test (non-sprites) → coverage_touched=true, not visual, not sim',
     files: ['tests/unit/ai-runner-lighting-controls.test.ts'],
     //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
@@ -352,6 +364,12 @@ const cases: Case[] = [
     name: 'src/shared (non-catalog) → sim+visual+coverage, not deps',
     files: ['src/shared/random.ts'],
     expected: F(false, false, false, false, false, true, true, true, false, false),
+  },
+  {
+    name: 'unknown path → fail closed for runtime-sensitive + dependencies gates',
+    files: ['tooling/new-surface/config.yaml'],
+    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expected: F(false, false, false, false, false, true, true, true, false, true),
   },
   // Cross-surface rename regression (thread 1 fix: --no-renames).
   // With rename detection ON, `git diff --name-only` for a `src/core/foo.ts →

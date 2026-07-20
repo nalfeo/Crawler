@@ -161,12 +161,17 @@ describe('ci workflow overhead reduction', () => {
 });
 
 describe('merge-gate aggregation policy', () => {
-  it('runs even when a required job fails (fail-closed: if: always())', () => {
+  it('runs when dependencies fail but is skipped on cancellation (if: !cancelled())', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const mergeGate = workflow.jobs['merge-gate'];
-    // Without `if: always()`, a failing needed job causes merge-gate to be skipped,
-    // which silently counts as PASS and lets broken changes through.
-    expect(mergeGate?.if).toBe('always()');
+    // !cancelled() preserves fail-closed behavior on dependency failures while
+    // allowing superseded PR runs to stop cleanly under concurrency cancellation.
+    expect(mergeGate?.if).toBe('${{ !cancelled() }}');
+  });
+
+  it('final ci job mirrors merge-gate cancellation policy', () => {
+    const workflow = loadWorkflow('.github/workflows/ci.yml');
+    expect(workflow.jobs.ci?.if).toBe('${{ !cancelled() }}');
   });
 
   it('changes detection job failure blocks the gate (no allow_skipped)', () => {

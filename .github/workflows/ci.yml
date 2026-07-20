@@ -445,7 +445,7 @@ jobs:
         test-e2e,
         human-approval,
       ]
-    if: always()
+    if: ${{ !cancelled() }}
     steps:
       - name: Check required jobs
         run: |
@@ -526,7 +526,7 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
     needs: [merge-gate]
-    if: always()
+    if: ${{ !cancelled() }}
     steps:
       - name: Verify CI passed
         run: |

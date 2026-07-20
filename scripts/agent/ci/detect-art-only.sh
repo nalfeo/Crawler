@@ -37,8 +37,8 @@
 #
 # sim_touched=true — the change can affect the deterministic simulation.
 #   Computed independently of gameplay_safe with a broader safe list covering
-#   .github/**, docs/**, .specify/**, scripts/**, tests/unit/**, tests/e2e/**,
-#   tests/integration/**, public/**, *.md, *.txt,
+#   .github/**, docs/**, .specify/**, scripts/**, briefs/**, tests/unit/**,
+#   tests/e2e/**, tests/integration/**, public/**, *.md, *.txt,
 #   src/shared/data/sprite-catalog.json, and safe package.json scripts.
 #   NOT safe: src/engine/**, src/labs/**, tests/headless/**, src/core/**,
 #   src/game/**, src/shared (non-catalog) — headless tests import from engine
@@ -47,17 +47,18 @@
 #
 # coverage_touched=true — the change could affect unit test coverage.
 #   False only when every changed file is in the "not coverage" safe list:
-#   .github/**, docs/**, .specify/**, scripts/**, src/labs/**, tests/e2e/**,
-#   tests/headless/**, tests/integration/**, tests/unit/sprites/**, public/**,
-#   *.md, *.txt, src/shared/data/sprite-catalog.json.
+#   .github/**, docs/**, .specify/**, scripts/**, briefs/**, src/labs/**,
+#   tests/e2e/**, tests/headless/**, tests/integration/**, tests/unit/sprites/**,
+#   public/**, *.md, *.txt, src/shared/data/sprite-catalog.json.
 #   Unknown paths → true (fail closed). Used to gate the coverage advisory job.
 #
 # sprite_pipeline_touched=true — alias for sprites_touched; exposed under a
 #   more descriptive name for Wave-2 consumers.
 #
-# dependencies_touched=true — package.json or package-lock.json is in the
-#   changed set. Fail closed for package.json (may have dep changes). Used to
-#   gate npm audit and dependency-allowlist checks in security-review.yml.
+# dependencies_touched=true — dependency manifests changed OR an unknown path
+#   was encountered (fail closed). Recognized manifests: package.json,
+#   package-lock.json, npm-shrinkwrap.json. Used to gate npm audit and
+#   dependency-allowlist checks in security-review.yml.
 #
 # Output: writes all flags to $GITHUB_OUTPUT (when set) and stdout.
 # Test hook: SCOPE_FILES_OVERRIDE (newline-separated paths) classifies that list
@@ -393,6 +394,7 @@ while IFS= read -r file; do
     docs/*) ;;
     .specify/*) ;;
     scripts/*) ;;
+    briefs/*) ;;
     tests/e2e/*) ;;
     tests/unit/*) ;;
     tests/ecs/*) ;;
@@ -424,6 +426,7 @@ while IFS= read -r file; do
     docs/*) ;;
     .specify/*) ;;
     scripts/*) ;;
+    briefs/*) ;;
     src/labs/*) ;;
     tests/e2e/*) ;;
     tests/headless/*) ;;
@@ -450,6 +453,18 @@ while IFS= read -r file; do
   case "$file" in
     package-lock.json) dependencies_touched=true; break ;;
     package.json) dependencies_touched=true; break ;;
+    npm-shrinkwrap.json) dependencies_touched=true; break ;;
+    .github/*) ;;
+    docs/*) ;;
+    .specify/*) ;;
+    scripts/*) ;;
+    briefs/*) ;;
+    src/*) ;;
+    tests/*) ;;
+    public/*) ;;
+    *.md) ;;
+    *.txt) ;;
+    *) dependencies_touched=true; break ;;
   esac
 done <<<"$changed"
 
