@@ -587,6 +587,16 @@ test('promotion stale-state guard mirrors queue admission boundaries', () => {
     }),
     /marked merge-train-blocked/,
   );
+  assert.match(
+    promotionStaleReason({
+      currentMain: baseSha,
+      currentPr: makePr({ labels: [{ name: 'merge-train' }, { name: 'ci-conflict-order-wait' }] }),
+      expectedBase: baseSha,
+      pr: original,
+      repository: 'nalfeo/Crawler',
+    }),
+    /ci-conflict-order-wait/,
+  );
 });
 
 function makeCiRun(overrides = {}) {

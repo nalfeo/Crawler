@@ -37,7 +37,9 @@ export function buildSupersessionProofs({ baseSha, entries, git }) {
     let status = 'applied';
     let reason = null;
     try {
-      git(['merge', '--squash', '--no-commit', entry.ref]);
+      git(['merge', '--squash', '--no-commit', entry.ref], {
+        env: SYNTHETIC_IDENTITY,
+      });
       if (!stagedChangesExist(git)) {
         status = 'superseded';
         resetSyntheticTree(git, syntheticHead);

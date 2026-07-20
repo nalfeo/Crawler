@@ -279,41 +279,83 @@ async function targetHasHealthyOwner(number) {
   return context.ownershipError || context.healthy;
 }
 
+async function claimOwnerFence(number) {
+  const labelName = ownerLabel(number);
+  try {
+    const created = await request(token, `/repos/${owner}/${repo}/labels`, {
+      method: 'POST',
+      body: {
+        name: labelName,
+        color: '0969da',
+        description: `CI recovery ownership for PR #${number}`,
+      },
+    });
+    return {
+      claimed: true,
+      name: labelName,
+      nodeId: created.data?.node_id || null,
+    };
+  } catch (error) {
+    if (error.status !== 422) throw error;
+    return { claimed: false, name: labelName, nodeId: null };
+  }
+}
+
+async function releaseOwnerFence(fence) {
+  if (!fence?.claimed) return;
+  try {
+    await request(token, `/repos/${owner}/${repo}/labels/${encodeURIComponent(fence.name)}`, {
+      method: 'DELETE',
+    });
+  } catch (error) {
+    if (error.status !== 404) throw error;
+  }
+}
+
 async function closeDuplicate(proof) {
-  if (await targetHasHealthyOwner(proof.number)) {
-    process.stdout.write(`retain pr=#${proof.number} reason=healthy-or-inconsistent-owner\n`);
+  const ownerFence = await claimOwnerFence(proof.number);
+  if (!ownerFence.claimed) {
+    process.stdout.write(`retain pr=#${proof.number} reason=owner-fence-busy\n`);
     return false;
   }
-  const currentMain = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
-    .object.sha;
-  const numbers = new Set([
-    proof.number,
-    ...proof.predecessorHeads.map(({ number }) => number),
-    ...(proof.leaderHead ? [proof.leaderHead.number] : []),
-  ]);
-  const pulls = await mapLimit([...numbers], 4, async (number) => [
-    number,
-    await fetchLivePull(number),
-  ]);
-  if (
-    !duplicateProofStillMatches({
-      proof,
-      mainSha: currentMain,
-      livePulls: new Map(pulls),
-      repository,
-    })
-  ) {
-    process.stdout.write(`retain pr=#${proof.number} reason=supersession-proof-drifted\n`);
-    return false;
+  try {
+    if (await targetHasHealthyOwner(proof.number)) {
+      process.stdout.write(`retain pr=#${proof.number} reason=healthy-or-inconsistent-owner\n`);
+      return false;
+    }
+    const currentMain = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
+      .object.sha;
+    const numbers = new Set([
+      proof.number,
+      ...proof.predecessorHeads.map(({ number }) => number),
+      ...(proof.leaderHead ? [proof.leaderHead.number] : []),
+    ]);
+    const pulls = await mapLimit([...numbers], 4, async (number) => [
+      number,
+      await fetchLivePull(number),
+    ]);
+    if (
+      !duplicateProofStillMatches({
+        proof,
+        mainSha: currentMain,
+        livePulls: new Map(pulls),
+        repository,
+      })
+    ) {
+      process.stdout.write(`retain pr=#${proof.number} reason=supersession-proof-drifted\n`);
+      return false;
+    }
+    await request(token, `/repos/${owner}/${repo}/pulls/${proof.number}`, {
+      method: 'PATCH',
+      body: { state: 'closed' },
+    });
+    process.stdout.write(
+      `closed pr=#${proof.number} reason=deterministically-superseded proof=${proof.fingerprint}\n`,
+    );
+    return true;
+  } finally {
+    await releaseOwnerFence(ownerFence);
   }
-  await request(token, `/repos/${owner}/${repo}/pulls/${proof.number}`, {
-    method: 'PATCH',
-    body: { state: 'closed' },
-  });
-  process.stdout.write(
-    `closed pr=#${proof.number} reason=deterministically-superseded proof=${proof.fingerprint}\n`,
-  );
-  return true;
 }
 
 await Promise.all([
@@ -332,7 +374,9 @@ const eligible = openPulls.filter(
 );
 const fileLists = await mapLimit(eligible, 8, async (pull) => {
   const files = await paginate(token, `/repos/${owner}/${repo}/pulls/${pull.number}/files`);
-  return files.map((file) => file.filename);
+  return [
+    ...new Set(files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean))),
+  ];
 });
 const pulls = eligible.map((pull, index) => normalizePull(pull, fileLists[index]));
 const discoveredClusters = clusterPullRequests(pulls);
@@ -352,6 +396,7 @@ const commentEntries = await mapLimit(relevantNumbers, 8, async (number) => [
 ]);
 const commentsByNumber = new Map(commentEntries);
 const existingStates = [];
+const existingStateByNumber = new Map();
 for (const [number, comments] of commentEntries) {
   const managed = singleManagedComment(
     comments,
@@ -360,7 +405,10 @@ for (const [number, comments] of commentEntries) {
     number,
     true,
   );
-  if (managed) existingStates.push(managed.state);
+  if (managed) {
+    existingStates.push(managed.state);
+    existingStateByNumber.set(number, managed.state);
+  }
 }
 
 const groups = mergeCoordinationGroups({
@@ -368,6 +416,18 @@ const groups = mergeCoordinationGroups({
   existingStates,
   openPulls: pulls,
 });
+const pullByNumber = new Map(pulls.map((pull) => [pull.number, pull]));
+const groupedNumbers = new Set(groups.flatMap((group) => group.pulls.map((pull) => pull.number)));
+for (const number of managedNumbers) {
+  if (groupedNumbers.has(number) || existingStateByNumber.has(number)) continue;
+  const pull = pullByNumber.get(number);
+  if (!pull) continue;
+  await removeLabel(pull, ORDER_WAIT_LABEL);
+  await removeLabel(pull, COORDINATED_LABEL);
+  await removeLabel(pull, LEADER_LABEL);
+  await removeLabel(pull, ESCALATION_LABEL);
+  process.stdout.write(`released orphaned coordinator labels pr=#${number} reason=missing-state\n`);
+}
 const mainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object
   .sha;
 git(['fetch', 'origin', `${mainSha}:refs/remotes/origin/main`, '--force']);
@@ -425,7 +485,7 @@ for (const group of groups) {
   for (const pull of group.pulls) {
     await addLabel(pull, COORDINATED_LABEL);
     await addLabel(pull, ORDER_WAIT_LABEL);
-    if (pull.number !== selection.active?.number) await disableAutoMerge(pull);
+    await disableAutoMerge(pull);
     if (pull.number === selection.leader?.number) await addLabel(pull, LEADER_LABEL);
     else await removeLabel(pull, LEADER_LABEL);
     const escalated =

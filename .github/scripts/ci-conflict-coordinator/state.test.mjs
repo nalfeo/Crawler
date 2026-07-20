@@ -226,6 +226,27 @@ test('CI recovery is wired to stop at the conflict order fence', () => {
   );
 });
 
+test('coordinator inventories rename previous_filename paths for overlap clustering', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /previous_filename/);
+});
+
+test('coordinator claims owner fence and disables auto-merge for every grouped member', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /claimOwnerFence\(proof\.number\)/);
+  assert.match(source, /released orphaned coordinator labels/);
+  assert.match(source, /await disableAutoMerge\(pull\);/);
+  assert.ok(
+    !source.includes('if (pull.number !== selection.active?.number) await disableAutoMerge(pull);'),
+  );
+});
+
 test('workflow is event-driven and has a five-minute scheduling backstop', () => {
   const workflow = readFileSync(
     path.resolve('.github/workflows/ci-conflict-coordinator.yml'),

@@ -1,5 +1,6 @@
 import {
   BLOCKED_LABEL,
+  CI_CONFLICT_ORDER_WAIT_LABEL,
   LANDED_LABEL,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
@@ -365,6 +366,8 @@ export function promotionStaleReason({ currentMain, currentPr, expectedBase, pr,
   if (!sameRepository(currentPr, repository)) return 'PR head repository changed';
   if (!hasLabel(currentPr, QUEUE_LABEL)) return `PR no longer has the ${QUEUE_LABEL} label`;
   if (hasLabel(currentPr, BLOCKED_LABEL)) return `PR is marked ${BLOCKED_LABEL}`;
+  if (hasLabel(currentPr, CI_CONFLICT_ORDER_WAIT_LABEL))
+    return `PR has ${CI_CONFLICT_ORDER_WAIT_LABEL} label`;
   return null;
 }
 
