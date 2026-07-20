@@ -142,15 +142,20 @@ describe('Floor 2 hostile activity', () => {
   });
 
   it('does not engage a hostile through a closed wall boundary', () => {
-    expect(runImpBoundaryScenario(true)).toBeLessThan(8);
+    // Baseline idle-drift for a walled-off imp is ~0.08 ft; 2 ft gives ample
+    // margin while ensuring a wall-bypass regression (closes 8+ ft) fails.
+    expect(runImpBoundaryScenario(true)).toBeLessThan(2);
   });
 
   it.each(HOSTILE_ARCHETYPES)(
-    '$id moves toward the player within two seconds of entering detection range',
+    '$id closes to within 90% of initial distance after two seconds in detection range',
     (archetype) => {
       const world = createTestWorld({ floor: 2 });
       world.state = 'playing';
-      world.floorMap = createOpenFloorMap();
+      // Use the split-room fixture so isEnemyRoomDoorOpen returns false and
+      // detection relies exclusively on the new seam-LOS path, not the
+      // open-door or same-room shortcuts.
+      world.floorMap = createOpenFloorMap(true);
       world.floorExtendedState = {
         familyState: {
           presentFamilies: FAMILY_IDS,
@@ -184,21 +189,20 @@ describe('Floor 2 hostile activity', () => {
         );
       }
 
-      let minimumDistance = initialDistance;
       for (let elapsed = 0; elapsed < 2_000; elapsed += GAME.DELTA_MS) {
         runSimulationStep(world, createInputState(), GAME.DELTA_MS, {
           preSystems: FLOOR2_PRE_SYSTEMS,
         });
-        minimumDistance = Math.min(
-          minimumDistance,
-          Math.hypot(
-            world.stores.position.x[enemyEid]! - world.stores.position.x[playerEid]!,
-            world.stores.position.y[enemyEid]! - world.stores.position.y[playerEid]!,
-          ),
-        );
       }
 
-      expect(minimumDistance).toBeLessThan(initialDistance);
+      const finalDistance = Math.hypot(
+        world.stores.position.x[enemyEid]! - world.stores.position.x[playerEid]!,
+        world.stores.position.y[enemyEid]! - world.stores.position.y[playerEid]!,
+      );
+      // Sustained engagement: final position must be within 90% of initial
+      // distance. A single idle-wander step or random drift cannot satisfy
+      // this; only a mob that actively chased the player for the full window.
+      expect(finalDistance).toBeLessThan(initialDistance * 0.9);
     },
   );
 });

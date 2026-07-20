@@ -1830,11 +1830,6 @@ export function enemyAISystem(world: GameWorld): void {
     const persona = enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const playerSharesRoom = isPlayerInEnemyRoom(world, eid, playerX, playerY);
-    // Cave interiors can share open geometry without sharing a semantic room ID.
-    // Preserve closed-door isolation while allowing visibly adjacent enemies to
-    // detect the player across those irregular room boundaries.
-    const hasDirectPlayerSight =
-      floorMap !== null && floorMap.hasLineOfSight(enemyX, enemyY, playerX, playerY);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
     // For a mob with a family-driven virtual target we measure aggro against
     // the virtual target (distanceToPlayer already reflects that), and set
@@ -1842,6 +1837,18 @@ export function enemyAISystem(world: GameWorld): void {
     const familyBypass = familyDecision !== undefined && familyDecision.bypassPlayerDetection;
     const inAggroRange =
       familyBypass || permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
+    // Cave interiors can share open geometry without sharing a semantic room ID.
+    // Evaluate the costly Bresenham LOS only after cheap gates fail and the
+    // enemy is in range — avoid O(ray-length) work for already-qualified mobs.
+    const hasDirectPlayerSight =
+      !familyBypass &&
+      !playerHiddenInSafeRoom &&
+      inAggroRange &&
+      !hasOpenRoomDoor &&
+      !playerSharesRoom &&
+      !permanentAggro &&
+      floorMap !== null &&
+      floorMap.hasLineOfSight(enemyX, enemyY, playerX, playerY);
     let canDetectPlayer =
       familyBypass ||
       (!playerHiddenInSafeRoom &&
