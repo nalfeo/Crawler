@@ -8209,6 +8209,144 @@
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/bone-saw-v1/2026-07-18T01-25-15-e69c0bb3/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "iron-cleaver-v1-var-0": {
+      "briefId": "iron-cleaver-v1",
+      "spriteName": "iron-cleaver-v1-var-0",
+      "assetPath": "generated/iron-cleaver-v1-var-0.png",
+      "approvedAt": "2026-07-20T04:33:38.441Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-saYZAf/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7",
+      "variantIndex": 0,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 33,
+          "y": 26,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": "weapon",
+      "contentHash": "55c409d8d8eb068d2a772769c762ebe4122c6af3541fb0a181d0b356ac10fd92",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
+    "iron-cleaver-v1-var-5": {
+      "briefId": "iron-cleaver-v1",
+      "spriteName": "iron-cleaver-v1-var-5",
+      "assetPath": "generated/iron-cleaver-v1-var-5.png",
+      "approvedAt": "2026-07-20T04:34:21.096Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-2tVrXG/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7",
+      "variantIndex": 5,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 33,
+          "y": 26,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": "weapon",
+      "contentHash": "ef2096746a753bbd88d734c4f605f3c25526da8f64ced2cf8ec4eae92c256896",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
+    "iron-cleaver-v1-var-10": {
+      "briefId": "iron-cleaver-v1",
+      "spriteName": "iron-cleaver-v1-var-10",
+      "assetPath": "generated/iron-cleaver-v1-var-10.png",
+      "approvedAt": "2026-07-20T04:38:52.183Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-yeRIoN/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7",
+      "variantIndex": 10,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 33,
+          "y": 26,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": "weapon",
+      "contentHash": "42827119ada2b7f5a8472e4c472fa0f7867096c66f3315b42e7eb6c60c3cccc2",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/iron-cleaver-v1/2026-07-18T03-40-12-d4269ad7/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
+    "dueling-saber-v1-var-3": {
+      "briefId": "dueling-saber-v1",
+      "spriteName": "dueling-saber-v1-var-3",
+      "assetPath": "generated/dueling-saber-v1-var-3.png",
+      "approvedAt": "2026-07-20T04:39:33.313Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-I9da9G/dueling-saber-v1/2026-07-18T03-37-29-7149ffde",
+      "variantIndex": 3,
+      "anchor": null,
+      "anchors": {
+        "hold": null,
+        "centerOfGravity": {
+          "x": 29,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/8",
+      "judgeScore": "4",
+      "type": "weapon",
+      "contentHash": "0411b9f7b23cbefa3b378032da6af20c0734a9172bb33968aad66c35f1b4b9b6",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/dueling-saber-v1/2026-07-18T03-37-29-7149ffde/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": null,
+      "facingDirection": "right"
+    },
+    "void-rapier-v1-var-1": {
+      "briefId": "void-rapier-v1",
+      "spriteName": "void-rapier-v1-var-1",
+      "assetPath": "generated/void-rapier-v1-var-1.png",
+      "approvedAt": "2026-07-20T04:40:36.780Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-NewqIX/void-rapier-v1/2026-07-18T03-33-16-93ca7871",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 31,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 35,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": "4",
+      "type": "weapon",
+      "contentHash": "085628ff2e0060da4a9cd388bdb007212890d8d2a9abb192ff43a752009c5de6",
+      "postprocessOverrideProfilePath": "https://crawlersprites.blob.core.windows.net/generated-runs/void-rapier-v1/2026-07-18T03-33-16-93ca7871/postprocess.overrides.json",
+      "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/void-rapier-v1/2026-07-18T03-33-16-93ca7871/postprocess.pipeline.effective.json",
+      "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/void-rapier-v1/2026-07-18T03-33-16-93ca7871/postprocess.pipeline.effective.yaml",
+      "effectiveAnchorSource": "derived",
+      "facingDirection": "right"
     }
   }
 }
