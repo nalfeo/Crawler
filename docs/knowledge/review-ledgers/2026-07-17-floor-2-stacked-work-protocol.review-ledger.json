@@ -2,23 +2,30 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-17",
   "session_slug": "floor-2-stacked-work-protocol",
-  "task_title": "Add speculative stacked-work metadata to epic control plane",
+  "task_title": "Durable speculative stacked-work tracking",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
-      "reviewer_model": "gpt-5.4",
-      "concerns_count": 4,
-      "resolved_count": 4,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 7,
+      "resolved_count": 7,
       "plan_divergence": "minor",
-      "notes": "4 concerns found (2 critical, 2 major), all resolved: (1) post-merge stack_base simultaneously required+rejected — fixed by widening allowed set from unvalidated-only to all direct deps; (2) computeReady only gated on requires_main_rebase flag not on stacked_work presence — fixed to gate on node.stacked_work==null; (3) stacked_work.issue not audited on GitHub — fixed by adding stacked_work.issue to the auditIssue loop; (4) dependency_pr_number not validated against dep PR — fixed with new stacked.base-pr-mismatch check. Plan divergence=minor: no re-architecture, all fixes were detail-level corrections to the chosen design."
+      "notes": "Adopted separate stacked_work.owner namespace; nested stacked state only; PLAN prose outside hashed contract; split offline snapshot checks from online GitHub currency; cross-mode owner/session and branch uniqueness; merged-prerequisite pending-rebase invariant; pre-rebase head/base verification; canonical A0-open/A1-blocked fixture."
     },
     "code_review": {
       "clean": true,
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-opus-4.8"],
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
           "concerns_count": 2,
           "resolved_count": 2,
           "clean": true

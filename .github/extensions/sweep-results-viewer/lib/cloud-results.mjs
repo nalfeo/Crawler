@@ -1,13 +1,23 @@
+import { normalizeFloors } from './result-data.mjs';
+
 const AGGREGATE_ARTIFACT_PATTERN = /^weapon-sweep-(?!shard-)([a-z0-9][a-z0-9-]*)$/;
 const SWEEP_JOB_PATTERN = /^(?:weapon-sweep|aggregate) \(([a-z0-9][a-z0-9-]*)/;
 
 /** Artifact name for the AI Sweep Eval final leaderboard. */
 export const LEADERBOARD_ARTIFACT_NAME = 'leaderboard';
 
-/** Maps AI Sweep Eval job name prefixes to their phase keys. */
+/**
+ * Maps AI Sweep Eval job name prefixes to their phase keys.
+ *
+ * The "search" phase key covers BOTH the legacy single `Search <combo>` job
+ * (pre round-DAG runs) and the bounded round-DAG's `Baseline <combo>`,
+ * `Checkpoint init <combo>`, and `Round N — plan candidates` / `Round N eval
+ * <combo>` / `Round N select <combo>` jobs, so historical and current runs
+ * both surface progress under the same "Search in progress" UI copy.
+ */
 const AI_SWEEP_PHASE_PATTERNS = /** @type {const} */ ([
   ['preflight', /^preflight\b/i],
-  ['search', /^search\b/i],
+  ['search', /^(?:search|baseline|checkpoint init|round\s*\d+)\b/i],
   ['validate', /^validate\b/i],
   ['aggregate', /^aggregate\b/i],
 ]);
@@ -128,6 +138,7 @@ export function mergeAggregateOutputs(entries, options = {}) {
   }
 
   const byWeapon = new Map();
+  const floorsByWeapon = new Map();
   for (const entry of entries) {
     const weapon = asString(entry?.weapon);
     assertAggregateShape(weapon, entry?.data);
@@ -135,6 +146,7 @@ export function mergeAggregateOutputs(entries, options = {}) {
       throw new Error(`Duplicate aggregate payload for weapon "${weapon}"`);
     }
     byWeapon.set(weapon, entry.data);
+    floorsByWeapon.set(weapon, normalizeFloors(entry.data.floors));
   }
 
   const requestedOrder = options.expectedWeapons ?? [];
@@ -143,6 +155,12 @@ export function mergeAggregateOutputs(entries, options = {}) {
     ...[...byWeapon.keys()].filter((weapon) => !requestedOrder.includes(weapon)).sort(),
   ];
   const first = byWeapon.get(orderedWeapons[0]);
+  const hasLegacyFloorMetadata = orderedWeapons.some(
+    (weapon) => floorsByWeapon.get(weapon) === undefined,
+  );
+  const floors = [
+    ...new Set(orderedWeapons.flatMap((weapon) => floorsByWeapon.get(weapon) ?? [])),
+  ].sort((left, right) => left - right);
 
   for (const weapon of orderedWeapons.slice(1)) {
     const data = byWeapon.get(weapon);
@@ -159,6 +177,7 @@ export function mergeAggregateOutputs(entries, options = {}) {
 
   return {
     runAt: options.runCreatedAt ?? first.runAt,
+    ...(hasLegacyFloorMetadata ? {} : { floors }),
     seeds: [...first.seeds],
     weapons: orderedWeapons,
     maxFrames: first.maxFrames,
@@ -167,6 +186,17 @@ export function mergeAggregateOutputs(entries, options = {}) {
     summaries: orderedWeapons.map((weapon) => byWeapon.get(weapon).summaries[0]),
     allRecords: orderedWeapons.flatMap((weapon) => byWeapon.get(weapon).allRecords),
   };
+}
+
+export function floorProvenanceWarning(entries) {
+  if (
+    Array.isArray(entries) &&
+    entries.length > 0 &&
+    entries.some((entry) => entry?.data?.floors === undefined)
+  ) {
+    return 'Floors are Unknown because one or more contributing artifacts lack floor provenance.';
+  }
+  return null;
 }
 
 export function cloudResultWarning({ run, expectedWeapons, availableWeapons, expiredCount }) {

@@ -37,6 +37,8 @@ jobs:
       sprites_only: ${{ steps.scope.outputs.sprites_only }}
       sprites_touched: ${{ steps.scope.outputs.sprites_touched }}
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
+      sim_touched: ${{ steps.scope.outputs.sim_touched }}
+      coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,6 +62,8 @@ jobs:
           gameplay_safe='${{ steps.detect.outputs.gameplay_safe }}'
           sprites_only='${{ steps.detect.outputs.sprites_only }}'
           sprites_touched='${{ steps.detect.outputs.sprites_touched }}'
+          sim_touched='${{ steps.detect.outputs.sim_touched }}'
+          coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
           train_promoted=false
 
           if [ "${{ github.event_name }}" = "schedule" ]; then
@@ -68,6 +72,8 @@ jobs:
             gameplay_safe=false
             sprites_only=false
             sprites_touched=true
+            sim_touched=true
+            coverage_touched=true
           elif [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "push" ]; then
             # Only trust promotion provenance while the merge train is
             # actually enabled. If MERGE_TRAIN_ENABLED is rolled back to
@@ -116,6 +122,8 @@ jobs:
           echo "sprites_only=$sprites_only" >>"$GITHUB_OUTPUT"
           echo "sprites_touched=$sprites_touched" >>"$GITHUB_OUTPUT"
           echo "train_promoted=$train_promoted" >>"$GITHUB_OUTPUT"
+          echo "sim_touched=$sim_touched" >>"$GITHUB_OUTPUT"
+          echo "coverage_touched=$coverage_touched" >>"$GITHUB_OUTPUT"
 
   # Job 1: Lightweight checks — consolidates Types & Lint, Format & Labs,
   # advisory dead-code/typecheck, and human-approval into a single runner to
@@ -271,15 +279,19 @@ jobs:
       - name: Unit tests
         run: npx vitest run --project unit --reporter=verbose
 
-  # Advisory: runs with coverage in parallel with test-unit.
-  # Posts a PR comment but is NOT in the merge-gate — a coverage regression
-  # surfaces as a visible comment without blocking the branch.
-  # Skipped for sprites_only changes (game coverage not relevant).
-  test-unit-coverage:
-    name: Unit Tests (coverage)
+  # Coverage advisory job: kept independent so the ~140-second v8 coverage suite
+  # does not block or serialize other checks. Scoped: on PRs, skipped when
+  # coverage_touched=false (labs/e2e/docs/scripts-only diffs cannot change unit
+  # coverage numbers). Fail-closed: only an explicit 'false' skips — a missing/blank
+  # value keeps it running. Push/schedule always run.
+  ci-coverage:
+    name: Advisory coverage
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
+    if: >-
+      needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.sprites_only != 'true' &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched != 'false')
     continue-on-error: true
     permissions:
       contents: read
@@ -356,9 +368,9 @@ jobs:
   # Deterministically proves the behavior-tree AI can still clear Floor 1
   # (victory + all quests, under the 5-minute game-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
-  # Scoped: skipped on art_only/docs_only, and on gameplay_safe PULL REQUESTS
-  # (engine/labs/e2e/docs/asset-only diffs the headless runner can't import).
-  # main-push always runs it, so a wrong allowlist is caught post-merge.
+  # Scoped: skipped on art_only/docs_only, and on PRs where sim_touched=false
+  # (engine/labs/e2e/docs/scripts/CI-only diffs the headless runner can't import).
+  # main-push and schedule always run it as a backstop in case the allowlist is wrong.
   test-headless:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
@@ -366,7 +378,7 @@ jobs:
     if: >-
       needs.changes.outputs.art_only != 'true' &&
       needs.changes.outputs.docs_only != 'true' &&
-      !(github.event_name == 'pull_request' && needs.changes.outputs.gameplay_safe == 'true')
+      (github.event_name != 'pull_request' || needs.changes.outputs.sim_touched == 'true')
     steps:
       - uses: actions/checkout@v4
 
@@ -467,7 +479,21 @@ jobs:
           check "Integration tests"             "${{ needs.test-integration.result }}" "true"
           # Sprite pipeline tests: skipped for art_only or docs_only (allow_skipped=true).
           check "Sprite pipeline tests"         "${{ needs.test-sprites.result }}"    "true"
-          check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"   "true"
+          # Headless Floor 1: skip is intentional only when sim_touched=false on a PR.
+          # A blank/empty sim_touched when headless was skipped on a PR indicates a
+          # potential classifier failure and rejects the gate.
+          sim_touched="${{ needs.changes.outputs.sim_touched }}"
+          headless_result="${{ needs.test-headless.result }}"
+          if [ "$headless_result" = "success" ]; then
+            echo "✅ Headless Floor 1 completion: success"
+          elif [ "$headless_result" = "skipped" ] && \
+               { [ "$docs_only" = "true" ] || [ "$sim_touched" = "false" ]; }; then
+            skip_reason="$([ "$docs_only" = "true" ] && echo "docs-only" || echo "sim not touched")"
+            echo "✅ Headless Floor 1 completion: skipped ($skip_reason)"
+          else
+            echo "❌ Headless Floor 1 completion: $headless_result (sim_touched=${sim_touched:-MISSING})"
+            exit 1
+          fi
           check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"        "true"
           echo "✅ All required checks passed"
 

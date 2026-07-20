@@ -89,6 +89,8 @@ export {
   grantPassiveAbility,
   grantEquipmentActiveAbility,
   grantEquipmentPassiveAbility,
+  grantGeneratedEquipmentActiveAbility,
+  grantGeneratedEquipmentPassiveAbility,
   revokeEquipmentAbilityGrants,
   migrateAbilityStateToSourceTracking,
   queueAbilityTrigger,
@@ -148,3 +150,16 @@ export type {
   AbilityTriggerEvent,
 } from './abilities/types.js';
 export { ACTIVE_ABILITY_SLOT_LIMIT } from './abilities/types.js';
+export {
+  grantEquipmentAbilitySources,
+  revokeEquipmentAbilitySources,
+} from './equipment-ability-grants.js';
+export {
+  GeneratedEquipmentGeneratorError,
+  generateEquipmentInstance,
+  getGeneratedEquipmentBaseV1,
+} from './generated-equipment-generator.js';
+export type {
+  GeneratedEquipmentGeneratorErrorCode,
+  GenerateEquipmentInstanceRequest,
+} from './generated-equipment-generator.js';

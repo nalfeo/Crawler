@@ -1,0 +1,55 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "ai-sweep-eval-parallel-rounds",
+  "task_title": "Redesign AI Sweep Eval search into parallel bounded rounds with safety-gate fix",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "adversarial": true,
+      "alternatives_considered": 6,
+      "plan_divergence": "minor",
+      "notes": "Adversarial review (gpt-5.4, high reasoning) read all source files and returned verdict REJECTED with 3 blocking concerns, all now fixed: (1) checkpoint-init/round1-candidates lacked if:always(), so one failed baseline matrix leg would skip downstream jobs for ALL combos under implicit if:success() -- fixed by adding if:always() to both jobs. (2) applyRoundResult halved knob steps whenever candidateShards was empty without distinguishing genuine convergence from every matrix leg failing -- fixed by adding a plannedCount param; when plannedCount indicates candidates were planned but none/some arrived, steps are left untouched instead of halved/converged, wired via workflow --planned-count computed from the round candidates.json artifact. (3) Round promotion picked purely by bestScore, so the search hill-climb could itself walk toward a config the hard safety gate would reject (the exact GH-run-29597840666 bug pattern) -- fixed by reusing aggregate-shards.ts buildLeaderboard()+selectQualifiedWinner() (the SAME pure gate functions used for final graduation) directly inside applyRoundResult, so round-to-round promotion now requires zero incumbent flips + >=90% win rate before comparing score. Alternatives considered and rejected: (a) per-combo child reusable workflow -- rejected, adds GH Actions workflow_call indirection/debuggability cost with no wall-time benefit over the explicit bounded DAG; (b) durable cross-run checkpoint storage (e.g. a repo-committed state file) -- rejected, artifacts are sufficient for a single dispatched run and avoid concurrent-run write races; (c) fully generic/dynamic round count via a controller job -- rejected per user constraint (GH Actions dynamic deps make this impractical; explicit bounded 1-3 DAG is the approved fallback); (d) reverting to one serial job -- rejected, defeats the entire wall-clock goal; (e) mirroring the gate logic in a separate function in round-plan.ts instead of reusing aggregate-shards.ts exports -- rejected, reuse of buildLeaderboard/selectQualifiedWinner has zero drift risk vs a hand-maintained mirror; (f) always halving on any non-improvement regardless of planned/received count (status quo) -- rejected, this is exactly concern 2. divergence=minor: all 3 fixes are targeted corrections within the existing round-DAG + checkpoint architecture; no re-architecture of the chosen matrix-fan-out design was warranted or performed."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "Flip-gate test used a 50%-win-rate candidate disqualified by the win-rate floor alone, so it did not isolate the flipsVsIncumbent===0 clause. Fixed by adding a dedicated isolating test (90% win rate, exactly 1 flip, mirroring GH run 29597840666) to sweep-round-plan.test.ts; verified via temporary edit/revert that it fails when the flip clause is removed."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Found the mirror-image confound: the win-rate-floor isolation test (sweep-aggregate-shards.test.ts) actually had flipsVsIncumbent=1, so it was inadvertently gated by the flip check rather than the win-rate floor it claimed to isolate. Fixed the fixture so the candidate matches the incumbent on both cells (0 flips, 50% win rate); verified via temporary edit/revert that it fails when the winRate clause is removed. No other issues found across YAML DAG structure, applyRoundResult, selectQualifiedWinner, or toSearchArtifact."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-5",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 5,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "Two separate model reviews of git diff main...HEAD, adjudicated by the orchestrating session (claude-sonnet-5) by reading the actual code/YAML for every finding before accepting or rejecting it. gpt-5.3-codex (2/2 valid, both fixed): (a) medium -- the legacy `--stage search` path in sweep-eval.ts's searchCombo() still promoted candidates by raw score only, never calling selectQualifiedWinner(), reintroducing the exact safety-gate bug in the local-smoke-run path; fixed by extracting a new exported selectSearchPromotion() that routes through buildLeaderboard+selectQualifiedWinner pinned to the fixed baseline id, with 4 new dedicated tests in sweep-eval-search-promotion.test.ts. (b) high -- in roundN-select jobs, a crashed/never-uploaded roundN-candidates planner produced PLANNED=0, indistinguishable from the legitimate 'planner ran, decided 0 candidates' case, so applyRoundResult could not tell an infra failure from real convergence; fixed by introducing a distinct 'unknown' sentinel (CLI + workflow default when candidates.json is missing) that always suppresses halve/converge, with new tests for both the legitimate-zero control case and the unknown-sentinel case. gemini-3.1-pro-preview (2/3 valid, both fixed; 1/3 invalid): (c) CRITICAL, valid, fixed -- every roundN-eval candidate job wrote its shard to the SAME local filename (shard.json) despite uploading under a uniquely-named artifact; roundN-select downloads a combo's round shards with merge-multiple:true, which silently overwrites same-named files across merged artifacts, collapsing every candidate but the last-downloaded one down to a single shard per combo per round -- this would have silently starved the leaderboard of nearly every candidate's result while looking healthy. Fixed by giving each candidate's local output file a unique shard-$HASH.json name matching its artifact name; verified by reading the actual upload/download steps for round1/2/3-eval and round1/2/3-select before and after the fix, and added a workflow-guard test asserting the unique-filename pattern. (d) HIGH, valid, fixed -- if: always() on checkpoint-init, round1-candidates, every roundN-select, validate, and aggregate meant a manual workflow cancellation would still schedule and run all of them (GitHub Actions documents always() returns true even when the run is cancelled), burning runner minutes after the user explicitly asked to stop. Replaced with if: !cancelled(), which preserves the exact 'run despite an upstream partial-matrix failure' tolerance these jobs need. Along the way discovered and fixed a second real bug this introduced: a bare leading `!` in an unquoted YAML if: scalar is parsed as a YAML tag indicator and silently truncates the condition (confirmed via both the yaml parser used by the test suite and GitHub's own documented guidance) -- fixed by wrapping every !cancelled() condition in ${{ }}, and added a repo-wide workflow-guard test asserting if: always() never reappears anywhere in the workflow. (e) MEDIUM, adjudicated INVALID -- gemini reported missing direct unit-test coverage for applyRoundResult's flip-rejection gate (the production/cloud path), claiming only the legacy selectSearchPromotion had a dedicated flip-rejection test. Re-inspection of tests/unit/ai/sweep-round-plan.test.ts found this coverage already exists and predates this review round: three dedicated applyRoundResult tests directly assert flip-tainted higher-scorers are rejected (a basic flip-vs-score case, a win-rate-floor-isolated case with a 90%-win-rate/1-flip candidate mirroring GH run 29597840666, and a sole-candidate-disqualified case). No new test was added; the finding is recorded here as non-valid with this justification rather than silently dropped."
+        }
+      ]
+    }
+  }
+}

@@ -15,6 +15,10 @@ import {
   setBloodColor,
   setEnemyAppearanceKey,
   spawnBehaviorEnemy,
+  activateMobAbilityEncounter,
+  createVerdigrisGlamourDefinition,
+  registerMobAbility,
+  setMobAbilitiesEnabled,
 } from '../../core/index.js';
 import { SHAPE_CIRCLE } from '../../core/physics-defs.js';
 import { FloorMap } from '../../core/map/FloorMap.js';
@@ -517,6 +521,41 @@ export function findWalkablePosition(
 const F1_RAT = floor1EnemyPack.archetypes.find((a) => a.id === 'rat')!;
 const F1_SLIME = floor1EnemyPack.archetypes.find((a) => a.id === 'slime')!;
 
+/** Queen Mab Tarnish — the faerie boss that owns Verdigris Glamour. */
+const F2_QUEEN_MAB = floor2EnemyPack.archetypes.find((a) => a.id === 'faerie-boss')!;
+
+/**
+ * Spawn Queen Mab and arm Verdigris Glamour through the CANONICAL mob-ability
+ * runtime — the exact same `mobAbilitySystem` the real game runs (default-off).
+ * This is NOT a lab-only reimplementation of the mechanic: the lab merely flips
+ * the feature gate on, registers the typed catalog-driven definition for this
+ * caster, and marks the encounter active so the ability clock begins.
+ *
+ * The appearance key set by `spawnFromArchetype` (`faerie-boss`) is what the
+ * runtime's recycled-id guard matches on, so the definition's `bossArchetypeKey`
+ * and this spawn stay in lockstep.
+ */
+function spawnQueenMabArena(
+  world: GameWorld,
+  map: FloorMap,
+  cx: number,
+  cy: number,
+  rng: SeededRandom,
+): number[] {
+  const pos = findWalkablePosition(map, cx, cy, rng);
+  const eid = spawnFromArchetype(world, pos.x, pos.y, F2_QUEEN_MAB);
+  // Permanent aggro so the encounter reads as "engaged" for observers.
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+
+  // Enable the canonical runtime, register the typed Verdigris Glamour
+  // definition for this caster, and start the encounter clock. Spawning this
+  // preset IS the explicit arena encounter-start transition.
+  setMobAbilitiesEnabled(world, true);
+  registerMobAbility(world, eid, createVerdigrisGlamourDefinition());
+  activateMobAbilityEncounter(world);
+  return [eid];
+}
+
 function buildFloor2FamilyPreset(familyId: string): ArenaEnemyPreset {
   const boss = floor2EnemyPack.archetypes.find((a) => a.familyId === familyId && a.isBoss === true);
   const trash = floor2EnemyPack.archetypes.filter(
@@ -576,6 +615,16 @@ export const ARENA_ENEMY_PRESETS: readonly ArenaEnemyPreset[] = [
   },
   // ── Floor 2 (one per family) ─────────────────────────────────────────────
   ...FLOOR2_FAMILY_IDS.map(buildFloor2FamilyPreset),
+  // ── Floor 2 boss ability slice ───────────────────────────────────────────
+  {
+    id: 'f2-queen-mab',
+    name: 'F2: Queen Mab (Verdigris Glamour)',
+    floor: 'floor2',
+    description:
+      'Queen Mab Tarnish solo, with Verdigris Glamour armed through the canonical mob-ability runtime: 9s eligibility, 1.5s hostile-red 12ft telegraph locked to the player, moderate damage + Tarnished, 9s cooldown after resolution.',
+    entries: [],
+    customSpawnFn: spawnQueenMabArena,
+  },
   // ── Custom / blank ───────────────────────────────────────────────────────
   {
     id: 'custom',
@@ -640,3 +689,18 @@ export function spawnPresetAroundCenter(
   }
   return eids;
 }
+
+/**
+ * Player HP used by the arena's headless evidence observer (and by any
+ * passive-observer-mode run that needs the player to survive the full
+ * encounter without a weapon). Setting this to a very large value acts as
+ * a deterministic stand-in for immortal mode so the evidence harness and
+ * unit tests can complete without equipping a weapon or attaching the
+ * `Invincible` component (which requires the engine layer).
+ *
+ * The arena lab's interactive immortal mode (`PlayerMode === 'immortal'`)
+ * achieves the same effect by attaching `Invincible`; both share this value
+ * as the authoritative "observer" health so the two setups are explicitly
+ * linked.
+ */
+export const ARENA_OBSERVER_PLAYER_HP = 100_000;
