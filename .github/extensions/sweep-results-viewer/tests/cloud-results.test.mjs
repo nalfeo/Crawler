@@ -5,6 +5,7 @@ import {
   aiSweepWarning,
   cloudResultWarning,
   expectedWeaponsFromJobs,
+  floorProvenanceWarning,
   isLeaderboardArtifact,
   isTerminalRun,
   mergeAggregateOutputs,
@@ -43,6 +44,7 @@ function aggregate(weapon, options = {}) {
   }));
   return {
     runAt: '2026-07-16T00:00:00Z',
+    ...(options.floors === null ? {} : { floors: options.floors ?? [1] }),
     seeds,
     weapons: [weapon],
     maxFrames: options.maxFrames ?? 19_800,
@@ -139,9 +141,34 @@ test('merges per-weapon aggregates in expected order using workflow timing', () 
     },
   );
   assert.equal(merged.runAt, '2026-07-16T06:36:35Z');
+  assert.deepEqual(merged.floors, [1]);
   assert.deepEqual(merged.weapons, ['sword', 'bow']);
   assert.equal(merged.summaries.length, 2);
   assert.equal(merged.allRecords.length, 4);
+});
+
+test('normalizes floor provenance and preserves Unknown for mixed legacy aggregates', () => {
+  const normalized = mergeAggregateOutputs([
+    { weapon: 'sword', data: aggregate('sword', { floors: [2, 1, 2] }) },
+    { weapon: 'bow', data: aggregate('bow', { floors: [3, 2] }) },
+  ]);
+  assert.deepEqual(normalized.floors, [1, 2, 3]);
+  assert.equal(floorProvenanceWarning([{ data: normalized }]), null);
+
+  const legacyEntries = [
+    { weapon: 'sword', data: aggregate('sword', { floors: [1] }) },
+    { weapon: 'bow', data: aggregate('bow', { floors: null }) },
+  ];
+  const legacy = mergeAggregateOutputs(legacyEntries);
+  assert.equal(Object.hasOwn(legacy, 'floors'), false);
+  assert.match(floorProvenanceWarning(legacyEntries), /Floors are Unknown/);
+});
+
+test('rejects malformed present cloud floor metadata', () => {
+  assert.throws(
+    () => mergeAggregateOutputs([{ weapon: 'sword', data: aggregate('sword', { floors: ['1'] }) }]),
+    /floors must be a non-empty array of positive integers/,
+  );
 });
 
 test('rejects inconsistent aggregate payloads', () => {
@@ -260,6 +287,26 @@ test('parseAiSweepJobPhases counts skipped jobs as done', () => {
   const phases = parseAiSweepJobPhases(jobs);
   assert.equal(phases.validate.done, 1);
   assert.equal(phases.validate.failed, 0);
+});
+
+test('parseAiSweepJobPhases classifies the bounded round-DAG job names under "search"', () => {
+  // The round-DAG (Baseline / Checkpoint init / Round N — plan candidates /
+  // Round N eval / Round N select) replaced the old monolithic "Search"
+  // job — all of it must still classify as the "search" phase so progress
+  // reporting keeps working for the new workflow shape.
+  const jobs = [
+    { name: 'Baseline legacy+legacy', status: 'completed', conclusion: 'success' },
+    { name: 'Checkpoint init legacy+legacy', status: 'completed', conclusion: 'success' },
+    { name: 'Round 1 — plan candidates', status: 'completed', conclusion: 'success' },
+    { name: 'Round 1 eval riskRewardFused+legacy', status: 'in_progress', conclusion: null },
+    { name: 'Round 1 select legacy+legacy', status: 'queued', conclusion: null },
+    { name: 'Round 2 eval navmeshFused+slackAware', status: 'queued', conclusion: null },
+  ];
+  const phases = parseAiSweepJobPhases(jobs);
+  assert.equal(phases.search.total, 6);
+  assert.equal(phases.search.done, 3);
+  assert.equal(phases.search.running, 1);
+  assert.equal(phases.search.pending, 2);
 });
 
 test('isLeaderboardArtifact accepts only a non-expired artifact named "leaderboard"', () => {

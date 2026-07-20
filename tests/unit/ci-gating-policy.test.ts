@@ -62,7 +62,7 @@ describe('ci.yml headless and coverage gating policy', () => {
     const doc = loadCiWorkflow();
     expect(doc.jobs['changes']).toBeDefined();
     expect(doc.jobs['test-headless']).toBeDefined();
-    expect(doc.jobs['test-unit-coverage']).toBeDefined();
+    expect(doc.jobs['ci-coverage']).toBeDefined();
     expect(doc.jobs['merge-gate']).toBeDefined();
   });
 
@@ -112,23 +112,23 @@ describe('ci.yml headless and coverage gating policy', () => {
     expect(condition).toContain("docs_only != 'true'");
   });
 
-  // --- test-unit-coverage gating ---
+  // --- ci-coverage gating ---
 
-  it('test-unit-coverage skips on PR only when coverage_touched is explicitly false (fail-closed)', () => {
-    const condition = getJobIf(loadCiWorkflow(), 'test-unit-coverage');
+  it('ci-coverage skips on PR only when coverage_touched is explicitly false (fail-closed)', () => {
+    const condition = getJobIf(loadCiWorkflow(), 'ci-coverage');
     // Fail-closed: only an explicit 'false' skips coverage — a missing/blank value runs the job.
     // Pattern: (github.event_name != 'pull_request' || needs.changes.outputs.coverage_touched != 'false')
     expect(condition).toContain("coverage_touched != 'false'");
     expect(condition).toContain("github.event_name != 'pull_request'");
   });
 
-  it('test-unit-coverage runs on non-PR events regardless of coverage_touched (backstop)', () => {
-    const condition = getJobIf(loadCiWorkflow(), 'test-unit-coverage');
+  it('ci-coverage runs on non-PR events regardless of coverage_touched (backstop)', () => {
+    const condition = getJobIf(loadCiWorkflow(), 'ci-coverage');
     expect(condition).toMatch(/github\.event_name\s*!=\s*'pull_request'/);
   });
 
-  it('test-unit-coverage still skips on docs_only and sprites_only', () => {
-    const condition = getJobIf(loadCiWorkflow(), 'test-unit-coverage');
+  it('ci-coverage still skips on docs_only and sprites_only', () => {
+    const condition = getJobIf(loadCiWorkflow(), 'ci-coverage');
     expect(condition).toContain("docs_only != 'true'");
     expect(condition).toContain("sprites_only != 'true'");
   });
