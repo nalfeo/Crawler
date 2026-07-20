@@ -46,6 +46,7 @@ const trustedAppId = Number.parseInt(process.env.CI_CONFLICT_COORDINATOR_APP_ID 
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const now = new Date();
+const BASE_REF = 'main';
 
 if (!owner || !repo || !token || !dispatchToken || !Number.isInteger(trustedAppId)) {
   throw new Error(
@@ -276,6 +277,11 @@ async function fetchLivePull(number) {
   return (await request(token, `/repos/${owner}/${repo}/pulls/${number}`)).data;
 }
 
+async function fetchBaseSha() {
+  return (await request(token, `/repos/${owner}/${repo}/git/ref/heads/${BASE_REF}`)).data.object
+    .sha;
+}
+
 async function targetHasHealthyOwner(number) {
   const [pull, comments] = await Promise.all([fetchLivePull(number), commentsFor(number)]);
   const normalized = {
@@ -330,8 +336,7 @@ async function closeDuplicate(proof) {
       process.stdout.write(`retain pr=#${proof.number} reason=healthy-or-inconsistent-owner\n`);
       return false;
     }
-    const currentMain = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
-      .object.sha;
+    const currentMain = await fetchBaseSha();
     const numbers = new Set([
       proof.number,
       ...proof.predecessorHeads.map(({ number }) => number),
@@ -361,15 +366,14 @@ async function closeDuplicate(proof) {
     // next coordinator run re-evaluate. GitHub's close endpoint has no CAS, so
     // a concurrent push can silently make the proof stale.
     const [postMain, postTarget, postLeader] = await Promise.all([
-      (async () =>
-        (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha)(),
+      fetchBaseSha(),
       fetchLivePull(proof.number),
       proof.leaderHead ? fetchLivePull(proof.leaderHead.number) : Promise.resolve(null),
     ]);
     const postLeaderSha = postLeader?.head?.sha ?? null;
     const postTargetDrifted =
       postTarget?.head?.sha !== proof.targetHead ||
-      postTarget?.base?.ref !== 'main' ||
+      postTarget?.base?.ref !== BASE_REF ||
       postTarget?.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase();
     const proofDrifted =
       postMain !== currentMain ||

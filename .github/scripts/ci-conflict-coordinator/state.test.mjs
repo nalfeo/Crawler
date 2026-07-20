@@ -303,7 +303,7 @@ test('post-close proof guard revalidates the duplicate PR head before leaving it
   );
   assert.match(source, /fetchLivePull\(proof\.number\)/);
   assert.match(source, /postTarget\?\.head\?\.sha !== proof\.targetHead/);
-  assert.match(source, /postTarget\?\.base\?\.ref !== 'main'/);
+  assert.match(source, /postTarget\?\.base\?\.ref !== BASE_REF/);
 });
 
 test('workflow is event-driven and has a five-minute scheduling backstop', () => {
