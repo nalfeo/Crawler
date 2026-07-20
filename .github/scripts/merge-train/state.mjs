@@ -124,7 +124,19 @@ export function candidateRef(slot, fingerprint) {
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
     throw new Error('Candidate fingerprint must be a SHA-256 hex digest');
   }
-  return `merge-train/candidate-${slot}-${fingerprint.slice(0, 16)}`;
+  return `refs/merge-train-candidates/candidate-${slot}-${fingerprint.slice(0, 16)}`;
+}
+
+export function candidateEvidenceId(fingerprint, candidateSha) {
+  if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
+    throw new Error('Candidate fingerprint must be a SHA-256 hex digest');
+  }
+  if (!/^[0-9a-f]{40}$/i.test(candidateSha)) {
+    throw new Error('Candidate evidence requires a Git commit SHA');
+  }
+  // Hash the combined value so external_id stays within GitHub's 100-char limit
+  // (fingerprint is 64 chars + ':' + 40-char SHA = 105 chars; SHA-256 hex = 64 chars).
+  return createHash('sha256').update(`${fingerprint}:${candidateSha.toLowerCase()}`).digest('hex');
 }
 
 export function admissionFingerprint({
