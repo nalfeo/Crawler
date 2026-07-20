@@ -212,6 +212,10 @@ export interface MainSceneState {
   readonly playerFeet: ProbePoint | null;
   /** Live world-camera center in PIXELS (world space), or null. */
   readonly cameraCenter: ProbePoint | null;
+  /** Floor 2 settlement room count, or zero before/non-Floor-2 initialization. */
+  readonly settlementRoomCount: number;
+  /** Live Floor 2 settlement shop archetype ids in snapshot order. */
+  readonly settlementShopArchetypeIds: readonly string[];
 }
 
 export interface FamilyHudProbeState {
@@ -518,6 +522,13 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         displayObjectCount: phaserScene?.children.list.length ?? 0,
         playerFeet,
         cameraCenter: cameraCenter(),
+        settlementRoomCount: world?.floorExtendedState?.settlement?.settlementRoomIds.length ?? 0,
+        settlementShopArchetypeIds: [
+          ...(world?.floorExtendedState?.settlement?.quartermasterShop
+            ? [world.floorExtendedState.settlement.quartermasterShop.archetypeId]
+            : []),
+          ...(world?.floorExtendedState?.settlement?.shops.map((shop) => shop.archetypeId) ?? []),
+        ],
       };
     },
 

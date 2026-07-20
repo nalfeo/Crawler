@@ -15,10 +15,6 @@ import type { AnnouncementEvent } from '../shared/announcement-events.js';
 import type { MobAbilityRuntime } from './mob-abilities/types.js';
 import { createMobAbilityRuntime } from './mob-abilities/types.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
-import {
-  createEmptyAchievementFactState,
-  type AchievementFactState,
-} from '../shared/achievements.js';
 import type {
   BloodFootprintSurface,
   BloodPoolSurface,
@@ -101,6 +97,10 @@ import type {
   FactionRelationDelta,
   Floor2State,
 } from './faction-relations.js';
+import {
+  createEmptyAchievementFactSnapshot,
+  type AchievementFactSnapshot,
+} from '../shared/achievements.js';
 
 const logger = createLogger('core:world');
 
@@ -423,8 +423,8 @@ export interface GameWorld {
     pendingUnlockIds: string[];
     /** Achievement IDs whose reward has been opened/claimed this run. */
     claimedIds: Set<string>;
-    /** Deterministic run-global achievement facts carried across floor transitions. */
-    runGlobal: AchievementFactState;
+    /** Aggregate facts from completed floors only; the active floor stays live. */
+    carriedRunFacts: AchievementFactSnapshot;
   };
   /**
    * True when the player entity's current position is inside a safe room.
@@ -637,7 +637,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       unlockedIds: new Set(),
       pendingUnlockIds: [],
       claimedIds: new Set(),
-      runGlobal: createEmptyAchievementFactState(),
+      carriedRunFacts: createEmptyAchievementFactSnapshot(),
     },
     debugFlags: {
       showAllRooms: false,

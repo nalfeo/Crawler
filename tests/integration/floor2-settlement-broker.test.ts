@@ -8,9 +8,9 @@
  * the actual pipelines rather than call the systems by hand.
  */
 import { query } from 'bitecs';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { SeededRandom } from '../../src/shared/random.js';
-import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
+import { BiomeType, RoomRole, TilePresets } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import { getGenerator } from '../../src/core/map/generators/registry.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
@@ -20,8 +20,13 @@ import {
   DEFAULT_RELATION,
   type FamilyId,
 } from '../../src/core/faction-relations.js';
-import { initializeFloor2Settlement } from '../../src/game/floor2Settlement.js';
+import {
+  initializeFloor2Settlement,
+  QUARTERMASTER_ARCHETYPE_ID,
+} from '../../src/game/floor2Settlement.js';
+import * as shopArchetypes from '../../src/shared/data/shop-archetypes.js';
 import { DoorState } from '../../src/core/components.js';
+import { floodFill } from '../../src/core/map/grid-utils.js';
 import {
   getFloor2FamilyEliteArchetype,
   getFloor2FamilyFallbackArchetype,
@@ -145,7 +150,20 @@ describe('Floor 2 settlement · initialization', () => {
     expect(seenDoorKeys).toEqual(expectedDoorKeys);
 
     const settlementDoorTiles = settlementRooms.flatMap((room) => room.doors);
-    const npcEids = [snap.brokerEid, snap.defectorEid, ...snap.shops.map((shop) => shop.npcEid)];
+    const width = world.floorMap.config.widthTiles;
+    const height = world.floorMap.config.heightTiles;
+    const reachable = floodFill(
+      world.floorMap.playerSpawn.y * width + world.floorMap.playerSpawn.x,
+      width,
+      height,
+      (index) => world.floorMap!.tileMap.isPassable(index % width, Math.floor(index / width)),
+    );
+    const npcEids = [
+      snap.brokerEid,
+      snap.defectorEid,
+      snap.quartermasterShop.npcEid,
+      ...snap.shops.map((shop) => shop.npcEid),
+    ];
     const npcTiles = npcEids.map((eid) => {
       const tile = world.floorMap!.worldToTile(
         world.stores.position.x[eid] ?? 0,
@@ -154,6 +172,7 @@ describe('Floor 2 settlement · initialization', () => {
       const roomId = world.floorMap!.roomGraph.getRoomAt(tile.x, tile.y);
       expect(roomId).toBeGreaterThanOrEqual(0);
       expect(snap.settlementRoomIds).toContain(roomId);
+      expect(reachable[tile.y * width + tile.x]).toBe(1);
       expect(
         settlementDoorTiles.some(
           (door) => Math.max(Math.abs(tile.x - door.x), Math.abs(tile.y - door.y)) <= 1,
@@ -196,6 +215,96 @@ describe('Floor 2 settlement · initialization', () => {
     expect(a.defectorFamilyId).toEqual(b.defectorFamilyId);
     expect(a.shops.map((s) => s.archetypeId)).toEqual(b.shops.map((s) => s.archetypeId));
     expect(a.shops.map((s) => s.inventory)).toEqual(b.shops.map((s) => s.inventory));
+    // Guaranteed Quartermaster is also deterministic.
+    expect(a.quartermasterShop.archetypeId).toEqual(b.quartermasterShop.archetypeId);
+    expect(a.quartermasterShop.inventory).toEqual(b.quartermasterShop.inventory);
+  });
+
+  it('Quartermaster is never selected from the random shop pool', () => {
+    // Run several different seeds and verify the non-QM shops array never
+    // contains the Quartermaster archetype id.
+    const seeds = [1, 2, 3, 42, 100, 999, 12345];
+    for (const seed of seeds) {
+      const world = createTestWorld({ seed });
+      world.floorMap = buildFloor2Map();
+      spawnPlayer(world, 0, 0);
+      world.floor = 2;
+      seedSettlementFamilyState(world);
+      const snap = initializeFloor2Settlement(world);
+      for (const shop of snap.shops) {
+        expect(shop.archetypeId).not.toBe(QUARTERMASTER_ARCHETYPE_ID);
+      }
+      // Exactly one Quartermaster guaranteed.
+      expect(snap.quartermasterShop.archetypeId).toBe(QUARTERMASTER_ARCHETYPE_ID);
+    }
+  });
+  it('throws actionably when the archetype pool contains only the Quartermaster (empty random pool)', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.floorMap = buildFloor2Map();
+    spawnPlayer(world, 0, 0);
+    world.floor = 2;
+    seedSettlementFamilyState(world);
+    const onlyQm = shopArchetypes
+      .loadShopArchetypes()
+      .filter((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
+    expect(() => initializeFloor2Settlement(world, { archetypes: onlyQm })).toThrowError(
+      /requires \d+ non-Quartermaster shop archetypes, found 0/,
+    );
+  });
+
+  it('throws actionably when the canonical archetype list is missing the Quartermaster', () => {
+    const world = createTestWorld({ seed: 42 });
+    world.floorMap = buildFloor2Map();
+    spawnPlayer(world, 0, 0);
+    world.floor = 2;
+    seedSettlementFamilyState(world);
+
+    const canonicalWithoutQm = shopArchetypes
+      .loadShopArchetypes()
+      .filter((a) => a.id !== QUARTERMASTER_ARCHETYPE_ID);
+    const loadSpy = vi
+      .spyOn(shopArchetypes, 'loadShopArchetypes')
+      .mockReturnValue(canonicalWithoutQm);
+
+    try {
+      expect(() => initializeFloor2Settlement(world)).toThrowError(
+        new RegExp(`canonical "${QUARTERMASTER_ARCHETYPE_ID}" archetype not found`),
+      );
+      expect(loadSpy).toHaveBeenCalled();
+    } finally {
+      loadSpy.mockRestore();
+    }
+  });
+
+  it('fails before mutating settlement state when strict placement capacity is unavailable', () => {
+    const world = createTestWorld({ seed: 999 });
+    world.floorMap = buildFloor2Map();
+    spawnPlayer(world, 0, 0);
+    world.floor = 2;
+    seedSettlementFamilyState(world);
+
+    const settlementRooms = world.floorMap.roomGraph.getRoomsByRole(RoomRole.SETTLEMENT);
+    for (const room of settlementRooms) {
+      for (const cell of room.interiorCells ?? []) {
+        world.floorMap.tileMap.flags[cell.y * WIDTH + cell.x] = TilePresets.WALL;
+      }
+    }
+    const rolesBefore = settlementRooms.map((room) => room.role);
+    const terrainBefore = world.floorMap.terrain.slice();
+    const doorCountBefore = query(world.ecs, [DoorState]).length;
+    const doorArraysBefore = settlementRooms.map((room) => [...room.doors]);
+    const tileMapFlagsBefore = world.floorMap.tileMap.flags.slice();
+
+    expect(() => initializeFloor2Settlement(world, { shopCount: 2 })).toThrowError(
+      /settlement capacity insufficient; required=5/,
+    );
+    expect(settlementRooms.map((room) => room.role)).toEqual(rolesBefore);
+    expect(world.floorMap.terrain).toEqual(terrainBefore);
+    expect(query(world.ecs, [DoorState])).toHaveLength(doorCountBefore);
+    expect(settlementRooms.map((room) => [...room.doors])).toEqual(doorArraysBefore);
+    expect(world.floorMap.tileMap.flags).toEqual(tileMapFlagsBefore);
+    expect(world.floorExtendedState?.settlement).toBeUndefined();
+    expect(world.npcs.size).toBe(0);
   });
 });
 

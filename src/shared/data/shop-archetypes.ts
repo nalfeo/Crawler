@@ -16,6 +16,8 @@ import archetypesJson from './shop-archetypes.floor2.json';
 import weaponsJson from './weapons.json';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../quest-types.js';
 
+export const FLOOR2_QUARTERMASTER_ARCHETYPE_ID = 'the-quartermaster';
+
 const shopEntrySchema = z
   .object({
     /** Item id — must resolve against the known-item catalog (see below). */
@@ -89,6 +91,14 @@ export function loadShopArchetypes(): readonly ShopArchetypeDef[] {
         );
       }
     }
+  }
+  const quartermasterCount = parsed.archetypes.filter(
+    (archetype) => archetype.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+  ).length;
+  if (quartermasterCount !== 1) {
+    throw new Error(
+      `Floor 2 shop archetypes must contain exactly one "${FLOOR2_QUARTERMASTER_ARCHETYPE_ID}" definition; found ${quartermasterCount}`,
+    );
   }
   cachedArchetypes = Object.freeze(parsed.archetypes.slice());
   return cachedArchetypes;

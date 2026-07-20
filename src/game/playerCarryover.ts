@@ -12,7 +12,12 @@ import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.j
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import type { AbilityGrantSource, AbilityState } from '../shared/abilities.js';
-import { createEmptyAchievementFactState } from '../shared/achievements.js';
+import {
+  cloneAchievementFactSnapshot,
+  mergeAchievementFactSnapshots,
+  type AchievementFactSnapshot,
+} from '../shared/achievements.js';
+import { collectCurrentFloorAchievementFacts } from './systems/achievementSystem.js';
 import { migrateAbilityStateToSourceTracking } from './systems/abilitySystem.js';
 import type { PlayerLevel, SkillState, StatModifier } from '../shared/skills.js';
 import {
@@ -100,6 +105,8 @@ export interface PlayerCarryoverSnapshot {
     readonly unlockedIds: readonly string[];
     readonly pendingUnlockIds: readonly string[];
     readonly claimedIds: readonly string[];
+    /** Optional for backward compatibility with pre-scoped carryover snapshots. */
+    readonly carriedRunFacts?: AchievementFactSnapshot;
   };
 }
 
@@ -605,6 +612,10 @@ export function capturePlayerCarryover(
       unlockedIds: [...world.achievements.unlockedIds],
       pendingUnlockIds: [...world.achievements.pendingUnlockIds],
       claimedIds: [...world.achievements.claimedIds],
+      carriedRunFacts: mergeAchievementFactSnapshots(
+        world.achievements.carriedRunFacts,
+        collectCurrentFloorAchievementFacts(world),
+      ),
     },
   };
   validateGeneratedCarryover(world, snapshot);
@@ -630,7 +641,7 @@ export function restorePlayerCarryover(world: GameWorld, playerEid: number, inpu
     unlockedIds: new Set(snapshot.achievements.unlockedIds),
     pendingUnlockIds: [...snapshot.achievements.pendingUnlockIds],
     claimedIds: new Set(snapshot.achievements.claimedIds),
-    runGlobal: createEmptyAchievementFactState(),
+    carriedRunFacts: cloneAchievementFactSnapshot(snapshot.achievements.carriedRunFacts),
   };
 
   clearEquipmentState(world, playerEid);
