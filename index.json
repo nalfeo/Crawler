@@ -1,5 +1,16 @@
 [
   {
+    "commit": "4e29134724eae0fdd4cfaece02a518dd296e7e87",
+    "commitDate": "2026-07-20T22:34:05Z",
+    "commitSubject": "feat(inventory): add instance-aware equipment transfers (#1555)",
+    "capturedAt": "2026-07-20T23:49:38.484Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29785011688",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/4e29134724eae0fdd4cfaece02a518dd296e7e87.json"
+  },
+  {
     "commit": "469e63400044d41e6ae3a00683c36722f13f103d",
     "commitDate": "2026-07-20T22:23:19Z",
     "commitSubject": "ci: cancel superseded PR heads in CI and Security Review workflows (#1694)",
