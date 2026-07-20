@@ -570,11 +570,11 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
 
       let createCalls = 0;
       let updateArgs: { check_run_id: number; conclusion: string; head_sha?: string } | undefined;
-      let listArgs: { per_page?: number } | undefined;
+      let listArgs: { per_page?: number; filter?: string } | undefined;
       const github = {
         rest: {
           checks: {
-            listForRef: async (args: { per_page?: number }) => {
+            listForRef: async (args: { per_page?: number; filter?: string }) => {
               listArgs = args;
               return {
                 data: {
@@ -641,6 +641,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       expect(updateArgs?.check_run_id).toBe(777);
       expect(updateArgs?.conclusion).toBe('cancelled');
       expect(listArgs?.per_page).toBe(100);
+      expect(listArgs?.filter).toBe('all');
       // head_sha is create-only on the Checks API -- the update call must
       // not send it (the PATCH endpoint does not accept it and could 422).
       expect(updateArgs?.head_sha).toBeUndefined();

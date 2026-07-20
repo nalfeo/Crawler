@@ -153,6 +153,16 @@ describe('merge-train workflow wake-ups', () => {
       expect(publish?.with?.script).toContain('head_sha: process.env.ATTESTATION_SHA');
       expect(publish?.with?.script).not.toContain('head_sha: process.env.CANDIDATE_SHA');
     });
+
+    it('requests all check runs (filter: all) in the fallback recovery step to prevent hidden results masking bisection', () => {
+      const steps = loadValidationWorkflow().jobs.publish?.steps ?? [];
+      const fallback = steps.find(
+        (step) => step.name === 'Mark candidate check retryable if publishing failed',
+      );
+      // The fallback listForRef must request all runs so a newer in_progress run
+      // is never hidden behind an earlier terminal result for the same check name.
+      expect(fallback?.with?.script).toContain("filter: 'all'");
+    });
   });
 
   it('uses the App checkout credential for candidates and never exposes a PAT', () => {
