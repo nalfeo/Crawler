@@ -1,6 +1,14 @@
 const apiUrl = process.env.GITHUB_API_URL || 'https://api.github.com';
 const graphqlUrl = process.env.GITHUB_GRAPHQL_URL || 'https://api.github.com/graphql';
 
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_RETRY_ATTEMPTS = 2;
+const RETRY_DELAY_MS = Number(process.env.GITHUB_REQUEST_RETRY_DELAY_MS ?? 1000);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function summarizeBody(text, maxLength = 240) {
   const normalized = String(text || '')
     .replace(/\s+/g, ' ')
@@ -22,46 +30,60 @@ function headers(token, extra = {}) {
 }
 
 export async function request(token, path, options = {}) {
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: options.method || 'GET',
-    headers: headers(token, options.headers),
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
-  const text = await response.text();
-  let data = null;
-  let parseError = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch (error) {
-      parseError = error;
+  const method = options.method || 'GET';
+  const canRetry = method === 'GET';
+  for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await sleep(RETRY_DELAY_MS * Math.pow(2, attempt - 1));
     }
-  }
-  if (!response.ok) {
-    const error = new Error(
-      `GitHub ${options.method || 'GET'} ${path} failed (${response.status}): ${data?.message || summarizeBody(text)}`,
-    );
-    error.status = response.status;
-    error.data = data;
-    error.headers = response.headers;
-    error.body = text;
+    const response = await fetch(`${apiUrl}${path}`, {
+      method,
+      headers: headers(token, options.headers),
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+    const text = await response.text();
+    let data = null;
+    let parseError = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (error) {
+        parseError = error;
+      }
+    }
+    if (!response.ok) {
+      const error = new Error(
+        `GitHub ${method} ${path} failed (${response.status}): ${data?.message || summarizeBody(text)}`,
+      );
+      error.status = response.status;
+      error.data = data;
+      error.headers = response.headers;
+      error.body = text;
+      if (parseError) {
+        error.cause = parseError;
+      }
+      if (canRetry && RETRYABLE_STATUSES.has(response.status) && attempt < MAX_RETRY_ATTEMPTS) {
+        // Retryable transient error — next iteration backs off and retries.
+        continue;
+      }
+      throw error;
+    }
     if (parseError) {
+      const error = new Error(
+        `GitHub ${method} ${path} returned non-JSON success (${response.status}): ${summarizeBody(text)}`,
+      );
+      error.status = response.status;
+      error.data = null;
+      error.headers = response.headers;
+      error.body = text;
       error.cause = parseError;
+      throw error;
     }
-    throw error;
+    return { data, headers: response.headers, status: response.status };
   }
-  if (parseError) {
-    const error = new Error(
-      `GitHub ${options.method || 'GET'} ${path} returned non-JSON success (${response.status}): ${summarizeBody(text)}`,
-    );
-    error.status = response.status;
-    error.data = null;
-    error.headers = response.headers;
-    error.body = text;
-    error.cause = parseError;
-    throw error;
-  }
-  return { data, headers: response.headers, status: response.status };
+  // Unreachable: every loop iteration either returns, throws, or continues to the
+  // next attempt; the final attempt always throws or returns directly.
+  throw new Error(`GitHub ${method} ${path}: exhausted all retry attempts`);
 }
 
 export async function paginate(token, path) {
@@ -195,9 +217,12 @@ export async function listClosingIssues(token, owner, repo, number) {
           closingIssuesReferences(first: 100, after: $cursor) {
             pageInfo { hasNextPage endCursor }
             nodes {
+              id
               number
               title
+              state
               labels(first: 100) { nodes { name } }
+              repository { nameWithOwner }
             }
           }
         }

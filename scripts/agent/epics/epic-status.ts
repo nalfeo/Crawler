@@ -2,13 +2,13 @@
 
 import process from 'node:process';
 import {
+  applyGithubAudit,
   auditGithub,
   buildMaterializationPlan,
   createGhRunner,
   findRepoRoot,
   loadAndValidateEpic,
   type Diagnostic,
-  type ReconciliationProposal,
 } from './epic-status-lib.js';
 
 interface CliOptions {
@@ -49,39 +49,31 @@ function renderDiagnostics(label: string, diagnostics: ReadonlyArray<Diagnostic>
   ];
 }
 
-function mergeProposal(
-  left: ReconciliationProposal,
-  right: ReconciliationProposal,
-): ReconciliationProposal {
-  return {
-    repo_patch: [...left.repo_patch, ...right.repo_patch],
-    operator_actions: [...left.operator_actions, ...right.operator_actions],
-  };
-}
-
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
   const repoRoot = findRepoRoot(process.cwd());
-  const offline = loadAndValidateEpic(options.epicId, repoRoot);
-  let errors = [...offline.errors];
-  let warnings = [...offline.warnings];
-  let proposal = offline.proposal;
+  let result = loadAndValidateEpic(options.epicId, repoRoot);
 
   if (options.github) {
-    if (!offline.state) {
-      errors.push({
-        code: 'github.no-state',
-        message: 'GitHub audit requires a schema-valid state manifest',
-      });
+    if (!result.state) {
+      result = {
+        ...result,
+        errors: [
+          ...result.errors,
+          {
+            code: 'github.no-state',
+            message: 'GitHub audit requires a schema-valid state manifest',
+          },
+        ],
+        release_ready: false,
+      };
     } else {
-      const audit = auditGithub(offline.state, createGhRunner());
-      errors = [...errors, ...audit.errors];
-      warnings = [...warnings, ...audit.warnings];
-      proposal = mergeProposal(proposal, audit.proposal);
+      const audit = auditGithub(result.state, createGhRunner());
+      result = applyGithubAudit(result, audit);
     }
   }
   const stackedWork =
-    offline.state?.nodes
+    result.state?.nodes
       .filter((node) => node.stacked_work)
       .map((node) => ({
         node_id: node.node_id,
@@ -92,20 +84,19 @@ function main(): void {
         rebase_to_main_pending: node.stacked_work!.rebase_to_main.pending,
       })) ?? [];
 
-  const releaseReady = offline.release_ready && errors.length === 0;
   const payload = {
     epic_id: options.epicId,
-    valid: errors.length === 0,
-    release_ready: releaseReady,
-    ready_queue: offline.ready_queue,
+    valid: result.errors.length === 0,
+    release_ready: result.release_ready,
+    ready_queue: result.ready_queue,
     stacked_work: stackedWork,
-    blockers: offline.blockers,
-    errors,
-    warnings,
-    reconciliation: options.reconcile ? proposal : undefined,
+    blockers: result.blockers,
+    errors: result.errors,
+    warnings: result.warnings,
+    reconciliation: options.reconcile ? result.proposal : undefined,
     materialization_plan:
-      options.materializationPlan && offline.state && offline.errors.length === 0
-        ? buildMaterializationPlan(offline.state)
+      options.materializationPlan && result.state && result.errors.length === 0
+        ? buildMaterializationPlan(result.state)
         : undefined,
     writes_performed: false,
   };
@@ -115,9 +106,9 @@ function main(): void {
   } else {
     const lines = [
       `Epic: ${options.epicId}`,
-      `Offline schema/DAG: ${offline.errors.length === 0 ? 'valid' : 'invalid'}`,
-      `Release ready: ${releaseReady ? 'yes' : 'no'}`,
-      `Ready queue: ${offline.ready_queue.length > 0 ? offline.ready_queue.join(', ') : '(empty)'}`,
+      `Offline schema/DAG: ${result.errors.length === 0 ? 'valid' : 'invalid'}`,
+      `Release ready: ${result.release_ready ? 'yes' : 'no'}`,
+      `Ready queue: ${result.ready_queue.length > 0 ? result.ready_queue.join(', ') : '(empty)'}`,
       `Stacked work: ${
         stackedWork.length > 0
           ? stackedWork
@@ -128,14 +119,14 @@ function main(): void {
               .join(', ')
           : '(none)'
       }`,
-      ...renderDiagnostics('Errors', errors),
-      ...renderDiagnostics('Warnings', warnings),
-      ...renderDiagnostics('Blockers', offline.blockers),
+      ...renderDiagnostics('Errors', [...result.errors]),
+      ...renderDiagnostics('Warnings', [...result.warnings]),
+      ...renderDiagnostics('Blockers', [...result.blockers]),
       'Writes performed: no',
     ];
     process.stdout.write(`${lines.join('\n')}\n`);
   }
-  process.exitCode = errors.length > 0 ? 1 : 0;
+  process.exitCode = result.errors.length > 0 ? 1 : 0;
 }
 
 try {

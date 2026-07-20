@@ -54,14 +54,21 @@ import type {
 
 /** Options for {@link initializeFloor2Settlement}. */
 export interface InitializeFloor2SettlementOptions {
-  /** Override the number of shops to spawn (defaults to a seeded roll of 1–2). */
+  /** Override the number of non-Quartermaster shops to spawn (defaults to a seeded roll of 1–2). */
   readonly shopCount?: 1 | 2;
-  /** Override the pool of archetypes (defaults to the bundled pack). */
+  /**
+   * Override the non-Quartermaster archetype pool (defaults to the bundled pack
+   * minus the Quartermaster). The Quartermaster is always placed separately and
+   * is excluded from this pool regardless.
+   */
   readonly archetypes?: readonly ShopArchetypeDef[];
 }
 
 export const FLOOR2_SETTLEMENT_NPC_SPACING_TILES = 3;
 export const FLOOR2_SETTLEMENT_DOOR_BUFFER_TILES = 1;
+
+/** @deprecated Use {@link FLOOR2_QUARTERMASTER_ARCHETYPE_ID} from shop-archetypes instead. */
+export const QUARTERMASTER_ARCHETYPE_ID = FLOOR2_QUARTERMASTER_ARCHETYPE_ID;
 
 export interface PlannedFloor2SettlementShop {
   readonly archetype: ShopArchetypeDef;
@@ -95,17 +102,37 @@ export function initializeFloor2Settlement(
   if (!presentFamilies || presentFamilies.length === 0) {
     throw new Error('initializeFloor2Settlement: world.floorExtendedState.familyState is missing');
   }
-  const archetypes = options.archetypes ?? loadShopArchetypes();
-  const shopCount = options.shopCount ?? (world.rng.next() < 0.5 ? 1 : 2);
-  validateSettlementShopArchetypes(archetypes, shopCount);
-  validateSettlementNpcDefs(archetypes);
   const settlementRng = new SeededRandom(hashStringToSeed(`floor2-settlement:${world.seed}`));
+
+  // Seeded shop roll — preserve the existing world.rng flow for shop selection
+  // and inventories; all new placement/defector randomness uses a derived RNG.
+  // Quartermaster is excluded from the random pool and always placed separately.
+  const allArchetypes = options.archetypes ?? loadShopArchetypes();
+  // QM must always come from the canonical list (options.archetypes may be a custom subset).
+  const quartermasterArchetype =
+    allArchetypes.find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID) ??
+    loadShopArchetypes().find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
+  if (!quartermasterArchetype) {
+    throw new Error(
+      `initializeFloor2Settlement: Quartermaster archetype "${QUARTERMASTER_ARCHETYPE_ID}" not found`,
+    );
+  }
+  const randomPool = allArchetypes.filter((a) => a.id !== QUARTERMASTER_ARCHETYPE_ID);
+  if (randomPool.length === 0) {
+    throw new Error(
+      'initializeFloor2Settlement: no non-Quartermaster archetypes available for random shop selection; ' +
+        'check shop-archetypes data or pass a non-empty non-Quartermaster options.archetypes override',
+    );
+  }
+  const shopCount = options.shopCount ?? (world.rng.next() < 0.5 ? 1 : 2);
+  const shuffled = [...randomPool];
+  world.rng.shuffle(shuffled);
+  const picked = shuffled.slice(0, Math.min(shopCount, shuffled.length));
+  validateSettlementNpcDefs(allArchetypes);
   const shopRooms = settlements.filter((room) => room.id !== settlement.id);
   const fallbackShopRoom = shopRooms[0] ?? settlement;
-  const totalShopCount = shopCount + 1;
-  const assignedRooms = Array.from(
-    { length: totalShopCount },
-    (_, idx) => shopRooms[idx % Math.max(1, shopRooms.length)] ?? fallbackShopRoom,
+  const assignedRooms = picked.map(
+    (_archetype, idx) => shopRooms[idx % Math.max(1, shopRooms.length)] ?? fallbackShopRoom,
   );
   const defectorFamilyId = settlementRng.pick(presentFamilies);
   const fallbackArchetype = getFloor2FamilyFallbackArchetype(defectorFamilyId);
@@ -117,16 +144,22 @@ export function initializeFloor2Settlement(
   const eliteArchetype = getFloor2FamilyEliteArchetype(defectorFamilyId);
   const defectorAppearanceKey = eliteArchetype?.id ?? fallbackArchetype.id;
   const defectorFallbackAppearanceKey = fallbackArchetype.id;
-  const placementPlan = buildSettlementPlacementPlan(settlement, settlements, assignedRooms);
+  const placementPlan = buildSettlementPlacementPlan(
+    settlement,
+    settlements,
+    assignedRooms,
+    true /* includeQuartermaster */,
+  );
   const spawnTiles = prepareSettlementMapAndPlacement(world, placementPlan, settlements, floorMap);
   const brokerTile = spawnTiles.get('broker');
   const defectorTile = spawnTiles.get('defector');
-  if (!brokerTile || !defectorTile) {
-    throw new Error('initializeFloor2Settlement: failed to place broker or defector');
+  const quartermasterTile = spawnTiles.get('quartermaster');
+  if (!brokerTile || !defectorTile || !quartermasterTile) {
+    throw new Error(
+      'initializeFloor2Settlement: failed to place broker, defector, or quartermaster',
+    );
   }
-  const plannedShops = planFloor2SettlementShops(world.rng, world.seed, shopCount, archetypes);
-
-  for (const room of settlements) {
+    for (const room of settlements) {
     installSettlementDoorEntities(world, room);
   }
 
@@ -138,14 +171,39 @@ export function initializeFloor2Settlement(
     appearanceKey: defectorAppearanceKey,
     appearanceFallbackKey: defectorFallbackAppearanceKey,
   });
+
+  // Spawn guaranteed Quartermaster.
+  // QM is always guaranteed; roll its inventory with settlementRng so this extra
+  // guaranteed inventory roll does not perturb world.rng for downstream systems.
+  const qmWorldPos = floorMap.tileToWorld(quartermasterTile.x, quartermasterTile.y);
+  const qmNpcEid = spawnNpc(world, qmWorldPos.x, qmWorldPos.y, quartermasterArchetype.npcId);
+  const qmRolled = generateShopInventory(settlementRng, quartermasterArchetype);
+  const qmInventory: Floor2ShopInventoryItem[] = qmRolled.items.map((item) => ({
+    itemId: item.itemId,
+    unitPrice: item.unitPrice,
+    stock: item.stock,
+  }));
+  const quartermasterShop: Floor2ShopInstance = {
+    archetypeId: quartermasterArchetype.id,
+    npcId: quartermasterArchetype.npcId,
+    npcEid: qmNpcEid,
+    inventory: qmInventory,
+  };
+
   const shops: Floor2ShopInstance[] = [];
-  plannedShops.forEach(({ archetype, inventory }, idx) => {
+  picked.forEach((archetype, idx) => {
     const spawnTile = spawnTiles.get(`shop:${idx}`);
     if (!spawnTile) {
       throw new Error(`initializeFloor2Settlement: failed to place shop ${archetype.id}`);
     }
     const worldPos = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
     const npcEid = spawnNpc(world, worldPos.x, worldPos.y, archetype.npcId);
+    const rolled = generateShopInventory(world.rng, archetype);
+    const inventory: Floor2ShopInventoryItem[] = rolled.items.map((item) => ({
+      itemId: item.itemId,
+      unitPrice: item.unitPrice,
+      stock: item.stock,
+    }));
     shops.push({
       archetypeId: archetype.id,
       npcId: archetype.npcId,
@@ -162,6 +220,7 @@ export function initializeFloor2Settlement(
     defectorFamilyId,
     defectorAppearanceKey,
     defectorFallbackAppearanceKey,
+    quartermasterShop,
     shops,
   };
   world.floorExtendedState = { ...(world.floorExtendedState ?? {}), settlement: snapshot };
@@ -341,15 +400,28 @@ function buildSettlementPlacementPlan(
   settlement: RoomData,
   settlements: readonly RoomData[],
   assignedRooms: readonly RoomData[],
+  includeQuartermaster: boolean,
 ): readonly SettlementPlacementEntry[] {
-  const entries: SettlementPlacementEntry[] = [{ key: 'broker', roomIds: [settlement.id] }];
+  const entries: SettlementPlacementEntry[] = [
+    { key: 'broker', roomIds: [settlement.id] },
+    { key: 'defector', roomIds: settlements.map((room) => room.id) },
+  ];
+  if (includeQuartermaster) {
+    // Guaranteed Quartermaster: prefer non-bar settlement rooms, fall back to any.
+    const shopRoomIds = settlements
+      .filter((room) => room.id !== settlement.id)
+      .map((room) => room.id);
+    entries.push({
+      key: 'quartermaster',
+      roomIds: [...shopRoomIds, ...settlements.map((room) => room.id)],
+    });
+  }
   assignedRooms.forEach((room, idx) => {
     entries.push({
       key: `shop:${idx}`,
       roomIds: [room.id, ...settlements.map((candidate) => candidate.id)],
     });
   });
-  entries.push({ key: 'defector', roomIds: settlements.map((room) => room.id) });
   return entries;
 }
 

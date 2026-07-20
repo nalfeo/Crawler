@@ -138,7 +138,14 @@ A weapon-bearing generated instance captures this value at the final freeze step
 ```typescript
 interface ActiveWeaponSnapshotV1 {
   readonly schemaVersion: 'active-weapon-snapshot/v1';
+  readonly generatedEquipmentInstanceId: GeneratedEquipmentInstanceId;
+  readonly id: string; // runtime-compatible alias for sourceWeaponDefId
   readonly sourceWeaponDefId: string;
+  readonly canonicalSkillTags: readonly [
+    `weapon-class:${WeaponClassSkillId}`,
+    `weapon-type:${WeaponTypeSkillId}`,
+  ];
+  readonly fingerprint: EquipmentFingerprintV1;
   readonly name: string;
   readonly weaponType: WeaponTypeValue;
   readonly baseDamage: number;
@@ -171,12 +178,18 @@ interface ActiveWeaponSnapshotV1 {
 - Capture occurs once after base template, item level, inherent scaling, rarity,
   enhancement, and effects resolve. Every field used by runtime firing is copied,
   including fields whose value is zero for that weapon type.
-- `sourceWeaponDefId` is provenance only. Runtime attack dispatch, AI ERV scoring,
-  details UI, save/load, and carryover use the frozen snapshot selected by
+- `generatedEquipmentInstanceId` is the immutable per-instance identity. `id` and
+  `sourceWeaponDefId` both point at the base static weapon definition for runtime
+  compatibility + provenance. Runtime attack dispatch, AI ERV scoring, details
+  UI, save/load, and carryover use the frozen snapshot selected by
   generated equipment instance ID.
-- The parent equipment fingerprint includes the complete snapshot and snapshot
-  schema version. A legal enhancement creates a new immutable content revision
-  and fingerprint under the same equipment instance ID.
+- `canonicalSkillTags` is derived exactly from `weaponClassSkillId` and
+  `weaponTypeSkillId`; mismatches fail closed.
+- The snapshot carries its own deterministic SHA-256 fingerprint over the
+  complete snapshot content except the fingerprint field. The parent equipment
+  fingerprint includes the complete snapshot and snapshot schema version. A
+  legal enhancement creates a new immutable content revision and fingerprint
+  under the same equipment instance ID.
 - Unknown snapshot versions fail closed. A loader may not substitute the current
   static `WeaponDef`, because doing so could change earned behavior.
 - The existing `ACTIVE_ABILITY_SLOT_LIMIT` remains authoritative at 10. A weapon
@@ -216,3 +229,118 @@ Build worlds with `createTestWorld({ seed: 42 })`; never construct one manually.
   sandboxes alongside its game/ecs/integration suites. ✅
 - **Data-driven balance:** tuning lives in `WEAPON_DEFS`; this spec documents the
   contract without restating per-weapon numbers.
+
+---
+
+## Floor 2 Frozen Weapon Snapshot Contract (A1 Implementation Lock)
+
+> This section locks the weapon-snapshot contract for Floor 2 generated weapon instances.
+> It is normative for downstream implementation slices (B2–C2).
+> Authority: ADR 0065 (`docs/knowledge/adr/0065-versioned-frozen-floor2-equipment-instances.md`).
+
+### Static WeaponDef Immutability
+
+Static `WeaponDef` records remain immutable catalog templates. They must not be cloned and
+mutated per instance; all per-instance customization lives in the generated equipment registry
+(see `equipment-system.md`).
+
+### ActiveWeaponSnapshotV1
+
+Every generated weapon-bearing equipment instance freezes an `ActiveWeaponSnapshotV1` record
+immediately after full instance resolution (rarity + enhancement + affixes applied).
+
+```typescript
+interface ActiveWeaponSnapshotV1 {
+  readonly schemaVersion: 1;
+  /** Instance ID from the generated equipment registry. */
+  readonly instanceId: string;
+  /** The base WeaponDef template this instance derives from. */
+  readonly baseWeaponDefId: string;
+
+  // ── Core weapon behaviour ─────────────────────────────────────────────
+  readonly weaponType: WeaponTypeValue;
+  readonly resolvedBaseDamage: number;
+  readonly cooldownMs: number;
+  readonly range: number;
+
+  // ── Projectile / ranged ──────────────────────────────────────────────
+  readonly projectileSpeed: number;
+  readonly resolvedProjectileCount: number;
+
+  // ── Area-of-effect / melee ───────────────────────────────────────────
+  readonly aoeRadius: number;
+  readonly durationMs: number;
+  readonly swingArcDeg: number;
+  readonly meleeStyle: MeleeStyleValue;
+  readonly headRadius: number;
+  readonly shaftDamageMult: number;
+
+  // ── Beam ─────────────────────────────────────────────────────────────
+  readonly beamTickMs: number;
+  readonly beamLength: number;
+
+  // ── Trap ─────────────────────────────────────────────────────────────
+  readonly trapArmMs: number;
+  readonly trapTriggerRadius: number;
+  readonly trapExplosionRadius: number;
+
+  // ── Thrown / boomerang ───────────────────────────────────────────────
+  readonly returnSpeed: number;
+  readonly maxRange: number;
+
+  // ── Hit modifiers ────────────────────────────────────────────────────
+  readonly knockback: number;
+  readonly pierce: number;
+  readonly bounceCount: number;
+  readonly goreFactor: number;
+  readonly baseAccuracy: number;
+
+  // ── Resolved combat stats ────────────────────────────────────────────
+  readonly resolvedAttackSpeedBonus: number;
+  readonly resolvedCritChance: number;
+  readonly resolvedCritMultiplier: number;
+  readonly resolvedRangeBonus: number;
+
+  // ── Skills ───────────────────────────────────────────────────────────
+  readonly weaponClassSkillId: WeaponClassSkillId;
+  readonly weaponTypeSkillId: WeaponTypeSkillId;
+
+  // ── Ability / passive grants ─────────────────────────────────────────
+  readonly grantedAbilityIds: readonly string[];
+  readonly grantedPassiveIds: readonly string[];
+
+  // ── Provenance ───────────────────────────────────────────────────────
+  /**
+   * Monotone content revision counter. Increments each time an atomic
+   * enhancement revision writes a new snapshot. Used for fingerprint
+   * provenance — never wall-clock time.
+   */
+  readonly contentRevision: number;
+}
+```
+
+### Snapshot Dispatch
+
+- Runtime weapon-firing reads the `ActiveWeaponSnapshotV1` for the currently equipped weapon
+  by looking up the equipped instance ID in the generated equipment registry.
+- The firing pipeline must not read fields directly from the base `WeaponDef` for a generated
+  weapon — it uses only the frozen snapshot fields.
+- **Floor 1 static weapons** (numeric-ID legacy instances, no generated registry entry) are
+  routed through the existing `WeaponDef` template path **before** the generated-instance
+  lookup; they never reach the snapshot path.
+- **A generated instance ID with no corresponding snapshot in the registry must fail closed:**
+  log a structured error and cancel the firing action. Silent fallback to the static
+  `WeaponDef` template is not permitted for generated instances, as this would silently
+  execute stale or incorrect behavior for an item the player has already earned.
+
+### Snapshot Immutability
+
+- A snapshot is frozen at instance resolution and must not be mutated thereafter.
+- The only legal post-freeze operation that touches a snapshot is an atomic enhancement revision:
+  the old snapshot is discarded and a new `ActiveWeaponSnapshotV1` is written for the same
+  instance ID with the updated resolved values and an incremented `contentRevision`.
+- **The complete snapshot (all fields, including `schemaVersion` and `contentRevision`) is
+  included in the parent instance's fingerprint computation.** Excluding the snapshot would
+  allow two behaviorally different items — or a corrupt snapshot — to retain the same
+  fingerprint, directly contradicting ADR 0065's risk mitigation for omitted runtime fields.
+  The only fingerprint exclusions are: ownership container, merchant price, and claim state.

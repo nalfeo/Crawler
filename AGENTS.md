@@ -121,6 +121,7 @@ The sole maintainer works best answering questions one at a time rather than wri
 | Check physics defs sync   | `npm run check:physics-defs-sync`         |
 | Check size coverage       | `npm run check:size-coverage`             |
 | Check weight coverage     | `npm run check:weight-coverage`           |
+| Boss ability status       | `npm run boss-abilities:status`           |
 | Docs index                | `npm run docs:index`                      |
 | Visual review             | `npm run review:visual`                   |
 | Visual review (det.)      | `npm run review:visual:deterministic`     |
@@ -256,7 +257,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 ### Resolving addressed review comments
 
 - Review-comment threads are reconciled by `.github/workflows/ci-recovery.yml` using the owner-scoped `CRAWLER_CI_PAT`, including cross-App Copilot reviewer threads.
-- When you address a review comment — whether by pushing a fix **or** by explaining deterministic non-applicability in-thread — reply **in that thread** with the marker `✅ Addressed` (ideally `✅ Addressed in <sha>: <one-line note>`). The reconciler resolves the thread on the next event or 10-minute sweep. The code does **not** need to be outdated.
+- When you address a review comment by pushing a fix, reply **in that thread** with `✅ Addressed in <sha>: <one-line note>`. When a finding is deterministically non-applicable (the code does not need changing — e.g. the line no longer exists, or the concern was already addressed elsewhere), reply with `✅ Not applicable: <one-line reason>` — do NOT use this for substantive disagreements. The reconciler resolves the thread on the next event or 10-minute sweep.
 - Only replies from the PR owner/member/collaborator or a trusted bot (e.g. the Copilot coding agent) count, so drive-by comments cannot bypass the conversation-resolution merge gate.
 - The CI recovery task requires a different-model validator for every listed review thread. Substantive disagreement stays unresolved and escalates; only marker-confirmed fixes or deterministic non-applicability may auto-resolve.
 - **Bot-pushed CI checks park in `action_required`.** When a commit is pushed by

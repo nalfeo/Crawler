@@ -1,0 +1,23 @@
+type: weapon
+name: rivet-gun
+floor: 2
+description: |
+  A heavy industrial rivet gun repurposed as a Floor 2 dungeon weapon, held
+  vertically — barrel/muzzle pointing straight up, chunky pistol-grip and
+  trigger assembly at the bottom. The body is a thick metal cylinder with
+  a squared-off barrel tip, a pressure-chamber bulge midway up, and a
+  stubby air-hose nozzle jutting from one side. Visible hexagonal rivet
+  heads embedded in the frame. Worn gunmetal-grey and rust-orange metal
+  with chipped paint exposing darker steel underneath; a single orange
+  safety-band painted around the barrel, now scuffed. Interior shading in
+  3–4 stops of dark grey: deep cavity shadow at the muzzle opening, mid
+  steel tone, and a highlight edge along one side. No glow, no electricity,
+  no blood. Silhouette must read unambiguously as a hand-held pneumatic gun,
+  not a rocket launcher or a flashlight.
+# Vertical orientation and anchor at (32, 56) inherited from
+# data/sprite-types/weapon.json — no overrides needed.
+# floor: 2 sets creative-intensity context for the prompt.
+variations:
+  - reinforced barrel with bolted-on iron ring clamps
+  - copper pressure-relief valve on the side with a worn gauge dial
+minVariations: 6

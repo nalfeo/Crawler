@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "repair-label-cleanup",
+  "task_title": "Fix repair-label stuck-forever bugs in pr-ready-reviewer-guard",
+  "estimated_apples": 1,
+  "stages": {}
+}
