@@ -49,7 +49,7 @@ function makeFixture(files: Record<string, string>): string {
     'tsconfig.json',
     `${JSON.stringify(
       {
-        extends: toBashScriptPath(path.join(REPO_ROOT, 'tsconfig.json')),
+        extends: path.join(REPO_ROOT, 'tsconfig.json'),
         compilerOptions: {
           declaration: false,
           declarationMap: false,
@@ -94,7 +94,7 @@ function runStaticVerifier(fixtureDir: string, options?: { cwd?: string; project
     VERIFY_FAST_TEST_STATIC_ONLY: '1',
   };
   if (options?.project) {
-    env.VERIFY_FAST_TSC_PROJECT = toBashScriptPath(options.project);
+    env.VERIFY_FAST_TSC_PROJECT = options.project;
   }
   return spawnSync('bash', [SCRIPT], {
     cwd: options?.cwd ?? fixtureDir,
@@ -523,9 +523,9 @@ echo "signal lifecycle ok"
     [
       toBashScriptPath(supervisorScript),
       SCRIPT,
-      logFile,
-      tscChildPidFile,
-      eslintChildPidFile,
+      toBashScriptPath(logFile),
+      toBashScriptPath(tscChildPidFile),
+      toBashScriptPath(eslintChildPidFile),
       String(STUB_STARTUP_DELAY_MS / 1000),
       String(CHILD_PID_TIMEOUT_MS),
       String(CLOSE_TIMEOUT_MS),
@@ -540,8 +540,8 @@ echo "signal lifecycle ok"
         VERIFY_FAST_TSC_PROJECT: path.join(fixtureDir, 'tsconfig.json'),
         VERIFY_FAST_TSC_STUB_SECONDS: String(STUB_DURATION_SECONDS),
         VERIFY_FAST_TSC_STUB_WITH_DESCENDANT: '1',
-        VERIFY_FAST_TSC_STUB_TSC_CHILD_PID_FILE: tscChildPidFile,
-        VERIFY_FAST_TSC_STUB_ESLINT_CHILD_PID_FILE: eslintChildPidFile,
+        VERIFY_FAST_TSC_STUB_TSC_CHILD_PID_FILE: toBashScriptPath(tscChildPidFile),
+        VERIFY_FAST_TSC_STUB_ESLINT_CHILD_PID_FILE: toBashScriptPath(eslintChildPidFile),
       }),
     },
   );
