@@ -14,6 +14,12 @@ export const MIN_CLUSTER_SIZE = 3;
 // list. Store and display at most this many files; the remainder is captured in
 // overlapFilesCount so callers can show an accurate "…and N more" note.
 export const MAX_OVERLAP_FILES = 20;
+// How long a dispatch key is considered live. If the coordinator persisted a
+// dispatch key but the dispatched workflow run was cancelled or failed before
+// writing recovery state, the same key would suppress every future backstop
+// pass forever. After this lease expires the coordinator may re-dispatch the
+// active slot provided no healthy owner is found.
+export const DISPATCH_LEASE_MS = 30 * 60 * 1000; // 30 minutes
 
 const CI_PATH_PREFIXES = [
   '.github/actions/',
@@ -268,10 +274,20 @@ export function shouldDispatchActiveSlot({
   prNumber,
   priorDispatchKey,
   nextKey,
+  // ISO timestamp of the last dispatch for this key. Used to bound how long a
+  // persisted dispatch key suppresses re-dispatch: once DISPATCH_LEASE_MS has
+  // elapsed and no healthy owner is found, the coordinator may retry even if
+  // the key has not changed (e.g. after a lost or cancelled workflow run).
+  lastDispatchAt,
   now,
 }) {
-  if (!nextKey || priorDispatchKey === nextKey) return false;
-  return !hasHealthyRecoveryOwner({ prNumber, recoveryState, headSha, now });
+  if (!nextKey) return false;
+  if (hasHealthyRecoveryOwner({ prNumber, recoveryState, headSha, now })) return false;
+  if (priorDispatchKey !== nextKey) return true;
+  // Same key: only re-dispatch after the dispatch lease has expired so a lost
+  // or cancelled run cannot trap the active slot forever.
+  if (!lastDispatchAt) return false;
+  return now.getTime() - new Date(lastDispatchAt).getTime() >= DISPATCH_LEASE_MS;
 }
 
 export function makeCoordinatorState({
@@ -288,6 +304,10 @@ export function makeCoordinatorState({
   overlapFiles,
   escalations = [],
   lastDispatchKey = null,
+  // ISO timestamp recorded when the active slot was last dispatched for this key.
+  // Paired with lastDispatchKey to detect lost/cancelled runs and allow retry
+  // after DISPATCH_LEASE_MS even when the key has not changed.
+  lastDispatchAt = null,
   updatedAt,
 }) {
   const state = {
@@ -314,6 +334,7 @@ export function makeCoordinatorState({
     overlapFiles: [...overlapFiles].sort().slice(0, MAX_OVERLAP_FILES),
     escalations: [...escalations].map(compact).filter(Boolean).sort(),
     lastDispatchKey: lastDispatchKey ? compact(lastDispatchKey) : null,
+    lastDispatchAt: lastDispatchAt ? compact(lastDispatchAt) : null,
     updatedAt: compact(updatedAt),
   };
   return validateCoordinatorState(state);
@@ -358,6 +379,15 @@ export function validateCoordinatorState(state) {
     (!Number.isInteger(state.overlapFilesCount) || state.overlapFilesCount < state.overlapFiles.length)
   ) {
     throw new Error('CI conflict state has invalid overlapFilesCount');
+  }
+  // lastDispatchAt is optional (absent on states persisted before the field was
+  // added) but when present must be a valid ISO timestamp.
+  if (
+    state.lastDispatchAt !== undefined &&
+    state.lastDispatchAt !== null &&
+    Number.isNaN(Date.parse(state.lastDispatchAt))
+  ) {
+    throw new Error('CI conflict state has invalid lastDispatchAt');
   }
   return state;
 }

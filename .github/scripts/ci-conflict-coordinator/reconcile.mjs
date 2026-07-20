@@ -615,6 +615,7 @@ for (const group of groups) {
     .filter(Boolean)
     .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt));
   let lastDispatchKey = priorStates[0]?.lastDispatchKey || null;
+  let lastDispatchAt = priorStates[0]?.lastDispatchAt || null;
   const nextDispatchKey = dispatchKey({
     groupId: group.groupId,
     active: activeSafe ? selection.active : null,
@@ -629,11 +630,13 @@ for (const group of groups) {
       prNumber: selection.active.number,
       priorDispatchKey: lastDispatchKey,
       nextKey: nextDispatchKey,
+      lastDispatchAt,
       now,
     })
   ) {
     await dispatchRecovery(selection.active, group.groupId);
     lastDispatchKey = nextDispatchKey;
+    lastDispatchAt = now.toISOString();
     process.stdout.write(
       `dispatched ci-recovery pr=#${selection.active.number} group=${group.groupId}\n`,
     );
@@ -652,6 +655,7 @@ for (const group of groups) {
       overlapFiles,
       escalations,
       lastDispatchKey,
+      lastDispatchAt,
       updatedAt: now.toISOString(),
     });
     await updateCoordinatorComment(pull, groupComments.get(pull.number), state);

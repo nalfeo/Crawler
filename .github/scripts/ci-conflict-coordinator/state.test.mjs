@@ -18,6 +18,7 @@ import {
 } from './proof.mjs';
 import {
   COORDINATOR_MARKER,
+  DISPATCH_LEASE_MS,
   MAX_OVERLAP_FILES,
   ciFilesFor,
   clusterPullRequests,
@@ -277,6 +278,69 @@ test('stale-head automation owner does not suppress ordered recovery dispatch', 
       now: new Date('2026-07-20T00:10:00Z'),
     }),
     true,
+  );
+});
+
+test('expired dispatch lease allows retry when no healthy owner (lost-run regression)', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const key = dispatchKey({
+    groupId: 'ci-conflict-lost-run',
+    active,
+    baseSha: 'a'.repeat(40),
+    order: [active],
+  });
+  // No recovery state written: run was cancelled before ci-recovery could record anything
+  const dispatchedAt = '2026-07-20T00:00:00Z';
+  // Within lease window: suppressed even with same key and no recovery state
+  assert.equal(
+    shouldDispatchActiveSlot({
+      recoveryState: null,
+      headSha: active.headSha,
+      prNumber: 7,
+      priorDispatchKey: key,
+      nextKey: key,
+      lastDispatchAt: dispatchedAt,
+      now: new Date('2026-07-20T00:15:00Z'), // 15 min — within 30 min lease
+    }),
+    false,
+  );
+  // After lease expires: retry is allowed
+  assert.equal(
+    shouldDispatchActiveSlot({
+      recoveryState: null,
+      headSha: active.headSha,
+      prNumber: 7,
+      priorDispatchKey: key,
+      nextKey: key,
+      lastDispatchAt: dispatchedAt,
+      now: new Date('2026-07-20T00:31:00Z'), // 31 min — lease expired
+    }),
+    true,
+  );
+  // Verify DISPATCH_LEASE_MS is 30 minutes
+  assert.equal(DISPATCH_LEASE_MS, 30 * 60 * 1000);
+});
+
+test('same dispatch key without lastDispatchAt does not retry (legacy state)', () => {
+  const active = makePull(8, ['.github/workflows/ci.yml']);
+  const key = dispatchKey({
+    groupId: 'ci-conflict-legacy',
+    active,
+    baseSha: 'b'.repeat(40),
+    order: [active],
+  });
+  // Legacy state has no lastDispatchAt — same key suppresses without a lease check
+  assert.equal(
+    shouldDispatchActiveSlot({
+      recoveryState: null,
+      headSha: active.headSha,
+      prNumber: 8,
+      priorDispatchKey: key,
+      nextKey: key,
+      lastDispatchAt: null,
+      now: new Date('2026-07-20T02:00:00Z'), // 2 hours later — would be expired if lastDispatchAt were set
+    }),
+    false,
   );
 });
 
