@@ -11,6 +11,17 @@
     "path": "by-sha/f6358ac1ad29fb70b7a83abd594cd9e0899e1417.json"
   },
   {
+    "commit": "6898da91bd566b8439014ed30309c73db44c275c",
+    "commitDate": "2026-07-20T03:00:25Z",
+    "commitSubject": "AI Sweep Eval: bounded parallel-round redesign with checkpointing + safety-gate fix (#1674)",
+    "capturedAt": "2026-07-20T04:22:41.007Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29714195681",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/6898da91bd566b8439014ed30309c73db44c275c.json"
+  },
+  {
     "commit": "ac97ecd6130dd20b4971ec9587faab698e02da60",
     "commitDate": "2026-07-20T03:00:17Z",
     "commitSubject": "fix(ci-recovery): preserve stale trusted markers on outdated threads (#1665)",
