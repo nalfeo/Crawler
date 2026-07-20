@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "visual-routing-by-surface",
+  "task_title": "Route visual validation by affected surface",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Blocking: devtools.html and src/devtools-main.ts missing from devtools surface (also needed in gameplay_safe allowlist) — fixed by adding both to classify loop and allowlist, plus unit tests for both. Non-blocking #2: generic config files (tsconfig.json, package.json) intentionally fail toward broader validation per fail-safe design; added clarifying comment. Suggestion #3: added test cases for devtools.html and src/devtools-main.ts routing. divergence=minor (added missing entrypoints to surface mapping — detail correction, no re-architecture)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
