@@ -11,6 +11,17 @@
     "path": "by-sha/0a6c19051e91b83385e57600414d70ea086e6a8c.json"
   },
   {
+    "commit": "a1c23cbeabdec9d74633a8ffa3f0f9586443936d",
+    "commitDate": "2026-07-20T18:51:11Z",
+    "commitSubject": "feat: route visual E2E validation by affected surface (#1700)",
+    "capturedAt": "2026-07-20T20:04:40.547Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29770310834",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/a1c23cbeabdec9d74633a8ffa3f0f9586443936d.json"
+  },
+  {
     "commit": "885a71d55532eecff4b61ecd2899a50ddba877b3",
     "commitDate": "2026-07-20T06:27:38Z",
     "commitSubject": "docs(equipment): reconcile Floor 2 contract stack root (#1276)",
