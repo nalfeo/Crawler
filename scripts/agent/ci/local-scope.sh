@@ -44,10 +44,10 @@ emit_all_false() {
   # parse one shape regardless of which path produced it.
   # Legacy inverse flags (art_only, docs_only, gameplay_safe, sprites_only,
   # sprites_touched) stay false on an unknown-scope path — no false "art skip" or
-  # "gameplay safe" should be granted. The five new positive impact flags are set
-  # true because the scope is unknown: a consumer gating work on these flags must
+  # "gameplay safe" should be granted. All positive impact flags are set true
+  # because the scope is unknown: a consumer gating work on these flags must
   # not skip that work just because we cannot determine the change set.
-  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nvisual_touched=true\nsim_touched=true\ncoverage_touched=true\nsprite_pipeline_touched=true\ndependencies_touched=true\n'
+  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nsim_touched=true\ncoverage_touched=true\nsprite_pipeline_touched=true\ndependencies_touched=true\nvisual_touched=true\ngame_visual_touched=true\nasset_visual_touched=true\ndevtool_visual_touched=true\n'
 }
 
 # Not a git work tree (or git unavailable) → cannot compute a trustworthy set.

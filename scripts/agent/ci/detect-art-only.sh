@@ -69,17 +69,32 @@ emit_output() {
 }
 
 # Emit all scope flags at once (fail-safe path uses this for early exits).
+# Args: art_only docs_only gameplay_safe sprites_only sprites_touched
+#       sim_touched coverage_touched sprite_pipeline_touched dependencies_touched
 emit_all() {
   emit_output art_only "$1"
   emit_output docs_only "$2"
   emit_output gameplay_safe "$3"
   emit_output sprites_only "$4"
   emit_output sprites_touched "$5"
-  emit_output visual_touched "$6"
-  emit_output sim_touched "$7"
-  emit_output coverage_touched "$8"
-  emit_output sprite_pipeline_touched "$9"
-  emit_output dependencies_touched "${10}"
+  emit_output sim_touched "$6"
+  emit_output coverage_touched "$7"
+  emit_output sprite_pipeline_touched "$8"
+  emit_output dependencies_touched "$9"
+}
+
+# Emit visual surface flags (new in #1688/#1698).
+# Called separately so the fail-safe paths can emit all-false without touching
+# the original emit_all signature.
+#   visual_touched      — any path that can affect browser rendering was changed
+#   game_visual_touched — game/engine/UI visual surface (src/*, public/*, tests/e2e/* except devtools)
+#   asset_visual_touched — generated art and sprite-catalog only
+#   devtool_visual_touched — devtools browser UI and its e2e test
+emit_visual_all() {
+  emit_output visual_touched "$1"
+  emit_output game_visual_touched "$2"
+  emit_output asset_visual_touched "$3"
+  emit_output devtool_visual_touched "$4"
 }
 
 # package.json gameplay-safe split:
@@ -217,7 +232,8 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false false false true true true true true
+    emit_all false false false false false true true true true
+    emit_visual_all true true true true
     exit 0
   fi
 
@@ -238,14 +254,20 @@ echo "Changed files:" >&2
 echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
+# For legacy flags (art_only/docs_only/gameplay_safe/sprites_*): false triggers the
+# broader gates (gameplay_safe=false → headless runs; art_only=false → full unit suite).
+# For visual surface flags: we CANNOT safely skip — an empty/unknown diff means we
+# don't know what changed, so all three visual suites must run (fail toward more).
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
   if [ "$diff_ok" = "true" ]; then
     # Verified empty change set — nothing to classify.
-    emit_all false false false false false false false false false false
+    emit_all false false false false false false false false false
+    emit_visual_all false false false false
   else
     # Git diff resolution failed — impact unknown, fail closed for positive flags.
     echo "Git diff resolution failed — running full CI for positive flags." >&2
-    emit_all false false false false false true true true true true
+    emit_all false false false false false true true true true
+    emit_visual_all true true true true
   fi
   exit 0
 fi
@@ -283,21 +305,27 @@ done <<<"$changed"
 
 # gameplay_safe: every changed file is provably unable to change the deterministic
 # Floor-1 simulation. Allowlist = surfaces the headless runner never imports
-# (src/engine, src/labs), plus e2e tests, docs, static assets, CI/workflow config,
-# sprite-pipeline scripts/tests, and sprite catalog plumbing. Anything else —
-# src/core, src/game, most src/shared, tests/headless — forces the gate to run.
+# (src/engine, src/labs, src/devtools), plus e2e tests, docs, static assets,
+# CI/workflow config, sprite-pipeline scripts/tests, and sprite catalog plumbing.
+# Anything else — src/core, src/game, most src/shared, tests/headless — forces
+# the gate to run.
 # Consumed by ci.yml to skip the headless job on pull_requests only.
 # The sprite pipeline (scripts/sprites/, tests/unit/sprites/, tests/integration/sprites/,
 # and the 8 root pipeline integration tests) is also safe: the headless runner imports
 # only src/core, src/shared, src/game/ai and never touches scripts/sprites/.
 # .github/** (workflows, actions, extensions, instructions) is safe: CI/workflow YAML
 # cannot affect the deterministic ECS sim the headless runner executes.
+# src/devtools/** is safe: browser-only devtools UI code; the headless runner never
+# imports it (layer rule: src/game/ai → never src/devtools).
 gameplay_safe=true
 while IFS= read -r file; do
   [ -z "$file" ] && continue
   case "$file" in
     src/engine/*) ;;
     src/labs/*) ;;
+    src/devtools/*) ;;
+    src/devtools-main.ts) ;;
+    devtools.html) ;;
     tests/e2e/*) ;;
     docs/*) ;;
     public/*) ;;
@@ -381,41 +409,82 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-# ── Orthogonal impact flags ───────────────────────────────────────────────────
-
-# visual_touched: at least one changed file is in the visual/rendering surface
-# (src/engine, src/labs, public/**, sprite-catalog). Unknown paths fail closed.
+# ── Visual surface flags (from #1700) ─────────────────────────────────────────
+# Classify each changed file into one or more visual surfaces.
+# Fail-safe: unknown paths set visual_touched=true and game_visual_touched=true
+# so that the broader E2E suite runs and no visual assertion is silently dropped.
+#
+# Surface definitions:
+#   asset_visual   — generated art + sprite catalog (art_only paths only)
+#   devtool_visual — devtools browser UI (src/devtools/**) and its E2E test
+#   game_visual    — all other src/*, public/*, and non-devtool tests/e2e/*
+#   visual_touched — union: any of the three surfaces above was touched
+#
+# Non-visual (never contribute to visual_touched):
+#   .github/**                   CI config / workflow / extensions / instructions
+#   docs/**, .specify/**, *.md, *.txt, AGENTS.md   documentation
+#   scripts/agent/**             CI/automation helper scripts
+#   scripts/sprites/**           sprite GENERATION pipeline (not the generated output)
+#   tests/unit/**, tests/ecs/**, tests/game/**, tests/property/**,
+#   tests/determinism/**, tests/sensors/**, tests/balance/**,
+#   tests/integration/**, tests/headless/**, tests/helpers/**,
+#   tests/bench/**, tests/setup.ts   non-E2E tests (pure logic; no browser)
 visual_touched=false
+game_visual_touched=false
+asset_visual_touched=false
+devtool_visual_touched=false
+
 while IFS= read -r file; do
   [ -z "$file" ] && continue
   case "$file" in
-    # Positive: rendering/visual/art surfaces
-    src/engine/*) visual_touched=true; break ;;
-    src/labs/*) visual_touched=true; break ;;
-    public/*) visual_touched=true; break ;;
-    # sprite-catalog before the broad src/shared/* neutral to ensure first-match
-    src/shared/data/sprite-catalog.json) visual_touched=true; break ;;
-    # Neutral: simulation, tests, docs, CI/tooling
-    src/core/*) ;;
-    src/game/*) ;;
-    src/shared/*) ;;
-    tests/*) ;;
+    # ── Non-visual surfaces ──────────────────────────────────────────────────────
+    .github/*) ;;
     docs/*) ;;
-    .specify/specs/*) ;;
+    .specify/*) ;;
     AGENTS.md) ;;
     *.md) ;;
     *.txt) ;;
-    .github/*) ;;
-    scripts/*) ;;
-    package.json)
-      if package_json_gameplay_safe; then
-        :
-      else
-        visual_touched=true; break
-      fi
-      ;;
-    # Unknown path → fail closed
-    *) visual_touched=true; break ;;
+    scripts/agent/*) ;;
+    scripts/sprites/*) ;;
+    tests/unit/*) ;;
+    tests/ecs/*) ;;
+    tests/game/*) ;;
+    tests/property/*) ;;
+    tests/determinism/*) ;;
+    tests/sensors/*) ;;
+    tests/balance/*) ;;
+    tests/integration/*) ;;
+    tests/headless/*) ;;
+    tests/helpers/*) ;;
+    tests/bench/*) ;;
+    tests/setup.ts) ;;
+    # ── Asset visual: generated art + sprite catalog ──────────────────────────────
+    public/assets/generated/*)
+      visual_touched=true; asset_visual_touched=true ;;
+    src/shared/data/sprite-catalog.json)
+      visual_touched=true; asset_visual_touched=true ;;
+    # ── Devtools visual: devtools browser UI + its E2E test ──────────────────────
+    src/devtools/*)
+      visual_touched=true; devtool_visual_touched=true ;;
+    src/devtools-main.ts)
+      visual_touched=true; devtool_visual_touched=true ;;
+    devtools.html)
+      visual_touched=true; devtool_visual_touched=true ;;
+    tests/e2e/sprite-workflow-sensors.test.ts)
+      visual_touched=true; devtool_visual_touched=true ;;
+    # ── Game visual: non-devtool E2E tests ───────────────────────────────────────
+    # Shared E2E setup/constants/helpers are consumed by ALL three projects, so a
+    # change there must trigger every surface (fail toward broader validation).
+    tests/e2e/global-setup.ts | tests/e2e/e2e-constants.ts | tests/e2e/helpers/*)
+      visual_touched=true; game_visual_touched=true; asset_visual_touched=true; devtool_visual_touched=true ;;
+    tests/e2e/*)
+      visual_touched=true; game_visual_touched=true ;;
+    # ── Game visual: all other src/*, public/* ────────────────────────────────────
+    src/* | public/*)
+      visual_touched=true; game_visual_touched=true ;;
+    # ── Unknown: fail toward broader validation ───────────────────────────────────
+    *)
+      visual_touched=true; game_visual_touched=true; asset_visual_touched=true; devtool_visual_touched=true ;;
   esac
 done <<<"$changed"
 
@@ -518,11 +587,11 @@ while IFS= read -r file; do
 done <<<"$changed"
 
 # Detect any path not covered by any known surface pattern. A path that is
-# unclassified cannot be proven irrelevant to any surface, so all five new
-# positive impact flags must be forced true (fail-closed). The existing
-# visual/sim/coverage loops already set their own flags via `*) flag=true; break`,
-# but they may break before seeing an unclassified file if an earlier file already
-# triggered a positive. This dedicated pass ensures every file is checked.
+# unclassified cannot be proven irrelevant to any surface, so all new positive
+# impact flags must be forced true (fail-closed). The existing sim/coverage loops
+# already set their own flags via `*) flag=true; break`, but they may break before
+# seeing an unclassified file if an earlier file already triggered a positive.
+# This dedicated pass ensures every file is checked.
 has_unclassified=false
 while IFS= read -r file; do
   [ -z "$file" ] && continue
@@ -579,5 +648,5 @@ if [ "$has_unclassified" = "true" ]; then
   dependencies_touched=true
 fi
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" \
-  "$visual_touched" "$sim_touched" "$coverage_touched" "$sprite_pipeline_touched" "$dependencies_touched"
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched" "$sprite_pipeline_touched" "$dependencies_touched"
+emit_visual_all "$visual_touched" "$game_visual_touched" "$asset_visual_touched" "$devtool_visual_touched"
