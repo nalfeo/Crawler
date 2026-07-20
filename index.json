@@ -44,6 +44,17 @@
     "path": "by-sha/a1c23cbeabdec9d74633a8ffa3f0f9586443936d.json"
   },
   {
+    "commit": "df4a1e97a6556575ea72d039612f55f4b927e672",
+    "commitDate": "2026-07-20T14:19:10-07:00",
+    "commitSubject": "fix(ci): transport merge-train candidates as opaque bundles (#1747)",
+    "capturedAt": "2026-07-20T22:37:10.385Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29780378451",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/df4a1e97a6556575ea72d039612f55f4b927e672.json"
+  },
+  {
     "commit": "f5f79b4bbaee8f35a8f858351b3256488d85140b",
     "commitDate": "2026-07-20T13:56:00-07:00",
     "commitSubject": "feat(equipment): add generated instance registry (#1379)",
