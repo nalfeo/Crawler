@@ -24,6 +24,7 @@ import {
   planLandedRecovery,
   promoteExactBatch,
   promotionStaleReason,
+  queuePositionAfterRecovery,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
   trainCheckTitle,
@@ -607,11 +608,10 @@ const loopResult = await runTrainBuildLoop({
     process.stdout.write(`returned no-op pr=#${train[index].number} to reconciliation\n`);
   },
   onRetryableFailure: async (index, error, recovery) => {
-    const promotedCount = recovery?.greenPrefixLength ?? 0;
     await updateStatus(
       train[index].number,
       renderStatus({
-        position: index + 1 - promotedCount,
+        position: queuePositionAfterRecovery(index, recovery),
         candidateSha: '',
         state: 'waiting',
         detail: error.message,
@@ -622,13 +622,14 @@ const loopResult = await runTrainBuildLoop({
 });
 
 async function promotePrefix(prefixLength, validationIndex) {
-  if (!(await mainHealthAllowsPromotion())) return false;
+  if (!(await mainHealthAllowsPromotion())) return { promoted: false, landedCount: 0 };
   const provenanceEntries = train.slice(0, prefixLength);
   const validationCandidate = candidates[validationIndex];
   if (!validationCandidate) {
     throw new Error(`Missing validation candidate at prefix index ${validationIndex}`);
   }
-  return promoteExactBatch({
+  let landedCount = 0;
+  const promoted = await promoteExactBatch({
     entries: provenanceEntries,
     candidateShas: candidates.slice(0, prefixLength).map((candidate) => candidate.candidateSha),
     expectedBase: mainSha,
@@ -659,8 +660,12 @@ async function promotePrefix(prefixLength, validationIndex) {
       return state === 'success';
     },
     provenanceEntries,
+    recordMapping: () => {
+      landedCount += 1;
+    },
     reattestHealth: mainHealthAllowsPromotion,
   });
+  return { promoted, landedCount };
 }
 
 if (loopResult.action === 'conflict' || loopResult.action === 'noop') {
