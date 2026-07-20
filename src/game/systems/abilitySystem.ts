@@ -62,6 +62,7 @@ export function createAbilityState(): AbilityState {
   return {
     learnedSpellIds: [],
     equippedActiveAbilityIds: [],
+    ownedActiveAbilityIds: [],
     passiveAbilityIds: [],
     cooldownByAbilityId: new Map(),
     cooldownFramesByAbilityId: new Map(),
@@ -180,6 +181,13 @@ function syncDerivedAbilityLists(state: AbilityState): void {
   );
   state.equippedActiveAbilityIds = state.equippedActiveAbilityIds.filter((id) => activeIds.has(id));
 
+  // All catalog-backed owned actives, preserving existing order and appending new ones.
+  const ownedSet = activeIds;
+  state.ownedActiveAbilityIds = [
+    ...(state.ownedActiveAbilityIds ?? []).filter((id) => ownedSet.has(id)),
+    ...[...ownedSet].filter((id) => !(state.ownedActiveAbilityIds ?? []).includes(id)),
+  ];
+
   const learnedIds = [...state.grantOwnership.activeSourcesByAbilityId]
     .filter(
       ([abilityId, sources]) =>
@@ -206,6 +214,7 @@ export function normalizeAbilityState(state: AbilityStateLike): AbilityState {
   const normalized: AbilityState = {
     learnedSpellIds: [...state.learnedSpellIds],
     equippedActiveAbilityIds: [...state.equippedActiveAbilityIds],
+    ownedActiveAbilityIds: [],
     passiveAbilityIds: [...state.passiveAbilityIds],
     cooldownByAbilityId: new Map(state.cooldownByAbilityId),
     cooldownFramesByAbilityId: new Map(state.cooldownFramesByAbilityId),
@@ -278,6 +287,7 @@ function installAbilityState(
   }
   existing.learnedSpellIds = state.learnedSpellIds;
   existing.equippedActiveAbilityIds = state.equippedActiveAbilityIds;
+  existing.ownedActiveAbilityIds = state.ownedActiveAbilityIds;
   existing.passiveAbilityIds = state.passiveAbilityIds;
   existing.cooldownByAbilityId = state.cooldownByAbilityId;
   existing.cooldownFramesByAbilityId = state.cooldownFramesByAbilityId;

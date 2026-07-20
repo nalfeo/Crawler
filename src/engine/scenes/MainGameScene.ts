@@ -2341,6 +2341,7 @@ export class MainGameScene extends Phaser.Scene {
       state = {
         learnedSpellIds: [],
         equippedActiveAbilityIds: [],
+        ownedActiveAbilityIds: [],
         passiveAbilityIds: [],
         cooldownByAbilityId: new Map(),
         cooldownFramesByAbilityId: new Map(),
@@ -2349,7 +2350,11 @@ export class MainGameScene extends Phaser.Scene {
       this.world.abilityStatesByEntity.set(this.playerEid, state);
     }
     const availableIds = [
-      ...new Set([...state.equippedActiveAbilityIds, ...state.learnedSpellIds]),
+      ...new Set([
+        ...state.equippedActiveAbilityIds,
+        ...state.learnedSpellIds,
+        ...(state.ownedActiveAbilityIds ?? []),
+      ]),
     ];
     if (availableIds.length === 0) {
       this.flashHint('No learned spells yet. Defeat the Slime Rat and claim a spellbook first.');
