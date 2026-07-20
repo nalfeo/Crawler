@@ -360,13 +360,21 @@ async function closeDuplicate(proof) {
     // the pre-check reads and the close API call, reopen the PR and let the
     // next coordinator run re-evaluate. GitHub's close endpoint has no CAS, so
     // a concurrent push can silently make the proof stale.
-    const postMain = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
-      .object.sha;
-    const postLeaderSha = proof.leaderHead
-      ? (await fetchLivePull(proof.leaderHead.number))?.head?.sha
-      : null;
+    const [postMain, postTarget, postLeader] = await Promise.all([
+      (async () =>
+        (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data.object.sha)(),
+      fetchLivePull(proof.number),
+      proof.leaderHead ? fetchLivePull(proof.leaderHead.number) : Promise.resolve(null),
+    ]);
+    const postLeaderSha = postLeader?.head?.sha ?? null;
+    const postTargetDrifted =
+      postTarget?.head?.sha !== proof.targetHead ||
+      postTarget?.base?.ref !== 'main' ||
+      postTarget?.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase();
     const proofDrifted =
-      postMain !== currentMain || (proof.leaderHead && postLeaderSha !== proof.leaderHead.headSha);
+      postMain !== currentMain ||
+      postTargetDrifted ||
+      (proof.leaderHead && postLeaderSha !== proof.leaderHead.headSha);
     if (proofDrifted) {
       process.stdout.write(`reopen pr=#${proof.number} reason=post-close-proof-drifted\n`);
       try {

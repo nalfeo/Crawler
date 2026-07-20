@@ -296,6 +296,16 @@ test('coordinator claims owner fence and disables auto-merge for every grouped m
   );
 });
 
+test('post-close proof guard revalidates the duplicate PR head before leaving it closed', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /fetchLivePull\(proof\.number\)/);
+  assert.match(source, /postTarget\?\.head\?\.sha !== proof\.targetHead/);
+  assert.match(source, /postTarget\?\.base\?\.ref !== 'main'/);
+});
+
 test('workflow is event-driven and has a five-minute scheduling backstop', () => {
   const workflow = readFileSync(
     path.resolve('.github/workflows/ci-conflict-coordinator.yml'),
