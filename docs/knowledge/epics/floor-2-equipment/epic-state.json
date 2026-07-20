@@ -1,9 +1,9 @@
 {
   "$schema": "./epic-state.schema.json",
-  "schema_version": "crawler-epic-state/v1",
+  "schema_version": "crawler-epic-state/v2",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-18T13:34:03.559Z",
+  "updated_at": "2026-07-19T21:11:55.239Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
@@ -36,6 +36,13 @@
       "SCOPE-CHANGE-REQUEST",
       "HANDOFF"
     ]
+  },
+  "stacked_work_policy": {
+    "states": ["stacked_in_progress", "stacked_pr_open"],
+    "allowed_execution_lanes": ["control"],
+    "maximum_without_resync_hours": 24,
+    "comment_heading": "STACKED-WORK",
+    "main_branch": "main"
   },
   "github": {
     "repository": "nalfeo/Crawler",
@@ -103,10 +110,10 @@
       "execution_lane": "control",
       "persona": "Producer / DevOps Engineer",
       "dependencies": [],
-      "status": "pr_open",
+      "status": "merged",
       "release_requirement": "required",
       "deferred_reason": null,
-      "status_changed_at": "2026-07-17T18:25:00.000Z",
+      "status_changed_at": "2026-07-18T20:50:20.000Z",
       "github": {
         "issue": {
           "number": 1264,
@@ -115,22 +122,22 @@
         "pr": {
           "number": 1271,
           "url": "https://github.com/nalfeo/Crawler/pull/1271",
-          "head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6"
+          "head_sha": "097b8ab847278b5aa27b1334a11830211d0a51a0"
         }
       },
       "ownership": {
-        "claimant": "Producer",
-        "session": "7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd",
-        "source": "parent-issue-bootstrap",
-        "scope": "Slice A0 control plane only; no gameplay",
-        "claimed_at": "2026-07-17T17:32:38.205Z",
-        "lease_expires_at": "2026-07-25T18:26:00.000Z",
-        "heartbeat_at": "2026-07-18T18:26:00.000Z",
-        "base_commit": "41c5f2aa"
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
       },
       "merge": {
-        "commit": null,
-        "merged_at": null
+        "commit": "6a6fb49b912ad5ce2f318e196d8925936055906b",
+        "merged_at": "2026-07-18T20:50:20Z"
       },
       "evidence_requirements": ["offline-validator-and-focused-tests"],
       "evidence": [
@@ -157,11 +164,11 @@
         }
       ],
       "reconciliation": {
-        "last_audited_at": "2026-07-17T18:25:00.000Z",
-        "observed_issue_state": "open",
-        "observed_pr_state": "OPEN",
-        "observed_head_sha": "065591b1717588fd7acdb8e28936946e4a7e63e6",
-        "observed_merge_commit": null,
+        "last_audited_at": "2026-07-19T21:11:55.239Z",
+        "observed_issue_state": "closed",
+        "observed_pr_state": "MERGED",
+        "observed_head_sha": "097b8ab847278b5aa27b1334a11830211d0a51a0",
+        "observed_merge_commit": "6a6fb49b912ad5ce2f318e196d8925936055906b",
         "drift": []
       },
       "superseded_by": null
@@ -204,8 +211,8 @@
       "evidence_requirements": ["reviewed-contract-specification"],
       "evidence": [],
       "reconciliation": {
-        "last_audited_at": null,
-        "observed_issue_state": null,
+        "last_audited_at": "2026-07-19T21:11:55.239Z",
+        "observed_issue_state": "closed",
         "observed_pr_state": null,
         "observed_head_sha": null,
         "observed_merge_commit": null,
