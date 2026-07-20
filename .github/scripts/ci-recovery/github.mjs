@@ -32,10 +32,10 @@ function headers(token, extra = {}) {
 export async function request(token, path, options = {}) {
   const method = options.method || 'GET';
   const canRetry = method === 'GET';
-  let lastError;
+  let lastError = new Error(`GitHub ${method} ${path} failed after ${MAX_RETRY_ATTEMPTS} retries`);
   for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
     if (attempt > 0) {
-      await sleep(RETRY_DELAY_MS * attempt);
+      await sleep(RETRY_DELAY_MS * Math.pow(2, attempt - 1));
     }
     const response = await fetch(`${apiUrl}${path}`, {
       method,
