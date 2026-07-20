@@ -13,7 +13,6 @@ their front matter; legacy handoffs are classified heuristically by filename.
 
 ## ai-pathfinding
 
-- [2026-07-19-floor2-mob-activity](2026-07-19-floor2-mob-activity.md) — Handoff - Floor 2 Mob Activity
 - [2026-07-17-floor2-progress-suppression-recovery](2026-07-17-floor2-progress-suppression-recovery.md) — Floor 2 progress suppression recovery
 - [2026-07-16-ai-invariant-harness](2026-07-16-ai-invariant-harness.md) — Added a reusable AI invariant fixture that defines the hard-gate invariant
 - [2026-07-16-fix-safe-room-doorway-livelock](2026-07-16-fix-safe-room-doorway-livelock.md) — Addressed the **second-largest failure bucket** (`outcome=timeout`, 14/95 failures, 14.7%) from
@@ -33,8 +32,9 @@ their front matter; legacy handoffs are classified heuristically by filename.
 - [2026-07-06-headless-sweep-review-shepherd](2026-07-06-headless-sweep-review-shepherd.md) — Handoff: Headless sweep — review-thread shepherd fixes
 - [2026-07-06-spatial-scoping-perf](2026-07-06-spatial-scoping-perf.md) — Handoff: Spatial-Scoping Performance Optimizations
 - [2026-07-05-headless-sweep-speedup](2026-07-05-headless-sweep-speedup.md) — Handoff: Headless sweep speedup (Tier A + B)
+- [2026-07-03-progress-nav-instrumentation](2026-07-03-progress-nav-instrumentation.md) — Progress navigation suppression instrumentation
 
-_…and 16 older, see `archive/`._
+_…and 15 older, see `archive/`._
 
 ## ai-combat-balance
 
@@ -108,9 +108,8 @@ _…and 37 older, see `archive/`._
 - [2026-07-18-gearwork-locket-sprite-brief](2026-07-18-gearwork-locket-sprite-brief.md) — Handled issue #1380 for the `gearwork-locket` Floor 2 equipment accessory icon:
 - [2026-07-18-grave-shovel-brief-again](2026-07-18-grave-shovel-brief-again.md) — Handoff: grave-shovel weapon brief (issue #1439 duplicate path)
 - [2026-07-18-grave-shovel-merge-recovery](2026-07-18-grave-shovel-merge-recovery.md) — Handoff: grave-shovel PR merge recovery
-- [2026-07-18-hand-crossbow-sprite-brief](2026-07-18-hand-crossbow-sprite-brief.md) — Authored the production-ready source brief `briefs/weapons/hand-crossbow.yaml`
 
-_…and 102 older, see `archive/`._
+_…and 103 older, see `archive/`._
 
 ## sprite-workflow
 
@@ -245,6 +244,7 @@ _…and 49 older, see `archive/`._
 
 ## inventory
 
+- [2026-07-19-deterministic-equipment-gates](2026-07-19-deterministic-equipment-gates.md) — Handoff: deterministic equipment DPS and distribution gates
 - [2026-07-18-active-weapon-snapshots-main-merge-recovery](2026-07-18-active-weapon-snapshots-main-merge-recovery.md) — Handoff: active weapon snapshots main merge recovery
 - [2026-07-18-active-weapon-snapshots](2026-07-18-active-weapon-snapshots.md) — Handoff: Immutable Active Weapon Snapshots
 - [2026-07-18-batfolk-hood-equipment-icon](2026-07-18-batfolk-hood-equipment-icon.md) — Produced the full wiring scaffolding for the Floor 2 `batfolk-hood` head-slot
@@ -264,9 +264,8 @@ _…and 49 older, see `archive/`._
 - [2026-07-17-floor-2-equipment-contracts](2026-07-17-floor-2-equipment-contracts.md) — Handoff: Floor 2 Equipment Contract Foundation
 - [2026-07-17-player-floor-transition](2026-07-17-player-floor-transition.md) — Replaced the Floor 1 full-page Floor 2 navigation with an in-process
 - [2026-07-16-advisory-checks-encumbrance-export-cleanup](2026-07-16-advisory-checks-encumbrance-export-cleanup.md) — Handoff: PR #1203 advisory-checks dead-export cleanup
-- [2026-07-16-equipment-weight-encumbrance](2026-07-16-equipment-weight-encumbrance.md) — Handoff: Author complete equipment weight values for encumbrance
 
-_…and 43 older, see `archive/`._
+_…and 44 older, see `archive/`._
 
 ## vfx
 
@@ -295,6 +294,7 @@ _…and 5 older, see `archive/`._
 
 ## weapons
 
+- [2026-07-19-deterministic-equipment-gates](2026-07-19-deterministic-equipment-gates.md) — Handoff: deterministic equipment DPS and distribution gates
 - [2026-07-18-active-weapon-snapshots-main-merge-recovery](2026-07-18-active-weapon-snapshots-main-merge-recovery.md) — Handoff: active weapon snapshots main merge recovery
 - [2026-07-18-active-weapon-snapshots](2026-07-18-active-weapon-snapshots.md) — Handoff: Immutable Active Weapon Snapshots
 - [2026-07-18-baseball-bat-brief](2026-07-18-baseball-bat-brief.md) — Handled issue #1329 for the `baseball-bat` asset request by taking the smallest
@@ -314,15 +314,11 @@ _…and 5 older, see `archive/`._
 - [2026-07-16-overhaul-primary-stats](2026-07-16-overhaul-primary-stats.md) — Handoff: Primary stat-system overhaul
 - [2026-07-16-stats-overhaul-pr-recovery](2026-07-16-stats-overhaul-pr-recovery.md) — Handoff: PR #1203 blocker recovery
 - [2026-07-15-floor2-ai-hunt-progression](2026-07-15-floor2-ai-hunt-progression.md) — Handoff - Floor 2 AI Hunt Progression
-- [2026-07-13-floor1-merchant-review-recovery](2026-07-13-floor1-merchant-review-recovery.md) — Floor 1 merchant review recovery
-- [2026-07-13-floor1-missing-starter-classes](2026-07-13-floor1-missing-starter-classes.md) — Add flagged Floor 1 starter options for missing weapon classes
-- [2026-07-13-pr1054-merge-conflicts](2026-07-13-pr1054-merge-conflicts.md) — Handoff: PR #1054 merge conflict resolution
 
-_…and 39 older, see `archive/`._
+_…and 42 older, see `archive/`._
 
 ## enemies
 
-- [2026-07-19-floor2-mob-activity](2026-07-19-floor2-mob-activity.md) — Handoff - Floor 2 Mob Activity
 - [2026-07-18-bloody-footprints](2026-07-18-bloody-footprints.md) — Implemented issue #1267 end to end with a single authoritative blood-surface model in ECS/state instead of renderer-owned pool state.
 - [2026-07-18-runtime-mob-motion-pr1272-recovery](2026-07-18-runtime-mob-motion-pr1272-recovery.md) — Fixed the remaining renderer-ordering review blocker in `src/engine/PhaserBridge.ts` by immediately applying `uiCamera.ignore(...)` when en…
 - [2026-07-17-floor2-boss-ability-catalog](2026-07-17-floor2-boss-ability-catalog.md) — Handoff: Floor 2 boss ability catalog
@@ -343,9 +339,8 @@ _…and 39 older, see `archive/`._
 - [2026-07-08-enemy-render-path-wiring](2026-07-08-enemy-render-path-wiring.md) — ~43 Floor-2 enemy sprites already shipped on `main` as real generated art but
 - [2026-07-08-f1-wire-rubble-slimerat](2026-07-08-f1-wire-rubble-slimerat.md) — Handoff: Wire Floor-1 rubble prop + slime-rat mid-boss to existing generated art
 - [2026-07-08-floor2-family-mobs-spawn-zones](2026-07-08-floor2-family-mobs-spawn-zones.md) — Handoff: Floor 2 family mobs, generic spawn-zone union, and placeholder-art tracking
-- [2026-07-08-snapshot-lab-mob-art](2026-07-08-snapshot-lab-mob-art.md) — The `ux-snapshot-lab` still preloaded the flat `temp_slime.png` / `temp_rat.png`
 
-_…and 76 older, see `archive/`._
+_…and 77 older, see `archive/`._
 
 ## boss-rooms
 
@@ -385,27 +380,30 @@ _…and 76 older, see `archive/`._
 
 - [2026-07-19-ci-recovery-pr1367-exhausted-redispatch](2026-07-19-ci-recovery-pr1367-exhausted-redispatch.md) — Handoff: CI recovery PR #1367 exhausted redispatch guard
 - [2026-07-19-ci-recovery-sha-placeholder-fix](2026-07-19-ci-recovery-sha-placeholder-fix.md) — Handoff: CI Recovery — task body SHA placeholder fix
+- [2026-07-19-deterministic-equipment-gates](2026-07-19-deterministic-equipment-gates.md) — Handoff: deterministic equipment DPS and distribution gates
 - [2026-07-19-fast-verifier-root-ts-recovery](2026-07-19-fast-verifier-root-ts-recovery.md) — Fast verifier root/tool TS recovery
+- [2026-07-19-pr1287-conflict-recovery](2026-07-19-pr1287-conflict-recovery.md) — Handoff: PR #1287 conflict recovery
 - [2026-07-19-pr1571-review-recovery](2026-07-19-pr1571-review-recovery.md) — PR #1571 review recovery
 - [2026-07-19-pr1593-merge-conflict-recovery](2026-07-19-pr1593-merge-conflict-recovery.md) — Handoff: PR #1593 merge-conflict recovery
+- [2026-07-19-pr1604-merge-conflict-recovery](2026-07-19-pr1604-merge-conflict-recovery.md) — Handoff: PR #1604 merge-conflict recovery
 - [2026-07-18-active-weapon-snapshots-main-merge-recovery](2026-07-18-active-weapon-snapshots-main-merge-recovery.md) — Handoff: active weapon snapshots main merge recovery
 - [2026-07-18-bone-saw-pr-merge-recovery](2026-07-18-bone-saw-pr-merge-recovery.md) — Handoff: bone-saw PR merge recovery
 - [2026-07-18-ci-recovery-balance-sweep-prefix](2026-07-18-ci-recovery-balance-sweep-prefix.md) — Handoff: Fix stale NIGHTLY_BALANCE_BRANCH_PREFIX in CI recovery automation
 - [2026-07-18-ci-recovery-loop-epic-state](2026-07-18-ci-recovery-loop-epic-state.md) — 2026-07-18 CI Recovery Loop — Epic-State Stale Commit Fix
 - [2026-07-18-ci-recovery-loop-fingerprint-fix](2026-07-18-ci-recovery-loop-fingerprint-fix.md) — Removed `line` (diff-position line number) from `normalizeBlockers` in
+- [2026-07-18-ci-recovery-loop-pr1350](2026-07-18-ci-recovery-loop-pr1350.md) — Handoff: CI recovery loop fix — PR #1350 (retroactive plan comment)
 - [2026-07-18-ci-recovery-outdated-thread-fix](2026-07-18-ci-recovery-outdated-thread-fix.md) — 2026-07-18 CI Recovery: Auto-post Trusted Marker for isOutdated Review Threads
+- [2026-07-18-ci-recovery-plan-review-fixes](2026-07-18-ci-recovery-plan-review-fixes.md) — Handoff: CI recovery plan-comment review fixes
 - [2026-07-18-ci-recovery-pr1265-outdated-threads](2026-07-18-ci-recovery-pr1265-outdated-threads.md) — Handoff: PR #1265 CI recovery outdated-thread convergence
 - [2026-07-18-ci-recovery-pr1271-thread-guidance](2026-07-18-ci-recovery-pr1271-thread-guidance.md) — Handoff: CI recovery PR #1271 in-thread guidance
+- [2026-07-18-ci-recovery-protected-path-fix](2026-07-18-ci-recovery-protected-path-fix.md) — Handoff: CI recovery protected-path fix
 - [2026-07-18-ci-recovery-slash-sha-marker-fix](2026-07-18-ci-recovery-slash-sha-marker-fix.md) — Handoff: CI Recovery Slash-SHA Marker Parser Fix
 - [2026-07-18-ci-recovery-task-wording](2026-07-18-ci-recovery-task-wording.md) — Investigated CI recovery loop incident #1583 (PR #1507 — merchant-sandals brief).
 - [2026-07-18-ci-recovery-thread-reply-target](2026-07-18-ci-recovery-thread-reply-target.md) — Handoff: CI recovery thread reply target hints
 - [2026-07-18-ember-wand-epic-audit-recovery](2026-07-18-ember-wand-epic-audit-recovery.md) — Investigated the `Offline epic validation` CI failure from the `Epic Drift Audit` workflow and reproduced it locally with `npm run epic:sta…
 - [2026-07-18-ember-wand-review-recovery](2026-07-18-ember-wand-review-recovery.md) — Handoff: Recover ember-wand PR review threads
-- [2026-07-18-epic-status-ci-recovery](2026-07-18-epic-status-ci-recovery.md) — Restored the missing schema-derived `EvidenceRecord` alias in `scripts/agent/epics/epic-status-lib.ts`, clearing the repo-wide TypeScript f…
-- [2026-07-18-epic-status-merge-recovery](2026-07-18-epic-status-merge-recovery.md) — Handoff: PR #1286 merge-conflict recovery
-- [2026-07-18-epic-status-pr1271-live-claim-recovery](2026-07-18-epic-status-pr1271-live-claim-recovery.md) — Handoff: PR #1271 live-claim + GitReader compatibility recovery
 
-_…and 150 older, see `archive/`._
+_…and 154 older, see `archive/`._
 
 ## agent-memory
 
@@ -443,7 +441,9 @@ _…and 35 older, see `archive/`._
 
 ## agent-personas
 
+- [2026-07-19-pr1287-conflict-recovery](2026-07-19-pr1287-conflict-recovery.md) — Handoff: PR #1287 conflict recovery
 - [2026-07-17-floor-2-equipment-epic-control](2026-07-17-floor-2-equipment-epic-control.md) — Implemented Slice A0 as a durable, resumable control plane without changing
+- [2026-07-17-floor-2-stacked-work-protocol](2026-07-17-floor-2-stacked-work-protocol.md) — Implemented the A0.1 control-plane follow-up without changing equipment gameplay
 - [2026-07-11-stop-pre-pr-full-verify](2026-07-11-stop-pre-pr-full-verify.md) — Removed the unconditional instruction to run full `npm run verify` before committing or creating a PR. The top-level agent instructions, re…
 - [2026-07-11-unified-ci-recovery](2026-07-11-unified-ci-recovery.md) — Added a GitHub-native CI recovery router with PR/review/CI event triggers and a
 - [2026-07-10-codify-workflow-standards](2026-07-10-codify-workflow-standards.md) — Codified two repo standards across top-level instructions, policy docs, and the sweep skill surface: (1) broad sweeps (>10 runs) should def…
@@ -468,6 +468,7 @@ _…and 35 older, see `archive/`._
 
 ## docs-tooling
 
+- [2026-07-19-pr1287-conflict-recovery](2026-07-19-pr1287-conflict-recovery.md) — Handoff: PR #1287 conflict recovery
 - [2026-07-18-ember-wand-epic-audit-recovery](2026-07-18-ember-wand-epic-audit-recovery.md) — Investigated the `Offline epic validation` CI failure from the `Epic Drift Audit` workflow and reproduced it locally with `npm run epic:sta…
 - [2026-07-18-epic-status-ci-recovery](2026-07-18-epic-status-ci-recovery.md) — Restored the missing schema-derived `EvidenceRecord` alias in `scripts/agent/epics/epic-status-lib.ts`, clearing the repo-wide TypeScript f…
 - [2026-07-18-epic-status-merge-recovery](2026-07-18-epic-status-merge-recovery.md) — Handoff: PR #1286 merge-conflict recovery
@@ -482,20 +483,21 @@ _…and 35 older, see `archive/`._
 - [2026-07-18-pr1286-main-merge-recovery](2026-07-18-pr1286-main-merge-recovery.md) — Handoff: PR #1286 main merge recovery
 - [2026-07-17-floor-2-epic-control-pr-recovery](2026-07-17-floor-2-epic-control-pr-recovery.md) — Recovered PR #1286's epic-control blockers without widening scope beyond the
 - [2026-07-17-floor-2-equipment-epic-control](2026-07-17-floor-2-equipment-epic-control.md) — Implemented Slice A0 as a durable, resumable control plane without changing
+- [2026-07-17-floor-2-stacked-work-protocol](2026-07-17-floor-2-stacked-work-protocol.md) — Implemented the A0.1 control-plane follow-up without changing equipment gameplay
 - [2026-07-16-docs-update-2026-07-13-findings](2026-07-16-docs-update-2026-07-13-findings.md) — Resolved all blocking and non-blocking findings from the 2026-07-13 docs-update scheduled report (issue #1120, closes #1120).
 - [2026-07-13-floor1-spell-broker-expansion](2026-07-13-floor1-spell-broker-expansion.md) — Handoff — 2026-07-13 — Floor 1 spell broker expansion
 - [2026-07-13-pr1054-latest-rebase-recovery](2026-07-13-pr1054-latest-rebase-recovery.md) — Handoff: PR #1054 latest behind-main recovery
 - [2026-07-13-pr1054-rebase-recovery](2026-07-13-pr1054-rebase-recovery.md) — Handoff: PR #1054 behind-main recovery
-- [2026-07-13-pr1054-thread-recovery](2026-07-13-pr1054-thread-recovery.md) — Handoff: PR #1054 review-thread recovery
-- [2026-07-13-remove-commit-lint](2026-07-13-remove-commit-lint.md) — 2026-07-13 — Remove commit/PR name linter rule
 
-_…and 24 older, see `archive/`._
+_…and 26 older, see `archive/`._
 
 ## _unclassified_
 
 These handoffs lack a `## Systems touched` field and did not match any
 heuristic. Add a `## Systems touched` line to fix.
 
+- [2026-07-19-d1-deterministic-equipment-generator](2026-07-19-d1-deterministic-equipment-generator.md) — Implemented the D1 deterministic equipment generator adapted for the main branch API (main has its own squash-merged B1/C1/C2 rather than t…
+- [2026-07-19-floor-2-equipment-materialize](2026-07-19-floor-2-equipment-materialize.md) — Floor 2 equipment child-issue materialization
 - [2026-07-18-acid-flask-sprite-icon](2026-07-18-acid-flask-sprite-icon.md) — Handoff: acid-flask weapon sprite — Floor 2 thrown weapon
 - [2026-07-18-acid-flask-sprite](2026-07-18-acid-flask-sprite.md) — Handoff: acid-flask weapon sprite — Floor 2 equipment wave
 - [2026-07-18-alchemist-goggles-asset-request](2026-07-18-alchemist-goggles-asset-request.md) — Authored `briefs/items/alchemist-goggles.yaml` for issue nalfeo/Crawler#1376 (Floor 2 head-slot
@@ -514,7 +516,5 @@ heuristic. Add a `## Systems touched` line to fix.
 - [2026-07-18-ci-recovery-stale-marker](2026-07-18-ci-recovery-stale-marker.md) — Handoff: fix(ci-recovery): detect stale ✅ Addressed markers
 - [2026-07-18-dueling-saber-sprite](2026-07-18-dueling-saber-sprite.md) — 2026-07-18 — dueling-saber sprite (issue #1311)
 - [2026-07-18-echo-bell-sprite-wiring](2026-07-18-echo-bell-sprite-wiring.md) — Added the `echo-bell` weapon to the item catalog, generated a procedural placeholder
-- [2026-07-18-epic-status-pr1271-final-review](2026-07-18-epic-status-pr1271-final-review.md) — Handoff: Epic Status PR #1271 Final Review Recovery
-- [2026-07-18-floor2-guarantee-quartermaster-placement](2026-07-18-floor2-guarantee-quartermaster-placement.md) — Handoff: Guarantee Floor 2 Quartermaster Placement
 
-_…and 48 more._
+_…and 49 more._
