@@ -226,10 +226,13 @@ function toReferenceSpriteRef(entry: ManifestEntry): ReferenceSpriteRef {
 function loadDislikedSpriteNamesFromAnnotations(annotationsPath: string): ReadonlySet<string> {
   for (let attempt = 0; attempt < ANNOTATION_PARSE_ATTEMPTS; attempt += 1) {
     try {
-      const raw = JSON.parse(readFileSync(annotationsPath, 'utf8')) as { readonly sprites?: unknown };
+      const raw = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
+        readonly sprites?: unknown;
+      };
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return new Set<string>();
       const sprites = raw.sprites;
-      if (!sprites || typeof sprites !== 'object' || Array.isArray(sprites)) return new Set<string>();
+      if (!sprites || typeof sprites !== 'object' || Array.isArray(sprites))
+        return new Set<string>();
       const disliked = new Set<string>();
       for (const [spriteName, note] of Object.entries(sprites as Record<string, unknown>)) {
         if (!note || typeof note !== 'object' || Array.isArray(note)) continue;

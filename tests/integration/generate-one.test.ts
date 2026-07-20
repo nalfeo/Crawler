@@ -456,7 +456,8 @@ describe('generateOne — sheet-only generate stage (integration)', () => {
       readReference: (absolutePath: string) => Buffer.from(absolutePath),
     });
 
-    const selectedNames = result.summary.referenceSprites?.selected.map((entry) => entry.spriteName) ?? [];
+    const selectedNames =
+      result.summary.referenceSprites?.selected.map((entry) => entry.spriteName) ?? [];
     expect(selectedNames).toContain(liked.spriteName);
     expect(selectedNames).not.toContain(disliked.spriteName);
   });
