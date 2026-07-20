@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "docs-update-body-truncation",
+  "task_title": "fix: truncate docs-update aggregate report to stay within GitHub issue body limit",
+  "estimated_apples": 1,
+  "stages": {}
+}
