@@ -1,18 +1,29 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { feedbackForRun, feedbackKey, readFeedback, saveFeedback } from '../lib/feedback-store.mjs';
+import {
+  FEEDBACK_VERSION,
+  feedbackForRun,
+  feedbackKey,
+  readFeedback,
+  saveFeedback,
+} from '../lib/feedback-store.mjs';
 
 function memoryFs(initial = null) {
-  let text = initial;
+  const files = new Map(initial === null ? [] : [['feedback.json', initial]]);
   return {
-    existsSync: () => text !== null,
-    readFileSync: () => text,
-    writeFileSync: (_path, next) => {
-      text = next;
+    existsSync: (path) => files.has(path),
+    readFileSync: (path) => files.get(path),
+    writeFileSync: (path, next) => {
+      files.set(path, next);
     },
+    renameSync: (from, to) => {
+      files.set(to, files.get(from));
+      files.delete(from);
+    },
+    randomUUID: () => 'test-id',
     now: () => new Date('2026-07-20T04:00:00.000Z'),
-    text: () => text,
+    text: () => files.get('feedback.json') ?? null,
   };
 }
 
@@ -79,4 +90,48 @@ test('accepts partial dependency overrides and clears empty feedback', () => {
     { ...fs, now: undefined },
   );
   assert.equal(cleared, null);
+});
+
+test('recovers from a truncated feedback file and replaces it atomically', () => {
+  const fs = memoryFs('{"version":1,"entries":');
+  assert.deepEqual(readFeedback('feedback.json', fs), { version: FEEDBACK_VERSION, entries: {} });
+
+  saveFeedback(
+    'feedback.json',
+    {
+      briefId: 'hero',
+      runId: 'run-4',
+      variantIndex: 0,
+      kind: 'judge',
+      criterion: 'readability',
+      verdict: 'up',
+      comment: '',
+    },
+    fs,
+  );
+
+  assert.equal(JSON.parse(fs.text()).entries !== undefined, true);
+  assert.equal(fs.existsSync('feedback.json.tmp.test-id'), false);
+});
+
+test('classifies invalid feedback as a client error', () => {
+  const fs = memoryFs();
+  assert.throws(
+    () =>
+      saveFeedback(
+        'feedback.json',
+        {
+          briefId: 'hero',
+          runId: 'run-5',
+          variantIndex: -1,
+          kind: 'judge',
+          criterion: 'readability',
+          verdict: 'up',
+        },
+        fs,
+      ),
+    (error) =>
+      error.code === 'invalid-feedback' &&
+      error.message === 'variantIndex must be a non-negative integer',
+  );
 });

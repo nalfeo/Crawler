@@ -32,6 +32,7 @@ import { beginSpriteSidecarStartup } from '../shared/sprite-sidecar-service.mjs'
 import { createImageCache, resolveExtCacheDir } from './lib/image-cache.mjs';
 import { renderHtml } from './renderer.mjs';
 import { feedbackForRun, readFeedback, saveFeedback } from './lib/feedback-store.mjs';
+import { readJsonBody } from './lib/feedback-request.mjs';
 import {
   resolveSidecarBaseUrl,
   createSidecarClient,
@@ -265,8 +266,36 @@ const jsonRoutes = [
     handler: async ({ req, instanceId }) => {
       const entry = instances.get(instanceId);
       if (!entry) return { status: 404, json: { error: 'instance not found' } };
-      const payload = await readJsonBody(req);
-      const feedback = saveFeedback(FEEDBACK_PATH, payload);
+      let payload;
+      try {
+        payload = await readJsonBody(req);
+      } catch (error) {
+        if (error?.code === 'body-too-large') {
+          return {
+            status: 413,
+            json: { error: 'body-too-large', message: 'Feedback payload exceeds 16 KiB.' },
+          };
+        }
+        if (error?.code === 'invalid-json') {
+          return {
+            status: 400,
+            json: { error: 'bad-request', message: 'Feedback payload must be valid JSON.' },
+          };
+        }
+        throw error;
+      }
+      let feedback;
+      try {
+        feedback = saveFeedback(FEEDBACK_PATH, payload);
+      } catch (error) {
+        if (error?.code === 'invalid-feedback') {
+          return {
+            status: 400,
+            json: { error: 'bad-request', message: error.message },
+          };
+        }
+        throw error;
+      }
       const state = await buildState(instanceId);
       await entry.pushState?.(state);
       return { json: { feedback } };
@@ -309,18 +338,6 @@ const jsonRoutes = [
     },
   },
 ];
-
-async function readJsonBody(req) {
-  const chunks = [];
-  let total = 0;
-  for await (const chunk of req) {
-    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += bytes.byteLength;
-    if (total > 16 * 1024) throw new Error('feedback payload exceeds 16 KiB');
-    chunks.push(bytes);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-}
 
 const binaryRoutes = [
   imageRoute('/img/sheet', 'sheet'),

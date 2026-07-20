@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 export const FEEDBACK_VERSION = 1;
 
@@ -10,7 +11,13 @@ export function feedbackKey({ briefId, runId, variantIndex, kind, criterion }) {
 
 export function readFeedback(filePath, fs = { existsSync, readFileSync }) {
   if (!fs.existsSync(filePath)) return { version: FEEDBACK_VERSION, entries: {} };
-  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    if (error instanceof SyntaxError) return { version: FEEDBACK_VERSION, entries: {} };
+    throw error;
+  }
   if (
     parsed?.version !== FEEDBACK_VERSION ||
     !parsed.entries ||
@@ -37,7 +44,14 @@ export function feedbackForRun(store, briefId, runId) {
 }
 
 export function saveFeedback(filePath, input, overrides = {}) {
-  const options = { existsSync, readFileSync, writeFileSync, now: () => new Date() };
+  const options = {
+    existsSync,
+    readFileSync,
+    renameSync,
+    writeFileSync,
+    randomUUID,
+    now: () => new Date(),
+  };
   for (const [key, value] of Object.entries(overrides)) {
     if (value !== undefined) options[key] = value;
   }
@@ -46,13 +60,13 @@ export function saveFeedback(filePath, input, overrides = {}) {
   const criterion = requireText(input?.criterion, 'criterion', 100);
   const variantIndex = Number(input?.variantIndex);
   if (!Number.isInteger(variantIndex) || variantIndex < 0) {
-    throw new Error('variantIndex must be a non-negative integer');
+    throw validationError('variantIndex must be a non-negative integer');
   }
   if (input?.kind !== 'sensor' && input?.kind !== 'judge') {
-    throw new Error('kind must be sensor or judge');
+    throw validationError('kind must be sensor or judge');
   }
   if (input?.verdict !== 'up' && input?.verdict !== 'down' && input?.verdict !== null) {
-    throw new Error('verdict must be up, down, or null');
+    throw validationError('verdict must be up, down, or null');
   }
   const comment = typeof input?.comment === 'string' ? input.comment.trim().slice(0, 1000) : '';
   const store = readFeedback(filePath, options);
@@ -68,13 +82,21 @@ export function saveFeedback(filePath, input, overrides = {}) {
       recordedAt: options.now().toISOString(),
     };
   }
-  options.writeFileSync(filePath, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+  const tempPath = `${filePath}.tmp.${options.randomUUID()}`;
+  options.writeFileSync(tempPath, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+  options.renameSync(tempPath, filePath);
   return store.entries[key] ?? null;
 }
 
 function requireText(value, field, maxLength) {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`${field} is required`);
+    throw validationError(`${field} is required`);
   }
   return value.trim().slice(0, maxLength);
+}
+
+function validationError(message) {
+  const error = new Error(message);
+  error.code = 'invalid-feedback';
+  return error;
 }
