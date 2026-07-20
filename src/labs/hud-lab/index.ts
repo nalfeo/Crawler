@@ -9,7 +9,11 @@
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { GAME, FLOOR } from '../../shared/constants.js';
-import { FLOOR1_BOSS_REWARD_SPELL_IDS, createEmptyAbilityState, type AbilityState } from '../../shared/abilities.js';
+import {
+  FLOOR1_BOSS_REWARD_SPELL_IDS,
+  createEmptyAbilityState,
+  type AbilityState,
+} from '../../shared/abilities.js';
 import { createHudUI } from '../../engine/HudUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnEnemy, spawnPlayer } from '../../core/index.js';

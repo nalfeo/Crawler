@@ -19,6 +19,10 @@ declare -A SHARED_LAB_MAP=(
   # Achievement reward claim helpers are reveal-only state, exercised by the
   # achievements-ui-lab (unlock → open reward → marked claimed).
   [achievementrewards]="achievements-ui-lab"
+  # Core ability-grant helpers are exercised by the equipment-lab via
+  # equipmentSystem (which calls grantGeneratedEquipmentActiveAbilityCore /
+  # grantGeneratedEquipmentPassiveAbilityCore / revokeEquipmentAbilityGrantsCore).
+  [abilitygranthelpers]="equipment-lab"
   # The family-relationship drain/decay system is exercised by the
   # family-territory-lab (its delta buttons queue + drain relationship deltas).
   [familyrelationship]="family-territory-lab"

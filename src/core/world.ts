@@ -38,7 +38,10 @@ import {
   createGeneratedEquipmentRegistry,
   type GeneratedEquipmentRegistry,
 } from './generated-equipment-registry.js';
-import type { GeneratedEquipmentGenerationPolicyV1, GeneratedEquipmentRewardBundleV1 } from '../shared/generated-equipment-types.js';
+import type {
+  GeneratedEquipmentGenerationPolicyV1,
+  GeneratedEquipmentRewardBundleV1,
+} from '../shared/generated-equipment-types.js';
 import {
   Position,
   Velocity,

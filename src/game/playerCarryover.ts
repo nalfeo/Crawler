@@ -294,10 +294,14 @@ function validateGrantOwnership(
   const expectedSources: ExpectedSource[] = [];
   for (const instance of equippedInstances) {
     const abilityGrantIds = instance.resolvedEffects.flatMap((effect) =>
-      'kind' in effect && effect.kind === 'abilityGrant' ? [(effect as { grantId: string }).grantId] : [],
+      'kind' in effect && effect.kind === 'abilityGrant'
+        ? [(effect as { grantId: string }).grantId]
+        : [],
     );
     const passiveGrantIds = instance.resolvedEffects.flatMap((effect) =>
-      'kind' in effect && effect.kind === 'passiveGrant' ? [(effect as { grantId: string }).grantId] : [],
+      'kind' in effect && effect.kind === 'passiveGrant'
+        ? [(effect as { grantId: string }).grantId]
+        : [],
     );
     if (
       abilityGrantIds.join('\0') !== instance.frozen.abilityGrants.join('\0') ||
@@ -308,7 +312,8 @@ function validateGrantOwnership(
       );
     }
     for (const effect of instance.resolvedEffects) {
-      if (!('kind' in effect) || (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant')) continue;
+      if (!('kind' in effect) || (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant'))
+        continue;
       expectedSources.push({
         abilityId: (effect as { grantId: string }).grantId,
         kind: (effect as { kind: 'abilityGrant' | 'passiveGrant' }).kind,
