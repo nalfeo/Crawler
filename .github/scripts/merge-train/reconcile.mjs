@@ -606,11 +606,12 @@ const loopResult = await runTrainBuildLoop({
     await deAdmitNoop(train[index], error.message);
     process.stdout.write(`returned no-op pr=#${train[index].number} to reconciliation\n`);
   },
-  onRetryableFailure: async (index, error) => {
+  onRetryableFailure: async (index, error, recovery) => {
+    const promotedCount = recovery?.greenPrefixLength ?? 0;
     await updateStatus(
       train[index].number,
       renderStatus({
-        position: index + 1,
+        position: index + 1 - promotedCount,
         candidateSha: '',
         state: 'waiting',
         detail: error.message,
