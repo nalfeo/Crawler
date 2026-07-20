@@ -230,10 +230,7 @@ describe('epic drift audit trigger scope', () => {
       'docs/knowledge/epics/floor-2-equipment/**',
       'scripts/agent/epics/**',
       'tests/unit/agent/epic-status.test.ts',
-      '.github/actions/setup-node/action.yml',
-      'package.json',
-      'package-lock.json',
-      'tsconfig*.json',
+      'tests/unit/agent/epic-status-inaccessible-commit.test.ts',
       '.github/workflows/epic-drift-audit.yml',
     ];
 
