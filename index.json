@@ -1,5 +1,16 @@
 [
   {
+    "commit": "7d52966d8c47af882674e92b3b385386cc476c8c",
+    "commitDate": "2026-07-20T04:23:45Z",
+    "commitSubject": "feat(ci): post-rollout CI efficiency measurement tooling (issue #1702) (#1704)",
+    "capturedAt": "2026-07-20T05:46:05.270Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29717260658",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/7d52966d8c47af882674e92b3b385386cc476c8c.json"
+  },
+  {
     "commit": "9746dc23f9589218ea6b4caf2c590f9af0930076",
     "commitDate": "2026-07-20T04:23:29Z",
     "commitSubject": "docs: define Unique equipment schema, ADR 0066, and authored roster (#1660)",
