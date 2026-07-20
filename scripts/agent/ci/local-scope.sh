@@ -42,12 +42,16 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 emit_all_false() {
   # Mirror detect-art-only.sh's fail-safe output contract exactly so consumers can
   # parse one shape regardless of which path produced it.
+<<<<<<< HEAD
   # Legacy inverse flags (art_only, docs_only, gameplay_safe, sprites_only,
   # sprites_touched) stay false on an unknown-scope path — no false "art skip" or
   # "gameplay safe" should be granted. The five new positive impact flags are set
   # true because the scope is unknown: a consumer gating work on these flags must
   # not skip that work just because we cannot determine the change set.
   printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nvisual_touched=true\nsim_touched=true\ncoverage_touched=true\nsprite_pipeline_touched=true\ndependencies_touched=true\n'
+=======
+  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nsim_touched=true\ncoverage_touched=true\n'
+>>>>>>> origin/main
 }
 
 # Not a git work tree (or git unavailable) → cannot compute a trustworthy set.

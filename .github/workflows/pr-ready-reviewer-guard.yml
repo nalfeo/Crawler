@@ -16,8 +16,13 @@ jobs:
     name: Enforce ready + reviewer cleanup
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # For pull_request_target events, scope the concurrency group to the specific
+    # PR so events for different PRs never block one another and stale events for
+    # the same PR are coalesced (cancel-in-progress: true). For scheduled/manual
+    # sweep runs, use the global group with cancel-in-progress: false so the
+    # single full-repo sweep is never interrupted.
     concurrency:
-      group: pr-ready-reviewer-guard
+      group: "pr-ready-reviewer-guard"
       cancel-in-progress: false
     steps:
       - name: Checkout trusted guard script
