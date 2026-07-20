@@ -182,6 +182,17 @@ contextLabel: string)`, adding 4 build-fingerprint checks
 - `docs/knowledge/handoffs/2026-07-19-ai-sweep-eval-parallel-rounds.md` —
   added a superseded-notice pointing here so operators reading that handoff
   don't apply the now-replaced zero-flip rule.
+- `scripts/agent/perf/aggregate-shards.ts` — **Post-review (CI security +
+  duplicate-row guard)**: `buildLeaderboard` now requires exactly one row per
+  `(weapon, seed)` cell in both the candidate group and the incumbent group
+  before computing `winsVsIncumbentDelta`; a duplicate winning row can no longer
+  inflate `wins`/`runs` past the panel check and produce a false positive delta.
+  Two regression tests added covering both the candidate-duplicate and
+  incumbent-duplicate cases.
+- `package.json` / `package-lock.json` — added `brace-expansion: ^5.0.7`
+  override to fix security vulnerability GHSA-3jxr-9vmj-r5cp, surfaced by the
+  CI security check during PR shepherding. Validated: `npm install` updated
+  the lockfile; `npm run verify:fast` and the CI security check both pass.
 
 ### Scoped out
 
