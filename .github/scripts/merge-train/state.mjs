@@ -4,6 +4,7 @@ export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
 export const RECOVERY_PENDING_LABEL = 'merge-train-recovery-pending';
 export const NOOP_LABEL = 'merge-train-noop';
+export const CI_CONFLICT_ORDER_WAIT_LABEL = 'ci-conflict-order-wait';
 // Durable, permanent marker that a PR's validated change actually reached
 // `main` through the train. Unlike the transient QUEUE/BLOCKED labels (which
 // are added and removed as a PR moves through admission and promotion), this
@@ -87,13 +88,18 @@ export function queueEntries(pullRequests, repository) {
         pr.base?.ref === 'main' &&
         pr.head?.repo?.full_name?.toLowerCase() === repository.toLowerCase() &&
         (pr.labels || []).some((label) => label.name === QUEUE_LABEL) &&
-        !(pr.labels || []).some((label) => label.name === BLOCKED_LABEL),
+        !(pr.labels || []).some((label) => label.name === BLOCKED_LABEL) &&
+        !(pr.labels || []).some((label) => label.name === CI_CONFLICT_ORDER_WAIT_LABEL),
     )
     .sort(
       (left, right) =>
         new Date(left.created_at).getTime() - new Date(right.created_at).getTime() ||
         left.number - right.number,
     );
+}
+
+export function shouldWaitForCiConflictOrder(labels) {
+  return (labels || []).some((label) => label.name === CI_CONFLICT_ORDER_WAIT_LABEL);
 }
 
 export function candidateFingerprint(baseSha, entries) {
