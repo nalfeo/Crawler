@@ -611,6 +611,55 @@ function equipmentSourceId(instanceId: EquipmentInstanceId): string {
   return `equipment:${instanceId}`;
 }
 
+/**
+ * Commit phase shared by `equip` and `equipFromBag` for static items.
+ * Allocates an instance id, writes slots and instance map, recomputes stats,
+ * grants status effects, and activates the weapon — in the canonical order
+ * established by `equip`.
+ *
+ * Callers are responsible for all pre-validation and bag mutations before
+ * invoking this helper.
+ */
+function commitStaticEquipInstance(
+  world: GameWorld,
+  entity: number,
+  state: EquipmentState,
+  def: EquipmentItemDef,
+): EquipmentInstanceId {
+  const instanceId = getNextInstanceId(world);
+  const instance: EquipmentInstance = { instanceId, def };
+
+  for (const slotId of def.slots) {
+    state.equipped[slotId] = instanceId;
+  }
+  state.instances.set(instanceId, instance);
+
+  recomputeEffectiveStats(world, entity);
+
+  // Grant any timed/tracked status effects this item provides. Specs were
+  // pre-validated in canEquip (validateItemDef), so these writes are infallible
+  // and the caller stays atomic. Both sourceType and sourceId are normalized to
+  // this equipment instance so unequip() clears them symmetrically.
+  for (const spec of def.grantsStatusEffects ?? []) {
+    applyStatusEffect(world, entity, {
+      ...spec,
+      sourceType: 'equipment',
+      sourceId: equipmentSourceId(instanceId),
+    });
+  }
+
+  // Weapon-typed equipment: activate the underlying WeaponDef when the player
+  // equips it. Non-player entities silently skip this.
+  if (def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
+    const weaponDef = getWeaponDef(def.weaponId);
+    if (weaponDef !== undefined) {
+      setActiveWeaponDef(world, weaponDef);
+    }
+  }
+
+  return instanceId;
+}
+
 /** Equip an item. Atomic — either fully succeeds or no state change. */
 export function equip(
   world: GameWorld,
@@ -632,39 +681,7 @@ export function equip(
   }
 
   const state = getOrCreateState(world, entity);
-  const instanceId = getNextInstanceId(world);
-  const instance: EquipmentInstance = { instanceId, def: itemDef };
-
-  for (const slotId of itemDef.slots) {
-    state.equipped[slotId] = instanceId;
-  }
-  state.instances.set(instanceId, instance);
-
-  recomputeEffectiveStats(world, entity);
-
-  // Grant any timed/tracked status effects this item provides. Specs were
-  // pre-validated in canEquip (validateItemDef), so these writes are infallible
-  // and equip() stays atomic. Both sourceType and sourceId are normalized to this
-  // equipment instance so unequip() clears them symmetrically (a def's granted spec
-  // can never leak via a non-'equipment' sourceType), and duplicate-capable items
-  // (e.g. two rings) track independently.
-  for (const spec of itemDef.grantsStatusEffects ?? []) {
-    applyStatusEffect(world, entity, {
-      ...spec,
-      sourceType: 'equipment',
-      sourceId: equipmentSourceId(instanceId),
-    });
-  }
-
-  // Weapon-typed equipment: activate the underlying WeaponDef when the player
-  // equips it. Non-player entities silently skip this (equipment is entity-
-  // agnostic in principle; only the player has an active weapon today).
-  if (itemDef.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
-    const weaponDef = getWeaponDef(itemDef.weaponId);
-    if (weaponDef !== undefined) {
-      setActiveWeaponDef(world, weaponDef);
-    }
-  }
+  const instanceId = commitStaticEquipInstance(world, entity, state, itemDef);
 
   return { ok: true, instanceId };
 }
@@ -966,26 +983,7 @@ export function equipFromBag(
     prepared.displaced,
   );
   removeItem(bag, itemId, 1);
-  const instanceId = getNextInstanceId(world);
-  const instance: EquipmentInstance = { instanceId, def };
-  for (const slotId of def.slots) {
-    state.equipped[slotId] = instanceId;
-  }
-  state.instances.set(instanceId, instance);
-  for (const spec of def.grantsStatusEffects ?? []) {
-    applyStatusEffect(world, entity, {
-      ...spec,
-      sourceType: 'equipment',
-      sourceId: equipmentSourceId(instanceId),
-    });
-  }
-  if (def.weaponId !== undefined && hasComponent(world.ecs, entity, Player)) {
-    const weaponDef = getWeaponDef(def.weaponId);
-    if (weaponDef !== undefined) {
-      setActiveWeaponDef(world, weaponDef);
-    }
-  }
-  recomputeEffectiveStats(world, entity);
+  const instanceId = commitStaticEquipInstance(world, entity, state, def);
 
   return {
     ok: true,
