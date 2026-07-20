@@ -6926,6 +6926,7 @@ test('outdated stale-marker thread remains blocked with a recovery hint', async 
     'must not replace a definitively stale marker with an automatic outdated marker',
   );
 
+
   const taskCommentCall = mutatingCalls.find(
     (call) =>
       call.method === 'POST' &&

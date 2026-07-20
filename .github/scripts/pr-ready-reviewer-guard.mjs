@@ -697,7 +697,6 @@ export async function runPrReadyReviewerGuard({
     log.info('No open PRs found.');
     return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
   }
-
   let draftsPublished = 0;
   let emptyDraftRepairs = 0;
   let reviewerRemovals = 0;
@@ -759,11 +758,11 @@ export async function runPrReadyReviewerGuard({
         // entire job and trigger a false-positive repair-failure alert.
         const isRateLimit =
           error?.status === 403 &&
-          String(error?.data?.message ?? error?.message ?? '')
-            .toLowerCase()
-            .includes('rate limit');
+          String(error?.data?.message ?? error?.message ?? '').toLowerCase().includes('rate limit');
         if (isRateLimit) {
-          log.warn(`skip pr=#${prNumber} reason=rate-limit: ${getErrorMessage(error)}`);
+          log.warn(
+            `skip pr=#${prNumber} reason=rate-limit: ${getErrorMessage(error)}`,
+          );
         } else {
           const prError = `PR #${prNumber}: ${getErrorMessage(error)}`;
           if (attemptedRepair) {
