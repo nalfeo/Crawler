@@ -197,18 +197,25 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       // but with no base we must refuse and force the full suite (positive-signal flags true).
       repo.write('docs/notes.md', 'notes\n');
       //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-      expect(repo.scope()).toEqual(F(false, false, false, false, false, true, true, true, false, true));
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, true),
+      );
     },
   );
 
-  it.skipIf(!hasBash)('clean tree with a resolved base fails safe (positive-signal flags true)', () => {
-    const repo = makeRepo();
-    mainWithFeature(repo);
-    // feature == main, nothing changed → empty set → detect-art-only fail-safe
-    // emits gameplay_safe=false with all positive-signal flags true.
-    //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expect(repo.scope()).toEqual(F(false, false, false, false, false, true, true, true, false, true));
-  });
+  it.skipIf(!hasBash)(
+    'clean tree with a resolved base fails safe (positive-signal flags true)',
+    () => {
+      const repo = makeRepo();
+      mainWithFeature(repo);
+      // feature == main, nothing changed → empty set → detect-art-only fail-safe
+      // emits gameplay_safe=false with all positive-signal flags true.
+      //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, true),
+      );
+    },
+  );
 
   it.skipIf(!hasBash)('committed docs-only branch change ⇒ gameplay_safe, no touched flags', () => {
     const repo = makeRepo();
@@ -217,7 +224,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     repo.git('add', '.');
     repo.git('commit', '-q', '-m', 'docs');
     //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expect(repo.scope()).toEqual(F(false, true, true, false, false, false, false, false, false, false));
+    expect(repo.scope()).toEqual(
+      F(false, true, true, false, false, false, false, false, false, false),
+    );
   });
 
   it.skipIf(!hasBash)('committed docs json branch change still counts as docs-only', () => {
@@ -227,18 +236,25 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     repo.git('add', '.');
     repo.git('commit', '-q', '-m', 'docs json');
     //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expect(repo.scope()).toEqual(F(false, true, true, false, false, false, false, false, false, false));
+    expect(repo.scope()).toEqual(
+      F(false, true, true, false, false, false, false, false, false, false),
+    );
   });
 
-  it.skipIf(!hasBash)('committed src/core branch change ⇒ not safe, visual+sim+coverage touched', () => {
-    const repo = makeRepo();
-    mainWithFeature(repo);
-    repo.write('src/core/systems/movementSystem.ts', 'export const x = 1;\n');
-    repo.git('add', '.');
-    repo.git('commit', '-q', '-m', 'core');
-    //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expect(repo.scope()).toEqual(F(false, false, false, false, false, true, true, true, false, false));
-  });
+  it.skipIf(!hasBash)(
+    'committed src/core branch change ⇒ not safe, visual+sim+coverage touched',
+    () => {
+      const repo = makeRepo();
+      mainWithFeature(repo);
+      repo.write('src/core/systems/movementSystem.ts', 'export const x = 1;\n');
+      repo.git('add', '.');
+      repo.git('commit', '-q', '-m', 'core');
+      //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, false),
+      );
+    },
+  );
 
   it.skipIf(!hasBash)('untracked src/core file is unioned in ⇒ not safe', () => {
     const repo = makeRepo();
@@ -246,7 +262,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     // No commit on feature; the change exists only as an untracked working file.
     repo.write('src/core/world.ts', 'export const w = 1;\n');
     //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expect(repo.scope()).toEqual(F(false, false, false, false, false, true, true, true, false, false));
+    expect(repo.scope()).toEqual(
+      F(false, false, false, false, false, true, true, true, false, false),
+    );
   });
 
   it.skipIf(!hasBash)('unstaged docs-only edit ⇒ gameplay_safe, no touched flags', () => {
@@ -255,7 +273,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
     // README.md is tracked; edit it without staging.
     repo.write('README.md', '# seed edited\n');
     //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-    expect(repo.scope()).toEqual(F(false, true, true, false, false, false, false, false, false, false));
+    expect(repo.scope()).toEqual(
+      F(false, true, true, false, false, false, false, false, false, false),
+    );
   });
 
   it.skipIf(!hasBash)(
@@ -276,7 +296,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       // With --diff-filter=ACMR the deletion would vanish and only docs would remain
       // → a spurious gameplay_safe=true. The helper uses no filter, so it stays false.
       //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-      expect(repo.scope()).toEqual(F(false, false, false, false, false, true, true, true, false, false));
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, false),
+      );
     },
   );
 
@@ -295,7 +317,9 @@ describe('local-scope.sh working-tree change-scope helper', () => {
       repo.git('mv', 'src/core/doomed.ts', 'src/core/renamed.ts');
       repo.git('commit', '-q', '-m', 'rename core file');
       //                               ao     do     gs     so     st     vt     simt   cvgt   spt    dept
-      expect(repo.scope()).toEqual(F(false, false, false, false, false, true, true, true, false, false));
+      expect(repo.scope()).toEqual(
+        F(false, false, false, false, false, true, true, true, false, false),
+      );
     },
   );
 });
