@@ -4,7 +4,9 @@
     "kind": "sheet",
     "label": "custom-pixel-sprites",
     "description": "custom pixel sprites spritesheet for game asset lookup.",
-    "tags": ["sheet"],
+    "tags": [
+      "sheet"
+    ],
     "sheetKey": "custom-pixel-sprites",
     "path": "/assets/generated/custom-pixel-sprites.png",
     "frameWidth": 16,
@@ -18,7 +20,11 @@
     "kind": "sheet",
     "label": "junk-rat-critters",
     "description": "junk rat critters spritesheet for game asset lookup.",
-    "tags": ["sheet", "enemy", "generated"],
+    "tags": [
+      "sheet",
+      "enemy",
+      "generated"
+    ],
     "sheetKey": "junk-rat-critters",
     "path": "/assets/generated/junk-rat-critters.png",
     "frameWidth": 16,
@@ -32,7 +38,11 @@
     "kind": "sheet",
     "label": "kenney-roguelike-characters",
     "description": "kenney roguelike characters spritesheet for game asset lookup.",
-    "tags": ["characters", "kenney", "sheet"],
+    "tags": [
+      "characters",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-roguelike-characters",
     "path": "/assets/kenney/roguelike-characters/spritesheet.png",
     "frameWidth": 16,
@@ -46,7 +56,11 @@
     "kind": "sheet",
     "label": "kenney-roguelike-rpg-pack",
     "description": "kenney roguelike rpg pack spritesheet for game asset lookup.",
-    "tags": ["tiles", "kenney", "sheet"],
+    "tags": [
+      "tiles",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-roguelike-rpg-pack",
     "path": "/assets/kenney/roguelike-rpg-pack/spritesheet.png",
     "frameWidth": 16,
@@ -60,7 +74,11 @@
     "kind": "sheet",
     "label": "kenney-tiny-battle",
     "description": "kenney tiny battle spritesheet for game asset lookup.",
-    "tags": ["battle", "kenney", "sheet"],
+    "tags": [
+      "battle",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-tiny-battle",
     "path": "/assets/kenney/tiny-battle/spritesheet.png",
     "frameWidth": 16,
@@ -74,7 +92,11 @@
     "kind": "sheet",
     "label": "kenney-tiny-dungeon",
     "description": "kenney tiny dungeon spritesheet for game asset lookup.",
-    "tags": ["dungeon", "kenney", "sheet"],
+    "tags": [
+      "dungeon",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-tiny-dungeon",
     "path": "/assets/kenney/tiny-dungeon/spritesheet.png",
     "frameWidth": 16,
@@ -88,7 +110,11 @@
     "kind": "sheet",
     "label": "kenney-tiny-ski",
     "description": "kenney tiny ski spritesheet for game asset lookup.",
-    "tags": ["winter", "kenney", "sheet"],
+    "tags": [
+      "winter",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-tiny-ski",
     "path": "/assets/kenney/tiny-ski/spritesheet.png",
     "frameWidth": 16,
@@ -102,7 +128,11 @@
     "kind": "sheet",
     "label": "kenney-tiny-town",
     "description": "kenney tiny town spritesheet for game asset lookup.",
-    "tags": ["town", "kenney", "sheet"],
+    "tags": [
+      "town",
+      "kenney",
+      "sheet"
+    ],
     "sheetKey": "kenney-tiny-town",
     "path": "/assets/kenney/tiny-town/spritesheet.png",
     "frameWidth": 16,
@@ -116,7 +146,10 @@
     "kind": "sprite",
     "label": "ability-icon-fireball-v1-var-0",
     "description": "Generated sprite from brief: ability-icon-fireball-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "ability-icon-fireball-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/ability-icon-fireball-v1-var-0.png",
@@ -129,7 +162,10 @@
     "kind": "sprite",
     "label": "ability-icon-fireball-v1-var-11",
     "description": "Generated sprite from brief: ability-icon-fireball-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "ability-icon-fireball-v1-var-11",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/ability-icon-fireball-v1-var-11.png",
@@ -142,7 +178,10 @@
     "kind": "sprite",
     "label": "ability-icon-heal-v1-var-1",
     "description": "Generated sprite from brief: ability-icon-heal-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "ability-icon-heal-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/ability-icon-heal-v1-var-1.png",
@@ -155,7 +194,10 @@
     "kind": "sprite",
     "label": "ability-icon-pulse-shield-v1-var-0",
     "description": "Generated sprite from brief: ability-icon-pulse-shield-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "ability-icon-pulse-shield-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/ability-icon-pulse-shield-v1-var-0.png",
@@ -168,7 +210,10 @@
     "kind": "sprite",
     "label": "angry-roomba-v1-var-10",
     "description": "Generated sprite from brief: angry-roomba-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "angry-roomba-v1-var-10",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/angry-roomba-v1-var-10.png",
@@ -181,7 +226,10 @@
     "kind": "sprite",
     "label": "angry-roomba-v1-var-14",
     "description": "Generated sprite from brief: angry-roomba-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "angry-roomba-v1-var-14",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/angry-roomba-v1-var-14.png",
@@ -194,7 +242,10 @@
     "kind": "sprite",
     "label": "angry-roomba-v1-var-4",
     "description": "Generated sprite from brief: angry-roomba-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "angry-roomba-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/angry-roomba-v1-var-4.png",
@@ -207,7 +258,10 @@
     "kind": "sprite",
     "label": "angry-roomba-v1-var-7",
     "description": "Generated sprite from brief: angry-roomba-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "angry-roomba-v1-var-7",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/angry-roomba-v1-var-7.png",
@@ -220,7 +274,10 @@
     "kind": "sprite",
     "label": "angry-roomba-v2-v1-var-0",
     "description": "Generated sprite from brief: angry-roomba-v2-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "angry-roomba-v2-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/angry-roomba-v2-v1-var-0.png",
@@ -233,7 +290,10 @@
     "kind": "sprite",
     "label": "angry-roomba-v2-v1-var-11",
     "description": "Generated sprite from brief: angry-roomba-v2-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "angry-roomba-v2-v1-var-11",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/angry-roomba-v2-v1-var-11.png",
@@ -246,7 +306,11 @@
     "kind": "sprite",
     "label": "angry-roomba-v2-v1-var-13",
     "description": "Generated sprite from brief: angry-roomba-v2-v1.",
-    "tags": ["character", "generated", "pipeline-approved"],
+    "tags": [
+      "character",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "angry-roomba-v2-v1-var-13",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/angry-roomba-v2-v1-var-13.png",
@@ -259,7 +323,10 @@
     "kind": "sprite",
     "label": "angry-roomba-v2-v1-var-7",
     "description": "Generated sprite from brief: angry-roomba-v2-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "angry-roomba-v2-v1-var-7",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/angry-roomba-v2-v1-var-7.png",
@@ -272,7 +339,11 @@
     "kind": "sprite",
     "label": "azure-mushroom-v1-var-0",
     "description": "Generated sprite from brief: azure-mushroom-v1.",
-    "tags": ["character", "generated", "pipeline-approved"],
+    "tags": [
+      "character",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "azure-mushroom-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/azure-mushroom-v1-var-0.png",
@@ -285,7 +356,11 @@
     "kind": "sprite",
     "label": "azure-mushroom-v1-var-8",
     "description": "Generated sprite from brief: azure-mushroom-v1.",
-    "tags": ["character", "generated", "pipeline-approved"],
+    "tags": [
+      "character",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "azure-mushroom-v1-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/azure-mushroom-v1-var-8.png",
@@ -298,7 +373,11 @@
     "kind": "sprite",
     "label": "baby-slime-v1-var-1",
     "description": "Generated sprite from brief: baby-slime-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "baby-slime-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/baby-slime-v1-var-1.png",
@@ -311,7 +390,11 @@
     "kind": "sprite",
     "label": "baby-slime-v1-var-8",
     "description": "Generated sprite from brief: baby-slime-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "baby-slime-v1-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/baby-slime-v1-var-8.png",
@@ -324,7 +407,11 @@
     "kind": "sprite",
     "label": "baseball-bat-v1-var-0",
     "description": "Generated sprite from brief: baseball-bat-v1.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "baseball-bat-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/baseball-bat-v1-var-0.png",
@@ -337,7 +424,10 @@
     "kind": "sprite",
     "label": "baseball-bat-v3-var-6",
     "description": "Generated sprite from brief: baseball-bat-v3.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "baseball-bat-v3-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/baseball-bat-v3-var-6.png",
@@ -350,7 +440,11 @@
     "kind": "sprite",
     "label": "batfolk-boss-var-3",
     "description": "Generated sprite from brief: batfolk-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "batfolk-boss-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/batfolk-boss-var-3.png",
@@ -363,7 +457,11 @@
     "kind": "sprite",
     "label": "batfolk-diver-var-3",
     "description": "Generated sprite from brief: batfolk-diver.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "batfolk-diver-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/batfolk-diver-var-3.png",
@@ -376,7 +474,10 @@
     "kind": "sprite",
     "label": "batfolk-elite-rave-don-v1-var-4",
     "description": "Generated sprite from brief: batfolk-elite-rave-don-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "batfolk-elite-rave-don-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/batfolk-elite-rave-don-v1-var-4.png",
@@ -389,7 +490,11 @@
     "kind": "sprite",
     "label": "beetlefolk-boss-var-0",
     "description": "Generated sprite from brief: beetlefolk-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "beetlefolk-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/beetlefolk-boss-var-0.png",
@@ -402,7 +507,11 @@
     "kind": "sprite",
     "label": "beetlefolk-charger-var-0",
     "description": "Generated sprite from brief: beetlefolk-charger.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "beetlefolk-charger-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/beetlefolk-charger-var-0.png",
@@ -415,7 +524,10 @@
     "kind": "sprite",
     "label": "berserker-brew-v2-var-0",
     "description": "Generated sprite from brief: berserker-brew-v2.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "berserker-brew-v2-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/berserker-brew-v2-var-0.png",
@@ -428,7 +540,11 @@
     "kind": "sprite",
     "label": "blind-cave-newt-var-11",
     "description": "Generated sprite from brief: blind-cave-newt.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "blind-cave-newt-var-11",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/blind-cave-newt-var-11.png",
@@ -441,7 +557,11 @@
     "kind": "sprite",
     "label": "boarding-axe-var-0",
     "description": "Hand-authored pixel art sprite for brief: boarding-axe.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "boarding-axe-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/boarding-axe-var-0.png",
@@ -454,7 +574,11 @@
     "kind": "sprite",
     "label": "bone-shard-var-1",
     "description": "Generated sprite from brief: bone-shard.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "bone-shard-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/bone-shard-var-1.png",
@@ -467,7 +591,11 @@
     "kind": "sprite",
     "label": "bone-shard-var-3",
     "description": "Generated sprite from brief: bone-shard.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "bone-shard-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/bone-shard-var-3.png",
@@ -480,7 +608,11 @@
     "kind": "sprite",
     "label": "bone-shard-var-6",
     "description": "Generated sprite from brief: bone-shard.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "bone-shard-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/bone-shard-var-6.png",
@@ -493,7 +625,11 @@
     "kind": "sprite",
     "label": "cactusfolk-boss-var-1",
     "description": "Abuela Saguaro, cactusfolk cartel matriarch. Current sprite is 64x64 v1 from the pre-redesign brief; a grandmother-themed variant with spectacles, floral rebozo, devotional charms, and salvage-armor dressing is pending regeneration.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-boss-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-boss-var-1.png",
@@ -506,7 +642,10 @@
     "kind": "sprite",
     "label": "cactusfolk-elite-desert-capo-v1-var-0",
     "description": "Generated sprite from brief: cactusfolk-elite-desert-capo-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-elite-desert-capo-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-elite-desert-capo-v1-var-0.png",
@@ -519,7 +658,10 @@
     "kind": "sprite",
     "label": "cactusfolk-elite-desert-capo-v1-var-1",
     "description": "Generated sprite from brief: cactusfolk-elite-desert-capo-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-elite-desert-capo-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-elite-desert-capo-v1-var-1.png",
@@ -532,7 +674,10 @@
     "kind": "sprite",
     "label": "cactusfolk-elite-desert-capo-v1-var-2",
     "description": "Generated sprite from brief: cactusfolk-elite-desert-capo-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-elite-desert-capo-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-elite-desert-capo-v1-var-2.png",
@@ -545,7 +690,10 @@
     "kind": "sprite",
     "label": "cactusfolk-needle-gunner-v1-var-10",
     "description": "Generated sprite from brief: cactusfolk-needle-gunner-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-needle-gunner-v1-var-10",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-needle-gunner-v1-var-10.png",
@@ -558,7 +706,10 @@
     "kind": "sprite",
     "label": "cactusfolk-needle-gunner-v1-var-11",
     "description": "Generated sprite from brief: cactusfolk-needle-gunner-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-needle-gunner-v1-var-11",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-needle-gunner-v1-var-11.png",
@@ -571,7 +722,10 @@
     "kind": "sprite",
     "label": "cactusfolk-needle-gunner-v1-var-15",
     "description": "Generated sprite from brief: cactusfolk-needle-gunner-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-needle-gunner-v1-var-15",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-needle-gunner-v1-var-15.png",
@@ -584,7 +738,11 @@
     "kind": "sprite",
     "label": "cactusfolk-spiny-var-2",
     "description": "Generated sprite from brief: cactusfolk-spiny.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-spiny-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-spiny-var-2.png",
@@ -597,7 +755,11 @@
     "kind": "sprite",
     "label": "camera-lens-var-0",
     "description": "Generated sprite from brief: camera-lens.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "camera-lens-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/camera-lens-var-0.png",
@@ -610,7 +772,11 @@
     "kind": "sprite",
     "label": "cave-bat-swarm-var-2",
     "description": "Generated sprite from brief: cave-bat-swarm.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cave-bat-swarm-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cave-bat-swarm-var-2.png",
@@ -623,7 +789,11 @@
     "kind": "sprite",
     "label": "cave-floor-var-8",
     "description": "Generated sprite from brief: cave-floor.",
-    "tags": ["tile", "generated", "pipeline-approved"],
+    "tags": [
+      "tile",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cave-floor-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cave-floor-var-8.png",
@@ -636,7 +806,11 @@
     "kind": "sprite",
     "label": "cave-slime-var-0",
     "description": "Generated sprite from brief: cave-slime.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cave-slime-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cave-slime-var-0.png",
@@ -649,7 +823,11 @@
     "kind": "sprite",
     "label": "cave-wall-var-5",
     "description": "Generated sprite from brief: cave-wall.",
-    "tags": ["tile", "generated", "pipeline-approved"],
+    "tags": [
+      "tile",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cave-wall-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cave-wall-var-5.png",
@@ -662,7 +840,11 @@
     "kind": "sprite",
     "label": "classified-dossier-var-1",
     "description": "Generated sprite from brief: classified-dossier.",
-    "tags": ["character", "generated", "pipeline-approved"],
+    "tags": [
+      "character",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "classified-dossier-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/classified-dossier-var-1.png",
@@ -675,7 +857,11 @@
     "kind": "sprite",
     "label": "classified-dossier-var-2",
     "description": "Generated sprite from brief: classified-dossier.",
-    "tags": ["character", "generated", "pipeline-approved"],
+    "tags": [
+      "character",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "classified-dossier-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/classified-dossier-var-2.png",
@@ -688,7 +874,11 @@
     "kind": "sprite",
     "label": "classified-dossier-var-5",
     "description": "Generated sprite from brief: classified-dossier.",
-    "tags": ["character", "generated", "pipeline-approved"],
+    "tags": [
+      "character",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "classified-dossier-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/classified-dossier-var-5.png",
@@ -701,7 +891,11 @@
     "kind": "sprite",
     "label": "copper-ore-var-6",
     "description": "Generated sprite from brief: copper-ore.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "copper-ore-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/copper-ore-var-6.png",
@@ -714,7 +908,11 @@
     "kind": "sprite",
     "label": "crabfolk-armored-var-0",
     "description": "Generated sprite from brief: crabfolk-armored.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "crabfolk-armored-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/crabfolk-armored-var-0.png",
@@ -727,7 +925,11 @@
     "kind": "sprite",
     "label": "crabfolk-boss-var-10",
     "description": "Generated sprite from brief: crabfolk-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "crabfolk-boss-var-10",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/crabfolk-boss-var-10.png",
@@ -740,7 +942,11 @@
     "kind": "sprite",
     "label": "crimson-mushroom-v1-var-3",
     "description": "Generated sprite from brief: crimson-mushroom-v1.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "crimson-mushroom-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/crimson-mushroom-v1-var-3.png",
@@ -753,7 +959,11 @@
     "kind": "sprite",
     "label": "crystal-fiber-var-4",
     "description": "Generated sprite from brief: crystal-fiber.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "crystal-fiber-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/crystal-fiber-var-4.png",
@@ -766,7 +976,11 @@
     "kind": "sprite",
     "label": "crystal-scuttler-var-1",
     "description": "Generated sprite from brief: crystal-scuttler.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "crystal-scuttler-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/crystal-scuttler-var-1.png",
@@ -779,7 +993,11 @@
     "kind": "sprite",
     "label": "directors-cue-card-var-0",
     "description": "Generated sprite from brief: directors-cue-card.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "directors-cue-card-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/directors-cue-card-var-0.png",
@@ -792,7 +1010,11 @@
     "kind": "sprite",
     "label": "dragon-scale-var-2",
     "description": "Generated sprite from brief: dragon-scale.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "dragon-scale-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/dragon-scale-var-2.png",
@@ -805,7 +1027,11 @@
     "kind": "sprite",
     "label": "equipment/weapon/bone-saw",
     "description": "Generated sprite for stable runtime key: equipment/weapon/bone-saw.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "equipment/weapon/bone-saw",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/equipment/weapon/bone-saw.png",
@@ -818,7 +1044,11 @@
     "kind": "sprite",
     "label": "faerie-blink-var-0",
     "description": "Generated sprite from brief: faerie-blink.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "faerie-blink-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/faerie-blink-var-0.png",
@@ -831,7 +1061,11 @@
     "kind": "sprite",
     "label": "faerie-boss-var-0",
     "description": "Generated sprite from brief: faerie-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "faerie-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/faerie-boss-var-0.png",
@@ -844,7 +1078,11 @@
     "kind": "sprite",
     "label": "flame-dagger-var-3",
     "description": "Generated sprite from brief: flame-dagger.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "flame-dagger-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/flame-dagger-var-3.png",
@@ -857,7 +1095,11 @@
     "kind": "sprite",
     "label": "flame-tongs-var-0",
     "description": "Generated sprite from brief: flame-tongs.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "flame-tongs-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/flame-tongs-var-0.png",
@@ -870,7 +1112,11 @@
     "kind": "sprite",
     "label": "frost-lichen-v1-var-12",
     "description": "Generated sprite from brief: frost-lichen-v1.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "frost-lichen-v1-var-12",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/frost-lichen-v1-var-12.png",
@@ -883,7 +1129,11 @@
     "kind": "sprite",
     "label": "fungal-husk-var-1",
     "description": "Generated sprite from brief: fungal-husk.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "fungal-husk-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/fungal-husk-var-1.png",
@@ -896,7 +1146,11 @@
     "kind": "sprite",
     "label": "geese-boss-var-0",
     "description": "Don Honkrado the Godgoose \u2014 mafia godfather goose, Floor 2 boss. Square compact body, tucked neck, pinstripe salvage-strap waistcoat, brass gear cufflinks, wide-brim fedora, cigar in beak. Current sprite is 64x64 v1; a 128x128 large-variant regeneration from the authored brief is pending.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "geese-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/geese-boss-var-0.png",
@@ -909,7 +1163,11 @@
     "kind": "sprite",
     "label": "geese-honker-var-13",
     "description": "Generated sprite from brief: geese-honker.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "geese-honker-var-13",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/geese-honker-var-13.png",
@@ -922,7 +1180,11 @@
     "kind": "sprite",
     "label": "giant-cave-rat-var-2",
     "description": "Generated sprite from brief: giant-cave-rat.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "giant-cave-rat-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/giant-cave-rat-var-2.png",
@@ -935,7 +1197,10 @@
     "kind": "sprite",
     "label": "glistening-rat-tail-var-2",
     "description": "Generated sprite from brief: glistening-rat-tail.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "glistening-rat-tail-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/glistening-rat-tail-var-2.png",
@@ -948,7 +1213,11 @@
     "kind": "sprite",
     "label": "glow-worm-var-6",
     "description": "Generated sprite from brief: glow-worm.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "glow-worm-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/glow-worm-var-6.png",
@@ -961,7 +1230,11 @@
     "kind": "sprite",
     "label": "gnome-boss-var-7",
     "description": "Generated sprite from brief: gnome-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "gnome-boss-var-7",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/gnome-boss-var-7.png",
@@ -974,7 +1247,11 @@
     "kind": "sprite",
     "label": "gnome-tinker-var-0",
     "description": "Generated sprite from brief: gnome-tinker.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "gnome-tinker-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/gnome-tinker-var-0.png",
@@ -987,7 +1264,11 @@
     "kind": "sprite",
     "label": "goblin-boss-var-0",
     "description": "Generated sprite from brief: goblin-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "goblin-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/goblin-boss-var-0.png",
@@ -1000,7 +1281,10 @@
     "kind": "sprite",
     "label": "goblin-elite-joyrider-v1-var-2",
     "description": "Generated sprite from brief: goblin-elite-joyrider-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "goblin-elite-joyrider-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/goblin-elite-joyrider-v1-var-2.png",
@@ -1013,7 +1297,10 @@
     "kind": "sprite",
     "label": "goblin-elite-joyrider-v1-var-5",
     "description": "Generated sprite from brief: goblin-elite-joyrider-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "goblin-elite-joyrider-v1-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/goblin-elite-joyrider-v1-var-5.png",
@@ -1026,7 +1313,10 @@
     "kind": "sprite",
     "label": "goblin-elite-joyrider-v1-var-6",
     "description": "Generated sprite from brief: goblin-elite-joyrider-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "goblin-elite-joyrider-v1-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/goblin-elite-joyrider-v1-var-6.png",
@@ -1039,7 +1329,11 @@
     "kind": "sprite",
     "label": "goblin-grunt-var-6",
     "description": "Generated sprite from brief: goblin-grunt.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "goblin-grunt-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/goblin-grunt-var-6.png",
@@ -1052,7 +1346,10 @@
     "kind": "sprite",
     "label": "goblin-junkshot-v1-var-5",
     "description": "Generated sprite from brief: goblin-junkshot-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "goblin-junkshot-v1-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/goblin-junkshot-v1-var-5.png",
@@ -1065,7 +1362,10 @@
     "kind": "sprite",
     "label": "goblin-junkshot-v1-var-8",
     "description": "Generated sprite from brief: goblin-junkshot-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "goblin-junkshot-v1-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/goblin-junkshot-v1-var-8.png",
@@ -1078,7 +1378,11 @@
     "kind": "sprite",
     "label": "green-slime-baby-v1-var-2",
     "description": "Generated sprite from brief: green-slime-baby-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "green-slime-baby-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/green-slime-baby-v1-var-2.png",
@@ -1091,7 +1395,10 @@
     "kind": "sprite",
     "label": "imp-elite-hellfire-capo-v1-var-3",
     "description": "Generated sprite from brief: imp-elite-hellfire-capo-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "imp-elite-hellfire-capo-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/imp-elite-hellfire-capo-v1-var-3.png",
@@ -1104,7 +1411,10 @@
     "kind": "sprite",
     "label": "imp-elite-hellfire-capo-v1-var-5",
     "description": "Generated sprite from brief: imp-elite-hellfire-capo-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "imp-elite-hellfire-capo-v1-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/imp-elite-hellfire-capo-v1-var-5.png",
@@ -1117,7 +1427,11 @@
     "kind": "sprite",
     "label": "imp-flinger-var-2",
     "description": "Generated sprite from brief: imp-flinger.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "imp-flinger-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/imp-flinger-var-2.png",
@@ -1130,7 +1444,11 @@
     "kind": "sprite",
     "label": "imps-boss-var-5",
     "description": "Generated sprite from brief: imps-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "imps-boss-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/imps-boss-var-5.png",
@@ -1143,7 +1461,10 @@
     "kind": "sprite",
     "label": "iron-ore-var-0",
     "description": "Generated sprite from brief: iron-ore.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "iron-ore-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/iron-ore-var-0.png",
@@ -1156,7 +1477,11 @@
     "kind": "sprite",
     "label": "kobold-boss-var-0",
     "description": "Generated sprite from brief: kobold-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "kobold-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/kobold-boss-var-0.png",
@@ -1169,7 +1494,11 @@
     "kind": "sprite",
     "label": "kobold-torch-var-3",
     "description": "Generated sprite from brief: kobold-torch.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "kobold-torch-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/kobold-torch-var-3.png",
@@ -1182,7 +1511,11 @@
     "kind": "sprite",
     "label": "llama-boss-var-8",
     "description": "Generated sprite from brief: llama-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "llama-boss-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/llama-boss-var-8.png",
@@ -1195,7 +1528,11 @@
     "kind": "sprite",
     "label": "llama-spitter-var-0",
     "description": "Generated sprite from brief: llama-spitter.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "llama-spitter-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/llama-spitter-var-0.png",
@@ -1208,7 +1545,10 @@
     "kind": "sprite",
     "label": "mama-slime-v1-var-0",
     "description": "Generated sprite from brief: mama-slime-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "mama-slime-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/mama-slime-v1-var-0.png",
@@ -1221,7 +1561,10 @@
     "kind": "sprite",
     "label": "mama-slime-v1-var-4",
     "description": "Generated sprite from brief: mama-slime-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "mama-slime-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/mama-slime-v1-var-4.png",
@@ -1234,7 +1577,11 @@
     "kind": "sprite",
     "label": "merchant-sandals-var-0",
     "description": "Manually authored sprite for brief: merchant-sandals.",
-    "tags": ["item", "generated", "manual-authored"],
+    "tags": [
+      "item",
+      "generated",
+      "manual-authored"
+    ],
     "spriteId": "merchant-sandals-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/merchant-sandals-var-0.png",
@@ -1247,7 +1594,10 @@
     "kind": "sprite",
     "label": "merchants-stained-charm-var-0",
     "description": "Generated sprite from brief: merchants-stained-charm.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "merchants-stained-charm-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/merchants-stained-charm-var-0.png",
@@ -1260,7 +1610,11 @@
     "kind": "sprite",
     "label": "molefolk-boss-var-0",
     "description": "Generated sprite from brief: molefolk-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "molefolk-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/molefolk-boss-var-0.png",
@@ -1273,7 +1627,11 @@
     "kind": "sprite",
     "label": "molefolk-burrower-var-1",
     "description": "Generated sprite from brief: molefolk-burrower.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "molefolk-burrower-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/molefolk-burrower-var-1.png",
@@ -1286,7 +1644,11 @@
     "kind": "sprite",
     "label": "moonbloom-flower-v1-var-0",
     "description": "Generated sprite from brief: moonbloom-flower-v1.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "moonbloom-flower-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/moonbloom-flower-v1-var-0.png",
@@ -1299,7 +1661,11 @@
     "kind": "sprite",
     "label": "myconid-boss-var-0",
     "description": "Generated sprite from brief: myconid-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "myconid-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/myconid-boss-var-0.png",
@@ -1312,7 +1678,10 @@
     "kind": "sprite",
     "label": "myconid-clubcap-v1-var-0",
     "description": "Generated sprite from brief: myconid-clubcap-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "myconid-clubcap-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/myconid-clubcap-v1-var-0.png",
@@ -1325,7 +1694,10 @@
     "kind": "sprite",
     "label": "myconid-clubcap-v1-var-1",
     "description": "Generated sprite from brief: myconid-clubcap-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "myconid-clubcap-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/myconid-clubcap-v1-var-1.png",
@@ -1338,7 +1710,10 @@
     "kind": "sprite",
     "label": "myconid-clubcap-v1-var-3",
     "description": "Generated sprite from brief: myconid-clubcap-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "myconid-clubcap-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/myconid-clubcap-v1-var-3.png",
@@ -1351,7 +1726,10 @@
     "kind": "sprite",
     "label": "myconid-elite-don-agaric-v1-var-0",
     "description": "Generated sprite from brief: myconid-elite-don-agaric-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "myconid-elite-don-agaric-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/myconid-elite-don-agaric-v1-var-0.png",
@@ -1364,7 +1742,10 @@
     "kind": "sprite",
     "label": "myconid-elite-don-agaric-v1-var-1",
     "description": "Generated sprite from brief: myconid-elite-don-agaric-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "myconid-elite-don-agaric-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/myconid-elite-don-agaric-v1-var-1.png",
@@ -1377,7 +1758,10 @@
     "kind": "sprite",
     "label": "myconid-elite-don-agaric-v1-var-2",
     "description": "Generated sprite from brief: myconid-elite-don-agaric-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "myconid-elite-don-agaric-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/myconid-elite-don-agaric-v1-var-2.png",
@@ -1390,7 +1774,11 @@
     "kind": "sprite",
     "label": "myconid-spore-var-8",
     "description": "Generated sprite from brief: myconid-spore.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "myconid-spore-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/myconid-spore-var-8.png",
@@ -1403,7 +1791,11 @@
     "kind": "sprite",
     "label": "npc-spell-broker-var-1",
     "description": "Generated sprite from brief: npc-spell-broker.",
-    "tags": ["character", "generated", "pipeline-approved"],
+    "tags": [
+      "character",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "npc-spell-broker-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/npc-spell-broker-var-1.png",
@@ -1416,7 +1808,11 @@
     "kind": "sprite",
     "label": "npc-sweaty-merchant-var-0",
     "description": "Generated sprite from brief: npc-sweaty-merchant.",
-    "tags": ["character", "generated", "pipeline-approved"],
+    "tags": [
+      "character",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "npc-sweaty-merchant-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/npc-sweaty-merchant-var-0.png",
@@ -1429,7 +1825,11 @@
     "kind": "sprite",
     "label": "npc-welcome-goon-var-0",
     "description": "Generated sprite from brief: npc-welcome-goon.",
-    "tags": ["character", "generated", "pipeline-approved"],
+    "tags": [
+      "character",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "npc-welcome-goon-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/npc-welcome-goon-var-0.png",
@@ -1442,7 +1842,10 @@
     "kind": "sprite",
     "label": "old-sock-var-4",
     "description": "Generated sprite from brief: old-sock.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "old-sock-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/old-sock-var-4.png",
@@ -1455,7 +1858,11 @@
     "kind": "sprite",
     "label": "panda-boss-var-0",
     "description": "Generated sprite from brief: panda-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "panda-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/panda-boss-var-0.png",
@@ -1468,7 +1875,11 @@
     "kind": "sprite",
     "label": "panda-bruiser-var-1",
     "description": "Generated sprite from brief: panda-bruiser.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "panda-bruiser-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/panda-bruiser-var-1.png",
@@ -1481,7 +1892,10 @@
     "kind": "sprite",
     "label": "papa-slime-v1-var-0",
     "description": "Generated sprite from brief: papa-slime-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "papa-slime-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/papa-slime-v1-var-0.png",
@@ -1494,7 +1908,10 @@
     "kind": "sprite",
     "label": "papa-slime-v1-var-10",
     "description": "Generated sprite from brief: papa-slime-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "papa-slime-v1-var-10",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/papa-slime-v1-var-10.png",
@@ -1507,7 +1924,10 @@
     "kind": "sprite",
     "label": "papa-slime-v1-var-9",
     "description": "Generated sprite from brief: papa-slime-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "papa-slime-v1-var-9",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/papa-slime-v1-var-9.png",
@@ -1520,7 +1940,10 @@
     "kind": "sprite",
     "label": "pebble-var-1",
     "description": "Generated sprite from brief: pebble.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "pebble-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/pebble-var-1.png",
@@ -1533,7 +1956,10 @@
     "kind": "sprite",
     "label": "prop-junk-pile-v1-var-0",
     "description": "Generated sprite from brief: prop-junk-pile-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-junk-pile-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-junk-pile-v1-var-0.png",
@@ -1546,7 +1972,10 @@
     "kind": "sprite",
     "label": "prop-junk-pile-v1-var-3",
     "description": "Generated sprite from brief: prop-junk-pile-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-junk-pile-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-junk-pile-v1-var-3.png",
@@ -1559,7 +1988,11 @@
     "kind": "sprite",
     "label": "prop-rubble-pile-var-1",
     "description": "Generated sprite from brief: prop-rubble-pile.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-rubble-pile-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-rubble-pile-var-1.png",
@@ -1572,7 +2005,10 @@
     "kind": "sprite",
     "label": "prop-torch-v1-var-10",
     "description": "Generated sprite from brief: prop-torch-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-torch-v1-var-10",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-torch-v1-var-10.png",
@@ -1585,7 +2021,10 @@
     "kind": "sprite",
     "label": "prop-torch-v1-var-14",
     "description": "Generated sprite from brief: prop-torch-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-torch-v1-var-14",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-torch-v1-var-14.png",
@@ -1598,7 +2037,10 @@
     "kind": "sprite",
     "label": "prop-torch-v1-var-2",
     "description": "Generated sprite from brief: prop-torch-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-torch-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-torch-v1-var-2.png",
@@ -1611,7 +2053,10 @@
     "kind": "sprite",
     "label": "prop-torch-v1-var-8",
     "description": "Generated sprite from brief: prop-torch-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-torch-v1-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-torch-v1-var-8.png",
@@ -1624,7 +2069,10 @@
     "kind": "sprite",
     "label": "prop-wall-sconce-v1-var-1",
     "description": "Generated sprite from brief: prop-wall-sconce-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-wall-sconce-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-wall-sconce-v1-var-1.png",
@@ -1637,7 +2085,10 @@
     "kind": "sprite",
     "label": "prop-wall-sconce-v1-var-2",
     "description": "Generated sprite from brief: prop-wall-sconce-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-wall-sconce-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-wall-sconce-v1-var-2.png",
@@ -1650,7 +2101,10 @@
     "kind": "sprite",
     "label": "prop-wall-sconce-v1-var-4",
     "description": "Generated sprite from brief: prop-wall-sconce-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-wall-sconce-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-wall-sconce-v1-var-4.png",
@@ -1663,7 +2117,10 @@
     "kind": "sprite",
     "label": "prop-wall-sconce-v1-var-6",
     "description": "Generated sprite from brief: prop-wall-sconce-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-wall-sconce-v1-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-wall-sconce-v1-var-6.png",
@@ -1676,7 +2133,10 @@
     "kind": "sprite",
     "label": "prop-wall-sconce-v1-var-7",
     "description": "Generated sprite from brief: prop-wall-sconce-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-wall-sconce-v1-var-7",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-wall-sconce-v1-var-7.png",
@@ -1689,7 +2149,10 @@
     "kind": "sprite",
     "label": "prop-wall-sconce-v1-var-8",
     "description": "Generated sprite from brief: prop-wall-sconce-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-wall-sconce-v1-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-wall-sconce-v1-var-8.png",
@@ -1702,7 +2165,10 @@
     "kind": "sprite",
     "label": "prop-wall-sconce-v1-var-9",
     "description": "Generated sprite from brief: prop-wall-sconce-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "prop-wall-sconce-v1-var-9",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/prop-wall-sconce-v1-var-9.png",
@@ -1715,7 +2181,11 @@
     "kind": "sprite",
     "label": "purple-potion-bottle-v1-var-4",
     "description": "Generated sprite from brief: purple-potion-bottle-v1.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "purple-potion-bottle-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/purple-potion-bottle-v1-var-4.png",
@@ -1728,7 +2198,11 @@
     "kind": "sprite",
     "label": "raccoon-thief-var-0",
     "description": "Generated sprite from brief: raccoon-thief.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "raccoon-thief-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/raccoon-thief-var-0.png",
@@ -1741,7 +2215,11 @@
     "kind": "sprite",
     "label": "raccoons-boss-var-0",
     "description": "Generated sprite from brief: raccoons-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "raccoons-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/raccoons-boss-var-0.png",
@@ -1754,7 +2232,10 @@
     "kind": "sprite",
     "label": "rat-king-v1-var-0",
     "description": "Generated sprite from brief: rat-king-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-king-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-king-v1-var-0.png",
@@ -1767,7 +2248,10 @@
     "kind": "sprite",
     "label": "rat-king-v1-var-14",
     "description": "Generated sprite from brief: rat-king-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-king-v1-var-14",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-king-v1-var-14.png",
@@ -1780,7 +2264,10 @@
     "kind": "sprite",
     "label": "rat-king-v1-var-7",
     "description": "Generated sprite from brief: rat-king-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-king-v1-var-7",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-king-v1-var-7.png",
@@ -1793,7 +2280,10 @@
     "kind": "sprite",
     "label": "rat-king-v1-var-8",
     "description": "Generated sprite from brief: rat-king-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-king-v1-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-king-v1-var-8.png",
@@ -1806,7 +2296,11 @@
     "kind": "sprite",
     "label": "rat-nest-v2-var-0",
     "description": "Generated sprite from brief: rat-nest-v2.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-nest-v2-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-nest-v2-var-0.png",
@@ -1819,7 +2313,11 @@
     "kind": "sprite",
     "label": "rat-nest-v2-var-2",
     "description": "Generated sprite from brief: rat-nest-v2.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-nest-v2-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-nest-v2-var-2.png",
@@ -1832,7 +2330,11 @@
     "kind": "sprite",
     "label": "rat-nest-v2-var-3",
     "description": "Generated sprite from brief: rat-nest-v2.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-nest-v2-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-nest-v2-var-3.png",
@@ -1845,7 +2347,10 @@
     "kind": "sprite",
     "label": "rat-queen-v1-var-1",
     "description": "Generated sprite from brief: rat-queen-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-queen-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-queen-v1-var-1.png",
@@ -1858,7 +2363,10 @@
     "kind": "sprite",
     "label": "rat-queen-v1-var-2",
     "description": "Generated sprite from brief: rat-queen-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-queen-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-queen-v1-var-2.png",
@@ -1871,7 +2379,10 @@
     "kind": "sprite",
     "label": "rat-queen-v1-var-7",
     "description": "Generated sprite from brief: rat-queen-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-queen-v1-var-7",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-queen-v1-var-7.png",
@@ -1884,7 +2395,11 @@
     "kind": "sprite",
     "label": "rat-slime-v1-var-1",
     "description": "Generated sprite from brief: rat-slime-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-slime-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-slime-v1-var-1.png",
@@ -1897,7 +2412,11 @@
     "kind": "sprite",
     "label": "rat-slime-v1-var-2",
     "description": "Generated sprite from brief: rat-slime-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-slime-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-slime-v1-var-2.png",
@@ -1910,7 +2429,11 @@
     "kind": "sprite",
     "label": "rat-v1-var-3",
     "description": "Generated sprite from brief: rat-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-v1-var-3.png",
@@ -1923,7 +2446,11 @@
     "kind": "sprite",
     "label": "rat-v1-var-9",
     "description": "Generated sprite from brief: rat-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rat-v1-var-9",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rat-v1-var-9.png",
@@ -1936,7 +2463,11 @@
     "kind": "sprite",
     "label": "ratfolk-boss-var-0",
     "description": "Generated sprite from brief: ratfolk-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "ratfolk-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/ratfolk-boss-var-0.png",
@@ -1949,7 +2480,11 @@
     "kind": "sprite",
     "label": "ratfolk-plague-var-4",
     "description": "Generated sprite from brief: ratfolk-plague.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "ratfolk-plague-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/ratfolk-plague-var-4.png",
@@ -1962,7 +2497,10 @@
     "kind": "sprite",
     "label": "rhea-vale-v1-var-0",
     "description": "Generated sprite from brief: rhea-vale-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rhea-vale-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rhea-vale-v1-var-0.png",
@@ -1975,7 +2513,11 @@
     "kind": "sprite",
     "label": "rock-lice-var-1",
     "description": "Generated sprite from brief: rock-lice.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rock-lice-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rock-lice-var-1.png",
@@ -1988,7 +2530,10 @@
     "kind": "sprite",
     "label": "rusted-scrap-var-0",
     "description": "Generated sprite from brief: rusted-scrap.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "rusted-scrap-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/rusted-scrap-var-0.png",
@@ -2001,7 +2546,11 @@
     "kind": "sprite",
     "label": "scavenger-harness-var-0",
     "description": "Generated sprite from brief: scavenger-harness.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "scavenger-harness-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/scavenger-harness-var-0.png",
@@ -2014,7 +2563,10 @@
     "kind": "sprite",
     "label": "sewer-grate-floor-tile-v1-var-1",
     "description": "Generated sprite from brief: sewer-grate-floor-tile-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "sewer-grate-floor-tile-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/sewer-grate-floor-tile-v1-var-1.png",
@@ -2027,7 +2579,10 @@
     "kind": "sprite",
     "label": "sewer-grate-floor-tile-v1-var-3",
     "description": "Generated sprite from brief: sewer-grate-floor-tile-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "sewer-grate-floor-tile-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/sewer-grate-floor-tile-v1-var-3.png",
@@ -2040,7 +2595,10 @@
     "kind": "sprite",
     "label": "sewer-grate-floor-tile-v1-var-5",
     "description": "Generated sprite from brief: sewer-grate-floor-tile-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "sewer-grate-floor-tile-v1-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/sewer-grate-floor-tile-v1-var-5.png",
@@ -2053,7 +2611,10 @@
     "kind": "sprite",
     "label": "sewer-grate-floor-tile-v1-var-6",
     "description": "Generated sprite from brief: sewer-grate-floor-tile-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "sewer-grate-floor-tile-v1-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/sewer-grate-floor-tile-v1-var-6.png",
@@ -2066,7 +2627,11 @@
     "kind": "sprite",
     "label": "shadow-boots-var-0",
     "description": "Generated sprite from brief: shadow-boots.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "shadow-boots-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/shadow-boots-var-0.png",
@@ -2079,7 +2644,11 @@
     "kind": "sprite",
     "label": "shadow-lichen-v1-var-12",
     "description": "Generated sprite from brief: shadow-lichen-v1.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "shadow-lichen-v1-var-12",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/shadow-lichen-v1-var-12.png",
@@ -2092,7 +2661,10 @@
     "kind": "sprite",
     "label": "slime-king-v1-var-4",
     "description": "Generated sprite from brief: slime-king-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "slime-king-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/slime-king-v1-var-4.png",
@@ -2105,7 +2677,11 @@
     "kind": "sprite",
     "label": "slime-pool-v1-var-0",
     "description": "Generated sprite from brief: slime-pool-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "slime-pool-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/slime-pool-v1-var-0.png",
@@ -2118,7 +2694,11 @@
     "kind": "sprite",
     "label": "slime-pool-v1-var-3",
     "description": "Generated sprite from brief: slime-pool-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "slime-pool-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/slime-pool-v1-var-3.png",
@@ -2131,7 +2711,11 @@
     "kind": "sprite",
     "label": "slime-queen-v1-var-0",
     "description": "Generated sprite from brief: slime-queen-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "slime-queen-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/slime-queen-v1-var-0.png",
@@ -2144,7 +2728,11 @@
     "kind": "sprite",
     "label": "slime-rat-boss-var-1",
     "description": "Generated sprite from brief: slime-rat-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "slime-rat-boss-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/slime-rat-boss-var-1.png",
@@ -2157,7 +2745,10 @@
     "kind": "sprite",
     "label": "slime-v1-var-2",
     "description": "Generated sprite from brief: slime-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "slime-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/slime-v1-var-2.png",
@@ -2170,7 +2761,10 @@
     "kind": "sprite",
     "label": "slime-v1-var-3",
     "description": "Generated sprite from brief: slime-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "slime-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/slime-v1-var-3.png",
@@ -2183,7 +2777,10 @@
     "kind": "sprite",
     "label": "slime-v1-var-9",
     "description": "Generated sprite from brief: slime-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "slime-v1-var-9",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/slime-v1-var-9.png",
@@ -2196,7 +2793,11 @@
     "kind": "sprite",
     "label": "snailfolk-boss-var-0",
     "description": "Generated sprite from brief: snailfolk-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "snailfolk-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/snailfolk-boss-var-0.png",
@@ -2209,7 +2810,11 @@
     "kind": "sprite",
     "label": "snailfolk-slimer-var-0",
     "description": "Generated sprite from brief: snailfolk-slimer.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "snailfolk-slimer-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/snailfolk-slimer-var-0.png",
@@ -2222,7 +2827,10 @@
     "kind": "sprite",
     "label": "spell-broker-v2-var-2",
     "description": "Generated sprite from brief: spell-broker-v2.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "spell-broker-v2-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/spell-broker-v2-var-2.png",
@@ -2235,7 +2843,10 @@
     "kind": "sprite",
     "label": "spell-broker-v2-var-3",
     "description": "Generated sprite from brief: spell-broker-v2.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "spell-broker-v2-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/spell-broker-v2-var-3.png",
@@ -2248,7 +2859,10 @@
     "kind": "sprite",
     "label": "spell-broker-v2-var-8",
     "description": "Generated sprite from brief: spell-broker-v2.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "spell-broker-v2-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/spell-broker-v2-var-8.png",
@@ -2261,7 +2875,11 @@
     "kind": "sprite",
     "label": "sunpetal-flower-v1-var-0",
     "description": "Generated sprite from brief: sunpetal-flower-v1.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "sunpetal-flower-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/sunpetal-flower-v1-var-0.png",
@@ -2274,7 +2892,10 @@
     "kind": "sprite",
     "label": "sweaty-merchant-v1-var-1",
     "description": "Generated sprite from brief: sweaty-merchant-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "sweaty-merchant-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/sweaty-merchant-v1-var-1.png",
@@ -2287,7 +2908,10 @@
     "kind": "sprite",
     "label": "sweaty-merchant-v1-var-11",
     "description": "Generated sprite from brief: sweaty-merchant-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "sweaty-merchant-v1-var-11",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/sweaty-merchant-v1-var-11.png",
@@ -2300,7 +2924,11 @@
     "kind": "sprite",
     "label": "the-stairs-v2-var-0",
     "description": "Generated sprite from brief: the-stairs-v2.",
-    "tags": ["tile", "generated", "pipeline-approved"],
+    "tags": [
+      "tile",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "the-stairs-v2-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/the-stairs-v2-var-0.png",
@@ -2313,7 +2941,11 @@
     "kind": "sprite",
     "label": "the-stairs-v2-var-1",
     "description": "Generated sprite from brief: the-stairs-v2.",
-    "tags": ["tile", "generated", "pipeline-approved"],
+    "tags": [
+      "tile",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "the-stairs-v2-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/the-stairs-v2-var-1.png",
@@ -2326,7 +2958,11 @@
     "kind": "sprite",
     "label": "the-stairs-v2-var-2",
     "description": "Generated sprite from brief: the-stairs-v2.",
-    "tags": ["tile", "generated", "pipeline-approved"],
+    "tags": [
+      "tile",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "the-stairs-v2-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/the-stairs-v2-var-2.png",
@@ -2339,7 +2975,11 @@
     "kind": "sprite",
     "label": "the-stairs-v2-var-3",
     "description": "Generated sprite from brief: the-stairs-v2.",
-    "tags": ["tile", "generated", "pipeline-approved"],
+    "tags": [
+      "tile",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "the-stairs-v2-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/the-stairs-v2-var-3.png",
@@ -2352,7 +2992,10 @@
     "kind": "sprite",
     "label": "tile-boss-staircase-floor-v2-var-10",
     "description": "Generated sprite from brief: tile-boss-staircase-floor-v2.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-boss-staircase-floor-v2-var-10",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-boss-staircase-floor-v2-var-10.png",
@@ -2365,7 +3008,10 @@
     "kind": "sprite",
     "label": "tile-corridor-v1-var-10",
     "description": "Generated sprite from brief: tile-corridor-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-corridor-v1-var-10",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-corridor-v1-var-10.png",
@@ -2378,7 +3024,10 @@
     "kind": "sprite",
     "label": "tile-corridor-v1-var-12",
     "description": "Generated sprite from brief: tile-corridor-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-corridor-v1-var-12",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-corridor-v1-var-12.png",
@@ -2391,7 +3040,10 @@
     "kind": "sprite",
     "label": "tile-corridor-v1-var-14",
     "description": "Generated sprite from brief: tile-corridor-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-corridor-v1-var-14",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-corridor-v1-var-14.png",
@@ -2404,7 +3056,10 @@
     "kind": "sprite",
     "label": "tile-corridor-v1-var-2",
     "description": "Generated sprite from brief: tile-corridor-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-corridor-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-corridor-v1-var-2.png",
@@ -2417,7 +3072,10 @@
     "kind": "sprite",
     "label": "tile-corridor-v1-var-4",
     "description": "Generated sprite from brief: tile-corridor-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-corridor-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-corridor-v1-var-4.png",
@@ -2430,7 +3088,10 @@
     "kind": "sprite",
     "label": "tile-corridor-v1-var-8",
     "description": "Generated sprite from brief: tile-corridor-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-corridor-v1-var-8",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-corridor-v1-var-8.png",
@@ -2443,7 +3104,10 @@
     "kind": "sprite",
     "label": "tile-door-v1-var-0",
     "description": "Generated sprite from brief: tile-door-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-door-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-door-v1-var-0.png",
@@ -2456,7 +3120,10 @@
     "kind": "sprite",
     "label": "tile-safe-room-floor-v1-var-0",
     "description": "Generated sprite from brief: tile-safe-room-floor-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-safe-room-floor-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-safe-room-floor-v1-var-0.png",
@@ -2469,7 +3136,10 @@
     "kind": "sprite",
     "label": "tile-stone-floor-v1-var-2",
     "description": "Generated sprite from brief: tile-stone-floor-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-stone-floor-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-stone-floor-v1-var-2.png",
@@ -2482,7 +3152,10 @@
     "kind": "sprite",
     "label": "tile-stone-wall-v1-var-5",
     "description": "Generated sprite from brief: tile-stone-wall-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "tile-stone-wall-v1-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/tile-stone-wall-v1-var-5.png",
@@ -2495,7 +3168,11 @@
     "kind": "sprite",
     "label": "toadkin-boss-var-0",
     "description": "Generated sprite from brief: toadkin-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "toadkin-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/toadkin-boss-var-0.png",
@@ -2508,7 +3185,10 @@
     "kind": "sprite",
     "label": "toadkin-elite-swamp-consigliere-v1-var-13",
     "description": "Generated sprite from brief: toadkin-elite-swamp-consigliere-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "toadkin-elite-swamp-consigliere-v1-var-13",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/toadkin-elite-swamp-consigliere-v1-var-13.png",
@@ -2521,7 +3201,10 @@
     "kind": "sprite",
     "label": "toadkin-elite-swamp-consigliere-v1-var-3",
     "description": "Generated sprite from brief: toadkin-elite-swamp-consigliere-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "toadkin-elite-swamp-consigliere-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/toadkin-elite-swamp-consigliere-v1-var-3.png",
@@ -2534,7 +3217,10 @@
     "kind": "sprite",
     "label": "toadkin-elite-swamp-consigliere-v1-var-5",
     "description": "Generated sprite from brief: toadkin-elite-swamp-consigliere-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "toadkin-elite-swamp-consigliere-v1-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/toadkin-elite-swamp-consigliere-v1-var-5.png",
@@ -2547,7 +3233,11 @@
     "kind": "sprite",
     "label": "toadkin-tongue-var-10",
     "description": "Generated sprite from brief: toadkin-tongue.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "toadkin-tongue-var-10",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/toadkin-tongue-var-10.png",
@@ -2560,7 +3250,11 @@
     "kind": "sprite",
     "label": "equipment/weapon/tower-spear",
     "description": "Generated sprite for stable runtime key: equipment/weapon/tower-spear.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "equipment/weapon/tower-spear",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/equipment/weapon/tower-spear.png",
@@ -2573,7 +3267,11 @@
     "kind": "sprite",
     "label": "twin-katar-var-0",
     "description": "Hand-authored silhouette icon for runtime key equipment/weapon/twin-katar.",
-    "tags": ["weapon", "generated", "hand-authored"],
+    "tags": [
+      "weapon",
+      "generated",
+      "hand-authored"
+    ],
     "spriteId": "twin-katar-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/twin-katar-var-0.png",
@@ -2586,7 +3284,10 @@
     "kind": "sprite",
     "label": "welcome-room-bookcase-var-0",
     "description": "Generated sprite from brief: welcome-room-bookcase.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-room-bookcase-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-bookcase-var-0.png",
@@ -2599,7 +3300,10 @@
     "kind": "sprite",
     "label": "welcome-room-desk-var-0",
     "description": "Generated sprite from brief: welcome-room-desk.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-room-desk-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-desk-var-0.png",
@@ -2612,7 +3316,11 @@
     "kind": "sprite",
     "label": "welcome-room-rug-var-0",
     "description": "Generated sprite from brief: welcome-room-rug.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-room-rug-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-rug-var-0.png",
@@ -2625,7 +3333,10 @@
     "kind": "sprite",
     "label": "welcome-room-shop-table-var-0",
     "description": "Generated sprite from brief: welcome-room-shop-table.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-room-shop-table-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-shop-table-var-0.png",
@@ -2638,7 +3349,10 @@
     "kind": "sprite",
     "label": "welcome-room-velvet-rope-var-2",
     "description": "Generated sprite from brief: welcome-room-velvet-rope.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-room-velvet-rope-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-room-velvet-rope-var-2.png",
@@ -2651,7 +3365,10 @@
     "kind": "sprite",
     "label": "welcome-sign-left-v1-var-0",
     "description": "Generated sprite from brief: welcome-sign-left-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-sign-left-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-sign-left-v1-var-0.png",
@@ -2664,7 +3381,10 @@
     "kind": "sprite",
     "label": "welcome-sign-left-v1-var-13",
     "description": "Generated sprite from brief: welcome-sign-left-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-sign-left-v1-var-13",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-sign-left-v1-var-13.png",
@@ -2677,7 +3397,10 @@
     "kind": "sprite",
     "label": "welcome-sign-left-v1-var-3",
     "description": "Generated sprite from brief: welcome-sign-left-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-sign-left-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-sign-left-v1-var-3.png",
@@ -2690,7 +3413,10 @@
     "kind": "sprite",
     "label": "welcome-sign-left-v1-var-5",
     "description": "Generated sprite from brief: welcome-sign-left-v1.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-sign-left-v1-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-sign-left-v1-var-5.png",
@@ -2703,7 +3429,10 @@
     "kind": "sprite",
     "label": "welcome-sign-left-v2-var-2",
     "description": "Generated sprite from brief: welcome-sign-left-v2.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-sign-left-v2-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-sign-left-v2-var-2.png",
@@ -2716,7 +3445,10 @@
     "kind": "sprite",
     "label": "welcome-sign-left-v2-var-4",
     "description": "Generated sprite from brief: welcome-sign-left-v2.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-sign-left-v2-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-sign-left-v2-var-4.png",
@@ -2729,7 +3461,10 @@
     "kind": "sprite",
     "label": "welcome-sign-left-v2-var-6",
     "description": "Generated sprite from brief: welcome-sign-left-v2.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-sign-left-v2-var-6",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-sign-left-v2-var-6.png",
@@ -2742,7 +3477,10 @@
     "kind": "sprite",
     "label": "welcome-sign-left-v2-var-7",
     "description": "Generated sprite from brief: welcome-sign-left-v2.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "welcome-sign-left-v2-var-7",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/welcome-sign-left-v2-var-7.png",
@@ -2755,7 +3493,9 @@
     "kind": "sprite",
     "label": "effect.aoe",
     "description": "Custom AoE sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.aoe",
     "sheetKey": "custom-pixel-sprites",
     "frame": 10,
@@ -2768,7 +3508,9 @@
     "kind": "sprite",
     "label": "effect.dead",
     "description": "Custom dead marker sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.dead",
     "sheetKey": "custom-pixel-sprites",
     "frame": 18,
@@ -2781,7 +3523,10 @@
     "kind": "sprite",
     "label": "effect.enemy_aoe",
     "description": "Custom enemy AoE sprite.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "effect.enemy_aoe",
     "sheetKey": "custom-pixel-sprites",
     "frame": 11,
@@ -2789,7 +3534,10 @@
     "row": 0,
     "note": "Custom enemy AoE sprite.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -2797,7 +3545,10 @@
     "kind": "sprite",
     "label": "effect.enemy_explosion",
     "description": "Custom enemy explosion sprite.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "effect.enemy_explosion",
     "sheetKey": "custom-pixel-sprites",
     "frame": 17,
@@ -2805,7 +3556,10 @@
     "row": 0,
     "note": "Custom enemy explosion sprite.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -2813,7 +3567,10 @@
     "kind": "sprite",
     "label": "effect.enemy_proj",
     "description": "Custom enemy projectile sprite.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "effect.enemy_proj",
     "sheetKey": "custom-pixel-sprites",
     "frame": 9,
@@ -2821,7 +3578,10 @@
     "row": 0,
     "note": "Custom enemy projectile sprite.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -2829,7 +3589,9 @@
     "kind": "sprite",
     "label": "effect.explosion",
     "description": "Custom explosion sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.explosion",
     "sheetKey": "custom-pixel-sprites",
     "frame": 16,
@@ -2842,7 +3604,9 @@
     "kind": "sprite",
     "label": "effect.melee",
     "description": "Custom melee arc sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.melee",
     "sheetKey": "custom-pixel-sprites",
     "frame": 13,
@@ -2855,7 +3619,9 @@
     "kind": "sprite",
     "label": "effect.proj",
     "description": "Custom projectile sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.proj",
     "sheetKey": "custom-pixel-sprites",
     "frame": 8,
@@ -2868,7 +3634,9 @@
     "kind": "sprite",
     "label": "effect.trap_armed",
     "description": "Custom trap armed sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.trap_armed",
     "sheetKey": "custom-pixel-sprites",
     "frame": 15,
@@ -2881,7 +3649,9 @@
     "kind": "sprite",
     "label": "effect.trap_arming",
     "description": "Custom trap arming sprite.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "effect.trap_arming",
     "sheetKey": "custom-pixel-sprites",
     "frame": 14,
@@ -2894,7 +3664,10 @@
     "kind": "sprite",
     "label": "enemy.boss",
     "description": "Tiny Dungeon bat-beast (frame 120) \u2014 temp CC0 art.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "enemy.boss",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 120,
@@ -2902,7 +3675,10 @@
     "row": 10,
     "note": "Tiny Dungeon bat-beast (frame 120) \u2014 temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -2910,7 +3686,11 @@
     "kind": "sprite",
     "label": "enemy.brigand",
     "description": "Brown-cloaked humanoid.",
-    "tags": ["enemy", "humanoid", "sprite"],
+    "tags": [
+      "enemy",
+      "humanoid",
+      "sprite"
+    ],
     "spriteId": "enemy.brigand",
     "sheetKey": "kenney-roguelike-characters",
     "frame": 378,
@@ -2918,7 +3698,10 @@
     "row": 7,
     "note": "Brown-cloaked humanoid.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -2926,7 +3709,11 @@
     "kind": "sprite",
     "label": "enemy.ghost",
     "description": "Pale spectral character (last row).",
-    "tags": ["enemy", "undead", "sprite"],
+    "tags": [
+      "enemy",
+      "undead",
+      "sprite"
+    ],
     "spriteId": "enemy.ghost",
     "sheetKey": "kenney-roguelike-characters",
     "frame": 595,
@@ -2934,7 +3721,10 @@
     "row": 11,
     "note": "Pale spectral character (last row).",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -2942,7 +3732,11 @@
     "kind": "sprite",
     "label": "enemy.goblin",
     "description": "Tiny Dungeon goblin (frame 121) \u2014 temp CC0 art.",
-    "tags": ["enemy", "goblin", "sprite"],
+    "tags": [
+      "enemy",
+      "goblin",
+      "sprite"
+    ],
     "spriteId": "enemy.goblin",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 121,
@@ -2950,7 +3744,10 @@
     "row": 10,
     "note": "Tiny Dungeon goblin (frame 121) \u2014 temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -2958,7 +3755,11 @@
     "kind": "sprite",
     "label": "enemy.orc",
     "description": "Tiny Dungeon brawler (frame 109) \u2014 temp CC0 art.",
-    "tags": ["enemy", "orc", "sprite"],
+    "tags": [
+      "enemy",
+      "orc",
+      "sprite"
+    ],
     "spriteId": "enemy.orc",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 109,
@@ -2966,7 +3767,10 @@
     "row": 9,
     "note": "Tiny Dungeon brawler (frame 109) \u2014 temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -2974,7 +3778,10 @@
     "kind": "sprite",
     "label": "enemy.rat",
     "description": "Tiny Dungeon rat (frame 123) \u2014 temp CC0 art.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "enemy.rat",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 123,
@@ -2982,7 +3789,10 @@
     "row": 10,
     "note": "Tiny Dungeon rat (frame 123) \u2014 temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -2990,7 +3800,10 @@
     "kind": "sprite",
     "label": "enemy.slime",
     "description": "Tiny Dungeon teal slime (frame 108) \u2014 temp CC0 art.",
-    "tags": ["sprite", "enemy"],
+    "tags": [
+      "sprite",
+      "enemy"
+    ],
     "spriteId": "enemy.slime",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 108,
@@ -2998,7 +3811,10 @@
     "row": 9,
     "note": "Tiny Dungeon teal slime (frame 108) \u2014 temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -3006,7 +3822,10 @@
     "kind": "sprite",
     "label": "item.gem",
     "description": "Custom gem sprite.",
-    "tags": ["sprite", "item"],
+    "tags": [
+      "sprite",
+      "item"
+    ],
     "spriteId": "item.gem",
     "sheetKey": "custom-pixel-sprites",
     "frame": 7,
@@ -3019,7 +3838,11 @@
     "kind": "sprite",
     "label": "kenney-roguelike-characters.frame.3",
     "description": "kenney-roguelike-characters frame 3 sprite metadata entry.",
-    "tags": ["generated", "kenney-roguelike-characters", "sprite"],
+    "tags": [
+      "generated",
+      "kenney-roguelike-characters",
+      "sprite"
+    ],
     "spriteId": "kenney-roguelike-characters.frame.3",
     "sheetKey": "kenney-roguelike-characters",
     "frame": 3,
@@ -3031,7 +3854,9 @@
     "kind": "sprite",
     "label": "npc.guide",
     "description": "Tiny Dungeon princess (frame 99) \u2014 temp CC0 art.",
-    "tags": ["sprite"],
+    "tags": [
+      "sprite"
+    ],
     "spriteId": "npc.guide",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 99,
@@ -3044,7 +3869,11 @@
     "kind": "sprite",
     "label": "player",
     "description": "Tiny Dungeon knight (frame 96) \u2014 temp CC0 art.",
-    "tags": ["player", "hero", "sprite"],
+    "tags": [
+      "player",
+      "hero",
+      "sprite"
+    ],
     "spriteId": "player",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 96,
@@ -3052,7 +3881,10 @@
     "row": 8,
     "note": "Tiny Dungeon knight (frame 96) \u2014 temp CC0 art.",
     "animation": {
-      "clips": ["idle", "move"]
+      "clips": [
+        "idle",
+        "move"
+      ]
     }
   },
   {
@@ -3086,7 +3918,10 @@
     "kind": "sprite",
     "label": "weapon.returning",
     "description": "Custom returning weapon sprite.",
-    "tags": ["sprite", "weapon"],
+    "tags": [
+      "sprite",
+      "weapon"
+    ],
     "spriteId": "weapon.returning",
     "sheetKey": "custom-pixel-sprites",
     "frame": 12,
@@ -3112,7 +3947,11 @@
     "kind": "sprite",
     "label": "faerie-boss-var-0",
     "description": "Generated sprite from brief: faerie-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "faerie-boss-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/faerie-boss-var-0.png",
@@ -3125,7 +3964,11 @@
     "kind": "sprite",
     "label": "equipment/accessory/lucky-feather",
     "description": "Generated sprite from brief: lucky-feather.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "equipment/accessory/lucky-feather",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/equipment-accessory-lucky-feather.png",
@@ -3138,7 +3981,10 @@
     "kind": "sprite",
     "label": "bone-saw-var-1",
     "description": "Generated sprite from brief: bone-saw.",
-    "tags": ["generated", "pipeline-approved"],
+    "tags": [
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "bone-saw-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/bone-saw-var-1.png",
@@ -3151,7 +3997,11 @@
     "kind": "sprite",
     "label": "cactusfolk-boss-v1-var-3",
     "description": "Generated sprite from brief: cactusfolk-boss-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-boss-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-boss-v1-var-3.png",
@@ -3164,7 +4014,11 @@
     "kind": "sprite",
     "label": "cactusfolk-boss-v1-var-0",
     "description": "Generated sprite from brief: cactusfolk-boss-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-boss-v1-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-boss-v1-var-0.png",
@@ -3177,7 +4031,11 @@
     "kind": "sprite",
     "label": "cactusfolk-boss-v1-var-2",
     "description": "Generated sprite from brief: cactusfolk-boss-v1.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
+    "tags": [
+      "enemy",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "cactusfolk-boss-v1-var-2",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/cactusfolk-boss-v1-var-2.png",
@@ -3190,7 +4048,11 @@
     "kind": "sprite",
     "label": "chain-hauberk-v3-var-11",
     "description": "Generated sprite from brief: chain-hauberk-v3.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "chain-hauberk-v3-var-11",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/chain-hauberk-v3-var-11.png",
@@ -3203,7 +4065,11 @@
     "kind": "sprite",
     "label": "chain-hauberk-v3-var-7",
     "description": "Generated sprite from brief: chain-hauberk-v3.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "chain-hauberk-v3-var-7",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/chain-hauberk-v3-var-7.png",
@@ -3216,7 +4082,11 @@
     "kind": "sprite",
     "label": "chain-hauberk-v3-var-3",
     "description": "Generated sprite from brief: chain-hauberk-v3.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "chain-hauberk-v3-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/chain-hauberk-v3-var-3.png",
@@ -3229,7 +4099,11 @@
     "kind": "sprite",
     "label": "chain-hauberk-v3-var-1",
     "description": "Generated sprite from brief: chain-hauberk-v3.",
-    "tags": ["item", "generated", "pipeline-approved"],
+    "tags": [
+      "item",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "chain-hauberk-v3-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/chain-hauberk-v3-var-1.png",
@@ -3242,7 +4116,11 @@
     "kind": "sprite",
     "label": "void-rapier-v1-var-1",
     "description": "Generated sprite from brief: void-rapier-v1.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "void-rapier-v1-var-1",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/void-rapier-v1-var-1.png",
@@ -3255,7 +4133,11 @@
     "kind": "sprite",
     "label": "dueling-saber-v1-var-3",
     "description": "Generated sprite from brief: dueling-saber-v1.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "dueling-saber-v1-var-3",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/dueling-saber-v1-var-3.png",
@@ -3268,7 +4150,11 @@
     "kind": "sprite",
     "label": "iron-cleaver-v1-var-10",
     "description": "Generated sprite from brief: iron-cleaver-v1.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "iron-cleaver-v1-var-10",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/iron-cleaver-v1-var-10.png",
@@ -3281,10 +4167,31 @@
     "kind": "sprite",
     "label": "iron-cleaver-v1-var-5",
     "description": "Generated sprite from brief: iron-cleaver-v1.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
     "spriteId": "iron-cleaver-v1-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/iron-cleaver-v1-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:iron-cleaver-v1-var-0",
+    "kind": "sprite",
+    "label": "iron-cleaver-v1-var-0",
+    "description": "Generated sprite from brief: iron-cleaver-v1.",
+    "tags": [
+      "weapon",
+      "generated",
+      "pipeline-approved"
+    ],
+    "spriteId": "iron-cleaver-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/iron-cleaver-v1-var-0.png",
     "frame": 0,
     "col": 0,
     "row": 0
