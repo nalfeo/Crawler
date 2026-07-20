@@ -64,13 +64,12 @@ describe('Floor 2 settlement placement properties', () => {
           const second = initializeFloor2Settlement(createSettlementWorld(seed), { shopCount });
 
           expect(first.shops).toEqual(second.shops);
-          expect(first.shops).toHaveLength(shopCount + 1);
+          expect(first.quartermasterShop).toEqual(second.quartermasterShop);
+          expect(first.shops).toHaveLength(shopCount);
+          expect(first.quartermasterShop.archetypeId).toBe(FLOOR2_QUARTERMASTER_ARCHETYPE_ID);
           expect(
-            first.shops.filter((shop) => shop.archetypeId === FLOOR2_QUARTERMASTER_ARCHETYPE_ID),
-          ).toHaveLength(1);
-          expect(
-            first.shops.filter((shop) => shop.archetypeId !== FLOOR2_QUARTERMASTER_ARCHETYPE_ID),
-          ).toHaveLength(shopCount);
+            first.shops.every((shop) => shop.archetypeId !== FLOOR2_QUARTERMASTER_ARCHETYPE_ID),
+          ).toBe(true);
 
           const settlementDoors = first.settlementRoomIds.flatMap(
             (roomId) => firstWorld.floorMap!.roomGraph.get(roomId)?.doors ?? [],
@@ -78,6 +77,7 @@ describe('Floor 2 settlement placement properties', () => {
           const npcEids = [
             first.brokerEid,
             first.defectorEid,
+            first.quartermasterShop.npcEid,
             ...first.shops.map((shop) => shop.npcEid),
           ];
           for (const eid of npcEids) {
