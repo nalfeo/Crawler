@@ -145,9 +145,11 @@ export interface RoundCheckpoint {
    * NEVER reassigned across rounds (baseline rows are seeded into `rows` at
    * round 0 and never removed). Lets every later round evaluate promotion
    * candidates against the SAME hard safety gate that governs final
-   * graduation (`selectQualifiedWinner`: >=90% official wins AND zero
-   * incumbent win→loss flips, THEN highest score) instead of promoting on
-   * composite score alone — see `applyRoundResult`.
+   * graduation (`selectQualifiedWinner`: >=90% official wins AND strictly
+   * MORE total wins than the incumbent, THEN highest score) instead of
+   * promoting on composite score alone — see `applyRoundResult`. Win→loss
+   * flips vs the incumbent are allowed as long as total wins still strictly
+   * increase (human-approved net-win promotion rule).
    */
   incumbentConfigId: string;
   /**
@@ -196,7 +198,7 @@ export function initCheckpoint(
   }
 
   // Incumbent for the safety gate: use the LEGACY incumbent (from legacyBaseline)
-  // for non-LEGACY combos so that the in-search flip check mirrors the final
+  // for non-LEGACY combos so that the in-search net-win check mirrors the final
   // graduation gate (`selectQualifiedWinner`). For `legacy+legacy` the combo
   // IS the LEGACY incumbent, so no separate baseline is needed.
   const comboIsLegacy = comboStr === LEGACY_COMBO_ID;
@@ -205,8 +207,8 @@ export function initCheckpoint(
   // For a non-LEGACY combo with a legacyBaseline, the incumbent rows carry
   // `combo: LEGACY_COMBO_ID`, NOT `combo: comboStr` — so buildLeaderboard must
   // be given the correct `incumbentCombo` or it will find no incumbent rows,
-  // flipsVsIncumbent becomes null, and selectQualifiedWinner disqualifies every
-  // candidate (preventing any promotion).
+  // winsVsIncumbentDelta becomes null, and selectQualifiedWinner disqualifies
+  // every candidate (preventing any promotion).
   let incumbentCombo = comboStr;
   const allConfigs: Record<string, SweepConfig> = { ...baseline.configs };
   const allRows: RunRow[] = [...baseline.rows];
@@ -329,19 +331,23 @@ function assertShardCompatible(checkpoint: RoundCheckpoint, shard: ShardArtifact
 /**
  * Merge this round's evaluated candidate shards into a combo's checkpoint and
  * advance the search: promote the highest-scoring candidate that ALSO passes
- * the approved hard safety gate (>=90% official wins AND zero win→loss flips
- * vs the incumbent — the same {@link selectQualifiedWinner} gate that governs
- * final graduation in `aggregate-shards.ts`), or — when nothing qualifying
- * improved — halve the step sizes and mark `converged` once every knob's step
- * has fallen below its minStep.
+ * the approved hard safety gate (>=90% official wins AND strictly MORE total
+ * wins than the incumbent — the same {@link selectQualifiedWinner} gate that
+ * governs final graduation in `aggregate-shards.ts`), or — when nothing
+ * qualifying improved — halve the step sizes and mark `converged` once every
+ * knob's step has fallen below its minStep.
  *
  * This is the round-plan half of the fix for the real bug the 2026-07 untuned
  * graduation run (GitHub run 29597840666) exposed: a config can out-score the
  * incumbent while quietly flipping incumbent wins into losses, and a
  * score-only hill-climb would happily chase that config round after round.
- * Gating promotion on `selectQualifiedWinner` means the search's own
- * trajectory can never walk toward (or settle on) a config the final gate
- * would reject.
+ * Per the human-approved net-win promotion rule, such flips are now ALLOWED
+ * when the candidate's absolute total wins still strictly exceed the
+ * incumbent's (e.g. 292/300 candidate vs 286/300 incumbent, 5 flips —
+ * qualifies); a candidate whose total wins tie or fall below the incumbent's
+ * is still rejected regardless of flips or score. Gating promotion on
+ * `selectQualifiedWinner` means the search's own trajectory can never walk
+ * toward (or settle on) a config the final gate would reject.
  *
  * `options.plannedCount` (when supplied) lets the caller distinguish "this
  * round genuinely produced fewer/no improving candidates" (a real search

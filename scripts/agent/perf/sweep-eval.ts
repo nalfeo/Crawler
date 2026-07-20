@@ -217,13 +217,15 @@ function winsOf(rows: readonly RunRow[], id: string): number {
  * Pure gate-aware promotion decision for the legacy `--stage search` hill
  * climb: a candidate may only replace the search's current position if it
  * ALSO passes {@link selectQualifiedWinner}'s hard safety gate (>=90%
- * official wins AND zero win→loss flips vs the FIXED original baseline
+ * official wins AND strictly MORE total wins than the FIXED original baseline
  * `incumbentConfigId` — never the search's current position, which would let
- * the gate itself drift), exactly mirroring `applyRoundResult`'s
- * round-to-round promotion in `round-plan.ts`. Extracted as a pure function
- * (taking already-evaluated rows, not running anything) so it is unit
- * testable without headless game runs — the exact wiring bug class a review
- * would otherwise only catch by re-deriving this logic by hand.
+ * the gate itself drift; win→loss flips are allowed as long as total wins
+ * still strictly increase, per the human-approved net-win promotion rule),
+ * exactly mirroring `applyRoundResult`'s round-to-round promotion in
+ * `round-plan.ts`. Extracted as a pure function (taking already-evaluated
+ * rows, not running anything) so it is unit testable without headless game
+ * runs — the exact wiring bug class a review would otherwise only catch by
+ * re-deriving this logic by hand.
  *
  * Returns `null` when no candidate both qualifies and ranks ahead of the
  * current position under the full tie-break ordering (steps should be halved
@@ -346,11 +348,13 @@ async function searchCombo(
 
     // Gate promotion through the SAME hard safety gate used for round-plan.ts
     // and final graduation (see selectSearchPromotion doc comment): a
-    // higher-scoring neighbour must ALSO have >=90% wins AND zero win->loss
-    // flips vs the FIXED original baseline (base.id, not the search's current
-    // position) before it can replace currentId. Naive score-only promotion
-    // here would reintroduce the exact GH-run-29597840666 bug this module
-    // exists to fix, just in the legacy local-smoke-run path instead of CI.
+    // higher-scoring neighbour must ALSO have >=90% wins AND strictly MORE
+    // total wins than the FIXED original baseline (base.id, not the search's
+    // current position) before it can replace currentId — win→loss flips are
+    // allowed as long as total wins still strictly increase (human-approved
+    // net-win promotion rule). Naive score-only promotion here would
+    // reintroduce the exact GH-run-29597840666 bug this module exists to fix,
+    // just in the legacy local-smoke-run path instead of CI.
     const candidateIds = new Set(candidates.map((c) => c.id));
     const promotion = selectSearchPromotion(
       allRows,

@@ -7,7 +7,9 @@
 #   full seed panel, then fans the shard artifacts into ONE leaderboard (Σ
 #   composite score, win count, flips-vs-incumbent, clear time, xp, gold,
 #   min-HP) AND a safety-gated qualified-winner recommendation (>=90% wins AND
-#   zero incumbent win→loss flips — see `selectQualifiedWinner` in
+#   strictly MORE total wins than the incumbent — win→loss flips are allowed
+#   as long as total wins still strictly increase, per the human-approved
+#   net-win promotion rule — see `selectQualifiedWinner` in
 #   aggregate-shards.ts), rendered to the run summary + a JSON artifact.
 #
 #   It only MEASURES. It never flips the shipped default (that is the separate,

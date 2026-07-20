@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "ai-sweep-net-win-promotion",
+  "task_title": "Allow net-win incumbent flips in AI Sweep Eval promotion gate",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Verdict: approved_with_changes, no re-architecture warranted. Alt considered: pass incumbent stats as a separate parameter to selectQualifiedWinner instead of eager per-row field -- rejected because 2 of 3 call sites (round-plan.ts, sweep-eval.ts) prefilter out the incumbent row before calling the gate, so eager computation during buildLeaderboard (where incumbent rows are still in scope) is required; a lazy/parameterized approach would need those two callers to separately thread incumbent totals through, more invasive for no benefit. Concerns addressed: (1) documented the single-incumbent-per-buildLeaderboard-call invariant in BuildLeaderboardOptions doc comment + added a regression test scoping incumbent identity to (combo,configId) not configId alone; (2) clarified sortByLexicographic doc comment as diagnostic-only (not a gate) since flipsVsIncumbent is still used there as a display tie-break; (3) added a superseded-notice to the 2026-07-19 handoff so operators do not apply the old zero-flip rule from stale docs; (4) confirmed no float-creep risk in winsVsIncumbentDelta (integer .length-derived counts only)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
