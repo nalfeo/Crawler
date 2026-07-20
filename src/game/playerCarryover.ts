@@ -148,7 +148,7 @@ function snapshotAbilityState(
   // validateGrantOwnership to verify source/instance consistency.  They will be
   // encountered as idempotent re-grants when equipFromBag is called during restore.
   const nonEquipmentSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
-    sources.filter((s) => s.kind !== 'equipment');
+    sources.filter((source) => source.kind !== 'equipment');
 
   const filteredActiveSources = new Map<string, AbilityGrantSource[]>();
   for (const [abilityId, sources] of state.activeAbilityGrantSources) {
