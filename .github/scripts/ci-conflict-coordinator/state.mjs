@@ -98,7 +98,9 @@ export function discoverCoordinationClusters(
   existingStates,
   minimumSize = MIN_CLUSTER_SIZE,
 ) {
-  const managedMembers = new Set((existingStates || []).flatMap((state) => state.members || []));
+  const managedMembers = new Set(
+    (existingStates || []).flatMap((state) => state.members || state.originalMembers || []),
+  );
   return clusterPullRequests(pullRequests, 1).filter(
     (component) =>
       component.length >= minimumSize || component.some((pull) => managedMembers.has(pull.number)),

@@ -145,6 +145,7 @@ async function commentsFor(number) {
 }
 
 function isTrustedRecoveryComment(comment) {
+  if (!comment) return false;
   const authorLogin = String(comment?.user?.login || '').toLowerCase();
   const authorAssociation = String(comment?.author_association ?? '').toUpperCase();
   return (
