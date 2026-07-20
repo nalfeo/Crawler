@@ -966,6 +966,16 @@ if ((pr.labels || []).some((label) => label.name === 'ci-recovery-opt-out')) {
   }
 }
 
+if (!mergeTrainEnabled) {
+  const existingLabels = new Set((pr.labels || []).map((label) => label.name));
+  for (const trainLabel of [QUEUE_LABEL, BLOCKED_LABEL, NOOP_LABEL, VALIDATION_FAILED_LABEL]) {
+    if (pendingHumanApproval && trainLabel === BLOCKED_LABEL) continue;
+    if (existingLabels.has(trainLabel)) {
+      await removePrLabel(trainLabel);
+    }
+  }
+}
+
 if (labelExists && state?.owner === 'shepherd' && !isLeaseExpired(state, now)) {
   process.stdout.write(`skip pr=#${prNumber} reason=active-shepherd-lease\n`);
   process.exit(0);
@@ -986,16 +996,6 @@ if (
 if (mergeTrainEnabled && !pendingHumanApproval && shouldWaitForCiConflictOrder(pr.labels)) {
   process.stdout.write(`skip pr=#${prNumber} reason=ci-conflict-order-wait\n`);
   process.exit(0);
-}
-
-if (!mergeTrainEnabled) {
-  const existingLabels = new Set((pr.labels || []).map((label) => label.name));
-  for (const trainLabel of [QUEUE_LABEL, BLOCKED_LABEL, NOOP_LABEL, VALIDATION_FAILED_LABEL]) {
-    if (pendingHumanApproval && trainLabel === BLOCKED_LABEL) continue;
-    if (existingLabels.has(trainLabel)) {
-      await removePrLabel(trainLabel);
-    }
-  }
 }
 
 const review = await listReviewThreads(readToken, owner, repo, prNumber);

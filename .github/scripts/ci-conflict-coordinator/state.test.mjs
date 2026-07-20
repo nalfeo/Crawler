@@ -21,6 +21,7 @@ import {
   ciFilesFor,
   clusterPullRequests,
   dispatchKey,
+  hasHealthyRecoveryOwner,
   isCoordinatorStateSemanticallyEqual,
   makeCoordinatorState,
   mergeCoordinationGroups,
@@ -198,6 +199,46 @@ test('healthy shepherd lease suppresses ordered recovery dispatch', () => {
   );
 });
 
+test('stale-head automation owner does not suppress ordered recovery dispatch', () => {
+  const active = makePull(7, ['.github/workflows/ci.yml']);
+  const key = dispatchKey({
+    groupId: 'ci-conflict-automation-head',
+    active,
+    baseSha: 'a'.repeat(40),
+    order: [active],
+  });
+  const recoveryState = makeRecoveryState({
+    prNumber: 7,
+    headSha: 'f'.repeat(40),
+    fingerprint: 'f'.repeat(64),
+    owner: 'automation',
+    status: 'active',
+    blockers: [],
+    progressAt: '2026-07-20T00:00:00Z',
+    updatedAt: '2026-07-20T00:00:00Z',
+  });
+  assert.equal(
+    hasHealthyRecoveryOwner({
+      prNumber: 7,
+      recoveryState,
+      headSha: active.headSha,
+      now: new Date('2026-07-20T00:10:00Z'),
+    }),
+    false,
+  );
+  assert.equal(
+    shouldDispatchActiveSlot({
+      recoveryState,
+      headSha: active.headSha,
+      prNumber: 7,
+      priorDispatchKey: null,
+      nextKey: key,
+      now: new Date('2026-07-20T00:10:00Z'),
+    }),
+    true,
+  );
+});
+
 test('merge train excludes order-wait PRs', () => {
   const pull = {
     number: 1,
@@ -232,6 +273,14 @@ test('coordinator inventories rename previous_filename paths for overlap cluster
     'utf8',
   );
   assert.match(source, /previous_filename/);
+});
+
+test('coordinator validates automation ownership against the live PR head', () => {
+  const source = readFileSync(
+    path.resolve('.github/scripts/ci-conflict-coordinator/reconcile.mjs'),
+    'utf8',
+  );
+  assert.match(source, /headSha:\s*pull\.headSha/);
 });
 
 test('coordinator claims owner fence and disables auto-merge for every grouped member', () => {

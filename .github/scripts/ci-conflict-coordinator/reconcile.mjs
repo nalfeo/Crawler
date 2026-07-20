@@ -3,7 +3,6 @@ import { execFileSync } from 'node:child_process';
 import { graphql, paginate, request } from '../ci-recovery/github.mjs';
 import {
   assertOwnershipInvariant,
-  isHealthyRecoveryOwner,
   ownerLabel,
   parseStateComment as parseRecoveryStateComment,
   STATE_MARKER as RECOVERY_STATE_MARKER,
@@ -27,6 +26,7 @@ import {
   ciFilesFor,
   clusterPullRequests,
   dispatchKey,
+  hasHealthyRecoveryOwner,
   isCoordinatorStateSemanticallyEqual,
   makeCoordinatorState,
   mergeCoordinationGroups,
@@ -175,7 +175,14 @@ function recoveryContext(pull, comments) {
   return {
     state,
     ownershipError,
-    healthy: state ? isHealthyRecoveryOwner({ prNumber: pull.number, state, now }) : false,
+    healthy: state
+      ? hasHealthyRecoveryOwner({
+          prNumber: pull.number,
+          recoveryState: state,
+          headSha: pull.headSha,
+          now,
+        })
+      : false,
   };
 }
 
@@ -359,8 +366,7 @@ async function closeDuplicate(proof) {
       ? (await fetchLivePull(proof.leaderHead.number))?.head?.sha
       : null;
     const proofDrifted =
-      postMain !== currentMain ||
-      (proof.leaderHead && postLeaderSha !== proof.leaderHead.headSha);
+      postMain !== currentMain || (proof.leaderHead && postLeaderSha !== proof.leaderHead.headSha);
     if (proofDrifted) {
       process.stdout.write(`reopen pr=#${proof.number} reason=post-close-proof-drifted\n`);
       try {
@@ -369,9 +375,7 @@ async function closeDuplicate(proof) {
           body: { state: 'open' },
         });
       } catch (reopenError) {
-        process.stdout.write(
-          `reopen-failed pr=#${proof.number} error=${reopenError.message}\n`,
-        );
+        process.stdout.write(`reopen-failed pr=#${proof.number} error=${reopenError.message}\n`);
       }
       return false;
     }
@@ -547,6 +551,7 @@ for (const group of groups) {
     activeSafe &&
     shouldDispatchActiveSlot({
       recoveryState: activeRecovery.state,
+      headSha: selection.active.headSha,
       prNumber: selection.active.number,
       priorDispatchKey: lastDispatchKey,
       nextKey: nextDispatchKey,

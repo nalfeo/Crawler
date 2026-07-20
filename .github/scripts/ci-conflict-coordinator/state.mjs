@@ -234,15 +234,20 @@ export function dispatchKey({ groupId, active, baseSha, order }) {
   });
 }
 
+export function hasHealthyRecoveryOwner({ prNumber, recoveryState, headSha, now }) {
+  return isHealthyRecoveryOwner({ prNumber, state: recoveryState, headSha, now });
+}
+
 export function shouldDispatchActiveSlot({
   recoveryState,
+  headSha,
   prNumber,
   priorDispatchKey,
   nextKey,
   now,
 }) {
   if (!nextKey || priorDispatchKey === nextKey) return false;
-  return !isHealthyRecoveryOwner({ prNumber, state: recoveryState, now });
+  return !hasHealthyRecoveryOwner({ prNumber, recoveryState, headSha, now });
 }
 
 export function makeCoordinatorState({
