@@ -2,7 +2,7 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-07-18",
   "session_slug": "active-weapon-snapshots",
-  "task_title": "Immutable per-instance active weapon snapshots",
+  "task_title": "Add immutable active weapon snapshots",
   "estimated_apples": 3,
   "stages": {
     "plan_review": {
@@ -11,21 +11,14 @@
       "concerns_count": 4,
       "resolved_count": 4,
       "plan_divergence": "minor",
-      "notes": "Generated activation now resolves only by authoritative registry instance ID; runtime WeaponDef.id stays the static base while a separate generated identity+fingerprint switch key drives generation; B1 v1 is explicitly unpublished stack-only and evolves atomically; hash boundaries and same-base swap runtime coverage are explicit."
+      "notes": "Retroactive 3-apple plan review. Concern 1 resolved by making core/active-weapon resolve and store registry-authoritative snapshots by generatedEquipmentInstanceId instead of trusting the inbound object. Concern 2 resolved by defining snapshot switch identity as generatedEquipmentInstanceId + fingerprint and updating weaponSystem switch handling to key off generation changes rather than raw weapon id. Concern 3 resolved by scoping this slice explicitly to the narrow active-weapon consumption seam; producer-side generated equipment equip flow remains deferred outside this issue per the stated exclusions. Concern 4 noted honestly: the session had already started before the harness was invoked, but the plan itself was reviewed and all surfaced design concerns were incorporated into the implementation and follow-up notes."
     },
     "code_review": {
       "clean": true,
       "rounds": [
         {
           "round": 1,
-          "models": ["claude-sonnet-4.6"],
-          "concerns_count": 1,
-          "resolved_count": 1,
-          "clean": false
-        },
-        {
-          "round": 2,
-          "models": ["claude-sonnet-4.6"],
+          "models": ["gpt-5-mini", "claude-sonnet-4.6"],
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true

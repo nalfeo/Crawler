@@ -12,6 +12,7 @@ interface WorkflowStep {
   uses?: string;
   run?: string;
   if?: string;
+  env?: Record<string, string>;
   with?: Record<string, unknown>;
 }
 
@@ -90,8 +91,16 @@ describe('merge-train candidate validation sharding', () => {
         /APP_ID|APP_PRIVATE_KEY|steps\.app-token|checks:\s*write/,
       );
       const checkout = job?.steps?.find((step) => step.uses?.startsWith('actions/checkout'));
-      expect(checkout?.with?.ref, jobId).toBe('${{ inputs.candidate_sha }}');
+      expect(checkout?.with?.ref, jobId).toBe('${{ github.event.repository.default_branch }}');
       expect(checkout?.with?.['persist-credentials'], jobId).toBe(false);
+      const materialize = job?.steps?.find(
+        (step) => step.name === 'Materialize immutable candidate',
+      );
+      expect(materialize?.env?.CANDIDATE_REF, jobId).toBe('${{ inputs.candidate_ref }}');
+      expect(materialize?.env?.CANDIDATE_SHA, jobId).toBe('${{ inputs.candidate_sha }}');
+      expect(materialize?.run, jobId).toBe(
+        'bash .github/scripts/merge-train/materialize-candidate.sh',
+      );
     }
 
     const publish = doc.jobs.publish;

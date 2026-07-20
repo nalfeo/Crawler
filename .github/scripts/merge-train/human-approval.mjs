@@ -1,7 +1,11 @@
 export const HUMAN_APPROVAL_LABEL = 'human-approval-required';
 export const HUMAN_APPROVAL_PHRASE = 'APPROVED FOR CHECK-IN';
 
-const NIGHTLY_BALANCE_BRANCH_PREFIX = 'copilot/balance-telemetry-driven-improvement-sweep';
+// Broad prefix intentionally covers both legacy naming
+// ('copilot/balance-telemetry-driven-improvement-sweep') and the current
+// naming ('copilot/balance-telemetry-improvement-sweep').  Balance-sweep
+// agents choose branch names autonomously so pinning to a full name is fragile.
+const NIGHTLY_BALANCE_BRANCH_PREFIX = 'copilot/balance-telemetry';
 
 function labelNames(labels) {
   const entries = Array.isArray(labels) ? labels : labels?.nodes || [];

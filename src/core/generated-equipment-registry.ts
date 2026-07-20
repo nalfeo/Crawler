@@ -1,5 +1,4 @@
 import {
-  ACTIVE_WEAPON_SNAPSHOT_INPUT_SCHEMA_VERSION,
   ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
@@ -7,11 +6,12 @@ import {
   GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION,
+  type ActiveWeaponClassSkillTag,
   type ActiveWeaponCombatOverridesV1,
-  type ActiveWeaponSnapshotInputV1,
+  type ActiveWeaponSnapshotCreateInputV1,
   type ActiveWeaponSnapshotV1,
+  type ActiveWeaponTypeSkillTag,
   type EquipmentFingerprintV1,
-  type FrozenEquipmentFieldsInputV1,
   type FrozenEquipmentFieldsV1,
   type GeneratedEquipmentCreateInputV1,
   type GeneratedEquipmentEnhancementLevel,
@@ -24,7 +24,6 @@ import {
   type ResolvedEquipmentEffectV1,
 } from '../shared/generated-equipment-types.js';
 import { canonicalJson, deepFreeze, sha256Hex } from '../shared/canonical-json.js';
-import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 import { isValidSlotId, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { isValidStatId, type StatId } from '../shared/stats.js';
 import {
@@ -39,6 +38,7 @@ import {
   type WeaponClassSkillId,
   type WeaponTypeSkillId,
 } from '../shared/weapon-skills.js';
+import { getWeaponDef, type WeaponDef } from '../shared/weaponDefs.js';
 
 export type GeneratedEquipmentRegistryErrorCode =
   | 'duplicate-instance'
@@ -90,6 +90,40 @@ interface InstanceValidationOptions {
   readonly expectedPolicyFingerprint?: EquipmentFingerprintV1;
 }
 
+export interface ActiveWeaponSnapshotValidationOptions {
+  readonly expectedInstanceId?: GeneratedEquipmentInstanceId;
+  readonly expectedSourceWeaponDefId?: string;
+}
+
+const ACTIVE_WEAPON_SNAPSHOT_OVERRIDE_KEYS = new Set<keyof WeaponDef>([
+  'name',
+  'weaponType',
+  'baseDamage',
+  'cooldownMs',
+  'range',
+  'projectileSpeed',
+  'aoeRadius',
+  'durationMs',
+  'beamTickMs',
+  'beamLength',
+  'trapArmMs',
+  'trapTriggerRadius',
+  'trapExplosionRadius',
+  'returnSpeed',
+  'maxRange',
+  'swingArcDeg',
+  'meleeStyle',
+  'headRadius',
+  'shaftDamageMult',
+  'knockback',
+  'pierce',
+  'bounceCount',
+  'goreFactor',
+  'baseAccuracy',
+  'weaponClassSkillId',
+  'weaponTypeSkillId',
+]);
+
 const DEFAULT_POLICY_DATA: GeneratedEquipmentGenerationPolicyV1 = {
   schemaVersion: GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION,
   generationVersion: GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION,
@@ -121,8 +155,8 @@ export const DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1 = deepFreeze(DEFAU
 
 const registryStates = new WeakMap<GeneratedEquipmentRegistry, RegistryState>();
 const RUN_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
-const INSTANCE_ID_PATTERN = /^gei:v1:[a-z0-9][a-z0-9._-]{0,127}:\d+$/;
 const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{64}$/;
+const GENERATED_EQUIPMENT_INSTANCE_ID_PATTERN = /^gei:v1:([a-z0-9][a-z0-9._-]{0,127}):([0-9]+)$/;
 
 function fail(code: GeneratedEquipmentRegistryErrorCode, message: string, path: string): never {
   throw new GeneratedEquipmentRegistryError(code, message, path);
@@ -204,22 +238,45 @@ function requireRunKey(value: unknown, path: string): string {
   return runKey;
 }
 
-function requireGeneratedEquipmentInstanceId(
-  value: unknown,
-  path: string,
-): GeneratedEquipmentInstanceId {
-  const instanceId = requireNonEmptyString(value, path);
-  if (!INSTANCE_ID_PATTERN.test(instanceId)) {
-    fail('invalid-payload', 'Expected a generated equipment instance ID', path);
-  }
-  return instanceId as GeneratedEquipmentInstanceId;
-}
-
 function requireFingerprint(value: unknown, path: string): EquipmentFingerprintV1 {
   if (typeof value !== 'string' || !FINGERPRINT_PATTERN.test(value)) {
     fail('invalid-payload', 'Expected a lowercase sha256:<64 hex> fingerprint', path);
   }
   return value as EquipmentFingerprintV1;
+}
+
+function requireGeneratedEquipmentInstanceId(
+  value: unknown,
+  path: string,
+): GeneratedEquipmentInstanceId {
+  if (typeof value !== 'string') {
+    fail('invalid-payload', 'Expected a generated equipment instance ID', path);
+  }
+  const match = GENERATED_EQUIPMENT_INSTANCE_ID_PATTERN.exec(value);
+  if (!match) {
+    fail('invalid-payload', 'Expected gei:v1:<runKey>:<ordinal> instance ID', path);
+  }
+  requireRunKey(match[1], `${path}.runKey`);
+  requireInteger(Number.parseInt(match[2] ?? '', 10), 0, `${path}.ordinal`);
+  return value as GeneratedEquipmentInstanceId;
+}
+
+function weaponClassSkillTag(skillId: WeaponClassSkillId): ActiveWeaponClassSkillTag {
+  return `weapon-class:${skillId}`;
+}
+
+function weaponTypeSkillTag(skillId: WeaponTypeSkillId): ActiveWeaponTypeSkillTag {
+  return `weapon-type:${skillId}`;
+}
+
+export function canonicalActiveWeaponSkillTags(
+  weaponClassSkillId: WeaponClassSkillId,
+  weaponTypeSkillId: WeaponTypeSkillId,
+): readonly [ActiveWeaponClassSkillTag, ActiveWeaponTypeSkillTag] {
+  return Object.freeze([
+    weaponClassSkillTag(weaponClassSkillId),
+    weaponTypeSkillTag(weaponTypeSkillId),
+  ]);
 }
 
 function requireStringArray(value: unknown, path: string, allowEmpty: boolean): readonly string[] {
@@ -315,157 +372,9 @@ function requireBoundedNumber(
   return number;
 }
 
-const ACTIVE_WEAPON_OVERRIDE_KEYS = Object.freeze([
-  'baseDamage',
-  'cooldownMs',
-  'range',
-  'projectileSpeed',
-  'aoeRadius',
-  'durationMs',
-  'beamTickMs',
-  'beamLength',
-  'trapArmMs',
-  'trapTriggerRadius',
-  'trapExplosionRadius',
-  'returnSpeed',
-  'maxRange',
-  'swingArcDeg',
-  'meleeStyle',
-  'headRadius',
-  'shaftDamageMult',
-  'knockback',
-  'pierce',
-  'bounceCount',
-  'goreFactor',
-  'baseAccuracy',
-] as const satisfies readonly (keyof ActiveWeaponCombatOverridesV1)[]);
-
-type ActiveWeaponOverrideKey = (typeof ACTIVE_WEAPON_OVERRIDE_KEYS)[number];
-type ActiveWeaponRuntimeFields = Omit<WeaponDef, 'id'>;
-type ActiveWeaponSnapshotContentV1 = Omit<ActiveWeaponSnapshotV1, 'fingerprint'>;
-
-function isActiveWeaponOverrideKey(value: string): value is ActiveWeaponOverrideKey {
-  return (ACTIVE_WEAPON_OVERRIDE_KEYS as readonly string[]).includes(value);
-}
-
-function requireWeaponDef(baseWeaponId: string, path: string): WeaponDef {
-  const def = getWeaponDef(baseWeaponId);
-  if (!def) {
-    fail('not-found', `Static weapon definition ${baseWeaponId} was not found`, path);
-  }
-  return def;
-}
-
-function validateWeaponRuntimeFields(
-  record: Record<string, unknown>,
-  path: string,
-): ActiveWeaponRuntimeFields {
-  return deepFreeze({
-    name: requireNonEmptyString(record.name, `${path}.name`),
-    weaponType: requireWeaponType(record.weaponType, `${path}.weaponType`),
-    baseDamage: requireNonNegativeNumber(record.baseDamage, `${path}.baseDamage`),
-    cooldownMs: requireInteger(record.cooldownMs, 1, `${path}.cooldownMs`),
-    range: requireNonNegativeNumber(record.range, `${path}.range`),
-    projectileSpeed: requireNonNegativeNumber(record.projectileSpeed, `${path}.projectileSpeed`),
-    aoeRadius: requireNonNegativeNumber(record.aoeRadius, `${path}.aoeRadius`),
-    durationMs: requireNonNegativeNumber(record.durationMs, `${path}.durationMs`),
-    beamTickMs: requireNonNegativeNumber(record.beamTickMs, `${path}.beamTickMs`),
-    beamLength: requireNonNegativeNumber(record.beamLength, `${path}.beamLength`),
-    trapArmMs: requireNonNegativeNumber(record.trapArmMs, `${path}.trapArmMs`),
-    trapTriggerRadius: requireNonNegativeNumber(
-      record.trapTriggerRadius,
-      `${path}.trapTriggerRadius`,
-    ),
-    trapExplosionRadius: requireNonNegativeNumber(
-      record.trapExplosionRadius,
-      `${path}.trapExplosionRadius`,
-    ),
-    returnSpeed: requireNonNegativeNumber(record.returnSpeed, `${path}.returnSpeed`),
-    maxRange: requireNonNegativeNumber(record.maxRange, `${path}.maxRange`),
-    swingArcDeg: requireNonNegativeNumber(record.swingArcDeg, `${path}.swingArcDeg`),
-    meleeStyle: requireMeleeStyle(record.meleeStyle, `${path}.meleeStyle`),
-    headRadius: requireNonNegativeNumber(record.headRadius, `${path}.headRadius`),
-    shaftDamageMult: requireNonNegativeNumber(record.shaftDamageMult, `${path}.shaftDamageMult`),
-    knockback: requireNonNegativeNumber(record.knockback, `${path}.knockback`),
-    pierce: requireInteger(record.pierce, 0, `${path}.pierce`),
-    bounceCount: requireInteger(record.bounceCount, 0, `${path}.bounceCount`),
-    goreFactor: requireBoundedNumber(record.goreFactor, 0, 1, `${path}.goreFactor`),
-    baseAccuracy: requireBoundedNumber(record.baseAccuracy, 0, 1, `${path}.baseAccuracy`),
-    weaponClassSkillId: requireWeaponClassSkill(
-      record.weaponClassSkillId,
-      `${path}.weaponClassSkillId`,
-    ),
-    weaponTypeSkillId: requireWeaponTypeSkill(
-      record.weaponTypeSkillId,
-      `${path}.weaponTypeSkillId`,
-    ),
-  });
-}
-
-function validateWeaponOverrides(
-  value: unknown,
-  def: WeaponDef,
-  path: string,
-): ActiveWeaponCombatOverridesV1 {
-  const record = requireRecord(value, path);
-  for (const key of Object.keys(record)) {
-    if (!isActiveWeaponOverrideKey(key)) {
-      fail('illegal-override', `Weapon field ${key} cannot be overridden`, `${path}.${key}`);
-    }
-  }
-  const normalized = validateWeaponRuntimeFields({ ...def, ...record }, path);
-  const overrides: Partial<Record<ActiveWeaponOverrideKey, unknown>> = {};
-  for (const key of Object.keys(record)) {
-    if (isActiveWeaponOverrideKey(key)) {
-      overrides[key] = normalized[key];
-    }
-  }
-  return deepFreeze(overrides as ActiveWeaponCombatOverridesV1);
-}
-
-function validateActiveWeaponSnapshotInput(
-  value: unknown,
-  path: string,
-): ActiveWeaponSnapshotInputV1 {
-  const record = requireRecord(value, path);
-  requireKeys(record, ['schemaVersion', 'baseWeaponId', 'overrides'], path);
-  requireVersion(
-    record.schemaVersion,
-    ACTIVE_WEAPON_SNAPSHOT_INPUT_SCHEMA_VERSION,
-    `${path}.schemaVersion`,
-  );
-  const baseWeaponId = requireNonEmptyString(record.baseWeaponId, `${path}.baseWeaponId`);
-  const def = requireWeaponDef(baseWeaponId, `${path}.baseWeaponId`);
-  return deepFreeze({
-    schemaVersion: ACTIVE_WEAPON_SNAPSHOT_INPUT_SCHEMA_VERSION,
-    baseWeaponId,
-    overrides: validateWeaponOverrides(record.overrides, def, `${path}.overrides`),
-  });
-}
-
-export function createActiveWeaponSnapshotInput(
-  baseWeaponId: string,
-  overrides: ActiveWeaponCombatOverridesV1 = {},
-): ActiveWeaponSnapshotInputV1 {
-  return validateActiveWeaponSnapshotInput(
-    {
-      schemaVersion: ACTIVE_WEAPON_SNAPSHOT_INPUT_SCHEMA_VERSION,
-      baseWeaponId,
-      overrides,
-    },
-    '$.activeWeaponSnapshotInput',
-  );
-}
-
-export function computeActiveWeaponSnapshotFingerprint(
-  value: ActiveWeaponSnapshotContentV1,
-): EquipmentFingerprintV1 {
-  return computeEquipmentFingerprint(value);
-}
-
 export function validateActiveWeaponSnapshotV1(
   value: unknown,
-  expectedInstanceId?: GeneratedEquipmentInstanceId,
+  options: ActiveWeaponSnapshotValidationOptions = {},
 ): ActiveWeaponSnapshotV1 {
   const path = '$.activeWeaponSnapshot';
   const record = requireRecord(value, path);
@@ -474,7 +383,10 @@ export function validateActiveWeaponSnapshotV1(
     [
       'schemaVersion',
       'generatedEquipmentInstanceId',
-      'baseWeaponId',
+      'id',
+      'sourceWeaponDefId',
+      'canonicalSkillTags',
+      'fingerprint',
       'name',
       'weaponType',
       'baseDamage',
@@ -501,7 +413,6 @@ export function validateActiveWeaponSnapshotV1(
       'baseAccuracy',
       'weaponClassSkillId',
       'weaponTypeSkillId',
-      'fingerprint',
     ],
     path,
   );
@@ -510,76 +421,156 @@ export function validateActiveWeaponSnapshotV1(
     ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
     `${path}.schemaVersion`,
   );
+  const cooldownMs = requireInteger(record.cooldownMs, 1, `${path}.cooldownMs`);
+  const pierce = requireInteger(record.pierce, 0, `${path}.pierce`);
+  const bounceCount = requireInteger(record.bounceCount, 0, `${path}.bounceCount`);
   const generatedEquipmentInstanceId = requireGeneratedEquipmentInstanceId(
     record.generatedEquipmentInstanceId,
     `${path}.generatedEquipmentInstanceId`,
   );
-  if (expectedInstanceId !== undefined && generatedEquipmentInstanceId !== expectedInstanceId) {
+  if (
+    options.expectedInstanceId !== undefined &&
+    generatedEquipmentInstanceId !== options.expectedInstanceId
+  ) {
     fail(
       'invalid-payload',
-      `Snapshot identity ${generatedEquipmentInstanceId} does not match ${expectedInstanceId}`,
+      `Snapshot instance ID ${generatedEquipmentInstanceId} does not match expected ${options.expectedInstanceId}`,
       `${path}.generatedEquipmentInstanceId`,
     );
   }
-  const baseWeaponId = requireNonEmptyString(record.baseWeaponId, `${path}.baseWeaponId`);
-  const def = requireWeaponDef(baseWeaponId, `${path}.baseWeaponId`);
-  const fields = validateWeaponRuntimeFields(record, path);
-  if (
-    fields.name !== def.name ||
-    fields.weaponType !== def.weaponType ||
-    fields.weaponClassSkillId !== def.weaponClassSkillId ||
-    fields.weaponTypeSkillId !== def.weaponTypeSkillId
-  ) {
+  const id = requireNonEmptyString(record.id, `${path}.id`);
+  const sourceWeaponDefId = requireNonEmptyString(
+    record.sourceWeaponDefId,
+    `${path}.sourceWeaponDefId`,
+  );
+  if (id !== sourceWeaponDefId) {
+    fail('invalid-payload', 'Snapshot id must match sourceWeaponDefId', `${path}.id`);
+  }
+  if (options.expectedSourceWeaponDefId !== undefined && id !== options.expectedSourceWeaponDefId) {
     fail(
-      'illegal-override',
-      'Weapon name, type, and canonical skill tags must match the static definition',
-      path,
+      'invalid-payload',
+      `Snapshot source weapon ${id} does not match expected ${options.expectedSourceWeaponDefId}`,
+      `${path}.sourceWeaponDefId`,
     );
   }
-  const content: ActiveWeaponSnapshotContentV1 = deepFreeze({
+  if (getWeaponDef(id) === undefined) {
+    fail('invalid-payload', `Unknown source weapon definition ${id}`, `${path}.sourceWeaponDefId`);
+  }
+  const weaponClassSkillId = requireWeaponClassSkill(
+    record.weaponClassSkillId,
+    `${path}.weaponClassSkillId`,
+  );
+  const weaponTypeSkillId = requireWeaponTypeSkill(
+    record.weaponTypeSkillId,
+    `${path}.weaponTypeSkillId`,
+  );
+  const canonicalSkillTags = canonicalActiveWeaponSkillTags(weaponClassSkillId, weaponTypeSkillId);
+  if (!Array.isArray(record.canonicalSkillTags) || record.canonicalSkillTags.length !== 2) {
+    fail(
+      'invalid-payload',
+      'canonicalSkillTags must be a 2-entry [weapon-class, weapon-type] tuple',
+      `${path}.canonicalSkillTags`,
+    );
+  }
+  if (
+    record.canonicalSkillTags[0] !== canonicalSkillTags[0] ||
+    record.canonicalSkillTags[1] !== canonicalSkillTags[1]
+  ) {
+    fail(
+      'invalid-payload',
+      `canonicalSkillTags must equal [${canonicalSkillTags.join(', ')}]`,
+      `${path}.canonicalSkillTags`,
+    );
+  }
+  const snapshotWithoutFingerprint = deepFreeze({
     schemaVersion: ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
     generatedEquipmentInstanceId,
-    baseWeaponId,
-    ...fields,
+    id,
+    sourceWeaponDefId,
+    canonicalSkillTags,
+    name: requireNonEmptyString(record.name, `${path}.name`),
+    weaponType: requireWeaponType(record.weaponType, `${path}.weaponType`),
+    baseDamage: requireNonNegativeNumber(record.baseDamage, `${path}.baseDamage`),
+    cooldownMs,
+    range: requireNonNegativeNumber(record.range, `${path}.range`),
+    projectileSpeed: requireNonNegativeNumber(record.projectileSpeed, `${path}.projectileSpeed`),
+    aoeRadius: requireNonNegativeNumber(record.aoeRadius, `${path}.aoeRadius`),
+    durationMs: requireNonNegativeNumber(record.durationMs, `${path}.durationMs`),
+    beamTickMs: requireNonNegativeNumber(record.beamTickMs, `${path}.beamTickMs`),
+    beamLength: requireNonNegativeNumber(record.beamLength, `${path}.beamLength`),
+    trapArmMs: requireNonNegativeNumber(record.trapArmMs, `${path}.trapArmMs`),
+    trapTriggerRadius: requireNonNegativeNumber(
+      record.trapTriggerRadius,
+      `${path}.trapTriggerRadius`,
+    ),
+    trapExplosionRadius: requireNonNegativeNumber(
+      record.trapExplosionRadius,
+      `${path}.trapExplosionRadius`,
+    ),
+    returnSpeed: requireNonNegativeNumber(record.returnSpeed, `${path}.returnSpeed`),
+    maxRange: requireNonNegativeNumber(record.maxRange, `${path}.maxRange`),
+    swingArcDeg: requireNonNegativeNumber(record.swingArcDeg, `${path}.swingArcDeg`),
+    meleeStyle: requireMeleeStyle(record.meleeStyle, `${path}.meleeStyle`),
+    headRadius: requireNonNegativeNumber(record.headRadius, `${path}.headRadius`),
+    shaftDamageMult: requireNonNegativeNumber(record.shaftDamageMult, `${path}.shaftDamageMult`),
+    knockback: requireNonNegativeNumber(record.knockback, `${path}.knockback`),
+    pierce,
+    bounceCount,
+    goreFactor: requireBoundedNumber(record.goreFactor, 0, 1, `${path}.goreFactor`),
+    baseAccuracy: requireBoundedNumber(record.baseAccuracy, 0, 1, `${path}.baseAccuracy`),
+    weaponClassSkillId,
+    weaponTypeSkillId,
   });
   const fingerprint = requireFingerprint(record.fingerprint, `${path}.fingerprint`);
-  const expectedFingerprint = computeActiveWeaponSnapshotFingerprint(content);
+  const expectedFingerprint = computeActiveWeaponSnapshotFingerprint(snapshotWithoutFingerprint);
   if (fingerprint !== expectedFingerprint) {
     fail(
       'fingerprint-mismatch',
-      `Snapshot fingerprint ${fingerprint} does not match ${expectedFingerprint}`,
+      `Snapshot fingerprint ${fingerprint} does not match content fingerprint ${expectedFingerprint}`,
       `${path}.fingerprint`,
     );
   }
-  return deepFreeze({ ...content, fingerprint });
+  return deepFreeze({ ...snapshotWithoutFingerprint, fingerprint });
 }
 
-export function finalizeActiveWeaponSnapshotV1(
-  instanceIdValue: GeneratedEquipmentInstanceId,
-  inputValue: ActiveWeaponSnapshotInputV1,
+export function createActiveWeaponSnapshotV1(
+  instance:
+    | Pick<GeneratedEquipmentInstanceV1, 'instanceId'>
+    | { readonly instanceId: GeneratedEquipmentInstanceId },
+  weaponDef: WeaponDef,
+  overrides?: unknown,
 ): ActiveWeaponSnapshotV1 {
-  const instanceId = requireGeneratedEquipmentInstanceId(
-    instanceIdValue,
-    '$.activeWeaponSnapshot.generatedEquipmentInstanceId',
+  const generatedEquipmentInstanceId = requireGeneratedEquipmentInstanceId(
+    instance.instanceId,
+    '$.activeWeaponSnapshot.instanceId',
   );
-  const input = validateActiveWeaponSnapshotInput(inputValue, '$.activeWeaponSnapshotInput');
-  const def = requireWeaponDef(input.baseWeaponId, '$.activeWeaponSnapshotInput.baseWeaponId');
-  const fields = validateWeaponRuntimeFields(
-    { ...def, ...input.overrides },
-    '$.activeWeaponSnapshot',
+  const validatedOverrides = validateActiveWeaponSnapshotOverrides(
+    overrides,
+    '$.activeWeaponSnapshot.overrides',
   );
-  const content: ActiveWeaponSnapshotContentV1 = deepFreeze({
+  const candidateWithoutFingerprint = deepFreeze({
     schemaVersion: ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
-    generatedEquipmentInstanceId: instanceId,
-    baseWeaponId: input.baseWeaponId,
-    ...fields,
+    generatedEquipmentInstanceId,
+    ...weaponDef,
+    ...validatedOverrides,
+    id: weaponDef.id,
+    sourceWeaponDefId: weaponDef.id,
+    canonicalSkillTags: canonicalActiveWeaponSkillTags(
+      (validatedOverrides.weaponClassSkillId as WeaponClassSkillId | undefined) ??
+        weaponDef.weaponClassSkillId,
+      (validatedOverrides.weaponTypeSkillId as WeaponTypeSkillId | undefined) ??
+        weaponDef.weaponTypeSkillId,
+    ),
   });
   return validateActiveWeaponSnapshotV1(
     {
-      ...content,
-      fingerprint: computeActiveWeaponSnapshotFingerprint(content),
+      ...candidateWithoutFingerprint,
+      fingerprint: computeActiveWeaponSnapshotFingerprint(candidateWithoutFingerprint),
     },
-    instanceId,
+    {
+      expectedInstanceId: generatedEquipmentInstanceId,
+      expectedSourceWeaponDefId: weaponDef.id,
+    },
   );
 }
 
@@ -598,12 +589,67 @@ function validateStatBonuses(
   return Object.freeze(bonuses);
 }
 
-type FrozenEquipmentCommonFieldsV1 = Omit<FrozenEquipmentFieldsV1, 'activeWeaponSnapshot'>;
+function isActiveWeaponSnapshotCreateInput(
+  value: unknown,
+): value is ActiveWeaponSnapshotCreateInputV1 {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  // The deferred form is identified by the presence of `weaponDefId` and the
+  // strict ABSENCE of `schemaVersion`.  Any versioned object (including a
+  // future v2 snapshot) must flow to snapshot validation and be rejected there;
+  // only the exact two-field deferred stub { weaponDefId, overrides? } is
+  // treated as a create-input here.
+  return typeof obj.weaponDefId === 'string' && !('schemaVersion' in obj);
+}
 
-function validateFrozenCommonFields(
+function buildSnapshotFromCreateInput(
+  value: unknown,
+  expectedInstanceId: GeneratedEquipmentInstanceId | undefined,
+  path: string,
+): ActiveWeaponSnapshotV1 {
+  const record = requireRecord(value, path);
+  const weaponDefId = requireNonEmptyString(record.weaponDefId, `${path}.weaponDefId`);
+  const weaponDef = getWeaponDef(weaponDefId);
+  if (!weaponDef) {
+    fail('invalid-payload', `Unknown weapon def "${weaponDefId}"`, `${path}.weaponDefId`);
+  }
+  if (expectedInstanceId === undefined) {
+    fail(
+      'invalid-payload',
+      'Cannot resolve weapon-snapshot create input without an expected instance ID',
+      path,
+    );
+  }
+  return createActiveWeaponSnapshotV1(
+    { instanceId: expectedInstanceId },
+    weaponDef,
+    record.overrides,
+  );
+}
+
+/**
+ * Returns a deferred {@link ActiveWeaponSnapshotCreateInputV1} that the
+ * registry will expand into a full {@link ActiveWeaponSnapshotV1} (with the
+ * correct instance ID and fingerprint) inside
+ * {@link createGeneratedEquipmentInstance}.
+ *
+ * @param weaponDefId   The static weapon-def ID to base the snapshot on.
+ * @param overrides     Optional combat-stat overrides applied on top of the
+ *                      static weapon def's fields.
+ */
+export function createActiveWeaponSnapshotInput(
+  weaponDefId: string,
+  overrides?: ActiveWeaponCombatOverridesV1,
+): ActiveWeaponSnapshotCreateInputV1 {
+  return Object.freeze({ weaponDefId, ...(overrides !== undefined ? { overrides } : {}) });
+}
+
+function validateFrozenFields(
   value: unknown,
   path: string,
-): { record: Record<string, unknown>; fields: FrozenEquipmentCommonFieldsV1 } {
+  expectedInstanceId?: GeneratedEquipmentInstanceId,
+  allowDeferredSnapshot = false,
+): FrozenEquipmentFieldsV1 {
   const record = requireRecord(value, path);
   requireKeys(
     record,
@@ -627,69 +673,29 @@ function validateFrozenCommonFields(
     `${path}.schemaVersion`,
   );
 
-  return {
-    record,
-    fields: deepFreeze({
-      schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
-      displayName: requireNonEmptyString(record.displayName, `${path}.displayName`),
-      artKey: requireNonEmptyString(record.artKey, `${path}.artKey`),
-      slots: requireSlots(record.slots, `${path}.slots`),
-      tags: requireStringArray(record.tags, `${path}.tags`, true),
-      weightLb: requireNonNegativeNumber(record.weightLb, `${path}.weightLb`),
-      statBonuses: validateStatBonuses(record.statBonuses, `${path}.statBonuses`),
-      abilityGrants: requireStringArray(record.abilityGrants, `${path}.abilityGrants`, true),
-      passiveGrants: requireStringArray(record.passiveGrants, `${path}.passiveGrants`, true),
-    }),
-  };
-}
-
-function validateFrozenFields(
-  value: unknown,
-  path: string,
-  expectedInstanceId: GeneratedEquipmentInstanceId,
-): FrozenEquipmentFieldsV1 {
-  const { record, fields } = validateFrozenCommonFields(value, path);
-  return deepFreeze({
-    ...fields,
-    activeWeaponSnapshot:
-      record.activeWeaponSnapshot === null
-        ? null
-        : validateActiveWeaponSnapshotV1(record.activeWeaponSnapshot, expectedInstanceId),
-  });
-}
-
-function validateFrozenFieldsInput(value: unknown, path: string): FrozenEquipmentFieldsInputV1 {
-  const { record, fields } = validateFrozenCommonFields(value, path);
-  return deepFreeze({
-    ...fields,
-    activeWeaponSnapshot:
-      record.activeWeaponSnapshot === null
-        ? null
-        : validateActiveWeaponSnapshotInput(
-            record.activeWeaponSnapshot,
-            `${path}.activeWeaponSnapshot`,
-          ),
-  });
-}
-
-function finalizeFrozenFields(
-  value: FrozenEquipmentFieldsInputV1,
-  instanceId: GeneratedEquipmentInstanceId,
-): FrozenEquipmentFieldsV1 {
   return deepFreeze({
     schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
-    displayName: value.displayName,
-    artKey: value.artKey,
-    slots: value.slots,
-    tags: value.tags,
-    weightLb: value.weightLb,
-    statBonuses: value.statBonuses,
-    abilityGrants: value.abilityGrants,
-    passiveGrants: value.passiveGrants,
-    activeWeaponSnapshot:
-      value.activeWeaponSnapshot === null
-        ? null
-        : finalizeActiveWeaponSnapshotV1(instanceId, value.activeWeaponSnapshot),
+    displayName: requireNonEmptyString(record.displayName, `${path}.displayName`),
+    artKey: requireNonEmptyString(record.artKey, `${path}.artKey`),
+    slots: requireSlots(record.slots, `${path}.slots`),
+    tags: requireStringArray(record.tags, `${path}.tags`, true),
+    weightLb: requireNonNegativeNumber(record.weightLb, `${path}.weightLb`),
+    statBonuses: validateStatBonuses(record.statBonuses, `${path}.statBonuses`),
+    abilityGrants: requireStringArray(record.abilityGrants, `${path}.abilityGrants`, true),
+    passiveGrants: requireStringArray(record.passiveGrants, `${path}.passiveGrants`, true),
+    activeWeaponSnapshot: (() => {
+      if (record.activeWeaponSnapshot === null) return null;
+      if (allowDeferredSnapshot && isActiveWeaponSnapshotCreateInput(record.activeWeaponSnapshot)) {
+        return buildSnapshotFromCreateInput(
+          record.activeWeaponSnapshot,
+          expectedInstanceId,
+          `${path}.activeWeaponSnapshot`,
+        );
+      }
+      return validateActiveWeaponSnapshotV1(record.activeWeaponSnapshot, {
+        expectedInstanceId,
+      });
+    })(),
   });
 }
 
@@ -885,6 +891,12 @@ export function computeEquipmentFingerprint(value: unknown): EquipmentFingerprin
   return `sha256:${sha256Hex(canonicalJson(value))}`;
 }
 
+export function computeActiveWeaponSnapshotFingerprint(
+  snapshot: Omit<ActiveWeaponSnapshotV1, 'fingerprint'>,
+): EquipmentFingerprintV1 {
+  return computeEquipmentFingerprint(snapshot);
+}
+
 export function computeGenerationPolicyFingerprint(
   policy: GeneratedEquipmentGenerationPolicyV1,
 ): EquipmentFingerprintV1 {
@@ -898,6 +910,23 @@ export function generatedEquipmentInstanceKey(
   const runKey = requireRunKey(runKeyValue, '$.runKey');
   const ordinal = requireInteger(ordinalValue, 0, '$.ordinal');
   return `gei:v1:${runKey}:${ordinal}`;
+}
+
+function validateActiveWeaponSnapshotOverrides(value: unknown, path: string): Partial<WeaponDef> {
+  if (value === undefined) {
+    return {};
+  }
+  const record = requireRecord(value, path);
+  for (const key of Object.keys(record)) {
+    if (!ACTIVE_WEAPON_SNAPSHOT_OVERRIDE_KEYS.has(key as keyof WeaponDef)) {
+      fail(
+        'illegal-override',
+        `Illegal active-weapon snapshot override key ${key}`,
+        `${path}.${key}`,
+      );
+    }
+  }
+  return record;
 }
 
 function validateGeneration(
@@ -1029,7 +1058,15 @@ export function validateGeneratedEquipmentInstanceV1(
 function validateCreateInput(
   value: unknown,
   policy: GeneratedEquipmentGenerationPolicyV1,
-): GeneratedEquipmentCreateInputV1 {
+  expectedInstanceId: GeneratedEquipmentInstanceId,
+): {
+  readonly baseId: string;
+  readonly itemLevel: number;
+  readonly rarity: GeneratedEquipmentRarity;
+  readonly enhancementLevel: GeneratedEquipmentEnhancementLevel;
+  readonly resolvedEffects: readonly ResolvedEquipmentEffectV1[];
+  readonly frozen: FrozenEquipmentFieldsV1;
+} {
   const path = '$.createInput';
   const record = requireRecord(value, path);
   requireKeys(
@@ -1053,7 +1090,7 @@ function validateCreateInput(
       policy,
       `${path}.resolvedEffects`,
     ),
-    frozen: validateFrozenFieldsInput(record.frozen, `${path}.frozen`),
+    frozen: validateFrozenFields(record.frozen, `${path}.frozen`, expectedInstanceId, true),
   });
 }
 
@@ -1103,9 +1140,9 @@ export function createGeneratedEquipmentInstance(
   const registry = world.generatedEquipmentRegistry;
   const state = getRegistryState(registry);
   const runKey = requireConfiguredRunKey(registry);
-  const input = validateCreateInput(value, registry.generationPolicy);
   const ordinal = state.nextOrdinal;
   const instanceId = generatedEquipmentInstanceKey(runKey, ordinal);
+  const input = validateCreateInput(value, registry.generationPolicy, instanceId);
   if (state.instances.has(instanceId)) {
     fail('duplicate-instance', `Instance ${instanceId} already exists`, '$.instance.instanceId');
   }
@@ -1125,7 +1162,7 @@ export function createGeneratedEquipmentInstance(
     rarity: input.rarity,
     enhancementLevel: input.enhancementLevel,
     resolvedEffects: input.resolvedEffects,
-    frozen: finalizeFrozenFields(input.frozen, instanceId),
+    frozen: input.frozen,
     generation,
   });
   const instance = validateGeneratedEquipmentInstanceV1(
@@ -1161,10 +1198,18 @@ export function registerGeneratedEquipmentInstance(
       '$.instance.instanceId',
     );
   }
-  if (instance.generation.ordinal !== state.nextOrdinal) {
+  const generation = instance.generation;
+  if (!generation) {
+    fail(
+      'invalid-payload',
+      'Generated equipment instance is missing generation metadata',
+      '$.instance.generation',
+    );
+  }
+  if (generation.ordinal !== state.nextOrdinal) {
     fail(
       'ordinal-gap',
-      `Expected ordinal ${state.nextOrdinal}; received ${instance.generation.ordinal}`,
+      `Expected ordinal ${state.nextOrdinal}; received ${generation.ordinal}`,
       '$.instance.generation.ordinal',
     );
   }
@@ -1197,6 +1242,25 @@ export function requireGeneratedEquipmentInstance(
     fail('not-found', `Generated equipment instance ${instanceId} was not found`, '$.instanceId');
   }
   return instance;
+}
+
+export function requireGeneratedEquipmentActiveWeaponSnapshot(
+  world: GeneratedEquipmentRegistryWorld,
+  instanceId: GeneratedEquipmentInstanceId,
+): ActiveWeaponSnapshotV1 {
+  const instance = requireGeneratedEquipmentInstance(world, instanceId);
+  const snapshot = instance.frozen.activeWeaponSnapshot;
+  if (!snapshot) {
+    fail(
+      'invalid-payload',
+      `Generated equipment instance ${instanceId} has no active weapon snapshot`,
+      '$.instance.frozen.activeWeaponSnapshot',
+    );
+  }
+  return validateActiveWeaponSnapshotV1(snapshot, {
+    expectedInstanceId: instanceId,
+    expectedSourceWeaponDefId: snapshot.sourceWeaponDefId,
+  });
 }
 
 export function listGeneratedEquipmentInstances(
@@ -1305,10 +1369,18 @@ export function restoreGeneratedEquipmentRegistry(
       expectedPolicy: registry.generationPolicy,
       expectedPolicyFingerprint: registry.generationPolicyFingerprint,
     });
-    if (instance.generation.ordinal !== ordinal) {
+    const generation = instance.generation;
+    if (!generation) {
+      fail(
+        'invalid-payload',
+        'Generated equipment instance is missing generation metadata',
+        `$.snapshot.instances[${ordinal}].generation`,
+      );
+    }
+    if (generation.ordinal !== ordinal) {
       fail(
         'ordinal-gap',
-        `Expected ordinal ${ordinal}; received ${instance.generation.ordinal}`,
+        `Expected ordinal ${ordinal}; received ${generation.ordinal}`,
         `$.snapshot.instances[${ordinal}].generation.ordinal`,
       );
     }

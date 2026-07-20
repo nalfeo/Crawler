@@ -39,7 +39,7 @@ mana pool — completing the Wisdom half of the ITEM 5 payoff.
 
 ## Decision
 
-1. **Pure mana model in `src/shared/mana.ts`.** `MANA_BASE = 80`,
+1. **Pure mana model in the former _src/shared/mana.ts_.** `MANA_BASE = 80`,
    `MANA_PER_WISDOM = 20`, and `deriveMaxMp(effectiveWisdom) = MANA_BASE +
 MANA_PER_WISDOM × max(0, wisdom)`. Tuned so a fresh player (effective
    Wisdom 1) maps to the historical `100` MP, preserving balance. Regen is
@@ -50,7 +50,8 @@ MANA_PER_WISDOM × max(0, wisdom)`. Tuned so a fresh player (effective
    the HUD, labs, and tests — and because a non-`(world)=>void` helper in
    `core/systems/` would (correctly) trip the lab gate.
 
-2. **New deterministic `manaSystem(world): void`** (`src/core/systems/manaSystem.ts`).
+2. **New deterministic `manaSystem(world): void`** (formerly
+   _src/core/systems/manaSystem.ts_).
    Queries the `[Player, EffectiveStats]` singleton; if absent it is a no-op (bare
    test/lab worlds keep their default 100/100). Otherwise it sets
    `playerMaxMp = deriveMaxMp(effectiveWisdom)`, regenerates `playerMp` by
@@ -58,7 +59,7 @@ MANA_PER_WISDOM × max(0, wisdom)`. Tuned so a fresh player (effective
    so the effective Wisdom it reads already folds in this frame's allocation and
    equipment. Exported through the core barrel (`src/core/systems/index.ts` →
    `src/core/index.ts`) like `statSystem`. Every new system needs a lab, so
-   `src/labs/mana-lab/` is added and registered in `lab-main.ts`.
+   the former _src/labs/mana-lab/_ is added and registered in `lab-main.ts`.
 
 3. **Wire into both pipelines.** Added to the headless loop
    (`src/game/ai/simulation-step.ts`) and the visual game's `preSystems`

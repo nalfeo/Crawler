@@ -6,120 +6,108 @@
 
 ## Persona
 
-Systems Engineer, with separate-model Reviewer validation.
+Systems Engineer
 
 ## Systems touched
 
-inventory, weapons, ci-policy
+weapons, inventory
 
 ## Apples
 
-3 apples estimated, 3 apples actual (exact). The slice stayed within the
-generated-equipment registry and active-weapon seam, with deterministic
-fingerprinting, fail-closed validation, property coverage, and the full 3-apple
-review harness.
+3🍎 estimated, 3🍎 actual (exact). Apple record:
+`docs/knowledge/metrics/apples/2026-07-18-active-weapon-snapshots.json`
 
-## Stack
+## Stack / dependency resync
 
-- Child issue: #1391
-- Branch: `nalfeo-active-weapon-snapshots`
-- Planned PR base: `nalfeo-generated-instance-registry`
-- Exact B1 dispatch base: `4b03c88ce5a174eb823b96313520ce4eaf2bd48f`
-- Final fetched B1 head and merge-base:
+- Issue: #1391
+- Branch: `copilot/c1-add-immutable-active-weapon-snapshots`
+- Dependency branch: `nalfeo-generated-instance-registry`
+- Required dependency head: `4b03c88ce5a174eb823b96313520ce4eaf2bd48f`
+- This session merged the dependency branch first; final merge-base vs
+  `origin/nalfeo-generated-instance-registry`:
   `4b03c88ce5a174eb823b96313520ce4eaf2bd48f`
-- B1 contract drift at final resync: none
+- Current head after the C1 implementation commit(s):
+  `9a28e45228eb5b727bcfb419ed65818647fddc69`
 
-## What Was Done
+## What changed
 
-- Evolved B1's unpublished stack-only snapshot contract into the first complete
-  `ActiveWeaponSnapshotV1`, carrying generated instance identity, base weapon
-  identity, every runtime-consumed combat field, canonical class/type skill IDs,
-  and a deterministic fingerprint.
-- Added a separate create-input DTO whose override surface is limited to legal
-  combat fields. Static names, weapon types, base IDs, and canonical skill tags
-  continue to come from immutable `WeaponDef` data.
-- Finalized snapshots only after deterministic generated-instance allocation,
-  deep-froze the complete stored graph, included the finalized snapshot in the
-  parent instance fingerprint, and added explicit errors for illegal overrides,
-  missing identity, unsupported versions, and fingerprint drift.
-- Added registry-only generated activation to the core active-weapon seam.
-  Existing consumers still see an immutable `WeaponDef`-compatible view whose
-  `id` remains the static base weapon ID, while an internal generated
-  instance-plus-fingerprint key distinguishes same-base copies.
-- Updated the existing, already-wired `weaponSystem` switch seam without adding a
-  new exported system. Static weapon behavior and live-tune refresh semantics are
-  preserved.
-- Added unit, property, and integration coverage for immutability, validation,
-  deterministic equality, per-field fingerprint sensitivity, static regression,
-  and same-base generated-instance switching.
+- Extended `ActiveWeaponSnapshotV1` so snapshots are now:
+  - `WeaponDef`-compatible for existing runtime consumers,
+  - stamped with `generatedEquipmentInstanceId`,
+  - stamped with canonical class/type skill tags,
+  - stamped with their own deterministic SHA-256 fingerprint.
+- Added deterministic snapshot helpers in
+  `src/core/generated-equipment-registry.ts`:
+  - `createActiveWeaponSnapshotV1(...)`
+  - `validateActiveWeaponSnapshotV1(...)`
+  - `computeActiveWeaponSnapshotFingerprint(...)`
+  - `requireGeneratedEquipmentActiveWeaponSnapshot(...)`
+- Tightened generated-equipment validation so a frozen weapon snapshot must:
+  - use the supported schema version,
+  - carry a valid generated-instance id,
+  - match the owning generated instance id during create/register/restore,
+  - carry canonical skill tags derived from its class/type skill ids,
+  - carry a content-matching fingerprint.
+- Updated `src/core/active-weapon.ts` so snapshot inputs are resolved through the
+  world registry and the registry-owned frozen snapshot becomes authoritative;
+  stale or missing identities now fail closed instead of being silently accepted.
+- Updated `src/game/weaponSystem.ts` switch handling to key off active-weapon
+  generation changes rather than raw weapon id equality, so swapping between two
+  snapshots with the same base weapon id still resets readiness/cooldown
+  correctly.
 
-Observed in
-`tests/integration/active-weapon-snapshot-runtime.test.ts` through the real
-`weaponSystem` pipeline: before, B1 exposed only static weapon-ID activation so
-two generated copies of one pistol had no distinct runtime switch identity;
-after, switching between two registry instances with the same base ID advances
-the weapon generation and applies each immutable snapshot's combat fields.
+## Key decisions
 
-## Key Decisions Made
+1. **Keep the seam narrow.** The runtime still consumes one active-weapon shape;
+   generated snapshots were made `WeaponDef`-compatible instead of rewriting the
+   broader combat stack.
+2. **Registry authority beats caller copies.** When a snapshot is set active, the
+   core seam validates the inbound object, then resolves and stores the
+   registry-owned frozen snapshot by `generatedEquipmentInstanceId`.
+3. **Identity for generated switches is content-aware.** Snapshot equality is
+   based on `generatedEquipmentInstanceId + fingerprint`, not just the base
+   weapon id, so same-base replacements do not inherit stale readiness.
+4. **Producer-side generated equip flow remains deferred.** This slice only
+   implements the immutable snapshot contract + runtime consumption seam; it does
+   not add new inventory movement or generated-item equip APIs.
 
-1. Generated activation accepts only an authoritative registry instance ID;
-   caller-authored snapshots cannot cross the public active-weapon boundary.
-2. Runtime `WeaponDef.id` stays the base/static ID for HUD, ability, and AI
-   compatibility. Internal switch identity is separate:
-   `static:<weaponId>` or
-   `generated:<instanceId>:<snapshotFingerprint>`.
-3. Snapshot fingerprints hash canonical JSON excluding only their own
-   `fingerprint`; parent instance fingerprints include the complete finalized
-   snapshot, including its nested fingerprint.
-4. B1 and C1 jointly define the first published V1 contract. B1 has no
-   production persistence caller, so introducing a synthetic V2 and migration
-   path for an unpublished stack-only shape would misstate compatibility.
-5. Source-owned abilities, inventory movement, generator/content policy,
-   rewards, merchants, and AI remain outside this slice.
+## Tests added
 
-## Review and Validation
+- `tests/unit/active-weapon-snapshot.test.ts`
+- `tests/property/active-weapon-snapshot.property.test.ts`
+- `tests/integration/active-weapon-snapshot-pipeline.test.ts`
+- updated `tests/unit/generated-equipment-registry.test.ts`
 
-- Plan review, `gpt-5.4`: four concerns resolved with minor divergence. The plan
-  adopted registry-only activation, separate compatibility/switch identities,
-  explicit unpublished-B1 V1 evolution, and precise nested hash boundaries.
-- Code review round 1, `claude-sonnet-4.6`: one schema-version concern was
-  deterministically resolved as inapplicable to the unpublished stack contract.
-- Code review round 2, `claude-sonnet-4.6`: complete confirmation pass clean.
-- Focused unit/property/integration suite: 5 files and 24 tests passed.
-- `npm run verify:fast`: 157 files and 1,799 tests passed.
-- Offline and GitHub-backed read-only epic audits: valid schema/DAG, zero errors,
-  zero warnings, and expected pre-release blockers.
-- Review ledger:
+The integration test proves the key runtime behavior change: two snapshots with
+the same base weapon id now behave as distinct real switches and fire with their
+own frozen combat stats.
+
+## Validation
+
+- Focused tests:
+  - `npx vitest run tests/unit/active-weapon-snapshot.test.ts tests/unit/generated-equipment-registry.test.ts tests/property/active-weapon-snapshot.property.test.ts tests/integration/active-weapon-snapshot-pipeline.test.ts`
+- `npm run verify:fast`
+- `npm run epic:status -- floor-2-equipment`
+- `npm run review:ledger -- validate docs/knowledge/review-ledgers/2026-07-18-active-weapon-snapshots.review-ledger.json`
+- `npm run verify:pr-prereqs`
+- `parallel_validation` (Code Review + CodeQL): no valid C1 findings; CodeQL reported 0 alerts and noted the JS DB was skipped for size.
+
+## Review harness
+
+- Ledger:
   `docs/knowledge/review-ledgers/2026-07-18-active-weapon-snapshots.review-ledger.json`
-- Apple record:
-  `docs/knowledge/metrics/apples/2026-07-18-active-weapon-snapshots.json`
-- No guard telemetry artifact existed for this session.
+- Plan review: `gpt-5.4`, divergence `minor`
+- Code review: clean on the narrowed C1 diff from both `gpt-5-mini` and
+  `claude-sonnet-4.6`
 
-## What's Next / Blockers
+## Notes / blockers
 
-Open a ready, non-draft stacked PR against
-`nalfeo-generated-instance-registry`. Do not merge or arm auto-merge. Issue
-#1391 remains the ownership surface; the Producer owns canonical epic lifecycle
-state. If B1 moves, stop on contract drift, rebase in dependency order, and
-repeat focused validation before updating the stacked PR.
-
-## Retrospective
-
-### Lessons Learned
-
-A static base weapon ID and a generated runtime switch identity serve different
-compatibility contracts. Keeping them separate preserves existing readers while
-making same-base generated copies observable to cooldown state.
-
-### Mistakes Made
-
-The initial dispatch named #1392 because parallel issue-creation results were
-returned out of order. The mismatch was caught before edits by comparing the
-issue scope against the requested exclusions; work resumed only after the
-Producer explicitly corrected authority to #1391.
-
-### Opportunities for Future Improvement
-
-A follow-on equipment/inventory slice can add its public equip command on top of
-the registry-only activation API. It should preserve this seam rather than
-accepting serialized or caller-authored snapshots.
+- The maintainer explicitly requested posting the plan comment on issue #1391
+  before coding. I attempted both `gh issue comment` and a direct GitHub API
+  POST, but this sandbox blocks both routes (`gh` is unauthenticated against the
+  local mirror remote and direct `api.github.com` POSTs were blocked by the DNS
+  monitoring proxy). The same plan was still written in session chat, but the
+  issue comment itself remains an environment blocker rather than a completed
+  step.
+- `files/guard-telemetry.jsonl` did not exist in this session, so no telemetry
+  capture was required.

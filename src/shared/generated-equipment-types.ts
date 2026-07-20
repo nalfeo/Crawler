@@ -1,14 +1,12 @@
-import type { MeleeStyleValue, WeaponTypeValue } from './constants.js';
 import type { EquipmentSlotId } from './equipment-slots.js';
 import type { StatId } from './stats.js';
 import type { WeaponClassSkillId, WeaponTypeSkillId } from './weapon-skills.js';
+import type { WeaponDef } from './weaponDefs.js';
 
 export const GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION = 'floor2-equipment-instance/v1' as const;
 export const GENERATED_EQUIPMENT_BASE_SCHEMA_VERSION = 'floor2-equipment-base/v1' as const;
 export const GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION = 'floor2-equipment-effect/v1' as const;
 export const FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION = 'floor2-equipment-frozen/v1' as const;
-export const ACTIVE_WEAPON_SNAPSHOT_INPUT_SCHEMA_VERSION =
-  'active-weapon-snapshot-input/v1' as const;
 export const ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION = 'active-weapon-snapshot/v1' as const;
 export const GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION =
   'floor2-equipment-generation/v1' as const;
@@ -22,6 +20,18 @@ export type EquipmentFingerprintV1 = `sha256:${string}`;
 export type GeneratedEquipmentRarity = 'common' | 'uncommon' | 'rare';
 export type GeneratedEquipmentEnhancementLevel = 0 | 1 | 2 | 3 | 4 | 5;
 export type GeneratedEquipmentEffectUnitCost = 1 | 2;
+export type EquipmentGrantSourceId = `equipment:${GeneratedEquipmentInstanceId}:${number}`;
+export type ActiveWeaponClassSkillTag = `weapon-class:${WeaponClassSkillId}`;
+export type ActiveWeaponTypeSkillTag = `weapon-type:${WeaponTypeSkillId}`;
+export type ActiveWeaponSnapshotSkillTag = ActiveWeaponClassSkillTag | ActiveWeaponTypeSkillTag;
+export const RARITY_EFFECT_BUDGET: Readonly<Record<GeneratedEquipmentRarity, number>> = {
+  common: 0,
+  uncommon: 1,
+  rare: 2,
+} as const;
+export const ENHANCEMENT_MIN = 0 as const;
+export const ENHANCEMENT_MAX = 5 as const;
+export const KNOWN_GENERATED_SCHEMA_VERSION = GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION;
 
 export interface GeneratedEquipmentBaseV1 {
   readonly schemaVersion: typeof GENERATED_EQUIPMENT_BASE_SCHEMA_VERSION;
@@ -55,71 +65,22 @@ export interface ResolvedEquipmentGrantEffectV1 extends ResolvedEquipmentEffectB
   readonly grantId: string;
 }
 
+export interface LegacyResolvedEquipmentEffectV1 {
+  readonly effectId: string;
+  readonly magnitude: number;
+  readonly units: GeneratedEquipmentEffectUnitCost;
+}
+
 export type ResolvedEquipmentEffectV1 =
   | ResolvedEquipmentStatEffectV1
-  | ResolvedEquipmentGrantEffectV1;
+  | ResolvedEquipmentGrantEffectV1
+  | LegacyResolvedEquipmentEffectV1;
 
-export interface ActiveWeaponCombatOverridesV1 {
-  readonly baseDamage?: number;
-  readonly cooldownMs?: number;
-  readonly range?: number;
-  readonly projectileSpeed?: number;
-  readonly aoeRadius?: number;
-  readonly durationMs?: number;
-  readonly beamTickMs?: number;
-  readonly beamLength?: number;
-  readonly trapArmMs?: number;
-  readonly trapTriggerRadius?: number;
-  readonly trapExplosionRadius?: number;
-  readonly returnSpeed?: number;
-  readonly maxRange?: number;
-  readonly swingArcDeg?: number;
-  readonly meleeStyle?: MeleeStyleValue;
-  readonly headRadius?: number;
-  readonly shaftDamageMult?: number;
-  readonly knockback?: number;
-  readonly pierce?: number;
-  readonly bounceCount?: number;
-  readonly goreFactor?: number;
-  readonly baseAccuracy?: number;
-}
-
-export interface ActiveWeaponSnapshotInputV1 {
-  readonly schemaVersion: typeof ACTIVE_WEAPON_SNAPSHOT_INPUT_SCHEMA_VERSION;
-  readonly baseWeaponId: string;
-  readonly overrides: ActiveWeaponCombatOverridesV1;
-}
-
-export interface ActiveWeaponSnapshotV1 {
+export interface ActiveWeaponSnapshotV1 extends WeaponDef {
   readonly schemaVersion: typeof ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION;
   readonly generatedEquipmentInstanceId: GeneratedEquipmentInstanceId;
-  readonly baseWeaponId: string;
-  readonly name: string;
-  readonly weaponType: WeaponTypeValue;
-  readonly baseDamage: number;
-  readonly cooldownMs: number;
-  readonly range: number;
-  readonly projectileSpeed: number;
-  readonly aoeRadius: number;
-  readonly durationMs: number;
-  readonly beamTickMs: number;
-  readonly beamLength: number;
-  readonly trapArmMs: number;
-  readonly trapTriggerRadius: number;
-  readonly trapExplosionRadius: number;
-  readonly returnSpeed: number;
-  readonly maxRange: number;
-  readonly swingArcDeg: number;
-  readonly meleeStyle: MeleeStyleValue;
-  readonly headRadius: number;
-  readonly shaftDamageMult: number;
-  readonly knockback: number;
-  readonly pierce: number;
-  readonly bounceCount: number;
-  readonly goreFactor: number;
-  readonly baseAccuracy: number;
-  readonly weaponClassSkillId: WeaponClassSkillId;
-  readonly weaponTypeSkillId: WeaponTypeSkillId;
+  readonly sourceWeaponDefId: string;
+  readonly canonicalSkillTags: readonly [ActiveWeaponClassSkillTag, ActiveWeaponTypeSkillTag];
   readonly fingerprint: EquipmentFingerprintV1;
 }
 
@@ -136,9 +97,77 @@ export interface FrozenEquipmentFieldsV1 {
   readonly activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null;
 }
 
-export type FrozenEquipmentFieldsInputV1 = Omit<FrozenEquipmentFieldsV1, 'activeWeaponSnapshot'> & {
-  readonly activeWeaponSnapshot: ActiveWeaponSnapshotInputV1 | null;
-};
+/**
+ * Optional combat-stat overrides the generated-equipment generator may apply
+ * on top of a weapon def's static fields when building a weapon snapshot.
+ * Validated against {@link ACTIVE_WEAPON_SNAPSHOT_OVERRIDE_KEYS} inside the
+ * registry before the snapshot is materialised.
+ */
+export type ActiveWeaponCombatOverridesV1 = Partial<
+  Pick<
+    WeaponDef,
+    | 'name'
+    | 'weaponType'
+    | 'baseDamage'
+    | 'cooldownMs'
+    | 'range'
+    | 'projectileSpeed'
+    | 'aoeRadius'
+    | 'durationMs'
+    | 'beamTickMs'
+    | 'beamLength'
+    | 'trapArmMs'
+    | 'trapTriggerRadius'
+    | 'trapExplosionRadius'
+    | 'returnSpeed'
+    | 'maxRange'
+    | 'swingArcDeg'
+    | 'meleeStyle'
+    | 'headRadius'
+    | 'shaftDamageMult'
+    | 'knockback'
+    | 'pierce'
+    | 'bounceCount'
+    | 'goreFactor'
+    | 'baseAccuracy'
+    | 'weaponClassSkillId'
+    | 'weaponTypeSkillId'
+  >
+>;
+
+/**
+ * Deferred form of an active-weapon snapshot used only inside a
+ * {@link FrozenEquipmentFieldsCreateInputV1}.  The registry expands this into a
+ * full {@link ActiveWeaponSnapshotV1} (with the correct instance ID and
+ * fingerprint) when {@link createGeneratedEquipmentInstance} is called.
+ */
+export interface ActiveWeaponSnapshotCreateInputV1 {
+  readonly weaponDefId: string;
+  readonly overrides?: ActiveWeaponCombatOverridesV1;
+}
+
+/**
+ * Input form of {@link FrozenEquipmentFieldsV1} accepted by
+ * {@link GeneratedEquipmentCreateInputV1}.  The `activeWeaponSnapshot` field
+ * additionally accepts a deferred {@link ActiveWeaponSnapshotCreateInputV1};
+ * the registry resolves it to a full snapshot before persisting the instance.
+ *
+ * {@link FrozenEquipmentFieldsV1} is structurally assignable here, so existing
+ * create-input objects that already carry a fully-built snapshot (or `null`)
+ * require no changes.
+ */
+export interface FrozenEquipmentFieldsCreateInputV1 {
+  readonly schemaVersion: typeof FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION;
+  readonly displayName: string;
+  readonly artKey: string;
+  readonly slots: readonly EquipmentSlotId[];
+  readonly tags: readonly string[];
+  readonly weightLb: number;
+  readonly statBonuses: Readonly<Partial<Record<StatId, number>>>;
+  readonly abilityGrants: readonly string[];
+  readonly passiveGrants: readonly string[];
+  readonly activeWeaponSnapshot: ActiveWeaponSnapshotV1 | ActiveWeaponSnapshotCreateInputV1 | null;
+}
 
 export interface GeneratedEquipmentGenerationPolicyV1 {
   readonly schemaVersion: typeof GENERATED_EQUIPMENT_GENERATION_POLICY_SCHEMA_VERSION;
@@ -178,7 +207,14 @@ export interface GeneratedEquipmentCreateInputV1 {
   readonly rarity: GeneratedEquipmentRarity;
   readonly enhancementLevel: GeneratedEquipmentEnhancementLevel;
   readonly resolvedEffects: readonly ResolvedEquipmentEffectV1[];
-  readonly frozen: FrozenEquipmentFieldsInputV1;
+  /**
+   * Frozen display/stat/slot data for the new instance.  The
+   * `activeWeaponSnapshot` field may carry a deferred
+   * {@link ActiveWeaponSnapshotCreateInputV1}; the registry resolves it to a
+   * full snapshot before persisting.  Objects typed as
+   * {@link FrozenEquipmentFieldsV1} are structurally compatible here.
+   */
+  readonly frozen: FrozenEquipmentFieldsCreateInputV1;
 }
 
 export interface GeneratedEquipmentRegistrySnapshotV1 {
@@ -188,4 +224,29 @@ export interface GeneratedEquipmentRegistrySnapshotV1 {
   readonly generationPolicyFingerprint: EquipmentFingerprintV1;
   readonly nextOrdinal: number;
   readonly instances: readonly GeneratedEquipmentInstanceV1[];
+}
+
+const INSTANCE_ID_RE = /^gei:v1:[a-zA-Z0-9_-]+:\d+$/;
+const FINGERPRINT_RE = /^sha256:[0-9a-f]{64}$/;
+
+export function isValidGeneratedInstanceId(id: string): id is GeneratedEquipmentInstanceId {
+  return INSTANCE_ID_RE.test(id);
+}
+
+export function isKnownGeneratedSchemaVersion(
+  version: string,
+): version is typeof KNOWN_GENERATED_SCHEMA_VERSION {
+  return version === KNOWN_GENERATED_SCHEMA_VERSION;
+}
+
+export function isValidFingerprintV1(value: string): value is EquipmentFingerprintV1 {
+  return FINGERPRINT_RE.test(value);
+}
+
+export function makeRunKey(seed: number | string): string {
+  const key = String(seed).replace(/[^a-zA-Z0-9_-]/g, '');
+  if (key.length === 0) {
+    throw new Error(`makeRunKey: seed "${seed}" produces an empty run key`);
+  }
+  return key;
 }
