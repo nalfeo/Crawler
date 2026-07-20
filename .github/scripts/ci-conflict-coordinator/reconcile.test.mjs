@@ -1,0 +1,481 @@
+/**
+ * Integration tests for the ci-conflict-coordinator reconcile script.
+ *
+ * Each test spawns reconcile.mjs as a child process against a local mock
+ * HTTP server and a real (temporary) git repository, exercising the
+ * close → post-close revalidation → reopen code path end-to-end.
+ */
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { once } from 'node:events';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import test from 'node:test';
+
+const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
+const OWNER = 'test-owner';
+const REPO = 'test-repo';
+const APP_ID = '11111';
+const TOKEN = 'x-test-token';
+
+// ---------------------------------------------------------------------------
+// Git helpers
+// ---------------------------------------------------------------------------
+
+function git(cwd, args, options = {}) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      GIT_CONFIG_NOSYSTEM: '1',
+      HOME: cwd,
+      ...(options.env || {}),
+    },
+  }).trim();
+}
+
+function gitCommit(cwd, message) {
+  git(cwd, ['add', '.']);
+  git(cwd, ['commit', '--allow-empty', '-m', message], {
+    env: {
+      GIT_AUTHOR_NAME: 'Test',
+      GIT_AUTHOR_EMAIL: 'test@example.com',
+      GIT_COMMITTER_NAME: 'Test',
+      GIT_COMMITTER_EMAIL: 'test@example.com',
+    },
+  });
+  return git(cwd, ['rev-parse', 'HEAD']);
+}
+
+/**
+ * Set up a git remote + working repo with:
+ *   main: ci.yml="main", extra.yml="main"
+ *   pr1 : ci.yml="pr1"   (unique change → will be the leader/active slot)
+ *   pr2 : extra.yml="pr2"(unique change → second member)
+ *   pr3 : ci.yml="main", extra.yml="main" (superseded by main alone, predecessorHeads=[])
+ *
+ * PR3 has 2 CI files so it ranks above PR1/PR2 and is processed first in
+ * buildSupersessionProofs. Since it is superseded before any PR is applied,
+ * its predecessorHeads=[] and it is eligible for immediate closure.
+ */
+function setupGitRepos() {
+  const tmpDir = mkdtempSync(path.join(tmpdir(), 'crawler-coordinator-test-'));
+  const remoteDir = path.join(tmpDir, 'remote.git');
+  const workDir = path.join(tmpDir, 'work');
+  mkdirSync(remoteDir);
+  mkdirSync(workDir);
+
+  git(remoteDir, ['init', '--bare']);
+
+  git(workDir, ['init', '--initial-branch=main']);
+  git(workDir, ['remote', 'add', 'origin', remoteDir]);
+  git(workDir, ['config', 'user.email', 'test@example.com']);
+  git(workDir, ['config', 'user.name', 'Test']);
+
+  mkdirSync(path.join(workDir, '.github', 'workflows'), { recursive: true });
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'value: base\n');
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'extra.yml'), 'value: base\n');
+  const baseSha = gitCommit(workDir, 'base');
+
+  // Advance main
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'value: main\n');
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'extra.yml'), 'value: main\n');
+  const mainSha = gitCommit(workDir, 'main');
+  git(workDir, ['push', 'origin', 'main']);
+
+  // PR1: unique ci.yml change
+  git(workDir, ['checkout', '-b', 'pr1', baseSha]);
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'value: pr1\n');
+  const pr1Sha = gitCommit(workDir, 'pr1');
+  git(workDir, ['push', 'origin', 'pr1']);
+
+  // PR2: unique extra.yml change
+  git(workDir, ['checkout', '-b', 'pr2', baseSha]);
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'extra.yml'), 'value: pr2\n');
+  const pr2Sha = gitCommit(workDir, 'pr2');
+  git(workDir, ['push', 'origin', 'pr2']);
+
+  // PR3: superseded (same content as main already merged)
+  git(workDir, ['checkout', '-b', 'pr3', baseSha]);
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'ci.yml'), 'value: main\n');
+  writeFileSync(path.join(workDir, '.github', 'workflows', 'extra.yml'), 'value: main\n');
+  const pr3Sha = gitCommit(workDir, 'pr3');
+  git(workDir, ['push', 'origin', 'pr3']);
+
+  git(workDir, ['checkout', 'main']);
+
+  return { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha };
+}
+
+// ---------------------------------------------------------------------------
+// Mock HTTP server
+// ---------------------------------------------------------------------------
+
+/**
+ * Starts a minimal mock HTTP server.
+ * `routes` maps `"METHOD /path"` (exact or prefix) to a handler function.
+ * Returns { server, port, mutatingCalls }.
+ */
+function startServer(routes) {
+  const mutatingCalls = [];
+  return new Promise((resolve) => {
+    const server = createServer((req, res) => {
+      const method = req.method.toUpperCase();
+      let raw = '';
+      req.on('data', (chunk) => {
+        raw += chunk;
+      });
+      req.on('end', () => {
+        const parsed = raw ? JSON.parse(raw) : undefined;
+        const pathOnly = req.url.split('?')[0];
+        if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
+          mutatingCalls.push({ method, url: pathOnly, body: parsed });
+        }
+        const exactKey = `${method} ${pathOnly}`;
+        let handler = routes[exactKey];
+        if (!handler) {
+          const entry = Object.entries(routes).find(([k]) => {
+            const space = k.indexOf(' ');
+            const m = k.slice(0, space);
+            const p = k.slice(space + 1);
+            return (m === method || m === '*') && pathOnly.startsWith(p);
+          });
+          handler = entry?.[1];
+        }
+        if (handler) {
+          const result = handler(req.url, parsed) ?? {};
+          const status = result.status ?? 200;
+          const bodyStr = result.body !== undefined ? JSON.stringify(result.body) : '{}';
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(bodyStr);
+        } else {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: `Not Found: ${req.method} ${req.url}` }));
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => {
+      resolve({ server, port: server.address().port, mutatingCalls });
+    });
+  });
+}
+
+/**
+ * Spawn reconcile.mjs against the mock server, using the provided git workDir.
+ */
+async function runScript(port, workDir, extraEnv = {}) {
+  const child = spawn(process.execPath, [SCRIPT], {
+    cwd: workDir,
+    env: {
+      GITHUB_REPOSITORY: `${OWNER}/${REPO}`,
+      GITHUB_API_URL: `http://127.0.0.1:${port}`,
+      GITHUB_GRAPHQL_URL: `http://127.0.0.1:${port}/graphql`,
+      CI_CONFLICT_COORDINATOR_TOKEN: TOKEN,
+      CI_CONFLICT_COORDINATOR_APP_ID: APP_ID,
+      GITHUB_TOKEN: TOKEN,
+      MERGE_TRAIN_ENABLED: 'true',
+      MERGE_TRAIN_ADMISSION_CHECKS: '',
+      // Speed up retries for test execution
+      GITHUB_REQUEST_RETRY_DELAY_MS: '0',
+      CI_CONFLICT_REOPEN_RETRY_DELAY_MS: '0',
+      ...extraEnv,
+    },
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout?.on('data', (d) => {
+    stdout += d;
+  });
+  child.stderr?.on('data', (d) => {
+    stderr += d;
+  });
+  const [code] = await once(child, 'close');
+  return { code, stdout, stderr };
+}
+
+/**
+ * Build the standard mock route table for a 3-PR cluster scenario where PR3
+ * is superseded by main alone.
+ *
+ * @param {object} opts
+ * @param {string} opts.mainSha
+ * @param {string} opts.pr1Sha
+ * @param {string} opts.pr2Sha
+ * @param {string} opts.pr3Sha
+ * @param {string} [opts.postClosePr3Sha]  - SHA returned for PR3 in post-close reads;
+ *   defaults to pr3Sha (no drift). Pass a different value to simulate drift.
+ * @param {number} [opts.reopenStatus]     - HTTP status to return for the reopen PATCH;
+ *   defaults to 200 (success).
+ */
+function buildRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha, postClosePr3Sha, reopenStatus = 200 }) {
+  const driftedPr3Sha = postClosePr3Sha ?? pr3Sha;
+  let pr3PatchCount = 0;
+  let pr3GetCount = 0;
+
+  function livePull(number, sha, extraFields = {}) {
+    return {
+      number,
+      state: 'open',
+      draft: false,
+      mergeable: true,
+      mergeable_state: 'clean',
+      auto_merge: null,
+      node_id: `PR_${number}`,
+      base: { ref: 'main' },
+      head: { sha, repo: { full_name: `${OWNER}/${REPO}` } },
+      labels: [],
+      additions: 10,
+      deletions: 2,
+      changed_files: 1,
+      created_at: `2026-07-0${number}T00:00:00Z`,
+      title: `PR ${number}`,
+      ...extraFields,
+    };
+  }
+
+  return {
+    // Ensure labels (coordinator labels already exist → 422 ignored)
+    [`POST /repos/${OWNER}/${REPO}/labels`]: (_url, body) => {
+      // Owner-fence label creation: succeed only if it's PR3's fence
+      if (body?.name === `ci-owner-pr-3`)
+        return { status: 201, body: { node_id: 'LABEL_FENCE_3' } };
+      // Coordinator labels already exist
+      return { status: 422, body: { message: 'already exists' } };
+    },
+
+    // Paginated open PRs
+    [`GET /repos/${OWNER}/${REPO}/pulls`]: () => ({
+      body: [
+        // PR3 has 2 CI files → ranks first
+        livePull(3, pr3Sha, { changed_files: 2 }),
+        livePull(1, pr1Sha),
+        livePull(2, pr2Sha),
+      ],
+    }),
+
+    // PR file lists (per-PR)
+    [`GET /repos/${OWNER}/${REPO}/pulls/1/files`]: () => ({
+      body: [{ filename: '.github/workflows/ci.yml' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/2/files`]: () => ({
+      body: [{ filename: '.github/workflows/extra.yml' }],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/pulls/3/files`]: () => ({
+      body: [{ filename: '.github/workflows/ci.yml' }, { filename: '.github/workflows/extra.yml' }],
+    }),
+
+    // PR comments (empty — no existing coordinator or recovery state)
+    [`GET /repos/${OWNER}/${REPO}/issues/1/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/2/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/issues/3/comments`]: () => ({ body: [] }),
+
+    // main SHA
+    [`GET /repos/${OWNER}/${REPO}/git/ref/heads/main`]: () => ({
+      body: { object: { sha: mainSha } },
+    }),
+
+    // Check runs (all empty → not green)
+    [`GET /repos/${OWNER}/${REPO}/commits`]: () => ({ body: { check_runs: [] } }),
+
+    // Live PR reads for PR1 (leader, unchanged throughout)
+    [`GET /repos/${OWNER}/${REPO}/pulls/1`]: () => ({ body: livePull(1, pr1Sha) }),
+
+    // Live PR reads for PR2
+    [`GET /repos/${OWNER}/${REPO}/pulls/2`]: () => ({ body: livePull(2, pr2Sha) }),
+
+    // Live PR reads for PR3: pre-close uses pr3Sha; post-close uses driftedPr3Sha
+    [`GET /repos/${OWNER}/${REPO}/pulls/3`]: () => {
+      pr3GetCount += 1;
+      // The first two GETs are in closeDuplicate's pre-checks:
+      //   1. targetHasHealthyOwner
+      //   2. mapLimit live pull fetch
+      // The third GET is the post-close revalidation read.
+      const sha = pr3GetCount >= 3 ? driftedPr3Sha : pr3Sha;
+      return { body: livePull(3, sha, { changed_files: 2 }) };
+    },
+
+    // PATCH to close/reopen PR3
+    [`PATCH /repos/${OWNER}/${REPO}/pulls/3`]: (_url, body) => {
+      pr3PatchCount += 1;
+      if (body?.state === 'closed')
+        return { status: 200, body: livePull(3, pr3Sha, { state: 'closed', changed_files: 2 }) };
+      // Reopen call
+      if (pr3PatchCount >= 2)
+        return {
+          status: reopenStatus,
+          body: { message: reopenStatus === 200 ? 'ok' : 'server error' },
+        };
+      return { status: 200, body: livePull(3, pr3Sha, { changed_files: 2 }) };
+    },
+
+    // Label mutations on issues (add/remove)
+    [`POST /repos/${OWNER}/${REPO}/issues/1/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/issues/2/labels`]: () => ({ body: [] }),
+    [`POST /repos/${OWNER}/${REPO}/issues/3/labels`]: () => ({ body: [] }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues`]: () => ({ status: 204, body: null }),
+
+    // Owner fence label delete (releaseOwnerFence)
+    [`DELETE /repos/${OWNER}/${REPO}/labels`]: () => ({ status: 204, body: null }),
+
+    // Coordinator comments (POST new comment for each PR)
+    [`POST /repos/${OWNER}/${REPO}/issues/1/comments`]: () => ({ body: { id: 1001 } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/2/comments`]: () => ({ body: { id: 1002 } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/3/comments`]: () => ({ body: { id: 1003 } }),
+
+    // GraphQL (used for disableAutoMerge; PRs have auto_merge=null so this
+    // should not be called, but provide a stub as a safeguard)
+    [`POST /graphql`]: () => ({
+      body: { data: {} },
+    }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+test('coordinator closes superseded duplicate and confirms on revalidation (no drift)', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  // PR3 must have been closed
+  const closePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'closed',
+  );
+  assert.ok(closePatch, 'expected PATCH {state:closed} for superseded PR3');
+
+  // No reopen must have been attempted (no drift)
+  const reopenPatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'open',
+  );
+  assert.equal(reopenPatch, undefined, 'must not reopen when post-close proof is stable');
+
+  assert.match(stdout, /closed pr=#3/, 'stdout must log successful closure');
+});
+
+test('coordinator reopens duplicate when post-close drift is detected', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  // Simulate PR3 head changing after close by returning a different SHA on the
+  // third GET /pulls/3 (the post-close read).
+  const driftedSha = '9'.repeat(40);
+
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({ mainSha, pr1Sha, pr2Sha, pr3Sha, postClosePr3Sha: driftedSha }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  // Script must exit cleanly — reopen succeeded
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const closePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'closed',
+  );
+  assert.ok(closePatch, 'expected PATCH {state:closed} for superseded PR3');
+
+  const reopenPatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'open',
+  );
+  assert.ok(reopenPatch, 'expected PATCH {state:open} reopen after drift detected');
+
+  assert.match(
+    stdout,
+    /reopen pr=#3 reason=post-close-proof-drifted/,
+    'stdout must log drift-triggered reopen',
+  );
+});
+
+test('coordinator fails workflow when post-close reopen is unrecoverable', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const driftedSha = '8'.repeat(40);
+
+  // Return 500 for the reopen PATCH to simulate a persistent failure
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      postClosePr3Sha: driftedSha,
+      reopenStatus: 500,
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  // Script must exit non-zero — unrecoverable state must escalate
+  assert.notEqual(code, 0, 'reconcile must exit non-zero when reopen is unrecoverable');
+
+  const closePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'closed',
+  );
+  assert.ok(closePatch, 'expected PATCH {state:closed} before the reopen failure');
+
+  // All reopen attempts must have been tried
+  const reopenAttempts = mutatingCalls.filter(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'open',
+  );
+  assert.equal(reopenAttempts.length, 3, 'must attempt reopen 3 times before giving up');
+
+  // Error must surface in stderr as an unhandled exception message
+  assert.match(
+    stderr,
+    /UNSAFE.*failed to reopen PR #3/,
+    'stderr must include UNSAFE escalation message for unrecoverable reopen failure',
+  );
+  assert.match(stdout, /reopen-attempt-failed pr=#3/, 'stdout must log each failed reopen attempt');
+});

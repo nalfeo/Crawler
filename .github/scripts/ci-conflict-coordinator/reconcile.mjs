@@ -47,6 +47,7 @@ const dispatchToken = process.env.GITHUB_TOKEN || '';
 const trustedAppId = Number.parseInt(process.env.CI_CONFLICT_COORDINATOR_APP_ID || '', 10);
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
+const REOPEN_RETRY_DELAY_MS = Number(process.env.CI_CONFLICT_REOPEN_RETRY_DELAY_MS ?? 500);
 const now = new Date();
 const BASE_REF = 'main';
 
@@ -308,6 +309,7 @@ async function targetHasHealthyOwner(number) {
   const normalized = {
     number,
     labelNames: labelsOf(pull),
+    headSha: pull.head?.sha,
   };
   const context = recoveryContext(normalized, comments);
   return context.ownershipError || context.healthy;
@@ -402,13 +404,37 @@ async function closeDuplicate(proof) {
       (proof.leaderHead && postLeaderSha !== proof.leaderHead.headSha);
     if (proofDrifted) {
       process.stdout.write(`reopen pr=#${proof.number} reason=post-close-proof-drifted\n`);
-      try {
-        await request(token, `/repos/${owner}/${repo}/pulls/${proof.number}`, {
-          method: 'PATCH',
-          body: { state: 'open' },
-        });
-      } catch (reopenError) {
-        process.stdout.write(`reopen-failed pr=#${proof.number} error=${reopenError.message}\n`);
+      const MAX_REOPEN_ATTEMPTS = 3;
+      let lastReopenError = null;
+      for (let attempt = 0; attempt < MAX_REOPEN_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, REOPEN_RETRY_DELAY_MS * attempt));
+        }
+        try {
+          await request(token, `/repos/${owner}/${repo}/pulls/${proof.number}`, {
+            method: 'PATCH',
+            body: { state: 'open' },
+          });
+          lastReopenError = null;
+          break;
+        } catch (err) {
+          lastReopenError = err;
+          process.stdout.write(
+            `reopen-attempt-failed pr=#${proof.number} attempt=${attempt + 1} error=${err.message}\n`,
+          );
+        }
+      }
+      if (lastReopenError) {
+        // Reopen could not be confirmed after all attempts. The PR was closed
+        // but its branch has since diverged, so leaving it closed is unsafe.
+        // Closed PRs are excluded from subsequent coordinator discovery, so
+        // the backstop cron cannot repair this automatically. Throw so the
+        // workflow fails and surfaces in CI for manual intervention.
+        throw new Error(
+          `UNSAFE: failed to reopen PR #${proof.number} after post-close proof drift ` +
+            `(${MAX_REOPEN_ATTEMPTS} attempts exhausted); manual intervention required. ` +
+            `Last error: ${lastReopenError.message}`,
+        );
       }
       return false;
     }
@@ -417,7 +443,13 @@ async function closeDuplicate(proof) {
     );
     return true;
   } finally {
-    await releaseOwnerFence(ownerFence);
+    try {
+      await releaseOwnerFence(ownerFence);
+    } catch (releaseError) {
+      process.stdout.write(
+        `warn: owner-fence release failed for PR #${proof.number}: ${releaseError.message} (fence may need manual cleanup)\n`,
+      );
+    }
   }
 }
 
