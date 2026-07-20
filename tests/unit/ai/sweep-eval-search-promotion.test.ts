@@ -240,4 +240,118 @@ describe('selectSearchPromotion', () => {
 
     expect(promotion).toBeNull();
   });
+
+  it('non-LEGACY combo: correctly gates against LEGACY incumbent when incumbentCombo is provided (regression for GH review finding — navmesh+legacy wins vs legacy+legacy, not vs own baseline)', () => {
+    // Scenario: navmesh+legacy combo. The LEGACY incumbent (legacy+legacy /
+    // legacy-base config) wins 9/10 seeds. The navmesh combo candidate wins
+    // 10/10 seeds — strictly more than the LEGACY incumbent.
+    // Without threading incumbentCombo='legacy+legacy', buildLeaderboard
+    // would look for combo='navmesh+legacy' / configId='legacy-base' and find
+    // no rows, making winsVsIncumbentDelta null and disqualifying the candidate.
+    const NAVMESH_COMBO = 'navmeshFused+slackAware';
+    const LEGACY_COMBO = 'legacy+legacy';
+
+    const rows: RunRow[] = [];
+    // LEGACY incumbent rows (tagged with legacy combo, legacy configId).
+    for (let seed = 1; seed <= 10; seed++) {
+      rows.push(
+        seed === 10
+          ? loss({ combo: LEGACY_COMBO, configId: 'legacy-base', weapon: 'sword', seed })
+          : row({ combo: LEGACY_COMBO, configId: 'legacy-base', weapon: 'sword', seed }),
+      );
+    }
+    // navmesh combo's own baseline (tagged with navmesh combo — not the gate reference).
+    for (let seed = 1; seed <= 10; seed++) {
+      rows.push(
+        seed === 10
+          ? loss({
+              combo: NAVMESH_COMBO,
+              configId: 'navmesh-base',
+              weapon: 'sword',
+              seed,
+            })
+          : row({ combo: NAVMESH_COMBO, configId: 'navmesh-base', weapon: 'sword', seed }),
+      );
+    }
+    // navmesh candidate: wins all 10 seeds (strictly more than LEGACY incumbent's 9).
+    const candidateRows: RunRow[] = [];
+    for (let seed = 1; seed <= 10; seed++) {
+      candidateRows.push(
+        row({
+          combo: NAVMESH_COMBO,
+          configId: 'navmesh-tuned',
+          weapon: 'sword',
+          seed,
+          score: 2_000_000,
+        }),
+      );
+    }
+    const allRows = [...rows, ...candidateRows];
+
+    const promotion = selectSearchPromotion(
+      allRows,
+      {},
+      NAVMESH_COMBO,
+      'legacy-base',
+      new Set(['navmesh-tuned']),
+      BUDGET_MS,
+      'navmesh-base',
+      LEGACY_COMBO,
+    );
+
+    expect(promotion).not.toBeNull();
+    expect(promotion?.bestId).toBe('navmesh-tuned');
+  });
+
+  it('non-LEGACY combo: disqualifies when incumbentCombo is omitted and incumbent rows carry legacy combo tag (gate sees no incumbent → null delta)', () => {
+    // Same setup as the passing test above, but omitting incumbentCombo.
+    // buildLeaderboard looks for combo='navmesh+legacy' / 'legacy-base' and
+    // finds no rows → winsVsIncumbentDelta null → candidate disqualified.
+    // This confirms that incumbentCombo must be threaded for non-LEGACY combos.
+    const NAVMESH_COMBO = 'navmeshFused+slackAware';
+    const LEGACY_COMBO = 'legacy+legacy';
+
+    const rows: RunRow[] = [];
+    for (let seed = 1; seed <= 10; seed++) {
+      rows.push(
+        seed === 10
+          ? loss({ combo: LEGACY_COMBO, configId: 'legacy-base', weapon: 'sword', seed })
+          : row({ combo: LEGACY_COMBO, configId: 'legacy-base', weapon: 'sword', seed }),
+      );
+    }
+    for (let seed = 1; seed <= 10; seed++) {
+      rows.push(
+        seed === 10
+          ? loss({ combo: NAVMESH_COMBO, configId: 'navmesh-base', weapon: 'sword', seed })
+          : row({ combo: NAVMESH_COMBO, configId: 'navmesh-base', weapon: 'sword', seed }),
+      );
+    }
+    const candidateRows: RunRow[] = [];
+    for (let seed = 1; seed <= 10; seed++) {
+      candidateRows.push(
+        row({
+          combo: NAVMESH_COMBO,
+          configId: 'navmesh-tuned',
+          weapon: 'sword',
+          seed,
+          score: 2_000_000,
+        }),
+      );
+    }
+    const allRows = [...rows, ...candidateRows];
+
+    // No incumbentCombo — defaults to NAVMESH_COMBO, so incumbent rows not found.
+    const promotion = selectSearchPromotion(
+      allRows,
+      {},
+      NAVMESH_COMBO,
+      'legacy-base',
+      new Set(['navmesh-tuned']),
+      BUDGET_MS,
+      'navmesh-base',
+      // incumbentCombo intentionally omitted
+    );
+
+    expect(promotion).toBeNull();
+  });
 });

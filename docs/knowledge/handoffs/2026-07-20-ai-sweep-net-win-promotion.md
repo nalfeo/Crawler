@@ -96,7 +96,11 @@ incumbent identity is scoped to the exact `(combo, configId)` pair, not
 - `scripts/agent/perf/round-plan.ts` — doc-comment wording only; logic
   unchanged (consumes `winsVsIncumbentDelta` transparently via
   `selectQualifiedWinner`).
-- `scripts/agent/perf/sweep-eval.ts` — doc-comment wording only; same reason.
+- `scripts/agent/perf/sweep-eval.ts` — doc-comment wording updated (round 3);
+  **Round 4**: added `incumbentCombo?` param to `selectSearchPromotion`,
+  `legacyBaseline?` threading in `searchCombo` (mirrors `initCheckpoint`),
+  `--legacy-baseline` CLI flag for `--stage search`, and `LEGACY_COMBO_ID`
+  import from `gen-configs.js`.
 - `.github/workflows/ai-sweep.yml` — header comment wording updated to
   describe the new rule.
 - `tests/unit/ai/sweep-aggregate-shards.test.ts` — reworked graduation-
@@ -111,7 +115,10 @@ incumbent identity is scoped to the exact `(combo, configId)` pair, not
 - `tests/unit/ai/sweep-eval-search-promotion.test.ts` — new mirrored
   292/300-vs-286/300 qualifying test at the legacy-path level (proves both
   paths share the identical rule via `selectSearchPromotion`); reworked tie-
-  rejection and out-score-isolation tests.
+  rejection and out-score-isolation tests; **Round 4**: added 2 new regression
+  tests for the non-LEGACY combo path (one confirming promotion qualifies with
+  correct `incumbentCombo='legacy+legacy'`, one confirming disqualification when
+  `incumbentCombo` is omitted and the incumbent rows carry the legacy tag).
 - `docs/knowledge/handoffs/2026-07-19-ai-sweep-eval-parallel-rounds.md` —
   added a superseded-notice pointing here so operators reading that handoff
   don't apply the now-replaced zero-flip rule.
@@ -131,18 +138,18 @@ No ADR was needed (single-system change, not affecting 2+ systems).
 - `npx tsc --noEmit` — clean, no errors.
 - `npx vitest run tests/unit/ai/sweep-aggregate-shards.test.ts
 tests/unit/ai/sweep-round-plan.test.ts
-tests/unit/ai/sweep-eval-search-promotion.test.ts` — **101/101 passing**
-  (57 + 39 + 5, including the two mirrored 292/300-vs-286/300 regression tests
+tests/unit/ai/sweep-eval-search-promotion.test.ts` — **104/104 passing**
+  (58 + 39 + 7, including the two mirrored 292/300-vs-286/300 regression tests
   at the aggregate-shards and legacy-path levels, the wins-tie rejection test,
-  the wins-decrease rejection test, the isolated below-90%-floor test, and the
-  incumbent-identity-scoping test).
+  the wins-decrease rejection test, the isolated below-90%-floor test, the
+  incumbent-identity-scoping test, and 2 new non-LEGACY combo path tests).
 - `npm run verify:fast` — ✅ passed (typecheck + lint + changed tests + size/
   weight/physics-defs coverage checks).
 - `npm run verify:pr-prereqs` — checked after handoff + ledger were committed.
 - Review harness (3🍎 tier): plan review (gpt-5.4, `plan_divergence: minor`,
   4/4 concerns resolved — addressed single-incumbent-invariant documentation +
   test, `sortByLexicographic` diagnostic-only doc clarification, superseded-
-  notice on the prior handoff) + 3-round code-review loop (8 concerns resolved):
+  notice on the prior handoff) + 4-round code-review loop (9 concerns resolved):
   - **Round 1** (claude-sonnet-4.6): 0 concerns, clean.
   - **Round 2** (github-copilot-pr-reviewer + claude-sonnet-4.6): 4 concerns,
     all resolved — added `samePanel` Set-equality guard on `winsVsIncumbentDelta`
@@ -154,7 +161,15 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **101/101 passing**
     genuine (sweep-round-plan partial-round test and sweep-eval-search-promotion
     out-score-isolation test had mismatched candidate/incumbent panels; fixed by
     adding the missing cells to the incumbent as losses); 2 stale (GitHub line-
-    remap landed old comments onto already-correct lines). Ledger:
+    remap landed old comments onto already-correct lines).
+  - **Round 4** (github-copilot-pr-reviewer): 1 concern, resolved — the legacy
+    `--stage search` path (`selectSearchPromotion`) did not thread `incumbentCombo`
+    correctly for non-LEGACY combos: it passed `comboStr` as `incumbentCombo` to
+    `buildLeaderboard` even when the LEGACY incumbent rows carried `combo:
+    'legacy+legacy'`, making `winsVsIncumbentDelta` null for all candidates and
+    permanently disqualifying them. Fixed by adding `incumbentCombo?` param to
+    `selectSearchPromotion` and mirroring `initCheckpoint`'s LEGACY-baseline
+    threading in `searchCombo` (+ `--legacy-baseline` CLI flag). Ledger:
   `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 - Apple record: `docs/knowledge/metrics/apples/2026-07-20-ai-sweep-net-win-promotion.json`
   (3🍎 estimated → 3🍎 actual, exact).

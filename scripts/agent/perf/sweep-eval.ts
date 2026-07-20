@@ -71,6 +71,7 @@ import { runHeadless } from '../../../src/game/ai/headless-runner.js';
 import { AIDecisionMode, AIPathingMode, type RunStats } from '../../../src/game/ai/types.js';
 import { GAME } from '../../../src/shared/constants.js';
 import {
+  LEGACY_COMBO_ID,
   type Combo,
   type SweepConfig,
   type TunableKnob,
@@ -227,6 +228,13 @@ function winsOf(rows: readonly RunRow[], id: string): number {
  * runs — the exact wiring bug class a review would otherwise only catch by
  * re-deriving this logic by hand.
  *
+ * `incumbentCombo` defaults to `comboStr` when omitted (the `legacy+legacy`
+ * case where combo IS the incumbent). For non-LEGACY combos whose LEGACY
+ * baseline rows are threaded in from `searchCombo`, pass `LEGACY_COMBO_ID`
+ * so `buildLeaderboard` can locate the incumbent rows by their actual combo
+ * tag — without this, `winsVsIncumbentDelta` is always `null` and every
+ * candidate is disqualified by panel mismatch.
+ *
  * Returns `null` when no candidate both qualifies and ranks ahead of the
  * current position under the full tie-break ordering (steps should be halved
  * by the caller in that case).
@@ -239,9 +247,10 @@ export function selectSearchPromotion(
   candidateIds: ReadonlySet<string>,
   budgetMs: number,
   currentConfigId: string,
+  incumbentCombo?: string,
 ): { bestId: string; bestScore: number } | null {
   const leaderboard = buildLeaderboard(allRows, {
-    incumbentCombo: comboStr,
+    incumbentCombo: incumbentCombo ?? comboStr,
     incumbentConfigId,
     configs,
     budgetMs,
@@ -282,6 +291,13 @@ async function searchCombo(
     rounds: number;
     secondary: boolean;
     floorId: string;
+    /** When provided and the combo is not `legacy+legacy`, inject these rows
+     *  and config into `allRows`/`configs` and use the LEGACY config as the
+     *  safety-gate incumbent — exactly mirroring {@link initCheckpoint} in
+     *  `round-plan.ts`.  Without this, the gate compares against the combo's
+     *  own baseline rather than the fixed LEGACY incumbent, so a candidate
+     *  promoted here can still be rejected at final graduation. */
+    legacyBaseline?: ShardArtifact;
   },
 ): Promise<SearchResult> {
   const shared: EvalShared = {
@@ -323,6 +339,27 @@ async function searchCombo(
     `[${comboStr}] baseline ${base.id.slice(0, 48)} score=${currentScore.toExponential(3)} wins=${winsOf(allRows, currentId)}/${opts.weapons.length * opts.trainSeeds.length}`,
   );
 
+  // Incumbent for the safety gate: use the LEGACY incumbent (from legacyBaseline)
+  // for non-LEGACY combos so that the in-search net-win check mirrors the final
+  // graduation gate (`selectQualifiedWinner`). For `legacy+legacy` the combo IS
+  // the LEGACY incumbent, so no separate baseline is needed.
+  const comboIsLegacy = comboStr === LEGACY_COMBO_ID;
+  let incumbentConfigId = base.id;
+  let incumbentCombo = comboStr;
+  if (!comboIsLegacy && opts.legacyBaseline) {
+    const legacyIds = Object.keys(opts.legacyBaseline.configs);
+    const legacyId = legacyIds[0];
+    if (!legacyId || legacyIds.length !== 1) {
+      throw new Error(
+        `searchCombo(${comboStr}): legacyBaseline shard must contain exactly one config, got ${legacyIds.length}`,
+      );
+    }
+    incumbentConfigId = legacyId;
+    incumbentCombo = LEGACY_COMBO_ID;
+    Object.assign(configs, opts.legacyBaseline.configs);
+    allRows.push(...opts.legacyBaseline.rows);
+  }
+
   for (let round = 0; round < opts.rounds; round++) {
     const currentConfig = configs[currentId]!;
     const candidates = neighbors(currentConfig, knobs, steps)
@@ -349,21 +386,23 @@ async function searchCombo(
     // Gate promotion through the SAME hard safety gate used for round-plan.ts
     // and final graduation (see selectSearchPromotion doc comment): a
     // higher-scoring neighbour must ALSO have >=90% wins AND strictly MORE
-    // total wins than the FIXED original baseline (base.id, not the search's
-    // current position) before it can replace currentId — win→loss flips are
-    // allowed as long as total wins still strictly increase (human-approved
-    // net-win promotion rule). Naive score-only promotion here would
-    // reintroduce the exact GH-run-29597840666 bug this module exists to fix,
-    // just in the legacy local-smoke-run path instead of CI.
+    // total wins than the FIXED original baseline (incumbentConfigId —
+    // LEGACY config ID for non-LEGACY combos when legacyBaseline was
+    // provided, else base.id) before it can replace currentId — win→loss
+    // flips are allowed as long as total wins still strictly increase
+    // (human-approved net-win promotion rule). Naive score-only promotion
+    // here would reintroduce the exact GH-run-29597840666 bug this module
+    // exists to fix, just in the legacy local-smoke-run path instead of CI.
     const candidateIds = new Set(candidates.map((c) => c.id));
     const promotion = selectSearchPromotion(
       allRows,
       configs,
       comboStr,
-      base.id,
+      incumbentConfigId,
       candidateIds,
       shared.budgetMs,
       currentId,
+      incumbentCombo,
     );
 
     if (promotion) {
@@ -429,6 +468,7 @@ interface CliArgs {
   floorId: string;
   searchArtifact: string | null;
   includeIncumbent: boolean;
+  legacyBaseline: string | null;
   out: string | null;
 }
 
@@ -447,6 +487,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
     floorId: 'floor1',
     searchArtifact: null,
     includeIncumbent: true,
+    legacyBaseline: null,
     out: null,
   };
   for (let i = 2; i < argv.length; i++) {
@@ -492,6 +533,9 @@ function parseArgs(argv: readonly string[]): CliArgs {
       i++;
     } else if (arg === '--no-incumbent') {
       args.includeIncumbent = false;
+    } else if (arg === '--legacy-baseline' && next) {
+      args.legacyBaseline = next;
+      i++;
     } else if (arg === '--out' && next) {
       args.out = next;
       i++;
@@ -550,6 +594,9 @@ async function main(argv: readonly string[]): Promise<void> {
     console.log(
       `🔎 SEARCH ${comboId(combo)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers} · rounds ${args.rounds}${args.secondary ? ' · +secondary' : ''}`,
     );
+    const legacyBaseline = args.legacyBaseline
+      ? (JSON.parse(readFileSync(args.legacyBaseline, 'utf8')) as ShardArtifact)
+      : undefined;
     const result = await searchCombo(combo, {
       trainSeeds: args.trainSeeds,
       weapons: args.weapons,
@@ -557,6 +604,7 @@ async function main(argv: readonly string[]): Promise<void> {
       rounds: args.rounds,
       secondary: args.secondary,
       floorId: args.floorId,
+      legacyBaseline,
     });
     const artifact: SearchArtifact = {
       meta: buildMeta('search', args.floorId),

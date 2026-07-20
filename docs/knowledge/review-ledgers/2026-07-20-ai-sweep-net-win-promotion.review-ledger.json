@@ -38,6 +38,14 @@
           "resolved_count": 4,
           "clean": true,
           "notes": "A follow-up native GitHub Copilot PR review pass on this session's round-2 push (commit f066ec82) left 4 more inline comments, all pointing at test fixtures where a candidate added an extra (weapon, seed) cell not present in the incumbent's panel, so winsVsIncumbentDelta would be null (panel mismatch) and the candidate would be disqualified for the wrong reason rather than exercising the intended code path. Investigation showed 2 of the 4 were stale: GitHub's line-remap landed old comments (from before this session's round-plan.ts fixes) onto already-correct lines that matched the reviewer's own recommended pattern. The other 2 were genuine: (a) 'does NOT promote an improving candidate when the round is partial' (sweep-round-plan.test.ts) had a 2-cell incumbent baseline vs. a 3-cell candidate shard -- fixed by adding the third cell (dagger/3) to the incumbent as a loss, keeping panels identical while giving the candidate a genuine 3-vs-2 win-count edge (also updated the resulting bestScore/rows-length assertions); (b) 'returns null when the only qualifying candidate does not out-score the current position' (sweep-eval-search-promotion.test.ts) had a candidate with an extra bow/1 cell absent from the incumbent's 10-seed sword-only panel -- fixed by adding that bow/1 cell to the incumbent as a loss so the candidate's 11-vs-10 win-count edge is real, not panel-mismatch noise. Verified: 299/299 tests/unit/ai pass, tsc --noEmit clean, verify:fast green."
+        },
+        {
+          "round": 4,
+          "models": ["github-copilot-pr-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "A final native GitHub Copilot PR review pass on commit 9aefd6a identified a genuine logic gap in sweep-eval.ts's legacy --stage search path: selectSearchPromotion was called with comboStr as incumbentCombo even for non-LEGACY combos (e.g. navmesh+legacy), making buildLeaderboard unable to find the LEGACY incumbent rows (tagged legacy+legacy) and forcing winsVsIncumbentDelta to null, which disqualified every candidate. The fix mirrors initCheckpoint in round-plan.ts: (1) added optional incumbentCombo? parameter to selectSearchPromotion defaulting to comboStr for backward compatibility; (2) added optional legacyBaseline? to searchCombo opts; (3) when combo !== legacy+legacy and legacyBaseline is provided, extract LEGACY config ID, inject rows + configs into allRows/configs, set incumbentConfigId/incumbentCombo to the LEGACY values, and pass incumbentCombo to selectSearchPromotion; (4) added --legacy-baseline CLI flag to --stage search; (5) added 2 regression tests covering the non-LEGACY combo path (passes with incumbentCombo, fails/disqualifies without it). Verified: 104/104 tests/unit/ai pass, tsc --noEmit clean, verify:fast green."
         }
       ]
     }
