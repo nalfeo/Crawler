@@ -231,6 +231,7 @@ export function resolveMergeTrainTokens(environment) {
   const liveActionsRun = environment.GITHUB_ACTIONS === 'true';
   const promotionToken =
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
+  // The repository App receives 403 from workflow_dispatch; never reuse it here.
   const workflowDispatchToken = environment.GITHUB_TOKEN || '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
