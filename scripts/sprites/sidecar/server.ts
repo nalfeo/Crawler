@@ -754,7 +754,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
 
       let briefYaml: string | null = null;
-      let snapshotEligible = false;
+      // briefIsCanonical is true when briefYaml comes from a durable or per-run
+      // snapshot (i.e. not a raw disk read) — it controls whether the assembled
+      // response is eligible to be written to the shared derived-resource cache.
+      let briefIsCanonical = false;
       if (typeof summary.briefPath === 'string' && summary.briefPath !== '') {
         // Check the per-run immutable snapshot first. It captures the brief
         // bytes that were active when the run was generated, so it is immune
@@ -763,8 +766,12 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         // for older runs after the brief is edited).
         const perRunBytes = await readPerRunBrief(store, briefId, runId);
         if (perRunBytes !== null) {
+          // Per-run snapshot already established — use it directly. The
+          // canonical brief is already persisted so no new snapshot write is
+          // needed; briefIsCanonical is set to indicate the response can be
+          // stored in the shared derived-resource cache.
           briefYaml = perRunBytes.toString('utf8');
-          snapshotEligible = true;
+          briefIsCanonical = true;
         } else {
           // Resolve brief path safely — must stay under repoRoot.
           const resolved = path.isAbsolute(summary.briefPath)
@@ -776,7 +783,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             if (await store.has(durableKey)) {
               try {
                 briefYaml = (await store.get(durableKey)).toString('utf8');
-                snapshotEligible = true;
+                briefIsCanonical = true;
               } catch {
                 briefYaml = null;
               }
@@ -793,7 +800,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             // edits to the brief file.
             if (briefYaml !== null) {
               await writePerRunBrief(store, briefId, runId, Buffer.from(briefYaml, 'utf8'));
-              snapshotEligible = true;
+              briefIsCanonical = true;
             }
           }
         }
@@ -805,7 +812,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         briefYaml,
         promptText: typeof summary.prompt === 'string' ? summary.prompt : null,
       };
-      if (briefYaml !== null && snapshotEligible) {
+      if (briefYaml !== null && briefIsCanonical) {
         await writeCachedJson(store, responseCacheKey, response);
       }
       return response;
@@ -951,7 +958,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       // is based on the immutable generation config rather than whatever the
       // worktree currently has on disk. Fall back to loading from disk when no
       // cached bytes exist (first warm of this run).
+      // diskBytes captures the raw file content when we load from disk so the
+      // snapshot-write below can reuse it without a second readFileSync call.
       let brief: Brief | null;
+      let diskBytes: Buffer | null = null;
       try {
         if (durableBrief !== null) {
           // Parse from the cached YAML so type-defaults and palette are
@@ -960,9 +970,12 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             projectRoot: deps.repoRoot,
           });
         } else {
-          // Pass `projectRoot` so loadBrief resolves palette / type-defaults
-          // against THIS repo. Degrades to brief-less on failure.
-          brief = loadBrief(resolved, { projectRoot: deps.repoRoot }).brief;
+          // Read the file once and parse from the buffer; reuse the bytes for
+          // the per-run snapshot write below to avoid a second readFileSync.
+          diskBytes = readFileSync(resolved);
+          brief = loadBriefFromYaml(diskBytes.toString('utf8'), {
+            projectRoot: deps.repoRoot,
+          });
         }
       } catch {
         brief = null;
@@ -971,14 +984,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       // future requests for this run always use the same brief bytes, even after
       // the brief file on disk is edited or the worktree is switched.
       if (brief !== null && perRunSnapshotBytes === null) {
-        let snapshotBytes = durableBrief;
-        if (snapshotBytes === null) {
-          try {
-            snapshotBytes = readFileSync(resolved);
-          } catch {
-            snapshotBytes = null;
-          }
-        }
+        const snapshotBytes = durableBrief ?? diskBytes;
         if (snapshotBytes !== null) {
           await writePerRunBrief(store, briefId, runId, snapshotBytes);
         }

@@ -246,18 +246,13 @@ export class SharedResourceCache {
       if (info === null) return false;
       const contentCheck = await cacache.get.hasContent(this.cacheDir, info.integrity);
       if (!contentCheck) {
-        // Content is missing or integrity-invalid. Guard the cleanup against a
-        // concurrent set() that may have just repaired this key: re-read the
-        // index and only remove if the integrity is still the same stale one.
-        // If it changed, the new valid entry must not be deleted.
-        try {
-          const current = await cacache.get.info(this.cacheDir, physicalKey);
-          if (current !== null && current.integrity === info.integrity) {
-            await cacache.rm.entry(this.cacheDir, physicalKey);
-          }
-        } catch {
-          // best-effort; a stale entry is harmless if removal fails
-        }
+        // Content is missing or integrity-invalid — treat as a miss. We
+        // intentionally do NOT attempt cleanup here: any atomic check-and-
+        // delete would still have a window in which a concurrent set() could
+        // repair the entry between our check and our rm.entry, turning the
+        // fresh valid entry into a dangling index again. A stale index entry
+        // is harmless: get() will fail with an integrity error (treated as a
+        // miss by all callers), and the next set() replaces it atomically.
         return false;
       }
       this.touch(physicalKey);
