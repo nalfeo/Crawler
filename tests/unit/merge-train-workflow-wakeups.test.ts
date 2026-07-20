@@ -17,15 +17,44 @@ interface WorkflowDoc {
     reconcile?: {
       if?: string;
       concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
-      steps?: Array<{ name?: string; env?: Record<string, string> }>;
+      steps?: Array<{
+        name?: string;
+        env?: Record<string, string>;
+        with?: Record<string, string>;
+      }>;
     };
   };
+}
+
+interface ValidationWorkflowDoc {
+  on: {
+    workflow_dispatch: {
+      inputs: Record<string, { required?: boolean; type?: string }>;
+    };
+  };
+  jobs: Record<
+    string,
+    {
+      steps?: Array<{
+        name?: string;
+        run?: string;
+        env?: Record<string, string>;
+        with?: Record<string, string>;
+      }>;
+    }
+  >;
 }
 
 function loadWorkflow(): WorkflowDoc {
   return parse(
     readFileSync(path.join(REPO_ROOT, '.github/workflows/merge-train.yml'), 'utf8'),
   ) as WorkflowDoc;
+}
+
+function loadValidationWorkflow(): ValidationWorkflowDoc {
+  return parse(
+    readFileSync(path.join(REPO_ROOT, '.github/workflows/merge-train-validate.yml'), 'utf8'),
+  ) as ValidationWorkflowDoc;
 }
 
 function evaluatesReconcileCondition(
@@ -89,15 +118,50 @@ describe('merge-train workflow wake-ups', () => {
     expect(concurrency?.['cancel-in-progress']).not.toBe(true);
   });
 
-  it('uses recursion-suppressed GITHUB_TOKEN for workflow candidate pushes', () => {
+  describe('merge-train candidate transport', () => {
+    it('materializes every candidate job from an opaque custom-ref bundle', () => {
+      const workflow = loadValidationWorkflow();
+      expect(workflow.on.workflow_dispatch.inputs.candidate_ref?.required).toBe(true);
+      expect(workflow.on.workflow_dispatch.inputs.attestation_sha?.required).toBe(true);
+
+      for (const jobName of ['static', 'unit-tests', 'sprite-tests', 'health', 'security']) {
+        const steps = workflow.jobs[jobName]?.steps ?? [];
+        const checkout = steps.find(
+          (step) => step.name === 'Check out trusted candidate materializer',
+        );
+        const materialize = steps.find((step) => step.name === 'Materialize immutable candidate');
+        expect(checkout?.with?.ref).toBe('${{ github.event.repository.default_branch }}');
+        expect(checkout?.with?.['persist-credentials']).toBe(false);
+        expect(materialize?.run).toBe('bash .github/scripts/merge-train/materialize-candidate.sh');
+        expect(materialize?.env?.CANDIDATE_REF).toBe('${{ inputs.candidate_ref }}');
+        expect(materialize?.env?.CANDIDATE_SHA).toBe('${{ inputs.candidate_sha }}');
+      }
+    });
+
+    it('publishes validation evidence on the trusted main attestation commit', () => {
+      const publish = loadValidationWorkflow().jobs.publish?.steps?.find(
+        (step) => step.name === 'Publish immutable candidate result',
+      );
+      expect(publish?.env?.ATTESTATION_SHA).toBe('${{ inputs.attestation_sha }}');
+      expect(publish?.with?.script).toContain(
+        'const evidenceId = `${process.env.FINGERPRINT}:${process.env.CANDIDATE_SHA}`',
+      );
+      expect(publish?.with?.script).toContain('head_sha: process.env.ATTESTATION_SHA');
+      expect(publish?.with?.script).not.toContain('head_sha: process.env.CANDIDATE_SHA');
+    });
+  });
+
+  it('uses the App checkout credential for candidates and never exposes a PAT', () => {
     const workflow = loadWorkflow();
-    expect(workflow.permissions?.contents).toBe('write');
-    // 'workflows' is not a valid GitHub Actions permissions key for GITHUB_TOKEN;
-    // contents: write is sufficient to push workflow files with GITHUB_TOKEN.
+    expect(workflow.permissions?.contents).toBe('read');
     expect(workflow.permissions?.workflows).toBeUndefined();
 
     const steps = workflow.jobs.reconcile?.steps ?? [];
+    const checkoutStep = steps.find(
+      (step) => step.name === 'Checkout trusted merge-train implementation',
+    );
     const reconcileStep = steps.find((step) => step.name === 'Reconcile six-PR build-expiry train');
+    expect(checkoutStep?.with?.token).toBe('${{ steps.app-token.outputs.token }}');
     expect(reconcileStep?.env?.GITHUB_TOKEN).toBe('${{ secrets.GITHUB_TOKEN }}');
     expect(steps.every((step) => step.env?.MERGE_TRAIN_WORKFLOW_TOKEN === undefined)).toBe(true);
     expect(

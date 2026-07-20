@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   admissionFingerprint,
+  candidateEvidenceId,
   candidateFingerprint,
   candidateRef,
   commitTimestamp,
@@ -86,8 +87,19 @@ test('candidate fingerprints bind base, head, title, and order', () => {
 
 test('candidate refs are bounded and immutable by fingerprint', () => {
   const fingerprint = 'a'.repeat(64);
-  assert.equal(candidateRef(6, fingerprint), 'merge-train/candidate-6-aaaaaaaaaaaaaaaa');
+  assert.equal(
+    candidateRef(6, fingerprint),
+    'refs/merge-train-candidates/candidate-6-aaaaaaaaaaaaaaaa',
+  );
   assert.throws(() => candidateRef(7, fingerprint), /slot/);
+});
+
+test('candidate evidence binds the queue fingerprint to the exact materialized commit', () => {
+  const fingerprint = 'a'.repeat(64);
+  const candidateSha = 'B'.repeat(40);
+  assert.equal(candidateEvidenceId(fingerprint, candidateSha), `${fingerprint}:${'b'.repeat(40)}`);
+  assert.throws(() => candidateEvidenceId('short', candidateSha), /fingerprint/);
+  assert.throws(() => candidateEvidenceId(fingerprint, 'short'), /commit SHA/);
 });
 
 test('admission fingerprints bind immutable head evidence without binding main', () => {

@@ -109,11 +109,13 @@ async function runPublishScript(
   const previousEnv = {
     VALIDATION_RESULTS: process.env.VALIDATION_RESULTS,
     CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+    ATTESTATION_SHA: process.env.ATTESTATION_SHA,
     FINGERPRINT: process.env.FINGERPRINT,
     PR_NUMBERS: process.env.PR_NUMBERS,
   };
   process.env.VALIDATION_RESULTS = JSON.stringify(validationResults);
   process.env.CANDIDATE_SHA = 'a'.repeat(40);
+  process.env.ATTESTATION_SHA = 'f'.repeat(40);
   process.env.FINGERPRINT = 'deadbeef';
   process.env.PR_NUMBERS = '42,43';
   try {
@@ -439,10 +441,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -460,8 +464,8 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       }
       expect(createArgs).toBeDefined();
       expect(createArgs?.conclusion).toBe('cancelled');
-      expect(createArgs?.head_sha).toBe('b'.repeat(40));
-      expect(createArgs?.external_id).toBe('cafef00d');
+      expect(createArgs?.head_sha).toBe('f'.repeat(40));
+      expect(createArgs?.external_id).toBe(`cafef00d:${'b'.repeat(40)}`);
       expect(createCalls).toBe(1);
     });
 
@@ -492,7 +496,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                 check_runs: [
                   {
                     id: 999,
-                    external_id: 'cafef00d',
+                    external_id: `cafef00d:${'b'.repeat(40)}`,
                     app: { id: 12345 },
                     status: 'completed',
                     conclusion: 'success',
@@ -514,10 +518,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -556,14 +562,14 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                   check_runs: [
                     {
                       id: 700,
-                      external_id: 'cafef00d',
+                      external_id: `cafef00d:${'b'.repeat(40)}`,
                       app: { id: 12345 },
                       status: 'completed',
                       conclusion: 'cancelled',
                     },
                     {
                       id: 777,
-                      external_id: 'cafef00d',
+                      external_id: `cafef00d:${'b'.repeat(40)}`,
                       app: { id: 12345 },
                       status: 'in_progress',
                       conclusion: null,
@@ -590,10 +596,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -638,7 +646,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                     // Older run already terminal (a genuine prior success).
                     {
                       id: 700,
-                      external_id: 'cafef00d',
+                      external_id: `cafef00d:${'b'.repeat(40)}`,
                       app: { id: 12345 },
                       status: 'completed',
                       conclusion: 'success',
@@ -648,7 +656,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                     // highest-ID rule, and it is NOT terminal.
                     {
                       id: 900,
-                      external_id: 'cafef00d',
+                      external_id: `cafef00d:${'b'.repeat(40)}`,
                       app: { id: 12345 },
                       status: 'in_progress',
                       conclusion: null,
@@ -671,10 +679,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -725,7 +735,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                   check_runs: [
                     {
                       id: 555,
-                      external_id: 'cafef00d',
+                      external_id: `cafef00d:${'d'.repeat(40)}`,
                       app: { id: 12345 },
                       status: 'in_progress',
                       conclusion: null,
@@ -752,10 +762,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'd'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -806,7 +818,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
                   check_runs: [
                     {
                       id: 556,
-                      external_id: 'cafef00d',
+                      external_id: `cafef00d:${'e'.repeat(40)}`,
                       app: { id: 12345 },
                       status: 'completed',
                       conclusion: 'failure',
@@ -829,10 +841,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'e'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -885,10 +899,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'cafef00d';
       process.env.APP_ID = '12345';
       try {
@@ -937,10 +953,12 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
       const previousEnv = {
         CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        ATTESTATION_SHA: process.env.ATTESTATION_SHA,
         FINGERPRINT: process.env.FINGERPRINT,
         APP_ID: process.env.APP_ID,
       };
       process.env.CANDIDATE_SHA = 'c'.repeat(40);
+      process.env.ATTESTATION_SHA = 'f'.repeat(40);
       process.env.FINGERPRINT = 'deadbeef';
       process.env.APP_ID = '12345';
       try {
@@ -961,8 +979,8 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
       }
       expect(createCalls).toBe(3);
       expect(createArgs?.conclusion).toBe('cancelled');
-      expect(createArgs?.head_sha).toBe('c'.repeat(40));
-      expect(createArgs?.external_id).toBe('deadbeef');
+      expect(createArgs?.head_sha).toBe('f'.repeat(40));
+      expect(createArgs?.external_id).toBe(`deadbeef:${'c'.repeat(40)}`);
     });
   });
 

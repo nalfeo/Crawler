@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import {
   BLOCKED_LABEL,
   LANDED_LABEL,
@@ -229,14 +233,13 @@ export function resolveMergeTrainTokens(environment) {
     environment.MERGE_TRAIN_TOKEN || (!liveActionsRun ? environment.GITHUB_TOKEN || '' : '');
   const workflowDispatchToken =
     environment.GITHUB_TOKEN || (!liveActionsRun ? environment.MERGE_TRAIN_TOKEN || '' : '');
-  const candidatePushToken = liveActionsRun ? environment.GITHUB_TOKEN || '' : '';
   if (!promotionToken) {
     throw new Error('Merge train requires MERGE_TRAIN_TOKEN for promotion operations');
   }
   if (!workflowDispatchToken) {
     throw new Error('Merge train requires GITHUB_TOKEN for workflow dispatch operations');
   }
-  return { promotionToken, workflowDispatchToken, candidatePushToken };
+  return { promotionToken, workflowDispatchToken };
 }
 
 export function mergeTrainGitEnvironment(environment, overrides = {}) {
@@ -266,6 +269,8 @@ export async function dispatchValidationWorkflow({
   owner,
   repo,
   sha,
+  refName,
+  attestationSha,
   fingerprint,
   entries,
 }) {
@@ -278,6 +283,8 @@ export async function dispatchValidationWorkflow({
         ref: 'main',
         inputs: {
           candidate_sha: sha,
+          candidate_ref: refName,
+          attestation_sha: attestationSha,
           fingerprint,
           pr_numbers: entries.map((entry) => entry.number).join(','),
         },
@@ -286,32 +293,31 @@ export async function dispatchValidationWorkflow({
   );
 }
 
-function workflowPushEnvironment(token, environment) {
-  const existingCount = Number.parseInt(environment.GIT_CONFIG_COUNT || '0', 10);
-  if (!Number.isInteger(existingCount) || existingCount < 0) {
-    throw new Error('Workflow candidate push requires a valid GIT_CONFIG_COUNT');
+const CANDIDATE_REF_PREFIX = 'refs/merge-train-candidates/';
+
+function pushCandidateBundle({ baseSha, refName, git }) {
+  const bundleDirectory = mkdtempSync(join(tmpdir(), 'crawler-merge-train-'));
+  const bundlePath = join(bundleDirectory, 'candidate.bundle');
+  try {
+    git(['bundle', 'create', bundlePath, 'HEAD', `^${baseSha}`]);
+    const transportSha = git(['hash-object', '-w', bundlePath]);
+    if (!/^[0-9a-f]{40}$/i.test(transportSha)) {
+      throw new Error('Merge-train candidate transport did not produce a Git blob SHA');
+    }
+    git(['update-ref', refName, transportSha]);
+    git(['push', '--force', 'origin', `${refName}:${refName}`]);
+    return transportSha;
+  } finally {
+    rmSync(bundleDirectory, { recursive: true, force: true });
   }
-  const authorization = Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64');
-  return {
-    GIT_CONFIG_COUNT: String(existingCount + 2),
-    [`GIT_CONFIG_KEY_${existingCount}`]: 'http.https://github.com/.extraheader',
-    [`GIT_CONFIG_VALUE_${existingCount}`]: '',
-    [`GIT_CONFIG_KEY_${existingCount + 1}`]: 'http.https://github.com/.extraheader',
-    [`GIT_CONFIG_VALUE_${existingCount + 1}`]: `AUTHORIZATION: basic ${authorization}`,
-    GIT_TERMINAL_PROMPT: '0',
-  };
 }
 
-export function buildCandidate({
-  baseSha,
-  entries,
-  refName,
-  git,
-  live,
-  githubToken = '',
-  candidatePushToken,
-  environment = process.env,
-}) {
+export function buildCandidate({ baseSha, entries, refName, git, live }) {
+  if (live && !refName.startsWith(CANDIDATE_REF_PREFIX)) {
+    throw new Error(
+      `Live merge-train candidates must use the non-event ref namespace ${CANDIDATE_REF_PREFIX}`,
+    );
+  }
   git(['fetch', 'origin', 'main', '--prune']);
   const candidateRefs = entries.map((entry) => fetchCandidateHead(git, entry));
   git(['checkout', '--detach', baseSha]);
@@ -361,28 +367,7 @@ export function buildCandidate({
   }
   const sha = git(['rev-parse', 'HEAD']);
   if (live) {
-    const workflowToken = candidatePushToken === undefined ? githubToken : candidatePushToken;
-    const workflowPaths = git([
-      'log',
-      '--format=',
-      '--name-only',
-      `${baseSha}..${sha}`,
-      '--',
-      '.github/workflows',
-    ]);
-    if (workflowPaths.trim()) {
-      if (!workflowToken) {
-        throw new Error(
-          'Workflow-bearing merge-train candidates require GITHUB_TOKEN ' +
-            'with contents: write permission to push workflow file changes',
-        );
-      }
-      git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`], {
-        env: workflowPushEnvironment(workflowToken, environment),
-      });
-    } else {
-      git(['push', '--force', 'origin', `${sha}:refs/heads/${refName}`]);
-    }
+    pushCandidateBundle({ baseSha, refName, git });
   }
   return sha;
 }
@@ -1180,13 +1165,15 @@ export function buildDispatchBindings({ request, workflowDispatchToken, owner, r
       trigger,
     });
   }
-  async function dispatchValidation(sha, fingerprint, entries) {
+  async function dispatchValidation(sha, refName, attestationSha, fingerprint, entries) {
     await dispatchValidationWorkflow({
       request,
       token: workflowDispatchToken,
       owner,
       repo,
       sha,
+      refName,
+      attestationSha,
       fingerprint,
       entries,
     });

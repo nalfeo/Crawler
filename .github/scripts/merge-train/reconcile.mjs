@@ -34,6 +34,7 @@ import {
   BLOCKED_LABEL,
   CANDIDATE_CHECK_NAME,
   admissionFingerprint,
+  candidateEvidenceId,
   candidateFingerprint,
   candidateRef,
   hasLeadingMarker,
@@ -60,11 +61,7 @@ import { humanApprovalRejection } from './human-approval.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
-const {
-  promotionToken: token,
-  workflowDispatchToken,
-  candidatePushToken,
-} = resolveMergeTrainTokens(process.env);
+const { promotionToken: token, workflowDispatchToken } = resolveMergeTrainTokens(process.env);
 const enabled = parseEnabledFlag(process.env.MERGE_TRAIN_ENABLED);
 const requiredAdmissionChecks = resolveAdmissionChecks(process.env.MERGE_TRAIN_ADMISSION_CHECKS);
 const trustedAppId = Number.parseInt(process.env.MERGE_TRAIN_APP_ID || '', 10);
@@ -197,7 +194,7 @@ async function eligible(pr) {
 
 async function createTrainCheck(
   sha,
-  fingerprint,
+  evidenceId,
   status,
   conclusion = undefined,
   name = CANDIDATE_CHECK_NAME,
@@ -209,12 +206,12 @@ async function createTrainCheck(
       name,
       head_sha: sha,
       status,
-      external_id: fingerprint,
+      external_id: evidenceId,
       ...(conclusion ? { conclusion } : {}),
       output: {
         title: trainCheckTitle(status, conclusion),
         summary: [
-          `Fingerprint: ${fingerprint}`,
+          `Evidence: ${evidenceId}`,
           `PR order: ${entries.map((entry) => `#${entry.number}`).join(', ') || 'none'}`,
         ].join('\n'),
       },
@@ -296,14 +293,17 @@ async function fetchCommit(sha) {
   return (await request(token, `/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`)).data;
 }
 
-// Publish the fail-closed promotion-postcondition check on the ACTUAL landed
-// commit (or the candidate, if nothing landed). Deliberately named
+// Publish the fail-closed promotion-postcondition check on the current remote
+// main commit. Candidate commits are transported as opaque bundles and are not
+// repository commit objects. Deliberately named
 // PROMOTION_POSTCONDITION_CHECK_NAME, never `merge-train`: a `merge-train`
 // check on a real landed main commit would masquerade as the fast-path
 // attestation ci.yml/mainHealthReason key on.
-async function publishPostconditionCheck(sha, fingerprint, entries) {
+async function publishPostconditionCheck(_sha, fingerprint, entries) {
+  const currentMainSha = (await request(token, `/repos/${owner}/${repo}/git/ref/heads/main`)).data
+    .object.sha;
   await createTrainCheck(
-    sha,
+    currentMainSha,
     fingerprint,
     'completed',
     'failure',
@@ -488,17 +488,25 @@ async function deAdmitNoop(entry, detail) {
   await dispatchRecovery(entry.number, 'merge-train-noop');
 }
 
-async function dispatchValidation(sha, fingerprint, entries) {
-  await createTrainCheck(sha, fingerprint, 'in_progress', undefined, CANDIDATE_CHECK_NAME, entries);
+async function dispatchValidation(sha, refName, fingerprint, entries) {
+  const evidenceId = candidateEvidenceId(fingerprint, sha);
+  await createTrainCheck(
+    mainSha,
+    evidenceId,
+    'in_progress',
+    undefined,
+    CANDIDATE_CHECK_NAME,
+    entries,
+  );
   try {
-    await baseDispatchValidation(sha, fingerprint, entries);
+    await baseDispatchValidation(sha, refName, mainSha, fingerprint, entries);
   } catch (error) {
     // Model a dispatch/API failure (workflow_dispatch rejected, token
     // issue, transient network error) as an infrastructure problem, not a
     // candidate code failure: use `cancelled` so trainCheckState() treats
     // it as retryable ("missing") on the next reconciliation instead of
     // being bisected as if the candidate's code actually failed CI.
-    await createTrainCheck(sha, fingerprint, 'completed', 'cancelled');
+    await createTrainCheck(mainSha, evidenceId, 'completed', 'cancelled');
     throw error;
   }
 }
@@ -576,22 +584,28 @@ const loopResult = await runTrainBuildLoop({
       refName,
       git,
       live: true,
-      candidatePushToken,
     });
+    const transportSha = git(['rev-parse', refName]);
     await removeLabel(train[index].number, BLOCKED_LABEL);
     await removeLabel(train[index].number, VALIDATION_FAILED_LABEL);
-    return { candidateSha, entries, fingerprint, refName };
+    return { candidateSha, transportSha, entries, fingerprint, refName };
   },
   finalizeEntry: async (index, builtEntry) => {
-    git([
-      'fetch',
-      'origin',
-      `${builtEntry.refName}:refs/remotes/origin/${builtEntry.refName}`,
-      '--force',
-    ]);
+    const remoteTransportRef = `refs/remotes/merge-train/candidate-${index + 1}`;
+    git(['fetch', 'origin', `${builtEntry.refName}:${remoteTransportRef}`, '--force']);
+    const fetchedTransportSha = git(['rev-parse', remoteTransportRef]);
+    if (fetchedTransportSha !== builtEntry.transportSha) {
+      throw new Error(
+        `Candidate transport ref changed while building slot ${index + 1}: expected ` +
+          `${builtEntry.transportSha}, fetched ${fetchedTransportSha}`,
+      );
+    }
+    if (git(['cat-file', '-t', remoteTransportRef]) !== 'blob') {
+      throw new Error(`Candidate transport ref for slot ${index + 1} is not a Git blob`);
+    }
     const state = trainCheckState(
-      await checkRuns(builtEntry.candidateSha),
-      builtEntry.fingerprint,
+      await checkRuns(mainSha),
+      candidateEvidenceId(builtEntry.fingerprint, builtEntry.candidateSha),
       trustedAppId,
       new Date(),
     );
@@ -664,8 +678,8 @@ async function promotePrefix(prefixLength, validationIndex) {
     // bisected batch candidate still has terminal SUCCESS evidence.
     verifyCandidateEvidence: async () => {
       const state = trainCheckState(
-        await checkRuns(validationCandidate.candidateSha),
-        validationCandidate.fingerprint,
+        await checkRuns(mainSha),
+        candidateEvidenceId(validationCandidate.fingerprint, validationCandidate.candidateSha),
         trustedAppId,
         new Date(),
       );
@@ -700,6 +714,7 @@ if (plan.action === 'validate') {
     plan.prefixes.map((index) =>
       dispatchValidation(
         candidates[index].candidateSha,
+        candidates[index].refName,
         candidates[index].fingerprint,
         candidates[index].entries,
       ),

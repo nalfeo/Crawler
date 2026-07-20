@@ -7,6 +7,14 @@ on:
         description: Immutable candidate commit to validate
         required: true
         type: string
+      candidate_ref:
+        description: Opaque custom ref containing the candidate Git bundle blob
+        required: true
+        type: string
+      attestation_sha:
+        description: Main commit that receives the fingerprinted validation check
+        required: true
+        type: string
       fingerprint:
         description: Queue generation fingerprint
         required: true
@@ -35,12 +43,18 @@ jobs:
     steps:
       - name: Start job timing
         run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - name: Check out immutable candidate
+      - name: Check out trusted candidate materializer
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.candidate_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Materialize immutable candidate
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/merge-train/materialize-candidate.sh
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -72,12 +86,18 @@ jobs:
     steps:
       - name: Start job timing
         run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - name: Check out immutable candidate
+      - name: Check out trusted candidate materializer
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.candidate_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Materialize immutable candidate
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/merge-train/materialize-candidate.sh
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -109,12 +129,18 @@ jobs:
     steps:
       - name: Start job timing
         run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - name: Check out immutable candidate
+      - name: Check out trusted candidate materializer
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.candidate_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Materialize immutable candidate
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/merge-train/materialize-candidate.sh
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -152,12 +178,18 @@ jobs:
     steps:
       - name: Start job timing
         run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - name: Check out immutable candidate
+      - name: Check out trusted candidate materializer
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.candidate_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Materialize immutable candidate
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/merge-train/materialize-candidate.sh
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -185,12 +217,18 @@ jobs:
     steps:
       - name: Start job timing
         run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
-      - name: Check out immutable candidate
+      - name: Check out trusted candidate materializer
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.candidate_sha }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Materialize immutable candidate
+        env:
+          CANDIDATE_REF: ${{ inputs.candidate_ref }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/merge-train/materialize-candidate.sh
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -233,6 +271,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          ATTESTATION_SHA: ${{ inputs.attestation_sha }}
           FINGERPRINT: ${{ inputs.fingerprint }}
           PR_NUMBERS: ${{ inputs.pr_numbers }}
           VALIDATION_RESULTS: ${{ toJSON(needs) }}
@@ -246,6 +285,7 @@ jobs:
             // infrastructure/scheduling outcome and remains retryable via `cancelled`.
             const expectedJobs = ['static', 'unit-tests', 'sprite-tests', 'health', 'security'];
             const needs = JSON.parse(process.env.VALIDATION_RESULTS ?? '{}');
+            const evidenceId = `${process.env.FINGERPRINT}:${process.env.CANDIDATE_SHA}`;
             const results = expectedJobs.map((name) => ({
               name,
               result: needs[name]?.result ?? 'skipped',
@@ -265,10 +305,10 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               name: 'merge-train-candidate',
-              head_sha: process.env.CANDIDATE_SHA,
+              head_sha: process.env.ATTESTATION_SHA,
               status: 'completed',
               conclusion,
-              external_id: process.env.FINGERPRINT,
+              external_id: evidenceId,
               output: {
                 title,
                 summary: `PR order: ${process.env.PR_NUMBERS}\nFingerprint: ${process.env.FINGERPRINT}\nCandidate jobs: ${resultSummary}`,
@@ -427,23 +467,25 @@ jobs:
         uses: actions/github-script@v7
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          ATTESTATION_SHA: ${{ inputs.attestation_sha }}
           FINGERPRINT: ${{ inputs.fingerprint }}
           APP_ID: ${{ secrets.APP_ID }}
         with:
           github-token: ${{ steps.recovery-app-token.outputs.token }}
           script: |
+            const evidenceId = `${process.env.FINGERPRINT}:${process.env.CANDIDATE_SHA}`;
             const findMatch = async () => {
               const { data: existing } = await github.rest.checks.listForRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: process.env.CANDIDATE_SHA,
+                ref: process.env.ATTESTATION_SHA,
                 check_name: 'merge-train-candidate',
                 per_page: 100,
               });
               const trustedAppId = Number(process.env.APP_ID);
               const matching = (existing.check_runs ?? []).filter(
                 (run) =>
-                  run.external_id === process.env.FINGERPRINT &&
+                  run.external_id === evidenceId &&
                   Number(run.app?.id) === trustedAppId,
               );
               // Select the highest-ID (authoritative, per trainCheckState())
@@ -488,10 +530,10 @@ jobs:
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   name: 'merge-train-candidate',
-                  head_sha: process.env.CANDIDATE_SHA,
+                  head_sha: process.env.ATTESTATION_SHA,
                   status: 'completed',
                   conclusion: 'cancelled',
-                  external_id: process.env.FINGERPRINT,
+                  external_id: evidenceId,
                   output: {
                     title: 'Merge-train candidate validation was not completed (token mint or result publication failed)',
                     summary:

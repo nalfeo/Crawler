@@ -118,7 +118,17 @@ export function candidateRef(slot, fingerprint) {
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
     throw new Error('Candidate fingerprint must be a SHA-256 hex digest');
   }
-  return `merge-train/candidate-${slot}-${fingerprint.slice(0, 16)}`;
+  return `refs/merge-train-candidates/candidate-${slot}-${fingerprint.slice(0, 16)}`;
+}
+
+export function candidateEvidenceId(fingerprint, candidateSha) {
+  if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
+    throw new Error('Candidate fingerprint must be a SHA-256 hex digest');
+  }
+  if (!/^[0-9a-f]{40}$/i.test(candidateSha)) {
+    throw new Error('Candidate evidence requires a Git commit SHA');
+  }
+  return `${fingerprint}:${candidateSha.toLowerCase()}`;
 }
 
 export function admissionFingerprint({

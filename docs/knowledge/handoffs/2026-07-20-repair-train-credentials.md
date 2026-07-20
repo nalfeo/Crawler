@@ -25,34 +25,36 @@ pushes in runs `29721471552` and `29721756406` failed because the repository
 GitHub App token cannot create or update a ref containing workflow changes without
 GitHub's workflow-write permission.
 
-`actions/checkout` persists the App credential as an `http.extraheader`. Adding a
-second authorization header is insufficient because Git treats that setting as
-multi-valued. More importantly, a PAT-authenticated push would emit a trusted
-`push` event: a queued PR could add a workflow matching `merge-train/**` and run
-it with repository secrets before validation. Workflow-bearing candidate pushes
-therefore require the recursion-suppressed `GITHUB_TOKEN`, never a PAT or App
-token.
+The initial PAT design was unsafe because a branch push would emit a trusted
+`push` event, allowing queued workflow code to run with repository secrets before
+candidate validation. The recursion-suppressed `GITHUB_TOKEN` design was also
+non-viable because GitHub blocks it from creating a branch containing workflow
+changes. Candidate transport therefore moved out of branch and tag namespaces
+entirely.
 
 ## What changed
 
-- Candidate construction detects workflow-file changes across every commit in
-  `baseSha..candidateSha`, including an edit followed by a later queued revert.
-- Ordinary candidate pushes remain on the existing checkout/App credential.
-- Workflow-bearing live candidate pushes use the workflow's `GITHUB_TOKEN` with
-  `contents: write`; GitHub suppresses recursive workflow runs created by this
-  credential.
-- The token is applied only to the candidate-ref Git child by process-local Git
-  configuration: an empty `http.extraheader` resets the App authorization before
-  the `GITHUB_TOKEN` authorization entry.
-- Existing `GIT_CONFIG_*` entries are preserved and the controller appends its two
-  entries after the existing index space.
+- Every candidate is packaged as a thin Git bundle, stored as an opaque blob, and
+  pushed to an immutable custom ref under `refs/merge-train-candidates/**`.
+- Custom refs do not emit branch/tag `push` or `create` events, so workflow-bearing
+  candidate commits cannot execute before explicit SHA-bound validation. Because
+  the ref points to a blob rather than the candidate commit, GitHub also does not
+  evaluate bundled workflow paths during the App-authenticated ref update.
+- Candidate pushes remain on the existing trusted checkout/App credential; no PAT
+  or built-in `GITHUB_TOKEN` override is used.
+- Live construction rejects any candidate destination outside the custom namespace
+  before running a Git command.
+- Read-only validation fetches the blob, verifies and imports the bundle, and
+  checks the materialized commit against the dispatched candidate SHA before
+  running candidate code. Checks attach to the trusted `main` commit with an
+  external ID that binds the queue fingerprint and exact candidate SHA.
 - The legacy workflow-token environment variable is removed from every Git child
-  environment, and the selected token never appears in arguments, remote URLs,
-  status output, or errors.
-- A missing token fails before candidate-ref mutation. An insufficient token remains
-  a retryable candidate-build failure; validation and promotion do not proceed.
-- The merge-train guide documents the recursion-suppressed credential boundary and
-  protected bootstrap blocker.
+  environment, and secrets never appear in arguments, remote URLs, status output,
+  or errors.
+- A denied custom-ref push remains a retryable candidate-build failure; validation
+  and promotion do not proceed.
+- The merge-train guide documents the custom-ref trust boundary and protected
+  bootstrap blocker.
 
 ## Safety invariants
 
@@ -60,42 +62,41 @@ token.
 - Branch protection, admission checks, candidate validation, and promotion are not
   weakened or bypassed.
 - No direct merge, queue reorder, admin bypass, or fallback credential is added.
-- PAT and App credentials are forbidden for workflow-bearing candidate pushes
-  because they can trigger unvalidated candidate workflows.
+- Candidate transport cannot target a branch or tag namespace.
 
 ## Deterministic coverage
 
-- Ordinary candidates keep the App credential path.
-- Workflow-bearing candidates select `GITHUB_TOKEN` regardless of any legacy PAT
-  environment variable.
-- Missing `GITHUB_TOKEN` fails before ref mutation.
+- Ordinary and workflow-bearing candidates use the same custom-ref/App path.
+- Branch and tag destinations fail before any Git command.
+- Transport creation uses a thin bundle, a blob object, and an immutable
+  fingerprinted custom ref; validation rejects non-blob refs and SHA mismatches.
 - Secrets are absent from Git arguments, URLs, errors, status output, and inherited
   Git environments.
-- Existing command-scoped Git configuration is preserved.
-- Reverted workflow edits remain workflow-bearing because the full commit range is
-  inspected.
 - FIFO and immutable-ref behavior remains covered by the merge-train suite.
-- The full merge-train script suite passes 195/195. Workflow tests and
-  `verify:fast` pass.
+- Focused merge-train, workflow contract, and fast verification results are recorded
+  in the implementation session.
 
 ## Runtime observation
 
 Before the repair, live Merge Train runs `29721471552` and `29721756406` rejected
-the workflow-containing candidate ref. After the repair, deterministic controller
-execution reaches the credential-selected candidate push while preserving
-validation and promotion gates. Live after-observation is intentionally pending: #1694 is still the FIFO leader,
-and its workflow-bearing candidate fails before this repair behind it can execute,
-so the currently deployed controller cannot reach the repair's own push.
+the workflow-containing branch candidate. Deterministic controller coverage now
+proves all candidates use non-event custom refs while preserving validation and
+promotion gates. A disposable production-repository probe successfully pushed,
+fetched, type-checked, and deleted a blob-only custom ref. Live candidate
+after-observation remains pending until this repair is bootstrapped ahead of FIFO
+leader #1694.
 
 ## Review harness
 
 - Plan review: `claude-sonnet-4.6`, six concerns resolved,
-  `plan_divergence: minor`.
+  `plan_divergence: major_fork` after both branch-credential designs were
+  invalidated and replaced by opaque bundle transport.
 - Code review round 1 found two related Git-environment concerns; both were fixed.
-- Code review round 2 was clean.
-- Post-publication review found the PAT-triggered workflow execution boundary.
-  `claude-sonnet-4.6` and `gpt-5.6-luna` validated it; the repair now uses only
-  recursion-suppressed `GITHUB_TOKEN` for workflow-bearing candidate pushes.
+- Final bundle-transport review found and fixed an argv credential exposure and
+  stale workflow-contract assertions; the affected tests are clean.
+- Post-publication review found the PAT-triggered workflow execution boundary and
+  the built-in `GITHUB_TOKEN` workflow-write limitation. The final design uses
+  non-event custom refs with no candidate credential override.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-20-repair-train-credentials.review-ledger.json`.
 

@@ -72,17 +72,26 @@ candidate SHA, and state.
   `merge-train` context is written by trusted reconciliation immediately before
   promotion.
 - Fork PRs are ineligible.
-- Candidate branches are immutable and named by their complete queue
-  fingerprint. Reconciliation always reconstructs their expected SHA from
-  trusted queue metadata and overwrites the ref; a pre-existing ref is never
-  trusted.
-- Ordinary candidate refs are pushed with the repository App credential.
-  Candidates whose commit range changes `.github/workflows/**` are pushed with
-  the recursion-suppressed built-in `GITHUB_TOKEN` (`contents: write`). GitHub
-  suppresses new workflow runs triggered by `GITHUB_TOKEN` pushes, so unvalidated
-  candidate workflow files cannot execute with repository secrets before
-  validation completes. A PAT or App token must not be substituted: those pushes
-  generate real push events that can trigger an unvalidated candidate workflow.
+- Candidate refs are immutable, named by their complete queue fingerprint, and
+  stored under `refs/merge-train-candidates/**`. Each ref points to an opaque Git
+  blob containing a thin bundle of the exact candidate commit, not to the commit
+  itself. GitHub therefore never evaluates the bundled `.github/workflows/**`
+  paths during ref mutation. The refs are also outside `refs/heads/**` and
+  `refs/tags/**`, so creating or updating one cannot emit a branch/tag `push` or
+  `create` event that executes unvalidated candidate workflow files.
+- Read-only validation fetches the blob ref, verifies its object type, verifies
+  and imports the bundle, and rejects any materialized commit whose SHA differs
+  from the trusted dispatch input. Fingerprinted check evidence is attached to
+  the trusted `main` commit because the candidate commit remains outside GitHub's
+  repository object graph. Its external ID binds both the complete queue
+  fingerprint and exact candidate SHA, so a manual validation dispatch cannot
+  substitute a different passing bundle. Reconciliation reconstructs the full
+  candidate locally before every decision and never trusts a pre-existing
+  transport ref.
+- All candidate refs use the repository App credential persisted by the trusted
+  checkout. No PAT or `GITHUB_TOKEN` credential override is used for candidate
+  transport. Validation remains an explicit trusted dispatch bound to the
+  immutable candidate SHA.
 - Every promotion re-reads the PR and `main`; stale state fails closed.
 
 ## Required repository configuration
@@ -131,13 +140,12 @@ Before live mode:
    create/update rulesets via `POST`/`PUT .../rulesets` -- without it, `enable`
    fails with `403` even though every other prerequisite in this checklist is
    satisfied).
-4. Keep `contents: write` on the trusted Merge Train workflow's `GITHUB_TOKEN`.
-   Workflow-bearing candidate refs use this token because GitHub suppresses
-   recursive workflow runs for events created by `GITHUB_TOKEN`; a PAT or App
-   token must not be substituted because its push could execute an unvalidated
-   candidate workflow with repository secrets.
-   A missing or insufficient token fails before candidate-ref mutation and
-   leaves the candidate build retryable.
+4. Keep candidate transport as bundle blobs under
+   `refs/merge-train-candidates/**`; never point those refs at candidate commits
+   or move them into `refs/heads/**` or `refs/tags/**`. The trusted repository App
+   needs Contents write access for blob-ref transport, while the workflow's
+   built-in `GITHUB_TOKEN` remains `contents: read` and is used to fetch the
+   opaque blob and dispatch trusted validation, not to push candidate commits.
 5. Keep force-pushes to `main` disabled (unchanged, still enforced by classic
    protection). Promotion no longer pushes `main` directly at all -- it uses
    GitHub's own squash-merge API, one PR at a time.
@@ -347,14 +355,15 @@ repaired `main`.
 status --app-id <APP_ID>` and verify `classic.requiredStatusChecksDisabled`
   is `true` and `ruleset.problems` is empty. Never merge the PR through the
   ordinary squash path to work around this failure.
-- **Workflow-candidate push denied:** confirm the trusted Merge Train workflow
-  grants its `GITHUB_TOKEN` `contents: write`.
-  Never substitute a PAT or App token: those pushes can trigger an unvalidated
-  candidate workflow with repository secrets. A repair that adds the missing
-  permission cannot bootstrap through the deployed App path that is already
-  blocked from pushing its workflow-bearing candidate. Do not directly merge,
-  reorder FIFO, or bypass protection; stop for explicit authorization of the
-  documented protected emergency lane.
+- **Candidate custom-ref push denied:** confirm the trusted repository App still
+  has Contents write access and the destination starts with
+  `refs/merge-train-candidates/`, then confirm the local source ref resolves to a
+  Git `blob`. Never fall back to pushing the candidate commit itself or to a branch
+  or tag ref: commit transport reintroduces workflow-write permission, and
+  branch/tag namespaces can execute unvalidated candidate workflows. A repair
+  that changes the transport cannot bootstrap through the deployed controller
+  already blocked on the FIFO leader; use only the documented protected emergency
+  lane.
 - **Main-health deadlock:** every hourly full-CI run for the current `main` SHA
   is red (or missing/pending), so `mainHealthAllowsPromotion()` pauses all
   promotion, including the repair PR's own. This is the one case where the
