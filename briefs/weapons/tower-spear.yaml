@@ -1,0 +1,23 @@
+type: weapon
+name: tower-spear
+description: |
+  A tower spear held perfectly vertical, blade at the top and butt at the
+  bottom. Long polearm — the full height of the sprite. The blade is a broad
+  steel leaf-point: double-edged, widening from the very tip down to a
+  shoulder at about one-quarter from the top, then tapering back to the
+  shaft. Just below the blade shoulder, two short lugs or cross-guard
+  wings jut sideways. Long straight wooden shaft below the guard — visible
+  grain and slight wear. Near the bottom, a wrapped leather grip section
+  with a simple band above it. The very bottom ends in a blunt iron butt
+  cap. Steel blade in cool grey with a thin highlight edge; dark near-black
+  outline; earthy brown shaft; slightly lighter grip wrapping. No glow,
+  no enchantment, no blood, no scabbard. Silhouette must read as a
+  polearm / spear at a glance — not a sword or staff.
+# Vertical orientation (default for weapons). 4×4 sheet, 64×64 output,
+# palette, anchor, references — all inherited from data/sprite-types/weapon.json.
+# The brief overrides nothing except the description.
+variations:
+  - serpent-head finial instead of plain leaf blade, forked tongue tip
+  - blade has a single blood groove (fuller) running down the center
+  - ornate engraved guard wings with a tower motif
+minVariations: 3
