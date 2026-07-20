@@ -56,6 +56,8 @@
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
     "sprites:gallery": "tsx scripts/sprites/sidecar/launcher.ts",
+    "sprites:sidecar:ensure": "tsx scripts/sprites/sidecar/service-cli.ts ensure",
+    "sprites:sidecar:stop": "tsx scripts/sprites/sidecar/service-cli.ts stop",
     "sprites:approve": "tsx scripts/sprites/approve-cli.ts",
     "sprites:checkin": "tsx scripts/sprites/checkin-cli.ts",
     "sprites:asset-pr": "tsx scripts/sprites/asset-pr-cli.ts",

@@ -120,3 +120,28 @@ test('the client script is template-literal-free (no un-escaped ${} interpolatio
   // an interpolation leaked into the emitted document.
   assert.ok(!renderHtml('x').includes('${'));
 });
+
+test('renderDegrade with state=starting shows "Starting sprite service" panel', () => {
+  const html = renderHtml('x');
+  // The renderDegrade function is inline in the client script; check that the
+  // starting-state branch and its text are present in the generated document.
+  assert.ok(html.includes("su.state === 'starting'"));
+  assert.ok(html.includes('Starting sprite service'));
+});
+
+test('renderDegrade with error state shows error message and logPath', () => {
+  const html = renderHtml('x');
+  // The error branch must reference su.error and su.logPath.
+  assert.ok(html.includes('su.error'));
+  assert.ok(html.includes('su.logPath'));
+  assert.ok(html.includes('Sprite service unavailable'));
+});
+
+test('app_showDegrade receives startup from payload and passes to renderDegrade', () => {
+  const html = renderHtml('x');
+  // The reload() .then handler must extract sidecarStartup from payload and pass it.
+  assert.ok(html.includes('payload.sidecarStartup'));
+  // app_showDegrade must accept startup as first param and pass it to renderDegrade.
+  assert.match(html, /function app_showDegrade\(startup, errorText\)/);
+  assert.match(html, /renderDegrade\(startup\)/);
+});

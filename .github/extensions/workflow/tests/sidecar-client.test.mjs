@@ -23,6 +23,7 @@ import {
 } from '../lib/sidecar-client.mjs';
 
 const BASE = 'http://127.0.0.1:3999';
+const EXPECTED_VERSION = '0.3.0-managed';
 
 function jsonResponse(body, ok = true, status = 200) {
   return {
@@ -130,4 +131,41 @@ test('acceptVariant surfaces the sidecar error code and actionable message', asy
     (error) =>
       error.code === 'gh-failed' && error.status === 502 && /gh auth login/.test(error.message),
   );
+});
+
+test('probeHealth stays down for a stale sidecar version', async () => {
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    workspaceRoot: '/repo/a',
+    fetchImpl: async () =>
+      jsonResponse({
+        status: 'ok',
+        repoRoot: '/repo/a',
+        version: '0.2.0-workflow',
+        queueBackend: 'azure-queue',
+        worker: { running: true },
+        issueIngester: { running: true },
+      }),
+  });
+  const health = await client.probeHealth();
+  assert.equal(health.state, 'down');
+});
+
+test('probeHealth reports up for the current managed sidecar version', async () => {
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    workspaceRoot: '/repo/a',
+    fetchImpl: async () =>
+      jsonResponse({
+        status: 'ok',
+        repoRoot: '/repo/a',
+        version: EXPECTED_VERSION,
+        queueBackend: 'azure-queue',
+        worker: { running: true },
+        issueIngester: { running: true },
+      }),
+  });
+  const health = await client.probeHealth();
+  assert.equal(health.state, 'up');
+  assert.equal(health.version, EXPECTED_VERSION);
 });

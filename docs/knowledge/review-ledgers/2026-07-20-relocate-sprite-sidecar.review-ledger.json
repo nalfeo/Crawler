@@ -1,0 +1,60 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "relocate-sprite-sidecar",
+  "task_title": "Relocate sprite sidecar lifecycle into shared extension supervisor",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Rejected extension-owned child lifecycle. Alt A repo-scoped ensure manager adopted: one atomic registry/lock and one launch path shared by canvases, sprites:run, and sprites:gallery. Alt B single host extension rejected because existing canvases are independent processes and consolidation would expand UI scope. Alt C sidecar-only singletonization partially adopted through token provenance and managed shutdown, but callers still need a common ensure command. Revised plan adds canonical repo identity, token-authenticated provenance, strict worker/ingester readiness, immediate degraded canvas paint followed by hydration, bounded sanitized logs, cross-process/race/crash/wrong-repo/stale/bootstrap coverage, and persistent worktree-scoped lifecycle with explicit stop/stale replacement rather than per-canvas ownership."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 6,
+          "valid_count": 5,
+          "resolved_count": 5,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 10,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

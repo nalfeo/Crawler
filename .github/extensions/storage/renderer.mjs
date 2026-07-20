@@ -203,7 +203,7 @@ const CLIENT_SCRIPT = String.raw`
     if (deleteBtn) deleteBtn.disabled = !up;
   }
 
-  function renderDegrade() {
+  function renderDegrade(startup) {
     var state = health && health.state ? health.state : 'down';
     if (state === 'wrong-repo') {
       return h('div', { class: 'panel warn' }, [
@@ -217,11 +217,25 @@ const CLIENT_SCRIPT = String.raw`
           ['Restart the sidecar from THIS worktree: ', h('code', { text: 'npm run sprites:gallery' })])
       ]);
     }
-    return h('div', { class: 'panel warn' }, [
-      h('div', { class: 'section-title', text: 'Sprite sidecar not running' }),
-      h('div', null, ['Storage lifecycle needs the sprite sidecar. Start it, then Refresh:']),
-      h('div', { style: { marginTop: '8px' } }, [h('code', { text: 'npm run sprites:gallery' })])
-    ]);
+    var su = startup || {};
+    if (su.state === 'starting') {
+      return h('div', { class: 'panel warn' }, [
+        h('div', { class: 'section-title', text: 'Starting sprite service\u2026' }),
+        h('div', null, ['The repo-scoped service is starting. Refresh in a moment.'])
+      ]);
+    }
+    var errMsg = su.error || 'The managed sprite service is unavailable.';
+    var children = [
+      h('div', { class: 'section-title', text: 'Sprite service unavailable' }),
+      h('div', null, [errMsg])
+    ];
+    if (su.logPath) {
+      children.push(h('div', { class: 'muted', style: { marginTop: '6px' } },
+        ['Log: ', h('code', { text: su.logPath })]));
+    }
+    children.push(h('div', { style: { marginTop: '8px' } },
+      ['Start manually: ', h('code', { text: 'npm run sprites:gallery' })]));
+    return h('div', { class: 'panel warn' }, children);
   }
 
   var byRunIdDesc = function (a, b) { return a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0; };
@@ -382,7 +396,8 @@ const CLIENT_SCRIPT = String.raw`
         updateHealthUI();
         if (health.state !== 'up') {
           currentRuns = [];
-          app_showDegrade(payload && payload.error);
+          var startup = payload && payload.sidecarStartup ? payload.sidecarStartup : null;
+          app_showDegrade(startup, payload && payload.error);
           return;
         }
         currentRuns = payload && Array.isArray(payload.runs) ? payload.runs : [];
@@ -398,12 +413,12 @@ const CLIENT_SCRIPT = String.raw`
       });
   }
 
-  function app_showDegrade(errorText) {
+  function app_showDegrade(startup, errorText) {
     var frag = document.createDocumentFragment();
     if (errorText) frag.appendChild(h('div', { class: 'panel error', style: { marginBottom: '10px' }, text: errorText }));
-    frag.appendChild(renderDegrade());
+    frag.appendChild(renderDegrade(startup));
     listHost.replaceChildren(frag);
-    statusEl.textContent = 'Sidecar unavailable — start it and Refresh.';
+    statusEl.textContent = 'Sidecar unavailable \u2014 start it and Refresh.';
   }
 
   // --- DESTRUCTIVE ops — EXACT monolith confirm/status UX, token-guarded. ---

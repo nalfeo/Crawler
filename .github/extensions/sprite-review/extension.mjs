@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { createCanvas, CanvasError, joinSession } from '@github/copilot-sdk/extension';
 
 import { startCanvasServer } from './lib/canvas-harness.mjs';
+import { beginSpriteSidecarStartup } from '../shared/sprite-sidecar-service.mjs';
 import { createImageCache, resolveExtCacheDir } from './lib/image-cache.mjs';
 import { renderHtml } from './renderer.mjs';
 import {
@@ -109,7 +110,7 @@ async function buildState(instanceId) {
 
   const health = await entry.client.probeHealth();
   if (health.state !== 'up') {
-    return { health, baseUrl };
+    return { health, baseUrl, sidecarStartup: entry.sidecarStartup };
   }
 
   let runs = [];
@@ -325,6 +326,7 @@ async function startServerForInstance(ctx) {
       runId: typeof input.runId === 'string' ? input.runId : null,
     },
     selected: null,
+    sidecarStartup: { state: 'starting', error: null, logPath: null },
     pushState: async () => {},
     close: async () => {},
   };
@@ -344,6 +346,7 @@ async function startServerForInstance(ctx) {
   // missing entry, so an early /api/state request degrades cleanly rather than
   // observing a half-initialized entry.
   instances.set(ctx.instanceId, entry);
+  beginSpriteSidecarStartup(entry);
   log(`serving instance ${ctx.instanceId} at ${server.url} (sidecar ${baseUrl})`);
   return entry;
 }
