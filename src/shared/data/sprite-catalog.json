@@ -3145,5 +3145,18 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:cactusfolk-boss-v1-var-3",
+    "kind": "sprite",
+    "label": "cactusfolk-boss-v1-var-3",
+    "description": "Generated sprite from brief: cactusfolk-boss-v1.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "cactusfolk-boss-v1-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/cactusfolk-boss-v1-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
