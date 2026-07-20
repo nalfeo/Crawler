@@ -130,15 +130,25 @@ async function writeCachedJson(store: RunStore, key: string, value: unknown): Pr
   await store.setCachedResource(key, Buffer.from(JSON.stringify(value), 'utf8'));
 }
 
+async function writeCachedJsonIfAbsent(
+  store: RunStore,
+  key: string,
+  value: unknown,
+): Promise<void> {
+  if (!hasDerivedResourceCache(store)) return;
+  await store.setIfAbsentCachedResource(key, Buffer.from(JSON.stringify(value), 'utf8'));
+}
+
 /**
  * Cache key prefix for per-run immutable brief snapshots. Unlike path-level
  * durable keys (`workflow-state/briefs/…`), per-run snapshots capture exactly
  * the brief that was active when the run was generated. They survive global
  * cache invalidation (their key sits outside the `route/` namespace) but are
- * cleared when the run itself is deleted (`invalidateDerivedResources` removes
- * them on `summary.json` removal). See `server.ts` brief and slice-map routes.
+ * cleared when the run itself is deleted (CachingRunStore.remove removes them
+ * on `summary.json` deletion). See `server.ts` brief and slice-map routes.
  */
 const PER_RUN_BRIEF_PREFIX = 'brief-snapshot';
+const PER_RUN_SLICE_MAP_FINGERPRINT_PREFIX = 'slice-map-fingerprint';
 
 /** Read the per-run brief snapshot bytes, or null if not yet stored. */
 async function readPerRunBrief(
@@ -163,6 +173,33 @@ async function writePerRunBrief(
 ): Promise<void> {
   if (!hasDerivedResourceCache(store)) return;
   await store.setIfAbsentCachedResource(`${PER_RUN_BRIEF_PREFIX}/${briefId}/${runId}`, yamlBytes);
+}
+
+async function readPerRunSliceMapFingerprint(
+  store: RunStore,
+  briefId: string,
+  runId: string,
+): Promise<string | null> {
+  if (!hasDerivedResourceCache(store)) return null;
+  const bytes = await store.getCachedResource(
+    `${PER_RUN_SLICE_MAP_FINGERPRINT_PREFIX}/${briefId}/${runId}`,
+  );
+  if (bytes === null) return null;
+  const value = bytes.toString('utf8').trim();
+  return value.length > 0 ? value : null;
+}
+
+async function writePerRunSliceMapFingerprint(
+  store: RunStore,
+  briefId: string,
+  runId: string,
+  fingerprint: string,
+): Promise<void> {
+  if (!hasDerivedResourceCache(store)) return;
+  await store.setIfAbsentCachedResource(
+    `${PER_RUN_SLICE_MAP_FINGERPRINT_PREFIX}/${briefId}/${runId}`,
+    Buffer.from(fingerprint, 'utf8'),
+  );
 }
 
 export interface SidecarDeps {
@@ -1043,27 +1080,29 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         (typeof requestedSheet === 'string' && requestedSheet.length > 0
           ? requestedSheet
           : 'latest');
-      // Versioned fallback key: appends SLICE_MAP_SCHEMA_VERSION as a colon-separated
-      // qualifier so a cross-worktree cache read never serves a response produced by a
-      // different version of computeSliceMap. The route prefix stays the same, so
-      // removeByPrefix-based invalidation in CachingRunStore still covers every version.
-      // Bump SLICE_MAP_SCHEMA_VERSION whenever computeSliceMap logic or its response
-      // schema changes.
-      const versionedFallbackKey = `${routeCacheKey}:${SLICE_MAP_SCHEMA_VERSION}`;
+      const storedPerRunFingerprint =
+        briefGenFingerprint === null
+          ? await readPerRunSliceMapFingerprint(store, briefId, runId)
+          : null;
+      const effectiveFingerprint = briefGenFingerprint ?? storedPerRunFingerprint;
+      // Per-run fallback key for source-less readers that still have no persisted
+      // fingerprint (legacy warmed runs). It is immutable (set-if-absent) so
+      // cross-worktree recomputes cannot overwrite the first warmed snapshot.
+      const perRunFallbackKey = `${routeCacheKey}:${SLICE_MAP_SCHEMA_VERSION}:run-snapshot`;
       // Primary key: schema version + brief-generation fingerprint for full coherence.
-      // Fallback key: schema version only, for offline reads where the brief cannot
-      // be reloaded (source tree absent in a different worktree).
+      // Fallback key: immutable per-run snapshot for offline reads where the brief
+      // fingerprint cannot be recomputed (source tree absent in a different worktree).
       const responseCacheKey =
-        briefGenFingerprint !== null
-          ? `${versionedFallbackKey}:${briefGenFingerprint}`
-          : versionedFallbackKey;
+        effectiveFingerprint !== null
+          ? `${routeCacheKey}:${SLICE_MAP_SCHEMA_VERSION}:${effectiveFingerprint}`
+          : perRunFallbackKey;
 
       // Try the primary (fingerprinted+versioned) key first.
       let cachedResponse = await readCachedJson(store, responseCacheKey);
-      // Offline fallback: brief loading failed so fingerprint is unavailable;
-      // try the versioned key written by an online worktree.
-      if (cachedResponse === null && briefGenFingerprint === null) {
-        cachedResponse = await readCachedJson(store, versionedFallbackKey);
+      // Offline fallback: no fingerprint could be loaded/recovered; try the
+      // immutable per-run key warmed by an online worktree.
+      if (cachedResponse === null && effectiveFingerprint === null) {
+        cachedResponse = await readCachedJson(store, perRunFallbackKey);
       }
       if (cachedResponse !== null) return cachedResponse;
 
@@ -1108,15 +1147,16 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           emptyCellsApplied: brief !== null,
         };
         // Only cache when the brief loaded successfully (brief !== null), so
-        // a brief-less response (loadBrief failed due to missing type-defaults
-        // or palette) is never stored as the canonical shared snapshot.
-        // Write to BOTH the primary (versioned+fingerprinted) key and the
-        // versioned fallback key (no fingerprint, for offline worktrees without
-        // source files where the fingerprint cannot be recomputed on read).
-        if (durableBriefMatches && brief !== null && briefGenFingerprint !== null) {
+        // a brief-less response is never stored as the canonical snapshot.
+        // A per-run immutable brief snapshot is authoritative even when the
+        // current worktree file has changed since run generation.
+        const hasPerRunSnapshot = perRunSnapshotBytes !== null;
+        const briefProvenanceTrusted = hasPerRunSnapshot || durableBriefMatches;
+        if (briefProvenanceTrusted && brief !== null && briefGenFingerprint !== null) {
           await Promise.all([
             writeCachedJson(store, responseCacheKey, response),
-            writeCachedJson(store, versionedFallbackKey, response),
+            writePerRunSliceMapFingerprint(store, briefId, runId, briefGenFingerprint),
+            writeCachedJsonIfAbsent(store, perRunFallbackKey, response),
           ]);
         }
         return response;

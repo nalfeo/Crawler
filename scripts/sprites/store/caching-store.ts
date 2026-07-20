@@ -127,7 +127,10 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
       // Authoritative write first; only mirror into the cache once it succeeds.
       await this.inner.put(key, data);
       if (this.shouldCache(key)) {
-        await this.cache.set(`${BLOB_PREFIX}${key}`, data);
+        const cacheKey = `${BLOB_PREFIX}${key}`;
+        this.cache.bumpMutationToken(cacheKey);
+        const cacheWriteOk = await this.cache.set(cacheKey, data);
+        if (!cacheWriteOk) this.cache.bumpMutationToken(cacheKey);
       }
       // A new/changed blob may change what listings return — invalidate snapshots.
       this.cache.bumpEpoch();
@@ -148,14 +151,16 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
       if (this.offline) throw new StoreNotFoundError(key);
       return this.inner.get(key);
     }
-    const hit = await this.cache.get(`${BLOB_PREFIX}${key}`);
+    const cacheKey = `${BLOB_PREFIX}${key}`;
+    const hit = await this.cache.get(cacheKey);
     if (hit !== null) return hit.data;
     if (this.offline) throw new StoreNotFoundError(key);
+    const expectedMutationToken = this.cache.readMutationToken(cacheKey);
     const data = await this.inner.get(key);
     // Use setIfAbsent for read-through fills: if a concurrent put already
     // cached the authoritative value for this key (same or cross instance),
     // do not overwrite it with this potentially stale fill.
-    await this.cache.setIfAbsent(`${BLOB_PREFIX}${key}`, data);
+    await this.cache.setIfAbsent(cacheKey, data, undefined, expectedMutationToken);
     return data;
   }
 
@@ -199,9 +204,17 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     // Invalidate first so an inner-remove failure never leaves a stale hit that
     // outlives the authoritative delete.
     if (this.shouldCache(key)) {
-      await this.cache.remove(`${BLOB_PREFIX}${key}`);
+      const cacheKey = `${BLOB_PREFIX}${key}`;
+      const cacheInvalidateOk = await this.cache.remove(cacheKey);
+      if (!cacheInvalidateOk) this.cache.bumpMutationToken(cacheKey);
     }
     await this.inner.remove(key);
+    if (this.shouldCache(key)) {
+      const cacheKey = `${BLOB_PREFIX}${key}`;
+      this.cache.bumpMutationToken(cacheKey);
+      await this.cache.remove(cacheKey);
+    }
+    await this.removePerRunSnapshotOnRunRemoval(key);
     this.cache.bumpEpoch();
   }
 
@@ -254,8 +267,6 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     if (filename === 'summary.json') {
       await this.cache.remove(`${DERIVED_PREFIX}route/brief/${routePrefix}`);
       await this.cache.removeByPrefix(`${DERIVED_PREFIX}route/slice-map/${routePrefix}/`);
-      // Clear the per-run immutable brief snapshot so it does not outlive the run.
-      await this.cache.remove(`${DERIVED_PREFIX}brief-snapshot/${routePrefix}`);
       return;
     }
     if (/^sheet-\d+\.png$/i.test(filename)) {
@@ -268,5 +279,14 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
         `${DERIVED_PREFIX}route/slice-map/${routePrefix}/${filename}`,
       );
     }
+  }
+
+  private async removePerRunSnapshotOnRunRemoval(key: string): Promise<void> {
+    const parts = key.split('/');
+    if (parts.length !== 3) return;
+    const [briefId, runId, filename] = parts;
+    if (!briefId || !runId || filename !== 'summary.json') return;
+    await this.cache.remove(`${DERIVED_PREFIX}brief-snapshot/${briefId}/${runId}`);
+    await this.cache.remove(`${DERIVED_PREFIX}slice-map-fingerprint/${briefId}/${runId}`);
   }
 }

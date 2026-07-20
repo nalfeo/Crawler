@@ -190,6 +190,8 @@ export class SharedResourceCache {
   private readonly accessDir: string;
   private readonly lockDir: string;
   private readonly epochFile: string;
+  private readonly poisonDir: string;
+  private readonly mutationDir: string;
   private lockHeartbeat: NodeJS.Timeout | null = null;
 
   constructor(options: SharedResourceCacheOptions) {
@@ -201,6 +203,8 @@ export class SharedResourceCache {
     this.accessDir = path.join(this.metaDir, 'access');
     this.lockDir = path.join(this.metaDir, 'prune.lock');
     this.epochFile = path.join(this.metaDir, 'epochs', this.namespace || 'default');
+    this.poisonDir = path.join(this.metaDir, 'poisoned');
+    this.mutationDir = path.join(this.metaDir, 'mutations');
   }
 
   /** Absolute cache root (namespaced). Exposed for diagnostics/tests. */
@@ -217,6 +221,7 @@ export class SharedResourceCache {
   async get(key: string): Promise<CachedEntry | null> {
     try {
       const physicalKey = this.physicalKey(key);
+      if (this.isPoisoned(physicalKey)) return null;
       const result = await cacache.get(this.cacheDir, physicalKey);
       this.touch(physicalKey);
       return {
@@ -242,6 +247,7 @@ export class SharedResourceCache {
   async has(key: string): Promise<boolean> {
     try {
       const physicalKey = this.physicalKey(key);
+      if (this.isPoisoned(physicalKey)) return false;
       const info = await cacache.get.info(this.cacheDir, physicalKey);
       if (info === null) return false;
       const contentCheck = await cacache.get.hasContent(this.cacheDir, info.integrity);
@@ -272,13 +278,13 @@ export class SharedResourceCache {
    * We capture the previous integrity before the write and compact orphaned
    * content afterwards to keep the physical store within budget.
    */
-  async set(key: string, data: Buffer, metadata?: Record<string, unknown>): Promise<void> {
+  async set(key: string, data: Buffer, metadata?: Record<string, unknown>): Promise<boolean> {
     // Acquire the lock before the size check so that an oversized replacement
     // can evict the existing stale entry. Without the lock, the old (smaller)
     // value would remain indefinitely and be served as "current" after the
     // authoritative Azure write completes.
     const lockToken = await this.acquireLock();
-    if (lockToken === null) return;
+    if (lockToken === null) return false;
     // physicalKey must be declared outside the try block so the catch handler
     // can force a cache miss (rm.entry) when the write fails.
     const physicalKey = this.physicalKey(key);
@@ -297,7 +303,8 @@ export class SharedResourceCache {
         } catch {
           // best-effort
         }
-        return;
+        this.clearPoison(physicalKey);
+        return true;
       }
       // Capture the previous integrity so we can compact the orphaned blob
       // after the put (cacache does not remove it automatically).
@@ -310,6 +317,7 @@ export class SharedResourceCache {
       }
       await cacache.put(this.cacheDir, physicalKey, data, metadata ? { metadata } : undefined);
       this.touch(physicalKey);
+      this.clearPoison(physicalKey);
       // Compact the previous blob if it was replaced with different content.
       if (prevIntegrity !== null) {
         const newInfo = await cacache.get.info(this.cacheDir, physicalKey);
@@ -318,6 +326,7 @@ export class SharedResourceCache {
         }
       }
       if (this.maxBytes > 0) await this.pruneLocked(lockToken);
+      return true;
     } catch (err) {
       this.log(`put failed for ${redactKey(key)}: ${errMsg(err)}`);
       // Force a cache miss so subsequent reads do not serve stale data after
@@ -327,25 +336,29 @@ export class SharedResourceCache {
       try {
         await cacache.rm.entry(this.cacheDir, physicalKey);
         this.removeMarker(physicalKey);
+        this.clearPoison(physicalKey);
       } catch {
-        // best-effort
+        this.markPoisoned(physicalKey);
       }
+      return false;
     } finally {
       this.releaseLock(lockToken);
     }
   }
 
   /** Invalidate a key (best-effort). Removes both the index entry and its marker. */
-  async remove(key: string): Promise<void> {
+  async remove(key: string): Promise<boolean> {
     const physicalKey = this.physicalKey(key);
     const lockToken = await this.acquireLock();
-    if (lockToken === null) return;
+    if (lockToken === null) return false;
     try {
       const info = await cacache.get.info(this.cacheDir, physicalKey);
-      if (info === null) return;
+      if (info === null) return true;
       await cacache.rm.entry(this.cacheDir, physicalKey);
       this.removeMarker(physicalKey);
       await this.removeContentIfUnreferenced(info.integrity);
+      this.clearPoison(physicalKey);
+      return true;
     } catch (err) {
       this.log(`remove failed for ${redactKey(key)}: ${errMsg(err)}`);
       // Force a cache miss even when the full removal failed so that the key
@@ -353,9 +366,11 @@ export class SharedResourceCache {
       try {
         await cacache.rm.entry(this.cacheDir, physicalKey);
         this.removeMarker(physicalKey);
+        this.clearPoison(physicalKey);
       } catch {
-        // best-effort
+        this.markPoisoned(physicalKey);
       }
+      return false;
     } finally {
       this.releaseLock(lockToken);
     }
@@ -370,21 +385,70 @@ export class SharedResourceCache {
    * Used for read-through cache fills (CachingRunStore.get) and for per-run
    * immutable snapshots that must not be overwritten once set.
    */
-  async setIfAbsent(key: string, data: Buffer, metadata?: Record<string, unknown>): Promise<void> {
+  async setIfAbsent(
+    key: string,
+    data: Buffer,
+    metadata?: Record<string, unknown>,
+    expectedMutationToken?: string,
+  ): Promise<boolean> {
     const lockToken = await this.acquireLock();
-    if (lockToken === null) return;
+    if (lockToken === null) return false;
     const physicalKey = this.physicalKey(key);
     try {
+      if (this.maxBytes > 0 && data.length > this.maxBytes) return false;
+      if (
+        expectedMutationToken !== undefined &&
+        this.readMutationTokenByPhysicalKey(physicalKey) !== expectedMutationToken
+      ) {
+        return false;
+      }
       const existing = await cacache.get.info(this.cacheDir, physicalKey);
-      if (existing !== null) return; // first writer wins — skip write if already present
+      if (existing !== null) {
+        const valid = await cacache.get.hasContent(this.cacheDir, existing.integrity);
+        if (valid) return false; // first writer wins — skip write if already present
+        try {
+          await cacache.rm.entry(this.cacheDir, physicalKey);
+          this.removeMarker(physicalKey);
+        } catch {
+          // best-effort; the put below can still replace the entry
+        }
+      }
       await cacache.put(this.cacheDir, physicalKey, data, metadata ? { metadata } : undefined);
       this.touch(physicalKey);
+      this.clearPoison(physicalKey);
       if (this.maxBytes > 0) await this.pruneLocked(lockToken);
+      return true;
     } catch (err) {
       this.log(`setIfAbsent failed for ${redactKey(key)}: ${errMsg(err)}`);
+      return false;
     } finally {
       this.releaseLock(lockToken);
     }
+  }
+
+  /** Read the current cross-process mutation token for a key (empty when unset). */
+  readMutationToken(key: string): string {
+    return this.readMutationTokenByPhysicalKey(this.physicalKey(key));
+  }
+
+  /**
+   * Advance the cross-process mutation token for a key. Readers can capture this
+   * token before remote reads and only publish a read-through fill when the token
+   * is unchanged, preventing stale republish after concurrent put/remove.
+   */
+  bumpMutationToken(key: string): string {
+    const token = randomUUID();
+    const physicalKey = this.physicalKey(key);
+    try {
+      mkdirSync(this.mutationDir, { recursive: true });
+      const target = this.mutationPath(physicalKey);
+      const tmp = `${target}.tmp.${randomUUID()}`;
+      writeFileSync(tmp, token);
+      renameSync(tmp, target);
+    } catch (err) {
+      this.log(`mutation token bump failed for ${redactKey(key)}: ${errMsg(err)}`);
+    }
+    return token;
   }
 
   /** Remove every logical key beginning with `prefix`, then compact orphaned content. */
@@ -492,6 +556,47 @@ export class SharedResourceCache {
 
   private ensureAccessDir(): void {
     mkdirSync(this.accessDir, { recursive: true });
+  }
+
+  private poisonPath(key: string): string {
+    return path.join(this.poisonDir, createHash('sha256').update(key).digest('hex'));
+  }
+
+  private isPoisoned(key: string): boolean {
+    try {
+      return statSync(this.poisonPath(key)).isFile();
+    } catch {
+      return false;
+    }
+  }
+
+  private markPoisoned(key: string): void {
+    try {
+      mkdirSync(this.poisonDir, { recursive: true });
+      writeFileSync(this.poisonPath(key), '');
+    } catch {
+      // best-effort
+    }
+  }
+
+  private clearPoison(key: string): void {
+    try {
+      rmSync(this.poisonPath(key), { force: true });
+    } catch {
+      // best-effort
+    }
+  }
+
+  private mutationPath(key: string): string {
+    return path.join(this.mutationDir, createHash('sha256').update(key).digest('hex'));
+  }
+
+  private readMutationTokenByPhysicalKey(physicalKey: string): string {
+    try {
+      return readFileSync(this.mutationPath(physicalKey), 'utf8').trim();
+    } catch {
+      return '';
+    }
   }
 
   // ── LRU prune ─────────────────────────────────────────────────────────────

@@ -218,6 +218,17 @@ describe('mutable-key invalidation', () => {
     expect(await store.getCachedResource(`route/slice-map/${routePrefix}/sheet-00.png`)).toBeNull();
   });
 
+  it('retains per-run brief snapshot on summary updates, but removes it when the run is removed', async () => {
+    const routePrefix = 'iron-sword/run-abc';
+    await store.setCachedResource(`brief-snapshot/${routePrefix}`, Buffer.from('snapshot-v1'));
+    await store.put(SUMMARY, Buffer.from('{"v":2}'));
+    expect((await store.getCachedResource(`brief-snapshot/${routePrefix}`))?.toString()).toBe(
+      'snapshot-v1',
+    );
+    await store.remove(SUMMARY);
+    expect(await store.getCachedResource(`brief-snapshot/${routePrefix}`)).toBeNull();
+  });
+
   it('invalidates all brief-derived snapshots when a durable brief changes', async () => {
     await store.setCachedResource('route/brief/a/run-1', Buffer.from('a'));
     await store.setCachedResource('route/slice-map/b/run-2/latest', Buffer.from('b'));
@@ -347,6 +358,45 @@ describe('offline hard-gate: warm in A, read in B with Azure unavailable', () =>
     expect(offlineInner.gets).toBe(0);
     expect(await b.has('never/warmed/sheet-00.png')).toBe(false);
     expect(offlineInner.has_).toBe(0);
+  });
+
+  it('does not republish stale read-through data after a concurrent remove', async () => {
+    const key = SHEET;
+    const initial = Buffer.from('v1');
+    await inner.put(key, initial);
+    await cache.remove(`blob:${key}`);
+
+    let signalFillStarted!: () => void;
+    const fillStarted = new Promise<void>((resolve) => {
+      signalFillStarted = () => resolve();
+    });
+    let releaseFillGate!: () => void;
+    const fillGate = new Promise<void>((resolve) => {
+      releaseFillGate = () => resolve();
+    });
+    class BlockingCache extends SharedResourceCache {
+      override async setIfAbsent(
+        cacheKey: string,
+        data: Buffer,
+        metadata?: Record<string, unknown>,
+        expectedMutationToken?: string,
+      ): Promise<boolean> {
+        if (cacheKey === `blob:${key}`) {
+          signalFillStarted();
+          await fillGate;
+        }
+        return super.setIfAbsent(cacheKey, data, metadata, expectedMutationToken);
+      }
+    }
+    const blockingCache = new BlockingCache({ cacheDir, maxBytes: 0, log: noop });
+    const raceStore = new CachingRunStore({ inner, cache: blockingCache });
+    const inflightGet = raceStore.get(key);
+    await fillStarted;
+    await raceStore.remove(key);
+    releaseFillGate();
+    await expect(inflightGet).resolves.toEqual(initial);
+    await expect(raceStore.has(key)).resolves.toBe(false);
+    await expect(raceStore.get(key)).rejects.toBeInstanceOf(StoreNotFoundError);
   });
 
   it('offline list of an un-warmed prefix throws rather than hiding the gap', async () => {

@@ -232,6 +232,25 @@ describe('SharedResourceCache value API', () => {
     // One of the two values must have won; the content must be stable (not a mix).
     expect(['writer-a', 'writer-b']).toContain(hit!.data.toString());
   });
+
+  it('setIfAbsent skips values larger than maxBytes', async () => {
+    const cache = new SharedResourceCache({ cacheDir: dir, maxBytes: 50, log: noop });
+    await cache.set('blob:small', Buffer.from('small'));
+    await cache.setIfAbsent('blob:big', Buffer.alloc(100, 1));
+    expect(await cache.get('blob:big')).toBeNull();
+    expect((await cache.get('blob:small'))?.data.toString()).toBe('small');
+  });
+
+  it('setIfAbsent repairs a dangling index entry by rewriting fresh content', async () => {
+    const cache = new SharedResourceCache({ cacheDir: dir, maxBytes: 0, log: noop });
+    await cache.set('blob:repair', Buffer.from('old'));
+    const info = await cacache.get.info(dir, 'blob:repair');
+    expect(info).not.toBeNull();
+    rmSync(info!.path, { force: true });
+    expect(await cache.get('blob:repair')).toBeNull();
+    await cache.setIfAbsent('blob:repair', Buffer.from('new'));
+    expect((await cache.get('blob:repair'))?.data.toString()).toBe('new');
+  });
 });
 
 describe('SharedResourceCache list-invalidation epoch', () => {
