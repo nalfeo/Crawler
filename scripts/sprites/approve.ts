@@ -109,9 +109,18 @@ export interface ManifestEntry {
   readonly sensorScore: string;
   /** Judge `minScore` as a string, or `null` if not judged. */
   readonly judgeScore: string | null;
+  /** Full deterministic sensor results retained for later calibration. */
+  readonly sensorBreakdown?: ReadonlyArray<{
+    readonly sensor: string;
+    readonly ok: boolean;
+    readonly reason?: string;
+    readonly pixels?: ReadonlyArray<unknown>;
+  }>;
+  /** Full per-axis VLM scorecard retained for later calibration. */
+  readonly judgeScorecard?: Readonly<Record<string, unknown>> | null;
   /**
-   * Canonical sprite type resolved from the brief (`weapon`/`enemy`/`item`/
-   * `tile`/`vfx`/`character`), or `null` when it couldn't be resolved. Written
+   * Canonical sprite type resolved from the brief, or `null` when it couldn't
+   * be resolved. Written
    * so the reference selector can favour same-type examples without re-reading
    * briefs (which are often deleted after approval).
    */
@@ -173,12 +182,20 @@ interface RunSummaryShape {
     readonly index?: number;
     readonly score?: number;
     readonly outOf?: number;
+    readonly breakdown?: ReadonlyArray<{
+      readonly sensor: string;
+      readonly ok: boolean;
+      readonly reason?: string;
+      readonly pixels?: ReadonlyArray<unknown>;
+    }>;
     readonly derivedAnchor?: { readonly x: number; readonly y: number } | null;
     readonly derivedAnchors?: {
       readonly hold?: { readonly x: number; readonly y: number } | null;
       readonly centerOfGravity?: { readonly x: number; readonly y: number } | null;
     } | null;
-    readonly judgeScorecard?: { readonly minScore?: number } | null;
+    readonly judgeScorecard?:
+      | (Readonly<Record<string, unknown>> & { readonly minScore?: number })
+      | null;
   }>;
   readonly postprocessOverrides?: {
     readonly profilePath?: string | null;
@@ -350,6 +367,8 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     anchors,
     sensorScore,
     judgeScore,
+    sensorBreakdown: candidate.breakdown,
+    judgeScorecard: candidate.judgeScorecard ?? null,
     type,
     contentHash,
     postprocessOverrideProfilePath: summary.postprocessOverrides?.profilePath ?? null,

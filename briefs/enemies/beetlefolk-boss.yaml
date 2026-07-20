@@ -11,18 +11,18 @@ description: |
   beetle-shaped — a fat, squat dome that is visibly wider than it is tall.
   Six thick, stubby legs (three per side) fuse flush with the body silhouette;
   they do not extend beyond the main outline as separate thin features.
-  Two short, chunky antennae curve forward from the broad head at the right end;
+  Two short, chunky antennae curve forward from the broad head angled toward camera;
   they merge into the body silhouette near their base. Mandibles are thick and
   prominent — the creature clearly chews its way through obstacles. Floor 2
   dark-fantasy wear: cracked plating, rust streaks, scorch marks, grime-coated
   underbelly. The overall silhouette reads unmistakably as a fat wide beetle when
   viewed from a slight bird's-eye three-quarter angle.
-  Facing right. No disconnected thin parts anywhere.
+  Camera-facing at a two-thirds turn. No disconnected thin parts anywhere.
 sensors:
   edge:
     allowMainTouch: true
   enemy:
-    facing: right
+    facing: three-quarter
     toleranceDeg: 40
 judge:
   enabled: true

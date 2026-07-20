@@ -135,7 +135,10 @@ export function mergeMinimalIntoDefaults(
   // Pull the size-variant directive off the minimal brief and strip it: it is
   // an authoring convenience, not a strict-schema field. Apply it to the
   // per-type defaults so the author's explicit fields still merge on top.
-  const variant = coerceSizeVariant(minimal.sizeVariant);
+  const variant = coerceSizeVariant(
+    minimal.sizeVariant ??
+      (minimal.type === 'enemy' && minimal.mobRole === 'boss' ? 'large' : undefined),
+  );
   const sanitizedMinimal: Record<string, unknown> = { ...minimal };
   delete sanitizedMinimal.sizeVariant;
 

@@ -12,7 +12,7 @@
  *
  * The client script is intentionally template-literal-free (plain string concat +
  * createElement) so this whole file stays one clean outer template literal with no
- * escaping. It is READ-ONLY: no approve/checkin/mutate affordances.
+ * escaping. It cannot approve/check in assets, but can persist criterion feedback.
  *
  * @module sprite-review/renderer
  */
@@ -77,6 +77,10 @@ const STYLES = `
   .rationale { font-size: 10px; color: #94a3b8; line-height: 1.35; }
   .sensor { display: flex; justify-content: space-between; font-size: 11px; }
   .sensor-reason { font-size: 10px; color: #fecaca; line-height: 1.3; }
+  .criterion-feedback { display: grid; grid-template-columns: auto auto 1fr; gap: 4px; margin: 3px 0 7px; }
+  .criterion-feedback button { padding: 2px 6px; font-size: 11px; }
+  .criterion-feedback button.on { border-color: #7dd3fc; background: rgba(14,116,144,0.35); }
+  .criterion-feedback input { min-width: 0; padding: 3px 6px; font-size: 10px; }
   .section-title { font-weight: 600; font-size: 12px; color: #f1f5f9; margin: 6px 0 2px; }
   hr { border: none; border-top: 1px solid rgba(148,163,184,0.18); margin: 6px 0; }
   .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
@@ -101,9 +105,14 @@ const CLIENT_SCRIPT = String.raw`
     pass: '#86efac', 'sensor-failed': '#fca5a5', 'judge-rejected': '#fca5a5', unjudged: '#94a3b8'
   };
   var JUDGE_AXES = [
-    { key: 'styleMatch', label: 'Style match' },
+    { key: 'designLanguage', label: 'Design language' },
+    { key: 'referenceStyleMatch', label: 'Reference style' },
     { key: 'briefMatch', label: 'Brief match' },
-    { key: 'readability', label: 'Readability' }
+    { key: 'readability', label: 'Readability' },
+    { key: 'poseOrientation', label: 'Pose orientation' },
+    { key: 'bossPresence', label: 'Boss presence' },
+    { key: 'presentation', label: 'Presentation' },
+    { key: 'themeAdherence', label: 'Theme adherence' }
   ];
   var app = document.getElementById('app');
 
@@ -152,7 +161,7 @@ const CLIENT_SCRIPT = String.raw`
     return h('div', { class: 'between' }, [
       h('div', null, [
         h('h1', { text: 'Sprite Review' }),
-        h('div', { class: 'muted', text: 'Read-only viewer for approved sprite sheets, variants & pipeline traces.' })
+        h('div', { class: 'muted', text: 'Review sprite sheets and rate each sensor or judge result.' })
       ]),
       h('div', { class: 'row' }, [badge, h('span', { class: 'muted', text: meta.join('  ·  ') })])
     ]);
@@ -287,12 +296,57 @@ const CLIENT_SCRIPT = String.raw`
     }
   }
 
-  function renderJudge(card, c) {
+  function saveFeedback(sel, c, kind, criterion, verdict, comment) {
+    return fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        briefId: sel.briefId, runId: sel.runId, variantIndex: c.index,
+        kind: kind, criterion: criterion, verdict: verdict, comment: comment
+      })
+    }).then(function (response) {
+      if (!response.ok) return response.json().then(function (body) { throw new Error(body.error || 'save failed'); });
+      return response.json();
+    });
+  }
+
+  function renderCriterionFeedback(sel, c, kind, criterion) {
+    var current = (((c.feedback || {})[kind] || {})[criterion]) || {};
+    var verdict = current.verdict || null;
+    var input = h('input', {
+      type: 'text',
+      maxlength: '1000',
+      placeholder: 'Optional feedback comment',
+      value: current.comment || ''
+    });
+    input.value = current.comment || '';
+    var up = h('button', {
+      type: 'button', class: verdict === 'up' ? 'on' : '', title: 'Machine result is correct', text: '👍'
+    });
+    var down = h('button', {
+      type: 'button', class: verdict === 'down' ? 'on' : '', title: 'Machine result is wrong', text: '👎'
+    });
+    function submit(nextVerdict) {
+      verdict = nextVerdict;
+      up.className = verdict === 'up' ? 'on' : '';
+      down.className = verdict === 'down' ? 'on' : '';
+      saveFeedback(sel, c, kind, criterion, verdict, input.value).catch(function (err) {
+        input.title = err.message;
+      });
+    }
+    up.addEventListener('click', function () { submit(verdict === 'up' ? null : 'up'); });
+    down.addEventListener('click', function () { submit(verdict === 'down' ? null : 'down'); });
+    input.addEventListener('change', function () { submit(verdict); });
+    return h('div', { class: 'criterion-feedback' }, [up, down, input]);
+  }
+
+  function renderJudge(card, c, sel) {
     card.appendChild(h('div', { class: 'section-title', text: 'Judge (advisory)' }));
     if (c.judge) {
       for (var i = 0; i < JUDGE_AXES.length; i++) {
         var axis = JUDGE_AXES[i];
         var score = c.judge[axis.key] || 0;
+        if (!score) continue;
         var ok = score >= 3;
         card.appendChild(h('div', { class: 'axis' }, [
           h('span', { class: 'lbl', text: axis.label }),
@@ -301,6 +355,7 @@ const CLIENT_SCRIPT = String.raw`
         ]));
         var rationale = c.rationale ? c.rationale[axis.key] : null;
         if (rationale) card.appendChild(h('div', { class: 'rationale', text: rationale }));
+        card.appendChild(renderCriterionFeedback(sel, c, 'judge', axis.key));
       }
       var verdict = 'Verdict: ' + (c.judge.passed ? 'passed' : 'rejected') + ' · lowest axis ' + c.judge.minScore + '/5';
       if (c.judge.rejectedBy && c.judge.rejectedBy.length) verdict += ' · rejected on ' + c.judge.rejectedBy.join(', ');
@@ -315,7 +370,7 @@ const CLIENT_SCRIPT = String.raw`
     }
   }
 
-  function renderSensors(card, c) {
+  function renderSensors(card, c, sel) {
     card.appendChild(h('div', { class: 'section-title', text: 'Sensors' }));
     if (!c.sensors || c.sensors.length === 0) {
       card.appendChild(h('div', { class: 'muted', text: c.passed
@@ -333,6 +388,7 @@ const CLIENT_SCRIPT = String.raw`
         card.appendChild(h('div', { class: 'sensor-reason',
           text: (s.reason || 'failed') + (s.pixelCount != null ? ' (' + s.pixelCount + 'px)' : '') }));
       }
+      card.appendChild(renderCriterionFeedback(sel, c, 'sensor', s.sensor));
     }
   }
 
@@ -361,8 +417,8 @@ const CLIENT_SCRIPT = String.raw`
       thumb.src = imgUrl('processed', sel.briefId, sel.runId, pad2(c.index) + '.png');
       thumb.alt = 'variant ' + c.index;
       card.appendChild(thumb);
-      renderJudge(card, c);
-      renderSensors(card, c);
+      renderJudge(card, c, sel);
+      renderSensors(card, c, sel);
       grid.appendChild(card);
     }
     wrap.appendChild(grid);

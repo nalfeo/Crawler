@@ -160,9 +160,14 @@ const CLIENT_SCRIPT = String.raw`
     'needs-art-placeholder', 'planned', 'approved-unverified'
   ];
   var JUDGE_AXES = [
-    { key: 'styleMatch', label: 'Style match' },
+    { key: 'designLanguage', label: 'Design language' },
+    { key: 'referenceStyleMatch', label: 'Reference style' },
     { key: 'briefMatch', label: 'Brief match' },
-    { key: 'readability', label: 'Readability' }
+    { key: 'readability', label: 'Readability' },
+    { key: 'poseOrientation', label: 'Pose orientation' },
+    { key: 'bossPresence', label: 'Boss presence' },
+    { key: 'presentation', label: 'Presentation' },
+    { key: 'themeAdherence', label: 'Theme adherence' }
   ];
   var TABS = [
     { id: 'backlog', label: 'Backlog' },

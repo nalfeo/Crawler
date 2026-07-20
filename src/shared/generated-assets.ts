@@ -69,6 +69,17 @@ const manifestEntrySchema = z
     anchors: anchorsSchema.optional(),
     sensorScore: z.string().min(1),
     judgeScore: z.string().nullable(),
+    sensorBreakdown: z
+      .array(
+        z
+          .object({
+            sensor: z.string().min(1),
+            ok: z.boolean(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    judgeScorecard: z.record(z.string(), z.unknown()).nullable().optional(),
     /**
      * Canonical sprite type (`weapon`/`enemy`/`item`/`tile`/`vfx`/`character`).
      * Optional + nullable so pre-`type` manifests still parse and so the

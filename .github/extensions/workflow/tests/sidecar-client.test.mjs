@@ -19,6 +19,8 @@ import {
   sheetUrl,
   sliceMapUrl,
   createSidecarClient,
+  JUDGE_AXES,
+  toJudgeSummary,
 } from '../lib/sidecar-client.mjs';
 
 const BASE = 'http://127.0.0.1:3999';
@@ -85,6 +87,20 @@ test('listRuns throws on a non-OK response', async () => {
   const client = createSidecarClient({
     baseUrl: BASE,
     fetchImpl: async () => jsonResponse({}, false, 503),
+  });
+
+  test('judge normalization exposes every current axis', () => {
+    const raw = Object.fromEntries(
+      JUDGE_AXES.map(({ key }, index) => [key, { score: (index % 5) + 1 }]),
+    );
+    raw.passed = true;
+    raw.minScore = 1;
+    raw.rejectedBy = ['pose_orientation'];
+    const summary = toJudgeSummary(raw);
+    for (const { key } of JUDGE_AXES) {
+      assert.equal(typeof summary[key], 'number', `${key} should be normalized`);
+    }
+    assert.deepEqual(summary.rejectedBy, ['pose_orientation']);
   });
   await assert.rejects(() => client.listRuns(), /Failed to load sidecar runs/);
 });
