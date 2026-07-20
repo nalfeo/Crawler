@@ -9,18 +9,17 @@
  */
 
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
-  closeSync,
-  constants as fsConstants,
   cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
-  openSync,
   readFileSync,
+  renameSync,
   rmSync,
-  unlinkSync,
+  statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -269,47 +268,137 @@ function makeListQueuedAssets(
 }
 
 /**
+ * How long (ms) before an unrenewed lock is considered abandoned/crashed.
+ * Must be comfortably longer than LOCK_HEARTBEAT_MS.
+ */
+const CHECKIN_LOCK_STALE_MS = 60_000;
+
+/** How often (ms) the lock holder refreshes its ownership marker. */
+const CHECKIN_LOCK_HEARTBEAT_MS = 10_000;
+
+/**
  * Create a cross-process file lock for `runAssetCheckin` keyed by `repoRoot`.
  *
- * The lock file is placed in the OS temp directory with a short hash of the
- * repo path, so different repositories can check in concurrently while
- * serializing concurrent calls within the SAME repo across processes.
+ * The lock is a directory (atomic exclusive mkdir) containing an owner file
+ * that records a random token refreshed periodically by a heartbeat timer.
+ * Different repositories can check in concurrently; concurrent calls for the
+ * SAME repo are serialized.
  *
- * Uses O_CREAT|O_EXCL which is atomic on POSIX filesystems: only one caller
- * can create the file at a time. If the file already exists (`EEXIST`), a
- * concurrent check-in is in progress → throw `CheckinError('checkin-locked')`.
- * The lock is released (file deleted) in the `finally` block so a crashed
- * process does not leave a permanent stale lock — callers can also delete it
- * manually when they know the process died.
+ * Stale-lock recovery: if the owner file's mtime is older than
+ * CHECKIN_LOCK_STALE_MS (i.e. the holder crashed / was SIGKILL'd), the
+ * contender atomically renames the lock directory to claim it, then removes
+ * it and retries. This prevents a crashed process from permanently blocking
+ * future check-ins without requiring manual file deletion.
  */
 function makeCheckinFileLock(repoRoot: string): <T>(fn: () => Promise<T>) => Promise<T> {
   const hash = createHash('sha256').update(repoRoot).digest('hex').slice(0, 16);
-  const lockPath = path.join(tmpdir(), `asset-checkin-${hash}.lock`);
-  return async function withFileLock<T>(fn: () => Promise<T>): Promise<T> {
-    let fd: number;
+  const lockDir = path.join(tmpdir(), `asset-checkin-${hash}.lockdir`);
+
+  function ownerFile(): string {
+    return path.join(lockDir, 'owner');
+  }
+
+  function readToken(): string {
     try {
-      fd = openSync(lockPath, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_RDWR);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      return readFileSync(ownerFile(), 'utf8');
+    } catch {
+      return '';
+    }
+  }
+
+  async function acquireLock(): Promise<string> {
+    for (;;) {
+      try {
+        mkdirSync(lockDir); // atomic exclusive create — EEXIST if held
+        const token = randomUUID();
+        try {
+          writeFileSync(ownerFile(), token);
+        } catch (err) {
+          rmSync(lockDir, { recursive: true, force: true });
+          throw err;
+        }
+        return token;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+
+        // Lock held — reclaim if abandoned (mtime older than CHECKIN_LOCK_STALE_MS).
+        try {
+          const age = Date.now() - statSync(ownerFile()).mtimeMs;
+          if (age >= CHECKIN_LOCK_STALE_MS) {
+            const recovery = `${lockDir}.recovering.${randomUUID()}`;
+            try {
+              renameSync(lockDir, recovery); // atomic steal
+              rmSync(recovery, { recursive: true, force: true });
+              continue; // back to mkdirSync
+            } catch {
+              // Another process won the rename race — fall through to retry.
+            }
+          }
+        } catch (statErr) {
+          if ((statErr as NodeJS.ErrnoException).code === 'ENOENT') {
+            // Owner file missing (crash between mkdir and write); age the dir itself.
+            try {
+              const dirAge = Date.now() - statSync(lockDir).mtimeMs;
+              if (dirAge >= CHECKIN_LOCK_STALE_MS) {
+                const recovery = `${lockDir}.recovering.${randomUUID()}`;
+                try {
+                  renameSync(lockDir, recovery);
+                  rmSync(recovery, { recursive: true, force: true });
+                  continue;
+                } catch {
+                  // Another process won; retry normally.
+                }
+              }
+            } catch {
+              // Lock dir vanished between our create and stat — retry.
+            }
+          }
+          // Other stat error — just retry.
+        }
+
+        // A live process holds the lock. Report a friendly error immediately
+        // rather than spinning; the caller can retry.
         throw new CheckinError(
           'checkin-locked',
           'Another check-in is already in progress in this repository. ' +
-            'Retry in a moment, or delete ' +
-            lockPath +
-            ' if no other check-in process is running.',
+            'Retry in a moment; stale locks auto-expire after 60 s.',
         );
       }
-      throw err;
     }
+  }
+
+  function releaseLock(token: string, heartbeat: NodeJS.Timeout): void {
+    clearInterval(heartbeat);
+    try {
+      if (readToken() === token) rmSync(lockDir, { recursive: true, force: true });
+    } catch {
+      // Best-effort cleanup — stale locks are auto-reclaimed by the next acquirer.
+    }
+  }
+
+  return async function withFileLock<T>(fn: () => Promise<T>): Promise<T> {
+    const token = await acquireLock();
+    // Use a const so the callback always has a stable reference for clearInterval;
+    // we never set it to null inside the callback, eliminating the confusing
+    // cross-scope mutation pattern.
+    const heartbeat = setInterval(() => {
+      try {
+        // Stop refreshing if we no longer own the lock (e.g. reclaimed after a
+        // crash) so we don't fight the new owner's heartbeat.
+        if (readToken() !== token) {
+          clearInterval(heartbeat);
+          return;
+        }
+        writeFileSync(ownerFile(), token);
+      } catch {
+        // Best-effort heartbeat — ownership check before release is authoritative.
+      }
+    }, CHECKIN_LOCK_HEARTBEAT_MS);
+    heartbeat.unref();
     try {
       return await fn();
     } finally {
-      try {
-        closeSync(fd);
-        unlinkSync(lockPath);
-      } catch {
-        // Best-effort cleanup — lock removal failure must not mask a real error.
-      }
+      releaseLock(token, heartbeat);
     }
   };
 }

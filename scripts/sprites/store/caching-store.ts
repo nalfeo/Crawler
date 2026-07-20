@@ -124,16 +124,28 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     const work = (async () => {
       if (previous !== undefined) await previous.catch(() => {});
       await this.invalidateDerivedResources(key);
-      // Authoritative write first; only mirror into the cache once it succeeds.
-      await this.inner.put(key, data);
       if (this.shouldCache(key)) {
         const cacheKey = `${BLOB_PREFIX}${key}`;
-        const publishToken = this.cache.bumpMutationToken(cacheKey);
-        const cacheWriteOk = await this.cache.set(cacheKey, data, undefined, publishToken);
-        if (!cacheWriteOk && this.cache.readMutationToken(cacheKey) === publishToken) {
-          await this.cache.remove(cacheKey);
-          this.cache.bumpMutationToken(cacheKey);
+        // Snapshot the token BEFORE the authoritative write so we can detect a
+        // cross-instance writer that committed while our inner.put was in-flight.
+        // If any other process bumps the token in that window, our data is stale
+        // relative to theirs and we must not overwrite their fresher cache entry.
+        const tokenSnapshot = this.cache.readMutationToken(cacheKey);
+        // Authoritative write first; only mirror into the cache once it succeeds.
+        await this.inner.put(key, data);
+        // Guard: only publish to cache when no concurrent writer claimed the key.
+        if (this.cache.readMutationToken(cacheKey) === tokenSnapshot) {
+          const publishToken = this.cache.bumpMutationToken(cacheKey);
+          const cacheWriteOk = await this.cache.set(cacheKey, data, undefined, publishToken);
+          if (!cacheWriteOk && this.cache.readMutationToken(cacheKey) === publishToken) {
+            await this.cache.remove(cacheKey);
+            this.cache.bumpMutationToken(cacheKey);
+          }
         }
+        // else: a concurrent writer already published fresher content; leave it.
+      } else {
+        // Non-cacheable key: just do the authoritative write.
+        await this.inner.put(key, data);
       }
       // A new/changed blob may change what listings return — invalidate snapshots.
       this.cache.bumpEpoch();
