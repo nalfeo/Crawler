@@ -51,7 +51,9 @@ independently validated.
 - Orchestration-level coverage drives a retryable error through the controller
   build loop, proves later entries are never built, and locks post-build
   validation/status failures outside the recovery boundary.
-- The full merge-train suite passes with 184 tests.
+- Recovery now runs before publishing the failed entry's waiting status, so a
+  reporting error cannot suppress promotion; the reporting error still surfaces.
+- The full merge-train suite passes with 185 tests.
 
 ## Review harness
 
@@ -61,7 +63,9 @@ independently validated.
 - Code review: the first cycle combined `gpt-5.4` with the GitHub Copilot review
   and different-model validation (`claude-sonnet-4.6` / `gpt-5.6-terra`). One
   valid orchestration-coverage concern was fixed. A second `gpt-5.3-codex` round
-  was clean.
+  incorporated a later GitHub review finding, validated with
+  `gemini-3.1-pro-preview`, that moved recovery ahead of failure-status
+  publication; the final implementation review was clean.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-20-fix-merge-train-promotion.review-ledger.json`.
 

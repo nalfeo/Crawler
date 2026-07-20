@@ -135,8 +135,8 @@ export async function runTrainBuildLoop({
         await onNoop(index, error);
         return { action: 'noop', entry: train[index], error };
       }
-      await onRetryableFailure(index, error);
       const recovery = await promoteValidatedPrefixAfterBuildFailure({ candidates, promotePrefix });
+      await onRetryableFailure(index, error);
       return { action: 'retryable-build-failure', entry: train[index], error, recovery };
     }
     candidates.push(await finalizeEntry(index, builtEntry));

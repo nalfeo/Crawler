@@ -384,6 +384,35 @@ test('runTrainBuildLoop does not reclassify post-build finalization errors as bu
   assert.equal(promotionCalled, false);
 });
 
+test('runTrainBuildLoop promotes prefix even if status reporting rejects', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let promotionCalled = false;
+
+  await assert.rejects(
+    runTrainBuildLoop({
+      train,
+      candidates: builtCandidates,
+      buildEntry: async (index) => {
+        if (index === 0) {
+          return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+        }
+        throw new Error('transient git failure');
+      },
+      onRetryableFailure: async () => {
+        throw new Error('reporting failure');
+      },
+      promotePrefix: async () => {
+        promotionCalled = true;
+        return true;
+      },
+    }),
+    /reporting failure/,
+  );
+
+  assert.equal(promotionCalled, true);
+});
+
 test('live Actions runs require separate promotion and workflow-dispatch tokens', () => {
   assert.deepEqual(
     resolveMergeTrainTokens({
