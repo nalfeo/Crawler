@@ -68,6 +68,7 @@ export function runCoreSimulationStep(
   harvestSystem(world);
   dropSystem(world);
   corpseStepSystem(world);
+  bloodyFootprintSystem(world);
   deathTimerSystem(world);
   spawnAnimSystem(world);
   healthSystem(world);
@@ -77,7 +78,6 @@ export function runCoreSimulationStep(
   (options.runFovSystem ?? fovSystem)(world);
   safeRoomSystem(world);
   npcSystem(world);
-  bloodyFootprintSystem(world);
 
   for (const sys of options.postSystems ?? []) {
     sys(world);

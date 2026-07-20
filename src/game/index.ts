@@ -144,6 +144,7 @@ export type {
   ActiveAbilityDefinition,
   PassiveAbilityDefinition,
   AbilityCategory,
+  AbilityGrantSource,
   AbilityState,
   AbilityTriggerCondition,
   AbilityTriggerEvent,
