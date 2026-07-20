@@ -136,19 +136,19 @@ function snapshotAbilityState(
 ): AbilityStateSnapshot | undefined {
   if (!state) return undefined;
 
-  // Strip equipment-sourced entries from the snapshot.  Equipment instance IDs
-  // are allocated per-world and are not stable across floor transitions; storing
-  // them would produce stale references after carryover restore.  Abilities
-  // whose *only* source was equipment are also dropped from the ID lists here —
-  // they will be re-granted when the carried-over equipment is re-equipped.
-  // Abilities with mixed sources (e.g. learned + equipment) survive with their
-  // non-equipment sources intact.
+  // Strip static-equipment-sourced entries from the snapshot.  Static equipment
+  // item IDs are re-equipped from the snapshot's equippedItemIds list, so their
+  // grant sources will be re-added on restore; keeping them would produce
+  // redundant entries.  Abilities whose *only* source was static equipment are
+  // also dropped from the ID lists here.
   //
-  // TODO(C2→D): when equipment-ability wiring is fully implemented, persist a
-  // compact itemDef→abilityId manifest here and re-grant on restore so equipment
-  // abilities survive the transition without stale instanceId references.
+  // Generated-equipment sources (kind: 'generated-equipment') are intentionally
+  // kept: the registry snapshot preserves instanceId stability across floor
+  // transitions (B3), so these sources remain valid and are needed for
+  // validateGrantOwnership to verify source/instance consistency.  They will be
+  // encountered as idempotent re-grants when equipFromBag is called during restore.
   const nonEquipmentSources = (sources: readonly AbilityGrantSource[]): AbilityGrantSource[] =>
-    sources.filter((s) => s.kind !== 'equipment' && s.kind !== 'generated-equipment');
+    sources.filter((s) => s.kind !== 'equipment');
 
   const filteredActiveSources = new Map<string, AbilityGrantSource[]>();
   for (const [abilityId, sources] of state.activeAbilityGrantSources) {
@@ -346,9 +346,12 @@ function validateGeneratedCarryover(world: GameWorld, input: unknown): Validated
   const hasGeneratedReferences =
     snapshot.generatedInventoryInstanceKeys.length > 0 ||
     snapshot.generatedEquippedInstanceKeys.length > 0 ||
-    snapshot.generatedEquipmentRewardBundles.length > 0 ||
-    (snapshot.abilityState?.activeAbilityGrantSources?.length ?? 0) > 0 ||
-    (snapshot.abilityState?.passiveAbilityGrantSources?.length ?? 0) > 0;
+    snapshot.generatedEquipmentRewardBundles.length > 0;
+  // Note: abilityState grant sources are NOT checked here.  Static equipment
+  // sources (kind: 'equipment') are stripped by snapshotAbilityState, so any
+  // surviving sources are non-generated (learned, skill, etc.).
+  // Generated-equipment sources can only exist when instances are equipped,
+  // which is already covered by generatedEquippedInstanceKeys above.
   if (!snapshot.generatedEquipmentRegistry) {
     if (hasGeneratedReferences) {
       throw new PlayerCarryoverSnapshotError(
