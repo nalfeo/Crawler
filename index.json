@@ -1,5 +1,16 @@
 [
   {
+    "commit": "9746dc23f9589218ea6b4caf2c590f9af0930076",
+    "commitDate": "2026-07-20T04:23:29Z",
+    "commitSubject": "docs: define Unique equipment schema, ADR 0066, and authored roster (#1660)",
+    "capturedAt": "2026-07-20T05:16:59.296Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29716800341",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/9746dc23f9589218ea6b4caf2c590f9af0930076.json"
+  },
+  {
     "commit": "f6358ac1ad29fb70b7a83abd594cd9e0899e1417",
     "commitDate": "2026-07-20T03:00:33Z",
     "commitSubject": "Reduce CI setup fan-out and scope PR/epic automation to relevant work (#1686)",
