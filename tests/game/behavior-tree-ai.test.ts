@@ -513,66 +513,102 @@ describe('BehaviorTreeAI', () => {
   it('keeps focused Floor 2 melee hunts synchronized to the weapon cadence', () => {
     const bat = getWeaponDef('baseball-bat')!;
     const targetX = 3.75;
-    const makeFocusedPlan = (elapsedMs: number) => {
+    const makeFocusedDecision = (elapsedMs: number) => {
       const world = createTestWorld({ seed: 7, floor: 2 });
-      spawnPlayer(world, 0, 0);
+      const player = spawnPlayer(world, 0, 0);
       const enemy = spawnEnemy(world, targetX, 0, 40);
       world.elapsedMs = 5000;
       setActiveWeapon(world, bat);
       world.elapsedMs = elapsedMs;
       const ai = new BehaviorTreeAI({ seed: 7 });
       const harness = ai as unknown as {
-        planFocusedMeleeEngagement(
+        findProgressObjective(
           currentWorld: GameWorld,
+          playerEid: number,
           playerX: number,
           playerY: number,
-          target: { eid: number; x: number; y: number; distance: number },
-        ): { targetX: number; targetY: number; reason: string };
+        ): {
+          eid: number;
+          x: number;
+          y: number;
+          distance: number;
+          reason: string;
+          npcInteraction: null;
+        } | null;
       };
-      return harness.planFocusedMeleeEngagement(world, 0, 0, {
-        eid: enemy,
-        x: targetX,
-        y: 0,
-        distance: targetX,
-      });
+      harness.findProgressObjective = (_currentWorld, playerEid, playerX, playerY) => {
+        expect(playerEid).toBe(player);
+        return {
+          eid: enemy,
+          x: targetX,
+          y: 0,
+          distance: Math.hypot(targetX - playerX, -playerY),
+          reason: 'Focused Floor 2 hunt target',
+          npcInteraction: null,
+        };
+      };
+      ai.poll(createInputState(), world);
+      return ai.getDecision();
     };
 
-    const readyPlan = makeFocusedPlan(5000);
-    const cooldownPlan = makeFocusedPlan(5000 - bat.cooldownMs);
-    const readyDistance = Math.hypot(readyPlan.targetX - targetX, readyPlan.targetY);
-    const cooldownDistance = Math.hypot(cooldownPlan.targetX - targetX, cooldownPlan.targetY);
+    const readyDecision = makeFocusedDecision(5000);
+    const cooldownDecision = makeFocusedDecision(5000 - bat.cooldownMs);
+    const readyDistance = Math.hypot(readyDecision.targetX! - targetX, readyDecision.targetY!);
+    const cooldownDistance = Math.hypot(
+      cooldownDecision.targetX! - targetX,
+      cooldownDecision.targetY!,
+    );
 
-    expect(readyPlan.reason).toContain('Kiting');
-    expect(cooldownPlan.reason).toContain('Kiting');
-    expect(readyPlan.targetX).not.toBe(targetX);
+    expect(readyDecision.state).toBe(AIState.ENGAGE);
+    expect(cooldownDecision.state).toBe(AIState.ENGAGE);
+    expect(readyDecision.reason).toContain('Focused Floor 2 hunt target');
+    expect(readyDecision.reason).toContain('Kiting');
+    expect(cooldownDecision.reason).toContain('Kiting');
+    expect(readyDecision.targetX).not.toBe(targetX);
     expect(cooldownDistance).toBeGreaterThan(readyDistance + 0.5);
   });
 
   it('keeps focused Floor 2 melee hunts committed while outside strike range', () => {
     const world = createTestWorld({ seed: 7, floor: 2 });
-    spawnPlayer(world, 0, 0);
+    const player = spawnPlayer(world, 0, 0);
     const enemy = spawnEnemy(world, 20, 0, 40);
     setActiveWeapon(world, getWeaponDef('baseball-bat')!);
     const ai = new BehaviorTreeAI({ seed: 7 });
-    const plan = (
-      ai as unknown as {
-        planFocusedMeleeEngagement(
-          currentWorld: GameWorld,
-          playerX: number,
-          playerY: number,
-          target: { eid: number; x: number; y: number; distance: number },
-        ): { targetX: number; targetY: number; reason: string };
-      }
-    ).planFocusedMeleeEngagement(world, 0, 0, {
-      eid: enemy,
-      x: 20,
-      y: 0,
-      distance: 20,
-    });
+    const harness = ai as unknown as {
+      findProgressObjective(
+        currentWorld: GameWorld,
+        playerEid: number,
+        playerX: number,
+        playerY: number,
+      ): {
+        eid: number;
+        x: number;
+        y: number;
+        distance: number;
+        reason: string;
+        npcInteraction: null;
+      } | null;
+    };
+    harness.findProgressObjective = (_currentWorld, playerEid, playerX, playerY) => {
+      expect(playerEid).toBe(player);
+      return {
+        eid: enemy,
+        x: 20,
+        y: 0,
+        distance: Math.hypot(20 - playerX, -playerY),
+        reason: 'Focused Floor 2 hunt target',
+        npcInteraction: null,
+      };
+    };
 
-    expect(plan.reason).toContain('Closing to melee range');
-    expect(plan.targetX).toBeGreaterThan(0);
-    expect(plan.targetX).toBeLessThan(20);
+    ai.poll(createInputState(), world);
+    const decision = ai.getDecision();
+
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.reason).toContain('Focused Floor 2 hunt target');
+    expect(decision.reason).toContain('Closing to melee range');
+    expect(decision.targetX).toBeGreaterThan(0);
+    expect(decision.targetX).toBeLessThan(20);
   });
 
   it('collects gold as loot when no higher-priority progression target is active', () => {
