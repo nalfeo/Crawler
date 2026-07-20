@@ -4008,5 +4008,57 @@
     "col": 8,
     "row": 8,
     "note": "Tiny Dungeon short sword \u2014 row 8 col 8 (frame 104)."
+  },
+  {
+    "id": "generated:equipment/accessory/lucky-feather",
+    "kind": "sprite",
+    "label": "equipment/accessory/lucky-feather",
+    "description": "Generated sprite from brief: lucky-feather.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "equipment/accessory/lucky-feather",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/equipment-accessory-lucky-feather.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:bone-saw-var-1",
+    "kind": "sprite",
+    "label": "bone-saw-var-1",
+    "description": "Generated sprite from brief: bone-saw.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "bone-saw-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/bone-saw-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:iron-cleaver-v1-var-0",
+    "kind": "sprite",
+    "label": "iron-cleaver-v1-var-0",
+    "description": "Generated sprite from brief: iron-cleaver-v1.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "iron-cleaver-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/iron-cleaver-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:iron-cleaver-v1-var-5",
+    "kind": "sprite",
+    "label": "iron-cleaver-v1-var-5",
+    "description": "Generated sprite from brief: iron-cleaver-v1.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "iron-cleaver-v1-var-5",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/iron-cleaver-v1-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
