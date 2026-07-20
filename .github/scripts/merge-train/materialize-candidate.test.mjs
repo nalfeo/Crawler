@@ -144,6 +144,8 @@ materializeTest('materialize-candidate: valid thin bundle materializes and exits
       0,
       `Expected exit 0 but got ${result.status}. stderr: ${result.stderr.toString()}`,
     );
+    assert.equal(git(['rev-parse', 'HEAD'], { cwd: workDir }), candidateSha);
+    assert.equal(readFileSync(path.join(workDir, 'candidate.txt'), 'utf8'), 'candidate');
   } finally {
     cleanup(tmp);
   }
