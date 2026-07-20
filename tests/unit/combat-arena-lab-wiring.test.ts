@@ -47,6 +47,22 @@ describe('combat-arena-lab wiring', () => {
     expect(source).not.toContain('movementSystem(');
   });
 
+  it('runs statusEffectSystem before mobAbilitySystem so Tarnished expires', () => {
+    // Regression guard: the arena enables the mob-ability runtime, so its
+    // preSystems must also tick statusEffectSystem (and before mobAbilitySystem,
+    // matching the canonical floor order) or debuffs like Tarnished never expire.
+    const source = readFileSync('src/labs/combat-arena-lab/index.ts', 'utf-8');
+    const statusIdx = source.indexOf('statusEffectSystem, mobAbilitySystem');
+    expect(statusIdx).toBeGreaterThanOrEqual(0);
+  });
+
+  it('creates, syncs, and destroys the HUD announcement banner', () => {
+    const source = readFileSync('src/labs/combat-arena-lab/index.ts', 'utf-8');
+    expect(source).toContain('createHudAnnouncementBanner(this)');
+    expect(source).toContain('this.announcementBanner.sync(this.world);');
+    expect(source).toContain('this.announcementBanner?.destroy();');
+  });
+
   it('uses crypto.getRandomValues instead of Date.now for RNG seed', () => {
     const source = readFileSync('src/labs/combat-arena-lab/index.ts', 'utf-8');
     expect(source).toContain('globalThis.crypto.getRandomValues(');
@@ -61,7 +77,8 @@ describe('combat-arena-lab wiring', () => {
     expect(source).toContain("'observer'");
     expect(source).toContain("'immortal'");
     expect(source).toContain('PLAYER_HP_HERO');
-    expect(source).toContain('PLAYER_HP_OBSERVER');
+    expect(source).toContain('ARENA_OBSERVER_PLAYER_HP');
+    expect(source).toContain('clearActiveWeaponDef(this.world);');
   });
 
   it('supports simulation speed controls', () => {

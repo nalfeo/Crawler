@@ -15,6 +15,7 @@ import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import {
   clearEntityStores,
+  clearActiveWeaponDef,
   Enemy,
   Invincible,
   createGameWorld,
@@ -24,6 +25,7 @@ import {
 import { runCoreSimulationStep } from '../../core/simulation-core-step.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import { createHudAnnouncementBanner } from '../../engine/HudAnnouncementBanner.js';
 import { buildTerrainLayer } from '../../engine/terrain-renderer.js';
 import {
   fetchGeneratedSpriteRegistry,
@@ -32,6 +34,7 @@ import {
 } from '../../engine/generatedAssets/index.js';
 import { SHEETS } from '../../engine/sprites/index.js';
 import { enemyAISystem, weaponSystem } from '../../game/index.js';
+import { mobAbilitySystem, statusEffectSystem } from '../../core/index.js';
 import { equipStarterOrFallback } from '../../game/scenarios/starterWeaponEquip.js';
 import { GAME } from '../../shared/constants.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
@@ -46,6 +49,7 @@ import { loadLabState, saveLabState } from '../lab-persistence.js';
 import {
   ALL_ARCHETYPES,
   ARENA_ENEMY_PRESETS,
+  ARENA_OBSERVER_PLAYER_HP,
   ARENA_ROOM_PRESETS,
   findWalkablePosition,
   getEnemyPreset,
@@ -65,7 +69,6 @@ export {
 const LAB_ID = 'combat-arena-lab';
 const MAX_STEPS_PER_FRAME = 32;
 const PLAYER_HP_HERO = 200;
-const PLAYER_HP_OBSERVER = 5_000;
 const STARTER_WEAPON_ID = 'sword';
 const logger = createLogger('labs:combat-arena');
 
@@ -100,6 +103,7 @@ type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 class CombatArenaScene extends Phaser.Scene {
   private accumulator = 0;
   private bridge?: ReturnType<typeof createPhaserBridge>;
+  private announcementBanner?: ReturnType<typeof createHudAnnouncementBanner>;
   private inputCapture?: ReturnType<typeof createInputCapture>;
   private inputState!: InputState;
   private playerEid = -1;
@@ -180,12 +184,6 @@ class CombatArenaScene extends Phaser.Scene {
     this.playerEid = spawnPlayer(this.world, spawnWorld.x, spawnWorld.y);
     this.applyPlayerMode();
 
-    // Equip starter weapon so the player can fight
-    const weaponDef = getWeaponDef(STARTER_WEAPON_ID);
-    if (weaponDef) {
-      equipStarterOrFallback(this.world, STARTER_WEAPON_ID, weaponDef);
-    }
-
     // Spawn initial enemy preset
     this.spawnCurrentPreset();
 
@@ -208,7 +206,9 @@ class CombatArenaScene extends Phaser.Scene {
     });
 
     this.bridge = createPhaserBridge(this);
+    this.announcementBanner = createHudAnnouncementBanner(this);
     this.bridge.sync(this.world);
+    this.announcementBanner.sync(this.world);
     this.emitInfo();
 
     void this.warmGeneratedSprites();
@@ -216,6 +216,8 @@ class CombatArenaScene extends Phaser.Scene {
     this.events.once('shutdown', () => {
       this.inputCapture?.destroy();
       this.inputCapture = undefined;
+      this.announcementBanner?.destroy();
+      this.announcementBanner = undefined;
       this.bridge?.destroy();
       this.bridge = undefined;
     });
@@ -227,7 +229,7 @@ class CombatArenaScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if (!this.bridge || !this.inputCapture) return;
+    if (!this.bridge || !this.inputCapture || !this.announcementBanner) return;
 
     this.inputCapture.poll(this.inputState);
 
@@ -247,9 +249,15 @@ class CombatArenaScene extends Phaser.Scene {
 
       // Use the shared canonical pipeline (same ordering as visual + headless
       // floor simulations). weaponSystem runs before enemyAISystem to match
-      // the main game's preSystems contract.
+      // the main game's preSystems contract. statusEffectSystem runs after
+      // enemyAISystem and before mobAbilitySystem — identical to the floor
+      // scene's canonical order — so Tarnished (and other) debuffs tick/expire
+      // correctly and a cast applied this frame lasts its full authored
+      // duration. mobAbilitySystem is the canonical typed ability runtime
+      // (default-off in production; the Queen Mab preset enables it) — the lab
+      // does NOT re-dispatch a lab-only copy.
       runCoreSimulationStep(this.world, this.inputState, {
-        preSystems: [weaponSystem, enemyAISystem],
+        preSystems: [weaponSystem, enemyAISystem, statusEffectSystem, mobAbilitySystem],
       });
 
       this.accumulator -= GAME.DELTA_MS;
@@ -262,6 +270,7 @@ class CombatArenaScene extends Phaser.Scene {
     }
 
     this.bridge.sync(this.world);
+    this.announcementBanner.sync(this.world);
     this.emitInfo();
   }
 
@@ -314,7 +323,11 @@ class CombatArenaScene extends Phaser.Scene {
   applyPlayerMode(): void {
     if (this.playerEid < 0) return;
     const isImmortal = this.settings.playerMode === 'immortal';
-    const hp = this.settings.playerMode === 'hero' ? PLAYER_HP_HERO : PLAYER_HP_OBSERVER;
+    // Observer and immortal modes share the same high-HP value as the headless
+    // evidence harness (`ARENA_OBSERVER_PLAYER_HP` from `arena-data.ts`).
+    // Immortal mode additionally attaches `Invincible` so the health system
+    // never sets world.state='game_over', enabling truly infinite survivability.
+    const hp = this.settings.playerMode === 'hero' ? PLAYER_HP_HERO : ARENA_OBSERVER_PLAYER_HP;
     this.world.stores.health.current[this.playerEid] = hp;
     this.world.stores.health.max[this.playerEid] = hp;
     // Immortal mode: attach the Invincible component so healthSystem never
@@ -324,6 +337,14 @@ class CombatArenaScene extends Phaser.Scene {
       addComponent(this.world.ecs, this.playerEid, Invincible);
     } else {
       removeComponent(this.world.ecs, this.playerEid, Invincible);
+    }
+    if (this.settings.playerMode === 'hero') {
+      const weaponDef = getWeaponDef(STARTER_WEAPON_ID);
+      if (weaponDef) {
+        equipStarterOrFallback(this.world, STARTER_WEAPON_ID, weaponDef);
+      }
+    } else {
+      clearActiveWeaponDef(this.world);
     }
   }
 
@@ -442,7 +463,7 @@ function createCombatArenaLab(canvasHost: HTMLElement, controls: HTMLElement): (
 
   const playerModes: Record<string, PlayerMode> = {
     'Hero (200 HP)': 'hero',
-    'Observer (5000 HP)': 'observer',
+    [`Observer (${ARENA_OBSERVER_PLAYER_HP.toLocaleString()} HP)`]: 'observer',
     'Immortal (∞)': 'immortal',
   };
   arenaFolder
