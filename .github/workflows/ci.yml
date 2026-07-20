@@ -267,49 +267,6 @@ jobs:
       - name: Unit tests
         run: npx vitest run --project unit --reporter=verbose
 
-  # Advisory: runs with coverage in parallel with test-unit.
-  # Posts a PR comment but is NOT in the merge-gate — a coverage regression
-  # surfaces as a visible comment without blocking the branch.
-  # Skipped for sprites_only changes (game coverage not relevant).
-  # Also skipped on PULL REQUESTS where coverage_touched=false (change cannot
-  # affect any path included in the vitest coverage report).
-  test-unit-coverage:
-    name: Unit Tests (coverage)
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: >-
-      needs.changes.outputs.docs_only != 'true' &&
-      needs.changes.outputs.sprites_only != 'true' &&
-      !(github.event_name == 'pull_request' && needs.changes.outputs.coverage_touched != 'true')
-    continue-on-error: true
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: ./.github/actions/setup-node
-
-      - name: Unit tests with coverage
-        run: npx vitest run --project unit --reporter=verbose --coverage --coverage.reporter=json-summary --coverage.reporter=text
-
-      - name: Upload coverage summary
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-summary
-          path: coverage/coverage-summary.json
-          retention-days: 7
-
-      - name: Coverage report comment
-        if: github.event_name == 'pull_request'
-        uses: davelosert/vitest-coverage-report-action@v2
-        with:
-          json-summary-path: coverage/coverage-summary.json
-
-
   # Job 4: Integration tests (critical path, must pass)
   # Promoted from advisory to a blocking gate: the sprite/judge integration
   # tests (generate-one, judge-pipeline, judge-budget-cache) are fully
@@ -421,12 +378,17 @@ jobs:
   # does not block or serialize dead-code, security, typecheck, and build checks.
   # All are advisory (continue-on-error: true); independence keeps scheduling
   # flexible — this job can be re-run or skipped without affecting the others.
+  # Also skipped on PULL REQUESTS where coverage_touched=false (change cannot
+  # affect any path included in the vitest coverage report).
   ci-coverage:
     name: Advisory coverage
     runs-on: ubuntu-latest
     continue-on-error: true
     needs: [changes]
-    if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.sprites_only != 'true'
+    if: >-
+      needs.changes.outputs.docs_only != 'true' &&
+      needs.changes.outputs.sprites_only != 'true' &&
+      !(github.event_name == 'pull_request' && needs.changes.outputs.coverage_touched != 'true')
     permissions:
       contents: read
       pull-requests: write
