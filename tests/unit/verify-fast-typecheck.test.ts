@@ -49,7 +49,7 @@ function makeFixture(files: Record<string, string>): string {
     'tsconfig.json',
     `${JSON.stringify(
       {
-        extends: toBashScriptPath(path.join(REPO_ROOT, 'tsconfig.json')),
+        extends: path.join(REPO_ROOT, 'tsconfig.json'),
         compilerOptions: {
           declaration: false,
           declarationMap: false,
@@ -59,6 +59,7 @@ function makeFixture(files: Record<string, string>): string {
         },
         include: [
           'vite.config.ts',
+          'vitest.config.ts',
           'src/**/*.ts',
           'tests/**/*.ts',
           'scripts/**/*.ts',
@@ -93,7 +94,7 @@ function runStaticVerifier(fixtureDir: string, options?: { cwd?: string; project
     VERIFY_FAST_TEST_STATIC_ONLY: '1',
   };
   if (options?.project) {
-    env.VERIFY_FAST_TSC_PROJECT = toBashScriptPath(options.project);
+    env.VERIFY_FAST_TSC_PROJECT = options.project;
   }
   return spawnSync('bash', [SCRIPT], {
     cwd: options?.cwd ?? fixtureDir,
@@ -112,7 +113,9 @@ if (result.kind === 'ready') {
 `;
 
 describe('verify-fast full-project typecheck', () => {
-  it.skipIf(!hasBash).each(['src', 'tests', 'scripts', 'tools', 'vite.config.ts'] as const)(
+  it
+    .skipIf(!hasBash)
+    .each(['src', 'tests', 'scripts', 'tools', 'vite.config.ts', 'vitest.config.ts'] as const)(
     'fails for a %s-only narrowed property error',
     (directory) => {
       const files: Record<string, string> = {
@@ -121,6 +124,7 @@ describe('verify-fast full-project typecheck', () => {
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
       };
       const errorPath = (() => {
         switch (directory) {
@@ -128,6 +132,8 @@ describe('verify-fast full-project typecheck', () => {
             return 'tests/narrowing.test.ts';
           case 'vite.config.ts':
             return 'vite.config.ts';
+          case 'vitest.config.ts':
+            return 'vitest.config.ts';
           default:
             return `${directory}/narrowing.ts`;
         }
@@ -155,6 +161,7 @@ describe('verify-fast full-project typecheck', () => {
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
       });
 
       const result = runStaticVerifier(fixture, {
@@ -185,6 +192,7 @@ describe('verify-fast production-default typecheck (no project override)', () =>
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
       });
 
       // No project option → VERIFY_FAST_TSC_PROJECT not set → script uses the
@@ -206,6 +214,7 @@ describe('verify-fast production-default typecheck (no project override)', () =>
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
       });
 
       const result = runStaticVerifier(fixture);
@@ -251,10 +260,13 @@ describe('verify-fast changed TS path coverage', () => {
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
-        'project.config.ts': 'export const unsupportedRootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
+        // commitlint.config.ts is a real-world root TS file that is NOT in the
+        // supported surface — used here as the canonical "unsupported" example.
+        'commitlint.config.ts': 'export const unsupportedRootValue = 1;\n',
       });
       initGitFixture(fixture);
-      writeFileSync(path.join(fixture, 'project.config.ts'), narrowingError);
+      writeFileSync(path.join(fixture, 'commitlint.config.ts'), narrowingError);
 
       const result = runStaticVerifier(fixture, { cwd: fixture });
 
@@ -262,7 +274,7 @@ describe('verify-fast changed TS path coverage', () => {
       expect(`${result.stdout}\n${result.stderr}`).toContain(
         'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:',
       );
-      expect(`${result.stdout}\n${result.stderr}`).toContain('project.config.ts');
+      expect(`${result.stdout}\n${result.stderr}`).toContain('commitlint.config.ts');
     },
     30_000,
   );
@@ -276,6 +288,7 @@ describe('verify-fast changed TS path coverage', () => {
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
         'vitest.config.mts': 'export const unsupportedMtsValue = 1;\n',
       });
       initGitFixture(fixture);
@@ -303,14 +316,15 @@ describe('verify-fast changed TS path coverage', () => {
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
       });
       // First commit: initial clean state (this becomes the base SHA).
       initGitFixture(fixture);
       const baseSha = runGit(fixture, 'rev-parse', 'HEAD');
 
       // Second commit: add an unsupported TS file — clean, no uncommitted changes.
-      writeFileSync(path.join(fixture, 'project.config.ts'), 'export const x = 1;\n');
-      runGit(fixture, 'add', 'project.config.ts');
+      writeFileSync(path.join(fixture, 'commitlint.config.ts'), 'export const x = 1;\n');
+      runGit(fixture, 'add', 'commitlint.config.ts');
       runGit(fixture, 'commit', '-m', 'add unsupported file');
 
       // Run with GITHUB_BASE_SHA pointing to the first commit so the diff
@@ -331,7 +345,7 @@ describe('verify-fast changed TS path coverage', () => {
       expect(`${result.stdout}\n${result.stderr}`).toContain(
         'verify:fast does not support changed TypeScript files outside vite.config.ts, vitest.config.ts, src/, tests/, scripts/, and tools/:',
       );
-      expect(`${result.stdout}\n${result.stderr}`).toContain('project.config.ts');
+      expect(`${result.stdout}\n${result.stderr}`).toContain('commitlint.config.ts');
     },
     30_000,
   );
@@ -345,10 +359,11 @@ describe('verify-fast changed TS path coverage', () => {
         'scripts/clean.ts': 'export const scriptValue = 1;\n',
         'tools/clean.ts': 'export const toolValue = 1;\n',
         'vite.config.ts': 'export const rootValue = 1;\n',
+        'vitest.config.ts': 'export const vitestRootValue = 1;\n',
       });
       initGitFixture(fixture);
-      writeFileSync(path.join(fixture, 'vitest.config.ts'), 'export const x = 1;\n');
-      runGit(fixture, 'add', 'vitest.config.ts');
+      writeFileSync(path.join(fixture, 'commitlint.config.ts'), 'export const x = 1;\n');
+      runGit(fixture, 'add', 'commitlint.config.ts');
       runGit(fixture, 'commit', '-m', 'add unsupported file');
 
       const result = runStaticVerifier(fixture, { cwd: fixture });
@@ -508,9 +523,9 @@ echo "signal lifecycle ok"
     [
       toBashScriptPath(supervisorScript),
       SCRIPT,
-      logFile,
-      tscChildPidFile,
-      eslintChildPidFile,
+      toBashScriptPath(logFile),
+      toBashScriptPath(tscChildPidFile),
+      toBashScriptPath(eslintChildPidFile),
       String(STUB_STARTUP_DELAY_MS / 1000),
       String(CHILD_PID_TIMEOUT_MS),
       String(CLOSE_TIMEOUT_MS),
@@ -525,8 +540,8 @@ echo "signal lifecycle ok"
         VERIFY_FAST_TSC_PROJECT: path.join(fixtureDir, 'tsconfig.json'),
         VERIFY_FAST_TSC_STUB_SECONDS: String(STUB_DURATION_SECONDS),
         VERIFY_FAST_TSC_STUB_WITH_DESCENDANT: '1',
-        VERIFY_FAST_TSC_STUB_TSC_CHILD_PID_FILE: tscChildPidFile,
-        VERIFY_FAST_TSC_STUB_ESLINT_CHILD_PID_FILE: eslintChildPidFile,
+        VERIFY_FAST_TSC_STUB_TSC_CHILD_PID_FILE: toBashScriptPath(tscChildPidFile),
+        VERIFY_FAST_TSC_STUB_ESLINT_CHILD_PID_FILE: toBashScriptPath(eslintChildPidFile),
       }),
     },
   );
