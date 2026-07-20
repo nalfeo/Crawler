@@ -285,10 +285,8 @@ jobs:
             // infrastructure/scheduling outcome and remains retryable via `cancelled`.
             const expectedJobs = ['static', 'unit-tests', 'sprite-tests', 'health', 'security'];
             const needs = JSON.parse(process.env.VALIDATION_RESULTS ?? '{}');
-            const evidenceId = require('node:crypto')
-              .createHash('sha256')
-              .update(`${process.env.FINGERPRINT}:${process.env.CANDIDATE_SHA.toLowerCase()}`)
-              .digest('hex');
+            const { createHash } = require('crypto');
+            const evidenceId = createHash('sha256').update(`${process.env.FINGERPRINT}:${(process.env.CANDIDATE_SHA || '').toLowerCase()}`).digest('hex');
             const results = expectedJobs.map((name) => ({
               name,
               result: needs[name]?.result ?? 'skipped',
@@ -476,10 +474,8 @@ jobs:
         with:
           github-token: ${{ steps.recovery-app-token.outputs.token }}
           script: |
-            const evidenceId = require('node:crypto')
-              .createHash('sha256')
-              .update(`${process.env.FINGERPRINT}:${process.env.CANDIDATE_SHA.toLowerCase()}`)
-              .digest('hex');
+            const { createHash } = require('crypto');
+            const evidenceId = createHash('sha256').update(`${process.env.FINGERPRINT}:${(process.env.CANDIDATE_SHA || '').toLowerCase()}`).digest('hex');
             const findMatch = async () => {
               const { data: existing } = await github.rest.checks.listForRef({
                 owner: context.repo.owner,

@@ -143,8 +143,12 @@ describe('merge-train workflow wake-ups', () => {
         (step) => step.name === 'Publish immutable candidate result',
       );
       expect(publish?.env?.ATTESTATION_SHA).toBe('${{ inputs.attestation_sha }}');
+      expect(publish?.with?.script).toContain("const { createHash } = require('crypto')");
       expect(publish?.with?.script).toContain(
-        'const evidenceId = `${process.env.FINGERPRINT}:${process.env.CANDIDATE_SHA}`',
+        "createHash('sha256').update(`${process.env.FINGERPRINT}:${(process.env.CANDIDATE_SHA || '').toLowerCase()}`).digest('hex')",
+      );
+      expect(publish?.with?.script).not.toContain(
+        '`${process.env.FINGERPRINT}:${process.env.CANDIDATE_SHA}`',
       );
       expect(publish?.with?.script).toContain('head_sha: process.env.ATTESTATION_SHA');
       expect(publish?.with?.script).not.toContain('head_sha: process.env.CANDIDATE_SHA');

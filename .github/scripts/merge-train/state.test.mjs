@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import {
@@ -97,10 +98,12 @@ test('candidate refs are bounded and immutable by fingerprint', () => {
 test('candidate evidence binds the queue fingerprint to the exact materialized commit', () => {
   const fingerprint = 'a'.repeat(64);
   const candidateSha = 'B'.repeat(40);
-  assert.equal(
-    candidateEvidenceId(fingerprint, candidateSha),
-    '2f4ce7270f332276802bb030a1cd8f4edd1fea4bab4d75d50f7abd67df82888b',
-  );
+  const expected = createHash('sha256')
+    .update(`${'a'.repeat(64)}:${'b'.repeat(40)}`)
+    .digest('hex');
+  assert.equal(candidateEvidenceId(fingerprint, candidateSha), expected);
+  // Must fit within GitHub's 100-character external_id limit.
+  assert.ok(expected.length <= 100);
   assert.throws(() => candidateEvidenceId('short', candidateSha), /fingerprint/);
   assert.throws(() => candidateEvidenceId(fingerprint, 'short'), /commit SHA/);
 });
