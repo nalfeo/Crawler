@@ -1,7 +1,9 @@
 /**
  * Unit coverage for `selectSearchPromotion` — the legacy `--stage search`
  * hill-climb's round-to-round promotion gate in
- * `scripts/agent/perf/sweep-eval.ts`.
+ * `scripts/agent/perf/sweep-eval.ts` — and `assertLegacyBaselineProvenance`,
+ * which vets an externally-loaded `--legacy-baseline` artifact before it is
+ * injected as the search's fixed incumbent.
  *
  * A multi-model review round (gpt-5.3-codex) found this legacy local-smoke
  * path still promoted candidates by raw composite score alone
@@ -12,10 +14,29 @@
  * wins AND strictly more total wins than the incumbent — win→loss flips
  * alone are no longer disqualifying) is locked in without needing to run
  * headless games.
+ *
+ * A later review round found `searchCombo` (the caller of
+ * `selectSearchPromotion`) gated non-LEGACY combos against their OWN baseline
+ * instead of the fixed LEGACY+LEGACY incumbent `round-plan.ts`'s production
+ * path always uses — `selectSearchPromotion` gained an `incumbentCombo` param
+ * to fix this (tested above). A further review round flagged that the
+ * optional `--legacy-baseline` artifact (an optimization to reuse one LEGACY
+ * shard across multiple combo searches) was consumed with no provenance
+ * check, so a stale/wrong-floor/pre-v2 baseline could silently seed a
+ * mis-calibrated incumbent — `assertLegacyBaselineProvenance` closes that gap
+ * (tested below).
  */
 import { describe, expect, it } from 'vitest';
-import { selectSearchPromotion } from '../../../scripts/agent/perf/sweep-eval.js';
-import type { RunRow } from '../../../scripts/agent/perf/aggregate-shards.js';
+import {
+  assertLegacyBaselineProvenance,
+  selectSearchPromotion,
+} from '../../../scripts/agent/perf/sweep-eval.js';
+import {
+  SHARD_SCHEMA_VERSION,
+  type RunRow,
+  type ShardArtifact,
+  type ShardMeta,
+} from '../../../scripts/agent/perf/aggregate-shards.js';
 
 const VICTORY_SCORE = 1_000_000;
 const BUDGET_MS = 360_000;
@@ -353,5 +374,84 @@ describe('selectSearchPromotion', () => {
     );
 
     expect(promotion).toBeNull();
+  });
+});
+
+describe('assertLegacyBaselineProvenance', () => {
+  const LEGACY_COMBO = 'legacy+legacy';
+  const VALID_META: ShardMeta = {
+    schemaVersion: SHARD_SCHEMA_VERSION,
+    budgetMs: BUDGET_MS,
+    floorId: 'floor1',
+    maxFrames: 23_760,
+    stage: 'search',
+    runnerOs: 'linux',
+    nodeVersion: 'v22.0.0',
+    packageLockHash: 'abc123def456abc123def456',
+    workflowSha: 'deadbeefcafe0000deadbeefcafe0000',
+  };
+  const EXPECTED = { floorId: 'floor1', budgetMs: BUDGET_MS, maxFrames: 23_760 };
+
+  function validArtifact(): ShardArtifact {
+    const rows: RunRow[] = [];
+    for (let seed = 1; seed <= 3; seed++) {
+      rows.push(row({ combo: LEGACY_COMBO, configId: 'legacy-base', weapon: 'sword', seed }));
+    }
+    return {
+      meta: VALID_META,
+      configs: { 'legacy-base': {} as never },
+      rows,
+    };
+  }
+
+  it('accepts a well-formed --legacy-baseline artifact and returns its sole configId', () => {
+    expect(assertLegacyBaselineProvenance(validArtifact(), EXPECTED)).toBe('legacy-base');
+  });
+
+  it('rejects an artifact with more than one config', () => {
+    const artifact = validArtifact();
+    artifact.configs['legacy-base-2'] = {} as never;
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/exactly one config/);
+  });
+
+  it('rejects an artifact whose rows are not all tagged the LEGACY combo', () => {
+    const artifact = validArtifact();
+    artifact.rows.push(
+      row({ combo: 'navmeshFused+slackAware', configId: 'legacy-base', weapon: 'sword', seed: 4 }),
+    );
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(
+      /must all be tagged combo/,
+    );
+  });
+
+  it('rejects a pre-v2/stale schema version (would silently undercount the incumbent via raw-time fallback)', () => {
+    const artifact = validArtifact();
+    artifact.meta = { ...VALID_META, schemaVersion: SHARD_SCHEMA_VERSION - 1 };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/schema version/);
+  });
+
+  it('rejects a floorId mismatch', () => {
+    const artifact = validArtifact();
+    artifact.meta = { ...VALID_META, floorId: 'floor2' };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/floorId/);
+  });
+
+  it('rejects a budgetMs mismatch', () => {
+    const artifact = validArtifact();
+    artifact.meta = { ...VALID_META, budgetMs: BUDGET_MS + 1 };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/win-budget/);
+  });
+
+  it('rejects a maxFrames mismatch', () => {
+    const artifact = validArtifact();
+    artifact.meta = { ...VALID_META, maxFrames: 1 };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/frame-cap/);
+  });
+
+  it('rejects a row missing safeRoomMs (pre-v2 row shape smuggled past a matching schemaVersion)', () => {
+    const artifact = validArtifact();
+    // Simulate a malformed/pre-v2 row that slipped past JSON.parse's type cast.
+    (artifact.rows[0] as { safeRoomMs?: number }).safeRoomMs = undefined;
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/safeRoomMs/);
   });
 });

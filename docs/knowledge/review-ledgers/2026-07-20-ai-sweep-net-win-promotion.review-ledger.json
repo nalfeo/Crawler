@@ -46,6 +46,22 @@
           "resolved_count": 1,
           "clean": true,
           "notes": "A final native GitHub Copilot PR review pass on commit 9aefd6a identified a genuine logic gap in sweep-eval.ts's legacy --stage search path: selectSearchPromotion was called with comboStr as incumbentCombo even for non-LEGACY combos (e.g. navmesh+legacy), making buildLeaderboard unable to find the LEGACY incumbent rows (tagged legacy+legacy) and forcing winsVsIncumbentDelta to null, which disqualified every candidate. The fix mirrors initCheckpoint in round-plan.ts: (1) added optional incumbentCombo? parameter to selectSearchPromotion defaulting to comboStr for backward compatibility; (2) added optional legacyBaseline? to searchCombo opts; (3) when combo !== legacy+legacy and legacyBaseline is provided, extract LEGACY config ID, inject rows + configs into allRows/configs, set incumbentConfigId/incumbentCombo to the LEGACY values, and pass incumbentCombo to selectSearchPromotion; (4) added --legacy-baseline CLI flag to --stage search; (5) added 2 regression tests covering the non-LEGACY combo path (passes with incumbentCombo, fails/disqualifies without it). Verified: 104/104 tests/unit/ai pass, tsc --noEmit clean, verify:fast green."
+        },
+        {
+          "round": 5,
+          "models": ["github-copilot-pr-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "A further native GitHub Copilot PR review pass on the round-4 push found that fix's --legacy-baseline flag was opt-in only: the default `--stage search` invocation (no flag) silently preserved the original bug (gating a non-LEGACY combo against its own baseline instead of the fixed LEGACY incumbent). An automated copilot-swe-agent[bot] push (commit a4a5bb57) landed a fix matching that exact opt-in design (flag present -> correct behavior; flag omitted -> old buggy default silently preserved). This session judged that insufficient against the reviewer's intent and the task's 'share the same rule' requirement, and strengthened it on top of the bot's commit: when opts.legacyBaseline is NOT supplied, searchCombo now automatically computes the LEGACY baseline inline (one extra headless eval pass reusing register()/buildTasks()/runTasks(), mirroring the existing evalStandalone/validate pattern), so correctness no longer depends on remembering to pass a flag. --legacy-baseline is now purely a perf optimization to reuse a precomputed LEGACY shard across multiple combo searches, never a correctness requirement. Verified: 46/46 (targeted) + 301/301 (tests/unit/ai) pass, tsc --noEmit clean, eslint clean, verify:fast green."
+        },
+        {
+          "round": 6,
+          "models": ["github-copilot-pr-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "A further native GitHub Copilot PR review pass on the round-5 push found the --legacy-baseline artifact was JSON.parse'd and its rows injected into allRows/configs with zero provenance or row validation: a stale/wrong-floor/wrong-budget/pre-v2-schema artifact (missing safeRoomMs) could silently corrupt the incumbent's win count, and the freshly-stamped output metadata would hide this from the downstream --stage validate check. Fixed by adding assertLegacyBaselineProvenance() in sweep-eval.ts, which: (1) validates the artifact has exactly one config; (2) validates every row is tagged combo === LEGACY_COMBO_ID; (3) reuses the existing assertSearchArtifactProvenance() to check schema version, stage, floorId, budgetMs, and maxFrames against the current runner's calibration; (4) reuses the newly-exported assertRowSafeRoomInRange() (aggregate-shards.ts) on every row to reject missing/out-of-range safeRoomMs. searchCombo's `if (opts.legacyBaseline)` branch now calls this single validator instead of an ad-hoc inline config-count check. Added 8 new regression tests (tests/unit/ai/sweep-eval-search-promotion.test.ts): accepts a well-formed artifact; rejects >1 config; rejects mixed/wrong combo tags; rejects stale schemaVersion, floorId mismatch, budgetMs mismatch, maxFrames mismatch; rejects a row missing safeRoomMs. Verified: 15/15 (targeted) + 309/309 (tests/unit/ai) pass, tsc --noEmit clean, eslint clean, verify:fast green."
         }
       ]
     }

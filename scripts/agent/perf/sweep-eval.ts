@@ -85,6 +85,7 @@ import {
 } from './gen-configs.js';
 import {
   SHARD_SCHEMA_VERSION,
+  assertRowSafeRoomInRange,
   assertSearchArtifactProvenance,
   buildLeaderboard,
   deriveRunFacts,
@@ -277,6 +278,53 @@ interface SearchResult {
 }
 
 /**
+ * Validate an externally-loaded `--legacy-baseline` artifact BEFORE injecting
+ * its rows into a search's `allRows`/`configs`. Unlike shard rows fanned in via
+ * {@link mergeShards} (which apply the same guards internally), this artifact
+ * crosses a JSON.parse boundary straight into `searchCombo` with no provenance
+ * check, so a stale/pre-v{@link SHARD_SCHEMA_VERSION} or wrong-floor/wrong-combo
+ * baseline would silently seed a mis-calibrated incumbent that the emitted
+ * search artifact's fresh metadata stamp would then hide from `--stage
+ * validate`'s downstream `assertSearchArtifactProvenance` check. Reuses the
+ * exact same schema/stage/floor/budget/frame guard as the search→validate
+ * boundary, plus per-row `safeRoomMs` sanity (a pre-v2 baseline could parse
+ * as valid JSON yet lack `safeRoomMs`, silently reverting win recomputation to
+ * raw-time semantics and undercounting the incumbent).
+ *
+ * @returns the artifact's sole configId (the LEGACY baseline's config).
+ */
+export function assertLegacyBaselineProvenance(
+  artifact: ShardArtifact,
+  expected: { floorId: string; budgetMs: number; maxFrames: number },
+): string {
+  const legacyIds = Object.keys(artifact.configs);
+  const legacyId = legacyIds[0];
+  if (!legacyId || legacyIds.length !== 1) {
+    throw new Error(
+      `--legacy-baseline artifact must contain exactly one config, got ${legacyIds.length}.`,
+    );
+  }
+  const rowCombos = new Set(artifact.rows.map((r) => r.combo));
+  if (rowCombos.size !== 1 || !rowCombos.has(LEGACY_COMBO_ID)) {
+    throw new Error(
+      `--legacy-baseline artifact rows must all be tagged combo='${LEGACY_COMBO_ID}', got: ` +
+        `${[...rowCombos].join(', ')}. Produce it via ` +
+        `'--stage search-baseline --combo ${LEGACY_COMBO_ID}'.`,
+    );
+  }
+  assertSearchArtifactProvenance(artifact.meta as ShardMeta | undefined, LEGACY_COMBO_ID, {
+    combo: LEGACY_COMBO_ID,
+    floorId: expected.floorId,
+    budgetMs: expected.budgetMs,
+    maxFrames: expected.maxFrames,
+  });
+  for (const row of artifact.rows) {
+    assertRowSafeRoomInRange(row);
+  }
+  return legacyId;
+}
+
+/**
  * Coordinate-ascent search for one combo over the TRAIN seeds. Starts from the
  * combo's SSOT base config, probes ±step neighbours of each tunable knob, moves
  * to the best-scoring neighbour, and halves steps when a round finds no
@@ -291,12 +339,14 @@ async function searchCombo(
     rounds: number;
     secondary: boolean;
     floorId: string;
-    /** When provided and the combo is not `legacy+legacy`, inject these rows
-     *  and config into `allRows`/`configs` and use the LEGACY config as the
-     *  safety-gate incumbent — exactly mirroring {@link initCheckpoint} in
-     *  `round-plan.ts`.  Without this, the gate compares against the combo's
-     *  own baseline rather than the fixed LEGACY incumbent, so a candidate
-     *  promoted here can still be rejected at final graduation. */
+    /** When provided and the combo is not `legacy+legacy`, this PRE-VALIDATED
+     *  (see {@link assertLegacyBaselineProvenance}) shard's rows/config are
+     *  injected into `allRows`/`configs` and used as the safety-gate incumbent
+     *  — exactly mirroring {@link initCheckpoint} in `round-plan.ts`. This is
+     *  an OPTIMIZATION to reuse one LEGACY baseline across multiple combo
+     *  searches in a session — NOT a correctness requirement: when omitted,
+     *  `searchCombo` evaluates the LEGACY baseline itself so the gate is
+     *  threaded correctly by default either way. */
     legacyBaseline?: ShardArtifact;
   },
 ): Promise<SearchResult> {
@@ -339,25 +389,53 @@ async function searchCombo(
     `[${comboStr}] baseline ${base.id.slice(0, 48)} score=${currentScore.toExponential(3)} wins=${winsOf(allRows, currentId)}/${opts.weapons.length * opts.trainSeeds.length}`,
   );
 
-  // Incumbent for the safety gate: use the LEGACY incumbent (from legacyBaseline)
-  // for non-LEGACY combos so that the in-search net-win check mirrors the final
-  // graduation gate (`selectQualifiedWinner`). For `legacy+legacy` the combo IS
-  // the LEGACY incumbent, so no separate baseline is needed.
+  // Incumbent for the safety gate: use the LEGACY incumbent for non-LEGACY
+  // combos so that the in-search net-win check mirrors the final graduation
+  // gate (`selectQualifiedWinner`), exactly like `round-plan.ts`'s
+  // `initCheckpoint`. For `legacy+legacy` the combo IS the LEGACY incumbent,
+  // so no separate baseline is needed.
+  //
+  // `opts.legacyBaseline` lets a caller sweeping multiple non-LEGACY combos in
+  // one session pass a PRE-COMPUTED LEGACY shard to avoid re-running the
+  // LEGACY baseline once per combo. It is an optimization, NOT a correctness
+  // requirement: when omitted, this function computes the LEGACY baseline
+  // itself (one extra headless eval pass) so the safety gate is threaded
+  // correctly by default, with no opt-in flag required to avoid silently
+  // falling back to the pre-fix bug (gating against the combo's own
+  // baseline instead of the fixed LEGACY incumbent).
   const comboIsLegacy = comboStr === LEGACY_COMBO_ID;
   let incumbentConfigId = base.id;
   let incumbentCombo = comboStr;
-  if (!comboIsLegacy && opts.legacyBaseline) {
-    const legacyIds = Object.keys(opts.legacyBaseline.configs);
-    const legacyId = legacyIds[0];
-    if (!legacyId || legacyIds.length !== 1) {
-      throw new Error(
-        `searchCombo(${comboStr}): legacyBaseline shard must contain exactly one config, got ${legacyIds.length}`,
+  if (!comboIsLegacy) {
+    if (opts.legacyBaseline) {
+      const legacyId = assertLegacyBaselineProvenance(opts.legacyBaseline, {
+        floorId: opts.floorId,
+        budgetMs: shared.budgetMs,
+        maxFrames: shared.maxFrames,
+      });
+      incumbentConfigId = legacyId;
+      Object.assign(configs, opts.legacyBaseline.configs);
+      allRows.push(...opts.legacyBaseline.rows);
+    } else {
+      // No pre-computed shard supplied — evaluate the LEGACY baseline
+      // ourselves (register() already merges it into `configs`) so the
+      // gate is correct by default rather than silently falling back to
+      // the pre-fix behaviour of gating against the combo's own baseline.
+      const legacyBase = register(
+        baseConfigForCombo({ pathing: AIPathingMode.LEGACY, decision: AIDecisionMode.LEGACY }),
+      );
+      const legacyRows = await runTasks(
+        buildTasks([legacyBase], LEGACY_COMBO_ID, opts.weapons, opts.trainSeeds),
+        shared,
+        opts.workers,
+      );
+      allRows.push(...legacyRows);
+      incumbentConfigId = legacyBase.id;
+      console.log(
+        `[${comboStr}] auto-computed LEGACY incumbent ${legacyBase.id.slice(0, 48)} wins=${winsOf(legacyRows, legacyBase.id)}/${opts.weapons.length * opts.trainSeeds.length} (pass --legacy-baseline to reuse across combos and skip this)`,
       );
     }
-    incumbentConfigId = legacyId;
     incumbentCombo = LEGACY_COMBO_ID;
-    Object.assign(configs, opts.legacyBaseline.configs);
-    allRows.push(...opts.legacyBaseline.rows);
   }
 
   for (let round = 0; round < opts.rounds; round++) {

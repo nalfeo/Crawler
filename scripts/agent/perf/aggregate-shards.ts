@@ -145,8 +145,13 @@ function rowFacts(row: RunRow): string {
  * active time (manufacturing an official win for ANY victory regardless of real
  * clear time). The schema-version guard proves the field is EXPECTED at this
  * version; this proves it is PRESENT and SANE. Throws on the first violation.
+ *
+ * Exported so any consumer that injects externally-loaded rows OUTSIDE
+ * {@link mergeShards}' fan-in guard (e.g. `sweep-eval.ts`'s `--legacy-baseline`
+ * artifact for the legacy `--stage search` path) can apply the same per-row
+ * validation before trusting those rows.
  */
-function assertRowSafeRoomInRange(row: RunRow): void {
+export function assertRowSafeRoomInRange(row: RunRow): void {
   const label = rowKey(row).split('\u0000').join('/');
   if (!Number.isFinite(row.gameTimeMs) || row.gameTimeMs < 0) {
     throw new Error(
