@@ -1,16 +1,18 @@
 /**
  * VLM judge for the sprite generation pipeline (spec §F4).
  *
- * Four evaluators always run, one vision call per variant; a 5th
- * (`theme_adherence`) joins them whenever the brief carries a floor or
- * theme design-language addendum:
+ * Four evaluators always run in one vision call per variant. Conditional
+ * evaluators join them when the brief's subject family needs them:
  *
  *   - `design_language` — does the concept feel specifically like Crawler?
  *   - `reference_style_match` — does rendering match approved references?
  *   - `brief_match`   — does the candidate match `brief.prompt`?
  *   - `readability`   — does the candidate read at game scale on a dark
  *                       floor tile? (composited preview attached)
- *   - `theme_adherence` (conditional) — does the candidate honor the
+ *   - `pose_orientation` (enemy/character) — is the subject camera-facing?
+ *   - `boss_presence` (boss enemy) — is the silhouette large and dominant?
+ *   - `presentation` (equipment/item/prop) — is the family presented correctly?
+ *   - `theme_adherence` (floor/theme addendum) — does the candidate honor the
  *                       floor/theme design-language addenda, not just the
  *                       generic Crawler style?
  *
@@ -60,13 +62,16 @@ import {
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-const PROMPT_TEMPLATE_VERSION = 'v7';
+const PROMPT_TEMPLATE_VERSION = 'v8';
 
 export type Evaluator =
   | 'design_language'
   | 'reference_style_match'
   | 'brief_match'
   | 'readability'
+  | 'pose_orientation'
+  | 'boss_presence'
+  | 'presentation'
   | 'theme_adherence';
 
 /** Per-evaluator result on the 1-5 ordinal scale. */
@@ -94,6 +99,9 @@ export interface JudgeScorecard {
   readonly styleMatch: EvaluatorResult;
   readonly briefMatch: EvaluatorResult;
   readonly readability: EvaluatorResult;
+  readonly poseOrientation?: EvaluatorResult;
+  readonly bossPresence?: EvaluatorResult;
+  readonly presentation?: EvaluatorResult;
   /**
    * Floor/theme design-language adherence. Only present (and only
    * scored) when the brief resolves a floor or theme addendum — see
@@ -176,6 +184,9 @@ const baseJudgeResponseSchema = z
     reference_style_match: evaluatorPayloadSchema,
     brief_match: evaluatorPayloadSchema,
     readability: evaluatorPayloadSchema,
+    pose_orientation: evaluatorPayloadSchema.optional(),
+    boss_presence: evaluatorPayloadSchema.optional(),
+    presentation: evaluatorPayloadSchema.optional(),
     theme_adherence: evaluatorPayloadSchema.optional(),
   })
   .strict();
@@ -191,35 +202,43 @@ const baseJudgeResponseSchema = z
  */
 function parseJudgeResponse(
   value: unknown,
+  brief: Brief,
   hasAddendum: boolean,
 ): ReturnType<typeof baseJudgeResponseSchema.safeParse> {
   const parsed = baseJudgeResponseSchema.safeParse(value);
   if (!parsed.success) return parsed;
-  if (hasAddendum && parsed.data.theme_adherence === undefined) {
-    return {
-      success: false,
-      error: new z.ZodError([
-        {
-          code: z.ZodIssueCode.custom,
-          path: ['theme_adherence'],
-          message:
-            'theme_adherence is required when the brief resolves a floor or theme design-language addendum',
-        },
-      ]),
-    } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
-  }
-  if (!hasAddendum && parsed.data.theme_adherence !== undefined) {
-    return {
-      success: false,
-      error: new z.ZodError([
-        {
-          code: z.ZodIssueCode.custom,
-          path: ['theme_adherence'],
-          message:
-            'theme_adherence is not allowed when no floor or theme design-language addendum applies',
-        },
-      ]),
-    } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
+  const expectedOptionalAxes = new Map<string, boolean>([
+    ['theme_adherence', hasAddendum],
+    ['pose_orientation', brief.type === 'enemy' || brief.type === 'character'],
+    ['boss_presence', brief.type === 'enemy' && brief.mobRole === 'boss'],
+    ['presentation', ['equipment', 'item', 'prop'].includes(brief.type)],
+  ]);
+  for (const [axis, required] of expectedOptionalAxes) {
+    const value = parsed.data[axis as keyof typeof parsed.data];
+    if (required && value === undefined) {
+      return {
+        success: false,
+        error: new z.ZodError([
+          {
+            code: z.ZodIssueCode.custom,
+            path: [axis],
+            message: `${axis} is required for this brief`,
+          },
+        ]),
+      } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
+    }
+    if (!required && value !== undefined) {
+      return {
+        success: false,
+        error: new z.ZodError([
+          {
+            code: z.ZodIssueCode.custom,
+            path: [axis],
+            message: `${axis} is not allowed for this brief`,
+          },
+        ]),
+      } as ReturnType<typeof baseJudgeResponseSchema.safeParse>;
+    }
   }
   return parsed;
 }
@@ -314,8 +333,8 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
   const request: EvaluateRequest = {
     systemInstructions: buildSystemInstructions(
+      options.brief,
       options.styleGuide,
-      options.brief.floor,
       designLanguageAddenda,
     ),
     userPrompt: buildUserPrompt(options.brief, referencePreviews.length, hasAddendumForPrompt),
@@ -330,7 +349,11 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
 
   const hasAddendum =
     designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
-  const parsed = parseJudgeResponse(normalizeLegacyJudgeResponse(response.json), hasAddendum);
+  const parsed = parseJudgeResponse(
+    normalizeLegacyJudgeResponse(response.json),
+    options.brief,
+    hasAddendum,
+  );
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
@@ -402,6 +425,13 @@ function buildScorecard(args: {
     ['reference_style_match', args.payload.reference_style_match],
     ['brief_match', args.payload.brief_match],
     ['readability', args.payload.readability],
+    ...(args.payload.pose_orientation
+      ? ([['pose_orientation', args.payload.pose_orientation]] as const)
+      : []),
+    ...(args.payload.boss_presence
+      ? ([['boss_presence', args.payload.boss_presence]] as const)
+      : []),
+    ...(args.payload.presentation ? ([['presentation', args.payload.presentation]] as const) : []),
     ...(args.payload.theme_adherence
       ? ([['theme_adherence', args.payload.theme_adherence]] as const)
       : []),
@@ -417,6 +447,9 @@ function buildScorecard(args: {
     styleMatch: args.payload.reference_style_match,
     briefMatch: args.payload.brief_match,
     readability: args.payload.readability,
+    poseOrientation: args.payload.pose_orientation,
+    bossPresence: args.payload.boss_presence,
+    presentation: args.payload.presentation,
     themeAdherence: args.payload.theme_adherence,
     passed: rejectedBy.length === 0,
     minScore,
@@ -426,12 +459,37 @@ function buildScorecard(args: {
 }
 
 function buildSystemInstructions(
+  brief: Brief,
   styleGuide: string,
-  floor: number,
   addenda: DesignLanguageAddenda,
 ): string {
+  const floor = brief.floor;
   const hasAddendum = addenda.floor !== undefined || addenda.theme !== undefined;
   const bothAddenda = addenda.floor !== undefined && addenda.theme !== undefined;
+  const hasPoseAxis = brief.type === 'enemy' || brief.type === 'character';
+  const hasBossAxis = brief.type === 'enemy' && brief.mobRole === 'boss';
+  const hasPresentationAxis = ['equipment', 'item', 'prop'].includes(brief.type);
+  const axisCount =
+    4 +
+    Number(hasPoseAxis) +
+    Number(hasBossAxis) +
+    Number(hasPresentationAxis) +
+    Number(hasAddendum);
+  let nextAxisNumber = 5;
+  const poseAxisNumber = hasPoseAxis ? nextAxisNumber++ : null;
+  const bossAxisNumber = hasBossAxis ? nextAxisNumber++ : null;
+  const presentationAxisNumber = hasPresentationAxis ? nextAxisNumber++ : null;
+  const themeAxisNumber = hasAddendum ? nextAxisNumber : null;
+  const responseFields = [
+    'design_language',
+    'reference_style_match',
+    'brief_match',
+    'readability',
+    ...(hasPoseAxis ? ['pose_orientation'] : []),
+    ...(hasBossAxis ? ['boss_presence'] : []),
+    ...(hasPresentationAxis ? ['presentation'] : []),
+    ...(hasAddendum ? ['theme_adherence'] : []),
+  ];
   return [
     'You are a strict quality judge for pixel-art sprites generated for a top-down roguelike game.',
     '',
@@ -443,7 +501,7 @@ function buildSystemInstructions(
     '',
     contentDirectionBlock(floor, addenda),
     '',
-    `Score the candidate on ${hasAddendum ? 'five' : 'four'} independent 1-5 ordinal axes:`,
+    `Score the candidate on ${axisCount === 4 ? 'four' : axisCount} independent 1-5 ordinal axes:`,
     '',
     '  1. design_language — Does the concept feel specifically like Crawler: one readable',
     '                       identity plus one authored contradiction, darkly funny rather than',
@@ -466,10 +524,29 @@ function buildSystemInstructions(
     '                    punched through the body, disconnected/floating pixel islands,',
     '                    detached limbs/fragments, and broken contiguous silhouette.',
     '                    These defects should score readability <= 2.',
+    ...(hasPoseAxis
+      ? [
+          '',
+          `  ${poseAxisNumber}. pose_orientation — Does the mob or character generally face the camera at a`,
+          '                        one-third-to-two-thirds turn? Full side profiles score <= 2.',
+        ]
+      : []),
+    ...(hasBossAxis
+      ? [
+          '',
+          `  ${bossAxisNumber}. boss_presence — Does the boss read substantially taller, wider, or larger in`,
+          '                     footprint than an ordinary mob, fill its intended frame, and',
+          '                     present a distinctive dominant threat silhouette? A normal-sized',
+          '                     enemy with extra accessories scores <= 2.',
+        ]
+      : []),
+    ...(hasPresentationAxis
+      ? ['', `  ${presentationAxisNumber}. presentation — ${presentationCriterion(brief.type)}`]
+      : []),
     ...(bothAddenda
       ? [
           '',
-          '  5. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,',
+          `  ${themeAxisNumber}. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,`,
           '                       materials, garments, props, colors, or iconography named in the',
           '                       floor AND theme design language sections above — not just the',
           "                       general Crawler vibe (that is design_language's job)?",
@@ -486,7 +563,7 @@ function buildSystemInstructions(
       : hasAddendum
         ? [
             '',
-            '  5. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,',
+            `  ${themeAxisNumber}. theme_adherence — Does the candidate visibly incorporate the SPECIFIC nouns,`,
             '                       materials, garments, props, colors, or iconography named in the',
             '                       floor or theme design language section above — not just the',
             "                       general Crawler vibe (that is design_language's job)? Look for",
@@ -511,13 +588,10 @@ function buildSystemInstructions(
     '',
     'Respond with STRICT JSON only — no prose, no markdown — matching this shape:',
     '{',
-    '  "design_language": { "score": 1-5, "rationale": "..." },',
-    '  "reference_style_match": { "score": 1-5, "rationale": "..." },',
-    '  "brief_match": { "score": 1-5, "rationale": "..." },',
-    hasAddendum
-      ? '  "readability": { "score": 1-5, "rationale": "..." },'
-      : '  "readability": { "score": 1-5, "rationale": "..." }',
-    ...(hasAddendum ? ['  "theme_adherence": { "score": 1-5, "rationale": "..." }'] : []),
+    ...responseFields.map(
+      (field, index) =>
+        `  "${field}": { "score": 3, "rationale": "..." }${index < responseFields.length - 1 ? ',' : ''}`,
+    ),
     '}',
   ].join('\n');
 }
@@ -548,9 +622,29 @@ function buildUserPrompt(brief: Brief, referenceCount: number, hasAddendum: bool
     '',
     refSummary,
     '',
-    `Return your ${hasAddendum ? 'five' : 'four'} scores and rationales as a strict JSON object.`,
+    `Return your ${judgeAxisCount(brief, hasAddendum)} scores and rationales as a strict JSON object.`,
   );
   return lines.filter((s) => s !== '').join('\n');
+}
+
+function judgeAxisCount(brief: Brief, hasAddendum: boolean): number | string {
+  const count =
+    4 +
+    Number(brief.type === 'enemy' || brief.type === 'character') +
+    Number(brief.type === 'enemy' && brief.mobRole === 'boss') +
+    Number(['equipment', 'item', 'prop'].includes(brief.type)) +
+    Number(hasAddendum);
+  return count === 4 ? 'four' : count;
+}
+
+function presentationCriterion(type: Brief['type']): string {
+  if (type === 'equipment') {
+    return 'Is this one isolated wearable/equippable icon with no wearer, mannequin, hands, limbs, room, floor, or scene? Violations score <= 2.';
+  }
+  if (type === 'prop') {
+    return 'Is this one grounded world-space object with a readable base, top-down perspective, and appropriate tile footprint rather than a floating inventory icon or scene? Violations score <= 2.';
+  }
+  return 'Is this one isolated inanimate consumable, resource, or quest object with no person, hands, limbs, room, floor, or scene? Violations score <= 2.';
 }
 
 /**

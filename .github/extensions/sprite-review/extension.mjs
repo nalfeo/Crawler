@@ -1,5 +1,5 @@
 /**
- * sprite-review — a READ-ONLY canvas viewer for the Crawler sprite pipeline.
+ * sprite-review — a review and feedback canvas for the Crawler sprite pipeline.
  *
  * Functional parity with the `?page=sprite-review` DevTool in the monolith
  * (`DEVTOOLS_PAGE_SPRITE_REVIEW` in `src/devtools-main.ts`): it shows approved /
@@ -14,7 +14,7 @@
  *   - `lib/yaml-reader.mjs`     — reusable fs reader for `plans/` + `briefs/`.
  *   - `renderer.mjs`            — the iframe document (state-driven, SSE).
  *   - `extension.mjs` (this)    — wires them: resolve sidecar URL, start one
- *     server per instance, build state, expose read-only routes + actions.
+ *     server per instance, build state, expose trace routes + feedback writes.
  *
  * stdout is reserved for JSON-RPC — we log via `session.log`, never `console.log`.
  *
@@ -23,6 +23,7 @@
 
 import process from 'node:process';
 import path from 'node:path';
+import { Buffer } from 'node:buffer';
 import { fileURLToPath } from 'node:url';
 import { createCanvas, CanvasError, joinSession } from '@github/copilot-sdk/extension';
 
@@ -30,6 +31,7 @@ import { startCanvasServer } from './lib/canvas-harness.mjs';
 import { beginSpriteSidecarStartup } from '../shared/sprite-sidecar-service.mjs';
 import { createImageCache, resolveExtCacheDir } from './lib/image-cache.mjs';
 import { renderHtml } from './renderer.mjs';
+import { feedbackForRun, readFeedback, saveFeedback } from './lib/feedback-store.mjs';
 import {
   resolveSidecarBaseUrl,
   createSidecarClient,
@@ -49,6 +51,13 @@ import {
  * the WRONG sidecar port and fails the repo-match health check.
  */
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const FEEDBACK_PATH = path.join(
+  REPO_ROOT,
+  'public',
+  'assets',
+  'generated',
+  'sprite-review-feedback.json',
+);
 
 /** @type {import('@github/copilot-sdk/extension').CopilotSession | null} */
 let sessionRef = null;
@@ -163,7 +172,11 @@ async function buildState(instanceId) {
   let summaryError = null;
   try {
     const summary = await entry.client.fetchRunSummary(selected.briefId, selected.runId);
-    candidates = withSkipMessages(normalizeCandidates(summary));
+    const feedback = feedbackForRun(readFeedback(FEEDBACK_PATH), selected.briefId, selected.runId);
+    candidates = withSkipMessages(normalizeCandidates(summary)).map((candidate) => ({
+      ...candidate,
+      feedback: feedback[String(candidate.index)] ?? { sensor: {}, judge: {} },
+    }));
   } catch (err) {
     summaryError = `Failed to load run summary: ${err?.message ?? err}`;
   }
@@ -247,6 +260,19 @@ function imageRoute(pathname, kind) {
 
 const jsonRoutes = [
   {
+    method: 'POST',
+    path: '/api/feedback',
+    handler: async ({ req, instanceId }) => {
+      const entry = instances.get(instanceId);
+      if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      const payload = await readJsonBody(req);
+      const feedback = saveFeedback(FEEDBACK_PATH, payload);
+      const state = await buildState(instanceId);
+      await entry.pushState?.(state);
+      return { json: { feedback } };
+    },
+  },
+  {
     method: 'GET',
     path: '/api/select',
     handler: async ({ url, instanceId }) => {
@@ -283,6 +309,18 @@ const jsonRoutes = [
     },
   },
 ];
+
+async function readJsonBody(req) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += bytes.byteLength;
+    if (total > 16 * 1024) throw new Error('feedback payload exceeds 16 KiB');
+    chunks.push(bytes);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
 
 const binaryRoutes = [
   imageRoute('/img/sheet', 'sheet'),
@@ -355,7 +393,7 @@ const canvas = createCanvas({
   id: 'sprite-review',
   displayName: 'Sprite Review',
   description:
-    'Read-only viewer for approved/generated sprite runs: source sheets with slice-map overlay and per-variant judge + sensor pipeline traces from the sprite sidecar.',
+    'Review generated sprite runs, inspect judge and sensor traces, and record criterion-level feedback.',
   inputSchema: {
     type: 'object',
     additionalProperties: false,

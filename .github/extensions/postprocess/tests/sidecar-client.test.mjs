@@ -120,9 +120,15 @@ test('toJudgeSummary reads axis scores and defaults missing axes to 0', () => {
   assert.deepEqual(s, {
     passed: true,
     minScore: 3,
+    designLanguage: 0,
+    referenceStyleMatch: 4,
     styleMatch: 4,
     briefMatch: 3,
     readability: 0,
+    poseOrientation: 0,
+    bossPresence: 0,
+    presentation: 0,
+    themeAdherence: 0,
     rejectedBy: ['x'],
   });
 });

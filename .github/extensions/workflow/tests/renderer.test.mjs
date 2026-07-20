@@ -87,6 +87,22 @@ test('the renderer warns when a queued acceptance batches more than one asset (A
   assert.match(html, /accepting this variant also published/);
 });
 
+test('the run cards expose every current judge axis', () => {
+  const html = renderHtml('x');
+  for (const key of [
+    'designLanguage',
+    'referenceStyleMatch',
+    'briefMatch',
+    'readability',
+    'poseOrientation',
+    'bossPresence',
+    'presentation',
+    'themeAdherence',
+  ]) {
+    assert.match(html, new RegExp(`key: '${key}'`));
+  }
+});
+
 test('instanceId is HTML-escaped into the shell', () => {
   const html = renderHtml('a"><script>bad</script>');
   assert.ok(!html.includes('a"><script>bad'));

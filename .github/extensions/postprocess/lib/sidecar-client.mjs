@@ -130,9 +130,14 @@ export function sliceMapUrl(baseUrl, briefId, runId, sheet) {
 
 /** Judge axes, in display order. Mirrors `JUDGE_AXES` in `src/devtools-main.ts`. */
 export const JUDGE_AXES = Object.freeze([
-  { key: 'styleMatch', label: 'Style match' },
+  { key: 'designLanguage', label: 'Design language' },
+  { key: 'referenceStyleMatch', label: 'Reference style' },
   { key: 'briefMatch', label: 'Brief match' },
   { key: 'readability', label: 'Readability' },
+  { key: 'poseOrientation', label: 'Pose orientation' },
+  { key: 'bossPresence', label: 'Boss presence' },
+  { key: 'presentation', label: 'Presentation' },
+  { key: 'themeAdherence', label: 'Theme adherence' },
 ]);
 
 /** A judge axis passes when its score is >= 3. */
@@ -193,9 +198,15 @@ export function toJudgeSummary(raw) {
   return {
     passed: raw.passed === true,
     minScore: typeof raw.minScore === 'number' ? raw.minScore : 0,
+    designLanguage: axisScore(raw.designLanguage),
+    referenceStyleMatch: axisScore(raw.referenceStyleMatch ?? raw.styleMatch),
     styleMatch: axisScore(raw.styleMatch),
     briefMatch: axisScore(raw.briefMatch),
     readability: axisScore(raw.readability),
+    poseOrientation: axisScore(raw.poseOrientation),
+    bossPresence: axisScore(raw.bossPresence),
+    presentation: axisScore(raw.presentation),
+    themeAdherence: axisScore(raw.themeAdherence),
     rejectedBy: Array.isArray(raw.rejectedBy)
       ? raw.rejectedBy.filter((r) => typeof r === 'string')
       : [],
@@ -245,9 +256,15 @@ export function parseCandidateDetail(raw) {
           ? scorecard.rejectedBy.filter((r) => typeof r === 'string')
           : [],
         rationale: {
+          designLanguage: axisRationale('designLanguage'),
+          referenceStyleMatch: axisRationale('referenceStyleMatch') ?? axisRationale('styleMatch'),
           styleMatch: axisRationale('styleMatch'),
           briefMatch: axisRationale('briefMatch'),
           readability: axisRationale('readability'),
+          poseOrientation: axisRationale('poseOrientation'),
+          bossPresence: axisRationale('bossPresence'),
+          presentation: axisRationale('presentation'),
+          themeAdherence: axisRationale('themeAdherence'),
         },
         modelDeployment:
           typeof scorecard.modelDeployment === 'string' ? scorecard.modelDeployment : null,

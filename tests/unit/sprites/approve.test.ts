@@ -86,6 +86,10 @@ function writeFakeRun(
     outOf: 7,
     passed: true,
     combinedPassed: true,
+    breakdown: [
+      { sensor: 'palette', ok: true },
+      { sensor: 'silhouette', ok: false, reason: 'too-small' },
+    ],
     derivedAnchor: derivedSet.has(index) ? { x: 4 + index, y: 12 } : null,
     derivedAnchors: {
       hold: derivedSet.has(index) ? { x: 4 + index, y: 12 } : null,
@@ -94,7 +98,12 @@ function writeFakeRun(
     judgeScorecard:
       judgeByIndex.has(index) === false
         ? null
-        : { passed: true, minScore: judgeByIndex.get(index)! },
+        : {
+            passed: true,
+            minScore: judgeByIndex.get(index)!,
+            designLanguage: { score: 4, rationale: 'Crawler-specific' },
+            briefMatch: { score: 5, rationale: 'Matches the brief' },
+          },
     judgeSkipReason: null,
   }));
 
@@ -187,6 +196,15 @@ describe('approveVariant', () => {
     expect(entry.anchor).toEqual({ x: 5, y: 12, source: 'derived' });
     expect(entry.sensorScore).toBe('7/7');
     expect(entry.judgeScore).toBe('4');
+    expect(entry.sensorBreakdown).toEqual([
+      { sensor: 'palette', ok: true },
+      { sensor: 'silhouette', ok: false, reason: 'too-small' },
+    ]);
+    expect(entry.judgeScorecard).toMatchObject({
+      minScore: 4,
+      designLanguage: { score: 4, rationale: 'Crawler-specific' },
+      briefMatch: { score: 5, rationale: 'Matches the brief' },
+    });
     expect(entry.approvedAt).toBe('2026-06-08T15:30:00.000Z');
     // sourceRun is repo-relative with forward slashes regardless of host OS.
     expect(entry.sourceRun).toBe(`generated/runs/${briefId}/2026-06-08T12-00-00-deadbeef`);

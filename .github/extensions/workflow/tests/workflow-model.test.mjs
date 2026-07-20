@@ -150,6 +150,30 @@ test('parseFloorArtPlans parses + sorts, rejecting malformed plans', () => {
   assert.equal(plans[0].assets.length, 2);
 });
 
+test('parseFloorArtPlans accepts equipment and prop asset types', () => {
+  const planYaml = [
+    'id: floor1-new-types',
+    'title: Floor 1 New Types',
+    'assets:',
+    '  - id: iron-chestplate',
+    '    type: equipment',
+    '    label: Iron Chestplate',
+    '    brief: equipment/iron-chestplate',
+    '    placeholderInUse: true',
+    '  - id: barrel',
+    '    type: prop',
+    '    label: Barrel',
+    '    brief: prop/barrel',
+    '    placeholderInUse: true',
+    '',
+  ].join('\n');
+  const plans = parseFloorArtPlans({ 'plans/a.art.yaml': planYaml });
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].assets.length, 2);
+  assert.equal(plans[0].assets[0].type, 'equipment');
+  assert.equal(plans[0].assets[1].type, 'prop');
+});
+
 test('parseCommittedBriefKeys / parseDraftBriefKeys split on the /draft/ path segment', () => {
   const raw = {
     'briefs/enemy-goblin.yaml': 'type: enemy\nname: goblin\n',

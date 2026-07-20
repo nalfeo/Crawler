@@ -53,6 +53,8 @@ export interface SelectReferencesInput {
   readonly count: number;
   /** Numeric RNG seed. Derive via {@link referenceSelectorSeed}. */
   readonly seed: number;
+  /** Asset-level negative annotations that make a sprite ineligible as a reference. */
+  readonly dislikedSpriteNames?: ReadonlySet<string>;
 }
 
 export interface ReferenceSelection {
@@ -106,8 +108,13 @@ interface EligibleEntry {
  * for entries that must never be sent (placeholders, self, off-`generated/`,
  * untyped, or below the quality floor).
  */
-function toEligible(entry: ManifestEntry, briefName: string): EligibleEntry | null {
+function toEligible(
+  entry: ManifestEntry,
+  briefName: string,
+  dislikedSpriteNames: ReadonlySet<string>,
+): EligibleEntry | null {
   if (isPlaceholderManifestEntry(entry)) return null;
+  if (dislikedSpriteNames.has(entry.spriteName)) return null;
   if (entry.briefId === briefName) return null; // exact self — a v2 may still ref v1
   // Our art only: reject anything that isn't a safe, in-tree `generated/*.png`
   // path. `startsWith('generated/')` alone would let `generated/../kenney/...`
@@ -211,10 +218,11 @@ function weightedSampleWithoutReplacement(
  */
 export function selectReferences(input: SelectReferencesInput): ReferenceSelection {
   const { candidates, briefName, briefType, count, seed } = input;
+  const dislikedSpriteNames = input.dislikedSpriteNames ?? new Set<string>();
 
   const eligible: EligibleEntry[] = [];
   for (const candidate of candidates) {
-    const result = toEligible(candidate, briefName);
+    const result = toEligible(candidate, briefName, dislikedSpriteNames);
     if (result !== null) eligible.push(result);
   }
   const collapsed = collapseByConcept(eligible);

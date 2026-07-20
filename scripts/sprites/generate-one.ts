@@ -103,6 +103,8 @@ export interface GenerateOneOptions {
    * NOT a candidate source — references are our own approved generated sprites.
    */
   readonly loadReferenceCandidates?: () => readonly ManifestEntry[];
+  /** Asset-level disliked annotation loader injection for reference hygiene. */
+  readonly loadDislikedReferenceNames?: () => ReadonlySet<string>;
   /**
    * Asset-existence check injection (tests). Defaults to `fs.existsSync`. Used
    * to pre-filter manifest entries to those whose PNG is actually on disk
@@ -281,6 +283,24 @@ export async function generateSheetCore(
       const manifest = parseGeneratedManifest(JSON.parse(readFileSync(manifestPath, 'utf8')));
       return Object.values(manifest.entries);
     });
+  const loadDislikedReferenceNames =
+    options.loadDislikedReferenceNames ??
+    (() => {
+      const annotationsPath = path.join(
+        publicAssetsRoot,
+        'generated',
+        'sprite-editor-annotations.json',
+      );
+      if (!existsSync(annotationsPath)) return new Set<string>();
+      const raw = JSON.parse(readFileSync(annotationsPath, 'utf8')) as {
+        readonly sprites?: Readonly<Record<string, { readonly disliked?: unknown }>>;
+      };
+      return new Set(
+        Object.entries(raw.sprites ?? {})
+          .filter(([, note]) => note.disliked === true)
+          .map(([spriteName]) => spriteName),
+      );
+    });
 
   let referencePngs: Buffer[] = [];
   let referenceSprites: ReferenceSpriteSelection | undefined;
@@ -296,6 +316,7 @@ export async function generateSheetCore(
       briefType: brief.type,
       count: referenceCount,
       seed: referenceSelectorSeed(brief.name),
+      dislikedSpriteNames: loadDislikedReferenceNames(),
     });
     if (selection.selected.length === 0) {
       throw new Error(

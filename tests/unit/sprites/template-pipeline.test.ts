@@ -107,4 +107,18 @@ describe('template pipeline resolution', () => {
     expect(pipelineA.name).toBe('pipeline-a');
     expect(pipelineB.name).toBe('pipeline-b');
   });
+
+  it('equipment and prop use the production templates without ENOENT', () => {
+    // Regression: equipment.yml and prop.yml were missing when the types were
+    // added to SPRITE_TYPES, causing ENOENT failures during post-processing.
+    // This test uses the real production templates directory.
+    for (const type of ['equipment', 'prop'] as const) {
+      const pipeline = getPipelineForType(type);
+      expect(pipeline).toBeDefined();
+      expect(typeof pipeline.name).toBe('string');
+      // Verify the pipeline has at least one module step, confirming inheritance
+      // from base.yml was applied correctly.
+      expect(pipeline.pipeline.length).toBeGreaterThan(0);
+    }
+  });
 });
