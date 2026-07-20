@@ -290,9 +290,53 @@
         "flags": {
           "type": "array",
           "minItems": 7,
-          "items": {
-            "$ref": "#/$defs/releaseFlag"
-          }
+          "maxItems": 7,
+          "uniqueItems": true,
+          "prefixItems": [
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentRegistry" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentCatalog" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentRewards" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentEconomy" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentUx" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentWorld" } } }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/releaseFlag" },
+                { "properties": { "name": { "const": "floor2EquipmentAiMaintenance" } } }
+              ]
+            }
+          ],
+          "items": false
         }
       }
     },
@@ -428,12 +472,8 @@
     "prIdentity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["number", "url"],
+      "required": ["url"],
       "properties": {
-        "number": {
-          "type": "integer",
-          "minimum": 1
-        },
         "url": {
           "type": "string",
           "pattern": "^https://github\\.com/nalfeo/Crawler/pull/[1-9][0-9]*$"
@@ -490,16 +530,25 @@
       ],
       "properties": {
         "claimant": {
-          "type": ["string", "null"]
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "pattern": "^(?!\\s*$).+" }
+          ]
         },
         "session": {
-          "type": ["string", "null"]
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "pattern": "^(?!\\s*$).+" }
+          ]
         },
         "source": {
           "enum": ["none", "parent-issue-bootstrap", "child-issue-comment"]
         },
         "scope": {
-          "type": ["string", "null"]
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "pattern": "^(?!\\s*$).+" }
+          ]
         },
         "claimed_at": {
           "$ref": "#/$defs/nullableDateTime"
@@ -586,15 +635,18 @@
         },
         "claimant": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?!\\s*$).+"
         },
         "session": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?!\\s*$).+"
         },
         "branch": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?!\\s*$).+"
         },
         "claimed_at": {
           "type": "string",

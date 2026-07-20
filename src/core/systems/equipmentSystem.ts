@@ -54,16 +54,15 @@ import {
   type StackableStaticInventoryEntry,
 } from '../../shared/inventory.js';
 import type {
-  EquipmentGrantSourceId,
   GeneratedEquipmentInstanceKey,
   GeneratedEquipmentInstanceV1,
 } from '../../shared/generated-equipment-types.js';
 import { getGeneratedEquipmentInstance } from '../generated-equipment-registry.js';
 import {
-  createEmptyAbilityState,
-  type AbilityState,
-  type EquipmentGrantOwnership,
-} from '../../shared/abilities.js';
+  grantGeneratedEquipmentActiveAbilityCore,
+  grantGeneratedEquipmentPassiveAbilityCore,
+  revokeEquipmentAbilityGrantsCore,
+} from './abilityGrantHelpers.js';
 
 // --- Side-map storage ---
 
@@ -228,64 +227,31 @@ function generatedWeaponDef(instance: GeneratedEquipmentInstanceV1): WeaponDef |
   return Object.freeze({ ...frozen, id: instance.instanceId });
 }
 
-function getOrCreateAbilityStateForEquipment(world: GameWorld, entity: number): AbilityState {
-  const existing = world.abilityStatesByEntity.get(entity);
-  if (existing) return existing;
-  const created = createEmptyAbilityState();
-  world.abilityStatesByEntity.set(entity, created);
-  return created;
-}
-
-function getGrantOwnershipMap(
-  state: AbilityState,
-  kind: 'abilityGrant' | 'passiveGrant',
-): Map<string, EquipmentGrantOwnership> {
-  const existing =
-    kind === 'abilityGrant'
-      ? state.activeEquipmentGrantOwnershipById
-      : state.passiveEquipmentGrantOwnershipById;
-  if (existing) return existing;
-  const created = new Map<string, EquipmentGrantOwnership>();
-  if (kind === 'abilityGrant') {
-    state.activeEquipmentGrantOwnershipById = created;
-  } else {
-    state.passiveEquipmentGrantOwnershipById = created;
-  }
-  return created;
-}
-
-function equipmentGrantSourceId(
-  instanceKey: GeneratedEquipmentInstanceKey,
-  effectOrdinal: number,
-): EquipmentGrantSourceId {
-  return `equipment:${instanceKey}:${effectOrdinal}`;
-}
-
 function activateGeneratedGrants(
   world: GameWorld,
   entity: number,
   instance: GeneratedEquipmentInstanceV1,
 ): void {
-  const state = getOrCreateAbilityStateForEquipment(world, entity);
   for (const effect of instance.resolvedEffects) {
-    if (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant') continue;
-    const ids =
-      effect.kind === 'abilityGrant' ? state.equippedActiveAbilityIds : state.passiveAbilityIds;
-    const ownershipMap = getGrantOwnershipMap(state, effect.kind);
-    const sourceId = equipmentGrantSourceId(instance.instanceId, effect.effectOrdinal);
-    const ownership = ownershipMap.get(effect.grantId);
-    if (ownership?.sourceIds.has(sourceId)) {
-      throw new Error(`Duplicate generated equipment grant source: ${sourceId}`);
+    if (!('kind' in effect)) continue;
+    const typedEffect = effect as { kind: string; grantId: string; effectOrdinal: number };
+    if (typedEffect.kind === 'abilityGrant') {
+      grantGeneratedEquipmentActiveAbilityCore(
+        world,
+        entity,
+        typedEffect.grantId,
+        instance.instanceId,
+        typedEffect.effectOrdinal,
+      );
+    } else if (typedEffect.kind === 'passiveGrant') {
+      grantGeneratedEquipmentPassiveAbilityCore(
+        world,
+        entity,
+        typedEffect.grantId,
+        instance.instanceId,
+        typedEffect.effectOrdinal,
+      );
     }
-    if (ownership) {
-      ownership.sourceIds.add(sourceId);
-    } else {
-      ownershipMap.set(effect.grantId, {
-        retainedWithoutEquipment: ids.includes(effect.grantId),
-        sourceIds: new Set([sourceId]),
-      });
-    }
-    if (!ids.includes(effect.grantId)) ids.push(effect.grantId);
   }
 }
 
@@ -294,37 +260,7 @@ function deactivateGeneratedGrants(
   entity: number,
   instance: GeneratedEquipmentInstanceV1,
 ): void {
-  const state = world.abilityStatesByEntity.get(entity);
-  if (!state) return;
-  for (const effect of instance.resolvedEffects) {
-    if (effect.kind !== 'abilityGrant' && effect.kind !== 'passiveGrant') continue;
-    const ids =
-      effect.kind === 'abilityGrant' ? state.equippedActiveAbilityIds : state.passiveAbilityIds;
-    const ownershipMap = getGrantOwnershipMap(state, effect.kind);
-    const sourceId = equipmentGrantSourceId(instance.instanceId, effect.effectOrdinal);
-    const ownership = ownershipMap.get(effect.grantId);
-    if (!ownership?.sourceIds.delete(sourceId)) {
-      throw new Error(`Missing generated equipment grant source: ${sourceId}`);
-    }
-    if (ownership.sourceIds.size > 0) continue;
-    ownershipMap.delete(effect.grantId);
-    if (ownership.retainedWithoutEquipment) continue;
-    const index = ids.indexOf(effect.grantId);
-    if (index >= 0) ids.splice(index, 1);
-    if (effect.kind === 'abilityGrant') {
-      state.cooldownByAbilityId.delete(effect.grantId);
-      state.cooldownFramesByAbilityId.delete(effect.grantId);
-    } else {
-      world.statModifiers = world.statModifiers.filter(
-        (modifier) =>
-          !(
-            modifier.sourceType === 'ability' &&
-            modifier.sourceId.startsWith(`${effect.grantId}:passive:${entity}:`)
-          ),
-      );
-      state.appliedPassiveAbilityIds.delete(effect.grantId);
-    }
-  }
+  revokeEquipmentAbilityGrantsCore(world, entity, instance.instanceId);
 }
 
 function activateGeneratedEquipment(

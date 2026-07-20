@@ -47,6 +47,9 @@ export function comboId(combo: Combo): string {
   return `${combo.pathing}+${combo.decision}`;
 }
 
+/** The canonical id for the LEGACY+LEGACY combo — the tournament's reference incumbent. */
+export const LEGACY_COMBO_ID = 'legacy+legacy';
+
 /**
  * All 8 pathing×decision combos, with LEGACY+LEGACY FIRST so it is always the
  * incumbent/control the tournament ranks every tuned combo against (the flip is

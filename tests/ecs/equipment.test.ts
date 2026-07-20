@@ -849,14 +849,14 @@ describe('generated equipment inventory transfers', () => {
     expect(
       world.abilityStatesByEntity
         .get(entity)
-        ?.activeEquipmentGrantOwnershipById?.get('magic-missile')?.sourceIds,
-    ).toEqual(new Set([`equipment:${generated.instanceId}:0`]));
+        ?.activeAbilityGrantSources?.get('magic-missile'),
+    ).toEqual([{ kind: 'generated-equipment', instanceId: generated.instanceId, effectOrdinal: 0 }]);
 
     expect(unequip(world, entity, 'head').ok).toBe(true);
     expect(world.abilityStatesByEntity.get(entity)?.equippedActiveAbilityIds).not.toContain(
       'magic-missile',
     );
-    expect(world.abilityStatesByEntity.get(entity)?.activeEquipmentGrantOwnershipById?.size).toBe(
+    expect(world.abilityStatesByEntity.get(entity)?.activeAbilityGrantSources?.size).toBe(
       0,
     );
   });

@@ -22,7 +22,7 @@ import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-dep
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { INTRO_DATA_REGISTRY_KEY } from '../../shared/intro-config.js';
 import { getRenderScale } from '../render-scale.js';
-import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abilities.js';
+import { ACTIVE_ABILITY_SLOT_LIMIT, createEmptyAbilityState } from '../../shared/abilities.js';
 import { generatedEquipmentRunKeyFromSeed } from '../../shared/generated-equipment-types.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
 import { HARVESTABLE_DEFS } from '../../shared/harvestableDefs.js';
@@ -2346,14 +2346,7 @@ export class MainGameScene extends Phaser.Scene {
     }
     let state = this.world.abilityStatesByEntity.get(this.playerEid);
     if (!state) {
-      state = {
-        learnedSpellIds: [],
-        equippedActiveAbilityIds: [],
-        passiveAbilityIds: [],
-        cooldownByAbilityId: new Map(),
-        cooldownFramesByAbilityId: new Map(),
-        appliedPassiveAbilityIds: new Set(),
-      } satisfies AbilityState;
+      state = createEmptyAbilityState();
       this.world.abilityStatesByEntity.set(this.playerEid, state);
     }
     const availableIds = [

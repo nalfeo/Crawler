@@ -62,6 +62,8 @@ describe('player floor carryover', () => {
       cooldownByAbilityId: new Map([['fireball', 980]]),
       cooldownFramesByAbilityId: new Map([['fireball', 120]]),
       appliedPassiveAbilityIds: new Set(),
+      activeAbilityGrantSources: new Map([['fireball', [{ kind: 'learned' }]]]),
+      passiveAbilityGrantSources: new Map(),
     });
     source.frameCount = 1000;
     source.featureUnlocks = { inventory: true, equipment: true, spells: true };
@@ -255,15 +257,12 @@ describe('player floor carryover', () => {
       id: equipped.instanceId,
     });
     expect(
-      destination.abilityStatesByEntity.get(destinationPlayer)?.activeEquipmentGrantOwnershipById,
+      destination.abilityStatesByEntity.get(destinationPlayer)?.activeAbilityGrantSources,
     ).toEqual(
       new Map([
         [
           'magic-missile',
-          {
-            retainedWithoutEquipment: false,
-            sourceIds: new Set([`equipment:${equipped.instanceId}:0`]),
-          },
+          [{ kind: 'generated-equipment', instanceId: equipped.instanceId, effectOrdinal: 0 }],
         ],
       ]),
     );
@@ -299,6 +298,8 @@ describe('player floor carryover', () => {
       cooldownByAbilityId: new Map(),
       cooldownFramesByAbilityId: new Map(),
       appliedPassiveAbilityIds: new Set(),
+      activeAbilityGrantSources: new Map([['magic-missile', [{ kind: 'learned' as const }]]]),
+      passiveAbilityGrantSources: new Map(),
     });
     const generated = createGeneratedEquipmentInstance(
       world,
@@ -313,19 +314,24 @@ describe('player floor carryover', () => {
         { force: true },
       ).ok,
     ).toBe(true);
-    expect(
-      world.abilityStatesByEntity
-        .get(player)
-        ?.activeEquipmentGrantOwnershipById?.get('magic-missile')?.retainedWithoutEquipment,
-    ).toBe(true);
+    // Both learned and generated-equipment sources are tracked
+    const sourcesAfterEquip = world.abilityStatesByEntity
+      .get(player)
+      ?.activeAbilityGrantSources?.get('magic-missile');
+    expect(sourcesAfterEquip).toContainEqual({ kind: 'learned' });
+    expect(sourcesAfterEquip).toContainEqual(
+      expect.objectContaining({ kind: 'generated-equipment' }),
+    );
 
     expect(unequip(world, player, 'head', { force: true }).ok).toBe(true);
+    // The learned source remains, so the ability stays equipped
     expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain(
       'magic-missile',
     );
-    expect(world.abilityStatesByEntity.get(player)?.activeEquipmentGrantOwnershipById?.size).toBe(
-      0,
-    );
+    // Only the generated-equipment source was removed; learned source remains
+    expect(
+      world.abilityStatesByEntity.get(player)?.activeAbilityGrantSources?.get('magic-missile'),
+    ).toEqual([{ kind: 'learned' }]);
   });
 
   it('rejects a mismatched sourced-grant reference before mutation', () => {
@@ -346,17 +352,15 @@ describe('player floor carryover', () => {
       ).ok,
     ).toBe(true);
     const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    // Corrupt the activeAbilityGrantSources to reference a wrong effectOrdinal (99 instead of 0)
     const mismatched = {
       ...snapshot,
       abilityState: {
         ...snapshot.abilityState!,
-        activeEquipmentGrantOwnershipById: [
+        activeAbilityGrantSources: [
           [
             'magic-missile',
-            {
-              retainedWithoutEquipment: false,
-              sourceIds: [`equipment:${generated.instanceId}:99`],
-            },
+            [{ kind: 'generated-equipment', instanceId: generated.instanceId, effectOrdinal: 99 }],
           ],
         ],
       },
@@ -366,7 +370,7 @@ describe('player floor carryover', () => {
     destination.playerName = 'Unchanged';
 
     expect(() => restorePlayerCarryover(destination, destinationPlayer, mismatched)).toThrow(
-      'Dangling or mismatched generated grant source',
+      'Missing generated grant source',
     );
     expect(destination.playerName).toBe('Unchanged');
   });

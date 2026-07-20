@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "ci-recovery-sha-placeholder-fix",
+  "task_title": "fix(ci-recovery): substitute concrete head SHA in task body marker instruction",
+  "estimated_apples": 1,
+  "stages": {}
+}

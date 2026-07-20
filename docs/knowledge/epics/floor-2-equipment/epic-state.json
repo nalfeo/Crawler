@@ -3,11 +3,11 @@
   "schema_version": "crawler-epic-state/v2",
   "epic_id": "floor-2-equipment",
   "title": "Floor 2 equipment",
-  "updated_at": "2026-07-19T04:01:46.000Z",
+  "updated_at": "2026-07-19T21:11:55.239Z",
   "plan": {
     "path": "docs/knowledge/epics/floor-2-equipment/PLAN.md",
     "contract_version": "floor-2-equipment/v1",
-    "contract_sha256": "ac20446720e2f3f0d14345a49679630b2cf97f194c8bfea98694a6b514d3a8c8"
+    "contract_sha256": "f7e8163107d2ef9060481d7fcdd7633a5b50177aa70f2c1ac7e7ba038af9826c"
   },
   "authority": {
     "state_role": "index-cache",
@@ -20,19 +20,8 @@
     ]
   },
   "lifecycle": {
-    "normal": [
-      "blocked",
-      "ready",
-      "claimed",
-      "in_progress",
-      "pr_open",
-      "merged",
-      "validated"
-    ],
-    "terminal": [
-      "cancelled",
-      "superseded"
-    ]
+    "normal": ["blocked", "ready", "claimed", "in_progress", "pr_open", "merged", "validated"],
+    "terminal": ["cancelled", "superseded"]
   },
   "claim_policy": {
     "authority": "trusted-issue-comments",
@@ -49,13 +38,8 @@
     ]
   },
   "stacked_work_policy": {
-    "states": [
-      "stacked_in_progress",
-      "stacked_pr_open"
-    ],
-    "allowed_execution_lanes": [
-      "control"
-    ],
+    "states": ["stacked_in_progress", "stacked_pr_open"],
+    "allowed_execution_lanes": ["control"],
     "maximum_without_resync_hours": 24,
     "comment_heading": "STACKED-WORK",
     "main_branch": "main"
@@ -71,15 +55,8 @@
     "mode": "deterministic-plan-only",
     "parent_title": "Epic: Floor 2 equipment",
     "child_title_prefix": "[Floor 2 equipment]",
-    "labels": [
-      "epic-child",
-      "floor-2",
-      "equipment"
-    ],
-    "late_bound_fields": [
-      "parent_issue_number",
-      "child_issue_number"
-    ]
+    "labels": ["epic-child", "floor-2", "equipment"],
+    "late_bound_fields": ["parent_issue_number", "child_issue_number"]
   },
   "release": {
     "required_node_status": "validated",
@@ -88,58 +65,37 @@
       {
         "name": "floor2EquipmentRegistry",
         "default": false,
-        "validating_nodes": [
-          "slice:B3",
-          "slice:I1"
-        ]
+        "validating_nodes": ["slice:B3", "slice:I1"]
       },
       {
         "name": "floor2EquipmentCatalog",
         "default": false,
-        "validating_nodes": [
-          "slice:C2",
-          "slice:I2"
-        ]
+        "validating_nodes": ["slice:C2", "slice:I2"]
       },
       {
         "name": "floor2EquipmentRewards",
         "default": false,
-        "validating_nodes": [
-          "slice:D3",
-          "slice:I1"
-        ]
+        "validating_nodes": ["slice:D3", "slice:I1"]
       },
       {
         "name": "floor2EquipmentEconomy",
         "default": false,
-        "validating_nodes": [
-          "slice:E3",
-          "slice:I1"
-        ]
+        "validating_nodes": ["slice:E3", "slice:I1"]
       },
       {
         "name": "floor2EquipmentUx",
         "default": false,
-        "validating_nodes": [
-          "slice:F4",
-          "slice:I3"
-        ]
+        "validating_nodes": ["slice:F4", "slice:I3"]
       },
       {
         "name": "floor2EquipmentWorld",
         "default": false,
-        "validating_nodes": [
-          "slice:G3",
-          "slice:I1"
-        ]
+        "validating_nodes": ["slice:G3", "slice:I1"]
       },
       {
         "name": "floor2EquipmentAiMaintenance",
         "default": false,
-        "validating_nodes": [
-          "slice:H3",
-          "slice:I2"
-        ]
+        "validating_nodes": ["slice:H3", "slice:I2"]
       }
     ]
   },
@@ -154,10 +110,10 @@
       "execution_lane": "control",
       "persona": "Producer / DevOps Engineer",
       "dependencies": [],
-      "status": "pr_open",
+      "status": "merged",
       "release_requirement": "required",
       "deferred_reason": null,
-      "status_changed_at": "2026-07-17T18:25:00.000Z",
+      "status_changed_at": "2026-07-18T20:50:20.000Z",
       "github": {
         "issue": {
           "number": 1264,
@@ -166,55 +122,53 @@
         "pr": {
           "number": 1271,
           "url": "https://github.com/nalfeo/Crawler/pull/1271",
-          "head_sha": "90b6350ac82c835cf11802042d81f5547c6a96eb"
+          "head_sha": "097b8ab847278b5aa27b1334a11830211d0a51a0"
         }
       },
       "ownership": {
-        "claimant": "Producer",
-        "session": "7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd",
-        "source": "parent-issue-bootstrap",
-        "scope": "Durable control plane only; no equipment gameplay",
-        "claimed_at": "2026-07-17T17:32:38.205Z",
-        "lease_expires_at": "2026-07-20T04:01:46.000Z",
-        "heartbeat_at": "2026-07-19T04:01:46.000Z",
-        "base_commit": "41c5f2aa"
+        "claimant": null,
+        "session": null,
+        "source": "none",
+        "scope": null,
+        "claimed_at": null,
+        "lease_expires_at": null,
+        "heartbeat_at": null,
+        "base_commit": null
       },
       "merge": {
-        "commit": null,
-        "merged_at": null
+        "commit": "6a6fb49b912ad5ce2f318e196d8925936055906b",
+        "merged_at": "2026-07-18T20:50:20Z"
       },
-      "evidence_requirements": [
-        "offline-validator-and-focused-tests"
-      ],
+      "evidence_requirements": ["offline-validator-and-focused-tests"],
       "evidence": [
         {
           "kind": "handoff",
           "path_or_check": "docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md",
           "sha256": "9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb",
-          "commit": "461b8a334a018ebbf6e81aa7b31f81c74e08aa6b",
+          "commit": "84489aa693a18831b68c024630cf268eed35bd35",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         },
         {
           "kind": "review-ledger",
           "path_or_check": "docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json",
           "sha256": "fa7d39e5a5e9dcc867ffdbc25ccf6b33c0f0ca86edc229cd8403b97df1316afa",
-          "commit": "065591b1717588fd7acdb8e28936946e4a7e63e6",
+          "commit": "84489aa693a18831b68c024630cf268eed35bd35",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         },
         {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
-          "sha256": "ad25d7c665b0fab256d3e71179664ace6070d14066f55eb8f941f97f02eab018",
-          "commit": "065591b1717588fd7acdb8e28936946e4a7e63e6",
-          "recorded_at": "2026-07-17T18:25:00.000Z"
+          "sha256": "294a8fe466b71466238e72d6090b027c555ba7d7b0a1368bd7c3a65051676425",
+          "commit": "1435703c4983c6b69c9e0ed222b74caaa296489a",
+          "recorded_at": "2026-07-18T22:22:00.000Z"
         }
       ],
       "reconciliation": {
-        "last_audited_at": "2026-07-17T23:37:36.885Z",
-        "observed_issue_state": "open",
-        "observed_pr_state": "OPEN",
-        "observed_head_sha": "90b6350ac82c835cf11802042d81f5547c6a96eb",
-        "observed_merge_commit": null,
+        "last_audited_at": "2026-07-19T21:11:55.239Z",
+        "observed_issue_state": "closed",
+        "observed_pr_state": "MERGED",
+        "observed_head_sha": "097b8ab847278b5aa27b1334a11830211d0a51a0",
+        "observed_merge_commit": "6a6fb49b912ad5ce2f318e196d8925936055906b",
         "drift": []
       },
       "superseded_by": null
@@ -225,12 +179,10 @@
       "kind": "slice",
       "parent_slice": null,
       "title": "Implementation contract lock",
-      "summary": "Lock registry APIs, release flags, migration boundaries, and implementation acceptance contracts. Unique equipment is deferred outside this DAG to https://github.com/nalfeo/Crawler/issues/1274.",
+      "summary": "Lock registry APIs, release flags, migration boundaries, and implementation acceptance contracts.",
       "execution_lane": "control",
       "persona": "Producer / Systems Engineer",
-      "dependencies": [
-        "slice:A0"
-      ],
+      "dependencies": ["slice:A0"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -256,95 +208,15 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "reviewed-contract-specification"
-      ],
+      "evidence_requirements": ["reviewed-contract-specification"],
       "evidence": [],
       "reconciliation": {
-        "last_audited_at": null,
-        "observed_issue_state": "open",
+        "last_audited_at": "2026-07-19T21:11:55.239Z",
+        "observed_issue_state": "closed",
         "observed_pr_state": null,
         "observed_head_sha": null,
         "observed_merge_commit": null,
         "drift": []
-      },
-      "stacked_work": {
-        "state": "stacked_pr_open",
-        "owner": {
-          "node_id": "slice:A1",
-          "issue": {
-            "number": 1279,
-            "url": "https://github.com/nalfeo/Crawler/issues/1279"
-          },
-          "claimant": "nalfeo",
-          "session": "6f852b99-3c14-4037-b6b2-7ec3947fe4fc",
-          "branch": "nalfeo-floor-2-equipment-contracts",
-          "claimed_at": "2026-07-17T21:37:42.000Z",
-          "lease_expires_at": "2026-07-20T04:01:46.000Z",
-          "heartbeat_at": "2026-07-19T04:01:46.000Z"
-        },
-        "dependency_pull_requests": [
-          {
-            "node_id": "slice:A0",
-            "tracking_issue": null,
-            "repository": "nalfeo/Crawler",
-            "branch": "nalfeo-floor-2-epic-control",
-            "pull_request": {
-              "number": 1271,
-              "url": "https://github.com/nalfeo/Crawler/pull/1271"
-            },
-            "head_sha": "90b6350ac82c835cf11802042d81f5547c6a96eb",
-            "base_branch": "main",
-            "is_stack_base": false,
-            "observed_pr_state": "OPEN",
-            "observed_head_sha": "90b6350ac82c835cf11802042d81f5547c6a96eb",
-            "observed_head_branch": "nalfeo-floor-2-epic-control",
-            "observed_base_branch": "main",
-            "observed_merge_commit": null
-          },
-          {
-            "node_id": null,
-            "tracking_issue": {
-              "number": 1282,
-              "url": "https://github.com/nalfeo/Crawler/issues/1282"
-            },
-            "repository": "nalfeo/Crawler",
-            "branch": "nalfeo-floor-2-stacked-work-protocol",
-            "pull_request": {
-              "number": 1287,
-              "url": "https://github.com/nalfeo/Crawler/pull/1287"
-            },
-            "head_sha": "f4f058d35af7b9c3df116fbc05e1042b6f44eba0",
-            "base_branch": "nalfeo-floor-2-epic-control",
-            "is_stack_base": true,
-            "observed_pr_state": "OPEN",
-            "observed_head_sha": "f4f058d35af7b9c3df116fbc05e1042b6f44eba0",
-            "observed_head_branch": "nalfeo-floor-2-stacked-work-protocol",
-            "observed_base_branch": "nalfeo-floor-2-epic-control",
-            "observed_merge_commit": null
-          }
-        ],
-        "dependent": {
-          "branch": "nalfeo-floor-2-equipment-contracts",
-          "base_branch": "nalfeo-floor-2-stacked-work-protocol",
-          "pull_request": {
-            "number": 1276,
-            "url": "https://github.com/nalfeo/Crawler/pull/1276"
-          },
-          "observed_pr_state": "OPEN",
-          "observed_head_sha": null,
-          "observed_head_branch": "nalfeo-floor-2-equipment-contracts",
-          "observed_base_branch": "nalfeo-floor-2-stacked-work-protocol"
-        },
-        "last_resynced_dependency_head_sha": "f4f058d35af7b9c3df116fbc05e1042b6f44eba0",
-        "last_resynced_at": "2026-07-19T04:01:46.000Z",
-        "rebase_to_main": {
-          "pending": false,
-          "pre_rebase_dependent_head_sha": null,
-          "prerequisite_merge_commit": null
-        },
-        "material_contract_drift": null,
-        "blocked_reason": null
       },
       "superseded_by": null
     },
@@ -357,9 +229,7 @@
       "summary": "Add the versioned generated-equipment instance types, IDs, and constructors.",
       "execution_lane": "registry",
       "persona": "Systems Engineer",
-      "dependencies": [
-        "slice:A1"
-      ],
+      "dependencies": ["slice:A1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -382,9 +252,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "instance-schema-and-constructor-tests"
-      ],
+      "evidence_requirements": ["instance-schema-and-constructor-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -405,9 +273,7 @@
       "summary": "Route inventory and equip mutations through the one generated-instance registry.",
       "execution_lane": "registry",
       "persona": "Systems Engineer",
-      "dependencies": [
-        "slice:B1"
-      ],
+      "dependencies": ["slice:B1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -430,9 +296,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "inventory-equip-registry-integration-tests"
-      ],
+      "evidence_requirements": ["inventory-equip-registry-integration-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -453,9 +317,7 @@
       "summary": "Persist versioned generated instances through save/load and Floor 2 carryover.",
       "execution_lane": "registry",
       "persona": "Systems Engineer",
-      "dependencies": [
-        "slice:B2"
-      ],
+      "dependencies": ["slice:B2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -478,9 +340,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "save-load-carryover-compatibility-tests"
-      ],
+      "evidence_requirements": ["save-load-carryover-compatibility-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -501,9 +361,7 @@
       "summary": "Implement the 50-weapon and 20-other base catalog with immutable sprite IDs.",
       "execution_lane": "catalog-balance",
       "persona": "Game Designer / Graphics Designer",
-      "dependencies": [
-        "slice:A1"
-      ],
+      "dependencies": ["slice:A1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -526,9 +384,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "catalog-count-and-sprite-coverage-tests"
-      ],
+      "evidence_requirements": ["catalog-count-and-sprite-coverage-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -549,10 +405,7 @@
       "summary": "Implement Common-Uncommon-Rare generation and the representative-build DPS harness.",
       "execution_lane": "catalog-balance",
       "persona": "Game Designer / QA Engineer",
-      "dependencies": [
-        "slice:C1",
-        "slice:B3"
-      ],
+      "dependencies": ["slice:C1", "slice:B3"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -575,9 +428,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "rarity-invariants-and-representative-dps-harness"
-      ],
+      "evidence_requirements": ["rarity-invariants-and-representative-dps-harness"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -598,9 +449,7 @@
       "summary": "Define immutable unlock-time equipment reward resolution and achievement data contracts.",
       "execution_lane": "progression",
       "persona": "Content Designer / Game Designer",
-      "dependencies": [
-        "slice:A1"
-      ],
+      "dependencies": ["slice:A1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -623,9 +472,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "immutable-reward-resolution-contract-tests"
-      ],
+      "evidence_requirements": ["immutable-reward-resolution-contract-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -646,10 +493,7 @@
       "summary": "Author and validate the first 15 Floor 2 achievement equipment rewards.",
       "execution_lane": "progression",
       "persona": "Content Designer",
-      "dependencies": [
-        "slice:D1",
-        "slice:B1"
-      ],
+      "dependencies": ["slice:D1", "slice:B1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -672,9 +516,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "achievement-definitions-1-through-15-tests"
-      ],
+      "evidence_requirements": ["achievement-definitions-1-through-15-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -695,10 +537,7 @@
       "summary": "Author and validate the second 15 Floor 2 achievement equipment rewards.",
       "execution_lane": "progression",
       "persona": "Content Designer",
-      "dependencies": [
-        "slice:D1",
-        "slice:C1"
-      ],
+      "dependencies": ["slice:D1", "slice:C1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -721,9 +560,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "achievement-definitions-16-through-30-tests"
-      ],
+      "evidence_requirements": ["achievement-definitions-16-through-30-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -744,10 +581,7 @@
       "summary": "Integrate all 30 Floor 2 achievements and immutable equipment rewards.",
       "execution_lane": "progression",
       "persona": "Content Designer / Systems Engineer",
-      "dependencies": [
-        "packet:D2-A",
-        "packet:D2-B"
-      ],
+      "dependencies": ["packet:D2-A", "packet:D2-B"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -770,9 +604,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "exactly-30-floor2-achievements-integration-tests"
-      ],
+      "evidence_requirements": ["exactly-30-floor2-achievements-integration-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -793,10 +625,7 @@
       "summary": "Author and validate the first three run-global equipment achievements.",
       "execution_lane": "progression",
       "persona": "Content Designer",
-      "dependencies": [
-        "slice:D2",
-        "slice:B2"
-      ],
+      "dependencies": ["slice:D2", "slice:B2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -819,9 +648,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "run-global-achievements-1-through-3-tests"
-      ],
+      "evidence_requirements": ["run-global-achievements-1-through-3-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -842,10 +669,7 @@
       "summary": "Author and validate the final three run-global equipment achievements.",
       "execution_lane": "progression",
       "persona": "Content Designer",
-      "dependencies": [
-        "slice:D2",
-        "slice:C1"
-      ],
+      "dependencies": ["slice:D2", "slice:C1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -868,9 +692,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "run-global-achievements-4-through-6-tests"
-      ],
+      "evidence_requirements": ["run-global-achievements-4-through-6-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -891,10 +713,7 @@
       "summary": "Integrate all six run-global achievements and immutable equipment rewards.",
       "execution_lane": "progression",
       "persona": "Content Designer / Systems Engineer",
-      "dependencies": [
-        "packet:D3-A",
-        "packet:D3-B"
-      ],
+      "dependencies": ["packet:D3-A", "packet:D3-B"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -917,9 +736,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "exactly-six-run-global-achievements-integration-tests"
-      ],
+      "evidence_requirements": ["exactly-six-run-global-achievements-integration-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -940,9 +757,7 @@
       "summary": "Define stock, pricing, rarity, chest, and settlement economy rules.",
       "execution_lane": "economy",
       "persona": "Game Designer",
-      "dependencies": [
-        "slice:A1"
-      ],
+      "dependencies": ["slice:A1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -965,9 +780,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "reviewed-equipment-economy-contract"
-      ],
+      "evidence_requirements": ["reviewed-equipment-economy-contract"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -988,10 +801,7 @@
       "summary": "Guarantee one Quartermaster and select one or two non-Quartermaster shops.",
       "execution_lane": "economy",
       "persona": "Game Designer / Content Designer",
-      "dependencies": [
-        "slice:E1",
-        "slice:C1"
-      ],
+      "dependencies": ["slice:E1", "slice:C1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1014,9 +824,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "deterministic-shop-count-and-quartermaster-tests"
-      ],
+      "evidence_requirements": ["deterministic-shop-count-and-quartermaster-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1037,10 +845,7 @@
       "summary": "Integrate Common and Uncommon equipment stock into the guaranteed Quartermaster.",
       "execution_lane": "economy",
       "persona": "Game Designer",
-      "dependencies": [
-        "slice:E2",
-        "slice:B2"
-      ],
+      "dependencies": ["slice:E2", "slice:B2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1063,9 +868,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "quartermaster-stock-rarity-tests"
-      ],
+      "evidence_requirements": ["quartermaster-stock-rarity-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1086,10 +889,7 @@
       "summary": "Integrate Common and Uncommon equipment stock into eligible random shops.",
       "execution_lane": "economy",
       "persona": "Game Designer",
-      "dependencies": [
-        "slice:E2",
-        "slice:D2"
-      ],
+      "dependencies": ["slice:E2", "slice:D2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1112,9 +912,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "random-shop-stock-rarity-tests"
-      ],
+      "evidence_requirements": ["random-shop-stock-rarity-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1135,10 +933,7 @@
       "summary": "Integrate the Floor 2 boss chest with exact 85% Uncommon and 15% Rare weights.",
       "execution_lane": "economy",
       "persona": "Game Designer / QA Engineer",
-      "dependencies": [
-        "slice:E2",
-        "slice:C1"
-      ],
+      "dependencies": ["slice:E2", "slice:C1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1161,9 +956,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "boss-chest-85-15-table-and-selection-tests"
-      ],
+      "evidence_requirements": ["boss-chest-85-15-table-and-selection-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1184,11 +977,7 @@
       "summary": "Integrate all merchant and chest equipment reward paths through the registry.",
       "execution_lane": "economy",
       "persona": "Game Designer / Systems Engineer",
-      "dependencies": [
-        "packet:E3-A",
-        "packet:E3-B",
-        "packet:E3-C"
-      ],
+      "dependencies": ["packet:E3-A", "packet:E3-B", "packet:E3-C"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1211,9 +1000,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "merchant-and-chest-registry-integration-tests"
-      ],
+      "evidence_requirements": ["merchant-and-chest-registry-integration-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1234,10 +1021,7 @@
       "summary": "Add deterministic item details and accessible non-color rarity presentation.",
       "execution_lane": "accessible-ux",
       "persona": "UX Designer",
-      "dependencies": [
-        "slice:B1",
-        "slice:C1"
-      ],
+      "dependencies": ["slice:B1", "slice:C1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1260,9 +1044,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "item-details-and-rarity-accessibility-tests"
-      ],
+      "evidence_requirements": ["item-details-and-rarity-accessibility-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1283,10 +1065,7 @@
       "summary": "Add keyboard, pointer, and touch-equivalent inventory/equip interactions.",
       "execution_lane": "accessible-ux",
       "persona": "UX Designer",
-      "dependencies": [
-        "slice:F1",
-        "slice:B2"
-      ],
+      "dependencies": ["slice:F1", "slice:B2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1309,9 +1088,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "inventory-equip-input-and-focus-tests"
-      ],
+      "evidence_requirements": ["inventory-equip-input-and-focus-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1332,10 +1109,7 @@
       "summary": "Expose merchant equipment stock through the shared accessible item contract.",
       "execution_lane": "accessible-ux",
       "persona": "UX Designer",
-      "dependencies": [
-        "slice:F2",
-        "slice:E2"
-      ],
+      "dependencies": ["slice:F2", "slice:E2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1358,9 +1132,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "merchant-equipment-accessibility-tests"
-      ],
+      "evidence_requirements": ["merchant-equipment-accessibility-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1381,10 +1153,7 @@
       "summary": "Ship one accessible chest interaction and details flow for all equipment chests.",
       "execution_lane": "accessible-ux",
       "persona": "UX Designer / QA Engineer",
-      "dependencies": [
-        "slice:F3",
-        "slice:C2"
-      ],
+      "dependencies": ["slice:F3", "slice:C2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1407,9 +1176,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "shared-chest-keyboard-pointer-touch-focus-tests"
-      ],
+      "evidence_requirements": ["shared-chest-keyboard-pointer-touch-focus-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1430,9 +1197,7 @@
       "summary": "Establish Floor 2 equipment generation boundaries while keeping Floor 1 equipment-free.",
       "execution_lane": "world-integration",
       "persona": "Content Designer / Systems Engineer",
-      "dependencies": [
-        "slice:A1"
-      ],
+      "dependencies": ["slice:A1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1455,9 +1220,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "floor1-off-floor2-boundary-tests"
-      ],
+      "evidence_requirements": ["floor1-off-floor2-boundary-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1478,10 +1241,7 @@
       "summary": "Author deterministic Floor 2 shared-chest placements and interaction anchors.",
       "execution_lane": "world-integration",
       "persona": "Content Designer",
-      "dependencies": [
-        "slice:G1",
-        "slice:C1"
-      ],
+      "dependencies": ["slice:G1", "slice:C1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1504,9 +1264,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "deterministic-chest-placement-tests"
-      ],
+      "evidence_requirements": ["deterministic-chest-placement-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1527,10 +1285,7 @@
       "summary": "Integrate equipment drops, pickup, overflow, and registry edge cases.",
       "execution_lane": "world-integration",
       "persona": "Systems Engineer",
-      "dependencies": [
-        "slice:G1",
-        "slice:B2"
-      ],
+      "dependencies": ["slice:G1", "slice:B2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1553,9 +1308,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "drop-pickup-overflow-registry-tests"
-      ],
+      "evidence_requirements": ["drop-pickup-overflow-registry-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1576,10 +1329,7 @@
       "summary": "Integrate authored chests, generated drops, pickup, and registry ownership.",
       "execution_lane": "world-integration",
       "persona": "Content Designer / Systems Engineer",
-      "dependencies": [
-        "packet:G2-A",
-        "packet:G2-B+"
-      ],
+      "dependencies": ["packet:G2-A", "packet:G2-B+"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1602,9 +1352,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "world-equipment-end-to-end-tests"
-      ],
+      "evidence_requirements": ["world-equipment-end-to-end-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1625,10 +1373,7 @@
       "summary": "Implement equipment carryover data handoff and Floor 1-to-2 transition boundaries.",
       "execution_lane": "world-integration",
       "persona": "Systems Engineer",
-      "dependencies": [
-        "slice:G2",
-        "slice:D3"
-      ],
+      "dependencies": ["slice:G2", "slice:D3"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1651,9 +1396,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "floor-transition-carryover-tests"
-      ],
+      "evidence_requirements": ["floor-transition-carryover-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1674,9 +1417,7 @@
       "summary": "Integrate equipment carryover through the real floor-transition and persistence paths.",
       "execution_lane": "world-integration",
       "persona": "Systems Engineer",
-      "dependencies": [
-        "packet:G3"
-      ],
+      "dependencies": ["packet:G3"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1699,9 +1440,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "real-transition-and-persistence-integration-tests"
-      ],
+      "evidence_requirements": ["real-transition-and-persistence-integration-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1722,10 +1461,7 @@
       "summary": "Define deterministic equipment evaluation using the shared item and registry APIs.",
       "execution_lane": "ai-settlement",
       "persona": "AI Content Engineer / Systems Engineer",
-      "dependencies": [
-        "slice:C1",
-        "slice:F1"
-      ],
+      "dependencies": ["slice:C1", "slice:F1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1748,9 +1484,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "deterministic-ai-equipment-evaluation-tests"
-      ],
+      "evidence_requirements": ["deterministic-ai-equipment-evaluation-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1771,10 +1505,7 @@
       "summary": "Perform extensive settlement equipment maintenance through real inventory, equip, chest, and merchant APIs.",
       "execution_lane": "ai-settlement",
       "persona": "AI Content Engineer / Systems Engineer",
-      "dependencies": [
-        "slice:H1",
-        "slice:G2"
-      ],
+      "dependencies": ["slice:H1", "slice:G2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1797,9 +1528,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "real-api-ai-settlement-maintenance-tests"
-      ],
+      "evidence_requirements": ["real-api-ai-settlement-maintenance-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1820,10 +1549,7 @@
       "summary": "Execute and recover settlement maintenance using only the existing route planner.",
       "execution_lane": "ai-settlement",
       "persona": "AI Content Engineer / Systems Engineer",
-      "dependencies": [
-        "slice:H2",
-        "slice:G3"
-      ],
+      "dependencies": ["slice:H2", "slice:G3"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1846,9 +1572,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "existing-route-planner-ai-maintenance-tests"
-      ],
+      "evidence_requirements": ["existing-route-planner-ai-maintenance-tests"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1900,9 +1624,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "deterministic-equipment-end-to-end-suite"
-      ],
+      "evidence_requirements": ["deterministic-equipment-end-to-end-suite"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1923,9 +1645,7 @@
       "summary": "Prove both representative-build median aggregate DPS intervals and existing regressions.",
       "execution_lane": "verification",
       "persona": "QA Engineer / Playtester",
-      "dependencies": [
-        "slice:I1"
-      ],
+      "dependencies": ["slice:I1"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1948,9 +1668,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "median-aggregate-dps-ratios-1.7-to-2.3-for-both-intervals"
-      ],
+      "evidence_requirements": ["median-aggregate-dps-ratios-1.7-to-2.3-for-both-intervals"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -1971,9 +1689,7 @@
       "summary": "Collect accessibility, compatibility, deterministic, and rollout evidence for release.",
       "execution_lane": "verification",
       "persona": "QA Engineer / Reviewer",
-      "dependencies": [
-        "slice:I2"
-      ],
+      "dependencies": ["slice:I2"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -1996,9 +1712,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "complete-commit-addressed-release-evidence"
-      ],
+      "evidence_requirements": ["complete-commit-addressed-release-evidence"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -2019,9 +1733,7 @@
       "summary": "Enable reviewed flags, verify production rollout, validate all required nodes, and close the epic.",
       "execution_lane": "control",
       "persona": "Producer / DevOps Engineer",
-      "dependencies": [
-        "slice:I3"
-      ],
+      "dependencies": ["slice:I3"],
       "status": "blocked",
       "release_requirement": "required",
       "deferred_reason": null,
@@ -2044,9 +1756,7 @@
         "commit": null,
         "merged_at": null
       },
-      "evidence_requirements": [
-        "all-required-nodes-validated-and-flags-observed"
-      ],
+      "evidence_requirements": ["all-required-nodes-validated-and-flags-observed"],
       "evidence": [],
       "reconciliation": {
         "last_audited_at": null,
@@ -2064,8 +1774,6 @@
     "last_offline_validation_at": null,
     "last_github_audit_at": null,
     "last_reconciled_by": null,
-    "drift": [
-      "child issues have not been materialized"
-    ]
+    "drift": ["child issues have not been materialized"]
   }
 }

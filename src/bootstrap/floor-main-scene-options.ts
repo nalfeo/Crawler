@@ -41,6 +41,7 @@ import {
   statSystem,
   statusEffectSystem,
   familyRelationshipSystem,
+  mobAbilitySystem,
   type GameWorld,
 } from '../core/index.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
@@ -151,6 +152,13 @@ export function createFloorMainSceneOptions(
       // runs before all preSystems) so player + enemy speed folds see the same
       // pre-expiry effect set — expiry/HoT then apply before movement/damage/health.
       statusEffectSystem,
+      // Typed mob-ability runtime (Queen Mab Verdigris Glamour + future generic
+      // mob abilities). Wired into the canonical path but DEFAULT-OFF: the real
+      // game never enables the runtime, registers no active boss definitions,
+      // and emits zero casts/events. Only the combat-arena lab enables it. Runs
+      // after statusEffectSystem so casts applied this frame (e.g. Tarnished)
+      // last their full authored duration before the next expiry tick.
+      mobAbilitySystem,
       // spawnerArenaSystem runs IMMEDIATELY BEFORE spawnerSystem so the
       // spawner ↔ director adjacency (locked by the preSystems contract test
       // in `tests/game/floor1-main-scene-options.test.ts`) stays intact.

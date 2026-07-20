@@ -5,11 +5,11 @@ export interface DesignLanguageAddenda {
   readonly theme?: string;
 }
 
-const FLOOR_DESIGN_LANGUAGE: Readonly<Record<number, string>> = Object.freeze({
+export const FLOOR_DESIGN_LANGUAGE: Readonly<Record<number, string>> = Object.freeze({
   2: 'Family Matters: An open underworld of feuding fantasy crime families fighting over a magical contraband Mother Lode. Its energy combines operatic mob hierarchy, territorial street-gang color, ritualized syndicate tradition, cartel excess, and anarchic open-world crime—filtered through dark fantasy and reality-TV satire. Every design should communicate allegiance, rank, vice, and improvised cave-industry without directly copying any real organization.',
 });
 
-const FAMILY_DESIGN_LANGUAGE = Object.freeze({
+export const FAMILY_DESIGN_LANGUAGE = Object.freeze({
   goblins:
     'The Snaggle Cartel mass-produces cheap “Snaggle Special” under Nana Snaggle Grubwix, a scrapyard matriarch who treats every grunt, junkslinger, and joyrider as expendable extended family. Bilious gang colors, patched leathers, crooked gold, battered motorcycles, and junk-built weapons make them a dark-fantasy street gang winning through speed and numbers.',
   llamas:

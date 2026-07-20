@@ -1,23 +1,12 @@
-import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import {
-  ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
+  createActiveWeaponSnapshotInput,
+} from '../../src/core/generated-equipment-registry.js';
+import {
   FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
-  type ActiveWeaponSnapshotV1,
   type GeneratedEquipmentCreateInputV1,
 } from '../../src/shared/generated-equipment-types.js';
 import type { EquipmentSlotId } from '../../src/shared/equipment-slots.js';
-
-function frozenSwordSnapshot(): ActiveWeaponSnapshotV1 {
-  const weapon = getWeaponDef('sword');
-  if (!weapon) throw new Error('Expected sword weapon definition');
-  const { id, ...frozen } = weapon;
-  return {
-    schemaVersion: ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION,
-    sourceWeaponDefId: id,
-    ...frozen,
-  };
-}
 
 export function generatedEquipmentInput(options?: {
   readonly baseId?: string;
@@ -61,7 +50,29 @@ export function generatedEquipmentInput(options?: {
       statBonuses: { armor: 3 },
       abilityGrants: grants ? ['magic-missile'] : [],
       passiveGrants: grants ? ['combat-flow'] : [],
-      activeWeaponSnapshot: options?.weapon ? frozenSwordSnapshot() : null,
+      activeWeaponSnapshot: options?.weapon ? createActiveWeaponSnapshotInput('sword') : null,
     },
   };
 }
+import type { GenerateEquipmentInstanceRequest } from '../../src/game/generated-equipment-generator.js';
+
+export const GENERATED_WEAPON_REQUEST = {
+  baseId: 'plasma-pistol',
+  itemLevel: 3,
+  rarity: 'rare',
+  enhancementLevel: 2,
+} as const satisfies GenerateEquipmentInstanceRequest;
+
+export const GENERATED_ARMOR_REQUEST = {
+  baseId: 'iron-breastplate',
+  itemLevel: 4,
+  rarity: 'rare',
+  enhancementLevel: 3,
+} as const satisfies GenerateEquipmentInstanceRequest;
+
+export const GENERATED_ACCESSORY_REQUEST = {
+  baseId: 'band-of-fortune',
+  itemLevel: 2,
+  rarity: 'rare',
+  enhancementLevel: 0,
+} as const satisfies GenerateEquipmentInstanceRequest;
