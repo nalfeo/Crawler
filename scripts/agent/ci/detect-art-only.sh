@@ -68,20 +68,6 @@ emit_visual_all() {
   emit_output devtool_visual_touched "$4"
 }
 
-# Emit visual surface flags (new in #1688/#1698).
-# Called separately so the fail-safe paths can emit all-false without touching
-# the original emit_all signature.
-#   visual_touched      — any path that can affect browser rendering was changed
-#   game_visual_touched — game/engine/UI visual surface (src/*, public/*, tests/e2e/* except devtools)
-#   asset_visual_touched — generated art and sprite-catalog only
-#   devtool_visual_touched — devtools browser UI and its e2e test
-emit_visual_all() {
-  emit_output visual_touched "$1"
-  emit_output game_visual_touched "$2"
-  emit_output asset_visual_touched "$3"
-  emit_output devtool_visual_touched "$4"
-}
-
 # package.json gameplay-safe split:
 # - safe when ONLY scripts changed and every changed script key is lab/devtools/sprites-facing
 # - unsafe for dependency changes, non-script top-level keys, or unknown script keys
