@@ -55,9 +55,11 @@ ci-policy
 
 ## Review harness
 
-- Plan review (`gpt-5.4`): approved with four resolved safeguards; `plan_divergence=minor`.
+- Plan review (`gpt-5.4`): adversarial (4🍎 tier), 3 alternatives considered (native merge queue, batch/integration branch, FIFO mutex lock), 6/6 concerns resolved; `plan_divergence=minor`. Three blocking concerns (concurrency safety across parallel runs, stale-proof closure after target drift, shepherd-lease release before order fence) and three non-blocking concerns (backstop interval, escalation verbosity, open-count hysteresis) all resolved.
 - Code review round 1 (`claude-sonnet-4.6`): two valid ownership-lifecycle findings, both fixed.
-- Code review round 2 (`claude-sonnet-4.6`): clean after syncing the worktree to current `main`; the reported missing guard tests were confirmed to exist on current `main`.
+- Code review round 2 (`claude-sonnet-4.6`): clean.
+- Multi-model review round 1 (`claude-sonnet-4.6` + `gpt-5.3-codex` + `gemini-3.1-pro-preview`; adjudicator `gpt-5.4`): 2 valid concerns fixed (releaseOwnerFence error swallowed in finally, targetHasHealthyOwner missing headSha); 1 adjudicated invalid.
+- Multi-model review round 2 (`claude-sonnet-4.6` + `gemini-3.1-pro-preview`): clean.
 
 ## Unresolved issues
 
