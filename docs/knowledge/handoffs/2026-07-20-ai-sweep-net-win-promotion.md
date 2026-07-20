@@ -22,7 +22,7 @@ ai-combat-balance
 condition swapped) but propagated across 2 production call sites + 1 workflow
 doc + 3 test files, with regression tests reproducing an exact prior incident.
 Plan review (gpt-5.4, `plan_divergence: minor`) + an 11-round code-review loop
-(19 concerns resolved across rounds 2–10; rounds 1 and 11 were clean). Full ledger:
+(17 concerns resolved across rounds 2–10; rounds 1 and 11 were clean). Full ledger:
 `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 
 ## Why
@@ -204,7 +204,7 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **126/126 passing**
 - Review harness (3🍎 tier): plan review (gpt-5.4, `plan_divergence: minor`,
   4/4 concerns resolved — addressed single-incumbent-invariant documentation +
   test, `sortByLexicographic` diagnostic-only doc clarification, superseded-
-  notice on the prior handoff) + 11-round code-review loop (19 concerns
+  notice on the prior handoff) + 11-round code-review loop (17 concerns
   resolved, rounds 1 and 11 clean):
   - **Round 1** (claude-sonnet-4.6): 0 concerns, clean.
   - **Round 2** (github-copilot-pr-reviewer + claude-sonnet-4.6): 4 concerns,
