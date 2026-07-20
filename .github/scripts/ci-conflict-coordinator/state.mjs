@@ -282,6 +282,9 @@ export function makeCoordinatorState({
   activeNumber,
   order,
   proofs,
+  // Must be the complete (untruncated) overlap list from overlappingFiles(); the
+  // factory stores a bounded sample and derives overlapFilesCount from the input
+  // length so the "…and N more" note is always accurate.
   overlapFiles,
   escalations = [],
   lastDispatchKey = null,
@@ -305,8 +308,10 @@ export function makeCoordinatorState({
         ...(proof.reason ? { reason: compact(proof.reason) } : {}),
       }))
       .sort((left, right) => left.number - right.number),
-    overlapFiles: [...overlapFiles].sort().slice(0, MAX_OVERLAP_FILES),
+    // Capture the total count before truncating so renderCoordinatorComment can
+    // emit an accurate "…and N more" note without storing the full list.
     overlapFilesCount: overlapFiles.length,
+    overlapFiles: [...overlapFiles].sort().slice(0, MAX_OVERLAP_FILES),
     escalations: [...escalations].map(compact).filter(Boolean).sort(),
     lastDispatchKey: lastDispatchKey ? compact(lastDispatchKey) : null,
     updatedAt: compact(updatedAt),
@@ -345,6 +350,9 @@ export function validateCoordinatorState(state) {
   ) {
     throw new Error('CI conflict state has invalid overlap files or timestamp');
   }
+  // overlapFilesCount is optional for backward compatibility with states serialised
+  // before the field was introduced. When present it must be >= overlapFiles.length
+  // (which may be a bounded sample of the full list).
   if (
     state.overlapFilesCount !== undefined &&
     (!Number.isInteger(state.overlapFilesCount) || state.overlapFilesCount < state.overlapFiles.length)
