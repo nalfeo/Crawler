@@ -15,7 +15,7 @@ import type { RunStore } from './store/types.js';
 import { briefDirectoryForType } from './brief-paths.js';
 import { mirrorBriefToStore } from './brief-durability.js';
 import { ISSUE_STATUS_KEY_PREFIX } from './sidecar/issue-ingester-controller.js';
-import { resolveAssetRequestSizeVariant } from './asset-request.js';
+import { resolveAssetRequestSizeVariant, resolveAssetRequestMobRole } from './asset-request.js';
 
 export interface IssuePipelineIssueApi {
   comment(issueNumber: number, body: string): Promise<void>;
@@ -112,12 +112,14 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   );
   const spriteType = request.type || inferSpriteTypeFromName(request.name);
   const sizeVariant = resolveAssetRequestSizeVariant(request);
+  const mobRole = resolveAssetRequestMobRole(request);
   const synth = await synthesizeBrief({
     name: request.name,
     briefHint: request.briefSentence,
     type: spriteType as Brief['type'],
     floor: request.floor ?? 1,
     sizeVariant,
+    ...(mobRole ? { mobRole } : {}),
     candidates: 3,
     partial: true,
     provider: options.synthProvider,

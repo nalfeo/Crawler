@@ -1,4 +1,5 @@
 type: enemy
+mobRole: boss
 name: beetlefolk-boss
 sizeVariant: wide
 floor: 2

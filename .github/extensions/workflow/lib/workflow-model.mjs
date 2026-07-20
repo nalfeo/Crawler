@@ -74,7 +74,7 @@ export function briefKey(type, name) {
 // Ported verbatim from `src/devtools/art-plan-model.ts` (types erased).
 // ===========================================================================
 
-const spriteTypes = ['weapon', 'enemy', 'item', 'tile', 'vfx', 'character'];
+const spriteTypes = ['weapon', 'equipment', 'enemy', 'item', 'prop', 'tile', 'vfx', 'character'];
 
 const integrationTargetSchema = z.discriminatedUnion('kind', [
   z
