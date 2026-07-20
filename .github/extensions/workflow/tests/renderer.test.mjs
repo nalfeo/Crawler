@@ -101,6 +101,7 @@ test('the run cards expose every current judge axis', () => {
   ]) {
     assert.match(html, new RegExp(`key: '${key}'`));
   }
+  assert.match(html, /if \(!score\) continue;/);
 });
 
 test('instanceId is HTML-escaped into the shell', () => {

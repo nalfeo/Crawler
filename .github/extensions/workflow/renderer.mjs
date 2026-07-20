@@ -559,6 +559,7 @@ const CLIENT_SCRIPT = String.raw`
       for (var i = 0; i < JUDGE_AXES.length; i++) {
         var axis = JUDGE_AXES[i];
         var score = c.judge[axis.key] || 0;
+        if (!score) continue;
         var ok = score >= 3;
         card.appendChild(h('div', { class: 'axis' }, [
           h('span', { class: 'lbl', text: axis.label }),
