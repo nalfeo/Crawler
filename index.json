@@ -1,5 +1,16 @@
 [
   {
+    "commit": "0a6c19051e91b83385e57600414d70ea086e6a8c",
+    "commitDate": "2026-07-20T18:51:20Z",
+    "commitSubject": "feat(sprites): batch 11 asset check-ins — cactusfolk-boss-v1, chain-hauberk-v3, dueling-saber-v1, iron-cleaver-v1, void-rapier-v1 (#1732)",
+    "capturedAt": "2026-07-20T20:00:26.197Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29769744244",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/0a6c19051e91b83385e57600414d70ea086e6a8c.json"
+  },
+  {
     "commit": "885a71d55532eecff4b61ecd2899a50ddba877b3",
     "commitDate": "2026-07-20T06:27:38Z",
     "commitSubject": "docs(equipment): reconcile Floor 2 contract stack root (#1276)",
