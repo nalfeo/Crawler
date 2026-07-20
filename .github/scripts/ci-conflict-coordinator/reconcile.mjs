@@ -573,13 +573,16 @@ for (const group of groups) {
     }
     if (recovery.ownershipError) {
       escalations.push(`#${pull.number}: ${recovery.ownershipError}`);
-    } else if (recovery.healthy && pull.number !== selection.active?.number) {
+    } else if (recovery.healthy) {
       escalations.push(`#${pull.number}: active CI recovery owner retained; no close or dispatch`);
     }
   }
 
   const activeRecovery = selection.active ? recoveryByNumber.get(selection.active.number) : null;
-  const activeSafe = selection.active && !activeRecovery?.ownershipError;
+  // A healthy shepherd lease on the active slot must keep it fenced: remove
+  // ORDER_WAIT only when there is no ownership error AND no active shepherd.
+  const activeSafe =
+    selection.active && !activeRecovery?.ownershipError && !activeRecovery?.healthy;
 
   // Fence every member before exposing one slot, so concurrent train runs can
   // observe zero active slots briefly but never two.
@@ -592,7 +595,7 @@ for (const group of groups) {
     const escalated =
       proofByNumber.get(pull.number)?.status === 'ambiguous' ||
       Boolean(recoveryByNumber.get(pull.number)?.ownershipError) ||
-      (recoveryByNumber.get(pull.number)?.healthy && pull.number !== selection.active?.number);
+      Boolean(recoveryByNumber.get(pull.number)?.healthy);
     if (escalated) await addLabel(pull, ESCALATION_LABEL);
     else await removeLabel(pull, ESCALATION_LABEL);
   }
