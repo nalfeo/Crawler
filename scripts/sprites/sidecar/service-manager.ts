@@ -305,8 +305,7 @@ export async function ensureSidecarService(
   deps: SidecarServiceManagerDeps = {},
 ): Promise<SidecarServiceResult> {
   const repoRoot = canonicalRepoRoot(repoRootInput);
-  const ports = getSessionServerPorts({ cwd: repoRoot, env: process.env });
-  const baseUrl = ports.sidecarBaseUrl;
+  loadEnvLocal(repoRoot);
   const registryRoot = deps.registryRoot ?? defaultRegistryRoot();
   const registryPath = registryPathFor(repoRoot, registryRoot);
   const now = deps.now ?? Date.now;
@@ -324,11 +323,15 @@ export async function ensureSidecarService(
   const currentProvenance = computeProvenance(repoRoot);
 
   while (now() < deadline) {
+    const existingRegistry = readRegistry(registryPath);
+    const desiredPorts = getSessionServerPorts({ cwd: repoRoot, env: process.env });
+    const probePort = existingRegistry?.port ?? desiredPorts.sidecarPort;
+    const baseUrl = `http://127.0.0.1:${probePort}`;
     const health = await probeHealth(baseUrl);
     if (health) {
       if (typeof health.repoRoot === 'string' && !repoRootsMatch(health.repoRoot, repoRoot)) {
         throw new Error(
-          `Sprite sidecar port ${ports.sidecarPort} belongs to another checkout (${health.repoRoot}).`,
+          `Sprite sidecar port ${probePort} belongs to another checkout (${health.repoRoot}).`,
         );
       }
       if (
@@ -380,7 +383,7 @@ export async function ensureSidecarService(
     const candidate: ServiceRegistry = {
       schema: REGISTRY_SCHEMA,
       repoRoot,
-      port: ports.sidecarPort,
+      port: desiredPorts.sidecarPort,
       version: SPRITE_SIDECAR_SERVICE_VERSION,
       instanceId,
       shutdownToken: randomUUID(),
@@ -406,9 +409,10 @@ export async function ensureSidecarService(
         }
         const spawned = spawnService(repoRoot, candidate, process.env, registryPath);
         const claimed = { ...candidate, pid: spawned.pid };
+        const claimedBaseUrl = `http://127.0.0.1:${claimed.port}`;
         writeRegistry(registryPath, claimed);
         while (now() < deadline) {
-          const startedHealth = await probeHealth(baseUrl);
+          const startedHealth = await probeHealth(claimedBaseUrl);
           if (
             startedHealth &&
             isReady(startedHealth, repoRoot) &&
@@ -433,7 +437,7 @@ export async function ensureSidecarService(
         }
         // Startup timeout — attempt authenticated managed shutdown first; fall back
         // to terminating the exact child we spawned (never an arbitrary registry PID).
-        const shutdownSent = await requestManagedShutdown(baseUrl, claimed, probeHealth);
+        const shutdownSent = await requestManagedShutdown(claimedBaseUrl, claimed, probeHealth);
         if (shutdownSent) {
           let stopped = false;
           for (let i = 0; i < 20; i++) {

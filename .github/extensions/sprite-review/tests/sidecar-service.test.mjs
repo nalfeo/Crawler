@@ -20,9 +20,24 @@ test('ensureSpriteSidecar invokes the repo manager and parses its final JSON lin
   assert.equal(invocation.command, 'node');
   assert.ok(invocation.args.includes('ensure'));
   assert.ok(invocation.args.includes('--repo-root'));
-  assert.equal(invocation.options.timeout, 65_000);
+  assert.equal(invocation.options.timeout, 100_000);
   assert.equal(result.state, 'started');
   assert.equal(result.pid, 42);
+});
+
+test('ensureSpriteSidecar skips local startup for an explicit sidecar override', async () => {
+  let invoked = false;
+  const result = await ensureSpriteSidecar(process.cwd(), {
+    env: { VITE_SPRITES_SIDECAR_BASE_URL: 'http://override:4999/' },
+    execFile: async () => {
+      invoked = true;
+      throw new Error('should not run');
+    },
+  });
+
+  assert.equal(invoked, false);
+  assert.equal(result.state, 'reused');
+  assert.equal(result.baseUrl, 'http://override:4999');
 });
 
 test('beginSpriteSidecarStartup publishes ready state after automatic startup', async () => {

@@ -3,6 +3,14 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 const pendingByRepo = new Map();
+const SIDECAR_MANAGER_TIMEOUT_MS = 100_000;
+
+function resolveExplicitSidecarBaseUrl(env = globalThis.process?.env ?? {}) {
+  const override = env.VITE_SPRITES_SIDECAR_BASE_URL;
+  if (typeof override !== 'string') return null;
+  const trimmed = override.trim();
+  return trimmed.length > 0 ? trimmed.replace(/\/$/, '') : null;
+}
 
 function parseResult(stdout) {
   const lines = stdout
@@ -26,6 +34,10 @@ export async function ensureSpriteSidecar(repoRoot, options = {}) {
   if (existing) return existing;
 
   const run = (async () => {
+    const explicitBaseUrl = resolveExplicitSidecarBaseUrl(options.env);
+    if (explicitBaseUrl) {
+      return { ok: true, state: 'reused', pid: null, logPath: null, baseUrl: explicitBaseUrl };
+    }
     const execFile = options.execFile ?? promisify(defaultExecFile);
     const nodeExecutable = options.nodeExecutable ?? 'node';
     const tsxCli = path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
@@ -35,7 +47,7 @@ export async function ensureSpriteSidecar(repoRoot, options = {}) {
       [tsxCli, serviceCli, 'ensure', '--repo-root', repoRoot],
       {
         cwd: repoRoot,
-        timeout: 65_000,
+        timeout: SIDECAR_MANAGER_TIMEOUT_MS,
         windowsHide: true,
         maxBuffer: 1024 * 1024,
       },

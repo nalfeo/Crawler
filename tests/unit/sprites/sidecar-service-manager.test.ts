@@ -496,6 +496,107 @@ describe('sprite sidecar service manager', () => {
     expect(finalRegistry.instanceId).toBe('replacement-owner');
   });
 
+  it('loads .env.local before freezing the launch port', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-env-port-');
+    const registryRoot = makeRoot('crawler-sidecar-env-port-registry-');
+    writeFileSync(path.join(repoRoot, '.env.local'), 'SPRITES_SIDECAR_PORT=4999\n', 'utf8');
+    const originalPort = process.env.SPRITES_SIDECAR_PORT;
+    delete process.env.SPRITES_SIDECAR_PORT;
+    let health: Record<string, unknown> | null = null;
+    const probeCalls: string[] = [];
+    try {
+      const result = await ensureSidecarService(repoRoot, {
+        registryRoot,
+        bootstrap: vi.fn(),
+        probeHealth: async (baseUrl) => {
+          probeCalls.push(baseUrl);
+          return health;
+        },
+        spawnService: vi.fn((_root, registry) => {
+          expect(registry.port).toBe(4999);
+          health = {
+            status: 'ok',
+            repoRoot,
+            version: SPRITE_SIDECAR_SERVICE_VERSION,
+            queueBackend: 'azure-queue',
+            worker: { running: true },
+            issueIngester: { running: true },
+            service: {
+              managed: true,
+              instanceId: registry.instanceId,
+              pid: 43210,
+              startedAt: registry.startedAt,
+            },
+          };
+          return { pid: 43210 };
+        }),
+        isProcessAlive: () => true,
+        sleep: async () => Promise.resolve(),
+      });
+      expect(result.state).toBe('started');
+      expect(probeCalls[0]).toBe('http://127.0.0.1:4999');
+    } finally {
+      if (originalPort === undefined) delete process.env.SPRITES_SIDECAR_PORT;
+      else process.env.SPRITES_SIDECAR_PORT = originalPort;
+    }
+  });
+
+  it('treats the registry port as authoritative for an existing claim', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-registry-port-');
+    const registryRoot = makeRoot('crawler-sidecar-registry-port-registry-');
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    mkdirSync(registryRoot, { recursive: true });
+    writeFileSync(
+      regPath,
+      JSON.stringify({
+        schema: 1,
+        repoRoot,
+        port: 4999,
+        version: SPRITE_SIDECAR_SERVICE_VERSION,
+        instanceId: 'existing-instance',
+        shutdownToken: 'existing-token',
+        startedAt: new Date().toISOString(),
+        logPath: path.join(registryRoot, 'existing.log'),
+        pid: 12345,
+      }),
+    );
+    const originalPort = process.env.SPRITES_SIDECAR_PORT;
+    process.env.SPRITES_SIDECAR_PORT = '3010';
+    const probeCalls: string[] = [];
+    try {
+      const result = await ensureSidecarService(repoRoot, {
+        registryRoot,
+        bootstrap: vi.fn(),
+        probeHealth: async (baseUrl) => {
+          probeCalls.push(baseUrl);
+          if (baseUrl !== 'http://127.0.0.1:4999') return null;
+          return {
+            status: 'ok',
+            repoRoot,
+            version: SPRITE_SIDECAR_SERVICE_VERSION,
+            queueBackend: 'azure-queue',
+            worker: { running: true },
+            issueIngester: { running: true },
+            service: {
+              managed: true,
+              instanceId: 'existing-instance',
+              pid: 12345,
+              startedAt: new Date().toISOString(),
+            },
+          };
+        },
+        spawnService: vi.fn(() => ({ pid: 99999 })),
+        isProcessAlive: () => true,
+        sleep: async () => Promise.resolve(),
+      });
+      expect(result.state).toBe('reused');
+      expect(probeCalls[0]).toBe('http://127.0.0.1:4999');
+    } finally {
+      if (originalPort === undefined) delete process.env.SPRITES_SIDECAR_PORT;
+      else process.env.SPRITES_SIDECAR_PORT = originalPort;
+    }
+  });
+
   it('stops using the registry port even when environment port differs', async () => {
     const repoRoot = makeRoot('crawler-sidecar-stop-port-');
     const registryRoot = makeRoot('crawler-sidecar-stop-port-registry-');

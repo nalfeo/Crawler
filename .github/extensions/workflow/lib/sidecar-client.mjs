@@ -20,6 +20,8 @@ import {
   normalizeWorkspaceKey,
 } from '../../../../scripts/shared/session-server-ports.js';
 
+const EXPECTED_SIDECAR_VERSION = '0.3.0-managed';
+
 /**
  * Legacy fixed port the monolith falls back to when no per-worktree port can be
  * derived. Mirrors `LEGACY_SPRITE_SIDECAR_FALLBACK` in
@@ -373,7 +375,7 @@ async function readJson(response) {
 }
 
 function isSidecarStrictReady(payload) {
-  if (!payload || payload.status !== 'ok' || typeof payload.version !== 'string') {
+  if (!payload || payload.status !== 'ok' || payload.version !== EXPECTED_SIDECAR_VERSION) {
     return false;
   }
   if (payload.queueBackend === 'azure-queue') {
