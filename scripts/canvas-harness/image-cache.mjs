@@ -32,6 +32,7 @@
  * @module canvas-harness/image-cache
  */
 
+/* global Response */
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -114,7 +115,10 @@ export function createImageCache(options = {}) {
       return { hit: false, bytes, contentType, cached: false };
     } catch (err) {
       log(`image-cache: relay read failed: ${err && err.message ? err.message : err}`);
-      return { hit: false, response };
+      // The response body is already disturbed/errored after arrayBuffer()
+      // rejects. Return a fresh, readable 502 so callers can relay a usable
+      // response instead of an unusable disturbed body.
+      return { hit: false, response: new Response(null, { status: 502 }) };
     }
   }
 

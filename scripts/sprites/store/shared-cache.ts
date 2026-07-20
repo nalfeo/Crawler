@@ -229,12 +229,32 @@ export class SharedResourceCache {
     }
   }
 
-  /** True iff `key` is present. A hit refreshes the key's access recency. */
+  /**
+   * True iff `key` is present **and** its content is readable and
+   * integrity-valid. A hit refreshes the key's access recency.
+   *
+   * `cacache.get.info()` only validates the index entry; the referenced content
+   * blob could be missing or corrupt while info returns non-null. We therefore
+   * call `cacache.get.hasContent()` to confirm the content file exists and
+   * passes SRI verification. A dangling index entry (content missing/invalid)
+   * is pruned so future callers don't retry a doomed lookup.
+   */
   async has(key: string): Promise<boolean> {
     try {
       const physicalKey = this.physicalKey(key);
       const info = await cacache.get.info(this.cacheDir, physicalKey);
       if (info === null) return false;
+      const contentCheck = await cacache.get.hasContent(this.cacheDir, info.integrity);
+      if (!contentCheck) {
+        // Dangling index entry: remove it so callers that immediately call
+        // get() don't encounter a confusing miss after a true has() result.
+        try {
+          await cacache.rm.entry(this.cacheDir, physicalKey);
+        } catch {
+          // best-effort; a stale entry is harmless if removal fails
+        }
+        return false;
+      }
       this.touch(physicalKey);
       return true;
     } catch {
@@ -246,6 +266,11 @@ export class SharedResourceCache {
    * Write a value (best-effort). A single value larger than the whole budget is
    * skipped rather than written then immediately evicted. After a successful
    * write the global LRU budget is enforced before the call completes.
+   *
+   * Replacing an existing key would leave the previous content blob orphaned
+   * (cacache appends a new index entry but does not remove the old content).
+   * We capture the previous integrity before the write and compact orphaned
+   * content afterwards to keep the physical store within budget.
    */
   async set(key: string, data: Buffer, metadata?: Record<string, unknown>): Promise<void> {
     if (this.maxBytes > 0 && data.length > this.maxBytes) return;
@@ -253,8 +278,24 @@ export class SharedResourceCache {
     if (lockToken === null) return;
     try {
       const physicalKey = this.physicalKey(key);
+      // Capture the previous integrity so we can compact the orphaned blob
+      // after the put (cacache does not remove it automatically).
+      let prevIntegrity: string | null = null;
+      try {
+        const prev = await cacache.get.info(this.cacheDir, physicalKey);
+        if (prev !== null) prevIntegrity = prev.integrity;
+      } catch {
+        // best-effort; failing to read old info is not fatal
+      }
       await cacache.put(this.cacheDir, physicalKey, data, metadata ? { metadata } : undefined);
       this.touch(physicalKey);
+      // Compact the previous blob if it was replaced with different content.
+      if (prevIntegrity !== null) {
+        const newInfo = await cacache.get.info(this.cacheDir, physicalKey);
+        if (newInfo !== null && newInfo.integrity !== prevIntegrity) {
+          await this.removeContentIfUnreferenced(prevIntegrity);
+        }
+      }
       if (this.maxBytes > 0) await this.pruneLocked(lockToken);
     } catch (err) {
       this.log(`put failed for ${redactKey(key)}: ${errMsg(err)}`);
@@ -500,8 +541,24 @@ export class SharedResourceCache {
             rmSync(this.lockDir, { recursive: true, force: true });
             continue;
           }
-        } catch {
-          // Lock vanished between our create attempt and stat — retry.
+        } catch (statErr) {
+          // If the owner file is missing (crash between mkdirSync and
+          // writeFileSync), use the lock directory's own mtime to age it.
+          // An ownerless directory that is old enough is reclaimed; a fresh
+          // one is retried so a concurrent legitimate writer can finish.
+          if (errorCode(statErr) === 'ENOENT') {
+            try {
+              const dirAge = Date.now() - statSync(this.lockDir).mtimeMs;
+              if (dirAge > STALE_LOCK_MS) {
+                rmSync(this.lockDir, { recursive: true, force: true });
+                continue;
+              }
+            } catch {
+              // Lock directory vanished between our create and stat — retry.
+            }
+          }
+          // Owner file accessible but some other error, or lock directory
+          // just vanished — retry on the next iteration.
         }
         await delay(LOCK_RETRY_MS);
       }

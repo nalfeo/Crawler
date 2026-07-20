@@ -59,6 +59,7 @@ let runsDir: string;
 let cacheDir: string;
 let offlineInner: ThrowingStore;
 let app: FastifyInstance;
+let warmedListingResponse: unknown;
 let warmedBriefResponse: unknown;
 let warmedSliceMapResponse: unknown;
 
@@ -118,6 +119,14 @@ beforeEach(async () => {
   await warm.list(''); // capture the listing snapshot at the current epoch
   const warmApp = buildServer({ repoRoot, runsDir, version: 'test', store: warm });
   await warmApp.ready();
+  // Capture the exact run-listing response before deleting the source tree so
+  // the offline test can assert byte-identical equality (not just subset presence).
+  const listRes = await warmApp.inject({
+    method: 'GET',
+    url: '/api/storage/runs?scope=active',
+  });
+  expect(listRes.statusCode, listRes.body).toBe(200);
+  warmedListingResponse = listRes.json();
   const briefRes = await warmApp.inject({
     method: 'GET',
     url: `/api/runs/${BRIEF_ID}/${RUN_ID}/brief`,
@@ -164,8 +173,9 @@ describe('sidecar offline hard-gate', () => {
   it('serves the run listing from the warmed snapshot with zero remote reads', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/storage/runs?scope=active' });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { runs: Array<{ briefId: string; runId: string }> };
-    expect(body.runs).toContainEqual(expect.objectContaining({ briefId: BRIEF_ID, runId: RUN_ID }));
+    // Assert the complete response matches the snapshot captured from the warm sidecar,
+    // not just a partial subset check — per the PR hard gate contract.
+    expect(res.json()).toEqual(warmedListingResponse);
     expect(offlineInner.reads).toBe(0);
   });
 

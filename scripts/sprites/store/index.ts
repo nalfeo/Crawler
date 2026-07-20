@@ -79,7 +79,21 @@ export function createRunStore(options: CreateRunStoreOptions): RunStore {
           accountKey: required(env, 'AZURE_STORAGE_KEY'),
           containerName,
         });
-    if (!isAzureCacheEnabled(env)) return inner;
+    if (!isAzureCacheEnabled(env)) {
+      // CRAWLER_AZURE_OFFLINE=1 requires the cache wrapper — the cache is the
+      // only read source when Azure is forced unavailable. Returning the raw
+      // Azure store with offline mode set would silently allow (and then fail)
+      // real Azure reads, contradicting the documented "never contact Azure"
+      // guarantee. Reject the contradictory combination loudly.
+      if (isAzureOffline(env)) {
+        throw new Error(
+          'CRAWLER_AZURE_OFFLINE=1 (or SPRITES_AZURE_OFFLINE) requires the shared cache to be ' +
+            'enabled. Unset CRAWLER_AZURE_CACHE=off (or SPRITES_AZURE_CACHE=off) or disable ' +
+            'offline mode.',
+        );
+      }
+      return inner;
+    }
     // Wrap Azure in the shared, cross-session content-addressable cache so a
     // devtools reload (in ANY worktree) paints without re-downloading blobs and
     // a warmed worktree can serve exact bytes/listings while offline. The cache

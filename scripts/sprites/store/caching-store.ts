@@ -91,6 +91,13 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
   private readonly cache: SharedResourceCache;
   private readonly shouldCache: (key: string) => boolean;
   private readonly offline: boolean;
+  /**
+   * Per-key in-flight Promise: serializes concurrent same-key `put` calls so
+   * that the cache always reflects the last-committed inner write. Without this
+   * serialization, writer A (v1) could cache v1 AFTER writer B (v2) already
+   * cached v2, leaving the cache stale relative to the authoritative store.
+   */
+  private readonly putInFlight = new Map<string, Promise<void>>();
 
   constructor(options: CachingRunStoreOptions) {
     this.inner = options.inner;
@@ -101,14 +108,30 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
   }
 
   async put(key: string, data: Buffer): Promise<void> {
-    await this.invalidateDerivedResources(key);
-    // Authoritative write first; only mirror into the cache once it succeeds.
-    await this.inner.put(key, data);
-    if (this.shouldCache(key)) {
-      await this.cache.set(`${BLOB_PREFIX}${key}`, data);
+    // Serialize same-key writes: wait for any in-flight put on this key to
+    // complete first, then execute ours. This prevents a stale v1 from
+    // overwriting a newer v2 that committed to both inner and cache first.
+    const previous = this.putInFlight.get(key);
+    const work = (async () => {
+      if (previous !== undefined) await previous.catch(() => {});
+      await this.invalidateDerivedResources(key);
+      // Authoritative write first; only mirror into the cache once it succeeds.
+      await this.inner.put(key, data);
+      if (this.shouldCache(key)) {
+        await this.cache.set(`${BLOB_PREFIX}${key}`, data);
+      }
+      // A new/changed blob may change what listings return — invalidate snapshots.
+      this.cache.bumpEpoch();
+    })();
+    this.putInFlight.set(key, work);
+    try {
+      await work;
+    } finally {
+      // Only evict if our promise is still current (a later put may have replaced it).
+      if (this.putInFlight.get(key) === work) {
+        this.putInFlight.delete(key);
+      }
     }
-    // A new/changed blob may change what listings return — invalidate snapshots.
-    this.cache.bumpEpoch();
   }
 
   async get(key: string): Promise<Buffer> {

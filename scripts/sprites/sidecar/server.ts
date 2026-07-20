@@ -41,6 +41,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -816,14 +817,18 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(415);
         return { error: 'unsupported-sheet-filename', sheet: requestedSheet };
       }
-      const responseCacheKey =
-        `route/slice-map/${briefId}/${runId}/` +
-        (typeof requestedSheet === 'string' && requestedSheet.length > 0
-          ? requestedSheet
-          : 'latest');
-      const cachedResponse = await readCachedJson(store, responseCacheKey);
-      if (cachedResponse !== null) return cachedResponse;
 
+      // ── Load summary + brief up-front for provenance-aware caching ──────────
+      // The cache key embeds a fingerprint of the brief's resolved generation
+      // config (post type-defaults merge) so a change to data/sprite-types or
+      // data/palettes that modifies emptyCells produces a different key and
+      // forces recomputation. Brief loading adds two small local file reads on
+      // the hot path; it is much cheaper than the PNG decode + slice computation.
+      //
+      // When the brief cannot be loaded (source tree absent in offline mode,
+      // invalid YAML, missing type-defaults), we fall back to the
+      // non-fingerprinted key so a warmed offline sidecar still serves the
+      // cached response without any source-tree inputs.
       const summaryKey = `${briefId}/${runId}/summary.json`;
       if (!(await store.has(summaryKey))) {
         reply.code(404);
@@ -879,6 +884,41 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       } catch {
         brief = null;
       }
+
+      // Stable 16-hex fingerprint of the fully-resolved generation config.
+      // Captures the effect of type-defaults and palette on emptyCells: if
+      // those files change, the fingerprint changes, the fingerprinted key
+      // misses, and the response is recomputed with fresh inputs.
+      const briefGenFingerprint =
+        brief !== null
+          ? createHash('sha256')
+              .update(JSON.stringify(brief.generation))
+              .digest('hex')
+              .slice(0, 16)
+          : null;
+
+      const baseResponseCacheKey =
+        `route/slice-map/${briefId}/${runId}/` +
+        (typeof requestedSheet === 'string' && requestedSheet.length > 0
+          ? requestedSheet
+          : 'latest');
+      // Primary key: fingerprint-augmented for cache coherence when type-defaults
+      // or palette change. Fallback key: fingerprint-free for offline reads where
+      // the brief cannot be loaded (source tree absent in a different worktree).
+      const responseCacheKey =
+        briefGenFingerprint !== null
+          ? `${baseResponseCacheKey}:${briefGenFingerprint}`
+          : baseResponseCacheKey;
+
+      // Try the primary (fingerprinted or base) key first.
+      let cachedResponse = await readCachedJson(store, responseCacheKey);
+      // If brief loading failed and the fingerprinted key produced a miss,
+      // also try the non-fingerprinted key as an offline fallback.
+      if (cachedResponse === null && briefGenFingerprint === null) {
+        cachedResponse = await readCachedJson(store, baseResponseCacheKey);
+      }
+      if (cachedResponse !== null) return cachedResponse;
+
       const runPrefix = `${briefId}/${runId}/`;
       const keys = await store.list(runPrefix);
       const sheetFiles = keys
@@ -919,7 +959,16 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           algorithm: 'content-aware',
           emptyCellsApplied: brief !== null,
         };
-        if (durableBriefMatches) await writeCachedJson(store, responseCacheKey, response);
+        // Only cache when the brief loaded successfully (brief !== null), so
+        // a brief-less response (loadBrief failed due to missing type-defaults
+        // or palette) is never stored as the canonical shared snapshot.
+        // Write to BOTH the fingerprinted key (online coherence) and the
+        // non-fingerprinted key (offline fallback for worktrees without source
+        // files, where the fingerprint cannot be recomputed on read).
+        if (durableBriefMatches && brief !== null && briefGenFingerprint !== null) {
+          await writeCachedJson(store, responseCacheKey, response);
+          await writeCachedJson(store, baseResponseCacheKey, response);
+        }
         return response;
       } catch (err) {
         reply.code(500);

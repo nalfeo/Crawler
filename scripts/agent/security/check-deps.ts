@@ -63,6 +63,11 @@ const TRUSTED_PACKAGES = new Set<string>([
   // future @recast-navigation/* packages stay unvetted-by-default.
   'recast-navigation',
   '@recast-navigation/wasm',
+  // Sprite pipeline shared cross-session cache (ADR 0065) — npm/pacote's own
+  // content-addressable store. MIT-licensed, maintained by the npm CLI team,
+  // widely audited, and used by npm itself. Pinned to the version in
+  // package.json; no known CVEs as of 2026-07-20.
+  'cacache',
 ]);
 
 function isTrusted(name: string): boolean {
