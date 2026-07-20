@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "pr1630-merge-recovery-round3",
+  "task_title": "PR 1630 merge recovery round 3",
+  "estimated_apples": 2,
+  "stages": {}
+}
