@@ -21,8 +21,8 @@ ai-combat-balance
 3🍎 estimated, 3🍎 actual (✅ hit). Single logical rule change (one gate
 condition swapped) but propagated across 2 production call sites + 1 workflow
 doc + 3 test files, with regression tests reproducing an exact prior incident.
-Plan review (gpt-5.4, `plan_divergence: minor`) + a 6-round code-review loop
-(11 concerns resolved across rounds 2–6; round 1 was clean). Full ledger:
+Plan review (gpt-5.4, `plan_divergence: minor`) + an 8-round code-review loop
+(13 concerns resolved across rounds 2–8; round 1 was clean). Full ledger:
 `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 
 ## Why
@@ -173,7 +173,7 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **112/112 passing**
 - Review harness (3🍎 tier): plan review (gpt-5.4, `plan_divergence: minor`,
   4/4 concerns resolved — addressed single-incumbent-invariant documentation +
   test, `sortByLexicographic` diagnostic-only doc clarification, superseded-
-  notice on the prior handoff) + 6-round code-review loop (11 concerns
+  notice on the prior handoff) + 8-round code-review loop (13 concerns
   resolved):
   - **Round 1** (claude-sonnet-4.6): 0 concerns, clean.
   - **Round 2** (github-copilot-pr-reviewer + claude-sonnet-4.6): 4 concerns,
@@ -206,7 +206,22 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **112/112 passing**
     validation (stale/wrong-floor/pre-v2-schema data could silently corrupt the
     incumbent's win count). Added `assertLegacyBaselineProvenance()`, reusing
     `assertSearchArtifactProvenance()` and the newly-exported
-    `assertRowSafeRoomInRange()`, plus an 8-test regression suite. Ledger:
+    `assertRowSafeRoomInRange()`, plus an 8-test regression suite.
+  - **Round 7** (github-copilot-pr-reviewer): 1 concern, resolved — the PR
+    description itself was stale relative to the committed ledger/handoff
+    (reported 101 targeted tests and a single clean round vs. the durable
+    119/6-round record). Fixed by rewriting the PR description via the GitHub
+    API to match. Docs/process-only finding, no code change.
+  - **Round 8** (github-copilot-pr-reviewer): 1 concern, resolved —
+    `.github/workflows/ai-sweep.yml`'s checkpoint-init job comments still
+    called the safety gate a "flip check" that rejects any flip (the
+    superseded zero-flip wording). An automated `copilot-swe-agent[bot]` push
+    (commit `b8e97f2b`) fixed the wording to describe the net-win comparison
+    actually enforced; this session verified the fix was adequate and reset to
+    it rather than duplicate it. A companion bot commit (`dabe0e82`) also
+    corrected a stale test-count arithmetic error in this handoff (46 claimed
+    vs. 39 actual for `sweep-round-plan.test.ts`, total corrected 119→112); the
+    PR description was updated to match. No production code change. Ledger:
     `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 - Apple record: `docs/knowledge/metrics/apples/2026-07-20-ai-sweep-net-win-promotion.json`
   (3🍎 estimated → 3🍎 actual, exact).

@@ -62,6 +62,22 @@
           "resolved_count": 1,
           "clean": true,
           "notes": "A further native GitHub Copilot PR review pass on the round-5 push found the --legacy-baseline artifact was JSON.parse'd and its rows injected into allRows/configs with zero provenance or row validation: a stale/wrong-floor/wrong-budget/pre-v2-schema artifact (missing safeRoomMs) could silently corrupt the incumbent's win count, and the freshly-stamped output metadata would hide this from the downstream --stage validate check. Fixed by adding assertLegacyBaselineProvenance() in sweep-eval.ts, which: (1) validates the artifact has exactly one config; (2) validates every row is tagged combo === LEGACY_COMBO_ID; (3) reuses the existing assertSearchArtifactProvenance() to check schema version, stage, floorId, budgetMs, and maxFrames against the current runner's calibration; (4) reuses the newly-exported assertRowSafeRoomInRange() (aggregate-shards.ts) on every row to reject missing/out-of-range safeRoomMs. searchCombo's `if (opts.legacyBaseline)` branch now calls this single validator instead of an ad-hoc inline config-count check. Added 8 new regression tests (tests/unit/ai/sweep-eval-search-promotion.test.ts): accepts a well-formed artifact; rejects >1 config; rejects mixed/wrong combo tags; rejects stale schemaVersion, floorId mismatch, budgetMs mismatch, maxFrames mismatch; rejects a row missing safeRoomMs. Verified: 15/15 (targeted) + 309/309 (tests/unit/ai) pass, tsc --noEmit clean, eslint clean, verify:fast green."
+        },
+        {
+          "round": 7,
+          "models": ["github-copilot-pr-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Native GitHub Copilot PR review flagged the PR description itself as stale relative to the committed review ledger and handoff: it reported 101 targeted tests and a single clean code-review round with zero concerns, while the durable records showed 119 (later corrected to 112) targeted tests and 6 rounds with 11 resolved concerns. Fixed by rewriting the PR description via the GitHub API to match the ledger/handoff exactly. No code change; docs/process-only finding."
+        },
+        {
+          "round": 8,
+          "models": ["github-copilot-pr-reviewer"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true,
+          "notes": "Native GitHub Copilot PR review found .github/workflows/ai-sweep.yml checkpoint-init job comments still called the safety gate a flip check that rejects any candidate which flips LEGACY wins -- the superseded zero-flip wording. An automated copilot-swe-agent[bot] push (commit b8e97f2b) fixed the wording to describe the net-win comparison actually enforced (>=90% wins AND strictly more total wins than incumbent); this session independently authored an equivalent fix, found the bots adequate, and reset to the bots commit rather than duplicate it. Also caught and fixed (via bot commit dabe0e82) a stale test-count arithmetic error in the handoff (46 claimed vs 39 actual for sweep-round-plan.test.ts, corrected total 119->112); the PR description was updated to match. No production code change; docs/comment-only findings."
         }
       ]
     }
