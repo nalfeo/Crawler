@@ -826,89 +826,197 @@ Visual sandbox showing:
 
 ## Constitutional Compliance
 
-| Principle                    | Compliance                                                                 |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| **Lab-Gated Development**    | Equipment lab required before shipping. CI-enforced.                       |
-| **Deterministic Game Logic** | No `Math.random()` or `Date.now()`. Pure functions only.                   |
-| **ECS-Phaser Bridge**        | Equipment logic in `src/core/`, types in `src/shared/`. No Phaser imports. |
-| **Coverage Requirements**    | `src/core/` and `src/shared/` target 90%+ line coverage.                   |
-| **Conventional Commits**     | `feat: add equipment system`, `lab: equipment-lab`, etc.                   |
+| Principle                         | Compliance                                                                         |
+| --------------------------------- | ---------------------------------------------------------------------------------- |
+| **Lab-Gated Development**         | Equipment lab required before shipping. CI-enforced.                               |
+| **Deterministic Game Logic**      | No `Math.random()` or `Date.now()`. Pure functions only.                           |
+| **ECS-Phaser Bridge**             | Equipment logic in `src/core/`, types in `src/shared/`. No Phaser imports.         |
+| **Coverage Requirements**         | `src/core/` and `src/shared/` target 90%+ line coverage.                           |
+| **Conventional Commits**          | `feat: add equipment system`, `lab: equipment-lab`, etc.                           |
+| **Rapid Five-Level Build Growth** | Floor 2 item stats must be tuned so representative builds meet the 1.7×–2.3× gate. |
 
 ---
 
-## Floor 2 Generated Equipment Contract
+## Floor 2 Generated Equipment Contract (A1 Implementation Lock)
 
-> **Authority:** `docs/knowledge/adr/0065-versioned-frozen-floor2-equipment-instances.md`
-> **Implementation:** `src/game/generated-equipment-registry.ts`, `src/shared/generated-equipment-types.ts`
+> This section locks the implementation contracts for Floor 2 generated equipment.
+> It is normative for all downstream implementation slices (B1–C2).
+> Authority: ADR 0065 (`docs/knowledge/adr/0065-versioned-frozen-floor2-equipment-instances.md`).
 
-Floor 2 introduces procedurally generated equipment instances whose identity, stats, and
-display properties are created at floor-load time and must survive floor transitions and
-save/load cycles. This section describes how generated equipment coexists with the Floor 1
-system above.
+### Instance Identity and Registry
 
-### Identity
+- **One versioned generated-equipment registry** spans all Floor 2 equipment consumers.
+  Every generated instance is assigned a stable UUID at creation and stored exactly once in
+  the registry.
+- **Containers** (bag slots, equipped slots, reward bundles, boss chests, Quartermaster stock,
+  floor-carryover manifests) store only the instance ID — never the full record.
+- No consumer may define a parallel item shape or store a subset of resolved fields.
+- The registry schema is versioned. Unknown future versions fail closed; supported migration
+  is deterministic and idempotent.
 
-Each generated instance carries a stable `GeneratedEquipmentInstanceId` of the form
-`gei:v1:<runKey>:<ordinal>`, where:
-
-- `runKey` is derived deterministically from the world seed (never wall-clock time).
-- `ordinal` is a non-negative integer, monotonically increasing per run.
-
-This is distinct from the numeric `EquipmentInstanceId` used by the Floor 1 system.
-
-### Instance Schema (v1)
+#### V1 Record Shape
 
 ```typescript
 interface GeneratedEquipmentInstanceV1 {
-  schemaVersion: 'floor2-equipment-instance/v1';
-  instanceId: GeneratedEquipmentInstanceId;
-  contentRevision: number; // 0 for new, incremented on enhancement
-  baseId: string; // catalog reference
-  itemLevel: number; // positive integer
-  rarity: 'common' | 'uncommon' | 'rare';
-  enhancementLevel: 0 | 1 | 2 | 3 | 4 | 5;
-  resolvedEffects: ResolvedEquipmentEffectV1[];
-  frozen: FrozenEquipmentFieldsV1;
-  fingerprint: EquipmentFingerprintV1; // sha256:<64 hex>
+  readonly schemaVersion: 1;
+  /** Stable UUID assigned at creation; never reused. */
+  readonly instanceId: string;
+  /** ID of the static EquipmentItemDef template this instance derives from. */
+  readonly baseDefId: string;
+  /** Floor zone band determining item level. */
+  readonly itemLevel: number;
+  /** Resolved rarity after generation. */
+  readonly rarity: 'common' | 'uncommon' | 'rare';
+  /** Post-rarity inherent damage (or armor) after inherent scaling. */
+  readonly resolvedBaseStat: number;
+  /** Enhancement tier 0..5 applied after rarity. */
+  readonly enhancementTier: number;
+  /** Affix descriptors allocated from the rarity effect-unit budget. */
+  readonly affixes: readonly AffixDescriptorV1[];
+  /** Frozen weapon snapshot (only present for weapon-bearing instances). */
+  readonly weaponSnapshot?: ActiveWeaponSnapshotV1;
+  /** SHA-256 fingerprint over canonical immutable content fields (excludes container/price/claim). */
+  readonly fingerprint: string;
+  /** Monotone content revision; increments on each atomic enhancement revision. */
+  readonly contentRevision: number;
 }
 ```
 
-`frozen` contains the consumer-visible computed values (display name, art key, stat
-bonuses) written at the end of the resolution pipeline. Consumers **must** use `frozen`
-fields; they must not re-resolve behavior from a later catalog revision.
+#### Registry Operations
 
-### Registry
+| Operation           | Signature (logical)                                        | Failure contract                                           |
+| ------------------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
+| `create`            | `(def, itemLevel, rng) → GeneratedEquipmentInstanceV1`     | Throws on unknown `baseDefId` or invalid `itemLevel`.      |
+| `get`               | `(instanceId) → GeneratedEquipmentInstanceV1 \| undefined` | Returns `undefined` for an unknown ID (no throw).          |
+| `transfer`          | `(instanceId, fromContainer, toContainer) → void`          | Throws if `instanceId` absent in `fromContainer`.          |
+| `replace`           | `(instanceId, updatedRecord) → void`                       | Throws if `instanceId` unknown or `schemaVersion` differs. |
+| `validateOwnership` | `(instanceId, container) → boolean`                        | Pure; never mutates registry state.                        |
 
-The generated equipment registry (`src/game/generated-equipment-registry.ts`) is the
-**single source of truth** for full generated instance records. All other containers
-(bag, equipped slots, reward bundles, shop stock, carryover) store `instanceId`
-references only.
+### Resolution Order (immutable after freeze)
 
-The registry is:
+Generated instances are resolved exactly once in this sequence:
 
-- **World-scoped** — each `GameWorld` has its own isolated registry (WeakMap storage).
-- **Feature-flagged** — registration is gated by `world.floor2EquipmentFlags.floor2EquipmentRegistry`; lookups and hydration are always permitted.
-- **Immutable after registration** — stored records are deeply frozen; content changes require a full replacement with an incremented `contentRevision`.
+1. Base template selection (static `EquipmentItemDef`)
+2. Item level (floor zone band)
+3. Inherent scaling (rarity scalar applied to base stats)
+4. Rarity: Common (1.00×, 0 effect units), Uncommon (1.05×, 1 minor unit), Rare (1.10×, 2 minor units)
+5. Enhancement: +0..+5, adds 5% post-rarity inherent damage or armor per step
+6. Affixes and effect-unit budget allocated from rarity
+7. **Freeze:** stats, name, art handle, weapon snapshot (if applicable), and fingerprint
+
+The only permitted post-freeze content operation is an atomic enhancement revision
+(step 5 incremented by one); it never rerolls prior choices.
 
 ### Fingerprinting
 
-Each instance carries a SHA-256 fingerprint of its canonical JSON (keys sorted
-lexicographically, no `undefined`, ownership/container fields excluded). The fingerprint
-is recomputed during registration and hydration; a mismatch indicates tuning drift and
-causes the record to be rejected.
+- Fingerprints are versioned SHA-256 digests of canonical immutable instance fields,
+  including the complete weapon snapshot (if present) and the snapshot's `schemaVersion`
+  and `contentRevision`.
+- Excluded from fingerprint: ownership container, merchant price, claim state.
+- Fingerprint mismatch signals a bug (stale clone or field omission) — not an expected
+  upgrade path.
 
-### Coexistence with Floor 1
+### Weapon Snapshots
 
-The generated registry is an additive layer. It does **not** modify `EquipmentState`,
-`EquipmentInstance`, or the Floor 1 equip/unequip logic. Future slices will bridge
-generated instances into the equip system via an adapter (ADR 0065 DEC-008).
+Weapon-bearing instances freeze an `ActiveWeaponSnapshotV1` record after full instance
+resolution (see `weapon-system.md` for the snapshot contract). Runtime weapon-firing selects
+the snapshot by equipped instance ID rather than reading or mutating the global
+static `WeaponDef` template.
 
-### Rarity and Effect Budget
+### Ability and Passive Ownership
 
-| Rarity   | Effect budget | Notes                                  |
-| -------- | ------------- | -------------------------------------- |
-| common   | 0 units       | No affixes                             |
-| uncommon | 1 unit        | One minor (1-unit) affix               |
-| rare     | 2 units       | Two 1-unit affixes or one 2-unit affix |
+- Every ability or passive granted by equipment records a source key:
+  `equipment:<instanceId>:<effectOrdinal>`.
+- An ability or passive remains **active** while its ability/passive ID has at least one live
+  source key in the active-ability/passive ledger. Two different equipped items can each grant
+  the same ability — each via a distinct source key — and unequipping one removes only that
+  item's source key; the ability stays active while the other item's key survives.
+- Unequipping removes only the source keys whose `instanceId` segment matches the unequipped
+  instance. Source keys belonging to other instances or non-equipment sources are unaffected.
+- The existing ten-slot active-ability limit remains authoritative.
 
-Rarities above Rare are not valid Floor 2 generation outcomes.
+### Achievement Reward Contracts
+
+- Reward instances resolve atomically at unlock time and are immutable inside the reward bundle.
+- A `claim` operation transfers the whole bundle and marks it claimed in one transaction,
+  or performs no mutation (no partial state).
+- Claimed state is excluded from the instance fingerprint.
+
+### Shop and Economy Contracts
+
+- Player purchases and AI purchases share one atomic public purchase API.
+- A purchase either succeeds (item moves from merchant stock to buyer bag, price debited) or
+  fails completely — no partial transfer.
+- Quartermaster rules: Floor 2 merchant stock rotates within the unlocked catalog;
+  Tier 1 items appear at the 25/50 zone shops; Tier 2 items at the 50/75 zone shops.
+- Boss chest rarity distribution: 85% Uncommon, 15% Rare — no Common drops from boss chests.
+- The normalized catalog floor is 70 base entries before enhancement or affixes.
+
+### Floor Carryover
+
+- Floor 1 equipment entries are excluded from the Floor 2 registry and must not appear in
+  Floor 2 shop or loot pools.
+- Floor 2 carryover serializes the registry plus ID references — not resolved records.
+- Carryover deserialization is idempotent; repeated loads produce identical registry state.
+
+### Deterministic AI Scoring
+
+- AI agents score generated instances by expected run value: a function of resolved stats,
+  current build, and floor-zone context.
+- AI may pursue an optional settlement-maintenance goal only through the existing objective
+  route planner and public inventory / equip / purchase APIs.
+- AI scoring is deterministic: same inputs produce same score. No `Math.random()`.
+
+### Feature Flags
+
+Seven independently staged Floor 2 equipment feature flags govern rollout.
+All default to `false` (off). Each flag must not expose equipment on Floor 1.
+
+| Flag ID                        | Enables                                        |
+| ------------------------------ | ---------------------------------------------- |
+| `floor2EquipmentRegistry`      | Versioned instance registry and resolution     |
+| `floor2EquipmentCatalog`       | Tier 1 and Tier 2 item catalog entries         |
+| `floor2EquipmentRewards`       | Achievement reward bundles and boss chest loot |
+| `floor2EquipmentEconomy`       | Quartermaster stock and purchase API           |
+| `floor2EquipmentUX`            | HUD slots, paper doll, and tooltip rendering   |
+| `floor2EquipmentWorldInteg`    | World-simulation equipment queries and effects |
+| `floor2EquipmentAIMaintenance` | AI scoring and settlement-maintenance goal     |
+
+Dependency closure: each flag may be enabled only after all flags it depends on are enabled.
+If an attempt is made to enable a flag while a dependency is off, the runtime must error and
+refuse the mutation (never auto-enable prerequisites silently). Invalid configurations are
+rejected rather than auto-corrected.
+
+| Flag ID                        | Depends on                                          |
+| ------------------------------ | --------------------------------------------------- |
+| `floor2EquipmentRegistry`      | (none — root flag)                                  |
+| `floor2EquipmentCatalog`       | `floor2EquipmentRegistry`                           |
+| `floor2EquipmentRewards`       | `floor2EquipmentCatalog`                            |
+| `floor2EquipmentEconomy`       | `floor2EquipmentCatalog`                            |
+| `floor2EquipmentUX`            | `floor2EquipmentRegistry`                           |
+| `floor2EquipmentWorldInteg`    | `floor2EquipmentRegistry`, `floor2EquipmentCatalog` |
+| `floor2EquipmentAIMaintenance` | `floor2EquipmentRegistry`, `floor2EquipmentEconomy` |
+
+Disabling a flag with persisted items preserves existing instances (no forced unequip or data loss).
+
+### Migration
+
+- Instance migration is deterministic and idempotent: applying the migration to an already-migrated
+  record produces the same result as applying it once.
+- Records with an unknown `schema_version` fail closed — they are not silently discarded or
+  coerced. The runtime logs a structured error and keeps the record as-is until a supported
+  migration is available.
+- Migration never rerolls frozen content (no new RNG draws on existing fields).
+
+#### v0 → v1 Boundary
+
+The pre-V1 floor model uses numeric `EquipmentInstanceId` records (`EquipmentInstance` in
+`src/shared/equipment-types.ts`) whose `instanceId` is a world-local integer. These are
+**Floor 1 legacy records** and are not eligible for V1 migration:
+
+- A record is eligible for V1 only if it was created by the Floor 2 generated-equipment
+  registry (i.e. `schema_version === 1`).
+- Legacy numeric-ID Floor 1 instances remain on the pre-V1 path and are never promoted.
+- A record presenting as a generated instance (non-integer UUID shape) but carrying an
+  unrecognised or future `schema_version` fails closed — logged as a structured error,
+  no mutation applied, surfaced to the caller as a typed `MigrationFailure` result.
