@@ -48,14 +48,20 @@ independently validated.
 - A failure before any successful cumulative candidate does not call promotion.
 - A successful prefix followed by failed/pending candidates promotes only through
   the successful prefix.
-- The full merge-train suite passes with 180 tests.
+- Orchestration-level coverage drives a retryable error through the controller
+  build loop, proves later entries are never built, and locks post-build
+  validation/status failures outside the recovery boundary.
+- The full merge-train suite passes with 184 tests.
 
 ## Review harness
 
 - Plan review: `claude-sonnet-4.6`, four concerns resolved. The review corrected
   the initial all-intermediate-prefixes-must-be-successful assumption to cumulative
   candidate semantics. `plan_divergence: minor`.
-- Code review: `gpt-5.4`, one clean round with no significant issues.
+- Code review: the first cycle combined `gpt-5.4` with the GitHub Copilot review
+  and different-model validation (`claude-sonnet-4.6` / `gpt-5.6-terra`). One
+  valid orchestration-coverage concern was fixed. A second `gpt-5.3-codex` round
+  was clean.
 - Ledger:
   `docs/knowledge/review-ledgers/2026-07-20-fix-merge-train-promotion.review-ledger.json`.
 

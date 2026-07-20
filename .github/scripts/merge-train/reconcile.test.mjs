@@ -13,6 +13,7 @@ import {
   promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
   resolveMergeTrainTokens,
+  runTrainBuildLoop,
   trainCheckTitle,
 } from './reconcile-lib.mjs';
 
@@ -281,6 +282,106 @@ test('build failure recovery never promotes later unvalidated candidates', async
 
   assert.deepEqual(calls, [[1, 0]]);
   assert.equal(result.greenPrefixLength, 1);
+});
+
+// Orchestration-level regression: these tests exercise the runTrainBuildLoop
+// controller that was changed in the production bug fix. Calling the lib helper
+// (promoteValidatedPrefixAfterBuildFailure) in isolation would leave these bugs
+// undetected — this seam catches the missing transition.
+
+test('runTrainBuildLoop promotes validated prefix when a later build entry fails with a retryable error', async () => {
+  const train = [1, 2, 3].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  const promotionCalls = [];
+
+  const result = await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index === 0) {
+        return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+      }
+      // index >= 1: retryable failure (not a conflict, not a noop)
+      throw new Error('transient git failure');
+    },
+    promotePrefix: async (prefixLength, validationIndex) => {
+      promotionCalls.push({ prefixLength, validationIndex });
+      return true;
+    },
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  assert.equal(result.entry.number, 2); // PR #2 is the failing entry (index 1)
+  assert.equal(result.recovery.greenPrefixLength, 1);
+  assert.equal(result.recovery.promoted, true);
+  assert.deepEqual(promotionCalls, [{ prefixLength: 1, validationIndex: 0 }]);
+  // Only the first candidate was accumulated; later entries were never reached.
+  assert.equal(builtCandidates.length, 1);
+});
+
+test('runTrainBuildLoop does not attempt promotion when no candidate succeeded before the retryable failure', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let promotionCalled = false;
+
+  const result = await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (_index) => {
+      throw new Error('immediate retryable failure');
+    },
+    promotePrefix: async () => {
+      promotionCalled = true;
+      return true;
+    },
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  assert.equal(result.recovery.promotionAttempted, false);
+  assert.equal(promotionCalled, false);
+  assert.equal(builtCandidates.length, 0);
+});
+
+test('runTrainBuildLoop does not invoke buildEntry for entries beyond the retryable failure', async () => {
+  const train = [1, 2, 3].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  const invoked = [];
+
+  const result = await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      invoked.push(train[index].number);
+      if (index === 1) throw new Error('retryable on #2');
+      return { candidateSha: `sha-${index}`, state: 'pending', entries: train.slice(0, index + 1) };
+    },
+    promotePrefix: async () => true,
+  });
+
+  assert.equal(result.action, 'retryable-build-failure');
+  // Entries 0 (#1) and 1 (#2) were attempted; entry 2 (#3) was never started.
+  assert.deepEqual(invoked, [1, 2]);
+  assert.equal(builtCandidates.length, 1); // only index 0 succeeded and was accumulated
+});
+
+test('runTrainBuildLoop does not reclassify post-build finalization errors as build retries', async () => {
+  let promotionCalled = false;
+  await assert.rejects(
+    runTrainBuildLoop({
+      train: [makePr({ number: 1 })],
+      candidates: [],
+      buildEntry: async () => ({ candidateSha: 'sha-0' }),
+      finalizeEntry: async () => {
+        throw new Error('validation read failed');
+      },
+      promotePrefix: async () => {
+        promotionCalled = true;
+        return true;
+      },
+    }),
+    /validation read failed/,
+  );
+  assert.equal(promotionCalled, false);
 });
 
 test('live Actions runs require separate promotion and workflow-dispatch tokens', () => {
