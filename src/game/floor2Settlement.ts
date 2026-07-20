@@ -107,7 +107,27 @@ export function initializeFloor2Settlement(
   // Route all shop planning through planFloor2SettlementShops: preserves the
   // legacy full-pack shuffle/inventory-draw stream, enforces archetype validation,
   // and supplies pre-rolled inventories for both the Quartermaster and non-QM shops.
-  const allArchetypes = options.archetypes ?? loadShopArchetypes();
+  //
+  // options.archetypes is documented as a *non-Quartermaster* override pool (e.g.
+  // floor2Scenario forwards manifest shopArchetypes which may omit the QM).
+  // The Quartermaster is always sourced from the canonical pack and prepended so
+  // planFloor2SettlementShops always receives exactly one QM entry regardless of
+  // what the override pool contains.
+  const baseArchetypes = options.archetypes ?? loadShopArchetypes();
+  const hasQm = baseArchetypes.some((a) => a.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID);
+  const allArchetypes: readonly ShopArchetypeDef[] = hasQm
+    ? baseArchetypes
+    : (() => {
+        const canonicalQm = loadShopArchetypes().find(
+          (a) => a.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+        );
+        if (!canonicalQm) {
+          throw new Error(
+            `initializeFloor2Settlement: canonical "${FLOOR2_QUARTERMASTER_ARCHETYPE_ID}" archetype not found`,
+          );
+        }
+        return [canonicalQm, ...baseArchetypes];
+      })();
   validateSettlementNpcDefs(allArchetypes);
   const shopCount = options.shopCount ?? (world.rng.next() < 0.5 ? 1 : 2);
   const plannedShops = planFloor2SettlementShops(world.rng, world.seed, shopCount, allArchetypes);

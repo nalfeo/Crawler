@@ -280,7 +280,7 @@ describe('Floor 2 settlement · initialization', () => {
 
     try {
       expect(() => initializeFloor2Settlement(world)).toThrowError(
-        new RegExp(`expected exactly one "${QUARTERMASTER_ARCHETYPE_ID}" archetype, found 0`),
+        new RegExp(`canonical "${QUARTERMASTER_ARCHETYPE_ID}" archetype not found`),
       );
       expect(loadSpy).toHaveBeenCalled();
     } finally {
@@ -304,6 +304,8 @@ describe('Floor 2 settlement · initialization', () => {
     const rolesBefore = settlementRooms.map((room) => room.role);
     const terrainBefore = world.floorMap.terrain.slice();
     const doorCountBefore = query(world.ecs, [DoorState]).length;
+    const doorArraysBefore = settlementRooms.map((room) => [...room.doors]);
+    const tileMapFlagsBefore = world.floorMap.tileMap.flags.slice();
 
     expect(() => initializeFloor2Settlement(world, { shopCount: 2 })).toThrowError(
       /settlement capacity insufficient; required=5/,
@@ -311,6 +313,8 @@ describe('Floor 2 settlement · initialization', () => {
     expect(settlementRooms.map((room) => room.role)).toEqual(rolesBefore);
     expect(world.floorMap.terrain).toEqual(terrainBefore);
     expect(query(world.ecs, [DoorState])).toHaveLength(doorCountBefore);
+    expect(settlementRooms.map((room) => [...room.doors])).toEqual(doorArraysBefore);
+    expect(world.floorMap.tileMap.flags).toEqual(tileMapFlagsBefore);
     expect(world.floorExtendedState?.settlement).toBeUndefined();
     expect(world.npcs.size).toBe(0);
   });

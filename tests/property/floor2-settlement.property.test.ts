@@ -60,8 +60,9 @@ describe('Floor 2 settlement placement properties', () => {
             fc.pre(false);
             return;
           }
+          const secondWorld = createSettlementWorld(seed);
           const first = initializeFloor2Settlement(firstWorld, { shopCount });
-          const second = initializeFloor2Settlement(createSettlementWorld(seed), { shopCount });
+          const second = initializeFloor2Settlement(secondWorld, { shopCount });
 
           expect(first.shops).toEqual(second.shops);
           expect(first.quartermasterShop).toEqual(second.quartermasterShop);
@@ -70,6 +71,22 @@ describe('Floor 2 settlement placement properties', () => {
           expect(
             first.shops.every((shop) => shop.archetypeId !== FLOOR2_QUARTERMASTER_ARCHETYPE_ID),
           ).toBe(true);
+
+          // Verify deterministic placement at the coordinate level, not just
+          // inventory/EID equality. Identical seeds must place each NPC at the
+          // same tile-world position across two independent worlds.
+          const npcPairs: Array<[number, number]> = [
+            [first.brokerEid, second.brokerEid],
+            [first.defectorEid, second.defectorEid],
+            [first.quartermasterShop.npcEid, second.quartermasterShop.npcEid],
+            ...first.shops.map(
+              (shop, idx) => [shop.npcEid, second.shops[idx]!.npcEid] as [number, number],
+            ),
+          ];
+          for (const [eidA, eidB] of npcPairs) {
+            expect(firstWorld.stores.position.x[eidA]).toBe(secondWorld.stores.position.x[eidB]);
+            expect(firstWorld.stores.position.y[eidA]).toBe(secondWorld.stores.position.y[eidB]);
+          }
 
           const settlementDoors = first.settlementRoomIds.flatMap(
             (roomId) => firstWorld.floorMap!.roomGraph.get(roomId)?.doors ?? [],
