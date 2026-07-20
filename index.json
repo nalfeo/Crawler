@@ -1,5 +1,16 @@
 [
   {
+    "commit": "be9ff2386ca2fd7996d037b304487c944a7f05a2",
+    "commitDate": "2026-07-19T23:36:20Z",
+    "commitSubject": "feat(d1): deterministic equipment generator with deferred snapshot pattern (#1656)",
+    "capturedAt": "2026-07-20T00:51:36.038Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29708704555",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/be9ff2386ca2fd7996d037b304487c944a7f05a2.json"
+  },
+  {
     "commit": "17617d9127bf73b5edde19df202d0393a546668c",
     "commitDate": "2026-07-19T23:35:25Z",
     "commitSubject": "feat(devtools): discover local weapon sweep results (#1208)",
