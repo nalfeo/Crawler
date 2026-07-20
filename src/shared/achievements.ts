@@ -21,6 +21,10 @@ export type LootBoxTier = (typeof LOOT_BOX_TIERS)[number];
 
 export const ACHIEVEMENT_DIFFICULTIES = ['basic', 'standard', 'hard', 'brutal'] as const;
 export type AchievementDifficulty = (typeof ACHIEVEMENT_DIFFICULTIES)[number];
+export const ACHIEVEMENT_SCOPES = ['floor', 'current_run'] as const;
+export type AchievementScope = (typeof ACHIEVEMENT_SCOPES)[number];
+export const ACHIEVEMENT_FLOORS = [1, 2] as const;
+export type AchievementFloor = (typeof ACHIEVEMENT_FLOORS)[number];
 export const ACHIEVEMENT_RULE_PHASES = ['tick', 'run_end_clear'] as const;
 export type AchievementRulePhase = (typeof ACHIEVEMENT_RULE_PHASES)[number];
 export const ACHIEVEMENT_NUMBER_FACTS = [
@@ -37,6 +41,16 @@ export const ACHIEVEMENT_NUMBER_FACTS = [
   'clearedFloorCount',
 ] as const;
 export type AchievementNumberFact = (typeof ACHIEVEMENT_NUMBER_FACTS)[number];
+export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
+  'totalKills',
+  'maxSkillLevel',
+  'spentStatPoints',
+  'completedQuestCount',
+  'questLogSize',
+  'playerGold',
+  'unlockedAbilityCount',
+] as const;
+export type AchievementCurrentRunNumberFact = (typeof ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'staircaseBattleStarted',
   'staircaseUnlocked',
@@ -46,6 +60,12 @@ export const ACHIEVEMENT_BOOLEAN_FACTS = [
   'runClearedFloor',
 ] as const;
 export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
+export const ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS = [
+  'equipmentUnlocked',
+  'runClearedFloor',
+] as const;
+export type AchievementCurrentRunBooleanFact =
+  (typeof ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS)[number];
 export const ACHIEVEMENT_NUMBER_OPERATORS = ['>=', '>', '<=', '<', '==='] as const;
 export type AchievementNumberOperator = (typeof ACHIEVEMENT_NUMBER_OPERATORS)[number];
 
@@ -75,13 +95,10 @@ export type AchievementUnlockRule =
       readonly phase?: AchievementRulePhase;
     };
 
-export type AchievementScope =
-  | { readonly type: 'floor' }
-  | { readonly type: 'currentRun'; readonly introducedOnFloor: number };
 
 export interface AchievementDef {
   readonly id: string;
-  readonly floor: number;
+  readonly floor: AchievementFloor;
   readonly scope: AchievementScope;
   readonly title: string;
   readonly popupText: string;
@@ -104,7 +121,7 @@ export interface AchievementFactSnapshot {
 }
 
 export interface AchievementCatalog {
-  readonly floor: number;
+  readonly floor: AchievementFloor;
   readonly all: readonly AchievementDef[];
   readonly floorScoped: readonly AchievementDef[];
   readonly currentRunGlobal: readonly AchievementDef[];
@@ -113,7 +130,7 @@ export interface AchievementCatalog {
 export interface AchievementCatalogRegistry {
   readonly catalogs: readonly AchievementCatalog[];
   readonly all: readonly AchievementDef[];
-  readonly byFloor: ReadonlyMap<number, AchievementCatalog>;
+  readonly byFloor: ReadonlyMap<AchievementFloor, AchievementCatalog>;
   readonly byId: ReadonlyMap<string, AchievementDef>;
 }
 
@@ -123,6 +140,12 @@ export interface AchievementArtBacklogItem {
   readonly placeholderId: string;
   readonly description: string;
   readonly usedByAchievementIds: readonly string[];
+}
+
+export interface AchievementFactState {
+  readonly numberFacts: Record<AchievementNumberFact, number>;
+  readonly booleanFacts: Record<AchievementBooleanFact, boolean>;
+  readonly completedQuestIds: Set<string>;
 }
 
 const achievementRewardSchema = z.discriminatedUnion('type', [
@@ -152,15 +175,7 @@ const achievementRewardSchema = z.discriminatedUnion('type', [
 ]);
 
 const achievementRulePhaseSchema = z.enum(ACHIEVEMENT_RULE_PHASES);
-const achievementScopeSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('floor') }).strict(),
-  z
-    .object({
-      type: z.literal('currentRun'),
-      introducedOnFloor: z.number().int().positive(),
-    })
-    .strict(),
-]);
+const achievementScopeSchema = z.enum(ACHIEVEMENT_SCOPES);
 const achievementUnlockRuleSchema = z.discriminatedUnion('type', [
   z
     .object({
@@ -191,8 +206,8 @@ const achievementUnlockRuleSchema = z.discriminatedUnion('type', [
 const achievementSchema = z
   .object({
     id: z.string().min(1),
-    floor: z.number().int().positive(),
-    scope: achievementScopeSchema.optional(),
+    floor: z.union([z.literal(1), z.literal(2)]),
+    scope: achievementScopeSchema.default('floor'),
     title: z.string().min(1),
     popupText: z.string().min(1),
     unlockCriteria: z.string().min(1),
@@ -203,19 +218,7 @@ const achievementSchema = z
     reward: achievementRewardSchema,
     unlockRules: z.array(achievementUnlockRuleSchema),
   })
-  .strict()
-  .superRefine((achievement, context) => {
-    if (
-      achievement.scope?.type === 'currentRun' &&
-      achievement.scope.introducedOnFloor !== achievement.floor
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['scope', 'introducedOnFloor'],
-        message: 'current-run achievements must be introduced on their catalog floor',
-      });
-    }
-  });
+  .strict();
 
 const achievementCatalogSchema = z.array(achievementSchema).min(1);
 const possiblyEmptyAchievementCatalogSchema = z.array(achievementSchema);
@@ -226,13 +229,6 @@ function escapeRegExp(value: string): string {
 
 function normalizeSpaces(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
-}
-
-function normalizeAchievementDef(parsed: z.infer<typeof achievementSchema>): AchievementDef {
-  return removeUnlockCriteriaDuplication({
-    ...parsed,
-    scope: parsed.scope ?? { type: 'floor' },
-  });
 }
 
 function removeUnlockCriteriaDuplication(achievement: AchievementDef): AchievementDef {
@@ -260,15 +256,39 @@ function removeUnlockCriteriaDuplication(achievement: AchievementDef): Achieveme
 }
 
 export function parseAchievementCatalog(rawCatalog: unknown): readonly AchievementDef[] {
-  return achievementCatalogSchema.parse(rawCatalog).map(normalizeAchievementDef);
+  const catalog = achievementCatalogSchema.parse(rawCatalog);
+  // Validate that current_run achievements only reference current_run-compatible facts.
+  for (const achievement of catalog) {
+    if (achievement.scope !== 'current_run') continue;
+    for (const rule of achievement.unlockRules) {
+      if (
+        rule.type === 'numberCompare' &&
+        !ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS.includes(rule.fact as AchievementCurrentRunNumberFact)
+      ) {
+        throw new Error(
+          `Achievement ${achievement.id} uses floor-scoped number fact "${rule.fact}" in current_run scope`,
+        );
+      }
+      if (
+        rule.type === 'booleanIs' &&
+        !ACHIEVEMENT_CURRENT_RUN_BOOLEAN_FACTS.includes(
+          rule.fact as AchievementCurrentRunBooleanFact,
+        )
+      ) {
+        throw new Error(
+          `Achievement ${achievement.id} uses floor-scoped boolean fact "${rule.fact}" in current_run scope`,
+        );
+      }
+    }
+  }
+  return catalog.map(removeUnlockCriteriaDuplication);
 }
 
-export function createAchievementCatalog(floor: number, rawCatalog: unknown): AchievementCatalog {
-  if (!Number.isInteger(floor) || floor <= 0) {
-    throw new Error(`Achievement catalog floor must be a positive integer: ${floor}`);
-  }
-
-  const all = possiblyEmptyAchievementCatalogSchema.parse(rawCatalog).map(normalizeAchievementDef);
+export function createAchievementCatalog(
+  floor: AchievementFloor,
+  rawCatalog: unknown,
+): AchievementCatalog {
+  const all = possiblyEmptyAchievementCatalogSchema.parse(rawCatalog).map(removeUnlockCriteriaDuplication);
   const seenIds = new Set<string>();
   for (const achievement of all) {
     if (achievement.floor !== floor) {
@@ -285,8 +305,8 @@ export function createAchievementCatalog(floor: number, rawCatalog: unknown): Ac
   return {
     floor,
     all,
-    floorScoped: all.filter((achievement) => achievement.scope.type === 'floor'),
-    currentRunGlobal: all.filter((achievement) => achievement.scope.type === 'currentRun'),
+    floorScoped: all.filter((achievement) => achievement.scope !== 'current_run'),
+    currentRunGlobal: all.filter((achievement) => achievement.scope === 'current_run'),
   };
 }
 
@@ -294,7 +314,7 @@ export function createAchievementCatalogRegistry(
   catalogs: readonly AchievementCatalog[],
 ): AchievementCatalogRegistry {
   const orderedCatalogs = [...catalogs];
-  const byFloor = new Map<number, AchievementCatalog>();
+  const byFloor = new Map<AchievementFloor, AchievementCatalog>();
   const byId = new Map<string, AchievementDef>();
   for (const catalog of orderedCatalogs) {
     if (byFloor.has(catalog.floor)) {
@@ -324,11 +344,17 @@ export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
 ]);
 export const ALL_ACHIEVEMENTS: readonly AchievementDef[] = ACHIEVEMENT_CATALOG_REGISTRY.all;
 export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR1_ACHIEVEMENT_CATALOG.all;
+export const FLOOR2_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR2_ACHIEVEMENT_CATALOG.all;
+
+export function isAchievementFloor(value: number): value is AchievementFloor {
+  return value === 1 || value === 2;
+}
 
 export function getAchievementCatalogForFloor(
   floor: number,
   registry: AchievementCatalogRegistry = ACHIEVEMENT_CATALOG_REGISTRY,
 ): AchievementCatalog | undefined {
+  if (!isAchievementFloor(floor)) return undefined;
   return registry.byFloor.get(floor);
 }
 
@@ -338,11 +364,7 @@ export function getCurrentRunGlobalAchievements(
 ): readonly AchievementDef[] {
   const reachedFloors = new Set(reachedFloorIds);
   return registry.catalogs.flatMap((catalog) =>
-    catalog.currentRunGlobal.filter(
-      (achievement) =>
-        achievement.scope.type === 'currentRun' &&
-        reachedFloors.has(achievement.scope.introducedOnFloor),
-    ),
+    catalog.currentRunGlobal.filter((achievement) => reachedFloors.has(achievement.floor)),
   );
 }
 

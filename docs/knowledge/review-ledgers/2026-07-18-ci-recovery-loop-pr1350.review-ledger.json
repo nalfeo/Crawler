@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-loop-pr1350",
+  "task_title": "CI recovery loop fix: reconciler posts retroactive plan comment on linked issues",
+  "estimated_apples": 2,
+  "stages": {}
+}

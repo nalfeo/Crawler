@@ -3,13 +3,15 @@ import {
   ALL_ACHIEVEMENTS,
   ACHIEVEMENT_CATALOG_REGISTRY,
   ACHIEVEMENT_ART_BACKLOG,
+  ACHIEVEMENT_SCOPES,
   createAchievementCatalog,
   createAchievementCatalogRegistry,
   FLOOR1_ACHIEVEMENT_COUNT,
   FLOOR1_ACHIEVEMENTS,
-  getAchievementCatalogForFloor,
+  FLOOR2_ACHIEVEMENTS,
   getCurrentRunGlobalAchievements,
   LOOT_BOX_TIERS,
+  getAchievementCatalogForFloor,
   parseAchievementCatalog,
 } from '../../src/shared/achievements.js';
 
@@ -64,13 +66,12 @@ describe('floor1 achievements catalog', () => {
   it('defines unlock rules for each achievement entry', () => {
     for (const achievement of FLOOR1_ACHIEVEMENTS) {
       expect(Array.isArray(achievement.unlockRules)).toBe(true);
+      expect(ACHIEVEMENT_SCOPES).toContain(achievement.scope);
     }
   });
 
   it('normalizes legacy Floor 1 entries to explicit floor scope without changing order', () => {
-    expect(FLOOR1_ACHIEVEMENTS.every((achievement) => achievement.scope.type === 'floor')).toBe(
-      true,
-    );
+    expect(FLOOR1_ACHIEVEMENTS.every((achievement) => achievement.scope === 'floor')).toBe(true);
     expect(FLOOR1_ACHIEVEMENTS.slice(0, 3).map((achievement) => achievement.id)).toEqual([
       'first-bonk',
       'slime-no-more',
@@ -78,7 +79,7 @@ describe('floor1 achievements catalog', () => {
     ]);
   });
 
-  it('looks up deterministic floor catalogs and gates current-run definitions by introduction floor', () => {
+  it('looks up deterministic floor catalogs and gates current-run definitions by reached floor', () => {
     expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
     expect(getAchievementCatalogForFloor(2)?.all).toEqual([]);
 
@@ -88,11 +89,11 @@ describe('floor1 achievements catalog', () => {
       }),
       rawAchievement({
         id: 'run-global-b',
-        scope: { type: 'currentRun', introducedOnFloor: 2 },
+        scope: 'current_run',
       }),
       rawAchievement({
         id: 'run-global-a',
-        scope: { type: 'currentRun', introducedOnFloor: 2 },
+        scope: 'current_run',
       }),
     ]);
     const registry = createAchievementCatalogRegistry([floor2Catalog]);
@@ -126,14 +127,23 @@ describe('floor1 achievements catalog', () => {
     );
   });
 
-  it('rejects a current-run definition introduced on a different floor', () => {
-    expect(() =>
-      createAchievementCatalog(2, [
-        rawAchievement({
-          scope: { type: 'currentRun', introducedOnFloor: 1 },
-        }),
-      ]),
-    ).toThrow(/introduced on their catalog floor/);
+  it('keeps floor-aware catalog lookup isolated by floor', () => {
+    expect(getAchievementCatalogForFloor(1)?.all).toBe(FLOOR1_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(2)?.all).toEqual(FLOOR2_ACHIEVEMENTS);
+  });
+
+  it('defaults missing scope to floor for backward compatibility', () => {
+    const raw = JSON.parse(JSON.stringify(FLOOR1_ACHIEVEMENTS)) as Array<Record<string, unknown>>;
+    delete raw[0]!.scope;
+    const parsed = parseAchievementCatalog(raw);
+    expect(parsed[0]?.scope).toBe('floor');
+  });
+
+  it('rejects floor-scoped facts in current_run-scoped rules', () => {
+    const raw = JSON.parse(JSON.stringify(FLOOR1_ACHIEVEMENTS)) as Array<Record<string, unknown>>;
+    raw[0]!.scope = 'current_run';
+    raw[0]!.unlockRules = [{ type: 'booleanIs', fact: 'staircaseDiscovered', value: true }];
+    expect(() => parseAchievementCatalog(raw)).toThrow();
   });
 
   it('tracks placeholder art backlog for all icon packs and loot-box tiers', () => {

@@ -19,6 +19,7 @@ import {
   createAchievementCatalogRegistry,
   createEmptyAchievementFactSnapshot,
   FLOOR1_ACHIEVEMENTS,
+  type AchievementDef,
 } from '../../src/shared/achievements.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
@@ -44,11 +45,11 @@ function completeQuestState(questId: string): QuestState {
 
 function scopedAchievement(
   id: string,
-  scope: { readonly type: 'floor' } | { readonly type: 'currentRun'; introducedOnFloor: 2 },
+  scope: 'floor' | 'current_run',
   fact: 'playerGold' | 'goldCollected',
-) {
+): AchievementDef {
   return {
-    ...FLOOR1_ACHIEVEMENTS[0],
+    ...FLOOR1_ACHIEVEMENTS[0]!,
     id,
     floor: 2,
     scope,
@@ -154,12 +155,8 @@ describe('achievementSystem', () => {
   it('keeps carried run facts out of Floor 2 floor-scoped evaluation', () => {
     const registry = createAchievementCatalogRegistry([
       createAchievementCatalog(2, [
-        scopedAchievement('floor2-local-gold', { type: 'floor' }, 'playerGold'),
-        scopedAchievement(
-          'floor2-run-gold',
-          { type: 'currentRun', introducedOnFloor: 2 },
-          'goldCollected',
-        ),
+        scopedAchievement('floor2-local-gold', 'floor', 'playerGold'),
+        scopedAchievement('floor2-run-gold', 'current_run', 'goldCollected'),
       ]),
     ]);
     const world = createTestWorld({ seed: 42, floor: 2 });
@@ -185,11 +182,7 @@ describe('achievementSystem', () => {
     const registry = createAchievementCatalogRegistry([
       createAchievementCatalog(1, []),
       createAchievementCatalog(2, [
-        scopedAchievement(
-          'floor2-run-gold',
-          { type: 'currentRun', introducedOnFloor: 2 },
-          'playerGold',
-        ),
+        scopedAchievement('floor2-run-gold', 'current_run', 'playerGold'),
       ]),
     ]);
     const world = createTestWorld({ seed: 42 });
@@ -200,6 +193,10 @@ describe('achievementSystem', () => {
 
     world.floor = 2;
     world.floorId = 'floor2';
+    world.achievements.carriedRunFacts = {
+      ...createEmptyAchievementFactSnapshot(),
+      reachedFloorIds: [1, 2],
+    };
     evaluateAchievementUnlocksForPhase(world, 'tick', registry);
     expect(world.achievements.unlockedIds.has('floor2-run-gold')).toBe(true);
   });
