@@ -246,7 +246,7 @@ jobs:
         with:
           name: search-baseline-${{ matrix.combo }}
 
-      - name: Download legacy+legacy baseline shard (optional — provides the LEGACY incumbent for non-LEGACY combo flip checks)
+      - name: Download legacy+legacy baseline shard (optional — provides the LEGACY incumbent for the non-LEGACY combo net-win comparison)
         uses: actions/download-artifact@v4
         with:
           pattern: search-baseline-legacy+legacy
@@ -261,12 +261,13 @@ jobs:
           set -euo pipefail
           SECONDARY_FLAG=""
           if [ "$SECONDARY" = "true" ]; then SECONDARY_FLAG="--secondary"; fi
-          # For non-LEGACY combos, seed the safety gate with the LEGACY incumbent
-          # so the in-search flip check mirrors the final graduation gate.
+          # For non-LEGACY combos, seed the net-win gate with the LEGACY incumbent
+          # so the in-search comparison mirrors the final graduation gate.
           # The LEGACY baseline is REQUIRED for non-LEGACY combos — without it,
           # initCheckpoint falls back to the combo's own base as incumbent, which
-          # can promote a candidate that flips LEGACY wins (passes in-search gate
-          # but gets rejected at final graduation). Fail fast here instead.
+          # can promote a candidate that has more wins than its combo baseline yet
+          # fewer total wins than LEGACY (passes in-search gate but gets rejected
+          # at final graduation). Fail fast here instead.
           LEGACY_BASELINE_FLAG=""
           if [ "$COMBO" != "legacy+legacy" ]; then
             if [ ! -f "baseline-legacy+legacy.json" ]; then
