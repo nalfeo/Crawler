@@ -146,6 +146,20 @@ describe('floor1 achievements catalog', () => {
     expect(() => parseAchievementCatalog(raw)).toThrow();
   });
 
+  it('accepts clearedFloorCount in current_run-scoped rules', () => {
+    const raw = JSON.parse(JSON.stringify(FLOOR1_ACHIEVEMENTS)) as Array<Record<string, unknown>>;
+    raw[0]!.scope = 'current_run';
+    raw[0]!.unlockRules = [
+      { type: 'numberCompare', fact: 'clearedFloorCount', op: '>=', value: 2 },
+    ];
+
+    const parsed = parseAchievementCatalog(raw);
+
+    expect(parsed[0]?.unlockRules).toEqual([
+      { type: 'numberCompare', fact: 'clearedFloorCount', op: '>=', value: 2 },
+    ]);
+  });
+
   it('tracks placeholder art backlog for all icon packs and loot-box tiers', () => {
     const iconEntries = ACHIEVEMENT_ART_BACKLOG.filter((entry) => entry.kind === 'icon');
     const lootEntries = ACHIEVEMENT_ART_BACKLOG.filter((entry) => entry.kind === 'lootBox');

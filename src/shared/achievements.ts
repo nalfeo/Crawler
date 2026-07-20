@@ -49,6 +49,7 @@ export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
   'questLogSize',
   'playerGold',
   'unlockedAbilityCount',
+  'clearedFloorCount',
 ] as const;
 export type AchievementCurrentRunNumberFact = (typeof ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_BOOLEAN_FACTS = [

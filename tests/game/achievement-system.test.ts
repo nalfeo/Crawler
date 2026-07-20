@@ -46,7 +46,7 @@ function completeQuestState(questId: string): QuestState {
 function scopedAchievement(
   id: string,
   scope: 'floor' | 'current_run',
-  fact: 'playerGold' | 'totalKills',
+  fact: 'playerGold' | 'totalKills' | 'clearedFloorCount',
 ): AchievementDef {
   return {
     ...FLOOR1_ACHIEVEMENTS[0]!,
@@ -199,6 +199,70 @@ describe('achievementSystem', () => {
     };
     evaluateAchievementUnlocksForPhase(world, 'tick', registry);
     expect(world.achievements.unlockedIds.has('floor2-run-gold')).toBe(true);
+  });
+
+  it('keeps mixed-scope unlock ordering aligned with registry.all authored order', () => {
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(1, [
+        {
+          ...scopedAchievement('floor1-run-kills', 'current_run', 'totalKills'),
+          floor: 1,
+          unlockRules: [{ type: 'numberCompare', fact: 'totalKills', op: '>=', value: 10 }],
+        },
+      ]),
+      createAchievementCatalog(2, [scopedAchievement('floor2-local-gold', 'floor', 'playerGold')]),
+    ]);
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floorId = 'floor2';
+    world.playerGold = 50;
+    world.achievements.carriedRunFacts = {
+      ...createEmptyAchievementFactSnapshot(),
+      numberFacts: {
+        ...createEmptyAchievementFactSnapshot().numberFacts,
+        totalKills: 10,
+      },
+      reachedFloorIds: [1],
+    };
+
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+
+    expect(registry.all.map((achievement) => achievement.id)).toEqual([
+      'floor1-run-kills',
+      'floor2-local-gold',
+    ]);
+    expect(world.achievements.pendingUnlockIds).toEqual(['floor1-run-kills', 'floor2-local-gold']);
+  });
+
+  it('unlocks current-run clearedFloorCount achievements after two cleared floors', () => {
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(2, [
+        {
+          ...scopedAchievement('two-floors-cleared', 'current_run', 'clearedFloorCount'),
+          unlockRules: [{ type: 'numberCompare', fact: 'clearedFloorCount', op: '>=', value: 2 }],
+        },
+      ]),
+    ]);
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floorId = 'floor2';
+    const faceless = asFamilyId('faceless');
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [faceless],
+        contestedResource: asResourceId('glimmercap'),
+        betrayerFlag: false,
+        trashKillsByFamily: new Map(),
+        staircaseDiscovered: true,
+      },
+    };
+    world.achievements.carriedRunFacts = {
+      ...createEmptyAchievementFactSnapshot(),
+      reachedFloorIds: [1],
+      clearedFloorIds: [1],
+    };
+
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+
+    expect(world.achievements.unlockedIds.has('two-floors-cleared')).toBe(true);
   });
 
   it('runs the Floor 2-safe evaluator through the real scene post-system pipeline', () => {

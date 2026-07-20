@@ -5,11 +5,8 @@ import {
   ACHIEVEMENT_CATALOG_REGISTRY,
   createEmptyAchievementFactSnapshot,
   getAchievementById,
-  getAchievementCatalogForFloor,
-  getCurrentRunGlobalAchievements,
   mergeAchievementFactSnapshots,
   type AchievementCatalogRegistry,
-  type AchievementDef,
   type AchievementFactSnapshot,
   type AchievementNumberOperator,
   type AchievementRulePhase,
@@ -156,20 +153,6 @@ export function unlockAchievement(
   return true;
 }
 
-function evaluateAchievementDefs(
-  world: GameWorld,
-  achievements: readonly AchievementDef[],
-  facts: AchievementFactSnapshot,
-  phase: AchievementRulePhase,
-  registry: AchievementCatalogRegistry,
-): void {
-  for (const achievement of achievements) {
-    if (shouldUnlockAchievementForPhase(achievement.unlockRules, facts, phase)) {
-      unlockAchievement(world, achievement.id, registry);
-    }
-  }
-}
-
 export function evaluateAchievementUnlocksForPhase(
   world: GameWorld,
   phase: AchievementRulePhase,
@@ -180,22 +163,26 @@ export function evaluateAchievementUnlocksForPhase(
     world.achievements.carriedRunFacts,
     currentFloorFacts,
   );
-  const floorCatalog = getAchievementCatalogForFloor(world.floor, registry);
+  const reachedFloors = new Set(effectiveRunFacts.reachedFloorIds);
 
-  evaluateAchievementDefs(
-    world,
-    floorCatalog?.floorScoped ?? [],
-    currentFloorFacts,
-    phase,
-    registry,
-  );
-  evaluateAchievementDefs(
-    world,
-    getCurrentRunGlobalAchievements(effectiveRunFacts.reachedFloorIds, registry),
-    effectiveRunFacts,
-    phase,
-    registry,
-  );
+  for (const achievement of registry.all) {
+    if (achievement.scope === 'current_run') {
+      if (!reachedFloors.has(achievement.floor)) {
+        continue;
+      }
+      if (shouldUnlockAchievementForPhase(achievement.unlockRules, effectiveRunFacts, phase)) {
+        unlockAchievement(world, achievement.id, registry);
+      }
+      continue;
+    }
+
+    if (achievement.floor !== world.floor) {
+      continue;
+    }
+    if (shouldUnlockAchievementForPhase(achievement.unlockRules, currentFloorFacts, phase)) {
+      unlockAchievement(world, achievement.id, registry);
+    }
+  }
 }
 
 export function achievementSystem(world: GameWorld): void {
