@@ -275,8 +275,10 @@ describe('superseded-run concurrency cancellation policy (#1689)', () => {
       const workflow = loadWorkflow(relPath);
       const group = String(workflow.concurrency?.group ?? '');
       expect(group, `${relPath} must define a concurrency.group`).toBeTruthy();
-      // Workflow name in the key prevents ci.yml cancelling security-review.yml.
-      expect(group).toContain('github.workflow');
+      // A stable per-workflow literal prefix prevents cross-workflow collisions.
+      const expectedPrefix =
+        relPath === '.github/workflows/ci.yml' ? 'crawler-ci-' : 'crawler-security-review-';
+      expect(group).toContain(expectedPrefix);
       // PRs group by PR number so a newer synchronize cancels the older head.
       expect(group).toContain("github.event_name == 'pull_request'");
       expect(group).toContain("format('pr-{0}', github.event.pull_request.number)");

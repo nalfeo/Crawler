@@ -15,15 +15,9 @@ permissions:
   contents: read
   issues: write
 
-# Cancel in-progress runs on the same PR; allow parallel runs for push/schedule.
-# Including the workflow name prevents cross-workflow cancellation collisions.
 concurrency:
   group: >-
-    ${{ github.workflow }}-${{
-      github.event_name == 'pull_request'
-      && format('pr-{0}', github.event.pull_request.number)
-      || github.run_id
-    }}
+    crawler-security-review-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}-{2}', github.event_name, github.ref, github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
