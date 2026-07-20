@@ -1,5 +1,16 @@
 [
   {
+    "commit": "885a71d55532eecff4b61ecd2899a50ddba877b3",
+    "commitDate": "2026-07-20T06:27:38Z",
+    "commitSubject": "docs(equipment): reconcile Floor 2 contract stack root (#1276)",
+    "capturedAt": "2026-07-20T07:35:36.432Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29721775650",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/885a71d55532eecff4b61ecd2899a50ddba877b3.json"
+  },
+  {
     "commit": "b03d506e4d84ee315264b927756d51de36a1bc4b",
     "commitDate": "2026-07-20T05:28:03Z",
     "commitSubject": "fix(merge-train): promote validated prefix before retry (#1709)",
