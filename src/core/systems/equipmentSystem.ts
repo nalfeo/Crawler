@@ -737,7 +737,6 @@ function commitStaticEquipInstance(
   return instanceId;
 }
 
-
 /** Equip an item. Atomic — either fully succeeds or no state change. */
 export function equip(
   world: GameWorld,

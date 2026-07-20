@@ -18,6 +18,12 @@ import { ftToPx } from '../shared/units.js';
 import type { GameWorld } from '../core/world.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { DEFAULT_BLOOD_COLOR } from '../shared/constants.js';
+import {
+  evaluateBloodPoolLobeScale,
+  evaluateBloodPoolVerticalScale,
+  getBloodPoolLifetimeProgress,
+  getBloodPoolRenderColor,
+} from '../shared/blood-surfaces.js';
 
 const PARTICLE_LIFETIME_MS = 500;
 const HIT_BASE_PARTICLES = 4;
@@ -126,6 +132,15 @@ export function createGoreVfx(
   const cfg: GoreVfxConfig = { ...DEFAULT_CONFIG, ...config };
   const particles: GoreParticle[] = [];
   const pools: BloodPool[] = [];
+
+  /** Tracks Phaser Graphics objects for authoritative world.bloodPools entries.
+   * Named `blood-pool:<id>` so the e2e probe can count rendered pools. */
+  interface RenderedWorldPool {
+    obj: Phaser.GameObjects.Graphics;
+    lastProgress: number;
+    lastAlpha: number;
+  }
+  const worldPoolGraphics = new Map<number, RenderedWorldPool>();
 
   /** Simple seeded-ish random for VFX (doesn't need to be deterministic). */
   let vfxSeed = 1;
@@ -481,6 +496,57 @@ export function createGoreVfx(
           redrawBloodPool(pool, progress, alpha);
         }
       }
+
+      // Render authoritative world.bloodPools — syncs a Graphics object named
+      // `blood-pool:<id>` for every active pool in the world state. The e2e
+      // probe uses these names to count rendered pools.
+      if (typeof scene.add.graphics === 'function') {
+        const activePoolIds = new Set(world.bloodPools.map((p) => p.id));
+        for (const [id, rendered] of worldPoolGraphics) {
+          if (!activePoolIds.has(id)) {
+            rendered.obj.destroy();
+            worldPoolGraphics.delete(id);
+          }
+        }
+        for (const worldPool of world.bloodPools) {
+          let rendered = worldPoolGraphics.get(worldPool.id);
+          if (!rendered) {
+            const graphics = scene.add.graphics({
+              x: ftToPx(worldPool.x + worldPool.renderOffsetXFt),
+              y: ftToPx(worldPool.y + worldPool.renderOffsetYFt),
+            });
+            graphics.setDepth(WORLD_VFX_DEPTH.bloodPool);
+            graphics.name = `blood-pool:${worldPool.id}`;
+            (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+              graphics,
+            );
+            rendered = { obj: graphics, lastProgress: -1, lastAlpha: -1 };
+            worldPoolGraphics.set(worldPool.id, rendered);
+          }
+          const progress = getBloodPoolLifetimeProgress(worldPool, world.elapsedMs);
+          const alpha = 0.55 * (1 - progress);
+          if (
+            Math.abs(progress - rendered.lastProgress) > 0.001 ||
+            Math.abs(alpha - rendered.lastAlpha) > 0.001
+          ) {
+            rendered.obj.clear();
+            rendered.obj.fillStyle(getBloodPoolRenderColor(worldPool.color), 1);
+            for (const lobe of worldPool.lobes) {
+              const eased = evaluateBloodPoolLobeScale(progress, lobe);
+              rendered.obj.fillEllipse(
+                ftToPx(lobe.offsetXFt),
+                ftToPx(lobe.offsetYFt),
+                ftToPx(lobe.radiusXFt) * 2 * eased,
+                ftToPx(lobe.radiusYFt) * 2 * eased,
+              );
+            }
+            rendered.obj.setAlpha(alpha);
+            rendered.obj.setScale(1, evaluateBloodPoolVerticalScale(progress));
+            rendered.lastProgress = progress;
+            rendered.lastAlpha = alpha;
+          }
+        }
+      }
     },
 
     destroy(): void {
@@ -492,6 +558,10 @@ export function createGoreVfx(
         pool.obj.destroy();
       }
       pools.length = 0;
+      for (const rendered of worldPoolGraphics.values()) {
+        rendered.obj.destroy();
+      }
+      worldPoolGraphics.clear();
     },
   };
 }

@@ -57,7 +57,6 @@ function scopedAchievement(
   };
 }
 
-
 describe('achievementSystem', () => {
   it('unlocks combat, quest, and progression achievements from real floor state', () => {
     const world = createTestWorld({ seed: 42 });
