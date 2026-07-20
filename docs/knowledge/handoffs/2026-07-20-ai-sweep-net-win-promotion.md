@@ -21,8 +21,8 @@ ai-combat-balance
 3🍎 estimated, 3🍎 actual (✅ hit). Single logical rule change (one gate
 condition swapped) but propagated across 2 production call sites + 1 workflow
 doc + 3 test files, with regression tests reproducing an exact prior incident.
-Plan review (gpt-5.4, `plan_divergence: minor`) + an 8-round code-review loop
-(13 concerns resolved across rounds 2–8; round 1 was clean). Full ledger:
+Plan review (gpt-5.4, `plan_divergence: minor`) + an 11-round code-review loop
+(19 concerns resolved across rounds 2–10; rounds 1 and 11 were clean). Full ledger:
 `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 
 ## Why
@@ -97,9 +97,18 @@ incumbent identity is scoped to the exact `(combo, configId)` pair, not
   explaining the reuse rationale) so `sweep-eval.ts`'s
   `assertLegacyBaselineProvenance` can validate externally-injected rows with
   the same check used for shard rows.
-- `scripts/agent/perf/round-plan.ts` — doc-comment wording only; logic
-  unchanged (consumes `winsVsIncumbentDelta` transparently via
-  `selectQualifiedWinner`).
+- `scripts/agent/perf/round-plan.ts` — doc-comment wording only initially;
+  logic unchanged (consumes `winsVsIncumbentDelta` transparently via
+  `selectQualifiedWinner`). **Round 10**: `assertShardCompatible` refactored
+  from `(checkpoint, shard)` to `(expectedMeta: ShardMeta, shard: ShardArtifact,
+contextLabel: string)`, adding 4 build-fingerprint checks
+  (`runnerOs`/`nodeVersion`/`packageLockHash`/`workflowSha`) matching the ones
+  added to `aggregate-shards.ts`/`sweep-eval.ts` in round 9; `applyRoundResult`'s
+  call site updated to the new signature; `initCheckpoint` gained a NEW call to
+  `assertShardCompatible(baseline.meta, legacyBaseline, ...)` plus a
+  row-combo-tag check, closing the gap where the production round-DAG's
+  `legacyBaseline` parameter had ZERO provenance validation of any kind (see
+  round 10 below).
 - `scripts/agent/perf/sweep-eval.ts` — doc-comment wording updated (round 3);
   **Round 4**: added `incumbentCombo?` param to `selectSearchPromotion`,
   `legacyBaseline?` threading in `searchCombo` (mirrors `initCheckpoint`),
@@ -118,7 +127,18 @@ incumbent identity is scoped to the exact `(combo, configId)` pair, not
   newly-exported `assertRowSafeRoomInRange()` — before it is injected as the
   search's fixed incumbent; `searchCombo`'s `if (opts.legacyBaseline)` branch
   now calls this single validator instead of an ad-hoc inline config-count
-  check.
+  check. **Round 9**: `assertLegacyBaselineProvenance`'s `expected` param
+  extended with 4 build-fingerprint fields (`runnerOs`/`nodeVersion`/
+  `packageLockHash`/`workflowSha`), refactored to require the CALLER to supply
+  these (rather than compute them internally via `currentBuildFingerprint()`)
+  so unit tests can inject deterministic fixture values instead of depending on
+  the real host's OS/Node/dependency hash; new `currentBuildFingerprint()`
+  helper (also used by `buildMeta`); `searchCombo`'s call site updated to pass
+  `...currentBuildFingerprint()`. **Round 10**: `currentBuildFingerprint()`'s
+  `nodeVersion` truncated to major-version-only (`process.version.match(/^v\d+/)`)
+  and exported, so a mid-run Node PATCH bump (GitHub's `setup-node@v4` only
+  pins the major version) can no longer cause a false rejection between two
+  jobs of the same multi-hour workflow run.
 - `.github/workflows/ai-sweep.yml` — header comment wording updated to
   describe the new rule.
 - `tests/unit/ai/sweep-aggregate-shards.test.ts` — reworked graduation-
@@ -127,9 +147,14 @@ incumbent identity is scoped to the exact `(combo, configId)` pair, not
   5-flips scenario now qualifying; new isolated reject-on-tie and reject-on-
   decrease tests; reworked below-90%-floor test to isolate the floor clause
   from the win-count clause; new incumbent-identity-scoping regression test.
+  **Round 9**: 4 new regression tests for `assertSearchArtifactProvenance`'s
+  build-fingerprint checks (mirrors the sweep-eval.ts suite below).
 - `tests/unit/ai/sweep-round-plan.test.ts` — header doc comment rewritten;
   several fixtures adjusted so candidates have strictly-more (not tied) wins
-  where the test's intent required a genuinely qualifying candidate.
+  where the test's intent required a genuinely qualifying candidate. **Round
+  10**: 4 new regression tests for `initCheckpoint`'s new legacyBaseline
+  validation (row-combo-tag mismatch, schemaVersion mismatch, nodeVersion
+  mismatch, workflowSha mismatch).
 - `tests/unit/ai/sweep-eval-search-promotion.test.ts` — new mirrored
   292/300-vs-286/300 qualifying test at the legacy-path level (proves both
   paths share the identical rule via `selectSearchPromotion`); reworked tie-
@@ -140,7 +165,11 @@ incumbent identity is scoped to the exact `(combo, configId)` pair, not
   **Round 6**: added an 8-test `assertLegacyBaselineProvenance` suite — accepts
   a well-formed artifact; rejects >1 config; rejects mixed/wrong combo tags;
   rejects stale `schemaVersion`, `floorId` mismatch, `budgetMs` mismatch,
-  `maxFrames` mismatch; rejects a row missing `safeRoomMs`.
+  `maxFrames` mismatch; rejects a row missing `safeRoomMs`. **Round 9**: 4 new
+  regression tests for `assertLegacyBaselineProvenance`'s build-fingerprint
+  checks (runnerOs/nodeVersion/packageLockHash/workflowSha mismatches).
+  **Round 10**: 2 new tests for `currentBuildFingerprint`'s major-version
+  truncation and `runnerOs` format.
 - `docs/knowledge/handoffs/2026-07-19-ai-sweep-eval-parallel-rounds.md` —
   added a superseded-notice pointing here so operators reading that handoff
   don't apply the now-replaced zero-flip rule.
@@ -160,21 +189,23 @@ No ADR was needed (single-system change, not affecting 2+ systems).
 - `npx tsc --noEmit` — clean, no errors.
 - `npx vitest run tests/unit/ai/sweep-aggregate-shards.test.ts
 tests/unit/ai/sweep-round-plan.test.ts
-tests/unit/ai/sweep-eval-search-promotion.test.ts` — **112/112 passing**
-  (58 + 39 + 15, including the two mirrored 292/300-vs-286/300 regression tests
-  at the aggregate-shards and legacy-path levels, the wins-tie rejection test,
-  the wins-decrease rejection test, the isolated below-90%-floor test, the
-  incumbent-identity-scoping test, 2 non-LEGACY combo path tests, and the
-  8-test `assertLegacyBaselineProvenance` suite).
-- `npx vitest run tests/unit/ai` (full AI suite) — **309/309 passing**.
+tests/unit/ai/sweep-eval-search-promotion.test.ts` — **126/126 passing**
+  (including the two mirrored 292/300-vs-286/300 regression tests at the
+  aggregate-shards and legacy-path levels, the wins-tie rejection test, the
+  wins-decrease rejection test, the isolated below-90%-floor test, the
+  incumbent-identity-scoping test, 2 non-LEGACY combo path tests, the 8-test
+  `assertLegacyBaselineProvenance` suite, 8 build-fingerprint regression tests
+  across both provenance-check call sites, 4 `initCheckpoint` legacyBaseline
+  provenance tests, and 2 `currentBuildFingerprint` truncation tests).
+- `npx vitest run tests/unit/ai` (full AI suite) — **323/323 passing**.
 - `npm run verify:fast` — ✅ passed (typecheck + lint + changed tests + size/
   weight/physics-defs coverage checks).
 - `npm run verify:pr-prereqs` — checked after handoff + ledger were committed.
 - Review harness (3🍎 tier): plan review (gpt-5.4, `plan_divergence: minor`,
   4/4 concerns resolved — addressed single-incumbent-invariant documentation +
   test, `sortByLexicographic` diagnostic-only doc clarification, superseded-
-  notice on the prior handoff) + 8-round code-review loop (13 concerns
-  resolved):
+  notice on the prior handoff) + 11-round code-review loop (19 concerns
+  resolved, rounds 1 and 11 clean):
   - **Round 1** (claude-sonnet-4.6): 0 concerns, clean.
   - **Round 2** (github-copilot-pr-reviewer + claude-sonnet-4.6): 4 concerns,
     all resolved — added `samePanel` Set-equality guard on `winsVsIncumbentDelta`
@@ -221,7 +252,46 @@ tests/unit/ai/sweep-eval-search-promotion.test.ts` — **112/112 passing**
     it rather than duplicate it. A companion bot commit (`dabe0e82`) also
     corrected a stale test-count arithmetic error in this handoff (46 claimed
     vs. 39 actual for `sweep-round-plan.test.ts`, total corrected 119→112); the
-    PR description was updated to match. No production code change. Ledger:
+    PR description was updated to match. No production code change.
+  - **Round 9** (github-copilot-pr-reviewer): 2 concerns, resolved —
+    `assertSearchArtifactProvenance` validated schema/stage/floor/budget/frames/
+    combo but NOT the build fingerprint (`runnerOs`/`nodeVersion`/
+    `packageLockHash`/`workflowSha`) that `mergeShards`'s per-shard checks DO
+    enforce, so a stale `--legacy-baseline` artifact from a different code/
+    runtime build could silently pass; also a stale doc comment above
+    `selectSearchPromotion`'s call site. Fixed by extending
+    `assertSearchArtifactProvenance`'s `expected` param to require and check
+    the 4 fingerprint fields, adding `currentBuildFingerprint()`, and
+    correcting the comment. This round also surfaced a meta finding: rounds
+    2–8 were all recorded `clean:true` despite `concerns_count>0`, contradicting
+    the review-harness's per-round semantics — fixed by retroactively
+    correcting rounds 2–9's `clean` flag to `false`.
+  - **Round 10** (independent background code-review agent,
+    `round9-fingerprint-review`): 2 concerns, resolved — round 9's fix only
+    protected `sweep-eval.ts`'s local/manual `--stage search` path; the actual
+    PRODUCTION round-DAG path (`round-plan.ts`'s `initCheckpoint`/
+    `assertShardCompatible`, called by every `checkpoint-init`/`round*-select`
+    workflow job) had ZERO build-fingerprint validation, and `initCheckpoint`
+    had ZERO provenance validation of any kind on `legacyBaseline` — the exact
+    gap the task explicitly named ("update both production round-DAG and
+    legacy/manual promotion paths"). Also flagged a speculative Medium risk:
+    comparing the full `process.version` could false-reject across a
+    multi-hour run since `setup-node@v4` only pins the Node MAJOR version.
+    Fixed by extending `assertShardCompatible` with the same 4 fingerprint
+    checks, adding a new `initCheckpoint` legacyBaseline validation call plus a
+    row-combo-tag check, and truncating `currentBuildFingerprint()`'s
+    `nodeVersion` to major-version-only.
+  - **Round 11** (independent background code-review agent,
+    `round10-provenance-review`): 0 concerns, clean — a further independent
+    pass specifically targeting round 10's diff (ran `git diff`, `git stash`/
+    `stash pop` test-count comparison, `tsc --noEmit`, `eslint`) found no
+    genuine code issues: the refactor is applied consistently, the new
+    `initCheckpoint` check compares against the correct reference
+    (`baseline.meta`, not a live-computed fingerprint), the existing
+    LEGACY-incumbent test path is unaffected, the `nodeVersion` truncation is
+    applied symmetrically, and no call site was missed. Honest, independently-
+    earned terminal clean round.
+    Ledger:
     `docs/knowledge/review-ledgers/2026-07-20-ai-sweep-net-win-promotion.review-ledger.json`.
 - Apple record: `docs/knowledge/metrics/apples/2026-07-20-ai-sweep-net-win-promotion.json`
   (3🍎 estimated → 3🍎 actual, exact).

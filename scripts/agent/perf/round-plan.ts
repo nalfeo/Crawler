@@ -221,6 +221,20 @@ export function initCheckpoint(
         `initCheckpoint(${comboStr}): legacyBaseline shard must contain exactly one config, got ${legacyIds.length}`,
       );
     }
+    const legacyRowCombos = new Set(legacyBaseline.rows.map((r) => r.combo));
+    if (legacyRowCombos.size !== 1 || !legacyRowCombos.has(LEGACY_COMBO_ID)) {
+      throw new Error(
+        `initCheckpoint(${comboStr}): legacyBaseline shard rows must all be tagged combo='${LEGACY_COMBO_ID}', got: ` +
+          `${[...legacyRowCombos].join(', ')}.`,
+      );
+    }
+    // Vet legacyBaseline's provenance against the combo's own baseline shard
+    // (which becomes this checkpoint's meta below) — the production
+    // round-DAG's equivalent of sweep-eval.ts's assertLegacyBaselineProvenance
+    // (the legacy/manual `--stage search` path), so both paths reject a
+    // stale/wrong-floor/wrong-build legacyBaseline shard from silently
+    // seeding a mis-calibrated incumbent.
+    assertShardCompatible(baseline.meta, legacyBaseline, `initCheckpoint(${comboStr})`);
     incumbentConfigId = legacyId;
     incumbentCombo = LEGACY_COMBO_ID;
     Object.assign(allConfigs, legacyBaseline.configs);
@@ -304,26 +318,65 @@ export function planRoundMatrix(
   return out;
 }
 
-/** Fields that must match a checkpoint's own provenance for a candidate shard to be mergeable. */
-function assertShardCompatible(checkpoint: RoundCheckpoint, shard: ShardArtifact): void {
-  if (shard.meta.schemaVersion !== checkpoint.meta.schemaVersion) {
+/** Fields that must match a checkpoint's own provenance for a candidate shard to be mergeable.
+ *
+ * Also reused by {@link initCheckpoint} to vet an externally-supplied
+ * `legacyBaseline` shard against the combo's own `baseline` shard — this is
+ * `round-plan.ts`'s production-round-DAG equivalent of `sweep-eval.ts`'s
+ * `assertLegacyBaselineProvenance`/`assertSearchArtifactProvenance` (the
+ * legacy/manual `--stage search` path), so both paths reject a
+ * stale/wrong-floor/wrong-build shard from silently seeding a
+ * mis-calibrated incumbent or corrupting a round's candidate pool — see
+ * `assertSearchArtifactProvenance`'s doc comment in `aggregate-shards.ts`
+ * for the build-fingerprint rationale.
+ */
+function assertShardCompatible(
+  expectedMeta: ShardMeta,
+  shard: ShardArtifact,
+  contextLabel: string,
+): void {
+  if (shard.meta.schemaVersion !== expectedMeta.schemaVersion) {
     throw new Error(
-      `applyRoundResult(${checkpoint.combo}): shard schemaVersion ${shard.meta.schemaVersion} != checkpoint ${checkpoint.meta.schemaVersion}`,
+      `${contextLabel}: shard schemaVersion ${shard.meta.schemaVersion} != checkpoint ${expectedMeta.schemaVersion}`,
     );
   }
-  if (shard.meta.floorId !== checkpoint.meta.floorId) {
+  if (shard.meta.floorId !== expectedMeta.floorId) {
     throw new Error(
-      `applyRoundResult(${checkpoint.combo}): shard floorId '${shard.meta.floorId}' != checkpoint '${checkpoint.meta.floorId}'`,
+      `${contextLabel}: shard floorId '${shard.meta.floorId}' != checkpoint '${expectedMeta.floorId}'`,
     );
   }
-  if (shard.meta.budgetMs !== checkpoint.meta.budgetMs) {
+  if (shard.meta.budgetMs !== expectedMeta.budgetMs) {
     throw new Error(
-      `applyRoundResult(${checkpoint.combo}): shard budgetMs ${shard.meta.budgetMs} != checkpoint ${checkpoint.meta.budgetMs}`,
+      `${contextLabel}: shard budgetMs ${shard.meta.budgetMs} != checkpoint ${expectedMeta.budgetMs}`,
     );
   }
-  if (shard.meta.maxFrames !== checkpoint.meta.maxFrames) {
+  if (shard.meta.maxFrames !== expectedMeta.maxFrames) {
     throw new Error(
-      `applyRoundResult(${checkpoint.combo}): shard maxFrames ${shard.meta.maxFrames} != checkpoint ${checkpoint.meta.maxFrames}`,
+      `${contextLabel}: shard maxFrames ${shard.meta.maxFrames} != checkpoint ${expectedMeta.maxFrames}`,
+    );
+  }
+  // Build-fingerprint checks — mirror mergeShards'/assertSearchArtifactProvenance's
+  // per-shard guards so a shard whose schema/floor/budget/frames happen to
+  // match, but whose rows were produced by a different code revision or
+  // runtime, is still rejected rather than silently trusted.
+  if (shard.meta.runnerOs !== expectedMeta.runnerOs) {
+    throw new Error(
+      `${contextLabel}: shard runner-OS '${shard.meta.runnerOs}' != checkpoint '${expectedMeta.runnerOs}'`,
+    );
+  }
+  if (shard.meta.nodeVersion !== expectedMeta.nodeVersion) {
+    throw new Error(
+      `${contextLabel}: shard node-version '${shard.meta.nodeVersion}' != checkpoint '${expectedMeta.nodeVersion}'`,
+    );
+  }
+  if (shard.meta.packageLockHash !== expectedMeta.packageLockHash) {
+    throw new Error(
+      `${contextLabel}: shard package-lock '${shard.meta.packageLockHash}' != checkpoint '${expectedMeta.packageLockHash}'`,
+    );
+  }
+  if (shard.meta.workflowSha !== expectedMeta.workflowSha) {
+    throw new Error(
+      `${contextLabel}: shard workflow-sha '${shard.meta.workflowSha}' != checkpoint '${expectedMeta.workflowSha}'`,
     );
   }
 }
@@ -394,7 +447,7 @@ export function applyRoundResult(
   const newCandidateIds = new Set<string>();
 
   for (const shard of candidateShards) {
-    assertShardCompatible(checkpoint, shard);
+    assertShardCompatible(checkpoint.meta, shard, `applyRoundResult(${checkpoint.combo})`);
     for (const [id, config] of Object.entries(shard.configs)) {
       const existing = configs[id];
       if (existing && stableStringify(existing) !== stableStringify(config)) {

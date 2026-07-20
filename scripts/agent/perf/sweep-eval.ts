@@ -291,11 +291,24 @@ interface SearchResult {
  * as valid JSON yet lack `safeRoomMs`, silently reverting win recomputation to
  * raw-time semantics and undercounting the incumbent).
  *
+ * @param expected the caller's calibration to check the artifact against — floor/
+ *   budget/frames PLUS the current-build fingerprint (see
+ *   {@link currentBuildFingerprint}), threaded in by the caller (rather than
+ *   computed internally here) so callers can inject a deterministic fixture in
+ *   tests instead of depending on the actual host's OS/Node/dependency hash.
  * @returns the artifact's sole configId (the LEGACY baseline's config).
  */
 export function assertLegacyBaselineProvenance(
   artifact: ShardArtifact,
-  expected: { floorId: string; budgetMs: number; maxFrames: number },
+  expected: {
+    floorId: string;
+    budgetMs: number;
+    maxFrames: number;
+    runnerOs: string;
+    nodeVersion: string;
+    packageLockHash: string;
+    workflowSha: string;
+  },
 ): string {
   const legacyIds = Object.keys(artifact.configs);
   const legacyId = legacyIds[0];
@@ -317,6 +330,10 @@ export function assertLegacyBaselineProvenance(
     floorId: expected.floorId,
     budgetMs: expected.budgetMs,
     maxFrames: expected.maxFrames,
+    runnerOs: expected.runnerOs,
+    nodeVersion: expected.nodeVersion,
+    packageLockHash: expected.packageLockHash,
+    workflowSha: expected.workflowSha,
   });
   for (const row of artifact.rows) {
     assertRowSafeRoomInRange(row);
@@ -412,6 +429,7 @@ async function searchCombo(
         floorId: opts.floorId,
         budgetMs: shared.budgetMs,
         maxFrames: shared.maxFrames,
+        ...currentBuildFingerprint(),
       });
       incumbentConfigId = legacyId;
       Object.assign(configs, opts.legacyBaseline.configs);
@@ -464,9 +482,10 @@ async function searchCombo(
     // Gate promotion through the SAME hard safety gate used for round-plan.ts
     // and final graduation (see selectSearchPromotion doc comment): a
     // higher-scoring neighbour must ALSO have >=90% wins AND strictly MORE
-    // total wins than the FIXED original baseline (incumbentConfigId —
-    // LEGACY config ID for non-LEGACY combos when legacyBaseline was
-    // provided, else base.id) before it can replace currentId — win→loss
+    // total wins than the FIXED original incumbent (incumbentConfigId — the
+    // LEGACY config ID for every non-LEGACY combo, whether supplied via
+    // --legacy-baseline or auto-computed above; base.id only when the combo
+    // itself IS legacy+legacy) before it can replace currentId — win→loss
     // flips are allowed as long as total wins still strictly increase
     // (human-approved net-win promotion rule). Naive score-only promotion
     // here would reintroduce the exact GH-run-29597840666 bug this module
@@ -513,6 +532,35 @@ function packageLockHash(): string {
   }
 }
 
+/**
+ * The current process's build fingerprint (OS/arch, Node runtime, dependency
+ * hash, code revision). Shared by {@link buildMeta} (stamped onto every shard
+ * this process emits) and every `assertSearchArtifactProvenance` call site
+ * (checked against an externally-loaded artifact's stamped fingerprint) so a
+ * schema/floor/budget-matching artifact from a different build is still
+ * rejected — see {@link assertSearchArtifactProvenance}'s doc comment.
+ *
+ * `nodeVersion` is truncated to the major version (e.g. `'v22'`) rather than
+ * the full `process.version` (e.g. `'v22.4.1'`): `.github/actions/setup-node`
+ * pins only the major version, so `actions/setup-node@v4` can legitimately
+ * resolve a different patch release per job within the SAME multi-hour
+ * workflow run (round-DAG jobs run sequentially across rounds). Comparing the
+ * full patch version would spuriously reject an otherwise-valid same-run
+ * shard the moment a Node patch release lands mid-run; the major version is
+ * still a meaningful compatibility signal without that fragility.
+ */
+export function currentBuildFingerprint(): Pick<
+  ShardMeta,
+  'runnerOs' | 'nodeVersion' | 'packageLockHash' | 'workflowSha'
+> {
+  return {
+    runnerOs: `${process.platform}-${process.arch}`,
+    nodeVersion: process.version.match(/^v\d+/)?.[0] ?? process.version,
+    packageLockHash: packageLockHash(),
+    workflowSha: process.env.GITHUB_SHA ?? 'local',
+  };
+}
+
 function buildMeta(stage: string, floorId: string): ShardMeta {
   return {
     schemaVersion: SHARD_SCHEMA_VERSION,
@@ -520,10 +568,7 @@ function buildMeta(stage: string, floorId: string): ShardMeta {
     floorId,
     maxFrames: MAX_FRAMES,
     stage,
-    runnerOs: `${process.platform}-${process.arch}`,
-    nodeVersion: process.version,
-    packageLockHash: packageLockHash(),
-    workflowSha: process.env.GITHUB_SHA ?? 'local',
+    ...currentBuildFingerprint(),
   };
 }
 
@@ -762,6 +807,7 @@ async function main(argv: readonly string[]): Promise<void> {
     floorId: args.floorId,
     budgetMs: FLOOR1_TIME_BUDGET_MS,
     maxFrames: MAX_FRAMES,
+    ...currentBuildFingerprint(),
   });
   const finalist = search.configs[search.bestConfigId];
   if (!finalist) {

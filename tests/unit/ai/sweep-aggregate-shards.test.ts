@@ -867,6 +867,10 @@ describe('assertSearchArtifactProvenance', () => {
     floorId: 'floor1',
     budgetMs: META.budgetMs,
     maxFrames: META.maxFrames,
+    runnerOs: META.runnerOs,
+    nodeVersion: META.nodeVersion,
+    packageLockHash: META.packageLockHash,
+    workflowSha: META.workflowSha,
   } as const;
 
   it('accepts a matching, current-schema search artifact', () => {
@@ -935,5 +939,45 @@ describe('assertSearchArtifactProvenance', () => {
     expect(() => assertSearchArtifactProvenance(SEARCH_META, 'legacy+legacy', EXPECTED)).toThrow(
       /combo 'legacy\+legacy' != requested/,
     );
+  });
+
+  it('rejects an artifact produced on a different runner OS', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, runnerOs: 'darwin-arm64' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/runner-OS 'darwin-arm64' != current/);
+  });
+
+  it('rejects an artifact produced under a different Node runtime', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, nodeVersion: 'v18.0.0' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/node-version 'v18\.0\.0' != current/);
+  });
+
+  it('rejects an artifact produced against different dependencies (package-lock hash)', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, packageLockHash: 'stalehash0000stalehash0000' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/package-lock 'stalehash0000stalehash0000' != current/);
+  });
+
+  it('rejects an artifact produced by a different code revision (workflow SHA) — the exact gap that let a stale --legacy-baseline be trusted', () => {
+    expect(() =>
+      assertSearchArtifactProvenance(
+        { ...SEARCH_META, workflowSha: 'stalesha0000stalesha0000stalesha0' },
+        EXPECTED.combo,
+        EXPECTED,
+      ),
+    ).toThrow(/workflow-sha 'stalesha0000stalesha0000stalesha0' != current/);
   });
 });

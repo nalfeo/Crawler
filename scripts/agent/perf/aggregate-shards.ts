@@ -187,12 +187,26 @@ export function assertRowSafeRoomInRange(row: RunRow): void {
  *
  * @param meta     the artifact's recorded provenance (absent on a legacy artifact)
  * @param combo    the combo the artifact was produced for (`SearchArtifact.combo`)
- * @param expected the current runner's calibration the artifact must match
+ * @param expected the current runner's calibration the artifact must match — schema/
+ *   stage/floor/budget/frames/combo PLUS the current-build fingerprint
+ *   (runnerOs/nodeVersion/packageLockHash/workflowSha) so a schema/floor/budget-
+ *   matching artifact from a DIFFERENT code or runtime build (e.g. a stale
+ *   `--legacy-baseline` produced before a scoring-logic change landed) is still
+ *   rejected, mirroring {@link mergeShards}' per-shard build-fingerprint checks.
  */
 export function assertSearchArtifactProvenance(
   meta: ShardMeta | undefined,
   combo: string | undefined,
-  expected: { combo: string; floorId: string; budgetMs: number; maxFrames: number },
+  expected: {
+    combo: string;
+    floorId: string;
+    budgetMs: number;
+    maxFrames: number;
+    runnerOs: string;
+    nodeVersion: string;
+    packageLockHash: string;
+    workflowSha: string;
+  },
 ): void {
   if (!meta) {
     throw new Error(
@@ -234,6 +248,35 @@ export function assertSearchArtifactProvenance(
     throw new Error(
       `Search artifact combo '${combo}' != requested '${expected.combo}'; ` +
         `this finalist belongs to a different combo.`,
+    );
+  }
+  // Build-fingerprint checks — mirror mergeShards' per-shard guards so an
+  // artifact whose schema/floor/budget/frames happen to match, but whose rows
+  // were produced by a different code revision or runtime, is still rejected
+  // rather than silently trusted as a comparable incumbent/finalist.
+  if (meta.runnerOs !== expected.runnerOs) {
+    throw new Error(
+      `Search artifact runner-OS '${meta.runnerOs}' != current '${expected.runnerOs}'; ` +
+        `the finalist/baseline was produced on a different runner.`,
+    );
+  }
+  if (meta.nodeVersion !== expected.nodeVersion) {
+    throw new Error(
+      `Search artifact node-version '${meta.nodeVersion}' != current '${expected.nodeVersion}'; ` +
+        `the finalist/baseline was produced under a different Node runtime.`,
+    );
+  }
+  if (meta.packageLockHash !== expected.packageLockHash) {
+    throw new Error(
+      `Search artifact package-lock '${meta.packageLockHash}' != current ` +
+        `'${expected.packageLockHash}'; the finalist/baseline was produced against different ` +
+        `dependencies.`,
+    );
+  }
+  if (meta.workflowSha !== expected.workflowSha) {
+    throw new Error(
+      `Search artifact workflow-sha '${meta.workflowSha}' != current '${expected.workflowSha}'; ` +
+        `the finalist/baseline was produced by a different code revision and is not comparable.`,
     );
   }
 }

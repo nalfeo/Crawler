@@ -212,6 +212,80 @@ describe('initCheckpoint', () => {
       /legacyBaseline shard must contain exactly one config, got 2/,
     );
   });
+
+  // A follow-up independent code-review pass on the net-win promotion rule
+  // (PR #1735) found that build-fingerprint provenance checks added to the
+  // legacy/manual `--stage search` path (assertLegacyBaselineProvenance in
+  // sweep-eval.ts) never protected the PRODUCTION round-DAG path — the
+  // `.github/workflows/ai-sweep.yml` `checkpoint-init` job calls
+  // initCheckpoint directly, and it had ZERO provenance validation on
+  // legacyBaseline at all. The tests below close that gap.
+  it('throws when legacyBaseline rows are tagged with a combo other than legacy+legacy', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    // legacyBaseline rows wrongly tagged with the navmesh combo instead of legacy+legacy.
+    const badLegacy = shard([row(BASE_ID, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)], {
+      [BASE_ID]: BASE,
+    });
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /legacyBaseline shard rows must all be tagged combo='legacy\+legacy'/,
+    );
+  });
+
+  it('throws when legacyBaseline is provenance-incompatible with the combo baseline (schemaVersion mismatch)', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badLegacy: ShardArtifact = {
+      meta: { ...META, schemaVersion: SHARD_SCHEMA_VERSION + 1 },
+      configs: { [BASE_ID]: BASE },
+      rows: [row(BASE_ID, 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /schemaVersion .* != checkpoint/,
+    );
+  });
+
+  it('throws when legacyBaseline was produced under a different Node major version than the combo baseline', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badLegacy: ShardArtifact = {
+      meta: { ...META, nodeVersion: 'v18' },
+      configs: { [BASE_ID]: BASE },
+      rows: [row(BASE_ID, 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /node-version .* != checkpoint/,
+    );
+  });
+
+  it('throws when legacyBaseline was produced from a different code revision (workflow SHA) than the combo baseline', () => {
+    const navmeshBase: SweepConfig = baseConfigForCombo(NAVMESH_LEGACY);
+    const navmeshBaseId = configId(navmeshBase);
+    const navmeshBaselineShard = shard(
+      [row(navmeshBaseId, 'sword', 1, 100, true, NAVMESH_LEGACY_COMBO_ID)],
+      { [navmeshBaseId]: navmeshBase },
+    );
+    const badLegacy: ShardArtifact = {
+      meta: { ...META, workflowSha: 'stalesha0000stalesha0000stalesha0' },
+      configs: { [BASE_ID]: BASE },
+      rows: [row(BASE_ID, 'sword', 1, 100)],
+    };
+    expect(() => initCheckpoint(NAVMESH_LEGACY, KNOBS, navmeshBaselineShard, badLegacy)).toThrow(
+      /workflow-sha .* != checkpoint/,
+    );
+  });
 });
 
 describe('planCandidates', () => {

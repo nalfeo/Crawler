@@ -29,6 +29,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assertLegacyBaselineProvenance,
+  currentBuildFingerprint,
   selectSearchPromotion,
 } from '../../../scripts/agent/perf/sweep-eval.js';
 import {
@@ -390,7 +391,15 @@ describe('assertLegacyBaselineProvenance', () => {
     packageLockHash: 'abc123def456abc123def456',
     workflowSha: 'deadbeefcafe0000deadbeefcafe0000',
   };
-  const EXPECTED = { floorId: 'floor1', budgetMs: BUDGET_MS, maxFrames: 23_760 };
+  const EXPECTED = {
+    floorId: 'floor1',
+    budgetMs: BUDGET_MS,
+    maxFrames: 23_760,
+    runnerOs: VALID_META.runnerOs,
+    nodeVersion: VALID_META.nodeVersion,
+    packageLockHash: VALID_META.packageLockHash,
+    workflowSha: VALID_META.workflowSha,
+  };
 
   function validArtifact(): ShardArtifact {
     const rows: RunRow[] = [];
@@ -448,10 +457,54 @@ describe('assertLegacyBaselineProvenance', () => {
     expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/frame-cap/);
   });
 
+  it('rejects a --legacy-baseline artifact produced on a different runner OS', () => {
+    const artifact = validArtifact();
+    artifact.meta = { ...VALID_META, runnerOs: 'darwin-arm64' };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/runner-OS/);
+  });
+
+  it('rejects a --legacy-baseline artifact produced under a different Node runtime', () => {
+    const artifact = validArtifact();
+    artifact.meta = { ...VALID_META, nodeVersion: 'v18.0.0' };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/node-version/);
+  });
+
+  it('rejects a --legacy-baseline artifact produced against different dependencies (package-lock hash)', () => {
+    const artifact = validArtifact();
+    artifact.meta = { ...VALID_META, packageLockHash: 'stalehash0000stalehash0000' };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/package-lock/);
+  });
+
+  it('rejects a --legacy-baseline artifact produced by a different code revision (workflow SHA) — a stale baseline from a different build must not silently seed the incumbent', () => {
+    const artifact = validArtifact();
+    artifact.meta = { ...VALID_META, workflowSha: 'stalesha0000stalesha0000stalesha0' };
+    expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/workflow-sha/);
+  });
+
   it('rejects a row missing safeRoomMs (pre-v2 row shape smuggled past a matching schemaVersion)', () => {
     const artifact = validArtifact();
     // Simulate a malformed/pre-v2 row that slipped past JSON.parse's type cast.
     (artifact.rows[0] as { safeRoomMs?: number }).safeRoomMs = undefined;
     expect(() => assertLegacyBaselineProvenance(artifact, EXPECTED)).toThrow(/safeRoomMs/);
+  });
+});
+
+describe('currentBuildFingerprint', () => {
+  it("truncates nodeVersion to the major version only, matching setup-node's major-only pin", () => {
+    // A multi-model review round flagged that comparing the FULL process.version
+    // (e.g. 'v22.4.1') would spuriously reject an otherwise-valid same-run
+    // shard the moment actions/setup-node@v4 resolves a different patch
+    // release between jobs of the same multi-hour round-DAG workflow run —
+    // .github/actions/setup-node only pins the major version ('22'). Truncating
+    // to major-only ('v22') keeps a meaningful compatibility signal without
+    // that false-rejection fragility.
+    const fingerprint = currentBuildFingerprint();
+    expect(fingerprint.nodeVersion).toMatch(/^v\d+$/);
+    expect(fingerprint.nodeVersion).toBe(process.version.match(/^v\d+/)?.[0]);
+  });
+
+  it('reports runnerOs as platform-arch', () => {
+    const fingerprint = currentBuildFingerprint();
+    expect(fingerprint.runnerOs).toBe(`${process.platform}-${process.arch}`);
   });
 });
