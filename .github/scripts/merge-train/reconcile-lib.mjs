@@ -80,6 +80,14 @@ export async function promoteValidatedPrefixAfterBuildFailure({ candidates, prom
   };
 }
 
+export function queuePositionAfterRecovery(index, recovery) {
+  const promotedCount =
+    recovery?.promoted === true && Number.isInteger(recovery.greenPrefixLength)
+      ? recovery.greenPrefixLength
+      : 0;
+  return index + 1 - promotedCount;
+}
+
 /**
  * Runs the candidate build loop for a merge train. For each train entry,
  * `buildEntry(index)` is called inside the retryable candidate-build boundary.

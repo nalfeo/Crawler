@@ -12,6 +12,7 @@ import {
   mainHealthReason,
   promoteValidatedPrefixAfterBuildFailure,
   promotionStaleReason,
+  queuePositionAfterRecovery,
   resolveMergeTrainTokens,
   runTrainBuildLoop,
   trainCheckTitle,
@@ -428,8 +429,7 @@ test('runTrainBuildLoop passes recovery to onRetryableFailure so the failing PR 
       throw new Error('transient git failure');
     },
     onRetryableFailure: async (_index, _error, recovery) => {
-      // Simulate what reconcile.mjs does: compute position from recovery.greenPrefixLength
-      capturedPosition = _index + 1 - (recovery?.greenPrefixLength ?? 0);
+      capturedPosition = queuePositionAfterRecovery(_index, recovery);
     },
     promotePrefix: async () => true,
   });
@@ -437,6 +437,33 @@ test('runTrainBuildLoop passes recovery to onRetryableFailure so the failing PR 
   // PR #2 was at original index 1 (position 2), but PR #1 was promoted (greenPrefixLength=1).
   // Its new queue position is 2 - 1 = 1.
   assert.equal(capturedPosition, 1);
+});
+
+test('runTrainBuildLoop preserves the failing PR position when validated-prefix promotion aborts', async () => {
+  const train = [1, 2].map((number) => makePr({ number }));
+  const builtCandidates = [];
+  let capturedRecovery;
+  let capturedPosition;
+
+  await runTrainBuildLoop({
+    train,
+    candidates: builtCandidates,
+    buildEntry: async (index) => {
+      if (index === 0) {
+        return { candidateSha: 'sha-0', state: 'success', entries: train.slice(0, 1) };
+      }
+      throw new Error('transient git failure');
+    },
+    onRetryableFailure: async (index, _error, recovery) => {
+      capturedRecovery = recovery;
+      capturedPosition = queuePositionAfterRecovery(index, recovery);
+    },
+    promotePrefix: async () => false,
+  });
+
+  assert.equal(capturedRecovery.promotionAttempted, true);
+  assert.equal(capturedRecovery.promoted, false);
+  assert.equal(capturedPosition, 2);
 });
 
 test('live Actions runs require separate promotion and workflow-dispatch tokens', () => {
