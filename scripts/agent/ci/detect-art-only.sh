@@ -68,6 +68,20 @@ emit_visual_all() {
   emit_output devtool_visual_touched "$4"
 }
 
+# Emit visual surface flags (new in #1688/#1698).
+# Called separately so the fail-safe paths can emit all-false without touching
+# the original emit_all signature.
+#   visual_touched      — any path that can affect browser rendering was changed
+#   game_visual_touched — game/engine/UI visual surface (src/*, public/*, tests/e2e/* except devtools)
+#   asset_visual_touched — generated art and sprite-catalog only
+#   devtool_visual_touched — devtools browser UI and its e2e test
+emit_visual_all() {
+  emit_output visual_touched "$1"
+  emit_output game_visual_touched "$2"
+  emit_output asset_visual_touched "$3"
+  emit_output devtool_visual_touched "$4"
+}
+
 # package.json gameplay-safe split:
 # - safe when ONLY scripts changed and every changed script key is lab/devtools/sprites-facing
 # - unsafe for dependency changes, non-script top-level keys, or unknown script keys
@@ -153,11 +167,7 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-<<<<<<< Updated upstream
     emit_all false false false false true true true true true
-=======
-    emit_all false false false false false true true false true
->>>>>>> Stashed changes
     # No diff available: fail toward broader validation — run all visual suites.
     emit_visual_all true true true true
     exit 0
@@ -181,11 +191,7 @@ echo "${changed:-<none>}" >&2
 # For visual surface flags: we CANNOT safely skip — an empty/unknown diff means we
 # don't know what changed, so all three visual suites must run (fail toward more).
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-<<<<<<< Updated upstream
   emit_all false false false false true true true true true
-=======
-  emit_all false false false false false true true false true
->>>>>>> Stashed changes
   emit_visual_all true true true true
   exit 0
 fi

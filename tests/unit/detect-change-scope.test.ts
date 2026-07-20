@@ -487,7 +487,7 @@ describe('detect-art-only.sh change-scope classifier', () => {
       // Empty/unknown changeset → we cannot safely skip visual suites, so all
       // three surface flags must be true (same fail-safe as the no-base-ref path).
       expect(run('\n')).toEqual(
-        F(false, false, false, false, false, true, true, true, true, true, true),
+        F(false, false, false, false, true, true, true, true, true, true, true),
       );
     },
   );
@@ -495,7 +495,7 @@ describe('detect-art-only.sh change-scope classifier', () => {
   it.skipIf(!hasBash)('fail-safe: an explicitly empty override enables all visual suites', () => {
     // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
     expect(run('')).toEqual(
-      F(false, false, false, false, false, true, true, true, true, true, true),
+      F(false, false, false, false, true, true, true, true, true, true, true),
     );
   });
 

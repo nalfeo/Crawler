@@ -33,19 +33,11 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 emit_all_false() {
-<<<<<<< Updated upstream
   # Mirror detect-art-only.sh's fail-safe output contract exactly so consumers can
   # parse one shape regardless of which path produced it.
   # Legacy flags (safe/only): false → broader gates run.
   # New positive-contract flags: true → fail toward broader validation when
   # scope cannot be determined (consistent with detect-art-only.sh fail-safe).
-=======
-  # Mirror detect-art-only.sh's output shape so consumers can parse one contract
-  # regardless of which path produced it.
-  # Legacy flags (safe/only): false → broader gates run.
-  # New positive-contract flags: true → fail toward broader validation when
-  # scope cannot be determined.
->>>>>>> Stashed changes
   printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=true\nsim_touched=true\ncoverage_touched=true\nsprite_pipeline_touched=true\ndependencies_touched=true\nvisual_touched=true\ngame_visual_touched=true\nasset_visual_touched=true\ndevtool_visual_touched=true\n'
 }
 
