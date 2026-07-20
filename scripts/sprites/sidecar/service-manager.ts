@@ -7,6 +7,7 @@ import {
   openSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -130,10 +131,17 @@ function readRegistry(filePath: string): ServiceRegistry | null {
 }
 
 function writeRegistry(filePath: string, registry: ServiceRegistry): void {
-  writeFileSync(filePath, `${JSON.stringify(registry, null, 2)}\n`, {
-    encoding: 'utf8',
-    mode: 0o600,
-  });
+  const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(registry, null, 2)}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+    renameSync(tempPath, filePath);
+  } catch (error) {
+    rmSync(tempPath, { force: true });
+    throw error;
+  }
 }
 
 function claimRegistry(filePath: string, registry: ServiceRegistry): boolean {
@@ -323,27 +331,23 @@ export async function ensureSidecarService(
           `Sprite sidecar port ${ports.sidecarPort} belongs to another checkout (${health.repoRoot}).`,
         );
       }
-      if (isReady(health, repoRoot)) {
-        // If provenance is available on both sides and they differ, this service
-        // was started from a different code revision. Attempt a managed restart
-        // (only authenticated when registry + health managed identity match); if
-        // that fails, the service is unmanaged or wrong-repo — throw, never kill.
-        if (
-          currentProvenance !== 'unknown' &&
-          health.service?.codeProvenance != null &&
-          health.service.codeProvenance !== currentProvenance
-        ) {
-          const registry = readRegistry(registryPath);
-          if (registry && (await requestManagedShutdown(baseUrl, registry, probeHealth))) {
-            await sleep(POLL_INTERVAL_MS);
-            continue;
-          }
-          throw new Error(
-            `Sprite sidecar at ${baseUrl} was started from a different code revision ` +
-              `(running: ${health.service.codeProvenance}, current: ${currentProvenance}). ` +
-              `Stop it and retry.`,
-          );
+      if (
+        currentProvenance !== 'unknown' &&
+        health.service?.codeProvenance != null &&
+        health.service.codeProvenance !== currentProvenance
+      ) {
+        const registry = readRegistry(registryPath);
+        if (registry && (await requestManagedShutdown(baseUrl, registry, probeHealth))) {
+          await sleep(POLL_INTERVAL_MS);
+          continue;
         }
+        throw new Error(
+          `Sprite sidecar at ${baseUrl} was started from a different code revision ` +
+            `(running: ${health.service.codeProvenance}, current: ${currentProvenance}). ` +
+            `Stop it and retry.`,
+        );
+      }
+      if (isReady(health, repoRoot)) {
         const registry = readRegistry(registryPath);
         return {
           state: 'reused',
@@ -393,12 +397,24 @@ export async function ensureSidecarService(
         // skipped entirely in that case — the caller never needs Azure credentials.
         // Placed inside try/catch so a bootstrap failure releases the claimed registry.
         bootstrap(repoRoot);
+        if (now() >= deadline) {
+          throw new Error(`Sprite sidecar did not become ready within 60 seconds. See ${logPath}`);
+        }
+        const ownedRegistry = readRegistry(registryPath);
+        if (!ownedRegistry || ownedRegistry.instanceId !== instanceId) {
+          throw new Error('Sprite sidecar startup ownership was replaced before spawn.');
+        }
         const spawned = spawnService(repoRoot, candidate, process.env, registryPath);
         const claimed = { ...candidate, pid: spawned.pid };
         writeRegistry(registryPath, claimed);
         while (now() < deadline) {
           const startedHealth = await probeHealth(baseUrl);
-          if (startedHealth && isReady(startedHealth, repoRoot)) {
+          if (
+            startedHealth &&
+            isReady(startedHealth, repoRoot) &&
+            startedHealth.service?.managed === true &&
+            startedHealth.service.instanceId === claimed.instanceId
+          ) {
             const servicePid = startedHealth.service?.pid ?? spawned.pid;
             writeRegistry(registryPath, { ...claimed, pid: servicePid });
             return {
@@ -419,9 +435,16 @@ export async function ensureSidecarService(
         // to terminating the exact child we spawned (never an arbitrary registry PID).
         const shutdownSent = await requestManagedShutdown(baseUrl, claimed, probeHealth);
         if (shutdownSent) {
+          let stopped = false;
           for (let i = 0; i < 20; i++) {
-            if (!(await probeHealth(baseUrl))) break;
+            if (!(await probeHealth(baseUrl))) {
+              stopped = true;
+              break;
+            }
             await sleep(100);
+          }
+          if (!stopped) {
+            terminateProcess(spawned.pid);
           }
         } else {
           terminateProcess(spawned.pid);
@@ -435,7 +458,9 @@ export async function ensureSidecarService(
 
     const existing = readRegistry(registryPath);
     if (!existing) {
-      rmSync(registryPath, { force: true });
+      // Registry may be mid-write by the current owner (or briefly absent after
+      // owner cleanup). Wait and re-check rather than deleting a transient claim.
+      await sleep(POLL_INTERVAL_MS);
       continue;
     }
     if (existing.pid !== null && !isProcessAlive(existing.pid)) {
@@ -468,7 +493,7 @@ export async function stopSidecarService(
   const registryPath = registryPathFor(repoRoot, deps.registryRoot ?? defaultRegistryRoot());
   const registry = readRegistry(registryPath);
   if (!registry) return false;
-  const baseUrl = getSessionServerPorts({ cwd: repoRoot, env: process.env }).sidecarBaseUrl;
+  const baseUrl = `http://127.0.0.1:${registry.port}`;
   const probeHealth = deps.probeHealth ?? defaultProbeHealth;
   const requested = await requestManagedShutdown(baseUrl, registry, probeHealth);
   if (!requested) return false;

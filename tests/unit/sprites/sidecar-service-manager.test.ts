@@ -1,9 +1,10 @@
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ensureSidecarService,
+  stopSidecarService,
   sidecarRegistryExists,
   registryPathFor,
   type SidecarServiceManagerDeps,
@@ -29,7 +30,7 @@ describe('sprite sidecar service manager', () => {
     const repoRoot = makeRoot('crawler-sidecar-repo-');
     const registryRoot = makeRoot('crawler-sidecar-registry-');
     let health: Record<string, unknown> | null = null;
-    const spawnService = vi.fn(() => {
+    const spawnService = vi.fn((_root, registry) => {
       health = {
         status: 'ok',
         repoRoot,
@@ -37,6 +38,12 @@ describe('sprite sidecar service manager', () => {
         queueBackend: 'azure-queue',
         worker: { running: true },
         issueIngester: { running: true },
+        service: {
+          managed: true,
+          instanceId: registry.instanceId,
+          pid: 4321,
+          startedAt: registry.startedAt,
+        },
       };
       return { pid: 4321 };
     });
@@ -228,8 +235,8 @@ describe('sprite sidecar service manager', () => {
     const terminateFn = vi.fn();
     let callCount = 0;
     const baseTime = 1_000_000;
-    // Fake clock: first 3 calls are under deadline; thereafter past it.
-    const nowFn = vi.fn(() => (callCount++ < 3 ? baseTime : baseTime + 70_000));
+    // Fake clock: first 5 calls are under deadline; thereafter past it.
+    const nowFn = vi.fn(() => (callCount++ < 5 ? baseTime : baseTime + 70_000));
 
     await expect(
       ensureSidecarService(repoRoot, {
@@ -246,6 +253,51 @@ describe('sprite sidecar service manager', () => {
 
     expect(terminateFn).toHaveBeenCalledWith(55555);
     expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(false);
+  });
+
+  it('clears startup claim when shutdown request does not stop the service in time', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-timeout-auth-');
+    const registryRoot = makeRoot('crawler-sidecar-timeout-auth-registry-');
+    const terminateFn = vi.fn();
+    let nowTick = 0;
+    const baseTime = 1_000_000;
+    const nowFn = vi.fn(() => (nowTick++ < 3 ? baseTime : baseTime + 70_000));
+    const spawnedPid = 54321;
+    let claimedInstanceId = '';
+    let probePhase: 'before-spawn' | 'after-spawn' = 'before-spawn';
+    const fetchMock = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await expect(
+        ensureSidecarService(repoRoot, {
+          registryRoot,
+          bootstrap: vi.fn(),
+          now: nowFn,
+          probeHealth: async () =>
+            probePhase === 'before-spawn'
+              ? null
+              : {
+                  service: {
+                    managed: true,
+                    instanceId: claimedInstanceId,
+                    pid: spawnedPid,
+                    startedAt: new Date().toISOString(),
+                  },
+                },
+          spawnService: vi.fn((_root, registry) => {
+            claimedInstanceId = registry.instanceId;
+            probePhase = 'after-spawn';
+            return { pid: spawnedPid };
+          }),
+          isProcessAlive: () => true,
+          terminateProcess: terminateFn,
+          sleep: async () => Promise.resolve(),
+        }),
+      ).rejects.toThrow(/did not become ready/);
+      expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('clears stale joiner registry when startup window has expired regardless of PID liveness', async () => {
@@ -326,8 +378,8 @@ describe('sprite sidecar service manager', () => {
           repoRoot,
           version: SPRITE_SIDECAR_SERVICE_VERSION,
           queueBackend: 'azure-queue',
-          worker: { running: true },
-          issueIngester: { running: true },
+          worker: { running: false },
+          issueIngester: { running: false },
           service: {
             managed: true,
             instanceId: 'some-id',
@@ -341,5 +393,163 @@ describe('sprite sidecar service manager', () => {
         sleep: async () => Promise.resolve(),
       }),
     ).rejects.toThrow(/different code revision/);
+  });
+
+  it('does not treat a competing ready instance as successful startup for this claim', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-race-');
+    const registryRoot = makeRoot('crawler-sidecar-race-registry-');
+    let nowTick = 0;
+    const baseTime = 1_000_000;
+    const nowFn = vi.fn(() => (nowTick++ < 3 ? baseTime : baseTime + 70_000));
+    let probePhase: 'before-spawn' | 'after-spawn' = 'before-spawn';
+    await expect(
+      ensureSidecarService(repoRoot, {
+        registryRoot,
+        bootstrap: vi.fn(),
+        now: nowFn,
+        probeHealth: async () =>
+          probePhase === 'before-spawn'
+            ? null
+            : {
+                status: 'ok',
+                repoRoot,
+                version: SPRITE_SIDECAR_SERVICE_VERSION,
+                queueBackend: 'azure-queue',
+                worker: { running: true },
+                issueIngester: { running: true },
+                service: {
+                  managed: true,
+                  instanceId: 'different-instance',
+                  pid: 90001,
+                  startedAt: new Date().toISOString(),
+                },
+              },
+        spawnService: vi.fn(() => {
+          probePhase = 'after-spawn';
+          return { pid: 77777 };
+        }),
+        isProcessAlive: () => true,
+        terminateProcess: vi.fn(),
+        sleep: async () => Promise.resolve(),
+      }),
+    ).rejects.toThrow(/did not become ready/);
+    expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(false);
+  });
+
+  it('does not spawn when bootstrap exceeds startup deadline', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-bootstrap-time-');
+    const registryRoot = makeRoot('crawler-sidecar-bootstrap-time-registry-');
+    const spawnFn = vi.fn(() => ({ pid: 10101 }));
+    let currentTime = 1_000_000;
+    await expect(
+      ensureSidecarService(repoRoot, {
+        registryRoot,
+        now: () => currentTime,
+        probeHealth: async () => null,
+        bootstrap: () => {
+          currentTime += 70_000;
+        },
+        spawnService: spawnFn,
+        isProcessAlive: () => true,
+        sleep: async () => Promise.resolve(),
+      }),
+    ).rejects.toThrow(/did not become ready/);
+    expect(spawnFn).not.toHaveBeenCalled();
+    expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(false);
+  });
+
+  it('does not spawn after bootstrap if registry ownership is replaced', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-bootstrap-owner-');
+    const registryRoot = makeRoot('crawler-sidecar-bootstrap-owner-registry-');
+    const spawnFn = vi.fn(() => ({ pid: 20202 }));
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    let replacementWritten = false;
+    await expect(
+      ensureSidecarService(repoRoot, {
+        registryRoot,
+        probeHealth: async () => null,
+        bootstrap: () => {
+          writeFileSync(
+            regPath,
+            JSON.stringify({
+              schema: 1,
+              repoRoot,
+              port: 34567,
+              version: SPRITE_SIDECAR_SERVICE_VERSION,
+              instanceId: 'replacement-owner',
+              shutdownToken: 'replacement-token',
+              startedAt: new Date().toISOString(),
+              logPath: path.join(registryRoot, 'replacement.log'),
+              pid: 45678,
+            }),
+          );
+          replacementWritten = true;
+        },
+        spawnService: spawnFn,
+        isProcessAlive: () => true,
+        sleep: async () => Promise.resolve(),
+      }),
+    ).rejects.toThrow(/ownership was replaced/);
+    expect(replacementWritten).toBe(true);
+    expect(spawnFn).not.toHaveBeenCalled();
+    const finalRegistry = JSON.parse(readFileSync(regPath, 'utf8'));
+    expect(finalRegistry.instanceId).toBe('replacement-owner');
+  });
+
+  it('stops using the registry port even when environment port differs', async () => {
+    const repoRoot = makeRoot('crawler-sidecar-stop-port-');
+    const registryRoot = makeRoot('crawler-sidecar-stop-port-registry-');
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    mkdirSync(registryRoot, { recursive: true });
+    writeFileSync(
+      regPath,
+      JSON.stringify({
+        schema: 1,
+        repoRoot,
+        port: 4999,
+        version: SPRITE_SIDECAR_SERVICE_VERSION,
+        instanceId: 'stop-instance',
+        shutdownToken: 'stop-token',
+        startedAt: new Date().toISOString(),
+        logPath: path.join(registryRoot, 'stop.log'),
+        pid: 65432,
+      }),
+    );
+    const originalPort = process.env.SPRITES_SIDECAR_PORT;
+    process.env.SPRITES_SIDECAR_PORT = '3010';
+    const probeCalls: string[] = [];
+    const fetchMock = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    let callCount = 0;
+    try {
+      const stopped = await stopSidecarService(repoRoot, {
+        registryRoot,
+        probeHealth: async (baseUrl) => {
+          probeCalls.push(baseUrl);
+          callCount += 1;
+          if (callCount === 1) {
+            return {
+              service: {
+                managed: true,
+                instanceId: 'stop-instance',
+                pid: 65432,
+                startedAt: new Date().toISOString(),
+              },
+            };
+          }
+          return null;
+        },
+        sleep: async () => Promise.resolve(),
+      });
+      expect(stopped).toBe(true);
+      expect(probeCalls[0]).toBe('http://127.0.0.1:4999');
+      const firstFetchCall = fetchMock.mock.calls[0] as unknown[] | undefined;
+      expect(firstFetchCall?.[0]).toBe('http://127.0.0.1:4999/api/service/shutdown');
+      expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(false);
+    } finally {
+      if (originalPort === undefined) delete process.env.SPRITES_SIDECAR_PORT;
+      else process.env.SPRITES_SIDECAR_PORT = originalPort;
+      vi.unstubAllGlobals();
+    }
   });
 });

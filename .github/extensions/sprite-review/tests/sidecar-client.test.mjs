@@ -263,7 +263,15 @@ test('probeHealth: up when the sidecar answers for the matching repo', async () 
     workspaceRoot: '/repo/a',
     fetchImpl: fakeFetch({
       '/api/health': {
-        json: { status: 'ok', repoRoot: '/repo/a', version: '9', storeBackend: 'azure-blob' },
+        json: {
+          status: 'ok',
+          repoRoot: '/repo/a',
+          version: '9',
+          storeBackend: 'azure-blob',
+          queueBackend: 'azure-queue',
+          worker: { running: true },
+          issueIngester: { running: true },
+        },
       },
     }),
   });
@@ -271,6 +279,27 @@ test('probeHealth: up when the sidecar answers for the matching repo', async () 
   assert.equal(health.state, 'up');
   assert.equal(health.version, '9');
   assert.equal(health.storeBackend, 'azure-blob');
+});
+
+test('probeHealth: down when azure queue controllers are not ready', async () => {
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    workspaceRoot: '/repo/a',
+    fetchImpl: fakeFetch({
+      '/api/health': {
+        json: {
+          status: 'ok',
+          repoRoot: '/repo/a',
+          version: '9',
+          queueBackend: 'azure-queue',
+          worker: { running: true },
+          issueIngester: { running: false },
+        },
+      },
+    }),
+  });
+  const health = await client.probeHealth();
+  assert.equal(health.state, 'down');
 });
 
 test('probeHealth: wrong-repo when the sidecar serves a different checkout', async () => {

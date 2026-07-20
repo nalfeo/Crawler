@@ -55,7 +55,7 @@ test('probeHealth reports state=up for a matching-repo healthy sidecar', async (
       ok: true,
       status: 200,
       json: async () => ({
-        ok: true,
+        status: 'ok',
         repoRoot: 'C:/repo',
         version: '1',
         storeBackend: 'azure-blob',
@@ -64,4 +64,25 @@ test('probeHealth reports state=up for a matching-repo healthy sidecar', async (
   });
   const health = await client.probeHealth();
   assert.equal(health.state, 'up');
+});
+
+test('probeHealth reports state=down when azure controllers are not ready', async () => {
+  const client = createSidecarClient({
+    baseUrl: BASE,
+    workspaceRoot: 'C:/repo',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: 'ok',
+        repoRoot: 'C:/repo',
+        version: '1',
+        queueBackend: 'azure-queue',
+        worker: { running: false },
+        issueIngester: { running: true },
+      }),
+    }),
+  });
+  const health = await client.probeHealth();
+  assert.equal(health.state, 'down');
 });

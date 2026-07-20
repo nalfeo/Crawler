@@ -381,6 +381,16 @@ async function readJson(response) {
   return response.json();
 }
 
+function isSidecarStrictReady(payload) {
+  if (!payload || payload.status !== 'ok' || typeof payload.version !== 'string') {
+    return false;
+  }
+  if (payload.queueBackend === 'azure-queue') {
+    return payload.worker?.running === true && payload.issueIngester?.running === true;
+  }
+  return true;
+}
+
 /**
  * Build a read-only sidecar client bound to `baseUrl`. Every method throws on a
  * non-2xx response (callers in the harness proxy translate that into a controlled
@@ -485,6 +495,9 @@ export function createSidecarClient(options) {
       if (!match) {
         return { ...health, state: 'wrong-repo' };
       }
+    }
+    if (!isSidecarStrictReady(payload)) {
+      return { ...health, state: 'down' };
     }
     return health;
   }
