@@ -202,6 +202,36 @@ describe('SharedResourceCache value API', () => {
     await cache.set('blob:big', Buffer.alloc(100, 1));
     expect(await cache.get('blob:big')).toBeNull();
   });
+
+  it('setIfAbsent writes when the key is absent', async () => {
+    const cache = new SharedResourceCache({ cacheDir: dir, maxBytes: 0, log: noop });
+    const bytes = Buffer.from('first-value');
+    await cache.setIfAbsent('blob:x', bytes);
+    const hit = await cache.get('blob:x');
+    expect(hit).not.toBeNull();
+    expect(hit!.data).toEqual(bytes);
+  });
+
+  it('setIfAbsent is a no-op when the key already exists (first writer wins)', async () => {
+    const cache = new SharedResourceCache({ cacheDir: dir, maxBytes: 0, log: noop });
+    await cache.set('blob:x', Buffer.from('original'));
+    await cache.setIfAbsent('blob:x', Buffer.from('replacement'));
+    const hit = await cache.get('blob:x');
+    expect(hit!.data.toString()).toBe('original');
+  });
+
+  it('concurrent setIfAbsent calls leave exactly the first-writer value', async () => {
+    const a = new SharedResourceCache({ cacheDir: dir, maxBytes: 0, log: noop });
+    const b = new SharedResourceCache({ cacheDir: dir, maxBytes: 0, log: noop });
+    // Fire both without awaiting so they race.
+    await Promise.all([
+      a.setIfAbsent('blob:race', Buffer.from('writer-a')),
+      b.setIfAbsent('blob:race', Buffer.from('writer-b')),
+    ]);
+    const hit = await a.get('blob:race');
+    // One of the two values must have won; the content must be stable (not a mix).
+    expect(['writer-a', 'writer-b']).toContain(hit!.data.toString());
+  });
 });
 
 describe('SharedResourceCache list-invalidation epoch', () => {

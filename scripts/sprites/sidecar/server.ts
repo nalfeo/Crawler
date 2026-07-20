@@ -754,6 +754,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
 
       let briefYaml: string | null = null;
+      // briefYamlBytes tracks the raw buffer so the per-run snapshot write
+      // reuses the already-fetched bytes without an extra encoding round-trip.
+      let briefYamlBytes: Buffer | null = null;
       // briefIsCanonical is true when briefYaml comes from a durable or per-run
       // snapshot (i.e. not a raw disk read) — it controls whether the assembled
       // response is eligible to be written to the shared derived-resource cache.
@@ -782,24 +785,32 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             const durableKey = workflowBriefKey(toRepoRelativePath(deps.repoRoot, resolved));
             if (await store.has(durableKey)) {
               try {
-                briefYaml = (await store.get(durableKey)).toString('utf8');
+                // Keep the Buffer directly — avoids a Buffer→string→Buffer
+                // round-trip when writing the per-run snapshot below.
+                briefYamlBytes = await store.get(durableKey);
+                briefYaml = briefYamlBytes.toString('utf8');
                 briefIsCanonical = true;
               } catch {
                 briefYaml = null;
+                briefYamlBytes = null;
               }
             }
             if (briefYaml === null) {
               try {
-                briefYaml = readFileSync(resolved, 'utf8');
+                // Read as Buffer so the same bytes are passed to
+                // writePerRunBrief without re-encoding.
+                briefYamlBytes = readFileSync(resolved);
+                briefYaml = briefYamlBytes.toString('utf8');
               } catch {
                 briefYaml = null;
+                briefYamlBytes = null;
               }
             }
             // Persist as the per-run immutable snapshot so future requests
             // for this run always get the same brief regardless of later
             // edits to the brief file.
-            if (briefYaml !== null) {
-              await writePerRunBrief(store, briefId, runId, Buffer.from(briefYaml, 'utf8'));
+            if (briefYaml !== null && briefYamlBytes !== null) {
+              await writePerRunBrief(store, briefId, runId, briefYamlBytes);
               briefIsCanonical = true;
             }
           }
@@ -983,6 +994,12 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       // Persist the per-run immutable snapshot on first successful load so that
       // future requests for this run always use the same brief bytes, even after
       // the brief file on disk is edited or the worktree is switched.
+      //
+      // Invariant: when brief !== null, snapshotBytes is always non-null.
+      // • If durableBrief !== null: brief was parsed from durableBrief → snapshotBytes = durableBrief.
+      // • If durableBrief === null: brief was parsed from diskBytes (readFileSync above). If
+      //   readFileSync threw, the catch sets brief = null, so we never reach this block. If it
+      //   succeeded, diskBytes is non-null → snapshotBytes = diskBytes.
       if (brief !== null && perRunSnapshotBytes === null) {
         const snapshotBytes = durableBrief ?? diskBytes;
         if (snapshotBytes !== null) {
