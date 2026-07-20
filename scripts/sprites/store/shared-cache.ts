@@ -246,13 +246,15 @@ export class SharedResourceCache {
       if (info === null) return false;
       const contentCheck = await cacache.get.hasContent(this.cacheDir, info.integrity);
       if (!contentCheck) {
-        // Dangling index entry: remove it so callers that immediately call
-        // get() don't encounter a confusing miss after a true has() result.
-        // Concurrent has() callers racing on the same dangling key may each
-        // attempt rm.entry; this is a benign race — rm.entry is idempotent
-        // and the extra I/O is negligible compared to the cost of a false hit.
+        // Content is missing or integrity-invalid. Guard the cleanup against a
+        // concurrent set() that may have just repaired this key: re-read the
+        // index and only remove if the integrity is still the same stale one.
+        // If it changed, the new valid entry must not be deleted.
         try {
-          await cacache.rm.entry(this.cacheDir, physicalKey);
+          const current = await cacache.get.info(this.cacheDir, physicalKey);
+          if (current !== null && current.integrity === info.integrity) {
+            await cacache.rm.entry(this.cacheDir, physicalKey);
+          }
         } catch {
           // best-effort; a stale entry is harmless if removal fails
         }
@@ -282,8 +284,10 @@ export class SharedResourceCache {
     // authoritative Azure write completes.
     const lockToken = await this.acquireLock();
     if (lockToken === null) return;
+    // physicalKey must be declared outside the try block so the catch handler
+    // can force a cache miss (rm.entry) when the write fails.
+    const physicalKey = this.physicalKey(key);
     try {
-      const physicalKey = this.physicalKey(key);
       if (this.maxBytes > 0 && data.length > this.maxBytes) {
         // Cannot store this blob; evict any stale existing entry so subsequent
         // reads fall through to the authoritative Azure store rather than
@@ -321,6 +325,16 @@ export class SharedResourceCache {
       if (this.maxBytes > 0) await this.pruneLocked(lockToken);
     } catch (err) {
       this.log(`put failed for ${redactKey(key)}: ${errMsg(err)}`);
+      // Force a cache miss so subsequent reads do not serve stale data after
+      // a successful authoritative Azure write (CachingRunStore.put commits to
+      // inner before caching). Best-effort: if removal also fails the stale
+      // entry remains, which is less harmful than an exception to the caller.
+      try {
+        await cacache.rm.entry(this.cacheDir, physicalKey);
+        this.removeMarker(physicalKey);
+      } catch {
+        // best-effort
+      }
     } finally {
       this.releaseLock(lockToken);
     }
@@ -339,6 +353,40 @@ export class SharedResourceCache {
       await this.removeContentIfUnreferenced(info.integrity);
     } catch (err) {
       this.log(`remove failed for ${redactKey(key)}: ${errMsg(err)}`);
+      // Force a cache miss even when the full removal failed so that the key
+      // is not served from a stale cache entry after the authoritative delete.
+      try {
+        await cacache.rm.entry(this.cacheDir, physicalKey);
+        this.removeMarker(physicalKey);
+      } catch {
+        // best-effort
+      }
+    } finally {
+      this.releaseLock(lockToken);
+    }
+  }
+
+  /**
+   * Write a value only if no entry currently exists for this key. The check and
+   * write are serialized under the global mutation lock, preventing a concurrent
+   * set() from being overwritten by a stale read-through fill that started
+   * before the put completed.
+   *
+   * Used for read-through cache fills (CachingRunStore.get) and for per-run
+   * immutable snapshots that must not be overwritten once set.
+   */
+  async setIfAbsent(key: string, data: Buffer, metadata?: Record<string, unknown>): Promise<void> {
+    const lockToken = await this.acquireLock();
+    if (lockToken === null) return;
+    const physicalKey = this.physicalKey(key);
+    try {
+      const existing = await cacache.get.info(this.cacheDir, physicalKey);
+      if (existing !== null) return; // already present; skip write
+      await cacache.put(this.cacheDir, physicalKey, data, metadata ? { metadata } : undefined);
+      this.touch(physicalKey);
+      if (this.maxBytes > 0) await this.pruneLocked(lockToken);
+    } catch (err) {
+      this.log(`setIfAbsent failed for ${redactKey(key)}: ${errMsg(err)}`);
     } finally {
       this.releaseLock(lockToken);
     }
@@ -563,11 +611,22 @@ export class SharedResourceCache {
           return null;
         }
         // Lock held. Reclaim it if it is an abandoned crash leftover.
+        // Use an atomic rename to "steal" the stale lock dir — only ONE
+        // process can rename it; the winner exclusively owns recovery and
+        // the loser retries normally. This eliminates the TOCTOU where two
+        // processes both observe a stale lock and both delete it, the second
+        // deleting the newly acquired lock of the first.
         try {
           const age = Date.now() - statSync(this.lockOwnerFile()).mtimeMs;
           if (age > STALE_LOCK_MS) {
-            rmSync(this.lockDir, { recursive: true, force: true });
-            continue;
+            const recoveryDir = `${this.lockDir}.recovering.${randomUUID()}`;
+            try {
+              renameSync(this.lockDir, recoveryDir); // atomic steal
+              rmSync(recoveryDir, { recursive: true, force: true });
+              continue; // back to mkdirSync
+            } catch {
+              // Another process won the rename race — retry normally.
+            }
           }
         } catch (statErr) {
           // If the owner file is missing (crash between mkdirSync and
@@ -578,8 +637,14 @@ export class SharedResourceCache {
             try {
               const dirAge = Date.now() - statSync(this.lockDir).mtimeMs;
               if (dirAge > STALE_LOCK_MS) {
-                rmSync(this.lockDir, { recursive: true, force: true });
-                continue;
+                const recoveryDir = `${this.lockDir}.recovering.${randomUUID()}`;
+                try {
+                  renameSync(this.lockDir, recoveryDir); // atomic steal
+                  rmSync(recoveryDir, { recursive: true, force: true });
+                  continue;
+                } catch {
+                  // Another process won the rename race — retry normally.
+                }
               }
             } catch {
               // Lock directory vanished between our create and stat — retry.

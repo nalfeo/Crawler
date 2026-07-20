@@ -138,7 +138,11 @@ beforeEach(async () => {
     url: `/api/runs/${BRIEF_ID}/${RUN_ID}/slice-map`,
   });
   expect(branchSliceRes.statusCode).toBe(200);
-  expect((branchSliceRes.json() as { emptyCellsApplied: boolean }).emptyCellsApplied).toBe(false);
+  // With per-run immutable brief snapshots the brief route (called above) has
+  // already stored the canonical brief as the per-run snapshot. The slice-map
+  // therefore uses the canonical brief regardless of the current disk state,
+  // so emptyCellsApplied is true even though the disk has a branch-local copy.
+  expect((branchSliceRes.json() as { emptyCellsApplied: boolean }).emptyCellsApplied).toBe(true);
   writeFileSync(path.join(repoRoot, BRIEF_REL), canonicalBrief);
   const sliceRes = await warmApp.inject({
     method: 'GET',

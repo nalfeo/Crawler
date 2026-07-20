@@ -87,7 +87,7 @@ import {
 } from '../rerun.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
 import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
-import { loadBrief, type LoadedBrief } from '../load-brief.js';
+import { loadBrief, loadBriefFromYaml, type LoadedBrief } from '../load-brief.js';
 import {
   isRepoConfined,
   materializeBriefFromStore,
@@ -128,6 +128,41 @@ async function readCachedJson(store: RunStore, key: string): Promise<unknown | n
 async function writeCachedJson(store: RunStore, key: string, value: unknown): Promise<void> {
   if (!hasDerivedResourceCache(store)) return;
   await store.setCachedResource(key, Buffer.from(JSON.stringify(value), 'utf8'));
+}
+
+/**
+ * Cache key prefix for per-run immutable brief snapshots. Unlike path-level
+ * durable keys (`workflow-state/briefs/…`), per-run snapshots capture exactly
+ * the brief that was active when the run was generated. They survive global
+ * cache invalidation (their key sits outside the `route/` namespace) but are
+ * cleared when the run itself is deleted (`invalidateDerivedResources` removes
+ * them on `summary.json` removal). See `server.ts` brief and slice-map routes.
+ */
+const PER_RUN_BRIEF_PREFIX = 'brief-snapshot';
+
+/** Read the per-run brief snapshot bytes, or null if not yet stored. */
+async function readPerRunBrief(
+  store: RunStore,
+  briefId: string,
+  runId: string,
+): Promise<Buffer | null> {
+  if (!hasDerivedResourceCache(store)) return null;
+  return store.getCachedResource(`${PER_RUN_BRIEF_PREFIX}/${briefId}/${runId}`);
+}
+
+/**
+ * Persist the per-run brief snapshot using setIfAbsent so the first writer
+ * wins — the bytes are immutable once set (they capture the brief state at
+ * generation time). Concurrent writers safely converge on the same content.
+ */
+async function writePerRunBrief(
+  store: RunStore,
+  briefId: string,
+  runId: string,
+  yamlBytes: Buffer,
+): Promise<void> {
+  if (!hasDerivedResourceCache(store)) return;
+  await store.setIfAbsentCachedResource(`${PER_RUN_BRIEF_PREFIX}/${briefId}/${runId}`, yamlBytes);
 }
 
 export interface SidecarDeps {
@@ -721,26 +756,44 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       let briefYaml: string | null = null;
       let snapshotEligible = false;
       if (typeof summary.briefPath === 'string' && summary.briefPath !== '') {
-        // Resolve brief path safely — must stay under repoRoot.
-        const resolved = path.isAbsolute(summary.briefPath)
-          ? summary.briefPath
-          : path.resolve(deps.repoRoot, summary.briefPath);
-        const rel = path.relative(deps.repoRoot, resolved);
-        if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-          const durableKey = workflowBriefKey(toRepoRelativePath(deps.repoRoot, resolved));
-          if (await store.has(durableKey)) {
-            try {
-              briefYaml = (await store.get(durableKey)).toString('utf8');
-              snapshotEligible = true;
-            } catch {
-              briefYaml = null;
+        // Check the per-run immutable snapshot first. It captures the brief
+        // bytes that were active when the run was generated, so it is immune
+        // to later edits of the brief file (the path-level durable key is a
+        // last-writer-wins mirror that would serve the wrong generation config
+        // for older runs after the brief is edited).
+        const perRunBytes = await readPerRunBrief(store, briefId, runId);
+        if (perRunBytes !== null) {
+          briefYaml = perRunBytes.toString('utf8');
+          snapshotEligible = true;
+        } else {
+          // Resolve brief path safely — must stay under repoRoot.
+          const resolved = path.isAbsolute(summary.briefPath)
+            ? summary.briefPath
+            : path.resolve(deps.repoRoot, summary.briefPath);
+          const rel = path.relative(deps.repoRoot, resolved);
+          if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+            const durableKey = workflowBriefKey(toRepoRelativePath(deps.repoRoot, resolved));
+            if (await store.has(durableKey)) {
+              try {
+                briefYaml = (await store.get(durableKey)).toString('utf8');
+                snapshotEligible = true;
+              } catch {
+                briefYaml = null;
+              }
             }
-          }
-          if (briefYaml === null) {
-            try {
-              briefYaml = readFileSync(resolved, 'utf8');
-            } catch {
-              briefYaml = null;
+            if (briefYaml === null) {
+              try {
+                briefYaml = readFileSync(resolved, 'utf8');
+              } catch {
+                briefYaml = null;
+              }
+            }
+            // Persist as the per-run immutable snapshot so future requests
+            // for this run always get the same brief regardless of later
+            // edits to the brief file.
+            if (briefYaml !== null) {
+              await writePerRunBrief(store, briefId, runId, Buffer.from(briefYaml, 'utf8'));
+              snapshotEligible = true;
             }
           }
         }
@@ -861,8 +914,19 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(403);
         return { error: 'forbidden-brief-path' };
       }
-      let durableBrief: Buffer | null = null;
-      if (hasDerivedResourceCache(store)) {
+      // Load the brief for fingerprinting and slice-map computation.
+      // Priority: (1) per-run immutable snapshot, (2) path-level durable key.
+      // Track whether a per-run snapshot already exists so we can persist one
+      // after a successful load when it doesn't (first warm of this run).
+      const perRunSnapshotBytes = hasDerivedResourceCache(store)
+        ? await readPerRunBrief(store, briefId, runId)
+        : null;
+      let durableBrief: Buffer | null = perRunSnapshotBytes;
+      if (durableBrief === null && hasDerivedResourceCache(store)) {
+        // Per-run snapshot not yet set — fall back to the path-level durable key
+        // (last-writer-wins mirror). Once we load the brief we will persist it
+        // as the per-run immutable snapshot so future requests are independent
+        // of further edits to the brief file.
         const durableKey = workflowBriefKey(toRepoRelativePath(deps.repoRoot, resolved));
         if (await store.has(durableKey)) {
           try {
@@ -882,15 +946,42 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           durableBriefMatches = false;
         }
       }
-      // Pass `projectRoot` so loadBrief resolves palette / type-defaults against
-      // THIS repo (every other call site does; omitting it falls back to
-      // process.cwd()). A brief that still cannot load degrades to a brief-less
-      // slice map below instead of 500ing the debugger.
+      // Load the fully-resolved Brief object for computeSliceMap and
+      // fingerprinting. Use the cached bytes when available so the fingerprint
+      // is based on the immutable generation config rather than whatever the
+      // worktree currently has on disk. Fall back to loading from disk when no
+      // cached bytes exist (first warm of this run).
       let brief: Brief | null;
       try {
-        brief = loadBrief(resolved, { projectRoot: deps.repoRoot }).brief;
+        if (durableBrief !== null) {
+          // Parse from the cached YAML so type-defaults and palette are
+          // resolved consistently across worktrees for the same run.
+          brief = loadBriefFromYaml(durableBrief.toString('utf8'), {
+            projectRoot: deps.repoRoot,
+          });
+        } else {
+          // Pass `projectRoot` so loadBrief resolves palette / type-defaults
+          // against THIS repo. Degrades to brief-less on failure.
+          brief = loadBrief(resolved, { projectRoot: deps.repoRoot }).brief;
+        }
       } catch {
         brief = null;
+      }
+      // Persist the per-run immutable snapshot on first successful load so that
+      // future requests for this run always use the same brief bytes, even after
+      // the brief file on disk is edited or the worktree is switched.
+      if (brief !== null && perRunSnapshotBytes === null) {
+        let snapshotBytes = durableBrief;
+        if (snapshotBytes === null) {
+          try {
+            snapshotBytes = readFileSync(resolved);
+          } catch {
+            snapshotBytes = null;
+          }
+        }
+        if (snapshotBytes !== null) {
+          await writePerRunBrief(store, briefId, runId, snapshotBytes);
+        }
       }
 
       // Stable 16-hex fingerprint of the fully-resolved generation config.

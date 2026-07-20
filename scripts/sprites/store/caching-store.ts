@@ -75,13 +75,16 @@ export interface CachingRunStoreOptions {
 export interface DerivedResourceCache {
   getCachedResource(key: string): Promise<Buffer | null>;
   setCachedResource(key: string, data: Buffer): Promise<void>;
+  /** Write only if absent: used for immutable per-run snapshots and read-through fills. */
+  setIfAbsentCachedResource(key: string, data: Buffer): Promise<void>;
 }
 
 export function hasDerivedResourceCache(store: RunStore): store is RunStore & DerivedResourceCache {
   const candidate = store as Partial<DerivedResourceCache>;
   return (
     typeof candidate.getCachedResource === 'function' &&
-    typeof candidate.setCachedResource === 'function'
+    typeof candidate.setCachedResource === 'function' &&
+    typeof candidate.setIfAbsentCachedResource === 'function'
   );
 }
 
@@ -149,7 +152,10 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     if (hit !== null) return hit.data;
     if (this.offline) throw new StoreNotFoundError(key);
     const data = await this.inner.get(key);
-    await this.cache.set(`${BLOB_PREFIX}${key}`, data);
+    // Use setIfAbsent for read-through fills: if a concurrent put already
+    // cached the authoritative value for this key (same or cross instance),
+    // do not overwrite it with this potentially stale fill.
+    await this.cache.setIfAbsent(`${BLOB_PREFIX}${key}`, data);
     return data;
   }
 
@@ -211,6 +217,10 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     await this.cache.set(`${DERIVED_PREFIX}${key}`, data);
   }
 
+  async setIfAbsentCachedResource(key: string, data: Buffer): Promise<void> {
+    await this.cache.setIfAbsent(`${DERIVED_PREFIX}${key}`, data);
+  }
+
   private async readSnapshot(snapshotKey: string): Promise<ListSnapshot | null> {
     const entry = await this.cache.get(snapshotKey);
     if (entry === null) return null;
@@ -244,6 +254,8 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     if (filename === 'summary.json') {
       await this.cache.remove(`${DERIVED_PREFIX}route/brief/${routePrefix}`);
       await this.cache.removeByPrefix(`${DERIVED_PREFIX}route/slice-map/${routePrefix}/`);
+      // Clear the per-run immutable brief snapshot so it does not outlive the run.
+      await this.cache.remove(`${DERIVED_PREFIX}brief-snapshot/${routePrefix}`);
       return;
     }
     if (/^sheet-\d+\.png$/i.test(filename)) {
