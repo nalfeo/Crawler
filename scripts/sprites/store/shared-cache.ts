@@ -451,34 +451,76 @@ export class SharedResourceCache {
     return token;
   }
 
-  /** Remove every logical key beginning with `prefix`, then compact orphaned content. */
-  async removeByPrefix(prefix: string): Promise<void> {
+  /**
+   * Remove every logical key beginning with `prefix`, then compact orphaned content.
+   *
+   * Returns `true` when every matching key was successfully removed, `false` on
+   * any partial or total failure. On failure each affected key that could not be
+   * removed is poisoned so that subsequent `get()` / `has()` calls return a miss
+   * rather than serving stale data — mirroring the guarantees of `remove()`.
+   */
+  async removeByPrefix(prefix: string): Promise<boolean> {
     const physicalPrefix = this.physicalKey(prefix);
     const lockToken = await this.acquireLock();
-    if (lockToken === null) return;
+    if (lockToken === null) return false;
+    let allOk = true;
+    // Capture matched keys outside the catch block so the error handler can
+    // poison any key that was identified but not yet successfully removed.
+    let keysToRemove: string[] = [];
+    const removedKeys = new Set<string>();
     try {
       const entries = await cacache.ls(this.cacheDir);
-      const keys = Object.keys(entries).filter((key) => key.startsWith(physicalPrefix));
-      if (keys.length === 0) return;
+      keysToRemove = Object.keys(entries).filter((key) => key.startsWith(physicalPrefix));
+      if (keysToRemove.length === 0) return true;
       const removedIntegrities = new Set<string>();
-      for (const key of keys) {
-        if (!this.ownsLock(lockToken)) return;
+      for (const key of keysToRemove) {
+        if (!this.ownsLock(lockToken)) return false;
         const entry = entries[key];
         if (entry) removedIntegrities.add(entry.integrity);
-        await cacache.rm.entry(this.cacheDir, key);
-        this.removeMarker(key);
+        try {
+          await cacache.rm.entry(this.cacheDir, key);
+          this.removeMarker(key);
+          this.clearPoison(key);
+          removedKeys.add(key);
+        } catch (entryErr) {
+          this.log(`remove prefix entry failed for ${redactKey(key)}: ${errMsg(entryErr)}`);
+          // Mirror the exact-key remove() failure pattern: try a secondary
+          // rm.entry; if that also fails, poison so the key is never served.
+          try {
+            await cacache.rm.entry(this.cacheDir, key);
+            this.removeMarker(key);
+            this.clearPoison(key);
+            removedKeys.add(key);
+          } catch {
+            this.markPoisoned(key);
+          }
+          allOk = false;
+        }
       }
       const remainingIntegrities = new Set(
         Object.values(await cacache.ls(this.cacheDir)).map((entry) => entry.integrity),
       );
       for (const integrity of removedIntegrities) {
-        if (!this.ownsLock(lockToken)) return;
+        if (!this.ownsLock(lockToken)) return false;
         if (!remainingIntegrities.has(integrity)) {
           await cacache.rm.content(this.cacheDir, integrity);
         }
       }
+      return allOk;
     } catch (err) {
       this.log(`remove prefix failed for ${redactKey(prefix)}: ${errMsg(err)}`);
+      // Poison every key we identified but did not successfully remove, so that
+      // stale entries are never served after the authoritative write succeeds.
+      for (const key of keysToRemove) {
+        if (removedKeys.has(key)) continue;
+        try {
+          await cacache.rm.entry(this.cacheDir, key);
+          this.removeMarker(key);
+        } catch {
+          this.markPoisoned(key);
+        }
+      }
+      return false;
     } finally {
       this.releaseLock(lockToken);
     }

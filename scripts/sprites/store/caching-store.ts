@@ -254,8 +254,11 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
 
   private async invalidateDerivedResources(key: string): Promise<void> {
     if (key.startsWith('workflow-state/briefs/')) {
-      await this.cache.removeByPrefix(`${DERIVED_PREFIX}route/brief/`);
-      await this.cache.removeByPrefix(`${DERIVED_PREFIX}route/slice-map/`);
+      const ok1 = await this.cache.removeByPrefix(`${DERIVED_PREFIX}route/brief/`);
+      const ok2 = await this.cache.removeByPrefix(`${DERIVED_PREFIX}route/slice-map/`);
+      // On failure the shared cache poisons affected keys so they are not served
+      // from stale data; bump the epoch so listing snapshots are also invalidated.
+      if (!ok1 || !ok2) this.cache.bumpEpoch();
       return;
     }
 
@@ -265,8 +268,11 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
     if (!briefId || !runId || !filename) return;
     const routePrefix = `${briefId}/${runId}`;
     if (filename === 'summary.json') {
-      await this.cache.remove(`${DERIVED_PREFIX}route/brief/${routePrefix}`);
-      await this.cache.removeByPrefix(`${DERIVED_PREFIX}route/slice-map/${routePrefix}/`);
+      const ok1 = await this.cache.remove(`${DERIVED_PREFIX}route/brief/${routePrefix}`);
+      const ok2 = await this.cache.removeByPrefix(
+        `${DERIVED_PREFIX}route/slice-map/${routePrefix}/`,
+      );
+      if (!ok1 || !ok2) this.cache.bumpEpoch();
       return;
     }
     if (/^sheet-\d+\.png$/i.test(filename)) {
@@ -274,10 +280,13 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
       // and all fingerprinted variants (e.g. `latest:<fp>`, `sheet-1.png:<fp>`)
       // are cleared atomically. Leaving any fingerprinted key would allow a
       // cache-first read to return stale geometry from the old PNG.
-      await this.cache.removeByPrefix(`${DERIVED_PREFIX}route/slice-map/${routePrefix}/latest`);
-      await this.cache.removeByPrefix(
+      const ok1 = await this.cache.removeByPrefix(
+        `${DERIVED_PREFIX}route/slice-map/${routePrefix}/latest`,
+      );
+      const ok2 = await this.cache.removeByPrefix(
         `${DERIVED_PREFIX}route/slice-map/${routePrefix}/${filename}`,
       );
+      if (!ok1 || !ok2) this.cache.bumpEpoch();
     }
   }
 
