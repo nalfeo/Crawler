@@ -160,8 +160,8 @@ No ADR was needed (single-system change, not affecting 2+ systems).
 - `npx tsc --noEmit` — clean, no errors.
 - `npx vitest run tests/unit/ai/sweep-aggregate-shards.test.ts
 tests/unit/ai/sweep-round-plan.test.ts
-tests/unit/ai/sweep-eval-search-promotion.test.ts` — **119/119 passing**
-  (58 + 46 + 15, including the two mirrored 292/300-vs-286/300 regression tests
+tests/unit/ai/sweep-eval-search-promotion.test.ts` — **112/112 passing**
+  (58 + 39 + 15, including the two mirrored 292/300-vs-286/300 regression tests
   at the aggregate-shards and legacy-path levels, the wins-tie rejection test,
   the wins-decrease rejection test, the isolated below-90%-floor test, the
   incumbent-identity-scoping test, 2 non-LEGACY combo path tests, and the
