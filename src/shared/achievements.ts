@@ -95,7 +95,6 @@ export type AchievementUnlockRule =
       readonly phase?: AchievementRulePhase;
     };
 
-
 export interface AchievementDef {
   readonly id: string;
   readonly floor: AchievementFloor;
@@ -255,9 +254,14 @@ function removeUnlockCriteriaDuplication(achievement: AchievementDef): Achieveme
   };
 }
 
-export function parseAchievementCatalog(rawCatalog: unknown): readonly AchievementDef[] {
-  const catalog = achievementCatalogSchema.parse(rawCatalog);
-  // Validate that current_run achievements only reference current_run-compatible facts.
+/**
+ * Validate that every `current_run`-scoped achievement in the catalog only
+ * references facts that are available at run scope. Throws on the first
+ * violation. Accepts an empty array so it can be used by both
+ * `parseAchievementCatalog` (non-empty authored data) and
+ * `createAchievementCatalog` (runtime catalogs that may start empty).
+ */
+function validateCurrentRunFactCompatibility(catalog: readonly AchievementDef[]): void {
   for (const achievement of catalog) {
     if (achievement.scope !== 'current_run') continue;
     for (const rule of achievement.unlockRules) {
@@ -281,6 +285,11 @@ export function parseAchievementCatalog(rawCatalog: unknown): readonly Achieveme
       }
     }
   }
+}
+
+export function parseAchievementCatalog(rawCatalog: unknown): readonly AchievementDef[] {
+  const catalog = achievementCatalogSchema.parse(rawCatalog);
+  validateCurrentRunFactCompatibility(catalog);
   return catalog.map(removeUnlockCriteriaDuplication);
 }
 
@@ -288,7 +297,9 @@ export function createAchievementCatalog(
   floor: AchievementFloor,
   rawCatalog: unknown,
 ): AchievementCatalog {
-  const all = possiblyEmptyAchievementCatalogSchema.parse(rawCatalog).map(removeUnlockCriteriaDuplication);
+  const parsed = possiblyEmptyAchievementCatalogSchema.parse(rawCatalog);
+  validateCurrentRunFactCompatibility(parsed);
+  const all = parsed.map(removeUnlockCriteriaDuplication);
   const seenIds = new Set<string>();
   for (const achievement of all) {
     if (achievement.floor !== floor) {

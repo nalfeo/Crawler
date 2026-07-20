@@ -60,7 +60,10 @@ describe('player floor carryover', () => {
     source.achievements.carriedRunFacts = {
       ...source.achievements.carriedRunFacts,
       numberFacts: { ...source.achievements.carriedRunFacts.numberFacts, totalKills: 99 },
-      booleanFacts: { ...source.achievements.carriedRunFacts.booleanFacts, staircaseUnlocked: true },
+      booleanFacts: {
+        ...source.achievements.carriedRunFacts.booleanFacts,
+        staircaseUnlocked: true,
+      },
       completedQuestIds: ['floor1-find-welcome'],
     };
     addStatModifier(source, {

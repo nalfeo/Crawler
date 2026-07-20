@@ -46,7 +46,7 @@ function completeQuestState(questId: string): QuestState {
 function scopedAchievement(
   id: string,
   scope: 'floor' | 'current_run',
-  fact: 'playerGold' | 'goldCollected',
+  fact: 'playerGold' | 'totalKills',
 ): AchievementDef {
   return {
     ...FLOOR1_ACHIEVEMENTS[0]!,
@@ -156,7 +156,7 @@ describe('achievementSystem', () => {
     const registry = createAchievementCatalogRegistry([
       createAchievementCatalog(2, [
         scopedAchievement('floor2-local-gold', 'floor', 'playerGold'),
-        scopedAchievement('floor2-run-gold', 'current_run', 'goldCollected'),
+        scopedAchievement('floor2-run-kills', 'current_run', 'totalKills'),
       ]),
     ]);
     const world = createTestWorld({ seed: 42, floor: 2 });
@@ -167,7 +167,7 @@ describe('achievementSystem', () => {
       numberFacts: {
         ...createEmptyAchievementFactSnapshot().numberFacts,
         playerGold: 100,
-        goldCollected: 100,
+        totalKills: 100,
       },
       reachedFloorIds: [1],
     };
@@ -175,7 +175,7 @@ describe('achievementSystem', () => {
     evaluateAchievementUnlocksForPhase(world, 'tick', registry);
 
     expect(world.achievements.unlockedIds.has('floor2-local-gold')).toBe(false);
-    expect(world.achievements.unlockedIds.has('floor2-run-gold')).toBe(true);
+    expect(world.achievements.unlockedIds.has('floor2-run-kills')).toBe(true);
   });
 
   it('does not activate a Floor 2-introduced current-run definition on Floor 1', () => {
