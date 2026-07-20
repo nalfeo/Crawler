@@ -44,6 +44,17 @@
     "path": "by-sha/a1c23cbeabdec9d74633a8ffa3f0f9586443936d.json"
   },
   {
+    "commit": "f5f79b4bbaee8f35a8f858351b3256488d85140b",
+    "commitDate": "2026-07-20T13:56:00-07:00",
+    "commitSubject": "feat(equipment): add generated instance registry (#1379)",
+    "capturedAt": "2026-07-20T22:14:22.930Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29778868793",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/f5f79b4bbaee8f35a8f858351b3256488d85140b.json"
+  },
+  {
     "commit": "885a71d55532eecff4b61ecd2899a50ddba877b3",
     "commitDate": "2026-07-20T06:27:38Z",
     "commitSubject": "docs(equipment): reconcile Floor 2 contract stack root (#1276)",
