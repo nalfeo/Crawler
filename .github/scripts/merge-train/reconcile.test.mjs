@@ -744,6 +744,38 @@ test('live Actions runs require separate promotion and workflow-dispatch tokens'
   );
 });
 
+test('resolveMergeTrainTokens never falls back to MERGE_TRAIN_TOKEN for workflowDispatchToken in non-Actions context', () => {
+  // Outside a live Actions run GITHUB_TOKEN may be absent. workflowDispatchToken
+  // must remain empty rather than picking up MERGE_TRAIN_TOKEN: an App/PAT push
+  // creates a real trusted push event that lets candidate workflow files execute
+  // with secrets before validation. buildCandidate() already guards this path —
+  // it throws before ref mutation when githubToken is absent.
+  const result = resolveMergeTrainTokens({
+    MERGE_TRAIN_TOKEN: 'app-token',
+    // GITHUB_ACTIONS not set → non-Actions context
+  });
+  assert.equal(result.workflowDispatchToken, '');
+  assert.equal(result.promotionToken, 'app-token');
+
+  // With GITHUB_TOKEN present it is still used correctly in non-Actions context.
+  const withGithubToken = resolveMergeTrainTokens({
+    MERGE_TRAIN_TOKEN: 'app-token',
+    GITHUB_TOKEN: 'local-token',
+  });
+  assert.equal(withGithubToken.workflowDispatchToken, 'local-token');
+
+  // In a live Actions context the missing-GITHUB_TOKEN error still fires.
+  assert.throws(
+    () =>
+      resolveMergeTrainTokens({
+        GITHUB_ACTIONS: 'true',
+        MERGE_TRAIN_TOKEN: 'app-token',
+        // no GITHUB_TOKEN
+      }),
+    /requires GITHUB_TOKEN for workflow dispatch/,
+  );
+});
+
 test('workflow dispatch helpers use the Actions token for recovery and validation', async () => {
   const calls = [];
   const request = async (token, path, options) => {
