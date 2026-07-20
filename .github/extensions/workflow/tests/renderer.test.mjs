@@ -101,6 +101,19 @@ test('criterion feedback: comment box is hidden until a thumb is selected, and c
   assert.match(html, /'x-workflow-mutation-token': mutationToken/);
 });
 
+test('feedback confirmation serializes saves and freezes the submitted draft while saving', () => {
+  const html = renderHtml('x');
+  assert.match(html, /if \(saving\) return/);
+  assert.match(html, /var submitted = \{ verdict: draft\.verdict, comment: draft\.comment \}/);
+  assert.match(html, /setDisabled\(true\)/);
+  assert.match(html, /up\.disabled = disabled/);
+  assert.match(html, /down\.disabled = disabled/);
+  assert.match(html, /input\.disabled = disabled/);
+  assert.match(html, /persisted\.verdict = submitted\.verdict/);
+  assert.match(html, /persisted\.comment = submitted\.comment/);
+  assert.match(html, /\.finally\(function \(\) \{[\s\S]*setDisabled\(false\)/);
+});
+
 test('criterion feedback: a confirmed criterion is written to the CANONICAL candidate location, not a disconnected fallback', () => {
   const html = renderHtml('x');
   // Regression guard for the finding that a first-time-confirmed criterion

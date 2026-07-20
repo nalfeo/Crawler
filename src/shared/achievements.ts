@@ -38,6 +38,7 @@ export const ACHIEVEMENT_NUMBER_FACTS = [
   'questLogSize',
   'playerGold',
   'unlockedAbilityCount',
+  'clearedFloorCount',
 ] as const;
 export type AchievementNumberFact = (typeof ACHIEVEMENT_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
@@ -48,6 +49,7 @@ export const ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS = [
   'questLogSize',
   'playerGold',
   'unlockedAbilityCount',
+  'clearedFloorCount',
 ] as const;
 export type AchievementCurrentRunNumberFact = (typeof ACHIEVEMENT_CURRENT_RUN_NUMBER_FACTS)[number];
 export const ACHIEVEMENT_BOOLEAN_FACTS = [
@@ -107,6 +109,29 @@ export interface AchievementDef {
   readonly difficulty: AchievementDifficulty;
   readonly reward: AchievementReward;
   readonly unlockRules: readonly AchievementUnlockRule[];
+}
+
+export interface AchievementFactSnapshot {
+  readonly numberFacts: Readonly<Record<AchievementNumberFact, number>>;
+  readonly booleanFacts: Readonly<Record<AchievementBooleanFact, boolean>>;
+  readonly questIds: readonly string[];
+  readonly completedQuestIds: readonly string[];
+  readonly reachedFloorIds: readonly number[];
+  readonly clearedFloorIds: readonly number[];
+}
+
+export interface AchievementCatalog {
+  readonly floor: AchievementFloor;
+  readonly all: readonly AchievementDef[];
+  readonly floorScoped: readonly AchievementDef[];
+  readonly currentRunGlobal: readonly AchievementDef[];
+}
+
+export interface AchievementCatalogRegistry {
+  readonly catalogs: readonly AchievementCatalog[];
+  readonly all: readonly AchievementDef[];
+  readonly byFloor: ReadonlyMap<AchievementFloor, AchievementCatalog>;
+  readonly byId: ReadonlyMap<string, AchievementDef>;
 }
 
 export interface AchievementArtBacklogItem {
@@ -196,6 +221,7 @@ const achievementSchema = z
   .strict();
 
 const achievementCatalogSchema = z.array(achievementSchema).min(1);
+const possiblyEmptyAchievementCatalogSchema = z.array(achievementSchema);
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -229,8 +255,14 @@ function removeUnlockCriteriaDuplication(achievement: AchievementDef): Achieveme
   };
 }
 
-export function parseAchievementCatalog(rawCatalog: unknown): readonly AchievementDef[] {
-  const catalog = achievementCatalogSchema.parse(rawCatalog);
+/**
+ * Validate that every `current_run`-scoped achievement in the catalog only
+ * references facts that are available at run scope. Throws on the first
+ * violation. Accepts an empty array so it can be used by both
+ * `parseAchievementCatalog` (non-empty authored data) and
+ * `createAchievementCatalog` (runtime catalogs that may start empty).
+ */
+function validateCurrentRunFactCompatibility(catalog: readonly AchievementDef[]): void {
   for (const achievement of catalog) {
     if (achievement.scope !== 'current_run') continue;
     for (const rule of achievement.unlockRules) {
@@ -254,33 +286,108 @@ export function parseAchievementCatalog(rawCatalog: unknown): readonly Achieveme
       }
     }
   }
+}
+
+export function parseAchievementCatalog(rawCatalog: unknown): readonly AchievementDef[] {
+  const catalog = achievementCatalogSchema.parse(rawCatalog);
+  validateCurrentRunFactCompatibility(catalog);
   return catalog.map(removeUnlockCriteriaDuplication);
 }
 
-export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] =
-  parseAchievementCatalog(floor1Achievements);
-export const FLOOR2_ACHIEVEMENTS: readonly AchievementDef[] = [];
+export function createAchievementCatalog(
+  floor: AchievementFloor,
+  rawCatalog: unknown,
+): AchievementCatalog {
+  const parsed = possiblyEmptyAchievementCatalogSchema.parse(rawCatalog);
+  validateCurrentRunFactCompatibility(parsed);
+  const all = parsed.map(removeUnlockCriteriaDuplication);
+  const seenIds = new Set<string>();
+  for (const achievement of all) {
+    if (achievement.floor !== floor) {
+      throw new Error(
+        `Achievement ${achievement.id} belongs to floor ${achievement.floor}, not catalog floor ${floor}`,
+      );
+    }
+    if (seenIds.has(achievement.id)) {
+      throw new Error(`Duplicate achievement id in floor ${floor} catalog: ${achievement.id}`);
+    }
+    seenIds.add(achievement.id);
+  }
 
-const ACHIEVEMENTS_BY_FLOOR: Readonly<Record<AchievementFloor, readonly AchievementDef[]>> = {
-  1: FLOOR1_ACHIEVEMENTS,
-  2: FLOOR2_ACHIEVEMENTS,
-};
-
-const ALL_ACHIEVEMENTS = [...FLOOR1_ACHIEVEMENTS, ...FLOOR2_ACHIEVEMENTS];
-const UNIQUE_ACHIEVEMENT_IDS = new Set(ALL_ACHIEVEMENTS.map((achievement) => achievement.id));
-if (UNIQUE_ACHIEVEMENT_IDS.size !== ALL_ACHIEVEMENTS.length) {
-  throw new Error('Achievement ids must be globally unique across floor catalogs');
+  return {
+    floor,
+    all,
+    floorScoped: all.filter((achievement) => achievement.scope !== 'current_run'),
+    currentRunGlobal: all.filter((achievement) => achievement.scope === 'current_run'),
+  };
 }
+
+export function createAchievementCatalogRegistry(
+  catalogs: readonly AchievementCatalog[],
+): AchievementCatalogRegistry {
+  const orderedCatalogs = [...catalogs];
+  const byFloor = new Map<AchievementFloor, AchievementCatalog>();
+  const byId = new Map<string, AchievementDef>();
+  for (const catalog of orderedCatalogs) {
+    if (byFloor.has(catalog.floor)) {
+      throw new Error(`Duplicate achievement catalog for floor ${catalog.floor}`);
+    }
+    byFloor.set(catalog.floor, catalog);
+    for (const achievement of catalog.all) {
+      if (byId.has(achievement.id)) {
+        throw new Error(`Duplicate achievement id across catalogs: ${achievement.id}`);
+      }
+      byId.set(achievement.id, achievement);
+    }
+  }
+  return {
+    catalogs: orderedCatalogs,
+    all: orderedCatalogs.flatMap((catalog) => catalog.all),
+    byFloor,
+    byId,
+  };
+}
+
+export const FLOOR1_ACHIEVEMENT_CATALOG = createAchievementCatalog(1, floor1Achievements);
+export const FLOOR2_ACHIEVEMENT_CATALOG = createAchievementCatalog(2, []);
+export const ACHIEVEMENT_CATALOG_REGISTRY = createAchievementCatalogRegistry([
+  FLOOR1_ACHIEVEMENT_CATALOG,
+  FLOOR2_ACHIEVEMENT_CATALOG,
+]);
+export const ALL_ACHIEVEMENTS: readonly AchievementDef[] = ACHIEVEMENT_CATALOG_REGISTRY.all;
+export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR1_ACHIEVEMENT_CATALOG.all;
+export const FLOOR2_ACHIEVEMENTS: readonly AchievementDef[] = FLOOR2_ACHIEVEMENT_CATALOG.all;
 
 export function isAchievementFloor(value: number): value is AchievementFloor {
   return value === 1 || value === 2;
 }
 
-export function getAchievementCatalogForFloor(floor: AchievementFloor): readonly AchievementDef[] {
-  return ACHIEVEMENTS_BY_FLOOR[floor];
+export function getAchievementCatalogForFloor(
+  floor: number,
+  registry: AchievementCatalogRegistry = ACHIEVEMENT_CATALOG_REGISTRY,
+): AchievementCatalog | undefined {
+  if (!isAchievementFloor(floor)) return undefined;
+  return registry.byFloor.get(floor);
 }
 
-export function createEmptyAchievementFactState(): AchievementFactState {
+export function getCurrentRunGlobalAchievements(
+  reachedFloorIds: readonly number[],
+  registry: AchievementCatalogRegistry = ACHIEVEMENT_CATALOG_REGISTRY,
+): readonly AchievementDef[] {
+  const reachedFloors = new Set(reachedFloorIds);
+  return registry.catalogs.flatMap((catalog) =>
+    catalog.currentRunGlobal.filter((achievement) => reachedFloors.has(achievement.floor)),
+  );
+}
+
+export function getAchievementById(
+  id: string,
+  registry: AchievementCatalogRegistry = ACHIEVEMENT_CATALOG_REGISTRY,
+): AchievementDef | undefined {
+  return registry.byId.get(id);
+}
+
+export function createEmptyAchievementFactSnapshot(): AchievementFactSnapshot {
   return {
     numberFacts: {
       totalKills: 0,
@@ -293,6 +400,7 @@ export function createEmptyAchievementFactState(): AchievementFactState {
       questLogSize: 0,
       playerGold: 0,
       unlockedAbilityCount: 0,
+      clearedFloorCount: 0,
     },
     booleanFacts: {
       staircaseBattleStarted: false,
@@ -302,29 +410,89 @@ export function createEmptyAchievementFactState(): AchievementFactState {
       staircaseDiscovered: false,
       runClearedFloor: false,
     },
-    completedQuestIds: new Set(),
+    questIds: [],
+    completedQuestIds: [],
+    reachedFloorIds: [],
+    clearedFloorIds: [],
   };
 }
 
-export function getAchievementById(
-  id: string,
-  options?: { readonly floor?: AchievementFloor; readonly scope?: AchievementScope },
-): AchievementDef | undefined {
-  const floors = options?.floor === undefined ? ACHIEVEMENT_FLOORS : [options.floor];
-  for (const floor of floors) {
-    const achievement = ACHIEVEMENTS_BY_FLOOR[floor].find(
-      (entry) => entry.id === id && (options?.scope === undefined || entry.scope === options.scope),
-    );
-    if (achievement) {
-      return achievement;
+const SUM_NUMBER_FACTS = new Set<AchievementNumberFact>([
+  'totalKills',
+  'slimesKilled',
+  'ratsKilled',
+  'goldCollected',
+]);
+
+function sortedUniqueStrings(left: readonly string[], right: readonly string[]): string[] {
+  return [...new Set([...left, ...right])].sort();
+}
+
+function sortedUniqueNumbers(left: readonly number[], right: readonly number[]): number[] {
+  return [...new Set([...left, ...right])].sort((a, b) => a - b);
+}
+
+export function mergeAchievementFactSnapshots(
+  carried: AchievementFactSnapshot,
+  current: AchievementFactSnapshot,
+): AchievementFactSnapshot {
+  const questIds = sortedUniqueStrings(carried.questIds, current.questIds);
+  const completedQuestIds = sortedUniqueStrings(
+    carried.completedQuestIds,
+    current.completedQuestIds,
+  );
+  const reachedFloorIds = sortedUniqueNumbers(carried.reachedFloorIds, current.reachedFloorIds);
+  const clearedFloorIds = sortedUniqueNumbers(carried.clearedFloorIds, current.clearedFloorIds);
+  const numberFacts = {} as Record<AchievementNumberFact, number>;
+  for (const fact of ACHIEVEMENT_NUMBER_FACTS) {
+    if (fact === 'completedQuestCount') {
+      numberFacts[fact] = completedQuestIds.length;
+    } else if (fact === 'questLogSize') {
+      numberFacts[fact] = questIds.length;
+    } else if (fact === 'clearedFloorCount') {
+      numberFacts[fact] = clearedFloorIds.length;
+    } else if (fact === 'playerGold') {
+      numberFacts[fact] = current.numberFacts[fact];
+    } else if (SUM_NUMBER_FACTS.has(fact)) {
+      numberFacts[fact] = carried.numberFacts[fact] + current.numberFacts[fact];
+    } else {
+      numberFacts[fact] = Math.max(carried.numberFacts[fact], current.numberFacts[fact]);
     }
   }
-  return undefined;
+
+  const booleanFacts = {} as Record<AchievementBooleanFact, boolean>;
+  for (const fact of ACHIEVEMENT_BOOLEAN_FACTS) {
+    booleanFacts[fact] = carried.booleanFacts[fact] || current.booleanFacts[fact];
+  }
+  booleanFacts.runClearedFloor = booleanFacts.runClearedFloor || clearedFloorIds.length > 0;
+
+  return {
+    numberFacts,
+    booleanFacts,
+    questIds,
+    completedQuestIds,
+    reachedFloorIds,
+    clearedFloorIds,
+  };
+}
+
+export function cloneAchievementFactSnapshot(
+  snapshot: AchievementFactSnapshot | undefined,
+): AchievementFactSnapshot {
+  if (!snapshot) return createEmptyAchievementFactSnapshot();
+  return {
+    numberFacts: { ...snapshot.numberFacts },
+    booleanFacts: { ...snapshot.booleanFacts },
+    questIds: [...snapshot.questIds],
+    completedQuestIds: [...snapshot.completedQuestIds],
+    reachedFloorIds: [...snapshot.reachedFloorIds],
+    clearedFloorIds: [...snapshot.clearedFloorIds],
+  };
 }
 
 function collectIconBacklogItems(): AchievementArtBacklogItem[] {
   const iconToAchievements = new Map<string, string[]>();
-  for (const achievement of FLOOR1_ACHIEVEMENTS) {
+  for (const achievement of ALL_ACHIEVEMENTS) {
     const list = iconToAchievements.get(achievement.iconId);
     if (list) {
       list.push(achievement.id);
@@ -344,7 +512,7 @@ function collectIconBacklogItems(): AchievementArtBacklogItem[] {
 
 function collectLootBoxBacklogItems(): AchievementArtBacklogItem[] {
   const tierToAchievements = new Map<LootBoxTier, string[]>();
-  for (const achievement of FLOOR1_ACHIEVEMENTS) {
+  for (const achievement of ALL_ACHIEVEMENTS) {
     if (achievement.reward.type !== 'lootBox') continue;
     const existing = tierToAchievements.get(achievement.reward.tier);
     if (existing) {

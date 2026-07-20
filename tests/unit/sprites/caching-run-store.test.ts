@@ -138,6 +138,84 @@ class RaceStore implements RunStore {
   }
 }
 
+/**
+ * A two-put race store where BOTH puts pause after committing their data, so
+ * the test can control which continuation runs first.  Used to simulate the
+ * cross-instance scenario where A commits to Azure, B commits to Azure (B
+ * wins as the authoritative value), but A's post-put cache-publication code
+ * runs before B's — leaving stale bytes unless the `else` branch invalidates.
+ */
+class BothCommitRaceStore implements RunStore {
+  readonly backend = 'azure-blob' as const;
+  private readonly values = new Map<string, Buffer>();
+  readonly firstPutCommitted: Promise<void>;
+  readonly secondPutCommitted: Promise<void>;
+  private releaseFirst: (() => void) | null = null;
+  private releaseFirstBarrier: (() => void) | null = null;
+  private releaseSecond: (() => void) | null = null;
+  private releaseSecondBarrier: (() => void) | null = null;
+  private readonly firstPutUnblocked: Promise<void>;
+  private readonly secondPutUnblocked: Promise<void>;
+  private putCount = 0;
+
+  constructor() {
+    this.firstPutCommitted = new Promise<void>((resolve) => {
+      this.releaseFirst = resolve;
+    });
+    this.secondPutCommitted = new Promise<void>((resolve) => {
+      this.releaseSecond = resolve;
+    });
+    this.firstPutUnblocked = new Promise<void>((resolve) => {
+      this.releaseFirstBarrier = resolve;
+    });
+    this.secondPutUnblocked = new Promise<void>((resolve) => {
+      this.releaseSecondBarrier = resolve;
+    });
+  }
+
+  async put(key: string, data: Buffer): Promise<void> {
+    this.values.set(key, Buffer.from(data));
+    const n = ++this.putCount;
+    if (n === 1) {
+      this.releaseFirst?.();
+      await this.firstPutUnblocked;
+    } else if (n === 2) {
+      this.releaseSecond?.();
+      await this.secondPutUnblocked;
+    }
+  }
+
+  unblockFirstPut(): void {
+    this.releaseFirstBarrier?.();
+  }
+
+  unblockSecondPut(): void {
+    this.releaseSecondBarrier?.();
+  }
+
+  async get(key: string): Promise<Buffer> {
+    const value = this.values.get(key);
+    if (!value) throw new StoreNotFoundError(key);
+    return Buffer.from(value);
+  }
+
+  async has(key: string): Promise<boolean> {
+    return this.values.has(key);
+  }
+
+  async list(prefix: string): Promise<readonly string[]> {
+    return [...this.values.keys()].filter((k) => k.startsWith(prefix));
+  }
+
+  async remove(key: string): Promise<void> {
+    this.values.delete(key);
+  }
+
+  resolve(key: string): string {
+    return key;
+  }
+}
+
 const SHEET = 'iron-sword/run-abc/sheet-00.png';
 const RAW = 'iron-sword/run-abc/raw/00.png';
 const PROCESSED = 'iron-sword/run-abc/processed/00.png';
@@ -253,6 +331,35 @@ describe('mutable-key invalidation', () => {
     raceInner.unblockFirstPut();
     await stalePut;
 
+    expect((await a.get(SHEET)).toString('utf8')).toBe('B');
+    expect((await b.get(SHEET)).toString('utf8')).toBe('B');
+  });
+
+  it('invalidates cache when both inner writes commit before the older continuation can publish', async () => {
+    // Scenario: A commits first, B commits second (B is authoritative in the inner
+    // store). A's continuation runs before B's and would publish stale 'A' bytes.
+    // The fix must detect the race and invalidate so readers fall through to inner.
+    const raceInner = new BothCommitRaceStore();
+    const a = new CachingRunStore({ inner: raceInner, cache: newCache(cacheDir) });
+    const b = new CachingRunStore({ inner: raceInner, cache: newCache(cacheDir) });
+
+    // Start A — it will pause inside inner.put after committing 'A'.
+    const putA = a.put(SHEET, Buffer.from('A'));
+    await raceInner.firstPutCommitted; // A committed 'A'; inner = 'A'
+
+    // Start B — it will pause inside inner.put after committing 'B'.
+    const putB = b.put(SHEET, Buffer.from('B'));
+    await raceInner.secondPutCommitted; // B committed 'B'; inner = 'B' (winner)
+
+    // Release A first so A's post-put continuation runs (A would naively publish 'A').
+    raceInner.unblockFirstPut();
+    await putA;
+
+    // Release B so B's continuation runs and detects the race.
+    raceInner.unblockSecondPut();
+    await putB;
+
+    // Both instances must read the authoritative 'B', not stale 'A'.
     expect((await a.get(SHEET)).toString('utf8')).toBe('B');
     expect((await b.get(SHEET)).toString('utf8')).toBe('B');
   });

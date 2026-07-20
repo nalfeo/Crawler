@@ -209,7 +209,11 @@ function parseJudgeResponse(
   if (!parsed.success) return parsed;
   const expectedOptionalAxes = new Map<string, boolean>([
     ['theme_adherence', hasAddendum],
-    ['pose_orientation', brief.type === 'enemy' || brief.type === 'character'],
+    [
+      'pose_orientation',
+      (brief.type === 'enemy' || brief.type === 'character') &&
+        brief.sensors?.enemy?.facing !== 'front',
+    ],
     ['boss_presence', brief.type === 'enemy' && brief.mobRole === 'boss'],
     ['presentation', ['equipment', 'item', 'prop'].includes(brief.type)],
   ]);
@@ -474,7 +478,12 @@ function buildSystemInstructions(
   const floor = brief.floor;
   const hasAddendum = addenda.floor !== undefined || addenda.theme !== undefined;
   const bothAddenda = addenda.floor !== undefined && addenda.theme !== undefined;
-  const hasPoseAxis = brief.type === 'enemy' || brief.type === 'character';
+  // Skip pose_orientation for briefs that explicitly request a front-facing pose:
+  // the axis checks for a 1/3-to-2/3 turn and would incorrectly penalise a sprite
+  // that correctly follows a `facing: front` brief.
+  const hasPoseAxis =
+    (brief.type === 'enemy' || brief.type === 'character') &&
+    brief.sensors?.enemy?.facing !== 'front';
   const hasBossAxis = brief.type === 'enemy' && brief.mobRole === 'boss';
   const hasPresentationAxis = ['equipment', 'item', 'prop'].includes(brief.type);
   const axisCount =
@@ -638,7 +647,10 @@ function buildUserPrompt(brief: Brief, referenceCount: number, hasAddendum: bool
 function judgeAxisCount(brief: Brief, hasAddendum: boolean): number | string {
   const count =
     4 +
-    Number(brief.type === 'enemy' || brief.type === 'character') +
+    Number(
+      (brief.type === 'enemy' || brief.type === 'character') &&
+        brief.sensors?.enemy?.facing !== 'front',
+    ) +
     Number(brief.type === 'enemy' && brief.mobRole === 'boss') +
     Number(['equipment', 'item', 'prop'].includes(brief.type)) +
     Number(hasAddendum);

@@ -577,9 +577,33 @@ export async function stopSidecarService(
 }
 
 export function releaseSidecarRegistry(filePath: string, instanceId: string): void {
-  const registry = readRegistry(filePath);
-  if (registry?.instanceId === instanceId) {
-    rmSync(filePath, { force: true });
+  // Atomic rename prevents a successor that re-claimed the path after our token
+  // check from having its registry removed by our subsequent rmSync. Once we've
+  // renamed the file we own the moved copy exclusively; any new owner writes a
+  // fresh file at the original path and is unaffected.
+  const recoveryPath = `${filePath}.releasing.${process.pid}.${randomUUID()}`;
+  try {
+    renameSync(filePath, recoveryPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return; // Already released by a concurrent caller.
+    throw error;
+  }
+  const moved = readRegistry(recoveryPath);
+  if (moved?.instanceId === instanceId) {
+    // Our registry — delete the moved copy to complete the release.
+    rmSync(recoveryPath, { force: true });
+  } else {
+    // We grabbed someone else's registry. Restore it so the current owner
+    // can still be discovered. If another process created a new registry at
+    // the original path in the brief window, prefer their version.
+    try {
+      renameSync(recoveryPath, filePath);
+    } catch {
+      // Restoring failed (e.g. a new file was created at filePath); clean up
+      // the orphan copy to avoid stale junk files.
+      rmSync(recoveryPath, { force: true });
+    }
   }
 }
 

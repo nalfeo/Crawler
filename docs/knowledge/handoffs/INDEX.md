@@ -138,6 +138,7 @@ _…and 64 older, see `archive/`._
 
 ## mapgen
 
+- [2026-07-18-floor-2-quartermaster-placement](2026-07-18-floor-2-quartermaster-placement.md) — Handoff: Floor 2 Quartermaster Placement
 - [2026-07-15-unlock-aware-floor1-planner](2026-07-15-unlock-aware-floor1-planner.md) — Handoff: Unlock-aware Floor 1 objective planning
 - [2026-07-14-special-room-setpiece-protection](2026-07-14-special-room-setpiece-protection.md) — Added a shared `restoreRoomInterior(...)` helper in `src/core/map/special-rooms.ts` that restores a room's full rectangular interior to pas…
 - [2026-07-13-floor2-territory-wiggle-fix](2026-07-13-floor2-territory-wiggle-fix.md) — Handoff: Floor 2 AI territory wiggle fix
@@ -253,6 +254,7 @@ _…and 49 older, see `archive/`._
 - [2026-07-18-batfolk-hood-equipment-icon](2026-07-18-batfolk-hood-equipment-icon.md) — Produced the full wiring scaffolding for the Floor 2 `batfolk-hood` head-slot
 - [2026-07-18-e1-scoped-run-global-achievements](2026-07-18-e1-scoped-run-global-achievements.md) — 2026-07-18 — E1 scoped + run-global achievements
 - [2026-07-18-ember-wand-review-recovery](2026-07-18-ember-wand-review-recovery.md) — Handoff: Recover ember-wand PR review threads
+- [2026-07-18-floor-2-quartermaster-placement](2026-07-18-floor-2-quartermaster-placement.md) — Handoff: Floor 2 Quartermaster Placement
 - [2026-07-18-generated-instance-registry](2026-07-18-generated-instance-registry.md) — Handoff: Floor 2 Generated Equipment Instance Registry
 - [2026-07-18-harpoon-gun-main-merge-recovery](2026-07-18-harpoon-gun-main-merge-recovery.md) — Handoff: harpoon-gun main merge recovery
 - [2026-07-18-iron-greaves-asset-brief](2026-07-18-iron-greaves-asset-brief.md) — Created a high-quality sprite brief for the `iron-greaves` Floor 2 equipment icon (issue #1385).

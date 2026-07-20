@@ -141,8 +141,15 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
             await this.cache.remove(cacheKey);
             this.cache.bumpMutationToken(cacheKey);
           }
+        } else {
+          // A concurrent cross-instance writer published while our inner.put was
+          // in-flight. Their cache content may pre-date our authoritative commit
+          // (e.g. they committed to the inner store BEFORE us but published to
+          // cache BEFORE our post-put check). Invalidate so future reads fall
+          // through to the authoritative store rather than serving stale bytes.
+          await this.cache.remove(cacheKey);
+          this.cache.bumpMutationToken(cacheKey);
         }
-        // else: a concurrent writer already published fresher content; leave it.
       } else {
         // Non-cacheable key: just do the authoritative write.
         await this.inner.put(key, data);

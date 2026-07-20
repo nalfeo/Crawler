@@ -8,6 +8,7 @@ import {
   sidecarRegistryExists,
   registryPathFor,
   rotateLogIfNeeded,
+  releaseSidecarRegistry,
   type SidecarServiceManagerDeps,
 } from '../../../scripts/sprites/sidecar/service-manager.js';
 import { SPRITE_SIDECAR_SERVICE_VERSION } from '../../../scripts/sprites/sidecar/service-contract.js';
@@ -822,5 +823,74 @@ describe('rotateLogIfNeeded', () => {
     const logPath = path.join(dir, 'nonexistent.log');
     // Should not throw
     expect(() => rotateLogIfNeeded(logPath)).not.toThrow();
+  });
+});
+
+describe('releaseSidecarRegistry', () => {
+  const roots: string[] = [];
+
+  function makeRoot(prefix: string): string {
+    const root = mkdtempSync(path.join(tmpdir(), prefix));
+    roots.push(root);
+    return root;
+  }
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  function writeReg(regPath: string, instanceId: string, repoRoot: string): void {
+    mkdirSync(path.dirname(regPath), { recursive: true });
+    writeFileSync(
+      regPath,
+      JSON.stringify({
+        schema: 1,
+        repoRoot,
+        port: 5555,
+        version: SPRITE_SIDECAR_SERVICE_VERSION,
+        instanceId,
+        shutdownToken: 'tok',
+        startedAt: new Date().toISOString(),
+        logPath: path.join(repoRoot, 'svc.log'),
+        pid: null,
+      }),
+      'utf8',
+    );
+  }
+
+  it('removes the registry when instanceId matches', () => {
+    const repoRoot = makeRoot('crawler-release-match-');
+    const registryRoot = makeRoot('crawler-release-match-reg-');
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    writeReg(regPath, 'my-instance', repoRoot);
+
+    releaseSidecarRegistry(regPath, 'my-instance');
+
+    expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(false);
+  });
+
+  it('leaves the registry intact when instanceId does not match', () => {
+    const repoRoot = makeRoot('crawler-release-mismatch-');
+    const registryRoot = makeRoot('crawler-release-mismatch-reg-');
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    writeReg(regPath, 'other-instance', repoRoot);
+
+    releaseSidecarRegistry(regPath, 'my-instance');
+
+    expect(sidecarRegistryExists(repoRoot, registryRoot)).toBe(true);
+    const content = readFileSync(regPath, 'utf8');
+    expect(JSON.parse(content)).toMatchObject({ instanceId: 'other-instance' });
+  });
+
+  it('does not throw when registry file is already absent', () => {
+    const repoRoot = makeRoot('crawler-release-absent-');
+    const registryRoot = makeRoot('crawler-release-absent-reg-');
+    const regPath = registryPathFor(repoRoot, registryRoot);
+    mkdirSync(path.dirname(regPath), { recursive: true });
+    // Do not write anything — file is absent.
+
+    expect(() => releaseSidecarRegistry(regPath, 'my-instance')).not.toThrow();
   });
 });

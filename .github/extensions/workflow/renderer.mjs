@@ -912,6 +912,14 @@ const CLIENT_SCRIPT = String.raw`
     var input = h('input', { type: 'text', maxlength: '1000', placeholder: 'Optional feedback comment' });
     var confirmBtn = h('button', { type: 'button', class: 'confirm-btn', title: confirmTitle || 'Confirm this feedback', text: '✓' });
     var status = h('span', { class: 'feedback-status muted' });
+    var saving = false;
+
+    function setDisabled(disabled) {
+      up.disabled = disabled;
+      down.disabled = disabled;
+      input.disabled = disabled;
+      confirmBtn.disabled = disabled;
+    }
 
     function isDirty() {
       return draft.verdict !== (persisted.verdict || null) || draft.comment !== (persisted.comment || '');
@@ -941,16 +949,20 @@ const CLIENT_SCRIPT = String.raw`
     input.addEventListener('input', function () { draft.comment = input.value; sync(); });
 
     confirmBtn.addEventListener('click', function () {
-      confirmBtn.disabled = true;
+      if (saving) return;
+      var submitted = { verdict: draft.verdict, comment: draft.comment };
+      saving = true;
+      setDisabled(true);
       status.textContent = 'Saving…';
-      save(draft.verdict, draft.comment).then(function () {
-        persisted.verdict = draft.verdict;
-        persisted.comment = draft.comment;
-        confirmBtn.disabled = false;
+      save(submitted.verdict, submitted.comment).then(function () {
+        persisted.verdict = submitted.verdict;
+        persisted.comment = submitted.comment;
         sync();
       }).catch(function (err) {
-        confirmBtn.disabled = false;
         status.textContent = err && err.message ? err.message : 'Save failed.';
+      }).finally(function () {
+        saving = false;
+        setDisabled(false);
       });
     });
 
