@@ -163,17 +163,18 @@ describe('source-owned ability grants', () => {
     equipActiveAbility(world, player, 'battle-focus');
     const before = world.abilityStatesByEntity.get(player)!;
     const beforeEquipped = [...before.equippedActiveAbilityIds];
+    const sharedSkillSource = skillAbilityGrantSourceId('pyromancy', 1);
     try {
       grantAbilitySources(world, player, [
         {
           kind: 'active',
           abilityId: 'fireball',
-          sourceId: validSource,
+          sourceId: sharedSkillSource,
         },
         {
           kind: 'active',
           abilityId: 'heal',
-          sourceId: validSource,
+          sourceId: sharedSkillSource,
         },
       ]);
       throw new Error('Expected conflicting ability source to be rejected');
@@ -186,6 +187,34 @@ describe('source-owned ability grants', () => {
     expect(
       normalizeAbilityState(before).grantOwnership.activeSourcesByAbilityId.has('fireball'),
     ).toBe(false);
+  });
+
+  it('rejects learned/legacy sources whose embedded ability id mismatches the request', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+
+    // A learned source names the ability it grants; it must not grant a different ability.
+    try {
+      grantAbilitySources(world, player, [
+        {
+          kind: 'active',
+          abilityId: 'heal',
+          sourceId: learnedAbilityGrantSourceId('fireball'),
+        },
+      ]);
+      throw new Error('Expected mismatched learned source to be rejected');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AbilityGrantError);
+      expect((error as AbilityGrantError).code).toBe('source-mismatch');
+    }
+    // Rejected batch must not create or mutate state.
+    expect(world.abilityStatesByEntity.has(player)).toBe(false);
+
+    // A matching learned source is accepted and reflected in learnedSpellIds.
+    grantAbilitySources(world, player, [
+      { kind: 'active', abilityId: 'heal', sourceId: learnedAbilityGrantSourceId('heal') },
+    ]);
+    expect(world.abilityStatesByEntity.get(player)!.learnedSpellIds).toContain('heal');
   });
 
   it('migrates plain ids once without guessing skill or equipment provenance', () => {

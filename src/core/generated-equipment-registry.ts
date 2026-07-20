@@ -805,6 +805,46 @@ function validateEffects(
   return Object.freeze(effects);
 }
 
+function requireArraysEqual(
+  actual: readonly string[],
+  expected: readonly string[],
+  path: string,
+): void {
+  if (actual.length !== expected.length || actual.some((id, index) => id !== expected[index])) {
+    fail(
+      'invalid-payload',
+      `Frozen grants must exactly match resolvedEffects grants; expected [${expected.join(
+        ', ',
+      )}] but received [${actual.join(', ')}]`,
+      path,
+    );
+  }
+}
+
+/**
+ * Enforces that the consumer-facing `frozen.abilityGrants` / `frozen.passiveGrants`
+ * arrays agree exactly (same ids, same order) with the `abilityGrant` /
+ * `passiveGrant` entries in `resolvedEffects`. Because different consumers read
+ * different authorities (equip gating reads `frozen.*Grants`; ability granting
+ * reads `resolvedEffects`), the two representations must be a single source of
+ * truth or a registry-valid instance could advertise grants it never applies at
+ * runtime (or vice versa).
+ */
+function validateGrantEquivalence(
+  effects: readonly ResolvedEquipmentEffectV1[],
+  frozen: FrozenEquipmentFieldsV1,
+  path: string,
+): void {
+  const effectAbilityGrants = effects.flatMap((effect) =>
+    'kind' in effect && effect.kind === 'abilityGrant' ? [effect.grantId] : [],
+  );
+  const effectPassiveGrants = effects.flatMap((effect) =>
+    'kind' in effect && effect.kind === 'passiveGrant' ? [effect.grantId] : [],
+  );
+  requireArraysEqual(frozen.abilityGrants, effectAbilityGrants, `${path}.frozen.abilityGrants`);
+  requireArraysEqual(frozen.passiveGrants, effectPassiveGrants, `${path}.frozen.passiveGrants`);
+}
+
 export function validateGeneratedEquipmentGenerationPolicyV1(
   value: unknown,
 ): GeneratedEquipmentGenerationPolicyV1 {
@@ -1043,6 +1083,11 @@ export function validateGeneratedEquipmentInstanceV1(
     frozen: validateFrozenFields(record.frozen, `${path}.frozen`, expectedInstanceId),
     generation,
   });
+  validateGrantEquivalence(
+    instanceWithoutFingerprint.resolvedEffects,
+    instanceWithoutFingerprint.frozen,
+    path,
+  );
   const fingerprint = requireFingerprint(record.fingerprint, `${path}.fingerprint`);
   const expectedFingerprint = fingerprintContent(instanceWithoutFingerprint);
   if (fingerprint !== expectedFingerprint) {

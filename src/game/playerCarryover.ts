@@ -8,7 +8,6 @@ import {
 import { statSystem } from '../core/systems/statSystem.js';
 import { SLOT_REGISTRY, type EquipmentSlotId } from '../shared/equipment-slots.js';
 import { getEquipmentDefForItem } from '../shared/equipmentDefs.js';
-import type { EquipmentInstanceId } from '../shared/equipment-types.js';
 import type { AchievementFactState } from '../shared/achievements.js';
 import { ALL_STAT_IDS, PRIMARY_STATS, type PrimaryStatId, type StatId } from '../shared/stats.js';
 import {
@@ -234,11 +233,17 @@ export function capturePlayerCarryover(
 
   const equipment = getEquipmentState(world, playerEid);
   const equippedItemIds: string[] = [];
-  const seenInstances = new Set<EquipmentInstanceId>();
+  const seenInstances = new Set<number>();
   if (equipment) {
     for (const slot of SLOT_REGISTRY) {
       const instanceId = equipment.equipped[slot.id];
-      if (instanceId == null || seenInstances.has(instanceId)) continue;
+      if (instanceId == null) continue;
+      if (typeof instanceId !== 'number') {
+        throw new Error(
+          'Generated equipment carryover is not supported until the B3 persistence slice lands',
+        );
+      }
+      if (seenInstances.has(instanceId)) continue;
       const instance = equipment.instances.get(instanceId);
       if (!instance) {
         throw new Error(`Missing equipped instance ${instanceId} while capturing player carryover`);
@@ -249,6 +254,11 @@ export function capturePlayerCarryover(
   }
 
   const inventory = world.inventories.get(playerEid);
+  if ((inventory?.generatedEquipment?.length ?? 0) > 0) {
+    throw new Error(
+      'Generated equipment carryover is not supported until the B3 persistence slice lands',
+    );
+  }
   const abilityState = snapshotAbilityState(
     world.abilityStatesByEntity.get(playerEid),
     world.frameCount,

@@ -26,6 +26,7 @@ export type AbilityGrantErrorCode =
   | 'invalid-source'
   | 'kind-mismatch'
   | 'source-conflict'
+  | 'source-mismatch'
   | 'unsupported-version'
   | 'unknown-ability';
 
@@ -101,18 +102,41 @@ function validatePersistedAbilityKind(abilityId: string, kind: AbilityGrantKind)
   }
 }
 
-function validateSourceForKind(sourceId: string, kind: AbilityGrantKind): AbilityGrantSourceId {
+function validateSourceForKind(
+  sourceId: string,
+  kind: AbilityGrantKind,
+  abilityId: string,
+): AbilityGrantSourceId {
   if (!isAbilityGrantSourceId(sourceId)) {
     throw new AbilityGrantError('invalid-source', `Invalid ability grant source: ${sourceId}`);
   }
-  if (sourceId.startsWith('learned:') && kind !== 'active') {
-    throw new AbilityGrantError('kind-mismatch', `Learned source cannot grant passive ability`);
+  if (sourceId.startsWith('learned:')) {
+    if (kind !== 'active') {
+      throw new AbilityGrantError('kind-mismatch', `Learned source cannot grant passive ability`);
+    }
+    const embeddedAbilityId = sourceId.slice('learned:'.length);
+    if (embeddedAbilityId !== abilityId) {
+      throw new AbilityGrantError(
+        'source-mismatch',
+        `Learned source ${sourceId} does not match ability ${abilityId}`,
+      );
+    }
   }
-  if (sourceId.startsWith('legacy:') && !sourceId.startsWith(`legacy:${kind}:`)) {
-    throw new AbilityGrantError(
-      'kind-mismatch',
-      `Legacy source ${sourceId} does not match ${kind} grant`,
-    );
+  if (sourceId.startsWith('legacy:')) {
+    const kindPrefix = `legacy:${kind}:`;
+    if (!sourceId.startsWith(kindPrefix)) {
+      throw new AbilityGrantError(
+        'kind-mismatch',
+        `Legacy source ${sourceId} does not match ${kind} grant`,
+      );
+    }
+    const embeddedAbilityId = sourceId.slice(kindPrefix.length);
+    if (embeddedAbilityId !== abilityId) {
+      throw new AbilityGrantError(
+        'source-mismatch',
+        `Legacy source ${sourceId} does not match ability ${abilityId}`,
+      );
+    }
   }
   return sourceId;
 }
@@ -225,11 +249,11 @@ export function normalizeAbilityState(state: AbilityStateLike): AbilityState {
     };
     for (const [abilityId, sources] of normalized.grantOwnership.activeSourcesByAbilityId) {
       validatePersistedAbilityKind(abilityId, 'active');
-      for (const sourceId of sources) validateSourceForKind(sourceId, 'active');
+      for (const sourceId of sources) validateSourceForKind(sourceId, 'active', abilityId);
     }
     for (const [abilityId, sources] of normalized.grantOwnership.passiveSourcesByAbilityId) {
       validatePersistedAbilityKind(abilityId, 'passive');
-      for (const sourceId of sources) validateSourceForKind(sourceId, 'passive');
+      for (const sourceId of sources) validateSourceForKind(sourceId, 'passive', abilityId);
     }
   }
 
@@ -282,7 +306,7 @@ function validateGrantRequests(
   const owners = sourceOwnerMap(ownership);
   for (const request of requests) {
     validateAbilityKind(request.abilityId, request.kind);
-    const sourceId = validateSourceForKind(request.sourceId, request.kind);
+    const sourceId = validateSourceForKind(request.sourceId, request.kind, request.abilityId);
     const requestedOwner = `${request.kind}:${request.abilityId}`;
     const existingOwner = owners.get(sourceId);
     if (existingOwner !== undefined && existingOwner !== requestedOwner) {
