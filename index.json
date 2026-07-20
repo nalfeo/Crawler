@@ -1,5 +1,16 @@
 [
   {
+    "commit": "3762275db066bf308dcf9472ccf6b44561b84178",
+    "commitDate": "2026-07-20T02:59:53Z",
+    "commitSubject": "docs(a1): floor 2 equipment implementation contract lock — constitution, specs, ADR 0065 (#1283)",
+    "capturedAt": "2026-07-20T03:50:54.998Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29713681489",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/3762275db066bf308dcf9472ccf6b44561b84178.json"
+  },
+  {
     "commit": "d925e8049e28ff73f3417f1d0119419b35415498",
     "commitDate": "2026-07-19T23:36:32Z",
     "commitSubject": "feat(epics): automate Floor 2 equipment child-issue materialization (#1657)",
