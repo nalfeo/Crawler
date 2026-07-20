@@ -315,7 +315,9 @@ _…and 5 older, see `archive/`._
 - [2026-07-16-overhaul-primary-stats](2026-07-16-overhaul-primary-stats.md) — Handoff: Primary stat-system overhaul
 - [2026-07-16-stats-overhaul-pr-recovery](2026-07-16-stats-overhaul-pr-recovery.md) — Handoff: PR #1203 blocker recovery
 
-_…and 43 older, see `archive/`._
+- [2026-07-15-floor2-ai-hunt-progression](2026-07-15-floor2-ai-hunt-progression.md) — Handoff - Floor 2 AI Hunt Progression
+
+_…and 42 older, see `archive/`._
 
 ## enemies
 
@@ -398,8 +400,13 @@ _…and 78 older, see `archive/`._
 - [2026-07-18-ci-recovery-pr1265-outdated-threads](2026-07-18-ci-recovery-pr1265-outdated-threads.md) — Handoff: PR #1265 CI recovery outdated-thread convergence
 - [2026-07-18-ci-recovery-pr1271-thread-guidance](2026-07-18-ci-recovery-pr1271-thread-guidance.md) — Handoff: CI recovery PR #1271 in-thread guidance
 - [2026-07-18-ci-recovery-protected-path-fix](2026-07-18-ci-recovery-protected-path-fix.md) — Handoff: CI recovery protected-path fix
+- [2026-07-18-ci-recovery-slash-sha-marker-fix](2026-07-18-ci-recovery-slash-sha-marker-fix.md) — Handoff: CI Recovery Slash-SHA Marker Parser Fix
+- [2026-07-18-ci-recovery-task-wording](2026-07-18-ci-recovery-task-wording.md) — Investigated CI recovery loop incident #1583 (PR #1507 — merchant-sandals brief).
+- [2026-07-18-ci-recovery-thread-reply-target](2026-07-18-ci-recovery-thread-reply-target.md) — Handoff: CI recovery thread reply target hints
+- [2026-07-18-ember-wand-epic-audit-recovery](2026-07-18-ember-wand-epic-audit-recovery.md) — Investigated the `Offline epic validation` CI failure from the `Epic Drift Audit` workflow and reproduced it locally with `npm run epic:sta…
+- [2026-07-18-ember-wand-review-recovery](2026-07-18-ember-wand-review-recovery.md) — Handoff: Recover ember-wand PR review threads
 
-_…and 160 older, see `archive/`._
+_…and 154 older, see `archive/`._
 
 ## agent-memory
 
@@ -512,5 +519,6 @@ heuristic. Add a `## Systems touched` line to fix.
 - [2026-07-18-ci-recovery-not-applicable-marker](2026-07-18-ci-recovery-not-applicable-marker.md) — Handoff: CI Recovery — Support ✅ Not applicable Marker
 - [2026-07-18-ci-recovery-stale-marker](2026-07-18-ci-recovery-stale-marker.md) — Handoff: fix(ci-recovery): detect stale ✅ Addressed markers
 - [2026-07-18-dueling-saber-sprite](2026-07-18-dueling-saber-sprite.md) — 2026-07-18 — dueling-saber sprite (issue #1311)
+- [2026-07-18-echo-bell-sprite-wiring](2026-07-18-echo-bell-sprite-wiring.md) — Added the `echo-bell` weapon to the item catalog, generated a procedural placeholder
 
-_…and 51 more._
+_…and 49 more._
