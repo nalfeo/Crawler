@@ -245,6 +245,7 @@ _…and 49 older, see `archive/`._
 ## inventory
 
 - [2026-07-20-pr1276-stack-root-shepherd](2026-07-20-pr1276-stack-root-shepherd.md) — Handoff: PR #1276 Stack-Root Shepherd
+- [2026-07-20-pr1379-merge-conflict-recovery](2026-07-20-pr1379-merge-conflict-recovery.md) — PR #1379 merge-conflict recovery
 - [2026-07-19-deterministic-equipment-gates](2026-07-19-deterministic-equipment-gates.md) — Handoff: deterministic equipment DPS and distribution gates
 - [2026-07-19-unique-equipment-schema-and-acquisition](2026-07-19-unique-equipment-schema-and-acquisition.md) — Delivered the full Unique equipment design contract outside the Floor 2 equipment
 - [2026-07-18-active-weapon-snapshots-main-merge-recovery](2026-07-18-active-weapon-snapshots-main-merge-recovery.md) — Handoff: active weapon snapshots main merge recovery
@@ -263,9 +264,8 @@ _…and 49 older, see `archive/`._
 - [2026-07-18-runed-cuirass-merge-train-recovery](2026-07-18-runed-cuirass-merge-train-recovery.md) — Handoff: runed-cuirass merge-train recovery
 - [2026-07-18-thorn-gauntlets-asset-brief](2026-07-18-thorn-gauntlets-asset-brief.md) — Created a production-ready sprite brief for the `thorn-gauntlets` Floor 2 equipment icon (issue #1374) and traced the existing cloud asset-…
 - [2026-07-17-floor-2-equipment-contracts-rebase](2026-07-17-floor-2-equipment-contracts-rebase.md) — Handoff: Floor 2 Equipment Contracts — Rebase to Main
-- [2026-07-17-floor-2-equipment-contracts](2026-07-17-floor-2-equipment-contracts.md) — Handoff: Floor 2 Equipment Contract Foundation
 
-_…and 46 older, see `archive/`._
+_…and 47 older, see `archive/`._
 
 ## vfx
 
@@ -294,6 +294,7 @@ _…and 6 older, see `archive/`._
 
 ## weapons
 
+- [2026-07-20-pr1379-merge-conflict-recovery](2026-07-20-pr1379-merge-conflict-recovery.md) — PR #1379 merge-conflict recovery
 - [2026-07-19-deterministic-equipment-gates](2026-07-19-deterministic-equipment-gates.md) — Handoff: deterministic equipment DPS and distribution gates
 - [2026-07-18-active-weapon-snapshots-main-merge-recovery](2026-07-18-active-weapon-snapshots-main-merge-recovery.md) — Handoff: active weapon snapshots main merge recovery
 - [2026-07-18-active-weapon-snapshots](2026-07-18-active-weapon-snapshots.md) — Handoff: Immutable Active Weapon Snapshots
@@ -313,9 +314,8 @@ _…and 6 older, see `archive/`._
 - [2026-07-16-enemy-projectile-telegraph](2026-07-16-enemy-projectile-telegraph.md) — Every hostile projectile shot (including bosses and rapid-fire follow-ups) now
 - [2026-07-16-overhaul-primary-stats](2026-07-16-overhaul-primary-stats.md) — Handoff: Primary stat-system overhaul
 - [2026-07-16-stats-overhaul-pr-recovery](2026-07-16-stats-overhaul-pr-recovery.md) — Handoff: PR #1203 blocker recovery
-- [2026-07-15-floor2-ai-hunt-progression](2026-07-15-floor2-ai-hunt-progression.md) — Handoff - Floor 2 AI Hunt Progression
 
-_…and 42 older, see `archive/`._
+_…and 43 older, see `archive/`._
 
 ## enemies
 
@@ -383,6 +383,7 @@ _…and 78 older, see `archive/`._
 - [2026-07-20-ci-conflict-recovery-round4](2026-07-20-ci-conflict-recovery-round4.md) — Handoff: CI conflict coordinator PR recovery (round 4)
 - [2026-07-20-fix-merge-train-promotion](2026-07-20-fix-merge-train-promotion.md) — Merge-train validated-prefix promotion recovery
 - [2026-07-20-pr1276-stack-root-shepherd](2026-07-20-pr1276-stack-root-shepherd.md) — Handoff: PR #1276 Stack-Root Shepherd
+- [2026-07-20-pr1379-merge-conflict-recovery](2026-07-20-pr1379-merge-conflict-recovery.md) — PR #1379 merge-conflict recovery
 - [2026-07-20-pr1704-blocker-recovery-round2](2026-07-20-pr1704-blocker-recovery-round2.md) — Handoff: PR #1704 blocker recovery (round 2)
 - [2026-07-19-ci-headless-coverage-gating](2026-07-19-ci-headless-coverage-gating.md) — Gate headless and coverage jobs by change impact
 - [2026-07-19-ci-recovery-merge-conflict-recovery](2026-07-19-ci-recovery-merge-conflict-recovery.md) — Handoff: CI recovery merge-conflict recovery
@@ -398,8 +399,10 @@ _…and 78 older, see `archive/`._
 - [2026-07-19-reduce-pr-automation-overhead](2026-07-19-reduce-pr-automation-overhead.md) — Handoff: Reduce PR automation and CI setup overhead
 - [2026-07-19-scope-pr-guard-to-triggering-pr](2026-07-19-scope-pr-guard-to-triggering-pr.md) — Handoff: Scope PR Ready/Reviewer Guard to the triggering PR
 - [2026-07-18-active-weapon-snapshots-main-merge-recovery](2026-07-18-active-weapon-snapshots-main-merge-recovery.md) — Handoff: active weapon snapshots main merge recovery
+- [2026-07-18-bone-saw-pr-merge-recovery](2026-07-18-bone-saw-pr-merge-recovery.md) — Handoff: bone-saw PR merge recovery
+- [2026-07-18-ci-recovery-balance-sweep-prefix](2026-07-18-ci-recovery-balance-sweep-prefix.md) — Handoff: Fix stale NIGHTLY_BALANCE_BRANCH_PREFIX in CI recovery automation
 
-_…and 171 older, see `archive/`._
+_…and 169 older, see `archive/`._
 
 ## agent-memory
 
