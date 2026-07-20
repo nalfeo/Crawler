@@ -202,11 +202,117 @@ export function grantEquipmentPassiveAbility(
 }
 
 /**
+ * Grant an active/spell ability from a Floor 2 generated-equipment instance.
+ *
+ * Unlike `grantEquipmentActiveAbility`, this call is:
+ * - **Idempotent**: repeated calls with the same `(instanceId, effectOrdinal)`
+ *   pair are no-ops; the `effectOrdinal` distinguishes separate effects from the
+ *   same instance so two effects on the same item never collapse to one source.
+ * - **Slot-cap safe**: if the active-ability slots are full and the ability is
+ *   not already equipped, the ability is recorded as *known-inactive* (the
+ *   source is tracked in `activeAbilityGrantSources` but the ability is NOT
+ *   added to `equippedActiveAbilityIds`). This satisfies the generated-equipment
+ *   contract which requires newly granted abilities to remain known even when no
+ *   slot is available.
+ *
+ * Throws if `abilityId` is unknown or is a passive ability.
+ */
+export function grantGeneratedEquipmentActiveAbility(
+  world: GameWorld,
+  holderEid: number,
+  abilityId: string,
+  instanceId: GeneratedEquipmentInstanceId,
+  effectOrdinal: number,
+): void {
+  const def = getAbilityDefinition(abilityId);
+  if (def === undefined) {
+    throw new Error(`Unknown ability id: ${abilityId}`);
+  }
+  if (def.kind === 'passive') {
+    throw new Error(`Cannot equip passive ability ${abilityId} in an active slot`);
+  }
+  const state = getOrCreateAbilityState(world, holderEid);
+  const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
+  // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
+  const existing = state.activeAbilityGrantSources.get(abilityId);
+  if (
+    existing?.some(
+      (s) =>
+        s.kind === 'generated-equipment' &&
+        s.instanceId === instanceId &&
+        s.effectOrdinal === effectOrdinal,
+    )
+  ) {
+    return;
+  }
+  if (state.equippedActiveAbilityIds.includes(abilityId)) {
+    // Already equipped (from another source) — just track the new source.
+    _addActiveGrantSource(state, abilityId, source);
+    return;
+  }
+  if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
+    // Slot cap reached — record as known-inactive: source tracked, not equipped.
+    // The ability is available to the character but cannot be used until a slot
+    // opens up (e.g. another ability is unequipped).
+    _addActiveGrantSource(state, abilityId, source);
+    return;
+  }
+  state.equippedActiveAbilityIds.push(abilityId);
+  _addActiveGrantSource(state, abilityId, source);
+}
+
+/**
+ * Grant a passive ability from a Floor 2 generated-equipment instance.
+ *
+ * Idempotent: repeated calls with the same `(instanceId, effectOrdinal)` pair
+ * are no-ops.
+ *
+ * Throws if `abilityId` is unknown or is not a passive ability.
+ */
+export function grantGeneratedEquipmentPassiveAbility(
+  world: GameWorld,
+  holderEid: number,
+  abilityId: string,
+  instanceId: GeneratedEquipmentInstanceId,
+  effectOrdinal: number,
+): void {
+  const def = getAbilityDefinition(abilityId);
+  if (def === undefined) {
+    throw new Error(`Unknown ability id: ${abilityId}`);
+  }
+  if (def.kind !== 'passive') {
+    throw new Error(`Ability ${abilityId} is not passive`);
+  }
+  const state = getOrCreateAbilityState(world, holderEid);
+  const source: AbilityGrantSource = { kind: 'generated-equipment', instanceId, effectOrdinal };
+  // Idempotent: skip if this exact (instanceId, effectOrdinal) pair is already recorded.
+  const existing = state.passiveAbilityGrantSources.get(abilityId);
+  if (
+    existing?.some(
+      (s) =>
+        s.kind === 'generated-equipment' &&
+        s.instanceId === instanceId &&
+        s.effectOrdinal === effectOrdinal,
+    )
+  ) {
+    return;
+  }
+  if (!state.passiveAbilityIds.includes(abilityId)) {
+    state.passiveAbilityIds.push(abilityId);
+  }
+  _addPassiveGrantSource(state, abilityId, source);
+}
+
+/**
  * Revoke all ability grants (active and passive) from a specific equipment
  * instance. For each ability:
- * - Removes the matching `equipment` source entry from the grant-source list.
+ * - Removes matching `equipment` and `generated-equipment` source entries from
+ *   the grant-source lists.
  * - If NO other sources remain, also removes the ability from the equipped/
  *   passive ID lists and clears any applied stat modifiers.
+ * - Handles *known-inactive* active abilities (those tracked in
+ *   `activeAbilityGrantSources` but not yet in `equippedActiveAbilityIds`
+ *   because the active-slot cap was reached at grant time).
  * - Leaves abilities granted by `learned` or `skill` sources untouched.
  *
  * Idempotent: calling with an `instanceId` that has no matching grants is a
@@ -221,22 +327,26 @@ export function revokeEquipmentAbilityGrants(
   const state = world.abilityStatesByEntity.get(holderEid);
   if (state === undefined) return;
 
-  // --- Active abilities ---
-  for (const abilityId of [...state.equippedActiveAbilityIds]) {
+  const isMatchingSource = (s: AbilityGrantSource): boolean =>
+    (s.kind === 'equipment' || s.kind === 'generated-equipment') && s.instanceId === instanceId;
+
+  // --- Active abilities (equipped + known-inactive) ---
+  // Iterate all source-tracked IDs so known-inactive abilities (tracked in
+  // activeAbilityGrantSources but absent from equippedActiveAbilityIds) are
+  // also cleaned up.
+  for (const abilityId of [...state.activeAbilityGrantSources.keys()]) {
     const sources = state.activeAbilityGrantSources.get(abilityId);
     if (sources === undefined) continue;
-    const remaining = sources.filter(
-      (s) => !(s.kind === 'equipment' && s.instanceId === instanceId),
-    );
+    const remaining = sources.filter((s) => !isMatchingSource(s));
     if (remaining.length === sources.length) continue; // nothing matched
     if (remaining.length > 0) {
-      // Other sources still hold the ability — keep it equipped, just prune.
+      // Other sources still hold the ability — prune matched sources only.
       state.activeAbilityGrantSources.set(abilityId, remaining);
     } else {
-      // Last source removed — unequip entirely.
+      // Last source removed — clean up entirely.
+      state.activeAbilityGrantSources.delete(abilityId);
       const idx = state.equippedActiveAbilityIds.indexOf(abilityId);
       if (idx >= 0) state.equippedActiveAbilityIds.splice(idx, 1);
-      state.activeAbilityGrantSources.delete(abilityId);
     }
   }
 
@@ -244,9 +354,7 @@ export function revokeEquipmentAbilityGrants(
   for (const abilityId of [...state.passiveAbilityIds]) {
     const sources = state.passiveAbilityGrantSources.get(abilityId);
     if (sources === undefined) continue;
-    const remaining = sources.filter(
-      (s) => !(s.kind === 'equipment' && s.instanceId === instanceId),
-    );
+    const remaining = sources.filter((s) => !isMatchingSource(s));
     if (remaining.length === sources.length) continue; // nothing matched
     if (remaining.length > 0) {
       state.passiveAbilityGrantSources.set(abilityId, remaining);

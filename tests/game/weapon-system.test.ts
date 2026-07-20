@@ -12,8 +12,13 @@ import {
 } from '../../src/core/components.js';
 import { asFamilyId } from '../../src/core/faction-relations.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { applyStatusEffect } from '../../src/core/status-effects.js';
 import { denUnlockGoalId } from '../../src/game/floor2Scenario.js';
-import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
+import {
+  setActiveWeapon,
+  getActiveWeaponReadiness,
+  weaponSystem,
+} from '../../src/game/weaponSystem.js';
 import { WEAPON } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -325,5 +330,75 @@ describe('weaponSystem', () => {
     expect(activeProjectile).toBeDefined();
     // Boss is below (+Y), so the projectile must have a +Y component.
     expect(activeWorld.stores.velocity.y[activeProjectile!]).toBeGreaterThan(0);
+  });
+
+  it('Tarnished attackSpeed status multiplier extends weapon fire cadence through weaponSystem', () => {
+    // Regression guard for the attackSpeed status channel folded into
+    // getEffectiveCooldownMs at weaponSystem.ts line 211-215. A 0.75× multiplier
+    // means "attacks 25% slower", which LENGTHENS the cooldown: 500ms / 0.75 ≈ 667ms.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 8, 8);
+    spawnEnemy(world, 25, 8, 10); // target enemy
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+
+    // Apply 0.75× attackSpeed multiplier (Queen Mab Tarnished debuff).
+    applyStatusEffect(world, player, {
+      stat: 'attackSpeed',
+      op: 'multiply',
+      value: 0.75,
+      durationMs: 99_999,
+      sourceType: 'ability',
+      sourceId: 'test:tarnished',
+      stackRule: { mode: 'replace' },
+    });
+
+    // First fire: at the base cooldown mark (weapon already primed by setActiveWeapon).
+    world.elapsedMs = pistol.cooldownMs; // 500ms
+    weaponSystem(world);
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
+
+    // 550ms after first fire: > base cooldown (500ms) but < effective cooldown
+    // (~667ms), so the weapon must NOT fire again yet.
+    world.elapsedMs += 550;
+    weaponSystem(world);
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
+
+    // Another 120ms (670ms total since first fire): now >= effective cooldown — fires.
+    world.elapsedMs += 120;
+    weaponSystem(world);
+    expect(query(world.ecs, [Projectile]).length).toBe(2);
+  });
+
+  it('setActiveWeapon immediate-fire guarantee holds under Tarnished attackSpeed debuff', () => {
+    // Regression guard: if the player is Tarnished (0.75× attackSpeed → ~667ms
+    // effective cooldown) when they swap weapons, the fresh weapon must still be
+    // ready to fire at the swap instant — i.e. getActiveWeaponReadiness().ready
+    // must return true immediately after setActiveWeapon.
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 8, 8);
+    spawnEnemy(world, 25, 8, 10);
+    const pistol = getWeaponDef('pistol')!; // cooldownMs = 500
+
+    // Apply Tarnished BEFORE equipping the weapon.
+    applyStatusEffect(world, player, {
+      stat: 'attackSpeed',
+      op: 'multiply',
+      value: 0.75,
+      durationMs: 99_999,
+      sourceType: 'ability',
+      sourceId: 'test:tarnished',
+      stackRule: { mode: 'replace' },
+    });
+
+    // Equip at a non-zero timestamp so the lastFireMs arithmetic is non-trivial.
+    world.elapsedMs = 10_000;
+    setActiveWeapon(world, pistol);
+
+    // The weapon should be ready to fire immediately — not delayed by ~167ms.
+    const readiness = getActiveWeaponReadiness(world);
+    expect(readiness).not.toBeNull();
+    expect(readiness!.ready).toBe(true);
+    expect(readiness!.remainingMs).toBe(0);
   });
 });

@@ -133,14 +133,6 @@ function createHarness({
         .filter((pull) => String(pull.state || 'open').toLowerCase() === 'open')
         .map((pull) => structuredClone(pull));
     },
-    fetchSingleOpenPr: async (pullNumber) => {
-      calls.push(['fetchSingleOpenPr', pullNumber]);
-      // Returns the PR as-is regardless of state, mirroring the real GitHub
-      // REST endpoint GET /pulls/{number} which returns any PR state.
-      // The caller (runPrReadyReviewerGuard) is responsible for the open-state check.
-      const pull = state.pulls.find((entry) => entry.number === pullNumber);
-      return pull ? structuredClone(pull) : null;
-    },
     getPull: async (pullNumber) => {
       calls.push(['getPull', pullNumber]);
       const pull = state.pulls.find((entry) => entry.number === pullNumber);
@@ -324,6 +316,111 @@ test('uses bounded changed-file retries only for the synchronized pull request',
       prNumber: 42,
     }),
     [0],
+  );
+});
+
+test('event-triggered runs inspect only the triggering pull request', async () => {
+  const secondPr = makePr({
+    number: 43,
+    node_id: 'PR_43',
+    head: {
+      sha: 'b'.repeat(40),
+      ref: 'copilot/other-pr',
+      repo: { full_name: REPOSITORY },
+    },
+  });
+  const harness = createHarness({
+    pulls: [makePr(), secondPr],
+  });
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'pull_request_target',
+    payloadAction: 'opened',
+    triggeringPullNumber: 42,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 1,
+    reviewerRemovals: 0,
+  });
+  assert.equal(
+    harness.calls.some(([name]) => name === 'listOpenPulls'),
+    false,
+  );
+  assert.equal(
+    harness.calls.some(([, pullNumber]) => pullNumber === 43),
+    false,
+  );
+});
+
+test('scheduled sweeps still enumerate all open pull requests', async () => {
+  const secondPr = makePr({
+    number: 43,
+    node_id: 'PR_43',
+    draft: false,
+    head: {
+      sha: 'b'.repeat(40),
+      ref: 'copilot/other-pr',
+      repo: { full_name: REPOSITORY },
+    },
+  });
+  const harness = createHarness({
+    pulls: [makePr({ draft: false }), secondPr],
+  });
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'schedule',
+    payloadAction: undefined,
+    triggeringPullNumber: undefined,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    reviewerRemovals: 0,
+  });
+  assert.deepEqual(
+    harness.calls.filter(([name]) => name === 'listOpenPulls'),
+    [['listOpenPulls']],
+  );
+});
+
+test('event-triggered runs fail closed when the triggering pull request number is missing', async () => {
+  const harness = createHarness();
+
+  const summary = await runPrReadyReviewerGuard({
+    repository: REPOSITORY,
+    reviewerLoginRaw: 'nalfeo',
+    eventName: 'pull_request_target',
+    payloadAction: 'opened',
+    triggeringPullNumber: undefined,
+    api: harness.api,
+    log: harness.log,
+    now: NOW,
+  });
+
+  assert.deepEqual(summary, {
+    draftsPublished: 0,
+    emptyDraftRepairs: 0,
+    reviewerRemovals: 0,
+  });
+  assert.deepEqual(harness.calls, []);
+  assert.ok(
+    harness.logs.some(
+      ([level, message]) =>
+        level === 'warning' && message.includes('invalid triggering pull request number'),
+    ),
   );
 });
 
@@ -1744,7 +1841,7 @@ test('absent changed_files in confirmation read skips without close', async () =
   );
 });
 
-test('event-scoped run uses fetchSingleOpenPr and skips listOpenPulls', async () => {
+test('event-scoped run uses getPull and skips listOpenPulls', async () => {
   const pr42 = makePr({
     number: 42,
     node_id: 'PR_42',
@@ -1787,15 +1884,10 @@ test('event-scoped run uses fetchSingleOpenPr and skips listOpenPulls', async ()
     emptyDraftRepairs: 0,
     reviewerRemovals: 1,
   });
-  // Must use fetchSingleOpenPr, not listOpenPulls
+  // Must use getPull (single-PR fetch), not listOpenPulls
   assert.ok(
-    harness.calls.some(([name]) => name === 'fetchSingleOpenPr'),
-    'fetchSingleOpenPr must be called',
-  );
-  assert.deepEqual(
-    harness.calls.filter(([name]) => name === 'fetchSingleOpenPr'),
-    [['fetchSingleOpenPr', 42]],
-    'fetchSingleOpenPr must be called with the triggering PR number',
+    harness.calls.some(([name, num]) => name === 'getPull' && num === 42),
+    'getPull must be called with the triggering PR number',
   );
   assert.equal(
     harness.calls.some(([name]) => name === 'listOpenPulls'),
@@ -1815,7 +1907,7 @@ test('event-scoped run uses fetchSingleOpenPr and skips listOpenPulls', async ()
   );
 });
 
-test('scheduled run uses listOpenPulls for full sweep, not fetchSingleOpenPr', async () => {
+test('scheduled run uses listOpenPulls for full sweep, not single-PR fetch', async () => {
   const harness = createHarness({
     pulls: [makePr({ draft: false, requested_reviewers: [] })],
   });
@@ -1836,9 +1928,9 @@ test('scheduled run uses listOpenPulls for full sweep, not fetchSingleOpenPr', a
     'listOpenPulls must be called for sweep',
   );
   assert.equal(
-    harness.calls.some(([name]) => name === 'fetchSingleOpenPr'),
+    harness.calls.some(([name]) => name === 'getPull'),
     false,
-    'fetchSingleOpenPr must not be called for sweep',
+    'getPull must not be called for scheduled sweep',
   );
 });
 
@@ -1863,9 +1955,9 @@ test('workflow_dispatch run uses listOpenPulls for full sweep', async () => {
     'listOpenPulls must be called for workflow_dispatch sweep',
   );
   assert.equal(
-    harness.calls.some(([name]) => name === 'fetchSingleOpenPr'),
+    harness.calls.some(([name]) => name === 'getPull'),
     false,
-    'fetchSingleOpenPr must not be called for workflow_dispatch',
+    'getPull must not be called for workflow_dispatch sweep',
   );
 });
 
@@ -1886,10 +1978,9 @@ test('event-scoped run skips immediately when triggering PR is not open', async 
   });
 
   assert.deepEqual(summary, { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 });
-  assert.equal(
-    harness.calls.some(([name]) => name === 'getPull'),
-    false,
-    'no further API calls after non-open PR',
+  assert.ok(
+    harness.calls.some(([name, num]) => name === 'getPull' && num === 42),
+    'getPull must be called to inspect the triggering PR',
   );
   assert.equal(
     harness.calls.some(([name]) => name === 'markReadyForReview'),
@@ -1899,33 +1990,7 @@ test('event-scoped run skips immediately when triggering PR is not open', async 
     harness.calls.some(([name]) => name === 'removeRequestedReviewer'),
     false,
   );
-  assert.ok(harness.logs.some(([, msg]) => msg.includes('not open')));
-});
-
-test('pull_request_target event without a valid triggeringPullNumber falls back to full sweep', async () => {
-  const harness = createHarness({
-    pulls: [makePr({ draft: false, requested_reviewers: [] })],
-  });
-
-  await runPrReadyReviewerGuard({
-    repository: REPOSITORY,
-    reviewerLoginRaw: 'nalfeo',
-    eventName: 'pull_request_target',
-    payloadAction: 'opened',
-    triggeringPullNumber: undefined,
-    api: harness.api,
-    log: harness.log,
-    now: NOW,
-  });
-
-  assert.ok(
-    harness.calls.some(([name]) => name === 'listOpenPulls'),
-    'falls back to listOpenPulls when no PR number',
-  );
-  assert.equal(
-    harness.calls.some(([name]) => name === 'fetchSingleOpenPr'),
-    false,
-  );
+  assert.ok(harness.logs.some(([, msg]) => msg.includes('No open PRs found')));
 });
 
 test('all runs share a single global concurrency group to prevent sweep/event race conditions', () => {
