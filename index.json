@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ca0ffac149dc99da01694a95906278440f29aae9",
+    "commitDate": "2026-07-20T04:56:27Z",
+    "commitSubject": "feat(sprites): consolidate approved iron-cleaver-v1 assets (var-0, var-5) (#1711)",
+    "capturedAt": "2026-07-20T06:17:12.462Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29718348693",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/ca0ffac149dc99da01694a95906278440f29aae9.json"
+  },
+  {
     "commit": "23e96a492be0bd46a49a517e29e4c4263d417bd0",
     "commitDate": "2026-07-20T04:56:20Z",
     "commitSubject": "fix(enemies): engage Floor 2 mobs across cave seams (#1708)",
