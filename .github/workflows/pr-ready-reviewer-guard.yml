@@ -22,8 +22,8 @@ jobs:
     # sweep runs, use the global group with cancel-in-progress: false so the
     # single full-repo sweep is never interrupted.
     concurrency:
-      group: ${{ github.event_name == 'pull_request_target' && format('pr-ready-reviewer-guard-pr-{0}', github.event.pull_request.number) || 'pr-ready-reviewer-guard' }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+      group: "pr-ready-reviewer-guard"
+      cancel-in-progress: false
     steps:
       - name: Checkout trusted guard script
         uses: actions/checkout@v4
