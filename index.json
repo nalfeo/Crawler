@@ -1,5 +1,16 @@
 [
   {
+    "commit": "d925e8049e28ff73f3417f1d0119419b35415498",
+    "commitDate": "2026-07-19T23:36:32Z",
+    "commitSubject": "feat(epics): automate Floor 2 equipment child-issue materialization (#1657)",
+    "capturedAt": "2026-07-20T01:06:53.126Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29708795439",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/d925e8049e28ff73f3417f1d0119419b35415498.json"
+  },
+  {
     "commit": "be9ff2386ca2fd7996d037b304487c944a7f05a2",
     "commitDate": "2026-07-19T23:36:20Z",
     "commitSubject": "feat(d1): deterministic equipment generator with deferred snapshot pattern (#1656)",
