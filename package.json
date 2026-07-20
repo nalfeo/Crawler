@@ -130,7 +130,7 @@
   "dependencies": {
     "@recast-navigation/wasm": "0.43.1",
     "bitecs": "^0.4.0",
-    "cacache": "^21.0.1",
+    "cacache": "^20.0.4",
     "loglevel": "^1.9.2",
     "phaser": "^4.1.0",
     "recast-navigation": "0.43.1",
