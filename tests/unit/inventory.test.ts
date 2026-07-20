@@ -104,7 +104,9 @@ describe('InventoryBag', () => {
 
       // The bag's stored entry must be unchanged
       expect(hasGeneratedEquipmentReference(bag, first)).toBe(true);
-      expect(hasGeneratedEquipmentReference(bag, 'gei:v1:mutated:0' as GeneratedEquipmentInstanceKey)).toBe(false);
+      expect(
+        hasGeneratedEquipmentReference(bag, 'gei:v1:mutated:0' as GeneratedEquipmentInstanceKey),
+      ).toBe(false);
     });
 
     it('removes only the requested key and leaves distinct instances intact', () => {
