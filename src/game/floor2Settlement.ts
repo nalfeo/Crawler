@@ -104,31 +104,18 @@ export function initializeFloor2Settlement(
   }
   const settlementRng = new SeededRandom(hashStringToSeed(`floor2-settlement:${world.seed}`));
 
-  // Seeded shop roll — preserve the existing world.rng flow for shop selection
-  // and inventories; all new placement/defector randomness uses a derived RNG.
-  // Quartermaster is excluded from the random pool and always placed separately.
+  // Route all shop planning through planFloor2SettlementShops: preserves the
+  // legacy full-pack shuffle/inventory-draw stream, enforces archetype validation,
+  // and supplies pre-rolled inventories for both the Quartermaster and non-QM shops.
   const allArchetypes = options.archetypes ?? loadShopArchetypes();
-  // QM must always come from the canonical list (options.archetypes may be a custom subset).
-  const quartermasterArchetype =
-    allArchetypes.find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID) ??
-    loadShopArchetypes().find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
-  if (!quartermasterArchetype) {
-    throw new Error(
-      `initializeFloor2Settlement: Quartermaster archetype "${QUARTERMASTER_ARCHETYPE_ID}" not found`,
-    );
-  }
-  const randomPool = allArchetypes.filter((a) => a.id !== QUARTERMASTER_ARCHETYPE_ID);
-  if (randomPool.length === 0) {
-    throw new Error(
-      'initializeFloor2Settlement: no non-Quartermaster archetypes available for random shop selection; ' +
-        'check shop-archetypes data or pass a non-empty non-Quartermaster options.archetypes override',
-    );
-  }
-  const shopCount = options.shopCount ?? (world.rng.next() < 0.5 ? 1 : 2);
-  const shuffled = [...randomPool];
-  world.rng.shuffle(shuffled);
-  const picked = shuffled.slice(0, Math.min(shopCount, shuffled.length));
   validateSettlementNpcDefs(allArchetypes);
+  const shopCount = options.shopCount ?? (world.rng.next() < 0.5 ? 1 : 2);
+  const plannedShops = planFloor2SettlementShops(world.rng, world.seed, shopCount, allArchetypes);
+  const qmPlan = plannedShops.find((p) => p.archetype.id === FLOOR2_QUARTERMASTER_ARCHETYPE_ID)!;
+  const nonQmPlans = plannedShops.filter(
+    (p) => p.archetype.id !== FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+  );
+  const picked = nonQmPlans.map((p) => p.archetype);
   const shopRooms = settlements.filter((room) => room.id !== settlement.id);
   const fallbackShopRoom = shopRooms[0] ?? settlement;
   const assignedRooms = picked.map(
@@ -159,7 +146,7 @@ export function initializeFloor2Settlement(
       'initializeFloor2Settlement: failed to place broker, defector, or quartermaster',
     );
   }
-    for (const room of settlements) {
+  for (const room of settlements) {
     installSettlementDoorEntities(world, room);
   }
 
@@ -172,22 +159,15 @@ export function initializeFloor2Settlement(
     appearanceFallbackKey: defectorFallbackAppearanceKey,
   });
 
-  // Spawn guaranteed Quartermaster.
-  // QM is always guaranteed; roll its inventory with settlementRng so this extra
-  // guaranteed inventory roll does not perturb world.rng for downstream systems.
+  // Spawn guaranteed Quartermaster — archetype and pre-rolled inventory come
+  // from planFloor2SettlementShops so the RNG state is consistent with the plan.
   const qmWorldPos = floorMap.tileToWorld(quartermasterTile.x, quartermasterTile.y);
-  const qmNpcEid = spawnNpc(world, qmWorldPos.x, qmWorldPos.y, quartermasterArchetype.npcId);
-  const qmRolled = generateShopInventory(settlementRng, quartermasterArchetype);
-  const qmInventory: Floor2ShopInventoryItem[] = qmRolled.items.map((item) => ({
-    itemId: item.itemId,
-    unitPrice: item.unitPrice,
-    stock: item.stock,
-  }));
+  const qmNpcEid = spawnNpc(world, qmWorldPos.x, qmWorldPos.y, qmPlan.archetype.npcId);
   const quartermasterShop: Floor2ShopInstance = {
-    archetypeId: quartermasterArchetype.id,
-    npcId: quartermasterArchetype.npcId,
+    archetypeId: qmPlan.archetype.id,
+    npcId: qmPlan.archetype.npcId,
     npcEid: qmNpcEid,
-    inventory: qmInventory,
+    inventory: [...qmPlan.inventory],
   };
 
   const shops: Floor2ShopInstance[] = [];
@@ -198,17 +178,11 @@ export function initializeFloor2Settlement(
     }
     const worldPos = floorMap.tileToWorld(spawnTile.x, spawnTile.y);
     const npcEid = spawnNpc(world, worldPos.x, worldPos.y, archetype.npcId);
-    const rolled = generateShopInventory(world.rng, archetype);
-    const inventory: Floor2ShopInventoryItem[] = rolled.items.map((item) => ({
-      itemId: item.itemId,
-      unitPrice: item.unitPrice,
-      stock: item.stock,
-    }));
     shops.push({
       archetypeId: archetype.id,
       npcId: archetype.npcId,
       npcEid,
-      inventory,
+      inventory: [...nonQmPlans[idx]!.inventory],
     });
   });
 

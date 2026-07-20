@@ -46,7 +46,7 @@ smooth curve. The representative-build median aggregate realized-DPS gate is
   snapshot, and fingerprint. The only later content transform is a legal atomic
   enhancement revision; it never rerolls prior choices.
 - **DEC-003**: Static `WeaponDef` records remain immutable templates.
-  Weapon-bearing equipment freezes an `ActiveWeaponSnapshot` after all instance
+  Weapon-bearing equipment freezes an `ActiveWeaponSnapshotV1` after all instance
   resolution. Runtime firing selects the snapshot by equipped instance ID rather
   than mutating or cloning a global `WeaponDef`.
 - **DEC-004**: Fingerprints are versioned SHA-256 digests of canonical immutable

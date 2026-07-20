@@ -523,8 +523,12 @@ function createMainSceneProbeLab(canvas: HTMLElement, controls: HTMLElement): ()
         playerFeet,
         cameraCenter: cameraCenter(),
         settlementRoomCount: world?.floorExtendedState?.settlement?.settlementRoomIds.length ?? 0,
-        settlementShopArchetypeIds:
-          world?.floorExtendedState?.settlement?.shops.map((shop) => shop.archetypeId) ?? [],
+        settlementShopArchetypeIds: [
+          ...(world?.floorExtendedState?.settlement?.quartermasterShop
+            ? [world.floorExtendedState.settlement.quartermasterShop.archetypeId]
+            : []),
+          ...(world?.floorExtendedState?.settlement?.shops.map((shop) => shop.archetypeId) ?? []),
+        ],
       };
     },
 

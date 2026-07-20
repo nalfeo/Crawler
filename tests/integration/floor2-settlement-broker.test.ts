@@ -260,7 +260,7 @@ describe('Floor 2 settlement · initialization', () => {
       .loadShopArchetypes()
       .filter((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
     expect(() => initializeFloor2Settlement(world, { archetypes: onlyQm })).toThrowError(
-      /no non-Quartermaster archetypes available/,
+      /requires \d+ non-Quartermaster shop archetypes, found 0/,
     );
   });
 
@@ -280,7 +280,7 @@ describe('Floor 2 settlement · initialization', () => {
 
     try {
       expect(() => initializeFloor2Settlement(world)).toThrowError(
-        new RegExp(`Quartermaster archetype "${QUARTERMASTER_ARCHETYPE_ID}" not found`),
+        new RegExp(`expected exactly one "${QUARTERMASTER_ARCHETYPE_ID}" archetype, found 0`),
       );
       expect(loadSpy).toHaveBeenCalled();
     } finally {

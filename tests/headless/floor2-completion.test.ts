@@ -83,13 +83,16 @@ describe('Floor 2 headless completion', () => {
         maxFrames: 1,
         onFinish: (world) => {
           const settlement = world.floorExtendedState?.settlement;
+          const allShops = [
+            ...(settlement?.quartermasterShop ? [settlement.quartermasterShop] : []),
+            ...(settlement?.shops ?? []),
+          ];
           observed = {
             roomCount: settlement?.settlementRoomIds.length ?? 0,
-            shopIds: settlement?.shops.map((shop) => shop.archetypeId) ?? [],
-            quartermasterCount:
-              settlement?.shops.filter(
-                (shop) => shop.archetypeId === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
-              ).length ?? 0,
+            shopIds: allShops.map((shop) => shop.archetypeId),
+            quartermasterCount: allShops.filter(
+              (shop) => shop.archetypeId === FLOOR2_QUARTERMASTER_ARCHETYPE_ID,
+            ).length,
           };
         },
       });
