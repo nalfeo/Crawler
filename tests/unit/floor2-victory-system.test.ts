@@ -212,7 +212,7 @@ describe('confirmFloor2StairDescend', () => {
           ...FLOOR1_ACHIEVEMENTS[0],
           id: 'floor2-clear-test',
           floor: 2,
-          scope: { type: 'currentRun', introducedOnFloor: 2 },
+          scope: 'current_run',
           unlockRules: [
             {
               type: 'booleanIs',

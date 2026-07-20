@@ -22,7 +22,7 @@ function rawAchievement(
     ...FLOOR1_ACHIEVEMENTS[0],
     id: 'test-achievement',
     floor: 2,
-    scope: { type: 'floor' },
+    scope: 'floor',
     unlockRules: [],
     ...overrides,
   };

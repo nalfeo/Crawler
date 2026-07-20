@@ -146,7 +146,11 @@ describe('player floor carryover', () => {
     );
     expect(destination.featureUnlocks).toEqual(source.featureUnlocks);
     expect(destination.achievements.unlockedIds).toEqual(source.achievements.unlockedIds);
-    expect(destination.achievements.carriedRunFacts).toEqual(source.achievements.carriedRunFacts);
+    expect(destination.achievements.carriedRunFacts.numberFacts.totalKills).toBe(99);
+    expect(destination.achievements.carriedRunFacts.booleanFacts.staircaseUnlocked).toBe(true);
+    expect(destination.achievements.carriedRunFacts.completedQuestIds).toContain(
+      'floor1-find-welcome',
+    );
     expect(destination.statModifiers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ sourceId: 'floor2-only' }),
