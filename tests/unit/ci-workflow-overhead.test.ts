@@ -336,11 +336,14 @@ describe('impact-flag job gating contracts (#1697/#1698)', () => {
     expect(condition).not.toContain('docs_only');
   });
 
-  it('security-checks job runs even when changes job fails (fail-closed: if: always())', () => {
+  it('security-checks job is skipped when the workflow is cancelled but runs on changes failure (if: !cancelled())', () => {
     const workflow = loadWorkflow('.github/workflows/security-review.yml');
     const securityChecks = workflow.jobs['security-checks'];
-    // Without if: always(), a failing changes job skips security-checks entirely —
-    // that silently passes the security gate when scope detection is broken.
-    expect(securityChecks?.if).toBe('always()');
+    // !cancelled() skips the job when the concurrency policy cancels a superseded run
+    // (preserving the intent of the concurrency block), while still running when the
+    // changes job fails normally — preventing scope-detection failure from silently
+    // bypassing the security gate.
+    // always() would keep the job running even after cancellation, undermining #1689.
+    expect(securityChecks?.if).toBe('${{ !cancelled() }}');
   });
 });

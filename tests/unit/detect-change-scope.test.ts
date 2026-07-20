@@ -371,6 +371,32 @@ const cases: Case[] = [
     files: ['src/game/combat.ts', 'docs/combat.md'],
     expected: F(false, false, false, false, false, true, true, true, false, false),
   },
+  // Unit-project taxonomy regression (threads 2 & 3: visual/sim safe-list gaps).
+  // vitest.config.ts:81 defines the 'unit' project as tests/{unit,ecs,game,property,
+  // determinism,sensors}/**. The safe lists must treat all these directories as
+  // equivalent to tests/unit/** — changing tests/ files cannot affect E2E visual
+  // output or headless sim behavior; only coverage is touched.
+  {
+    name: 'ecs unit test → not visual, not sim, coverage touched',
+    files: ['tests/ecs/aoe-on-impact-system.test.ts'],
+    //             ao     do     gs     so     st     vt     simt   cvgt   spt    dept
+    expected: F(false, false, false, false, false, false, false, true, false, false),
+  },
+  {
+    name: 'game unit test → not visual, not sim, coverage touched',
+    files: ['tests/game/ability-grant-sources.test.ts'],
+    expected: F(false, false, false, false, false, false, false, true, false, false),
+  },
+  {
+    name: 'property test → not visual, not sim, coverage touched',
+    files: ['tests/property/active-weapon-snapshot.property.test.ts'],
+    expected: F(false, false, false, false, false, false, false, true, false, false),
+  },
+  {
+    name: 'determinism test → not visual, not sim, coverage touched',
+    files: ['tests/determinism/determinism.test.ts'],
+    expected: F(false, false, false, false, false, false, false, true, false, false),
+  },
 ];
 
 describe('detect-art-only.sh change-scope classifier', () => {

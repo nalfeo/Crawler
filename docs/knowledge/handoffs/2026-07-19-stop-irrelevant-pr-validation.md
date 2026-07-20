@@ -22,7 +22,7 @@ Implemented the five rollout issues of the "Stop irrelevant PR validation" Epic 
 ## Files changed
 
 - `scripts/agent/ci/detect-art-only.sh` — Added 5 new flag computation blocks (`visual_touched`, `sim_touched`, `coverage_touched`, `sprite_pipeline_touched`, `dependencies_touched`). Updated fail-safe calls to emit `true` for positive-signal flags. Lockfile changes fail closed across gameplay, simulation, visual, and coverage gates because resolved runtime and test dependencies can change behavior.
-- `scripts/agent/ci/local-scope.sh` — Updated `emit_all_false()` to 10 params.
+- `scripts/agent/ci/local-scope.sh` — Updated `emit_all_false()` to emit ten output fields.
 - `tests/unit/detect-change-scope.test.ts` — Expanded `Scope` interface to 10 fields, rewrote `F()` helper, updated all 34 existing tests plus 7 new test cases (45 total).
 - `.github/workflows/ci.yml` — Added concurrency block, 5 new `changes` outputs, gated `test-headless`/`test-unit-coverage`/`test-e2e` and npm audit step.
 - `.github/workflows/security-review.yml` — Added concurrency block, `dependencies_touched` output, gated npm audit and dep allowlist steps.

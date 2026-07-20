@@ -364,6 +364,11 @@ while IFS= read -r file; do
     .specify/*) ;;
     scripts/*) ;;
     tests/unit/*) ;;
+    tests/ecs/*) ;;
+    tests/game/*) ;;
+    tests/property/*) ;;
+    tests/determinism/*) ;;
+    tests/sensors/*) ;;
     tests/headless/*) ;;
     tests/integration/*) ;;
     *.md) ;;
@@ -390,6 +395,11 @@ while IFS= read -r file; do
     scripts/*) ;;
     tests/e2e/*) ;;
     tests/unit/*) ;;
+    tests/ecs/*) ;;
+    tests/game/*) ;;
+    tests/property/*) ;;
+    tests/determinism/*) ;;
+    tests/sensors/*) ;;
     tests/integration/*) ;;
     public/*) ;;
     *.md) ;;
