@@ -43,6 +43,12 @@ import {
   requiresHumanApproval,
 } from '../merge-train/human-approval.mjs';
 import { fileLoopIncident } from './loop-incident-lib.mjs';
+import {
+  buildRetroactivePlanComment,
+  hasCopilotPlanComment,
+  hasIntakeRequirementComment,
+  reviewThreadPlanIssueNumbers,
+} from './issue-intake-lib.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -77,7 +83,10 @@ const RELEASE_HANDOFF_DELAY_MS = 100;
 const REVIEW_DISCUSSION_COMMENT_PATTERN = /#discussion_r(\d+)\b/i;
 const ADDRESSED_MARKER_REPLY = '`✅ Addressed in <sha>: <one-line note>`';
 const POST_PUSH_HEAD_SHA_PLACEHOLDER = '<post-push-head-sha>';
-const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace('<sha>', POST_PUSH_HEAD_SHA_PLACEHOLDER);
+const POST_PUSH_ADDRESSED_MARKER_REPLY = ADDRESSED_MARKER_REPLY.replace(
+  '<sha>',
+  POST_PUSH_HEAD_SHA_PLACEHOLDER,
+);
 
 /**
  * Exponential backoff for explicit auto-rebase-failure retries:
@@ -994,6 +1003,24 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+function shouldAutoPostOutdatedMarker(candidate) {
+  if (!candidate.isOutdated) return false;
+  if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
+
+  const comments = candidate.comments?.nodes ?? [];
+  const last = comments[comments.length - 1];
+  const hasTrustedMarker =
+    last &&
+    extractAddressedMarkerSha(last.body) !== null &&
+    (TRUSTED_ASSOCIATIONS.has(String(last.authorAssociation ?? '').toUpperCase()) ||
+      TRUSTED_BOT_LOGINS.has(String(last.author?.login ?? '').toLowerCase()));
+
+  // Preserve trusted markers whose lineage is stale or temporarily indeterminate.
+  // A definitive stale marker needs the recovery hint below; an indeterminate one
+  // must remain a generic blocker until GitHub can validate its lineage.
+  return !hasTrustedMarker;
+}
+
 // Post reconciler-authored marker replies for outdated threads that have no trusted marker.
 // thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
 // no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
@@ -1003,19 +1030,7 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 //
 // This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
-for (const thread of unresolvedThreads.filter((candidate) => {
-  if (!candidate.isOutdated) return false;
-  if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
-  // A marker naming a commit that does not exist on GitHub is stronger evidence than
-  // isOutdated: the claimed fix was never published and must remain a recovery blocker.
-  const candidateComments = candidate.comments?.nodes ?? [];
-  const lastComment = candidateComments[candidateComments.length - 1];
-  const candidateMarkerSha = extractAddressedMarkerSha(lastComment?.body);
-  if (candidateMarkerSha && definitivelyUnreachableMarkerShas.has(candidateMarkerSha)) {
-    return false;
-  }
-  return true;
-})) {
+for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
   if (!replyCommentId) {
@@ -1364,10 +1379,15 @@ for (const run of actionRequiredRuns) {
   }
 }
 
+const retroactivePlanIssueNumbers = new Set();
 for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
   const root = thread.comments?.nodes?.[0];
   const staleSha = staleAddressedMarkerByThread.get(thread.id);
   const reviewerSummary = `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 450)}`;
+  const planIssueNumbers = reviewThreadPlanIssueNumbers(thread, closingIssues);
+  for (const issueNumber of planIssueNumbers) {
+    retroactivePlanIssueNumbers.add(issueNumber);
+  }
   // When the thread already has a trusted ✅ Addressed marker but the referenced
   // commit is not reachable from the current head, prepend a targeted hint so
   // the recovery agent knows it only needs to re-post the marker with the
@@ -1379,8 +1399,9 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     kind: 'review-thread',
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
+    requiresIssuePlanComment: planIssueNumbers.length > 0,
     path: thread.path || undefined,
-    line: thread.line || undefined,
+    line: thread.isOutdated ? undefined : thread.line || undefined,
     summary,
     url: root?.url,
   });
@@ -1398,6 +1419,32 @@ const fingerprint =
         reviewThreads: review.threads,
       })
     : blockerFingerprint(normalized);
+
+// Proactively satisfy the issue-side plan-comment requirement only when this
+// cycle is about to dispatch a review-thread blocker that explicitly identifies
+// a missing plan on a linked intake issue. This avoids mutating unrelated live
+// reconciliations (opt-out / merge-train-owned / active-shepherd / clean PR).
+if (live && retroactivePlanIssueNumbers.size > 0) {
+  for (const linkedIssue of closingIssues) {
+    if (!retroactivePlanIssueNumbers.has(linkedIssue.number)) continue;
+    const issueComments = await paginate(
+      readToken,
+      `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`,
+    );
+    if (!hasIntakeRequirementComment(issueComments) || hasCopilotPlanComment(issueComments)) {
+      continue;
+    }
+    await assertExpectedMetadataUnchanged('retroactive-plan-comment');
+    const planBody = buildRetroactivePlanComment(prNumber, pr.title, pr.html_url, pr.body);
+    await request(pat, `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`, {
+      method: 'POST',
+      body: { body: planBody },
+    });
+    process.stdout.write(
+      `posted retroactive plan comment on source issue #${linkedIssue.number} for pr=#${prNumber}\n`,
+    );
+  }
+}
 
 if (normalized.length === 0) {
   const waiting = [
@@ -1735,7 +1782,7 @@ const taskBody = [
   '',
   `A top-level PR comment is never sufficient for a review-thread blocker; post the ${POST_PUSH_ADDRESSED_MARKER_REPLY} reply in the exact thread comment listed above.`,
   '',
-  `When a thread is addressed, push your consolidated repair commit first, then run \`git rev-parse HEAD\` in the PR branch and replace \`${POST_PUSH_HEAD_SHA_PLACEHOLDER}\` in ${POST_PUSH_ADDRESSED_MARKER_REPLY} with that full SHA. Use \`reply_to_comment\` with the **Reply target comment ID** listed above for that thread (not the ID of this task comment). Do not use the dispatch-time head SHA, which identifies the pre-repair commit. The CI recovery reconciler will resolve the review thread automatically on its next pass. Do **not** reply to this task comment to record addressed status — a marker reply on the review-thread comment is the only form recognised by the reconciler. When a thread is deterministically non-applicable (the finding does not apply to the current code and no fix is needed), use \`reply_to_comment\` with body \`✅ Not applicable: <one-line reason>\` instead — do NOT use this for substantive disagreements. Run the repository-required verification and push one consolidated repair commit.`,
+  `When a thread is addressed, push your consolidated repair commit first, then run \`git rev-parse HEAD\` in the PR branch and replace \`${POST_PUSH_HEAD_SHA_PLACEHOLDER}\` in ${POST_PUSH_ADDRESSED_MARKER_REPLY} with that full SHA. Use \`reply_to_comment\` with the **Reply target comment ID** listed above for that thread (not the ID of this task comment). Do not use the dispatch-time head SHA, which identifies the pre-repair commit. The CI recovery reconciler will resolve the review thread automatically on its next pass. Do **not** reply to this task comment to record addressed status — a marker reply on the review-thread comment is the only form recognised by the reconciler. When a thread is deterministically non-applicable (the finding does not apply to the current code and no fix is needed), reply with \`✅ Not applicable: <one-line reason>\`. Do **not** use this path for substantive disagreements. Run the repository-required verification and push one consolidated repair commit.`,
 ].join('\n');
 
 if (live) {

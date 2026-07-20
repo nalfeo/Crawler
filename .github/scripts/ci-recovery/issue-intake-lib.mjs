@@ -1,7 +1,18 @@
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './state.mjs';
 
 export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
+
+/**
+ * Marker embedded in retroactive plan comments posted by the CI recovery
+ * reconciler when a linked issue has an intake requirement but no Copilot plan
+ * comment was ever posted. Used as an idempotency key so the reconciler never
+ * posts the retroactive plan comment twice.
+ */
+export const ISSUE_RECOVERY_PLAN_MARKER = '<!-- crawler-ci-recovery-plan:v1 -->';
 export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
+const RECOVERY_PLAN_APPROACH_MAX_LENGTH = 20_000;
+const RECOVERY_PLAN_CHECKLIST_MAX_ITEMS = 20;
+const RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH = 500;
 const COPILOT_OPENER_LOGINS = new Set([
   'copilot',
   'copilot[bot]',
@@ -10,12 +21,120 @@ const COPILOT_OPENER_LOGINS = new Set([
   'copilot-swe-agent[bot]',
   'app/copilot-swe-agent',
 ]);
+const PLAN_REQUIREMENT_REVIEWER_LOGINS = new Set([
+  'copilot-pull-request-reviewer',
+  'copilot-pull-request-reviewer[bot]',
+]);
 
 // Exported so callers (e.g. nightly-balance-issue.mjs) can recognize a completed
 // Copilot assignment as durable proof of finished intake without duplicating this
 // login list.
 export function isCopilotLogin(login) {
   return COPILOT_OPENER_LOGINS.has(String(login || '').toLowerCase());
+}
+
+function hasTrustedCommentAuthor(comment) {
+  return (
+    TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
+    TRUSTED_BOT_LOGINS.has(String(comment.user?.login || '').toLowerCase())
+  );
+}
+
+function stripHtmlComments(value) {
+  return String(value || '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .trim();
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractMarkdownSection(body, heading) {
+  const match = stripHtmlComments(body).match(
+    new RegExp(`(?:^|\\n)##+\\s*${escapeRegExp(heading)}\\s*\\n([\\s\\S]*?)(?=\\n##+\\s|$)`, 'i'),
+  );
+  return match?.[1]?.trim() || '';
+}
+
+function extractLeadParagraph(body) {
+  const paragraphs = stripHtmlComments(body)
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .filter((paragraph) => !paragraph.startsWith('#'));
+  return paragraphs[0] || '';
+}
+
+function extractBulletLines(body) {
+  return String(body || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^- /.test(line))
+    .map((line) => line.replace(/^- /, '').trim());
+}
+
+function truncatePlanContent(value, maxLength) {
+  const text = String(value || '');
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 2).trimEnd()}…`;
+}
+
+function planHeading(line) {
+  const normalized = String(line || '')
+    .trim()
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^\*\*(.+)\*\*$/, '$1')
+    .trim()
+    .toLowerCase();
+  if (['high-level design', 'high-level design and approach'].includes(normalized)) {
+    return 'design';
+  }
+  if (['key decisions', 'key decisions and alternatives'].includes(normalized)) {
+    return 'decisions';
+  }
+  if (normalized === 'checklist') return 'checklist';
+  return null;
+}
+
+function isStandaloneHeading(line) {
+  const trimmed = String(line || '').trim();
+  return /^#{1,6}\s+\S/.test(trimmed) || /^\*\*[^*]+\*\*$/.test(trimmed);
+}
+
+function hasStructuredPlanContent(body) {
+  const sections = { design: [], decisions: [], checklist: [] };
+  let currentSection = null;
+  for (const line of stripHtmlComments(body).split('\n')) {
+    const heading = planHeading(line);
+    if (heading) {
+      currentSection = heading;
+      continue;
+    }
+    if (isStandaloneHeading(line)) {
+      currentSection = null;
+      continue;
+    }
+    const content = line.trim();
+    if (currentSection && content) sections[currentSection].push(content);
+  }
+  return (
+    sections.design.length > 0 &&
+    sections.decisions.length > 0 &&
+    sections.checklist.some((line) => /^-\s*(?:\[[ x]\]\s*)?\S+/i.test(line))
+  );
+}
+
+function buildRetroactiveChecklist(prBody) {
+  const changeBullets = extractBulletLines(extractMarkdownSection(prBody, 'Changes'));
+  if (changeBullets.length > 0) {
+    return changeBullets.map((entry) => `- [x] ${entry}`);
+  }
+  return [
+    '- [x] Confirm the linked issue still has the intake-plan requirement and lacks trusted plan evidence.',
+    '- [x] Post a trusted retroactive implementation plan on the source issue before dispatching repair work.',
+    '- [x] Keep the recovery path idempotent and covered by targeted regression tests.',
+  ];
 }
 
 export const ISSUE_INTAKE_BODY = [
@@ -59,6 +178,35 @@ export function issueIntakeEligibility(issue, maintainerLogin = 'nalfeo') {
   }
 
   return { eligible: true, reason: 'trusted issue opener' };
+}
+
+export function reviewThreadPlanIssueNumbers(thread, closingIssues) {
+  const rootComment = thread?.comments?.nodes?.[0];
+  const rootLogin = String(rootComment?.author?.login || '').toLowerCase();
+  const rootAssociation = String(rootComment?.authorAssociation || '').toUpperCase();
+  if (
+    !PLAN_REQUIREMENT_REVIEWER_LOGINS.has(rootLogin) &&
+    !TRUSTED_ASSOCIATIONS.has(rootAssociation)
+  ) {
+    return [];
+  }
+
+  const text = String(rootComment?.body || '').toLowerCase();
+  const planSubject = '(?:plan comment|implementation plan|issue comment itself)';
+  const mentionsMissingPlanRequirement = new RegExp(
+    `(?:\\b(?:missing|required|requires?)\\s+(?:(?:an?|the)\\s+)?${planSubject}\\b|` +
+      `\\b${planSubject}\\b\\s+(?:(?:is|was|remains?)\\s+)?(?:missing|required)\\b)`,
+    'i',
+  ).test(text);
+  if (!mentionsMissingPlanRequirement) return [];
+
+  const issueNumbers = (closingIssues || []).map((issue) => issue.number).filter(Number.isInteger);
+  const explicitReferences = [...text.matchAll(/(?:\bissue\s+#?|#)(\d+)\b/gi)].map((match) =>
+    Number.parseInt(match[1], 10),
+  );
+  if (explicitReferences.length === 0) return [];
+  if (explicitReferences.some((issueNumber) => !issueNumbers.includes(issueNumber))) return [];
+  return [...new Set(explicitReferences)];
 }
 
 export async function getCopilotIssueAssignmentContext({
@@ -170,13 +318,7 @@ export async function replaceIssueAssignees({ graphql, token, assignableId, acto
   );
 }
 
-async function mutateIssueAssignees({
-  graphql,
-  token,
-  mutationField,
-  assignableId,
-  actorIds,
-}) {
+async function mutateIssueAssignees({ graphql, token, mutationField, assignableId, actorIds }) {
   const assignment = await graphql(
     token,
     `
@@ -228,10 +370,96 @@ export async function removeIssueAssignees({ graphql, token, assignableId, actor
 
 function isTrustedMarkerComment(comment) {
   return (
-    String(comment.body || '').includes(ISSUE_INTAKE_MARKER) &&
-    (TRUSTED_ASSOCIATIONS.has(String(comment.author_association || '').toUpperCase()) ||
-      TRUSTED_BOT_LOGINS.has(String(comment.user?.login || '').toLowerCase()))
+    String(comment.body || '').includes(ISSUE_INTAKE_MARKER) && hasTrustedCommentAuthor(comment)
   );
+}
+
+/**
+ * Returns true if `issueComments` contains a trusted intake-marker comment,
+ * meaning the issue was assigned via the intake workflow and has a standing
+ * plan-comment requirement.
+ *
+ * Comments fetched from the REST `/issues/{number}/comments` endpoint have
+ * `user.login` and `author_association` fields.
+ */
+export function hasIntakeRequirementComment(issueComments) {
+  return (issueComments || []).some((comment) => {
+    return (
+      String(comment.body || '').includes(ISSUE_INTAKE_MARKER) && hasTrustedCommentAuthor(comment)
+    );
+  });
+}
+
+/**
+ * Returns true if `issueComments` already contains dedicated, trusted plan
+ * evidence: either a trusted retroactive recovery-plan comment from a prior
+ * reconciler run or a Copilot-authored comment with explicit plan sections.
+ *
+ * This intentionally does NOT treat arbitrary non-intake Copilot comments as
+ * plans; status updates and failure notes must not suppress the retroactive
+ * recovery comment.
+ */
+export function hasCopilotPlanComment(issueComments) {
+  return (issueComments || []).some((comment) => {
+    const body = String(comment.body || '');
+    // A prior retroactive plan from CI recovery satisfies the requirement.
+    if (body.includes(ISSUE_RECOVERY_PLAN_MARKER) && hasTrustedCommentAuthor(comment)) return true;
+    return (
+      isCopilotLogin(comment.user?.login) &&
+      !body.includes(ISSUE_INTAKE_MARKER) &&
+      hasStructuredPlanContent(body)
+    );
+  });
+}
+
+/**
+ * Builds the body of a retroactive plan comment to be posted on a source
+ * issue whose linked PR was opened without the required pre-PR plan comment.
+ *
+ * Embeds `ISSUE_RECOVERY_PLAN_MARKER` so future reconciler runs skip the post
+ * (idempotency) and includes the concrete design / decisions / checklist
+ * content that the intake workflow requires on the issue itself.
+ */
+export function buildRetroactivePlanComment(prNumber, prTitle, prHtmlUrl, prBody = '') {
+  const safeTitle = truncatePlanContent(stripHtmlComments(prTitle), 500);
+  const rawApproachLead =
+    extractMarkdownSection(prBody, 'Fix') ||
+    extractLeadParagraph(prBody) ||
+    'Use the trusted CI recovery reconciler to satisfy the missing issue-side plan requirement before repair-thread follow-up runs.';
+  const approachLead = truncatePlanContent(rawApproachLead, RECOVERY_PLAN_APPROACH_MAX_LENGTH);
+  const rawChecklist = buildRetroactiveChecklist(prBody);
+  const checklist = rawChecklist
+    .slice(0, RECOVERY_PLAN_CHECKLIST_MAX_ITEMS)
+    .map((item) => truncatePlanContent(item, RECOVERY_PLAN_CHECKLIST_ITEM_MAX_LENGTH));
+  if (
+    rawChecklist.length > checklist.length ||
+    rawChecklist.some((item, index) => item !== checklist[index])
+  ) {
+    checklist.push(
+      `- [ ] Review remaining implementation details in ${prHtmlUrl || `PR #${prNumber}`}.`,
+    );
+  }
+  return [
+    ISSUE_RECOVERY_PLAN_MARKER,
+    '',
+    '**Retroactive implementation plan** _(filed by CI recovery pipeline)_',
+    '',
+    `The agent that opened PR #${prNumber} did not post an implementation plan before opening the PR. The CI recovery pipeline is posting this retroactive plan to satisfy the pre-PR planning requirement so the review thread can be resolved.`,
+    '',
+    `**PR:** ${prHtmlUrl || `#${prNumber}`}`,
+    ...(safeTitle ? [`**Title:** ${safeTitle}`] : []),
+    '',
+    '**High-level design and approach**',
+    approachLead,
+    '',
+    '**Key decisions and alternatives**',
+    '- Post the issue comment from the trusted CI recovery reconciler instead of the repair agent, because the repair agent may lack `issues: write` permission.',
+    '- Treat only trusted, dedicated plan evidence as satisfied so unrelated Copilot status comments cannot suppress the recovery post.',
+    `- Keep the retroactive recovery comment idempotent with \`${ISSUE_RECOVERY_PLAN_MARKER}\` so repeated reconciliations do not duplicate the plan.`,
+    '',
+    '**Checklist**',
+    ...checklist,
+  ].join('\n');
 }
 
 async function deleteCommentIfCreated(request, token, owner, repo, commentId) {

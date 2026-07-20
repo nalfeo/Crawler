@@ -6,7 +6,7 @@ consequences. New decisions that affect **2+ systems** require an ADR (see the
 constitution and `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 123 ADR files — 95 numbered (0001–0063, with number reuse and gaps in this index — see below) + 28 date-prefixed
+- **Count:** 128 ADR files — 96 numbered (0001–0064, with number reuse and gaps in this index — see below) + 32 date-prefixed
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -67,7 +67,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0060**).
+   number** (currently **0065**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -99,11 +99,13 @@ hundreds of inbound references.
 - [Line-of-sight gate for weapon auto-targeting](0018-weapon-line-of-sight-targeting.md)
 - [Fireball spell targeting (any enemy, cluster-preferring)](0018-fireball-targeting.md)
 - [Projectile target-leading & quest-progress stall watchdog](0020-projectile-leading-and-quest-progress-watchdog.md)
+- [Versioned frozen Floor 2 equipment instances](0065-versioned-frozen-floor2-equipment-instances.md) — one generated-equipment registry, frozen per-instance `ActiveWeaponSnapshotV1`, and 10 cross-system decisions (DEC-001..DEC-010).
 
 ### Stats, mana & progression
 
 - [Wisdom → Mana pool (`manaSystem`) + boss-reward spell hardening](0019-wisdom-mana-pool.md) — superseded; mana removed entirely by the primary-stat overhaul below.
 - [Primary-stat system overhaul — EffectiveStats unification, typed damage scaling, encumbrance, and full mana removal](2026-07-16-primary-stat-system-overhaul.md) — supersedes `0018`, `0019`, and `2026-07-10-shared-stat-allocation-and-runtime-derivations.md`.
+- [Versioned frozen Floor 2 equipment instances](0065-versioned-frozen-floor2-equipment-instances.md) — rarity budget, enhancement bounds, and the 1.7×–2.3× five-level DPS growth gate (Principle 9).
 
 ### Enemy AI, spawning & behavior
 
@@ -112,6 +114,7 @@ hundreds of inbound references.
 - [Baby slime spawn animation (size + pop-out) and swing-immunity](0026-baby-slime-spawn-animation-and-swing-immunity.md)
 - [Floor 1 spawn density via a director engagement budget](0024-floor1-spawn-density-engagement-budget.md)
 - [Generic Spawner mob-type](0025-spawner-mob-type.md)
+- [Data-driven boss ability catalog and separate delivery evidence](0064-data-driven-boss-ability-catalog.md) — validates all 18 Floor 2 designs while keeping volatile status out of the game bundle.
 
 ### Floors, rooms & map generation
 
@@ -273,3 +276,10 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0056 | [GitHub-First Broad-Sweep Execution and Investigation Session Process Boundary](0056-github-first-broad-sweep-and-investigation-session-policy.md) | Accepted                 | 2026-07-10 |
 | 0059 | [Floor 2 Settlement Progression Contract](0059-floor2-settlement-progression-contract.md)                                                          | Accepted                 | 2026-07-11 |
 | 0060 | [Repository-Managed Speculative Merge Train](0060-repository-managed-speculative-merge-train.md)                                                   | Accepted                 | 2026-07-11 |
+| 0061 | [Game Intro Screen — Player Identity Before Run Start](0061-game-intro-screen-player-identity.md)                                                  | Accepted                 | 2026-07-13 |
+| 0062 | [Merge-Train Ruleset App Bypass (Fixing GH006 Under Classic Protection)](0062-merge-train-ruleset-app-bypass.md)                                   | Accepted                 | 2026-07-15 |
+| 0062 | [Unlock-aware objective route planning](0062-unlock-aware-objective-route-planning.md)                                                             | Accepted                 | 2026-07-15 |
+| 0063 | [Merge-Train Real GitHub Squash-Merge Promotion (MERGED Completion Semantics)](0063-merge-train-real-squash-merge-promotion.md)                    | Accepted                 | 2026-07-15 |
+| 0064 | [In-Process Floor Transition Carryover](0064-in-process-floor-transition-carryover.md)                                                             | Accepted                 | 2026-07-17 |
+| 0064 | [Data-Driven Boss Ability Catalog and Separate Delivery Evidence](0064-data-driven-boss-ability-catalog.md)                                        | Accepted                 | 2026-07-17 |
+| 0065 | [Versioned Frozen Floor 2 Equipment Instances](0065-versioned-frozen-floor2-equipment-instances.md)                                                | Accepted                 | 2026-07-17 |
