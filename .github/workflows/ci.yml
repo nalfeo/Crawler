@@ -37,16 +37,13 @@ jobs:
       sprites_only: ${{ steps.scope.outputs.sprites_only }}
       sprites_touched: ${{ steps.scope.outputs.sprites_touched }}
       train_promoted: ${{ steps.scope.outputs.train_promoted }}
-<<<<<<< HEAD
+      sim_touched: ${{ steps.scope.outputs.sim_touched }}
+      coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
       # Visual surface outputs (#1688/#1698): route E2E to the affected surface only.
       visual_touched: ${{ steps.scope.outputs.visual_touched }}
       game_visual_touched: ${{ steps.scope.outputs.game_visual_touched }}
       asset_visual_touched: ${{ steps.scope.outputs.asset_visual_touched }}
       devtool_visual_touched: ${{ steps.scope.outputs.devtool_visual_touched }}
-=======
-      sim_touched: ${{ steps.scope.outputs.sim_touched }}
-      coverage_touched: ${{ steps.scope.outputs.coverage_touched }}
->>>>>>> origin/main
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,15 +67,12 @@ jobs:
           gameplay_safe='${{ steps.detect.outputs.gameplay_safe }}'
           sprites_only='${{ steps.detect.outputs.sprites_only }}'
           sprites_touched='${{ steps.detect.outputs.sprites_touched }}'
-<<<<<<< HEAD
+          sim_touched='${{ steps.detect.outputs.sim_touched }}'
+          coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
           visual_touched='${{ steps.detect.outputs.visual_touched }}'
           game_visual_touched='${{ steps.detect.outputs.game_visual_touched }}'
           asset_visual_touched='${{ steps.detect.outputs.asset_visual_touched }}'
           devtool_visual_touched='${{ steps.detect.outputs.devtool_visual_touched }}'
-=======
-          sim_touched='${{ steps.detect.outputs.sim_touched }}'
-          coverage_touched='${{ steps.detect.outputs.coverage_touched }}'
->>>>>>> origin/main
           train_promoted=false
 
           if [ "${{ github.event_name }}" = "schedule" ]; then
@@ -87,16 +81,13 @@ jobs:
             gameplay_safe=false
             sprites_only=false
             sprites_touched=true
-<<<<<<< HEAD
+            sim_touched=true
+            coverage_touched=true
             # Schedule runs always execute the full visual suite.
             visual_touched=true
             game_visual_touched=true
             asset_visual_touched=true
             devtool_visual_touched=true
-=======
-            sim_touched=true
-            coverage_touched=true
->>>>>>> origin/main
           elif [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "push" ]; then
             # Only trust promotion provenance while the merge train is
             # actually enabled. If MERGE_TRAIN_ENABLED is rolled back to
@@ -505,16 +496,6 @@ jobs:
           check "Integration tests"             "${{ needs.test-integration.result }}" "true"
           # Sprite pipeline tests: skipped for art_only or docs_only (allow_skipped=true).
           check "Sprite pipeline tests"         "${{ needs.test-sprites.result }}"    "true"
-<<<<<<< HEAD
-          check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"   "true"
-          # E2E visual jobs: each runs only when its surface was touched (allow_skipped=true).
-          # visual_touched=false (CI/tooling-only) skips all three → no Playwright runner launched.
-          # art_only=true → only e2e-assets runs (targeted asset smoke, not the full game suite).
-          # See detect-art-only.sh and the test-e2e-* job conditions for routing details.
-          check "E2E Visual — Game/UI"          "${{ needs.test-e2e-game.result }}"    "true"
-          check "E2E Visual — Asset Smoke"      "${{ needs.test-e2e-assets.result }}"  "true"
-          check "E2E Visual — Devtools"         "${{ needs.test-e2e-devtools.result }}" "true"
-=======
           # Headless Floor 1: skip is intentional only when sim_touched=false on a PR.
           # A blank/empty sim_touched when headless was skipped on a PR indicates a
           # potential classifier failure and rejects the gate.
@@ -529,8 +510,13 @@ jobs:
             echo "❌ Headless Floor 1 completion: $headless_result (sim_touched=${sim_touched:-MISSING})"
             exit 1
           fi
-          check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"        "true"
->>>>>>> origin/main
+          # E2E visual jobs: each runs only when its surface was touched (allow_skipped=true).
+          # visual_touched=false (CI/tooling-only) skips all three → no Playwright runner launched.
+          # art_only=true → only e2e-assets runs (targeted asset smoke, not the full game suite).
+          # See detect-art-only.sh and the test-e2e-* job conditions for routing details.
+          check "E2E Visual — Game/UI"          "${{ needs.test-e2e-game.result }}"    "true"
+          check "E2E Visual — Asset Smoke"      "${{ needs.test-e2e-assets.result }}"  "true"
+          check "E2E Visual — Devtools"         "${{ needs.test-e2e-devtools.result }}" "true"
           check "Human approval"                 "${{ needs.human-approval.result }}"
           echo "✅ All required checks passed"
 
