@@ -450,6 +450,19 @@
     "row": 0
   },
   {
+    "id": "generated:bone-saw-var-1",
+    "kind": "sprite",
+    "label": "bone-saw-var-1",
+    "description": "Generated sprite from brief: bone-saw.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "bone-saw-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/bone-saw-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:bone-shard-var-1",
     "kind": "sprite",
     "label": "bone-shard-var-1",
@@ -801,6 +814,19 @@
     "row": 0
   },
   {
+    "id": "generated:equipment/accessory/lucky-feather",
+    "kind": "sprite",
+    "label": "equipment/accessory/lucky-feather",
+    "description": "Generated sprite from brief: lucky-feather.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "equipment/accessory/lucky-feather",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/equipment-accessory-lucky-feather.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:equipment/weapon/bone-saw",
     "kind": "sprite",
     "label": "equipment/weapon/bone-saw",
@@ -814,6 +840,19 @@
     "row": 0
   },
   {
+    "id": "generated:equipment/weapon/tower-spear",
+    "kind": "sprite",
+    "label": "equipment/weapon/tower-spear",
+    "description": "Generated sprite for stable runtime key: equipment/weapon/tower-spear.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "equipment/weapon/tower-spear",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/equipment/weapon/tower-spear.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:faerie-blink-var-0",
     "kind": "sprite",
     "label": "faerie-blink-var-0",
@@ -822,6 +861,19 @@
     "spriteId": "faerie-blink-var-0",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/faerie-blink-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:faerie-boss-var-0",
+    "kind": "sprite",
+    "label": "faerie-boss-var-0",
+    "description": "Generated sprite from brief: faerie-boss.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "faerie-boss-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/faerie-boss-var-0.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -895,7 +947,7 @@
     "id": "generated:geese-boss-var-0",
     "kind": "sprite",
     "label": "geese-boss-var-0",
-    "description": "Don Honkrado the Godgoose \u2014 mafia godfather goose, Floor 2 boss. Square compact body, tucked neck, pinstripe salvage-strap waistcoat, brass gear cufflinks, wide-brim fedora, cigar in beak. Current sprite is 64x64 v1; a 128x128 large-variant regeneration from the authored brief is pending.",
+    "description": "Don Honkrado the Godgoose — mafia godfather goose, Floor 2 boss. Square compact body, tucked neck, pinstripe salvage-strap waistcoat, brass gear cufflinks, wide-brim fedora, cigar in beak. Current sprite is 64x64 v1; a 128x128 large-variant regeneration from the authored brief is pending.",
     "tags": ["enemy", "generated", "pipeline-approved"],
     "spriteId": "geese-boss-var-0",
     "sheetKey": "generated-manifest",
@@ -1134,6 +1186,19 @@
     "spriteId": "imps-boss-var-5",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/imps-boss-var-5.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:iron-cleaver-v1-var-0",
+    "kind": "sprite",
+    "label": "iron-cleaver-v1-var-0",
+    "description": "Generated sprite from brief: iron-cleaver-v1.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "iron-cleaver-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/iron-cleaver-v1-var-0.png",
     "frame": 0,
     "col": 0,
     "row": 0
@@ -2556,19 +2621,6 @@
     "row": 0
   },
   {
-    "id": "generated:equipment/weapon/tower-spear",
-    "kind": "sprite",
-    "label": "equipment/weapon/tower-spear",
-    "description": "Generated sprite for stable runtime key: equipment/weapon/tower-spear.",
-    "tags": ["weapon", "generated", "pipeline-approved"],
-    "spriteId": "equipment/weapon/tower-spear",
-    "sheetKey": "generated-manifest",
-    "assetPath": "generated/equipment/weapon/tower-spear.png",
-    "frame": 0,
-    "col": 0,
-    "row": 0
-  },
-  {
     "id": "generated:twin-katar-var-0",
     "kind": "sprite",
     "label": "twin-katar-var-0",
@@ -2893,14 +2945,14 @@
     "id": "sprite:enemy.boss",
     "kind": "sprite",
     "label": "enemy.boss",
-    "description": "Tiny Dungeon bat-beast (frame 120) \u2014 temp CC0 art.",
+    "description": "Tiny Dungeon bat-beast (frame 120) — temp CC0 art.",
     "tags": ["sprite", "enemy"],
     "spriteId": "enemy.boss",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 120,
     "col": 0,
     "row": 10,
-    "note": "Tiny Dungeon bat-beast (frame 120) \u2014 temp CC0 art.",
+    "note": "Tiny Dungeon bat-beast (frame 120) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }
@@ -2941,14 +2993,14 @@
     "id": "sprite:enemy.goblin",
     "kind": "sprite",
     "label": "enemy.goblin",
-    "description": "Tiny Dungeon goblin (frame 121) \u2014 temp CC0 art.",
+    "description": "Tiny Dungeon goblin (frame 121) — temp CC0 art.",
     "tags": ["enemy", "goblin", "sprite"],
     "spriteId": "enemy.goblin",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 121,
     "col": 1,
     "row": 10,
-    "note": "Tiny Dungeon goblin (frame 121) \u2014 temp CC0 art.",
+    "note": "Tiny Dungeon goblin (frame 121) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }
@@ -2957,14 +3009,14 @@
     "id": "sprite:enemy.orc",
     "kind": "sprite",
     "label": "enemy.orc",
-    "description": "Tiny Dungeon brawler (frame 109) \u2014 temp CC0 art.",
+    "description": "Tiny Dungeon brawler (frame 109) — temp CC0 art.",
     "tags": ["enemy", "orc", "sprite"],
     "spriteId": "enemy.orc",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 109,
     "col": 1,
     "row": 9,
-    "note": "Tiny Dungeon brawler (frame 109) \u2014 temp CC0 art.",
+    "note": "Tiny Dungeon brawler (frame 109) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }
@@ -2973,14 +3025,14 @@
     "id": "sprite:enemy.rat",
     "kind": "sprite",
     "label": "enemy.rat",
-    "description": "Tiny Dungeon rat (frame 123) \u2014 temp CC0 art.",
+    "description": "Tiny Dungeon rat (frame 123) — temp CC0 art.",
     "tags": ["sprite", "enemy"],
     "spriteId": "enemy.rat",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 123,
     "col": 3,
     "row": 10,
-    "note": "Tiny Dungeon rat (frame 123) \u2014 temp CC0 art.",
+    "note": "Tiny Dungeon rat (frame 123) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }
@@ -2989,14 +3041,14 @@
     "id": "sprite:enemy.slime",
     "kind": "sprite",
     "label": "enemy.slime",
-    "description": "Tiny Dungeon teal slime (frame 108) \u2014 temp CC0 art.",
+    "description": "Tiny Dungeon teal slime (frame 108) — temp CC0 art.",
     "tags": ["sprite", "enemy"],
     "spriteId": "enemy.slime",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 108,
     "col": 0,
     "row": 9,
-    "note": "Tiny Dungeon teal slime (frame 108) \u2014 temp CC0 art.",
+    "note": "Tiny Dungeon teal slime (frame 108) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }
@@ -3030,27 +3082,27 @@
     "id": "sprite:npc.guide",
     "kind": "sprite",
     "label": "npc.guide",
-    "description": "Tiny Dungeon princess (frame 99) \u2014 temp CC0 art.",
+    "description": "Tiny Dungeon princess (frame 99) — temp CC0 art.",
     "tags": ["sprite"],
     "spriteId": "npc.guide",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 99,
     "col": 3,
     "row": 8,
-    "note": "Tiny Dungeon princess (frame 99) \u2014 temp CC0 art."
+    "note": "Tiny Dungeon princess (frame 99) — temp CC0 art."
   },
   {
     "id": "sprite:player",
     "kind": "sprite",
     "label": "player",
-    "description": "Tiny Dungeon knight (frame 96) \u2014 temp CC0 art.",
+    "description": "Tiny Dungeon knight (frame 96) — temp CC0 art.",
     "tags": ["player", "hero", "sprite"],
     "spriteId": "player",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 96,
     "col": 0,
     "row": 8,
-    "note": "Tiny Dungeon knight (frame 96) \u2014 temp CC0 art.",
+    "note": "Tiny Dungeon knight (frame 96) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }
@@ -3059,27 +3111,27 @@
     "id": "sprite:weapon.arrow",
     "kind": "sprite",
     "label": "weapon.arrow",
-    "description": "Tiny Dungeon arrow/bolt projectile \u2014 row 10 col 11 (frame 131).",
+    "description": "Tiny Dungeon arrow/bolt projectile — row 10 col 11 (frame 131).",
     "tags": [],
     "spriteId": "weapon.arrow",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 131,
     "col": 11,
     "row": 10,
-    "note": "Tiny Dungeon arrow/bolt projectile \u2014 row 10 col 11 (frame 131)."
+    "note": "Tiny Dungeon arrow/bolt projectile — row 10 col 11 (frame 131)."
   },
   {
     "id": "sprite:weapon.bat",
     "kind": "sprite",
     "label": "weapon.bat",
-    "description": "Tiny Dungeon wooden mallet used as baseball bat \u2014 row 9 col 9 (frame 117).",
+    "description": "Tiny Dungeon wooden mallet used as baseball bat — row 9 col 9 (frame 117).",
     "tags": [],
     "spriteId": "weapon.bat",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 117,
     "col": 9,
     "row": 9,
-    "note": "Tiny Dungeon wooden mallet used as baseball bat \u2014 row 9 col 9 (frame 117)."
+    "note": "Tiny Dungeon wooden mallet used as baseball bat — row 9 col 9 (frame 117)."
   },
   {
     "id": "sprite:weapon.returning",
@@ -3098,52 +3150,13 @@
     "id": "sprite:weapon.sword",
     "kind": "sprite",
     "label": "weapon.sword",
-    "description": "Tiny Dungeon short sword \u2014 row 8 col 8 (frame 104).",
+    "description": "Tiny Dungeon short sword — row 8 col 8 (frame 104).",
     "tags": [],
     "spriteId": "weapon.sword",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 104,
     "col": 8,
     "row": 8,
-    "note": "Tiny Dungeon short sword \u2014 row 8 col 8 (frame 104)."
-  },
-  {
-    "id": "generated:faerie-boss-var-0",
-    "kind": "sprite",
-    "label": "faerie-boss-var-0",
-    "description": "Generated sprite from brief: faerie-boss.",
-    "tags": ["enemy", "generated", "pipeline-approved"],
-    "spriteId": "faerie-boss-var-0",
-    "sheetKey": "generated-manifest",
-    "assetPath": "generated/faerie-boss-var-0.png",
-    "frame": 0,
-    "col": 0,
-    "row": 0
-  },
-  {
-    "id": "generated:equipment/accessory/lucky-feather",
-    "kind": "sprite",
-    "label": "equipment/accessory/lucky-feather",
-    "description": "Generated sprite from brief: lucky-feather.",
-    "tags": ["item", "generated", "pipeline-approved"],
-    "spriteId": "equipment/accessory/lucky-feather",
-    "sheetKey": "generated-manifest",
-    "assetPath": "generated/equipment-accessory-lucky-feather.png",
-    "frame": 0,
-    "col": 0,
-    "row": 0
-  },
-  {
-    "id": "generated:bone-saw-var-1",
-    "kind": "sprite",
-    "label": "bone-saw-var-1",
-    "description": "Generated sprite from brief: bone-saw.",
-    "tags": ["generated", "pipeline-approved"],
-    "spriteId": "bone-saw-var-1",
-    "sheetKey": "generated-manifest",
-    "assetPath": "generated/bone-saw-var-1.png",
-    "frame": 0,
-    "col": 0,
-    "row": 0
+    "note": "Tiny Dungeon short sword — row 8 col 8 (frame 104)."
   }
 ]
