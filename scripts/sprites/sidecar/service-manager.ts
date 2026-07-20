@@ -28,6 +28,8 @@ const START_TIMEOUT_MS = 60_000;
 /** Grace period (ms) beyond START_TIMEOUT_MS before a joiner reclaims a stale registry.
  *  Gives the claimant time to win its own timeout cleanup before joiners evict it. */
 const JOINER_GRACE_MS = 5_000;
+/** Grace period (ms) before reclaiming an invalid/non-parseable registry snapshot. */
+const INVALID_REGISTRY_GRACE_MS = 3_000;
 const PROBE_TIMEOUT_MS = 1_500;
 const POLL_INTERVAL_MS = 300;
 /** Maximum sidecar log size before the file is rotated (renamed to `.old`). */
@@ -161,6 +163,27 @@ function claimRegistry(filePath: string, registry: ServiceRegistry): boolean {
   } finally {
     closeSync(fd);
   }
+  return true;
+}
+
+function registryAgeMs(filePath: string, nowMs: number): number | null {
+  try {
+    return Math.max(0, nowMs - statSync(filePath).mtimeMs);
+  } catch {
+    return null;
+  }
+}
+
+function reclaimInvalidRegistry(filePath: string): boolean {
+  const recoveryPath = `${filePath}.recovering.${process.pid}.${randomUUID()}`;
+  try {
+    renameSync(filePath, recoveryPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return false;
+    throw error;
+  }
+  rmSync(recoveryPath, { force: true });
   return true;
 }
 
@@ -490,7 +513,12 @@ export async function ensureSidecarService(
     const existing = readRegistry(registryPath);
     if (!existing) {
       // Registry may be mid-write by the current owner (or briefly absent after
-      // owner cleanup). Wait and re-check rather than deleting a transient claim.
+      // owner cleanup). Wait a bounded grace period before reclaiming invalid data.
+      const ageMs = registryAgeMs(registryPath, now());
+      if (ageMs !== null && ageMs >= INVALID_REGISTRY_GRACE_MS) {
+        reclaimInvalidRegistry(registryPath);
+        continue;
+      }
       await sleep(POLL_INTERVAL_MS);
       continue;
     }
