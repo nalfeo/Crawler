@@ -340,6 +340,14 @@ const ALLOWED_EXTENSIONS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Version token for the slice-map cache key. Bump this constant whenever
+ * `computeSliceMap` logic or its response schema changes so a worktree with
+ * newer code never serves a response produced by an older algorithm from the
+ * shared cross-worktree cache.
+ */
+const SLICE_MAP_SCHEMA_VERSION = 'v1';
+
+/**
  * Build the Fastify instance. Does NOT call `.listen()` — that's the CLI's
  * job. Returning an unstarted instance keeps tests fast: they can use
  * `app.inject()` to fire requests through the router without ever opening
@@ -910,25 +918,35 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
               .slice(0, 16)
           : null;
 
-      const baseResponseCacheKey =
+      // The route-based portion of the cache key: identifies the specific
+      // brief/run/sheet resource. Invalidation prefixes in
+      // CachingRunStore.invalidateDerivedResources() key on this prefix.
+      const routeCacheKey =
         `route/slice-map/${briefId}/${runId}/` +
         (typeof requestedSheet === 'string' && requestedSheet.length > 0
           ? requestedSheet
           : 'latest');
-      // Primary key: fingerprint-augmented for cache coherence when type-defaults
-      // or palette change. Fallback key: fingerprint-free for offline reads where
-      // the brief cannot be loaded (source tree absent in a different worktree).
+      // Versioned fallback key: appends SLICE_MAP_SCHEMA_VERSION as a colon-separated
+      // qualifier so a cross-worktree cache read never serves a response produced by a
+      // different version of computeSliceMap. The route prefix stays the same, so
+      // removeByPrefix-based invalidation in CachingRunStore still covers every version.
+      // Bump SLICE_MAP_SCHEMA_VERSION whenever computeSliceMap logic or its response
+      // schema changes.
+      const versionedFallbackKey = `${routeCacheKey}:${SLICE_MAP_SCHEMA_VERSION}`;
+      // Primary key: schema version + brief-generation fingerprint for full coherence.
+      // Fallback key: schema version only, for offline reads where the brief cannot
+      // be reloaded (source tree absent in a different worktree).
       const responseCacheKey =
         briefGenFingerprint !== null
-          ? `${baseResponseCacheKey}:${briefGenFingerprint}`
-          : baseResponseCacheKey;
+          ? `${versionedFallbackKey}:${briefGenFingerprint}`
+          : versionedFallbackKey;
 
-      // Try the primary (fingerprinted or base) key first.
+      // Try the primary (fingerprinted+versioned) key first.
       let cachedResponse = await readCachedJson(store, responseCacheKey);
-      // If brief loading failed and the fingerprinted key produced a miss,
-      // also try the non-fingerprinted key as an offline fallback.
+      // Offline fallback: brief loading failed so fingerprint is unavailable;
+      // try the versioned key written by an online worktree.
       if (cachedResponse === null && briefGenFingerprint === null) {
-        cachedResponse = await readCachedJson(store, baseResponseCacheKey);
+        cachedResponse = await readCachedJson(store, versionedFallbackKey);
       }
       if (cachedResponse !== null) return cachedResponse;
 
@@ -975,13 +993,13 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         // Only cache when the brief loaded successfully (brief !== null), so
         // a brief-less response (loadBrief failed due to missing type-defaults
         // or palette) is never stored as the canonical shared snapshot.
-        // Write to BOTH the fingerprinted key (online coherence) and the
-        // non-fingerprinted key (offline fallback for worktrees without source
-        // files, where the fingerprint cannot be recomputed on read).
+        // Write to BOTH the primary (versioned+fingerprinted) key and the
+        // versioned fallback key (no fingerprint, for offline worktrees without
+        // source files where the fingerprint cannot be recomputed on read).
         if (durableBriefMatches && brief !== null && briefGenFingerprint !== null) {
           await Promise.all([
             writeCachedJson(store, responseCacheKey, response),
-            writeCachedJson(store, baseResponseCacheKey, response),
+            writeCachedJson(store, versionedFallbackKey, response),
           ]);
         }
         return response;

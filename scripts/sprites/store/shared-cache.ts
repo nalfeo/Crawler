@@ -50,7 +50,7 @@
 
 import cacache from 'cacache';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -276,11 +276,30 @@ export class SharedResourceCache {
    * content afterwards to keep the physical store within budget.
    */
   async set(key: string, data: Buffer, metadata?: Record<string, unknown>): Promise<void> {
-    if (this.maxBytes > 0 && data.length > this.maxBytes) return;
+    // Acquire the lock before the size check so that an oversized replacement
+    // can evict the existing stale entry. Without the lock, the old (smaller)
+    // value would remain indefinitely and be served as "current" after the
+    // authoritative Azure write completes.
     const lockToken = await this.acquireLock();
     if (lockToken === null) return;
     try {
       const physicalKey = this.physicalKey(key);
+      if (this.maxBytes > 0 && data.length > this.maxBytes) {
+        // Cannot store this blob; evict any stale existing entry so subsequent
+        // reads fall through to the authoritative Azure store rather than
+        // serving outdated content forever.
+        try {
+          const existing = await cacache.get.info(this.cacheDir, physicalKey);
+          if (existing !== null) {
+            await cacache.rm.entry(this.cacheDir, physicalKey);
+            this.removeMarker(physicalKey);
+            await this.removeContentIfUnreferenced(existing.integrity);
+          }
+        } catch {
+          // best-effort
+        }
+        return;
+      }
       // Capture the previous integrity so we can compact the orphaned blob
       // after the put (cacache does not remove it automatically).
       let prevIntegrity: string | null = null;
@@ -380,7 +399,13 @@ export class SharedResourceCache {
   bumpEpoch(): void {
     try {
       mkdirSync(path.dirname(this.epochFile), { recursive: true });
-      writeFileSync(this.epochFile, randomUUID());
+      // Write to a uniquely named temp file, then rename atomically so
+      // concurrent readers always observe a complete epoch token — never an
+      // empty string truncated mid-write. On POSIX, rename(2) is atomic when
+      // source and destination are on the same filesystem (same directory here).
+      const tmp = `${this.epochFile}.tmp.${randomUUID()}`;
+      writeFileSync(tmp, randomUUID());
+      renameSync(tmp, this.epochFile);
     } catch (err) {
       this.log(`epoch bump failed: ${errMsg(err)}`);
     }
