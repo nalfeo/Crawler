@@ -61,20 +61,26 @@ export type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentInstanceKey,
   EquipmentFingerprintV1,
+  ActiveWeaponClassSkillTag,
   GeneratedEquipmentRarity,
   GeneratedEquipmentEnhancementLevel,
   GeneratedEquipmentEffectUnitCost,
+  ActiveWeaponSnapshotSkillTag,
   GeneratedEquipmentBaseV1,
   ResolvedEquipmentStatEffectV1,
   ResolvedEquipmentGrantEffectV1,
   ResolvedEquipmentEffectV1,
   ActiveWeaponSnapshotV1,
+  ActiveWeaponTypeSkillTag,
   FrozenEquipmentFieldsV1,
   GeneratedEquipmentGenerationPolicyV1,
   GeneratedEquipmentGenerationV1,
   GeneratedEquipmentInstanceV1,
   GeneratedEquipmentCreateInputV1,
   GeneratedEquipmentRegistrySnapshotV1,
+  ActiveWeaponCombatOverridesV1,
+  ActiveWeaponSnapshotCreateInputV1,
+  FrozenEquipmentFieldsCreateInputV1,
 } from './generated-equipment-types.js';
 export { CanonicalJsonError, canonicalJson, sha256Hex, deepFreeze } from './canonical-json.js';
 export {
@@ -173,6 +179,19 @@ export {
   getEquippableItemIds,
 } from './equipmentDefs.js';
 export * from './achievements.js';
+export {
+  FLOOR2_BOSS_ABILITY_CATALOG,
+  formatBossAbilityAnnouncement,
+  getFloor2BossAbilityByBossId,
+  getFloor2BossAbilityById,
+  loadFloor2BossAbilityCatalog,
+  toBossAbilityCodexEntry,
+} from './boss-abilities.js';
+export type {
+  BossAbilityCatalog,
+  BossAbilityCodexEntry,
+  BossAbilityDef,
+} from './boss-abilities.js';
 export {
   VEC_EPSILON,
   length,

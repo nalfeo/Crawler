@@ -2,6 +2,16 @@ id: item-icons-equipment-gear
 title: 'Item Icons — Equipment Gear'
 summary: 'Placeholder wearable-gear icons covering every non-weapon, non-neck paper-doll slot (head, face, shoulders, chest, back, belt, legs, feet, gloves, arms, wrists, rings). These render the InventoryUI/EquipmentUI text fallback today; each needs real authored pixel art generated via the sprite pipeline when provider access is available.'
 assets:
+  - id: alchemist-goggles
+    type: item
+    label: 'Alchemist Goggles'
+    briefId: alchemist-goggles
+    brief: 'Alchemist Goggles — see briefs/items/alchemist-goggles.yaml for the authored Floor 2 dual-lens equipment-icon brief.'
+    placeholderInUse: true
+    integration:
+      kind: item-catalog
+      id: alchemist-goggles
+
   - id: iron-helm
     type: item
     label: 'Iron Helm'
@@ -37,6 +47,15 @@ assets:
     integration:
       kind: sprite-registry
       id: iron-breastplate
+
+  - id: runed-cuirass
+    type: item
+    label: 'Runed Cuirass'
+    brief: 'Runed Cuirass — a single centered chest-armor icon with a clear, readable silhouette on a transparent background. Dark-metal breastplate with glowing arcane runes etched into the plate. Floor 2 rare gear with a bold electric-blue rune glow.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: runed-cuirass
 
   - id: travelers-cloak
     type: item
@@ -136,3 +155,21 @@ assets:
     integration:
       kind: sprite-registry
       id: signet-of-focus
+
+  - id: batfolk-hood
+    type: item
+    label: 'Batfolk Hood'
+    brief: 'Batfolk Hood — a single centered headgear icon on a transparent background. Dark membrane-like hood with twin bat-ear protrusions, Floor 2 batfolk craftsmanship. Charcoal or midnight-purple coloring with tarnished metal accent rivets. Silhouette reads clearly as a bat-eared helmet hood at small scale.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: batfolk-hood
+
+  - id: surveyor-map
+    type: item
+    label: 'Surveyor Map'
+    brief: 'Surveyor Map — a single centered small object icon with a clear, readable silhouette on a transparent background. A battered folded map square with a leather strap, brown ink grid pattern on yellowed parchment, cracked wax compass-rose seal. Floor 2 accessory equipment icon for runtime key equipment/accessory/surveyor-map.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: surveyor-map
