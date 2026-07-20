@@ -1,5 +1,16 @@
 [
   {
+    "commit": "ac97ecd6130dd20b4971ec9587faab698e02da60",
+    "commitDate": "2026-07-20T03:00:17Z",
+    "commitSubject": "fix(ci-recovery): preserve stale trusted markers on outdated threads (#1665)",
+    "capturedAt": "2026-07-20T04:19:56.802Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29714150118",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/ac97ecd6130dd20b4971ec9587faab698e02da60.json"
+  },
+  {
     "commit": "bcd347e923fd8860c7cbcc1086c94b2b5135acea",
     "commitDate": "2026-07-20T03:00:01Z",
     "commitSubject": "feat(epics): track speculative stacked work durably (#1287)",
