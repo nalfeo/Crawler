@@ -30,6 +30,7 @@ import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 
 import { briefSchema, type Brief } from '../../../scripts/sprites/brief-schema.js';
+import { JudgeCache } from '../../../scripts/sprites/judge-cache.js';
 import { judgeVariant, JudgeError } from '../../../scripts/sprites/judge.js';
 import {
   VisionProviderError,
@@ -253,6 +254,7 @@ describe('judgeVariant — happy path', () => {
         readability: { score: 5, rationale: 'silhouette pops' },
       },
     });
+
     const scorecard = await judgeVariant({
       processed: makeTinyPng(),
       referencePngs: [makeRefPng()],
@@ -616,6 +618,69 @@ describe('judgeVariant — happy path', () => {
       env: {},
     });
     expect(scorecard.passed).toBe(true);
+  });
+});
+
+describe('judgeVariant - cache key includes conditional rubric contract', () => {
+  it('does not reuse non-boss cached verdict for boss brief with identical pixels', async () => {
+    const cache = new JudgeCache({ cacheDir: mkdtempSync(path.join(tmpdir(), 'judge-cache-')) });
+    let calls = 0;
+    const provider: VisionProvider = {
+      modelDeployment: 'gpt-4o-vision',
+      evaluate: async (request) => {
+        calls += 1;
+        const boss = request.systemInstructions.includes('boss_presence');
+        return {
+          modelDeployment: 'gpt-4o-vision',
+          usage: null,
+          json: boss
+            ? {
+                design_language: { score: 5, rationale: 'crawler' },
+                reference_style_match: { score: 5, rationale: 'style' },
+                brief_match: { score: 5, rationale: 'boss brief' },
+                readability: { score: 5, rationale: 'clear' },
+                pose_orientation: { score: 5, rationale: 'forward' },
+                boss_presence: { score: 5, rationale: 'dominant' },
+              }
+            : {
+                design_language: { score: 5, rationale: 'crawler' },
+                reference_style_match: { score: 5, rationale: 'style' },
+                brief_match: { score: 5, rationale: 'normal brief' },
+                readability: { score: 5, rationale: 'clear' },
+                pose_orientation: { score: 5, rationale: 'forward' },
+              },
+        };
+      },
+    };
+
+    const processed = makeTinyPng();
+    const refs = [makeRefPng()];
+    const normal = await judgeVariant({
+      processed,
+      referencePngs: refs,
+      brief: makeBrief({ type: 'enemy', mobRole: 'normal', prompt: 'A normal dungeon rat enemy.' }),
+      styleGuide: 'style',
+      provider,
+      variantIndex: 0,
+      cache,
+      now: FIXED_NOW,
+      env: {},
+    });
+    const boss = await judgeVariant({
+      processed,
+      referencePngs: refs,
+      brief: makeBrief({ type: 'enemy', mobRole: 'boss', prompt: 'A boss dungeon rat enemy.' }),
+      styleGuide: 'style',
+      provider,
+      variantIndex: 1,
+      cache,
+      now: FIXED_NOW,
+      env: {},
+    });
+
+    expect(calls).toBe(2);
+    expect(normal.bossPresence).toBeUndefined();
+    expect(boss.bossPresence?.score).toBe(5);
   });
 });
 

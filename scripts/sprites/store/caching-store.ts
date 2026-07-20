@@ -128,9 +128,12 @@ export class CachingRunStore implements RunStore, DerivedResourceCache {
       await this.inner.put(key, data);
       if (this.shouldCache(key)) {
         const cacheKey = `${BLOB_PREFIX}${key}`;
-        this.cache.bumpMutationToken(cacheKey);
-        const cacheWriteOk = await this.cache.set(cacheKey, data);
-        if (!cacheWriteOk) this.cache.bumpMutationToken(cacheKey);
+        const publishToken = this.cache.bumpMutationToken(cacheKey);
+        const cacheWriteOk = await this.cache.set(cacheKey, data, undefined, publishToken);
+        if (!cacheWriteOk && this.cache.readMutationToken(cacheKey) === publishToken) {
+          await this.cache.remove(cacheKey);
+          this.cache.bumpMutationToken(cacheKey);
+        }
       }
       // A new/changed blob may change what listings return — invalidate snapshots.
       this.cache.bumpEpoch();

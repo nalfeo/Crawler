@@ -273,12 +273,23 @@ export class SharedResourceCache {
    * skipped rather than written then immediately evicted. After a successful
    * write the global LRU budget is enforced before the call completes.
    *
+   * When `expectedMutationToken` is provided, the write is committed only if the
+   * key's current cross-process mutation token still matches that value at
+   * commit time (checked under the same global lock as the write). This lets
+   * callers avoid publishing stale bytes after a competing writer advanced the
+   * generation.
+   *
    * Replacing an existing key would leave the previous content blob orphaned
    * (cacache appends a new index entry but does not remove the old content).
    * We capture the previous integrity before the write and compact orphaned
    * content afterwards to keep the physical store within budget.
    */
-  async set(key: string, data: Buffer, metadata?: Record<string, unknown>): Promise<boolean> {
+  async set(
+    key: string,
+    data: Buffer,
+    metadata?: Record<string, unknown>,
+    expectedMutationToken?: string,
+  ): Promise<boolean> {
     // Acquire the lock before the size check so that an oversized replacement
     // can evict the existing stale entry. Without the lock, the old (smaller)
     // value would remain indefinitely and be served as "current" after the
@@ -289,6 +300,12 @@ export class SharedResourceCache {
     // can force a cache miss (rm.entry) when the write fails.
     const physicalKey = this.physicalKey(key);
     try {
+      if (
+        expectedMutationToken !== undefined &&
+        this.readMutationTokenByPhysicalKey(physicalKey) !== expectedMutationToken
+      ) {
+        return false;
+      }
       if (this.maxBytes > 0 && data.length > this.maxBytes) {
         // Cannot store this blob; evict any stale existing entry so subsequent
         // reads fall through to the authoritative Azure store rather than

@@ -287,6 +287,18 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     options.brief.name,
     options.brief.floor,
   );
+  const hasAddendumForPrompt =
+    designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
+  const systemInstructions = buildSystemInstructions(
+    options.brief,
+    options.styleGuide,
+    designLanguageAddenda,
+  );
+  const userPrompt = buildUserPrompt(
+    options.brief,
+    Math.min(options.referencePngs.length, 3),
+    hasAddendumForPrompt,
+  );
 
   // Cache lookup runs BEFORE building previews / images — a hit
   // avoids both the provider call AND the (cheap-but-not-free) PNG
@@ -299,6 +311,8 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
         promptTemplateVersion: PROMPT_TEMPLATE_VERSION,
         variantPng: options.processed,
         referencePngs: options.referencePngs,
+        systemInstructions,
+        userPrompt,
         briefMatchInstructions: options.brief.prompt,
         floor: options.brief.floor,
         designLanguageAddenda: designLanguageAddendaBlock(designLanguageAddenda),
@@ -329,15 +343,9 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
     .slice(0, 3)
     .map((png) => ({ png, label: 'reference' as const }));
 
-  const hasAddendumForPrompt =
-    designLanguageAddenda.floor !== undefined || designLanguageAddenda.theme !== undefined;
   const request: EvaluateRequest = {
-    systemInstructions: buildSystemInstructions(
-      options.brief,
-      options.styleGuide,
-      designLanguageAddenda,
-    ),
-    userPrompt: buildUserPrompt(options.brief, referencePreviews.length, hasAddendumForPrompt),
+    systemInstructions,
+    userPrompt,
     images: [
       { png: candidatePreview, label: 'candidate' },
       { png: readabilityComposite, label: 'readability-composite' },

@@ -1,7 +1,21 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
 export const FEEDBACK_VERSION = 1;
+const FEEDBACK_LOCK_TIMEOUT_MS = 2000;
+const FEEDBACK_STALE_LOCK_MS = 30000;
+const FEEDBACK_LOCK_RETRY_MS = 2;
+const sleepBuffer = new Int32Array(new SharedArrayBuffer(4));
 
 export function feedbackKey({ briefId, runId, variantIndex, kind, criterion }) {
   return [briefId, runId, String(variantIndex), kind, criterion]
@@ -45,12 +59,18 @@ export function feedbackForRun(store, briefId, runId) {
 
 export function saveFeedback(filePath, input, overrides = {}) {
   const options = {
+    closeSync,
     existsSync,
+    openSync,
     readFileSync,
     renameSync,
+    statSync,
+    unlinkSync,
     writeFileSync,
     randomUUID,
     now: () => new Date(),
+    lockTimeoutMs: FEEDBACK_LOCK_TIMEOUT_MS,
+    staleLockMs: FEEDBACK_STALE_LOCK_MS,
   };
   for (const [key, value] of Object.entries(overrides)) {
     if (value !== undefined) options[key] = value;
@@ -69,23 +89,85 @@ export function saveFeedback(filePath, input, overrides = {}) {
     throw validationError('verdict must be up, down, or null');
   }
   const comment = typeof input?.comment === 'string' ? input.comment.trim().slice(0, 1000) : '';
-  const store = readFeedback(filePath, options);
-  const identity = { briefId, runId, variantIndex, kind: input.kind, criterion };
-  const key = feedbackKey(identity);
-  if (input.verdict === null && comment.length === 0) {
-    delete store.entries[key];
-  } else {
-    store.entries[key] = {
-      ...identity,
-      verdict: input.verdict,
-      comment,
-      recordedAt: options.now().toISOString(),
-    };
+  return withFeedbackLock(filePath, options, () => {
+    const store = readFeedback(filePath, options);
+    const identity = { briefId, runId, variantIndex, kind: input.kind, criterion };
+    const key = feedbackKey(identity);
+    if (input.verdict === null && comment.length === 0) {
+      delete store.entries[key];
+    } else {
+      store.entries[key] = {
+        ...identity,
+        verdict: input.verdict,
+        comment,
+        recordedAt: options.now().toISOString(),
+      };
+    }
+    const tempPath = `${filePath}.tmp.${options.randomUUID()}`;
+    options.writeFileSync(tempPath, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+    options.renameSync(tempPath, filePath);
+    return store.entries[key] ?? null;
+  });
+}
+
+function withFeedbackLock(filePath, options, fn) {
+  const lockPath = `${filePath}.lock`;
+  const deadline = options.now().getTime() + options.lockTimeoutMs;
+  const maxAttempts = Math.max(1, Math.ceil(options.lockTimeoutMs / FEEDBACK_LOCK_RETRY_MS));
+  let fd;
+  for (let attempt = 0; attempt < maxAttempts && fd === undefined; attempt += 1) {
+    try {
+      fd = options.openSync(lockPath, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_RDWR);
+      options.writeFileSync(lockPath, options.now().toISOString(), 'utf8');
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      if (isStaleLock(lockPath, options)) {
+        try {
+          options.unlinkSync(lockPath);
+          continue;
+        } catch {}
+      }
+      if (options.now().getTime() >= deadline) {
+        const lockError = new Error('feedback store is locked');
+        lockError.code = 'feedback-locked';
+        throw lockError;
+      }
+      sleepMs(FEEDBACK_LOCK_RETRY_MS);
+      continue;
+    }
   }
-  const tempPath = `${filePath}.tmp.${options.randomUUID()}`;
-  options.writeFileSync(tempPath, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
-  options.renameSync(tempPath, filePath);
-  return store.entries[key] ?? null;
+  if (fd === undefined) {
+    const lockError = new Error('feedback store is locked');
+    lockError.code = 'feedback-locked';
+    throw lockError;
+  }
+  try {
+    return fn();
+  } finally {
+    try {
+      options.closeSync(fd);
+      options.unlinkSync(lockPath);
+    } catch {}
+  }
+}
+
+function isStaleLock(lockPath, options) {
+  try {
+    const ageMs = options.now().getTime() - options.statSync(lockPath).mtimeMs;
+    return ageMs > options.staleLockMs;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function sleepMs(ms) {
+  try {
+    Atomics.wait(sleepBuffer, 0, 0, ms);
+  } catch {
+    // Fallback when Atomics.wait/SharedArrayBuffer is unavailable: no delay.
+    // Deadline + attempt caps still bound lock acquisition duration.
+  }
 }
 
 function requireText(value, field, maxLength) {

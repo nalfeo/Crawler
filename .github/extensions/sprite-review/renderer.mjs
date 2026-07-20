@@ -305,9 +305,13 @@ const CLIENT_SCRIPT = String.raw`
   }
 
   function saveFeedback(sel, c, kind, criterion, verdict, comment) {
+    var mutationToken = app.dataset.mutationToken || '';
     return fetch('/api/feedback', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Sprite-Review-Mutation-Token': mutationToken
+      },
       body: JSON.stringify({
         briefId: sel.briefId, runId: sel.runId, variantIndex: c.index,
         kind: kind, criterion: criterion, verdict: verdict, comment: comment
@@ -520,9 +524,10 @@ const CLIENT_SCRIPT = String.raw`
 /**
  * Full HTML document for one canvas instance.
  * @param {string} instanceId
+ * @param {string} mutationToken
  * @returns {string}
  */
-export function renderHtml(instanceId) {
+export function renderHtml(instanceId, mutationToken = '') {
   return [
     '<!doctype html>',
     '<html lang="en"><head><meta charset="utf-8" />',
@@ -534,7 +539,7 @@ export function renderHtml(instanceId) {
     '<button id="refresh-btn" type="button" title="Reload runs and the selected run from the sidecar">↻ Refresh</button>',
     '<span id="busy" class="busy" hidden><span class="spinner"></span><span id="busy-label">Loading…</span></span>',
     '</div>',
-    '<div id="app" data-instance="' + escapeHtml(instanceId) + '">',
+    '<div id="app" data-instance="' + escapeHtml(instanceId) + '" data-mutation-token="' + escapeHtml(mutationToken) + '">',
     '<p class="muted">Loading sprite review…</p>',
     '</div>',
     '<script>' + CLIENT_SCRIPT + '</script>',

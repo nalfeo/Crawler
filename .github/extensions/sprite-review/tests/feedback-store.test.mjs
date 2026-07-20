@@ -11,21 +11,71 @@ import {
 
 function memoryFs(initial = null) {
   const files = new Map(initial === null ? [] : [['feedback.json', initial]]);
+  const mtimes = new Map();
+  const fds = new Map();
+  let nextFd = 10;
+  const touch = (path) => mtimes.set(path, Date.now());
   return {
     existsSync: (path) => files.has(path),
     readFileSync: (path) => files.get(path),
+    openSync: (path) => {
+      if (files.has(path)) {
+        const error = new Error('exists');
+        error.code = 'EEXIST';
+        throw error;
+      }
+      files.set(path, '');
+      touch(path);
+      const fd = nextFd++;
+      fds.set(fd, path);
+      return fd;
+    },
+    closeSync: (fd) => {
+      fds.delete(fd);
+    },
     writeFileSync: (path, next) => {
       files.set(path, next);
+      touch(path);
     },
     renameSync: (from, to) => {
       files.set(to, files.get(from));
+      touch(to);
       files.delete(from);
+      mtimes.delete(from);
     },
-    randomUUID: () => 'test-id',
+    unlinkSync: (path) => {
+      files.delete(path);
+      mtimes.delete(path);
+    },
+    statSync: (path) => ({ mtimeMs: mtimes.get(path) ?? Date.now() }),
     now: () => new Date('2026-07-20T04:00:00.000Z'),
+    randomUUID: () => 'test-id',
     text: () => files.get('feedback.json') ?? null,
   };
 }
+
+test('stale lock files are recovered before writing feedback', () => {
+  const staleTime = new Date('2026-07-19T00:00:00.000Z');
+  const fs = memoryFs();
+  fs.writeFileSync('feedback.json.lock', staleTime.toISOString());
+  fs.statSync = () => ({ mtimeMs: staleTime.getTime() });
+  fs.now = () => new Date('2026-07-20T04:00:00.000Z');
+  saveFeedback(
+    'feedback.json',
+    {
+      briefId: 'hero',
+      runId: 'run-stale',
+      variantIndex: 0,
+      kind: 'judge',
+      criterion: 'readability',
+      verdict: 'up',
+      comment: '',
+    },
+    fs,
+  );
+  const store = readFeedback('feedback.json', fs);
+  assert.equal(Object.keys(store.entries).length, 1);
+});
 
 test('saves and reloads criterion feedback without touching other entries', () => {
   const fs = memoryFs();

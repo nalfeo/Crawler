@@ -24,6 +24,7 @@
 import process from 'node:process';
 import path from 'node:path';
 import { Buffer } from 'node:buffer';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createCanvas, CanvasError, joinSession } from '@github/copilot-sdk/extension';
 
@@ -32,7 +33,7 @@ import { beginSpriteSidecarStartup } from '../shared/sprite-sidecar-service.mjs'
 import { createImageCache, resolveExtCacheDir } from './lib/image-cache.mjs';
 import { renderHtml } from './renderer.mjs';
 import { feedbackForRun, readFeedback, saveFeedback } from './lib/feedback-store.mjs';
-import { readJsonBody } from './lib/feedback-request.mjs';
+import { readJsonBody, tokensMatch } from './lib/feedback-request.mjs';
 import {
   resolveSidecarBaseUrl,
   createSidecarClient,
@@ -72,6 +73,7 @@ let sessionRef = null;
  *   workspaceRoot: string,
  *   requested: { briefId: string | null, runId: string | null },
  *   selected: { briefId: string, runId: string, sheet: string | null } | null,
+ *   mutationToken: string,
  *   pushState: (state?: unknown) => Promise<unknown>,
  *   close: () => Promise<void>,
  * }>}
@@ -89,6 +91,19 @@ function log(message, level = 'info') {
     sessionRef?.log?.(`[sprite-review] ${message}`, { level });
   } catch {
     // logging must never take down a handler
+  }
+
+  function isTrustedMutationOrigin(req, entry) {
+    const origin = req.headers.origin;
+    if (typeof origin !== 'string' || origin.trim().length === 0) return false;
+    return origin === new URL(entry.url).origin;
+  }
+
+  function isJsonContentType(req) {
+    const contentType = req.headers['content-type'];
+    if (typeof contentType !== 'string') return false;
+    const normalized = contentType.toLowerCase();
+    return normalized === 'application/json' || normalized.startsWith('application/json;');
   }
 }
 
@@ -266,6 +281,21 @@ const jsonRoutes = [
     handler: async ({ req, instanceId }) => {
       const entry = instances.get(instanceId);
       if (!entry) return { status: 404, json: { error: 'instance not found' } };
+      if (!isTrustedMutationOrigin(req, entry)) {
+        return { status: 403, json: { error: 'forbidden-origin' } };
+      }
+      if (!tokensMatch(req.headers['x-sprite-review-mutation-token'], entry.mutationToken)) {
+        return { status: 403, json: { error: 'forbidden', message: 'Invalid mutation token.' } };
+      }
+      if (!isJsonContentType(req)) {
+        return {
+          status: 415,
+          json: {
+            error: 'unsupported-media-type',
+            message: 'Content-Type must be application/json.',
+          },
+        };
+      }
       let payload;
       try {
         payload = await readJsonBody(req);
@@ -381,6 +411,7 @@ async function startServerForInstance(ctx) {
       runId: typeof input.runId === 'string' ? input.runId : null,
     },
     selected: null,
+    mutationToken: randomBytes(24).toString('hex'),
     sidecarStartup: { state: 'starting', error: null, logPath: null },
     pushState: async () => {},
     close: async () => {},
@@ -388,7 +419,7 @@ async function startServerForInstance(ctx) {
 
   const server = await startCanvasServer({
     instanceId: ctx.instanceId,
-    renderHtml,
+    renderHtml: () => renderHtml(ctx.instanceId, entry.mutationToken),
     buildState: () => buildState(ctx.instanceId),
     jsonRoutes,
     binaryRoutes,

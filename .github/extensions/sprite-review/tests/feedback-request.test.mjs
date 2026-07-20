@@ -17,3 +17,10 @@ test('readJsonBody classifies oversized feedback', async () => {
     (error) => error.code === 'body-too-large',
   );
 });
+
+test('readJsonBody rejects an empty payload', async () => {
+  await assert.rejects(
+    () => readJsonBody(Readable.from(['   '])),
+    (error) => error.code === 'invalid-json',
+  );
+});

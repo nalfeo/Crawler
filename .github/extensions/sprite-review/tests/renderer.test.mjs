@@ -13,7 +13,7 @@ test('renderHtml returns a complete standalone document', () => {
   const html = renderHtml('sprite-review-1');
   assert.match(html, /^<!doctype html>/);
   assert.match(html, /<\/body><\/html>$/);
-  assert.match(html, /<div id="app" data-instance="sprite-review-1">/);
+  assert.match(html, /<div id="app" data-instance="sprite-review-1" data-mutation-token="">/);
 });
 
 test('the persistent toolbar (refresh + busy) sits before #app so it survives re-render', () => {
@@ -36,10 +36,17 @@ test('the client script wires busy state, loadState, and refresh', () => {
   assert.match(html, /refreshBtn\.addEventListener\('click'/);
   assert.match(html, /Refreshing…/);
   assert.match(html, /Loading sheet from Azure…/);
+  assert.match(html, /X-Sprite-Review-Mutation-Token/);
 });
 
 test('instanceId is HTML-escaped into the shell', () => {
   const html = renderHtml('a"><script>bad</script>');
   assert.ok(!html.includes('a"><script>bad'));
   assert.match(html, /data-instance="a&quot;&gt;&lt;script&gt;bad&lt;\/script&gt;"/);
+});
+
+test('mutation token is HTML-escaped into the shell', () => {
+  const html = renderHtml('ok', 'a"><token>');
+  assert.ok(!html.includes('a"><token>'));
+  assert.match(html, /data-mutation-token="a&quot;&gt;&lt;token&gt;"/);
 });

@@ -83,6 +83,61 @@ class ThrowingStore implements RunStore {
   }
 }
 
+class RaceStore implements RunStore {
+  readonly backend = 'azure-blob' as const;
+  private readonly values = new Map<string, Buffer>();
+  readonly firstPutCommitted: Promise<void>;
+  private readonly firstPutUnblocked: Promise<void>;
+  private releaseFirstPut: (() => void) | null = null;
+  private releaseFirstPutBarrier: (() => void) | null = null;
+  private firstPutPromiseResolved = false;
+
+  constructor() {
+    this.firstPutCommitted = new Promise<void>((resolve) => {
+      this.releaseFirstPut = resolve;
+    });
+    this.firstPutUnblocked = new Promise<void>((resolve) => {
+      this.releaseFirstPutBarrier = resolve;
+    });
+  }
+
+  async put(key: string, data: Buffer): Promise<void> {
+    this.values.set(key, Buffer.from(data));
+    if (!this.firstPutPromiseResolved && data.toString('utf8') === 'A') {
+      this.firstPutPromiseResolved = true;
+      this.releaseFirstPut?.();
+      await this.firstPutUnblocked;
+      return;
+    }
+  }
+
+  unblockFirstPut(): void {
+    this.releaseFirstPutBarrier?.();
+  }
+
+  async get(key: string): Promise<Buffer> {
+    const value = this.values.get(key);
+    if (!value) throw new StoreNotFoundError(key);
+    return Buffer.from(value);
+  }
+
+  async has(key: string): Promise<boolean> {
+    return this.values.has(key);
+  }
+
+  async list(prefix: string): Promise<readonly string[]> {
+    return [...this.values.keys()].filter((key) => key.startsWith(prefix));
+  }
+
+  async remove(key: string): Promise<void> {
+    this.values.delete(key);
+  }
+
+  resolve(key: string): string {
+    return key;
+  }
+}
+
 const SHEET = 'iron-sword/run-abc/sheet-00.png';
 const RAW = 'iron-sword/run-abc/raw/00.png';
 const PROCESSED = 'iron-sword/run-abc/processed/00.png';
@@ -185,6 +240,21 @@ describe('mutable-key invalidation', () => {
     inner.gets = 0;
     expect(await store.get(SUMMARY)).toEqual(Buffer.from('v2'));
     expect(inner.gets).toBe(0); // served the replaced cache value
+  });
+
+  it('does not let an older cross-instance put overwrite a newer cache publication', async () => {
+    const raceInner = new RaceStore();
+    const a = new CachingRunStore({ inner: raceInner, cache: newCache(cacheDir) });
+    const b = new CachingRunStore({ inner: raceInner, cache: newCache(cacheDir) });
+
+    const stalePut = a.put(SHEET, Buffer.from('A'));
+    await raceInner.firstPutCommitted;
+    await b.put(SHEET, Buffer.from('B'));
+    raceInner.unblockFirstPut();
+    await stalePut;
+
+    expect((await a.get(SHEET)).toString('utf8')).toBe('B');
+    expect((await b.get(SHEET)).toString('utf8')).toBe('B');
   });
 
   it('remove invalidates the cache before delegating to inner', async () => {
