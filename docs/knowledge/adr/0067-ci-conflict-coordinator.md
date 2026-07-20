@@ -37,8 +37,9 @@ Introduce a third, cross-PR coordination layer — the **CI conflict coordinator
 
 1. **Detects clusters** of 3+ open PRs that transitively overlap on CI paths
    (union-find on shared `.github/` file sets).
-2. **Selects a canonical leader** deterministically (green status, fewest files,
-   oldest creation) and an explicit linear merge order.
+2. **Selects a canonical leader** deterministically (green status, most CI files,
+   most changed files/lines, oldest creation) and an explicit linear merge
+   order.
 3. **Fences non-leader members** with a `ci-conflict-order-wait` label that the
    merge-train reads as a pre-promotion gate (`shouldWaitForCiConflictOrder`).
 4. **Serializes recovery dispatch** through the existing ci-recovery workflow
@@ -51,12 +52,12 @@ Introduce a third, cross-PR coordination layer — the **CI conflict coordinator
 
 ### How fences compose with existing systems
 
-| Existing invariant | Coordinator behaviour |
-|---|---|
-| ci-recovery dispatches per-PR independently | Coordinator dispatches _only_ the active (leader) slot; order-wait members are skipped by ci-recovery's `shouldWaitForCiConflictOrder` fence |
-| merge-train promotes head queue entry on green CI | `queueEntries()` excludes `ci-conflict-order-wait` PRs; non-leader slots never reach promotion |
-| Shepherd leases protect active recovery work | Coordinator detects healthy shepherd ownership via `hasHealthyRecoveryOwner`; keeps the active slot fenced and escalated while the lease is live |
-| ci-recovery owns automation state per PR | Coordinator never writes ci-recovery state directly; it only dispatches the workflow that creates it |
+| Existing invariant                                | Coordinator behaviour                                                                                                                            |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ci-recovery dispatches per-PR independently       | Coordinator dispatches _only_ the active (leader) slot; order-wait members are skipped by ci-recovery's `shouldWaitForCiConflictOrder` fence     |
+| merge-train promotes head queue entry on green CI | `queueEntries()` excludes `ci-conflict-order-wait` PRs; non-leader slots never reach promotion                                                   |
+| Shepherd leases protect active recovery work      | Coordinator detects healthy shepherd ownership via `hasHealthyRecoveryOwner`; keeps the active slot fenced and escalated while the lease is live |
+| ci-recovery owns automation state per PR          | Coordinator never writes ci-recovery state directly; it only dispatches the workflow that creates it                                             |
 
 ### Dispatch deduplication and bounded lease
 
@@ -74,9 +75,14 @@ re-dispatches during rollout.
 
 ### Failure and recovery boundaries
 
-- **Coordinator run fails / is cancelled**: no state is mutated; the next
-  scheduled or event-driven run retries from scratch. The five-minute cron
-  backstop bounds maximum staleness.
+- **Coordinator run fails / is cancelled**: reconcile is not transactional.
+  Labels, coordinator comments, dispatch metadata, and even a duplicate PR
+  close may already have been applied before the failure. The next scheduled
+  or event-driven run reconciles from latest observed state for recoverable
+  cases, but if post-close proof drift is detected and reopen retries fail,
+  manual intervention is required to reopen/repair that PR because closed PRs
+  are not rediscovered automatically. The five-minute cron backstop bounds
+  staleness only for recoverable cases.
 - **Dispatch lease expires with no healthy owner**: coordinator redrives the
   active slot on the next backstop run.
 - **Supersession proof becomes stale** (predecessor PR force-pushed or closed):
