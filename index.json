@@ -1,5 +1,16 @@
 [
   {
+    "commit": "53da636a3216d04f928a67fc19a044e8ddc56f41",
+    "commitDate": "2026-07-20T18:51:29Z",
+    "commitSubject": "fix(merge-train): preserve position after aborted promotion (#1737)",
+    "capturedAt": "2026-07-20T20:10:15.688Z",
+    "runUrl": "https://github.com/nalfeo/Crawler/actions/runs/29770387087",
+    "winRate": 0.9583333333333334,
+    "totalWins": 575,
+    "totalRuns": 600,
+    "path": "by-sha/53da636a3216d04f928a67fc19a044e8ddc56f41.json"
+  },
+  {
     "commit": "0a6c19051e91b83385e57600414d70ea086e6a8c",
     "commitDate": "2026-07-20T18:51:20Z",
     "commitSubject": "feat(sprites): batch 11 asset check-ins — cactusfolk-boss-v1, chain-hauberk-v3, dueling-saber-v1, iron-cleaver-v1, void-rapier-v1 (#1732)",
