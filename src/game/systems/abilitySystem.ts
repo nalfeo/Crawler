@@ -486,6 +486,7 @@ export function configureOwnedActiveAbility(
  * should grant a typed source first, then configure it.
  */
 export function equipActiveAbility(world: GameWorld, holderEid: number, abilityId: string): void {
+  validateAbilityKind(abilityId, 'active');
   const existing = world.abilityStatesByEntity.get(holderEid);
   const normalized = existing === undefined ? undefined : normalizeAbilityState(existing);
   if (

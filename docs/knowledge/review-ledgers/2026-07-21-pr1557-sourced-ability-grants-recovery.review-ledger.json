@@ -29,27 +29,32 @@
           "concerns_count": 0,
           "resolved_count": 0,
           "clean": true
-        },
+        }
+      ],
+      "recovery_rounds": [
         {
           "round": 3,
           "models": ["gpt-5.4"],
           "concerns_count": 1,
           "resolved_count": 1,
-          "clean": false
+          "clean": false,
+          "notes": "Post-initial-review recovery: reviewer-identified fix for passive provenance (learned vs legacy)"
         },
         {
           "round": 4,
           "models": ["claude-sonnet-4.6"],
           "concerns_count": 1,
           "resolved_count": 1,
-          "clean": false
+          "clean": false,
+          "notes": "Integration coverage concern addressed (not-applicable: generator effects pinned separately, seam covered by equipment-ability-grants tests, confirmed by two independent model passes)"
         },
         {
           "round": 5,
           "models": ["claude-sonnet-4.6"],
           "concerns_count": 0,
           "resolved_count": 0,
-          "clean": true
+          "clean": true,
+          "notes": "Final-head review at fe6ab36: clean"
         }
       ]
     }
