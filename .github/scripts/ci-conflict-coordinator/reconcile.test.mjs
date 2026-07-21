@@ -225,6 +225,7 @@ function buildRoutes({
   pr3Sha,
   livePr1Sha = pr1Sha,
   postClosePr3Sha,
+  postClosePr3Status = 200,
   reopenStatus = 200,
   fenceReleaseStatus = 204,
   pr3HeadRef = undefined,
@@ -326,6 +327,12 @@ function buildRoutes({
       //   1. targetHasHealthyOwner
       //   2. mapLimit live pull fetch
       // The third GET is the post-close revalidation read.
+      if (pr3GetCount >= 3 && postClosePr3Status >= 400) {
+        return {
+          status: postClosePr3Status,
+          body: { message: 'post-close pull fetch failed' },
+        };
+      }
       const sha = pr3GetCount >= 3 ? driftedPr3Sha : pr3Sha;
       return { body: pr3Pull(sha) };
     },
@@ -528,6 +535,53 @@ test('coordinator reopens duplicate when post-close drift is detected', async (t
     stdout,
     /reopen pr=#3 reason=post-close-proof-drifted/,
     'stdout must log drift-triggered reopen',
+  );
+});
+
+test('coordinator reopens duplicate when post-close proof cannot be re-read', async (t) => {
+  const { tmpDir, workDir, mainSha, pr1Sha, pr2Sha, pr3Sha } = setupGitRepos();
+  t.after(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+  const { server, port, mutatingCalls } = await startServer(
+    buildRoutes({
+      mainSha,
+      pr1Sha,
+      pr2Sha,
+      pr3Sha,
+      postClosePr3Status: 500,
+    }),
+  );
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, workDir);
+
+  if (process.platform === 'win32' && code === 3221226505 && /UV_HANDLE_CLOSING/.test(stderr)) {
+    t.skip('known Windows UV_HANDLE_CLOSING async-close crash');
+    return;
+  }
+
+  assert.equal(code, 0, `reconcile exited non-zero\nstdout: ${stdout}\nstderr: ${stderr}`);
+
+  const closePatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'closed',
+  );
+  assert.ok(closePatch, 'expected PATCH {state:closed} for superseded PR3');
+
+  const reopenPatch = mutatingCalls.find(
+    (c) =>
+      c.method === 'PATCH' &&
+      c.url === `/repos/${OWNER}/${REPO}/pulls/3` &&
+      c.body?.state === 'open',
+  );
+  assert.ok(reopenPatch, 'expected PATCH {state:open} reopen after post-close read failure');
+
+  assert.match(
+    stdout,
+    /reopen pr=#3 reason=post-close-proof-unverifiable/,
+    'stdout must log reopen when post-close proof cannot be verified',
   );
 });
 

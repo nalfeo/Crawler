@@ -427,23 +427,35 @@ async function closeDuplicate(proof) {
     // Post-close revalidation: if main or the leader head has shifted between
     // the pre-check reads and the close API call, reopen the PR and let the
     // next coordinator run re-evaluate. GitHub's close endpoint has no CAS, so
-    // a concurrent push can silently make the proof stale.
-    const [postMain, postTarget, postLeader] = await Promise.all([
-      fetchBaseSha(),
-      fetchLivePull(proof.number),
-      proof.leaderHead ? fetchLivePull(proof.leaderHead.number) : Promise.resolve(null),
-    ]);
-    const postLeaderSha = postLeader?.head?.sha ?? null;
-    const postTargetDrifted =
-      postTarget?.head?.sha !== proof.targetHead ||
-      postTarget?.base?.ref !== BASE_REF ||
-      postTarget?.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase();
-    const proofDrifted =
-      postMain !== currentMain ||
-      postTargetDrifted ||
-      (proof.leaderHead && postLeaderSha !== proof.leaderHead.headSha);
-    if (proofDrifted) {
-      process.stdout.write(`reopen pr=#${proof.number} reason=post-close-proof-drifted\n`);
+    // a concurrent push can silently make the proof stale. Treat any failed
+    // post-close read as equally unsafe: the PR is already closed, and without
+    // a confirmed reopen it would disappear from future coordinator discovery.
+    let postCloseReopenReason = null;
+    let postCloseUnsafeContext = 'post-close proof drift';
+    try {
+      const [postMain, postTarget, postLeader] = await Promise.all([
+        fetchBaseSha(),
+        fetchLivePull(proof.number),
+        proof.leaderHead ? fetchLivePull(proof.leaderHead.number) : Promise.resolve(null),
+      ]);
+      const postLeaderSha = postLeader?.head?.sha ?? null;
+      const postTargetDrifted =
+        postTarget?.head?.sha !== proof.targetHead ||
+        postTarget?.base?.ref !== BASE_REF ||
+        postTarget?.head?.repo?.full_name?.toLowerCase() !== repository.toLowerCase();
+      const proofDrifted =
+        postMain !== currentMain ||
+        postTargetDrifted ||
+        (proof.leaderHead && postLeaderSha !== proof.leaderHead.headSha);
+      if (proofDrifted) {
+        postCloseReopenReason = 'post-close-proof-drifted';
+      }
+    } catch (error) {
+      postCloseReopenReason = 'post-close-proof-unverifiable';
+      postCloseUnsafeContext = `post-close proof revalidation failed: ${error.message}`;
+    }
+    if (postCloseReopenReason) {
+      process.stdout.write(`reopen pr=#${proof.number} reason=${postCloseReopenReason}\n`);
       const MAX_REOPEN_ATTEMPTS = 3;
       let lastReopenError = null;
       for (let attempt = 0; attempt < MAX_REOPEN_ATTEMPTS; attempt++) {
@@ -471,7 +483,7 @@ async function closeDuplicate(proof) {
         // the backstop cron cannot repair this automatically. Throw so the
         // workflow fails and surfaces in CI for manual intervention.
         throw new Error(
-          `UNSAFE: failed to reopen PR #${proof.number} after post-close proof drift ` +
+          `UNSAFE: failed to reopen PR #${proof.number} after ${postCloseUnsafeContext} ` +
             `(${MAX_REOPEN_ATTEMPTS} attempts exhausted); manual intervention required. ` +
             `Last error: ${lastReopenError.message}`,
         );
