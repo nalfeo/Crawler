@@ -6,6 +6,7 @@ import {
   GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION,
+  parseGeneratedEquipmentInstanceId,
   type ActiveWeaponClassSkillTag,
   type ActiveWeaponCombatOverridesV1,
   type ActiveWeaponSnapshotCreateInputV1,
@@ -156,7 +157,6 @@ export const DEFAULT_GENERATED_EQUIPMENT_GENERATION_POLICY_V1 = deepFreeze(DEFAU
 const registryStates = new WeakMap<GeneratedEquipmentRegistry, RegistryState>();
 const RUN_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 const FINGERPRINT_PATTERN = /^sha256:[0-9a-f]{64}$/;
-const GENERATED_EQUIPMENT_INSTANCE_ID_PATTERN = /^gei:v1:([a-z0-9][a-z0-9._-]{0,127}):([0-9]+)$/;
 
 function fail(code: GeneratedEquipmentRegistryErrorCode, message: string, path: string): never {
   throw new GeneratedEquipmentRegistryError(code, message, path);
@@ -252,12 +252,12 @@ function requireGeneratedEquipmentInstanceId(
   if (typeof value !== 'string') {
     fail('invalid-payload', 'Expected a generated equipment instance ID', path);
   }
-  const match = GENERATED_EQUIPMENT_INSTANCE_ID_PATTERN.exec(value);
-  if (!match) {
+  const parsed = parseGeneratedEquipmentInstanceId(value);
+  if (!parsed) {
     fail('invalid-payload', 'Expected gei:v1:<runKey>:<ordinal> instance ID', path);
   }
-  requireRunKey(match[1], `${path}.runKey`);
-  requireInteger(Number.parseInt(match[2] ?? '', 10), 0, `${path}.ordinal`);
+  requireRunKey(parsed.runKey, `${path}.runKey`);
+  requireInteger(parsed.ordinal, 0, `${path}.ordinal`);
   return value as GeneratedEquipmentInstanceId;
 }
 
@@ -949,6 +949,9 @@ export function generatedEquipmentInstanceKey(
 ): GeneratedEquipmentInstanceId {
   const runKey = requireRunKey(runKeyValue, '$.runKey');
   const ordinal = requireInteger(ordinalValue, 0, '$.ordinal');
+  if (!Number.isSafeInteger(ordinal)) {
+    fail('invalid-payload', 'Expected a safe integer >= 0', '$.ordinal');
+  }
   return `gei:v1:${runKey}:${ordinal}`;
 }
 

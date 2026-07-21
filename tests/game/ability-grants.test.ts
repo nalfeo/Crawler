@@ -9,6 +9,7 @@ import {
   grantAbilitySources,
   normalizeAbilityState,
   revokeAbilitySources,
+  unequipActiveAbility,
 } from '../../src/game/systems/abilitySystem.js';
 import {
   equipmentAbilityGrantSourceId,
@@ -21,6 +22,69 @@ import {
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('source-owned ability grants', () => {
+  it('preserves the retained state handle when re-equipping an owned active', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    grantAbilitySources(
+      world,
+      player,
+      [
+        {
+          kind: 'active',
+          abilityId: 'fireball',
+          sourceId: learnedAbilityGrantSourceId('fireball'),
+        },
+      ],
+      { configureActives: 'require-slots' },
+    );
+    const retained = getOrCreateAbilityState(world, player);
+
+    unequipActiveAbility(world, player, 'fireball');
+    equipActiveAbility(world, player, 'fireball');
+
+    expect(world.abilityStatesByEntity.get(player)).toBe(retained);
+    expect(retained.equippedActiveAbilityIds).toEqual(['fireball']);
+  });
+
+  it('drops retired configured actives before enforcing the legacy equip slot cap', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    world.abilityStatesByEntity.set(player, {
+      learnedSpellIds: [],
+      equippedActiveAbilityIds: [
+        'retired-spell',
+        'battle-focus',
+        'heal',
+        'pulse-shield',
+        'magic-missile',
+        'frost-nova',
+        'bless',
+        'stoneskin',
+        'curse',
+        'vampiric-touch',
+      ],
+      passiveAbilityIds: [],
+      cooldownByAbilityId: new Map(),
+      cooldownFramesByAbilityId: new Map(),
+      appliedPassiveAbilityIds: new Set(),
+    });
+
+    equipActiveAbility(world, player, 'fireball');
+
+    expect(getOrCreateAbilityState(world, player).equippedActiveAbilityIds).toEqual([
+      'battle-focus',
+      'heal',
+      'pulse-shield',
+      'magic-missile',
+      'frost-nova',
+      'bless',
+      'stoneskin',
+      'curse',
+      'vampiric-touch',
+      'fireball',
+    ]);
+  });
+
   it('preserves an active ability until its final independent source is revoked', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);

@@ -147,6 +147,13 @@ describe('canonical generated-equipment fingerprints', () => {
 });
 
 describe('generated equipment instance registry', () => {
+  it('rejects instance ordinals that cannot be represented safely', () => {
+    expectRegistryError(
+      () => generatedEquipmentInstanceKey('run-alpha', Number.MAX_SAFE_INTEGER + 1),
+      'invalid-payload',
+    );
+  });
+
   it('fails closed until the world is configured with an explicit run key', () => {
     const world = createTestWorld();
     expectRegistryError(

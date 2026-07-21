@@ -146,7 +146,7 @@ function restoreAbilityState(snapshot: AbilityStateSnapshot, frameCount: number)
       ),
     ),
     cooldownFramesByAbilityId: new Map(snapshot.cooldownFramesByAbilityId),
-    appliedPassiveAbilityIds: new Set(),
+    appliedPassiveAbilityIds: new Set(snapshot.appliedPassiveAbilityIds ?? []),
   };
   if (snapshot.grantOwnership === undefined) {
     return normalizeAbilityState(legacyState);

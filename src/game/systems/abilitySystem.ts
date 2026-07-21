@@ -490,16 +490,16 @@ export function configureOwnedActiveAbility(
  */
 export function equipActiveAbility(world: GameWorld, holderEid: number, abilityId: string): void {
   const existing = world.abilityStatesByEntity.get(holderEid);
+  const normalized = existing === undefined ? undefined : normalizeAbilityState(existing);
   if (
-    existing !== undefined &&
-    !existing.equippedActiveAbilityIds.includes(abilityId) &&
-    existing.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT
+    normalized !== undefined &&
+    !normalized.equippedActiveAbilityIds.includes(abilityId) &&
+    normalized.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT
   ) {
     throw new Error(`Active ability slot cap reached (${ACTIVE_ABILITY_SLOT_LIMIT})`);
   }
-  const normalized = existing === undefined ? undefined : normalizeAbilityState(existing);
   if (normalized?.grantOwnership.activeSourcesByAbilityId.has(abilityId)) {
-    world.abilityStatesByEntity.set(holderEid, normalized);
+    installAbilityState(world, holderEid, normalized, existing);
     configureOwnedActiveAbility(world, holderEid, abilityId);
     return;
   }

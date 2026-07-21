@@ -21,7 +21,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('generated equipment ability grants', () => {
   it('grants and revokes a real frozen registry instance by stable identity', () => {
-    const world = createTestWorld({ generatedEquipmentRunKey: 'ability-grants' });
+    const world = createTestWorld({ generatedEquipmentRunKey: 'ability.grants' });
     const player = spawnPlayer(world, 0, 0);
     const instance = createGeneratedEquipmentInstance(world, {
       baseId: 'armor.ceremonial-coat',
@@ -59,6 +59,7 @@ describe('generated equipment ability grants', () => {
         activeWeaponSnapshot: null,
       },
     });
+    expect(instance.instanceId).toBe('gei:v1:ability.grants:0');
     const learned = learnedAbilityGrantSourceId('fireball');
     grantAbilitySources(world, player, [
       { kind: 'active', abilityId: 'fireball', sourceId: learned },

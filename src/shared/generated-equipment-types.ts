@@ -226,11 +226,25 @@ export interface GeneratedEquipmentRegistrySnapshotV1 {
   readonly instances: readonly GeneratedEquipmentInstanceV1[];
 }
 
-const INSTANCE_ID_RE = /^gei:v1:[a-zA-Z0-9_-]+:\d+$/;
+const RUN_KEY_RE = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const INSTANCE_ID_RE = /^gei:v1:([a-z0-9][a-z0-9._-]{0,127}):([0-9]+)$/;
 const FINGERPRINT_RE = /^sha256:[0-9a-f]{64}$/;
 
+export function parseGeneratedEquipmentInstanceId(
+  id: string,
+): { readonly runKey: string; readonly ordinal: number } | undefined {
+  const match = INSTANCE_ID_RE.exec(id);
+  if (!match) return undefined;
+  const ordinal = Number.parseInt(match[2]!, 10);
+  if (!Number.isSafeInteger(ordinal)) return undefined;
+  return {
+    runKey: match[1]!,
+    ordinal,
+  };
+}
+
 export function isValidGeneratedInstanceId(id: string): id is GeneratedEquipmentInstanceId {
-  return INSTANCE_ID_RE.test(id);
+  return parseGeneratedEquipmentInstanceId(id) !== undefined;
 }
 
 export function isKnownGeneratedSchemaVersion(
@@ -244,9 +258,11 @@ export function isValidFingerprintV1(value: string): value is EquipmentFingerpri
 }
 
 export function makeRunKey(seed: number | string): string {
-  const key = String(seed).replace(/[^a-zA-Z0-9_-]/g, '');
-  if (key.length === 0) {
-    throw new Error(`makeRunKey: seed "${seed}" produces an empty run key`);
+  const key = String(seed)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '');
+  if (!RUN_KEY_RE.test(key)) {
+    throw new Error(`makeRunKey: seed "${seed}" does not produce a valid run key`);
   }
   return key;
 }

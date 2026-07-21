@@ -227,6 +227,50 @@ describe('player floor carryover', () => {
     ).toHaveLength(2);
   });
 
+  it('preserves legacy applied passives without duplicating persisted modifiers', () => {
+    const source = createTestWorld({ seed: 92 });
+    const sourcePlayer = spawnPlayer(source, 0, 0);
+    grantAbilitySources(source, sourcePlayer, [
+      {
+        kind: 'passive',
+        abilityId: 'veteran-instinct',
+        sourceId: skillAbilityGrantSourceId('iron-skin', 5),
+      },
+    ]);
+    abilitySystem(source);
+
+    const snapshot = capturePlayerCarryover(source, sourcePlayer);
+    const persistedPassiveModifiers = source.statModifiers
+      .filter((modifier) =>
+        modifier.sourceId.startsWith(`veteran-instinct:passive:${sourcePlayer}:`),
+      )
+      .map(({ expiresFrame: _expiresFrame, ...modifier }) => modifier);
+    const { grantOwnership: _grantOwnership, ...legacyAbilityState } = snapshot.abilityState!;
+    const legacySnapshot = {
+      ...snapshot,
+      abilityState: {
+        ...legacyAbilityState,
+        appliedPassiveAbilityIds: ['veteran-instinct'],
+      },
+      persistentStatModifiers: [...snapshot.persistentStatModifiers, ...persistedPassiveModifiers],
+    };
+    const destination = createTestWorld({ seed: 92, floor: 2 });
+    const destinationPlayer = spawnPlayer(destination, 0, 0);
+
+    restorePlayerCarryover(destination, destinationPlayer, legacySnapshot);
+
+    expect(
+      destination.statModifiers.filter((modifier) =>
+        modifier.sourceId.startsWith(`veteran-instinct:passive:${destinationPlayer}:`),
+      ),
+    ).toHaveLength(persistedPassiveModifiers.length);
+    expect(
+      destination.abilityStatesByEntity
+        .get(destinationPlayer)
+        ?.appliedPassiveAbilityIds.has('veteran-instinct'),
+    ).toBe(true);
+  });
+
   it('restores old plain-id snapshots through deterministic legacy migration', () => {
     const source = createTestWorld({ seed: 17 });
     const sourcePlayer = spawnPlayer(source, 0, 0);

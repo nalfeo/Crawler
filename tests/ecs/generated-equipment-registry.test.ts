@@ -156,20 +156,20 @@ describe('createInstanceId', () => {
   });
 
   it('is deterministic for the same inputs', () => {
-    const a = createInstanceId('runABC', 7);
-    const b = createInstanceId('runABC', 7);
+    const a = createInstanceId('runabc', 7);
+    const b = createInstanceId('runabc', 7);
     expect(a).toBe(b);
   });
 
   it('different ordinals produce different IDs', () => {
-    const a = createInstanceId('runX', 1);
-    const b = createInstanceId('runX', 2);
+    const a = createInstanceId('runx', 1);
+    const b = createInstanceId('runx', 2);
     expect(a).not.toBe(b);
   });
 
   it('different run keys produce different IDs', () => {
-    const a = createInstanceId('runA', 1);
-    const b = createInstanceId('runB', 1);
+    const a = createInstanceId('runa', 1);
+    const b = createInstanceId('runb', 1);
     expect(a).not.toBe(b);
   });
 
@@ -195,18 +195,26 @@ describe('createInstanceId', () => {
     const id = createInstanceId('seed-42_v1', 0);
     expect(isValidGeneratedInstanceId(id)).toBe(true);
   });
+
+  it('allows dots in canonical run keys', () => {
+    const id = createInstanceId('seed.42', 0);
+    expect(id).toBe('gei:v1:seed.42:0');
+    expect(isValidGeneratedInstanceId(id)).toBe(true);
+  });
 });
 
 describe('isValidGeneratedInstanceId', () => {
   it('returns true for valid IDs', () => {
     expect(isValidGeneratedInstanceId('gei:v1:abc:0')).toBe(true);
     expect(isValidGeneratedInstanceId('gei:v1:seed-42_x:99')).toBe(true);
+    expect(isValidGeneratedInstanceId('gei:v1:seed.42:99')).toBe(true);
   });
 
   it('returns false for invalid formats', () => {
     expect(isValidGeneratedInstanceId('gei:v1::0')).toBe(false); // empty run key
     expect(isValidGeneratedInstanceId('gei:v2:abc:0')).toBe(false); // wrong version
     expect(isValidGeneratedInstanceId('gei:v1:abc:-1')).toBe(false); // negative ordinal
+    expect(isValidGeneratedInstanceId(`gei:v1:abc:${'9'.repeat(400)}`)).toBe(false);
     expect(isValidGeneratedInstanceId('abc:1')).toBe(false);
     expect(isValidGeneratedInstanceId('')).toBe(false);
   });
@@ -231,6 +239,10 @@ describe('makeRunKey', () => {
 
   it('strips special characters', () => {
     expect(makeRunKey('seed:with:colons')).toBe('seedwithcolons');
+  });
+
+  it('normalizes case and preserves canonical dots', () => {
+    expect(makeRunKey('Seed.42')).toBe('seed.42');
   });
 
   it('throws for empty result', () => {
