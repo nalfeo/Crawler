@@ -10,6 +10,10 @@ const pr = {
   head: { sha: 'head-2' },
 };
 const passingChecks = [{ status: 'completed', conclusion: 'success' }];
+const markerComment = (headSha, reason) => ({
+  body: reviewRequestMarker({ headSha, reason }),
+  author_association: 'OWNER',
+});
 
 test('requests review when a PR is published', () => {
   assert.equal(
@@ -27,8 +31,8 @@ test('requests review when a PR is published', () => {
 
 test('requests review for only the first two passing synchronize heads', () => {
   const comments = [
-    { body: reviewRequestMarker({ headSha: 'head-0', reason: 'synchronize' }) },
-    { body: reviewRequestMarker({ headSha: 'head-1', reason: 'synchronize' }) },
+    markerComment('head-0', 'synchronize'),
+    markerComment('head-1', 'synchronize'),
   ];
   assert.equal(
     shouldRequestReview({
@@ -51,12 +55,42 @@ test('requests review when a clean head resolves a prior merge conflict', () => 
       checkRuns: passingChecks,
       blockers: [],
       comments: [
-        { body: reviewRequestMarker({ headSha: 'old-head', reason: 'synchronize' }) },
-        { body: reviewRequestMarker({ headSha: 'old-head-2', reason: 'synchronize' }) },
+        markerComment('old-head', 'synchronize'),
       ],
       previousState: { blockers: [{ kind: 'merge-conflict' }] },
     }),
     'conflict-resolved',
+  );
+});
+
+test('does not request conflict-resolution review before checks pass', () => {
+  assert.equal(
+    shouldRequestReview({
+      trigger: 'pull_request_target:synchronize',
+      pr,
+      checkRuns: [{ status: 'in_progress', conclusion: null }],
+      blockers: [],
+      comments: [],
+      previousState: { blockers: [{ kind: 'merge-conflict' }] },
+    }),
+    null,
+  );
+});
+
+test('counts conflict-resolution requests against the two synchronize requests', () => {
+  assert.equal(
+    shouldRequestReview({
+      trigger: 'pull_request_target:synchronize',
+      pr,
+      checkRuns: passingChecks,
+      blockers: [],
+      comments: [
+        markerComment('old-head', 'conflict-resolved'),
+        markerComment('old-head-2', 'conflict-resolved'),
+      ],
+      previousState: { blockers: [{ kind: 'merge-conflict' }] },
+    }),
+    null,
   );
 });
 

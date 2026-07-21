@@ -939,7 +939,7 @@ const humanApprovalRequired = requiresHumanApproval(pr, closingIssues);
 approvalRejection = humanApprovalRejection({
   pullRequest: pr,
   closingIssues,
-  comments,
+  comments: comments.filter(isTrustedComment),
   ownerLogin: owner,
 });
 pendingHumanApproval = Boolean(approvalRejection);

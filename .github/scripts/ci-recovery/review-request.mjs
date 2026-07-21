@@ -9,8 +9,16 @@ function normalized(value) {
 
 export function reviewRequestMarkers(comments) {
   return (comments || [])
-    .map((comment) => String(comment?.body || ''))
-    .filter((body) => body.trimStart().startsWith(REVIEW_REQUEST_MARKER));
+    .filter((comment) => {
+      const association = normalized(comment?.author_association || comment?.authorAssociation);
+      const login = normalized(comment?.user?.login || comment?.author?.login);
+      return (
+        String(comment?.body || '').trimStart().startsWith(REVIEW_REQUEST_MARKER) &&
+        (['owner', 'member', 'collaborator'].includes(association) ||
+          ['github-actions[bot]', 'copilot', 'copilot-pull-request-reviewer'].includes(login))
+      );
+    })
+    .map((comment) => String(comment?.body || ''));
 }
 
 function checksPass(checkRuns) {
@@ -19,7 +27,8 @@ function checksPass(checkRuns) {
     checkRuns.length > 0 &&
     checkRuns.every(
       (check) =>
-        normalized(check?.status) === 'completed' && normalized(check?.conclusion) === 'success',
+        normalized(check?.status) === 'completed' &&
+        ['success', 'neutral', 'skipped'].includes(normalized(check?.conclusion)),
     )
   );
 }
@@ -37,6 +46,7 @@ export function shouldRequestReview({ trigger, pr, checkRuns, blockers, comments
     triggerText.endsWith(':reopened');
   const conflictResolved =
     triggerText.endsWith(':synchronize') &&
+    checksPass(checkRuns) &&
     normalized(pr?.mergeable_state) === 'clean' &&
     (blockers || []).length === 0 &&
     Array.isArray(previousState?.blockers) &&
@@ -47,9 +57,9 @@ export function shouldRequestReview({ trigger, pr, checkRuns, blockers, comments
   if (!ready && !conflictResolved && !passingSynchronize) return null;
 
   const synchronizeRequests = reviewRequestMarkers(comments).filter((body) =>
-    body.includes('reason=synchronize'),
+    body.includes('reason=synchronize') || body.includes('reason=conflict-resolved'),
   ).length;
-  if (passingSynchronize && !conflictResolved && synchronizeRequests >= 2) return null;
+  if ((passingSynchronize || conflictResolved) && synchronizeRequests >= 2) return null;
 
   return ready ? 'ready' : conflictResolved ? 'conflict-resolved' : 'synchronize';
 }
