@@ -15,6 +15,15 @@ test('uses app theme tokens and includes live state controls', () => {
   assert.match(html, /hosted jobs running/);
 });
 
+test('restores the manual refresh control after a request failure', () => {
+  const html = renderHtml({ instanceId: 'ci-health-1', refreshIntervalMs: 30_000 });
+  const catchBlock = html.match(/catch \(error\) \{([\s\S]*?)const errorBox/);
+
+  assert.ok(catchBlock);
+  assert.match(catchBlock[1], /refreshButton\.disabled = false/);
+  assert.match(catchBlock[1], /refreshButton\.textContent = 'Refresh now'/);
+});
+
 test('escapes the instance id embedded into renderer HTML', () => {
   const html = renderHtml({
     instanceId: '<img src=x onerror=alert(1)>',

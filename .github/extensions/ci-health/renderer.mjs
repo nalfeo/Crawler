@@ -390,6 +390,8 @@ export function renderHtml({ instanceId, refreshIntervalMs }) {
         if (!response.ok) throw new Error('Refresh failed (' + response.status + ').');
         render(await response.json());
       } catch (error) {
+        refreshButton.disabled = false;
+        refreshButton.textContent = 'Refresh now';
         const errorBox = document.getElementById('error');
         errorBox.hidden = false;
         errorBox.replaceChildren(node('strong', {}, 'Refresh failed'), node('span', {}, error.message));
