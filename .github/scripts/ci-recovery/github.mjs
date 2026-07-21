@@ -126,7 +126,7 @@ export async function paginate(token, path) {
 }
 
 export async function graphql(token, query, variables = {}) {
-  const isQuery = /^\s*query(?:\s|[{(])/i.test(query);
+  const isQuery = /^\s*(?:query(?:\s|[{(])|{)/i.test(query);
   for (let attempt = 0; attempt <= MAX_RETRY_ATTEMPTS; attempt += 1) {
     const response = await fetch(graphqlUrl, {
       method: 'POST',
