@@ -14,7 +14,7 @@
       "notes": "Rejected direct equipmentDefs registration. Adopted a generator-only Wave A base catalog/adapter so stable base IDs and canonical runtime art keys coexist without inventory-enumeration leakage; legacy slug lookup remains fallback-compatible. The explicit 25-ID allowlist records all mappings and preexisting concepts, tests separately preserve the 50-ID manifest and 25-ID wave distribution, art-key scope is persistence/validation only, and representative family fixtures supplement the existing constitutional DPS gate."
     },
     "code_review": {
-      "clean": false,
+      "clean": true,
       "rounds": [
         {
           "round": 1,
@@ -22,6 +22,13 @@
           "concerns_count": 1,
           "resolved_count": 1,
           "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
         }
       ]
     }
