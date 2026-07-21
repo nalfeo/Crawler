@@ -63,6 +63,9 @@ const MANAGED_COMMENT_MARKERS = [
 const DEFAULT_RETRY_MAX_ATTEMPTS = 6;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
+const FLAG_OFF_SWEEP_ROTATION_WINDOW_MS = 10 * 60 * 1000;
+const DEFAULT_OUTSTANDING_VISIBILITY_TIMEOUT_MS = 8 * 60 * 1000;
+const DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS = 5000;
 // Labels owned by merge-train automation that must be drained during
 // flag-off cleanup before legacy routing resumes normal operation. A PR that
 // still carries one of these after MERGE_TRAIN_ENABLED=false needs the
@@ -83,6 +86,17 @@ function parsePositiveInt(raw, fallback) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function rotateList(values, rotation) {
+  if (values.length <= 1) {
+    return values;
+  }
+  const normalizedRotation = ((rotation % values.length) + values.length) % values.length;
+  if (normalizedRotation === 0) {
+    return values;
+  }
+  return [...values.slice(normalizedRotation), ...values.slice(0, normalizedRotation)];
 }
 
 export function parseRetryAfterMilliseconds(error) {
@@ -252,6 +266,7 @@ export function collectPrNumbers({
   // older, still-labeled PR past the cap on every sweep (never cleaned up).
   const trainLabeledNumbers = new Set();
   const waitingTransitionNumbers = new Set();
+  const ownedNumbers = new Set();
 
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
     const normalizedRepo = repository.toLowerCase();
@@ -278,16 +293,16 @@ export function collectPrNumbers({
           if (waitingTransition) {
             waitingTransitionNumbers.add(number);
           }
+          if (owned) {
+            ownedNumbers.add(number);
+          }
         }
       }
     }
   }
 
   const eligible = [...numbers];
-  if (
-    (eventName === 'schedule' || eventName === 'workflow_dispatch') &&
-    eligible.length > maxDispatchPerRun
-  ) {
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
     // Prioritize PRs the event directly named plus any still carrying a
     // train-owned label so the flag-off cleanup sweep completes for them
     // before the cap is spent on unrelated recently-updated PRs.
@@ -303,7 +318,23 @@ export function collectPrNumbers({
         !trainLabeledNumbers.has(number) &&
         !waitingTransitionNumbers.has(number),
     );
-    return [...prioritized, ...remaining].slice(0, maxDispatchPerRun);
+    // Keep already-owned PRs behind PRs that have not yet received an owner
+    // label, then rotate each bucket once per 10-minute sweep window. Without
+    // this, the later global budget slice in partitionDispatchable() keeps
+    // selecting the same updated-desc prefix in flag-off mode, and PRs later in
+    // the sweep can starve indefinitely.
+    const rotation =
+      Number.isFinite(now.getTime()) && now.getTime() > 0
+        ? Math.floor(now.getTime() / FLAG_OFF_SWEEP_ROTATION_WINDOW_MS)
+        : 0;
+    const remainingUnowned = remaining.filter((number) => !ownedNumbers.has(number));
+    const remainingOwned = remaining.filter((number) => ownedNumbers.has(number));
+    const ordered = [
+      ...prioritized,
+      ...rotateList(remainingUnowned, rotation),
+      ...rotateList(remainingOwned, rotation),
+    ];
+    return ordered.slice(0, maxDispatchPerRun);
   }
   return eligible;
 }
@@ -479,18 +510,11 @@ export function isManagedCommentEvent(payload, eventName) {
   return MANAGED_COMMENT_MARKERS.some((marker) => body.startsWith(marker));
 }
 
-// Fetches every run of `workflowFile` currently in `status`, paginating
-// until a short page confirms the end. The Actions "list workflow runs"
-// endpoint returns `{ total_count, workflow_runs }`, not a bare array, so
-// this cannot reuse the generic `paginate()` helper from github.mjs.
-export async function listWorkflowRunsByStatus(
-  token,
-  owner,
-  repo,
-  workflowFile,
-  status,
-  requestFn = request,
-) {
+// Fetches every run of `workflowFile`, paginating until a short page confirms
+// the end. countOutstandingRecoveryRuns() filters outstanding statuses
+// client-side from this single logical snapshot instead of summing several
+// independently-timed status-filtered API views.
+export async function listWorkflowRuns(token, owner, repo, workflowFile, requestFn = request) {
   const results = [];
   let page = 1;
   while (true) {
@@ -498,9 +522,9 @@ export async function listWorkflowRunsByStatus(
       () =>
         requestFn(
           token,
-          `/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?status=${status}&per_page=100&page=${page}`,
+          `/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?per_page=100&page=${page}`,
         ),
-      { label: `list-runs-${workflowFile}-${status}-page${page}` },
+      { label: `list-runs-${workflowFile}-page${page}` },
     );
     const runs = data?.workflow_runs || [];
     results.push(...runs);
@@ -524,19 +548,9 @@ export async function countOutstandingRecoveryRuns(
   statuses = OUTSTANDING_RUN_STATUSES,
   requestFn = request,
 ) {
-  let total = 0;
-  for (const status of statuses) {
-    const runs = await listWorkflowRunsByStatus(
-      token,
-      owner,
-      repo,
-      workflowFile,
-      status,
-      requestFn,
-    );
-    total += runs.length;
-  }
-  return total;
+  const outstandingStatuses = new Set(statuses);
+  const runs = await listWorkflowRuns(token, owner, repo, workflowFile, requestFn);
+  return runs.filter((run) => outstandingStatuses.has(run.status)).length;
 }
 
 // How many more CI Recovery dispatches this router invocation may send.
@@ -596,30 +610,41 @@ export function partitionDispatchable(prNumbers, budget) {
 // countOutstandingRecoveryRuns, the *next* serialized invocation can read a
 // stale (too-low) outstanding count and dispatch again, breaching the
 // global cap. Polling here, before this invocation's slot is released,
-// makes that race unlikely rather than airtight: the wait is deliberately
-// bounded (a handful of short retries), and a slow/unavailable API still
-// degrades to a logged warning and lets this invocation end anyway -- the
-// 10-minute sweep is the eventual-consistency backstop, not a guarantee
-// that the cap is never exceeded if Actions API visibility lags longer
-// than the bounded retry window.
+// makes that race materially narrower but still not airtight: this invocation
+// now holds the concurrency slot until the dispatch becomes visible or until a
+// long timeout expires, then fails closed instead of silently logging and
+// succeeding. That means the residual gap now requires Actions list-runs
+// visibility to lag for nearly the whole workflow timeout, not just a couple of
+// quick polls; fully closing it still needs a durable reservation the next
+// invocation can observe.
 export async function waitForOutstandingCount(
   token,
   owner,
   repo,
   expectedMinimum,
-  { attempts = 5, delayMs = 2000, sleepFn = sleep, countFn = countOutstandingRecoveryRuns } = {},
+  {
+    timeoutMs = DEFAULT_OUTSTANDING_VISIBILITY_TIMEOUT_MS,
+    pollIntervalMs = DEFAULT_OUTSTANDING_VISIBILITY_POLL_INTERVAL_MS,
+    nowFn = () => Date.now(),
+    sleepFn = sleep,
+    countFn = countOutstandingRecoveryRuns,
+  } = {},
 ) {
   let lastObserved = 0;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+  const deadline = nowFn() + timeoutMs;
+  while (true) {
     lastObserved = await countFn(token, owner, repo);
     if (lastObserved >= expectedMinimum) {
       return lastObserved;
     }
-    if (attempt < attempts) {
-      await sleepFn(delayMs);
+    const remainingMs = deadline - nowFn();
+    if (remainingMs <= 0) {
+      throw new Error(
+        `Timed out waiting for dispatched run(s) to become visible via Actions API observed=${lastObserved} expected>=${expectedMinimum} timeout_ms=${timeoutMs}`,
+      );
     }
+    await sleepFn(Math.min(pollIntervalMs, remainingMs));
   }
-  return lastObserved;
 }
 
 export async function runFromEnv(env = process.env) {
@@ -763,12 +788,7 @@ export async function runFromEnv(env = process.env) {
 
   if (dispatchable.length > 0) {
     const expectedMinimum = outstandingCount + dispatchable.length;
-    const observed = await waitForOutstandingCount(token, owner, repo, expectedMinimum);
-    if (observed < expectedMinimum) {
-      process.stdout.write(
-        `warning: dispatched run(s) not yet visible via Actions API after backoff observed=${observed} expected>=${expectedMinimum} -- relying on scheduled sweep for eventual consistency\n`,
-      );
-    }
+    await waitForOutstandingCount(token, owner, repo, expectedMinimum);
   }
 
   if (dispatchable.length === 0 && deferred.length === 0) {

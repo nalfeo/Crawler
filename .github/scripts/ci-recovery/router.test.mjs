@@ -75,6 +75,7 @@ test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
     repository: 'nalfeo/Crawler',
     scheduledPulls,
     maxDispatchPerRun: 5,
+    now: new Date('1970-01-01T00:00:00Z'),
   });
 
   assert.deepEqual(numbers, [1, 2, 3, 4, 5]);
@@ -102,6 +103,7 @@ test('flag-off schedule sweeps prioritize PRs with train-owned labels before dis
     scheduledPulls,
     maxDispatchPerRun: 8,
     trainEnabled: false,
+    now: new Date('1970-01-01T00:00:00Z'),
   });
 
   assert.deepEqual(numbers, [99, 1, 2, 3, 4, 5, 6, 7]);
@@ -153,6 +155,7 @@ test('collectPrNumbers prioritizes flag-off PRs still carrying a train-owned lab
     repository: 'nalfeo/Crawler',
     scheduledPulls,
     maxDispatchPerRun: 5,
+    now: new Date('1970-01-01T00:00:00Z'),
   });
 
   assert.deepEqual(
@@ -182,6 +185,82 @@ test('collectPrNumbers keeps directly-triggered PRs ahead of the cap alongside t
   assert.equal(numbers.length, 3);
   assert.ok(numbers.includes(9), 'the directly-triggered PR must survive the cap');
   assert.ok(numbers.includes(1), 'the train-labeled PR must survive the cap');
+});
+
+test('flag-off sweeps rotate unowned PRs so later entries are eventually dispatchable', () => {
+  const scheduledPulls = Array.from({ length: 5 }, (_, index) => ({
+    number: 5 - index,
+    draft: false,
+    labels: [],
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+  }));
+  const seen = new Set();
+
+  for (let sweep = 0; sweep < 5; sweep += 1) {
+    const ordered = collectPrNumbers({
+      payload: { repository: { default_branch: 'main' } },
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls,
+      maxDispatchPerRun: 8,
+      trainEnabled: false,
+      now: new Date(`2026-07-21T${String(sweep).padStart(2, '0')}:00:00Z`),
+    });
+    const { dispatchable } = partitionDispatchable(ordered, 2);
+    for (const prNumber of dispatchable) {
+      seen.add(prNumber);
+    }
+  }
+
+  assert.deepEqual(seen, new Set([1, 2, 3, 4, 5]));
+});
+
+test('flag-off sweeps keep owned PRs behind unowned PRs before the global budget slice', () => {
+  const scheduledPulls = [
+    {
+      number: 5,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 4,
+      draft: false,
+      labels: [{ name: 'ci-owner-pr-4' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 3,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 2,
+      draft: false,
+      labels: [{ name: 'ci-owner-pr-2' }],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+    {
+      number: 1,
+      draft: false,
+      labels: [],
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+    },
+  ];
+
+  const ordered = collectPrNumbers({
+    payload: { repository: { default_branch: 'main' } },
+    eventName: 'schedule',
+    repository: 'nalfeo/Crawler',
+    scheduledPulls,
+    maxDispatchPerRun: 8,
+    trainEnabled: false,
+    now: new Date('2026-07-21T00:00:00Z'),
+  });
+
+  const { dispatchable } = partitionDispatchable(ordered, 2);
+  assert.deepEqual(dispatchable, [5, 3]);
 });
 
 test('train mode routes PR-scoped events only to their directly affected PR', () => {
@@ -981,23 +1060,23 @@ test('partitionDispatchable defers PRs beyond the computed budget', () => {
   });
 });
 
-test('countOutstandingRecoveryRuns sums every outstanding status across pages', async () => {
+test('countOutstandingRecoveryRuns filters outstanding statuses from one paginated workflow snapshot', async () => {
   const calls = [];
-  const runsByStatus = {
-    queued: Array.from({ length: 100 }, (_, index) => ({ id: index })).concat([{ id: 100 }]),
-    in_progress: [{ id: 200 }],
-    waiting: [],
-    requested: [],
-  };
+  const allRuns = Array.from({ length: 100 }, (_, index) => ({
+    id: index,
+    status: index < 98 ? 'queued' : 'completed',
+  })).concat([
+    { id: 100, status: 'in_progress' },
+    { id: 101, status: 'requested' },
+    { id: 102, status: 'success' },
+  ]);
   const requestFn = async (_token, path) => {
     calls.push(path);
     const url = new URL(path, 'http://example.test');
-    const status = url.searchParams.get('status');
     const page = Number(url.searchParams.get('page'));
-    const all = runsByStatus[status] || [];
     const perPage = 100;
-    const slice = all.slice((page - 1) * perPage, page * perPage);
-    return { data: { total_count: all.length, workflow_runs: slice } };
+    const slice = allRuns.slice((page - 1) * perPage, page * perPage);
+    return { data: { total_count: allRuns.length, workflow_runs: slice } };
   };
 
   const total = await countOutstandingRecoveryRuns(
@@ -1009,11 +1088,14 @@ test('countOutstandingRecoveryRuns sums every outstanding status across pages', 
     requestFn,
   );
 
-  // 101 queued (paginated across 2 pages) + 1 in_progress + 0 + 0.
-  assert.equal(total, 102);
+  assert.equal(total, 100);
   assert.ok(
     calls.some((path) => path.includes('page=2')),
     'must paginate past a full page',
+  );
+  assert.ok(
+    calls.every((path) => !path.includes('status=')),
+    'the workflow runs endpoint should be queried once per page, not once per status',
   );
 });
 
@@ -1021,12 +1103,15 @@ test('countOutstandingRecoveryRuns counts pending runs by default', async () => 
   // Regression guard: pending is a documented Actions run status; omitting
   // it from the default status list would let a run in that state go
   // uncounted and silently widen the outstanding-run gap.
-  const requestFn = async (_token, path) => {
-    const url = new URL(path, 'http://example.test');
-    const status = url.searchParams.get('status');
-    const runs = status === 'pending' ? [{ id: 1 }] : [];
-    return { data: { total_count: runs.length, workflow_runs: runs } };
-  };
+  const requestFn = async () => ({
+    data: {
+      total_count: 2,
+      workflow_runs: [
+        { id: 1, status: 'pending' },
+        { id: 2, status: 'completed' },
+      ],
+    },
+  });
   const total = await countOutstandingRecoveryRuns(
     'token',
     'nalfeo',
@@ -1040,18 +1125,21 @@ test('countOutstandingRecoveryRuns counts pending runs by default', async () => 
 
 test('waitForOutstandingCount observes a newly dispatched run before returning', async () => {
   let visibleCount = 0;
+  let now = 0;
   const countFn = async () => visibleCount;
   const sleeps = [];
   const sleepFn = async (ms) => {
     sleeps.push(ms);
+    now += ms;
     // Simulate the dispatch becoming visible mid-poll, the way GitHub's
     // eventual consistency behaves in practice.
     visibleCount = 1;
   };
 
   const observed = await waitForOutstandingCount('token', 'nalfeo', 'Crawler', 1, {
-    attempts: 3,
-    delayMs: 10,
+    timeoutMs: 30,
+    pollIntervalMs: 10,
+    nowFn: () => now,
     sleepFn,
     countFn,
   });
@@ -1060,17 +1148,28 @@ test('waitForOutstandingCount observes a newly dispatched run before returning',
   assert.equal(sleeps.length, 1, 'must stop polling as soon as the expected count is observed');
 });
 
-test('waitForOutstandingCount gives up after its bounded attempt budget and reports the last observed count', async () => {
+test('waitForOutstandingCount holds the router slot until timeout, then rejects instead of silently succeeding', async () => {
+  let now = 0;
   const sleeps = [];
-  const observed = await waitForOutstandingCount('token', 'nalfeo', 'Crawler', 1, {
-    attempts: 3,
-    delayMs: 5,
-    sleepFn: async (ms) => sleeps.push(ms),
-    countFn: async () => 0,
-  });
+  await assert.rejects(
+    waitForOutstandingCount('token', 'nalfeo', 'Crawler', 1, {
+      timeoutMs: 10,
+      pollIntervalMs: 5,
+      nowFn: () => now,
+      sleepFn: async (ms) => {
+        sleeps.push(ms);
+        now += ms;
+      },
+      countFn: async () => 0,
+    }),
+    /Timed out waiting for dispatched run\(s\) to become visible via Actions API/,
+  );
 
-  assert.equal(observed, 0, 'never reached expectedMinimum within the attempt budget');
-  assert.equal(sleeps.length, 2, 'sleeps between attempts but not after the final one');
+  assert.deepEqual(
+    sleeps,
+    [5, 5],
+    'must keep the concurrency slot until the timeout budget is exhausted',
+  );
 });
 
 test('serialized router invocations do not both under-count the same in-flight dispatch (TOCTOU close)', async () => {

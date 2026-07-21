@@ -14,7 +14,7 @@
       "notes": "Reviewer found 2 blocking gaps: (1) router concurrency group lacked queue: max, so GitHub would drop pending events instead of queueing them under burst -- fixed by adding queue: max matching the ci-recovery.yml pattern; (2) TOCTOU race between dispatch and Actions-API visibility across serialized invocations, plus missing pending status -- fixed by adding pending to OUTSTANDING_RUN_STATUSES and a bounded waitForOutstandingCount poll before a dispatching invocation releases its concurrency slot. Both fixes verified by new unit tests."
     },
     "code_review": {
-      "clean": true,
+      "clean": false,
       "rounds": [
         {
           "round": 1,
@@ -47,8 +47,21 @@
           "resolved_count": 0,
           "clean": true,
           "notes": "Second post-merge correction round: replaced the conditional (train-gated) workflow concurrency block with one fully static/unconditional group (crawler-ci-recovery-router), cancel-in-progress:false, queue:max -- applying to every event type in every mode, closing the residual cross-PR race from the flag-off legacy per-PR groups. Reviewer confirmed: (1) group is a plain string with no expression syntax/branching, achieving true full serialization; (2) cancel-in-progress:false + queue:max is exactly the GitHub-permitted combination, corroborated by the existing ci-recovery.yml pattern; (3) the queue-depth risk (~100 pending runs/group) and loss of schedule/workflow_dispatch cancel-in-progress dedup are explicitly documented as accepted, monitored trade-offs in the handoff, not silent regressions; (4) rewritten workflow-structure tests genuinely parse the real YAML via the yaml package and assert on parsed values, not re-asserted constants; (5) no stale references to the old per-mode group names or MERGE_TRAIN_ENABLED-gated concurrency remain anywhere in the repo outside historical ledger/audit text. 48/48 tests passing, lint clean."
+        },
+        {
+          "round": 5,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 4,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "Validator round against live PR review threads: thread 3620051419 (sequential per-status run counting) was valid and fixed by switching to one paginated workflow-runs snapshot filtered client-side; thread 3620051433 (flag-off starvation from fixed prefix slicing) was valid and fixed by rotating unowned sweep order and pushing already-owned PRs behind unowned PRs; thread 3620051471 became stale after those test additions and the PR body was updated to match the current finite-cap behavior and 50/50 router tests; threads 3620051379 and 3620051458 were confirmed not applicable on current HEAD; thread 3619956345 remains a residual architectural gap because Actions list-runs visibility can still stay stale longer than the in-process wait window without any durable reservation the next invocation can observe. Mitigation landed: hold the global router concurrency slot until visibility or an ~8 minute timeout, then fail closed instead of logging and succeeding. 50/50 router tests passing; verify:fast passed."
         }
-      ]
+      ],
+      "escalated_to_human": {
+        "after_round": 5,
+        "reason": "One review concern remains unresolved after five rounds: the dispatch-to-visibility race cannot be closed airtight within the current Actions-API-only architecture because no durable reservation/lock exists for the next serialized invocation to observe.",
+        "unresolved_concerns": 1
+      }
     }
   }
 }
